@@ -13,9 +13,9 @@ from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 def test_uniform_flow_energy_and_enstrophy(hand_built_3d_mesh):
     mesh = hand_built_3d_mesh
     geo = compute_mesh_geometry(mesh, gradient_scheme="lsq")
-    n_total = mesh["n_elements"] + mesh["n_faces"] - mesh["n_interior_faces"]
+    n_total = mesh["n_cells"] + mesh["n_faces"] - mesh["n_interior_faces"]
     velocity = np.tile([2.0, -1.0, 0.5], (n_total, 1))
-    volume = np.sum(geo["element_volumes"])
+    volume = np.sum(geo["cell_volumes"])
 
     np.testing.assert_allclose(
         compute_kinetic_energy(velocity, geo, density=3.0),
@@ -38,10 +38,10 @@ def test_enstrophy_integral_matches_materialized_vorticity():
 def test_kinetic_energy_accepts_cellwise_density(hand_built_3d_mesh):
     mesh = hand_built_3d_mesh
     geo = compute_mesh_geometry(mesh)
-    n_cells = mesh["n_elements"]
+    n_cells = mesh["n_cells"]
     n_total = n_cells + mesh["n_faces"] - mesh["n_interior_faces"]
     velocity = np.ones((n_total, 3))
     density = np.linspace(1.0, 2.0, n_cells)
-    expected = 1.5 * np.sum(density * geo["element_volumes"])
+    expected = 1.5 * np.sum(density * geo["cell_volumes"])
 
     np.testing.assert_allclose(compute_kinetic_energy(velocity, geo, density), expected)

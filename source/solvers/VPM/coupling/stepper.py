@@ -41,7 +41,7 @@ class CouplingStepper:
             time_step_size=self.time_step_size,
             time=self.time,
             step=self.step,
-            logging_frequency=self.logging_frequency,
+            logging_interval_steps=self.logging_interval_steps,
             density=getattr(self.setup, "density", 1.0),
         )
         if new_particles is not None:
@@ -61,10 +61,10 @@ class CouplingStepper:
                 self.add_vortex_particles(
                     position=pos,
                     velocity=np.zeros((n, 3), dtype=self.np_dtype),
-                    circulation=strength,
-                    radius=rad,
+                    vortex_strength=strength,
+                    core_radius=rad,
                     volume=vol,
-                    viscosity=viscosity,
+                    kinematic_viscosity=viscosity,
                 )
 
     def advance_vlm(self, time_step_size: float) -> None:

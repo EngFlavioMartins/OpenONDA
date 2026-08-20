@@ -48,10 +48,10 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         pimple_defaults = {
             "n_correctors": 2,
             "n_orthogonal_correctors": 0,
-            "alpha_u": 1.0,
-            "alpha_p": 1.0,
+            "velocity_relaxation": 1.0,
+            "pressure_relaxation": 1.0,
             "max_iter": 20,
-            "momentum_tol": 1e-4,
+            "momentum_tolerance": 1e-4,
             "convection_scheme": "deferred",
             "ibm_second_solve": True,
         }
@@ -97,18 +97,18 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
     def step(
         self,
-        U,
+        velocity,
         p,
-        phi,
-        U_old=None,
+        face_flux,
+        velocity_old=None,
         time_step_size=None,
         rho=1.0,
         nu=0.01,
-        U_old_old=None,
+        velocity_older=None,
         source_explicit=None,
         source_implicit=None,
-        phi_old=None,
-        phi_old_old=None,
+        face_flux_old=None,
+        face_flux_older=None,
     ):
         """Perform one PIMPLE time step.
 
@@ -129,13 +129,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         Returns:
             tuple: Updated ``(U, p, phi, residuals)``.
         """
-        if U_old is None or time_step_size is None:
+        if velocity_old is None or time_step_size is None:
             raise ValueError("PIMPLESolver.step requires U_old and dt")
-        n_elem = self.mesh_data["n_elements"]
+        n_elem = self.mesh_data["n_cells"]
         n_outer = int(self.params.get("n_outer_correctors", 1))
         n_corr = int(self.params["n_correctors"])
-        alpha_u = self.params["alpha_u"]
-        alpha_p = self.params["alpha_p"]
+        velocity_relaxation = self.params["velocity_relaxation"]
+        pressure_relaxation = self.params["pressure_relaxation"]
         momentum_method = self.params.get("momentum_solver") or self.params["linear_solver"]
         pressure_method = self.params.get("pressure_solver") or self.params["linear_solver"]
         pressure_constraint = simple_solver._resolve_pressure_constraint(self.params)
@@ -144,17 +144,17 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         )
 
         def _linear_tolerances(equation: str, *, final: bool) -> tuple[float, float]:
-            absolute = float(self.params.get(f"{equation}_tol", 1e-8))
-            relative = self.params.get(f"{equation}_rel_tol", 0.0)
+            absolute = float(self.params.get(f"{equation}_tolerance", 1e-8))
+            relative = self.params.get(f"{equation}_relative_tolerance", 0.0)
             if final:
-                final_relative = self.params.get(f"{equation}_final_rel_tol", 0.0)
+                final_relative = self.params.get(f"{equation}_final_relative_tolerance", 0.0)
                 if final_relative is not None:
                     relative = final_relative
             return absolute, float(relative)
 
         ts = str(self.params.get("time_scheme", "euler_implicit")).lower()
         ddt_scheme = "backward" if ts in ("backward", "bdf2") else "euler"
-        if ddt_scheme == "backward" and U_old_old is None:
+        if ddt_scheme == "backward" and velocity_older is None:
             ddt_scheme = "euler"  # self-starting first step
 
         # Frozen for the whole step, exactly like pimpleFoam: fvc::ddtCorr
@@ -162,10 +162,10 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         ddt_flux_correction = None
         if bool(self.params.get("ddt_corr", True)):
             ddt_flux_correction = simple_solver.compute_ddt_flux_correction(
-                U_old,
-                U_old_old,
-                phi_old,
-                phi_old_old,
+                velocity_old,
+                velocity_older,
+                face_flux_old,
+                face_flux_older,
                 time_step_size,
                 self.mesh_data,
                 self.geo_data,
@@ -174,7 +174,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             )
 
         simple_solver.update_scalar_boundaries(
-            p, self.mesh_data, self.boundaries, field_name="p", face_flux=phi
+            p, self.mesh_data, self.boundaries, field_name="p", face_flux=face_flux
         )
         pressure_initial_residual = 0.0
         pressure_final_residual = 0.0
@@ -199,23 +199,23 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
         for outer in range(n_outer):
             final_iteration = final_iteration or outer == n_outer - 1
-            alpha_u_outer = 1.0 if final_iteration else alpha_u
-            alpha_p_outer = 1.0 if final_iteration else alpha_p
+            alpha_u_outer = 1.0 if final_iteration else velocity_relaxation
+            alpha_p_outer = 1.0 if final_iteration else pressure_relaxation
             momentum_tolerance, momentum_relative_tolerance = _linear_tolerances(
                 "momentum", final=final_iteration
             )
 
             def _solve_predictor(
                 src_explicit,
-                phi=phi,
-                alpha_u=alpha_u_outer,
-                momentum_tol=momentum_tolerance,
-                momentum_rel_tol=momentum_relative_tolerance,
+                face_flux=face_flux,
+                velocity_relaxation=alpha_u_outer,
+                momentum_tolerance=momentum_tolerance,
+                momentum_relative_tolerance=momentum_relative_tolerance,
             ) -> Any:
                 return momentum.solve_momentum_predictor(
-                    U,
+                    velocity,
                     p,
-                    phi,
+                    face_flux,
                     rho,
                     nu,
                     self.mesh_data,
@@ -223,21 +223,21 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     self.boundaries,
                     convection_scheme=self.params["convection_scheme"],
                     solver=momentum_method,
-                    under_relaxation=alpha_u,
+                    under_relaxation=velocity_relaxation,
                     time_step_size=time_step_size,
-                    U_old=U_old,
-                    U_old_old=U_old_old,
+                    velocity_old=velocity_old,
+                    velocity_older=velocity_older,
                     ddt_scheme=ddt_scheme,
                     source_explicit=src_explicit,
                     source_implicit=source_implicit,
                     reuse_ilu=self.params.get("reuse_ilu", False),
                     ilu_key=self.params.get("ilu_key", None),
-                    ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),
+                    ilu_drop_tolerance=self.params.get("ilu_drop_tolerance", 1e-4),
                     ilu_fill_factor=self.params.get("ilu_fill_factor", 10),
-                    momentum_tol=momentum_tol,
-                    momentum_rel_tol=momentum_rel_tol,
-                    maxiter=self.params.get("momentum_maxiter", 1000),
-                    ilu_reuse_tol=self.params.get("ilu_reuse_tol", None),
+                    momentum_tolerance=momentum_tolerance,
+                    momentum_relative_tolerance=momentum_relative_tolerance,
+                    maxiter=self.params.get("momentum_max_iterations", 1000),
+                    ilu_reuse_tolerance=self.params.get("ilu_reuse_tolerance", None),
                     linear_backend=self.params.get("_linear_backend", "scipy"),
                     parallel_context=self.params.get("_parallel_context"),
                     # The default shared policy bounds full-mesh RAM.  The
@@ -320,7 +320,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             self.mesh_data,
                             self.geo_data,
                             self.boundaries,
-                            alpha_u=alpha_u_outer,
+                            velocity_relaxation=alpha_u_outer,
                             pressure_constraint=pressure_constraint,
                             matrix_workspace=self._pressure_matrix_workspace,
                             operator_backend=self.params.get("_operator_backend", "numpy"),
@@ -343,23 +343,27 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
                     logging.Timer.start("Pressure Solve")
                     final_pressure_solve = _corr == n_corr - 1 and non_ortho == n_non_ortho
-                    pressure_tol, pressure_rel_tol = _linear_tolerances(
+                    pressure_tolerance, pressure_relative_tolerance = _linear_tolerances(
                         "pressure", final=final_pressure_solve
                     )
-                    pressure_maxiter = int(self.params.get("pressure_maxiter", 500))
-                    amg_tol = self.params.get("amg_tol")
-                    amg_maxiter = self.params.get("amg_maxiter")
+                    pressure_max_iterations = int(self.params.get("pressure_max_iterations", 500))
+                    amg_tolerance = self.params.get("amg_tolerance")
+                    amg_max_iterations = self.params.get("amg_max_iterations")
                     p_prime, pressure_result = solve_linear_system(
                         A_p,
                         b_p,
                         method=pressure_method,
                         equation_type="pressure",
-                        tol=pressure_tol,
-                        rel_tol=pressure_rel_tol,
-                        maxiter=pressure_maxiter,
-                        amg_tol=None if amg_tol is None else float(amg_tol),
-                        amg_maxiter=(pressure_maxiter if amg_maxiter is None else int(amg_maxiter)),
-                        amg_reuse_tol=float(self.params.get("amg_reuse_tol", 0.05)),
+                        tol=pressure_tolerance,
+                        rel_tol=pressure_relative_tolerance,
+                        maxiter=pressure_max_iterations,
+                        amg_tolerance=None if amg_tolerance is None else float(amg_tolerance),
+                        amg_max_iterations=(
+                            pressure_max_iterations
+                            if amg_max_iterations is None
+                            else int(amg_max_iterations)
+                        ),
+                        amg_reuse_tolerance=float(self.params.get("amg_reuse_tolerance", 0.05)),
                         amg_key=("pressure", self._pressure_matrix_workspace.cache_namespace),
                         backend=self.params.get("_linear_backend", "scipy"),
                         parallel_context=self.params.get("_parallel_context"),
@@ -394,12 +398,12 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         self.geo_data,
                         self.boundaries,
                         rho=rho,
-                        alpha_u=alpha_u_outer,
-                        alpha_p=alpha_p_outer,
+                        velocity_relaxation=alpha_u_outer,
+                        pressure_relaxation=alpha_p_outer,
                         workspace=pressure_workspace,
                     )
                     if non_ortho == n_non_ortho:
-                        phi = corrected_phi
+                        face_flux = corrected_phi
 
                     logging.Timer.log(
                         "Velocity Correction",
@@ -412,7 +416,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         self.mesh_data,
                         self.boundaries,
                         field_name="p",
-                        face_flux=phi,
+                        face_flux=face_flux,
                     )
                     if parallel is not None and parallel.is_partitioned:
                         parallel.exchange_halo(p[:n_elem])
@@ -424,7 +428,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
             simple_solver._update_velocity_bcs(
                 U_iter,
-                phi,
+                face_flux,
                 self.boundaries,
                 self.mesh_data["owners"],
                 self.geo_data,
@@ -433,19 +437,19 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 mesh_data=self.mesh_data,
             )
             # Preserve updated ghost values for the next gradient assembly.
-            U[:] = U_iter[:]
+            velocity[:] = U_iter[:]
             parallel = self.params.get("_parallel_context")
             if parallel is not None and parallel.is_partitioned:
-                parallel.exchange_halo(U[:n_elem])
+                parallel.exchange_halo(velocity[:n_elem])
 
             momentum_outer = max(
                 (values["final_residual"] for values in momentum_diagnostics.values()),
                 default=0.0,
             )
             continuity = field_diagnostics.compute_continuity_error(
-                phi, self.mesh_data, self.geo_data
+                face_flux, self.mesh_data, self.geo_data
             )
-            volumes = self.geo_data["element_volumes"]
+            volumes = self.geo_data["cell_volumes"]
             parallel = self.params.get("_parallel_context")
             n_owned = (
                 parallel.n_owned if parallel is not None and parallel.is_partitioned else n_elem
@@ -496,8 +500,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         residual_u = max(momentum_final.values(), default=0.0)
         parallel = self.params.get("_parallel_context")
         n_owned = parallel.n_owned if parallel is not None and parallel.is_partitioned else n_elem
-        increment_squared = float(np.sum((U[:n_owned] - U_old[:n_owned]) ** 2))
-        velocity_squared = float(np.sum(U[:n_owned] ** 2))
+        increment_squared = float(np.sum((velocity[:n_owned] - velocity_old[:n_owned]) ** 2))
+        velocity_squared = float(np.sum(velocity[:n_owned] ** 2))
         if parallel is not None and parallel.is_partitioned:
             increment_squared = parallel.global_sum(increment_squared)
             velocity_squared = parallel.global_sum(velocity_squared)
@@ -521,4 +525,4 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             flow_workspace = self._partitioned_linear_workspaces.get("flow")
             if flow_workspace is not None:
                 flow_workspace.close()
-        return U, p, phi, residuals
+        return velocity, p, face_flux, residuals

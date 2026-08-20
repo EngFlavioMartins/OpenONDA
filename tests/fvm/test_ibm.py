@@ -15,7 +15,7 @@ def _mesh_2d(nx=48, ny=48, lx=3.0, ly=3.0, lz=0.1):
     for b in m["boundary"]:
         if b["name"] in ("zmin", "zmax"):
             b["type"] = "empty"
-            b["bc_type_velocity"] = "empty"
+            b["velocity_type"] = "empty"
     geo = geometry.compute_mesh_geometry(m, gradient_scheme="gauss")
     return m, geo
 
@@ -129,15 +129,15 @@ def test_extruded_cylinder_factory_has_exact_solid_geometry():
 
 def test_interpolation_reproduces_constant_and_linear(cylinder_setup):
     m, geo, ibm = cylinder_setup
-    n_tot = m["n_elements"] + m["n_faces"] - m["n_interior_faces"]
-    cc = geo["element_centroids"]
+    n_tot = m["n_cells"] + m["n_faces"] - m["n_interior_faces"]
+    cc = geo["cell_centroids"]
 
     const = np.full((n_tot, 3), 2.5)
     err_const = np.abs(ibm.interpolate(const) - 2.5).max()
     assert err_const < 1e-12  # exact by row normalisation
 
     lin = np.zeros((n_tot, 3))
-    lin[: m["n_elements"], 0] = 1.0 + 0.7 * cc[:, 0] - 0.3 * cc[:, 1]
+    lin[: m["n_cells"], 0] = 1.0 + 0.7 * cc[:, 0] - 0.3 * cc[:, 1]
     expect = 1.0 + 0.7 * ibm.X[:, 0] - 0.3 * ibm.X[:, 1]
     err_lin = np.abs(ibm.interpolate(lin)[:, 0] - expect).max()
     assert err_lin < 5e-3  # O(h^2) with h = 1/16 of D
@@ -158,31 +158,31 @@ def test_pinelli_quadrature_consistency(cylinder_setup):
 
 def test_forcing_kills_slip_in_one_application(cylinder_setup):
     m, geo, ibm = cylinder_setup
-    n_tot = m["n_elements"] + m["n_faces"] - m["n_interior_faces"]
+    n_tot = m["n_cells"] + m["n_faces"] - m["n_interior_faces"]
     # Uniform flow through the (fixed) body: slip = |U_inf| initially.
-    U = np.zeros((n_tot, 3))
-    U[:, 0] = 1.0
+    velocity = np.zeros((n_tot, 3))
+    velocity[:, 0] = 1.0
     time_step_size = 0.01
-    slip0 = ibm.slip_error(U)
+    slip0 = ibm.slip_error(velocity)
     assert slip0 == pytest.approx(1.0, rel=1e-6)
 
     # Explicit model update u += dt * f (what the momentum solve does to
     # leading order at the forced cells).
-    f = ibm.compute_force(U, time_step_size)
-    U[: m["n_elements"]] += time_step_size * f
-    slip1 = ibm.slip_error(U)
+    f = ibm.compute_force(velocity, time_step_size)
+    velocity[: m["n_cells"]] += time_step_size * f
+    slip1 = ibm.slip_error(velocity)
     assert slip1 < 0.05 * slip0  # >20x reduction
 
 
 def test_multidirect_forcing_converges_slip(cylinder_setup):
     m, geo, ibm = cylinder_setup
-    n_tot = m["n_elements"] + m["n_faces"] - m["n_interior_faces"]
-    U = np.zeros((n_tot, 3))
-    U[:, 0] = 1.0
+    n_tot = m["n_cells"] + m["n_faces"] - m["n_interior_faces"]
+    velocity = np.zeros((n_tot, 3))
+    velocity[:, 0] = 1.0
     time_step_size = 0.01
-    ibm.compute_force(U, time_step_size)  # initialise last_F
+    ibm.compute_force(velocity, time_step_size)  # initialise last_F
     F_before = ibm.last_F.copy()
-    ibm.multidirect_correct(U, time_step_size, n_iter=3)
+    ibm.multidirect_correct(velocity, time_step_size, n_iter=3)
     # Slip driven far below the single-application level (test above: < 0.05).
     assert ibm.last_slip < 5e-3
     # Increments were accumulated into the logged Lagrangian force.
@@ -191,11 +191,11 @@ def test_multidirect_forcing_converges_slip(cylinder_setup):
 
 def test_body_force_matches_eulerian_integral(cylinder_setup):
     m, geo, ibm = cylinder_setup
-    n_tot = m["n_elements"] + m["n_faces"] - m["n_interior_faces"]
-    U = np.zeros((n_tot, 3))
-    U[:, 0] = 1.0
-    f = ibm.compute_force(U, time_step_size=0.02)
-    vol = geo["element_volumes"]
+    n_tot = m["n_cells"] + m["n_faces"] - m["n_interior_faces"]
+    velocity = np.zeros((n_tot, 3))
+    velocity[:, 0] = 1.0
+    f = ibm.compute_force(velocity, time_step_size=0.02)
+    vol = geo["cell_volumes"]
     F_euler = -np.sum(f * vol[:, np.newaxis], axis=0)
     F_body = ibm.body_forces(rho=1.0)["cylinder"]
     assert np.allclose(F_body, F_euler, rtol=1e-10, atol=1e-12)
@@ -209,11 +209,11 @@ def test_cylinder_step_integration():
     drag, and a small no-slip error at the markers."""
     from source.solvers.FVM import (
         BoundaryConfig,
+        DiscretizationConfig,
         FVMSetup,
         FVMSolver,
         LinearSolverConfig,
         PimpleControl,
-        SchemesConfig,
         TimeConfig,
         TransportConfig,
     )
@@ -221,21 +221,23 @@ def test_cylinder_step_integration():
     m, _ = _mesh_2d(nx=60, ny=40, lx=6.0, ly=4.0)
     config = FVMSetup(
         case_name="ibm_smoke",
-        time=TimeConfig(time_step_size=0.02, start_time=0.0, end_time=1.0, write_interval=1000),
-        schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+        time=TimeConfig(
+            time_step_size=0.02, start_time=0.0, end_time=1.0, output_interval_steps=1000
+        ),
+        schemes=DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2, n_outer_correctors=1),
-        transport=TransportConfig(density=1.0, nu=0.025),  # Re = 40 on D=1
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.025),  # Re = 40 on D=1
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
-            BoundaryConfig.outlet("xmax", p=0.0),
+            BoundaryConfig.outlet("xmax", kinematic_pressure=0.0),
             BoundaryConfig.freestream("ymin", [1.0, 0.0, 0.0]),
             BoundaryConfig.freestream("ymax", [1.0, 0.0, 0.0]),
             BoundaryConfig.empty("zmin"),
             BoundaryConfig.empty("zmax"),
         ],
         initial_velocity=[1.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
     import tempfile
 
@@ -249,27 +251,27 @@ def test_cylinder_step_integration():
         for _ in range(10):
             solver.advance()
 
-        n = m["n_elements"]
-        assert np.all(np.isfinite(solver.U[:n]))
+        n = m["n_cells"]
+        assert np.all(np.isfinite(solver.velocity[:n]))
         # No-slip enforced at markers to a small fraction of U_inf.
-        assert ibm.slip_error(solver.U) < 0.05
+        assert ibm.slip_error(solver.velocity) < 0.05
         # Drag is positive (force on body along +x).
         Fb = ibm.body_forces(rho=1.0)["cylinder"]
         assert Fb[0] > 0.0
         # Wake deficit exists: velocity behind the body below U_inf.
-        cc = solver.geo_data["element_centroids"][:n]
+        cc = solver.geo_data["cell_centroids"][:n]
         wake = (np.abs(cc[:, 1] - 2.0) < 0.2) & (cc[:, 0] > 2.6) & (cc[:, 0] < 3.5)
-        assert solver.U[:n][wake, 0].mean() < 0.8
+        assert solver.velocity[:n][wake, 0].mean() < 0.8
 
 
 def test_solver_rejects_unqualified_moving_body_support(tmp_path):
     from source.solvers.FVM import (
         BoundaryConfig,
+        DiscretizationConfig,
         FVMSetup,
         FVMSolver,
         LinearSolverConfig,
         PimpleControl,
-        SchemesConfig,
         TimeConfig,
         TransportConfig,
     )
@@ -278,10 +280,10 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
     config = FVMSetup(
         case_name="moving_ibm_rejected",
         time=TimeConfig.transient(time_step_size=0.01, duration=0.01),
-        schemes=SchemesConfig(),
+        schemes=DiscretizationConfig(),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(),
-        transport=TransportConfig(nu=0.01),
+        transport=TransportConfig(kinematic_viscosity=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax"),
@@ -302,11 +304,11 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
 def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     from source.solvers.FVM import (
         BoundaryConfig,
+        DiscretizationConfig,
         FVMSetup,
         FVMSolver,
         LinearSolverConfig,
         PimpleControl,
-        SchemesConfig,
         TimeConfig,
         TransportConfig,
     )
@@ -328,7 +330,7 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
         return values
 
     def config(with_square):
-        schemes = SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss")
+        schemes = DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss")
         linear = LinearSolverConfig(linear_solver="spsolve")
         pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
         samplers = []
@@ -346,15 +348,17 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
             ]
         return FVMSetup(
             case_name="body-fitted" if with_square else "ibm",
-            time=TimeConfig.transient(time_step_size=0.02, duration=0.16, write_interval=1000),
+            time=TimeConfig.transient(
+                time_step_size=0.02, duration=0.16, output_interval_steps=1000
+            ),
             schemes=schemes,
             linear=linear,
             pimple=pimple,
             samplers=samplers,
-            transport=TransportConfig(density=1.0, nu=0.05),
+            transport=TransportConfig(density=1.0, kinematic_viscosity=0.05),
             boundaries=boundaries(with_square),
             initial_velocity=[1.0, 0.0, 0.0],
-            initial_p=0.0,
+            initial_kinematic_pressure=0.0,
         )
 
     fitted_mesh = coupling_box_mesh(
@@ -371,9 +375,9 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     start = fitted_mesh["n_interior_faces"]
     patches = []
     for name, count in zip(("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"), counts, strict=True):
-        patches.append({"name": name, "startFace": start, "nFaces": count, "type": "patch"})
+        patches.append({"name": name, "start_face": start, "n_faces": count, "type": "patch"})
         start += count
-    patches.append({**fitted_mesh["boundary"][-1], "startFace": start})
+    patches.append({**fitted_mesh["boundary"][-1], "start_face": start})
     fitted_mesh["boundary"] = patches
     ibm_mesh = structured_box(nx, ny, 1, 6.0, 4.0, h)
 
@@ -391,9 +395,9 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     immersed_drag = ibm.body_forces(rho=1.0)["square"][0]
 
     def wake_velocity(solver):
-        centres = solver.geo_data["element_centroids"]
+        centres = solver.geo_data["cell_centroids"]
         wake = (np.abs(centres[:, 1] - 2.0) < 0.21) & (centres[:, 0] > 2.7) & (centres[:, 0] < 3.5)
-        return float(np.mean(solver.U[: solver.mesh_data["n_elements"]][wake, 0]))
+        return float(np.mean(solver.velocity[: solver.mesh_data["n_cells"]][wake, 0]))
 
     fitted_wake = wake_velocity(fitted)
     immersed_wake = wake_velocity(immersed)

@@ -1277,7 +1277,7 @@ class _GridDiffusionMixin:
         The CFL stability condition dt ≤ particle_spacing²/(6·ν_eff_max) must be satisfied
         externally; a warning is logged if α_node exceeds 1/6.
         """
-        N = particles.number_of_particles
+        N = particles.n_particles
         if N == 0 or time_step_size == 0.0:
             return None
         self._ping = True
@@ -1289,13 +1289,13 @@ class _GridDiffusionMixin:
         group_id_np = particles.group_id_cpu()[:N].copy()
 
         pos_np = particles.position_cpu()
-        circ_np = particles.circulation_cpu()
+        circ_np = particles.vortex_strength_cpu()
 
         # -- LES: per-particle ν_t to carry through regen  -------------
         # The scattered ν_t is inherited by regenerated particles so that ν_t
         # survives the rebuild and reaches backup (LES recomputes it next step
         # anyway, but carrying it keeps the backed-up field faithful).
-        nu_t_np = particles.viscosity_turbulent_cpu()
+        nu_t_np = particles.eddy_viscosity_cpu()
 
         # -- Grid setup --------------------------------------------------------
         # Use a fixed grid origin when the domain was pre-configured, to avoid
@@ -1324,7 +1324,7 @@ class _GridDiffusionMixin:
             count = min(_M4_SCATTER_BATCH_SIZE, N - start)
             self._m4_scatter_gpu_kernel(
                 particles.position,
-                particles.circulation,
+                particles.vortex_strength,
                 self._current_grid,
                 gmin[0],
                 gmin[1],
@@ -1724,7 +1724,7 @@ class _GridDiffusionMixin:
         No finite-difference solve or CFL constraint is involved — diffusion
         is encoded directly in the Gaussian scatter weights.
         """
-        N = particles.number_of_particles
+        N = particles.n_particles
         if N == 0 or time_step_size == 0.0:
             return None
 
@@ -1735,10 +1735,10 @@ class _GridDiffusionMixin:
         group_id_np = particles.group_id_cpu()[:N].copy()
 
         pos_np = particles.position_cpu()
-        circ_np = particles.circulation_cpu()
+        circ_np = particles.vortex_strength_cpu()
 
         # -- LES: per-particle ν_t to carry through regen (Bug B) -------------
-        nu_t_np = particles.viscosity_turbulent_cpu()
+        nu_t_np = particles.eddy_viscosity_cpu()
 
         # -- Grid setup --------------------------------------------------------
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:

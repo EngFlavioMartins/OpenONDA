@@ -23,12 +23,12 @@ pytest.importorskip("petsc4py", reason="parallel FVM test requires petsc4py")
 
 from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
-    ExecutionConfig,
+    ComputeConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -52,7 +52,7 @@ pytestmark = pytest.mark.mpi
 
 
 def test_partition_halo_exchange_matches_global_cell_field():
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
     mesh = structured_box(8, 3, 2)
     partition = CellPartition.from_mesh_data(mesh, context.rank, context.size)
     local = np.full((len(partition.local_global_ids), 2), np.nan)
@@ -67,7 +67,7 @@ def test_partition_halo_exchange_matches_global_cell_field():
 
 
 def test_owned_row_petsc_solution_matches_scipy():
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
     n = 37
     matrix = diags(
         (-np.ones(n - 1), 4.0 * np.ones(n), -np.ones(n - 1)),
@@ -89,7 +89,7 @@ def test_owned_row_petsc_solution_matches_scipy():
 
 def test_owned_row_relative_tolerance_reduces_entry_residual():
     """The distributed PETSc path applies relTol to its warm-guess residual."""
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
     n = 37
     matrix = diags(
         (-np.ones(n - 1), 4.0 * np.ones(n), -np.ones(n - 1)),
@@ -115,7 +115,7 @@ def test_owned_row_relative_tolerance_reduces_entry_residual():
 
 
 def test_partitioned_workspace_reuses_allocations_and_closes_collectively():
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
     n = 19
     matrix = diags((-np.ones(n - 1), 3.0 * np.ones(n), -np.ones(n - 1)), (-1, 0, 1), format="csr")
     rhs = np.linspace(0.5, 1.5, n)
@@ -150,7 +150,7 @@ def test_partitioned_workspace_reuses_allocations_and_closes_collectively():
 
 
 def test_collective_petsc_solution_matches_scipy():
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
     n = 31
     A = diags((-np.ones(n - 1), 4.0 * np.ones(n), -np.ones(n - 1)), (-1, 0, 1), format="csr")
     b = np.linspace(1.0, 2.0, n)
@@ -174,7 +174,7 @@ def test_collective_petsc_solution_matches_scipy():
 
 
 def test_collective_petsc_constant_pressure_nullspace():
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
     n = 24
     matrix = diags(
         (-np.ones(n - 1), 2.0 * np.ones(n), -np.ones(n - 1)),
@@ -208,16 +208,16 @@ def test_collective_petsc_constant_pressure_nullspace():
 
 
 def test_collective_pimple_step_is_rank_invariant(tmp_path):
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
     mesh = structured_box(3, 3, 3)
     config = FVMSetup(
         case_name="petsc_pimple",
-        execution=ExecutionConfig.petsc_replicated(),
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
-        schemes=SchemesConfig(convection_scheme="upwind"),
-        linear=LinearSolverConfig(linear_solver="bicgstab", pressure_tol=1e-10),
+        execution=ComputeConfig.petsc_replicated(),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, output_interval_steps=100),
+        schemes=DiscretizationConfig(convection_scheme="upwind"),
+        linear=LinearSolverConfig(linear_solver="bicgstab", pressure_tolerance=1e-10),
         pimple=PimpleControl(n_correctors=2),
-        transport=TransportConfig(density=1.0, nu=0.02),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),
@@ -234,8 +234,8 @@ def test_collective_pimple_step_is_rank_invariant(tmp_path):
         residuals = solver.solve_pimple(0.01)
 
     assert residuals["p"] < 1e-8
-    assert np.all(np.isfinite(solver.U))
-    states = context.comm.allgather(solver.U.copy())
+    assert np.all(np.isfinite(solver.velocity))
+    states = context.comm.allgather(solver.velocity.copy())
     for state in states[1:]:
         np.testing.assert_allclose(state, states[0], rtol=0.0, atol=1e-12)
 
@@ -244,16 +244,16 @@ def _pimple_config(execution, case_name):
     return FVMSetup(
         case_name=case_name,
         execution=execution,
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
-        schemes=SchemesConfig(convection_scheme="linearUpwind", gradient_scheme="gauss"),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, output_interval_steps=100),
+        schemes=DiscretizationConfig(convection_scheme="linearUpwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="cg",
-            momentum_tol=1e-10,
-            pressure_tol=1e-10,
+            momentum_tolerance=1e-10,
+            pressure_tolerance=1e-10,
         ),
         pimple=PimpleControl(n_correctors=2, n_orthogonal_correctors=1),
-        transport=TransportConfig(density=1.0, nu=0.02),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),
@@ -263,13 +263,13 @@ def _pimple_config(execution, case_name):
             BoundaryConfig.wall("zmax"),
         ],
         initial_velocity=[1.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
 
 
 def test_partitioned_solver_header_is_printed_once(tmp_path):
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
-    execution = ExecutionConfig.petsc_partitioned()
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
+    execution = ComputeConfig.petsc_partitioned()
     mesh = structured_box(2, 2, 2)
     stdout = io.StringIO()
 
@@ -287,8 +287,8 @@ def test_partitioned_solver_header_is_printed_once(tmp_path):
 
 
 def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
-    execution = ExecutionConfig.petsc_partitioned()
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
+    execution = ComputeConfig.petsc_partitioned()
     mesh = structured_box(2, 2, 2)
     case_dir = Path(
         context.bcast(
@@ -299,8 +299,13 @@ def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
     stdout = io.StringIO()
 
     with contextlib.redirect_stdout(stdout):
+        from source.solvers.FVM.sampling.forces import ForceSampler
+
+        config = _pimple_config(execution, "root-owned-output")
+        config.logging.mode = "debug"
+        config.samplers = (ForceSampler(),)
         solver = FVMSolver(
-            _pimple_config(execution, "root-owned-output"),
+            config,
             str(case_dir),
             mesh_data=mesh if context.is_root else None,
         )
@@ -337,7 +342,7 @@ def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
 
 
 def test_partitioned_pimple_matches_replicated_reference(tmp_path):
-    replicated_execution = ExecutionConfig.petsc_replicated()
+    replicated_execution = ComputeConfig.petsc_replicated()
     replicated_context = ParallelContext.create(replicated_execution)
     mesh = structured_box(5, 4, 3)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -349,7 +354,7 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
         reference.auto_write = False
         reference_residuals = reference.solve_pimple(0.01)
 
-    partitioned_execution = ExecutionConfig.petsc_partitioned()
+    partitioned_execution = ComputeConfig.petsc_partitioned()
     with contextlib.redirect_stdout(io.StringIO()):
         actual = FVMSolver(
             _pimple_config(partitioned_execution, "partitioned"),
@@ -365,12 +370,12 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
     assert actual.algorithm._partitioned_linear_workspaces["flow"].matrix is None
 
     n_owned = actual.parallel.n_owned
-    velocity_parts = actual.parallel.comm.allgather(actual.U[:n_owned].copy())
-    pressure_parts = actual.parallel.comm.allgather(actual.p[:n_owned].copy())
+    velocity_parts = actual.parallel.comm.allgather(actual.velocity[:n_owned].copy())
+    pressure_parts = actual.parallel.comm.allgather(actual.kinematic_pressure[:n_owned].copy())
     velocity = np.concatenate(velocity_parts)
     pressure = np.concatenate(pressure_parts)
-    np.testing.assert_allclose(velocity, reference.U[: mesh["n_elements"]], atol=2e-9)
-    np.testing.assert_allclose(pressure, reference.p[: mesh["n_elements"]], atol=2e-9)
+    np.testing.assert_allclose(velocity, reference.velocity[: mesh["n_cells"]], atol=2e-9)
+    np.testing.assert_allclose(pressure, reference.kinematic_pressure[: mesh["n_cells"]], atol=2e-9)
     assert actual.last_diagnostics.continuity_max == pytest.approx(
         reference.last_diagnostics.continuity_max, rel=2e-7, abs=1e-10
     )
@@ -382,8 +387,8 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
         "ref_length": 1.0,
     }
     reference_forces = diagnostics.compute_surface_forces(
-        reference.U,
-        reference.p,
+        reference.velocity,
+        reference.kinematic_pressure,
         0.02,
         1.0,
         reference.mesh_data,
@@ -392,8 +397,8 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
         **force_kwargs,
     )
     local_forces = diagnostics.compute_surface_forces(
-        actual.U,
-        actual.p,
+        actual.velocity,
+        actual.kinematic_pressure,
         0.02,
         1.0,
         actual.mesh_data,
@@ -411,8 +416,8 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
 
 
 def test_partitioned_initial_velocity_rebuilds_histories_halos_and_flux(tmp_path):
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
-    execution = ExecutionConfig.petsc_partitioned()
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
+    execution = ComputeConfig.petsc_partitioned()
     mesh = structured_box(5, 4, 3)
     with contextlib.redirect_stdout(io.StringIO()):
         solver = FVMSolver(
@@ -423,23 +428,23 @@ def test_partitioned_initial_velocity_rebuilds_histories_halos_and_flux(tmp_path
 
     partition = solver.parallel.partition
     n_owned = len(partition.owned_global_ids)
-    values = np.full((solver.mesh_data["n_elements"], 3), -999.0)
+    values = np.full((solver.mesh_data["n_cells"], 3), -999.0)
     owned_ids = partition.owned_global_ids.astype(np.float64)
     values[:n_owned] = np.column_stack((owned_ids, owned_ids**2, -owned_ids))
     solver.set_initial_velocity(values)
 
     expected_ids = partition.local_global_ids.astype(np.float64)
     expected = np.column_stack((expected_ids, expected_ids**2, -expected_ids))
-    np.testing.assert_allclose(solver.U[: solver.mesh_data["n_elements"]], expected)
-    np.testing.assert_allclose(solver.U_old, solver.U)
-    np.testing.assert_allclose(solver.U_old_old, solver.U)
-    assert np.all(np.isfinite(solver.phi))
-    assert np.any(np.abs(solver.phi) > 0.0)
+    np.testing.assert_allclose(solver.velocity[: solver.mesh_data["n_cells"]], expected)
+    np.testing.assert_allclose(solver.velocity_old, solver.velocity)
+    np.testing.assert_allclose(solver.velocity_older, solver.velocity)
+    assert np.all(np.isfinite(solver.face_flux))
+    assert np.any(np.abs(solver.face_flux) > 0.0)
 
 
 def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_path):
     """The coupler sees one root-owned global field, never rank-local fragments."""
-    replicated_execution = ExecutionConfig.petsc_replicated()
+    replicated_execution = ComputeConfig.petsc_replicated()
     context = ParallelContext.create(replicated_execution)
     mesh = structured_box(5, 4, 3)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -450,7 +455,7 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
         )
         actual = FVMSolver(
             _pimple_config(
-                ExecutionConfig.petsc_partitioned(),
+                ComputeConfig.petsc_partitioned(),
                 "coupling-interface-partitioned",
             ),
             str(tmp_path / "coupling-interface-partitioned"),
@@ -460,25 +465,25 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
     partition = actual.parallel.partition
     n_owned = len(partition.owned_global_ids)
     global_ids = partition.owned_global_ids.astype(np.float64)
-    actual.U[:n_owned] = np.column_stack((global_ids, global_ids**2, -global_ids))
-    actual.parallel.exchange_halo(actual.U[: actual.mesh_data["n_elements"]])
+    actual.velocity[:n_owned] = np.column_stack((global_ids, global_ids**2, -global_ids))
+    actual.parallel.exchange_halo(actual.velocity[: actual.mesh_data["n_cells"]])
 
     velocity = actual.get_velocity_field()
-    centers = actual.get_cell_center_coordinates()
+    centres = actual.get_cell_centre_coordinates()
     volumes = actual.get_cell_volumes()
-    reference_centers = reference.get_cell_center_coordinates()
+    reference_centres = reference.get_cell_centre_coordinates()
     reference_volumes = reference.get_cell_volumes()
-    expected_n = mesh["n_elements"] if context.is_root else 0
+    expected_n = mesh["n_cells"] if context.is_root else 0
     assert velocity.shape == (expected_n, 3)
-    assert centers.shape == (expected_n, 3)
+    assert centres.shape == (expected_n, 3)
     assert volumes.shape == (expected_n,)
     if context.is_root:
-        expected_ids = np.arange(mesh["n_elements"], dtype=np.float64)
+        expected_ids = np.arange(mesh["n_cells"], dtype=np.float64)
         np.testing.assert_array_equal(
             velocity,
             np.column_stack((expected_ids, expected_ids**2, -expected_ids)),
         )
-        np.testing.assert_allclose(centers, reference_centers)
+        np.testing.assert_allclose(centres, reference_centres)
         np.testing.assert_allclose(volumes, reference_volumes)
 
     velocity_buffer = np.empty((expected_n, 3), dtype=np.float64)
@@ -486,29 +491,29 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
     np.testing.assert_array_equal(velocity_buffer, velocity)
 
     patch = "ymin"
-    face_centers = actual.get_boundary_face_center_coordinates(patch)
+    face_centres = actual.get_boundary_face_centre_coordinates(patch)
     face_normals = actual.get_boundary_face_normals(patch)
     face_areas = actual.get_boundary_face_areas(patch)
-    reference_face_centers = reference.get_boundary_face_center_coordinates(patch)
+    reference_face_centres = reference.get_boundary_face_centre_coordinates(patch)
     if context.is_root:
-        np.testing.assert_allclose(face_centers, reference_face_centers)
-        assert face_normals.shape == face_centers.shape
-        assert face_areas.shape == (len(face_centers),)
+        np.testing.assert_allclose(face_centres, reference_face_centres)
+        assert face_normals.shape == face_centres.shape
+        assert face_areas.shape == (len(face_centres),)
     else:
-        assert face_centers.shape == (0, 3)
+        assert face_centres.shape == (0, 3)
         assert face_normals.shape == (0, 3)
         assert face_areas.shape == (0,)
 
     # Repeated coupling calls reuse the immutable rank/face layout.
-    np.testing.assert_array_equal(actual.get_boundary_face_center_coordinates(patch), face_centers)
+    np.testing.assert_array_equal(actual.get_boundary_face_centre_coordinates(patch), face_centres)
 
-    target = face_centers + np.array([0.25, -0.5, 0.75]) if context.is_root else np.empty((0, 3))
+    target = face_centres + np.array([0.25, -0.5, 0.75]) if context.is_root else np.empty((0, 3))
     actual.set_dirichlet_velocity_boundary_condition_vec(target, patch)
     boundary = actual._optional_patch(patch)
     local_face_ids = np.empty(0, dtype=np.int64)
     if boundary is not None:
-        start = boundary["startFace"]
-        stop = start + boundary["nFaces"]
+        start = boundary["start_face"]
+        stop = start + boundary["n_faces"]
         local_face_ids = actual.mesh_data["global_face_ids"][start:stop]
     ids_by_rank = actual.parallel.comm.allgather(local_face_ids)
     sorted_face_ids = np.sort(np.concatenate(ids_by_rank))
@@ -519,11 +524,11 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
     )
     expected_local = actual.parallel.comm.scatter(expected_patch_values, root=0)
     if boundary is not None:
-        np.testing.assert_allclose(boundary["value_velocity_field"], expected_local)
+        np.testing.assert_allclose(boundary["velocity_value_field"], expected_local)
     else:
         assert expected_local.shape == (0, 3)
 
-    scalar_global = np.linspace(0.0, 1.0, mesh["n_elements"]) if context.is_root else np.empty(0)
+    scalar_global = np.linspace(0.0, 1.0, mesh["n_cells"]) if context.is_root else np.empty(0)
     vector_global = (
         np.column_stack((scalar_global, 2.0 * scalar_global, -scalar_global))
         if context.is_root
@@ -551,7 +556,7 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
 
 def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
     """The production cube uses LSQ gradients, not the Gauss fallback."""
-    replicated_execution = ExecutionConfig.petsc_replicated()
+    replicated_execution = ComputeConfig.petsc_replicated()
     context = ParallelContext.create(replicated_execution)
     mesh = structured_box(5, 4, 3)
     reference_config = _pimple_config(replicated_execution, "replicated-lsq")
@@ -565,7 +570,7 @@ def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
         reference.auto_write = False
         reference.solve_pimple(0.01)
 
-    partitioned_config = _pimple_config(ExecutionConfig.petsc_partitioned(), "partitioned-lsq")
+    partitioned_config = _pimple_config(ComputeConfig.petsc_partitioned(), "partitioned-lsq")
     partitioned_config.schemes.gradient_scheme = "lsq"
     with contextlib.redirect_stdout(io.StringIO()):
         actual = FVMSolver(
@@ -587,14 +592,16 @@ def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
     ]
 
     n_owned = actual.parallel.n_owned
-    velocity = np.concatenate(actual.parallel.comm.allgather(actual.U[:n_owned].copy()))
-    pressure = np.concatenate(actual.parallel.comm.allgather(actual.p[:n_owned].copy()))
-    np.testing.assert_allclose(velocity, reference.U[: mesh["n_elements"]], atol=3e-9)
-    np.testing.assert_allclose(pressure, reference.p[: mesh["n_elements"]], atol=3e-9)
+    velocity = np.concatenate(actual.parallel.comm.allgather(actual.velocity[:n_owned].copy()))
+    pressure = np.concatenate(
+        actual.parallel.comm.allgather(actual.kinematic_pressure[:n_owned].copy())
+    )
+    np.testing.assert_allclose(velocity, reference.velocity[: mesh["n_cells"]], atol=3e-9)
+    np.testing.assert_allclose(pressure, reference.kinematic_pressure[: mesh["n_cells"]], atol=3e-9)
 
 
 def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
-    execution = ExecutionConfig.petsc_partitioned()
+    execution = ComputeConfig.petsc_partitioned()
     context = ParallelContext.create(execution)
     mesh = box_mesh_3d(
         np.linspace(0.0, 1.0, 5),
@@ -632,7 +639,7 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
         assert np.all(np.isfinite(smooth.point_data["U"]))
         if solver.parallel.is_root:
             parallel = pv.read(Path(shared_root) / "partitioned-state.pvtu")
-            assert parallel.n_cells >= mesh["n_elements"]
+            assert parallel.n_cells >= mesh["n_cells"]
             assert "U" in parallel.cell_data
         solver.save_state(f"{shared_root}/partitioned-checkpoint")
 
@@ -644,7 +651,15 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
         restored.auto_write = False
         restored.load_state(f"{shared_root}/partitioned-checkpoint")
 
-    for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
+    for name in (
+        "velocity",
+        "kinematic_pressure",
+        "face_flux",
+        "face_flux_old",
+        "face_flux_older",
+        "velocity_old",
+        "velocity_older",
+    ):
         np.testing.assert_array_equal(getattr(restored, name), getattr(solver, name))
     assert restored.time == solver.time
     assert restored.step == solver.step

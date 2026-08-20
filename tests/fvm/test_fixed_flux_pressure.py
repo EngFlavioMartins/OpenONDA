@@ -16,7 +16,7 @@ def _one_cell_fixed_flux_case():
     normals = sf.copy()
     face_centres = 0.5 * normals
     mesh = {
-        "n_elements": 1,
+        "n_cells": 1,
         "n_interior_faces": 0,
         "n_faces": 6,
         "owners": np.zeros(6, dtype=np.int32),
@@ -24,10 +24,10 @@ def _one_cell_fixed_flux_case():
         "boundary": [
             {
                 "name": "cut",
-                "startFace": 0,
-                "nFaces": 6,
-                "bc_type_velocity": "fixedValue",
-                "bc_type_p": "fixedFluxPressure",
+                "start_face": 0,
+                "n_faces": 6,
+                "velocity_type": "fixedValue",
+                "pressure_type": "fixedFluxPressure",
             }
         ],
     }
@@ -36,7 +36,7 @@ def _one_cell_fixed_flux_case():
         "face_cf_vector": face_centres,
         "face_centroids": face_centres,
         "face_weights": np.full(6, 0.5),
-        "element_volumes": np.ones(1),
+        "cell_volumes": np.ones(1),
         "gradient_scheme": "gauss",
     }
     U_star = np.zeros((7, 3))
@@ -82,7 +82,7 @@ def test_vector_neumann_pressure_gradient_sets_face_increment():
     interface = CouplerInterfaceMixin()
     interface.parallel = None
     interface.mesh_data = {
-        "n_elements": 1,
+        "n_cells": 1,
         "n_interior_faces": 0,
         "owners": np.zeros(2, dtype=np.int32),
     }
@@ -90,14 +90,14 @@ def test_vector_neumann_pressure_gradient_sets_face_increment():
         "face_sf": np.array([[-2.0, 0.0, 0.0], [3.0, 0.0, 0.0]]),
         "face_cf_vector": np.array([[-0.4, 0.0, 0.0], [0.6, 0.0, 0.0]]),
     }
-    interface.boundaries = [{"name": "cut", "startFace": 0, "nFaces": 2}]
-    interface.p = np.array([7.0, 0.0, 0.0])
+    interface.boundaries = [{"name": "cut", "start_face": 0, "n_faces": 2}]
+    interface.kinematic_pressure = np.array([7.0, 0.0, 0.0])
 
     interface.set_neumann_pressure_boundary_condition(
         np.array([[2.0, 4.0, 0.0], [3.0, -1.0, 0.0]]), "cut"
     )
 
     boundary = interface.boundaries[0]
-    assert boundary["bc_type_p"] == "fixedGradient"
+    assert boundary["pressure_type"] == "fixedGradient"
     np.testing.assert_allclose(boundary["fixed_gradient_delta"], [-0.8, 1.8])
-    np.testing.assert_allclose(interface.p[1:], [6.2, 8.8])
+    np.testing.assert_allclose(interface.kinematic_pressure[1:], [6.2, 8.8])

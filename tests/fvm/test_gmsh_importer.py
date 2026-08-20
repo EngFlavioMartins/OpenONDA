@@ -23,26 +23,26 @@ FIRST_ORDER_CELLS = {
 }
 
 
-def _add_discrete_cell(element_type, points):
+def _add_discrete_cell(cell_type, points):
     gmsh.model.addDiscreteEntity(3, 1)
     node_tags = list(range(1, len(points) + 1))
     gmsh.model.mesh.addNodes(3, 1, node_tags, [value for point in points for value in point])
-    gmsh.model.mesh.addElementsByType(1, element_type, [1], node_tags)
+    gmsh.model.mesh.addElementsByType(1, cell_type, [1], node_tags)
 
 
 class TestGmshImporter:
-    @pytest.mark.parametrize("element_type", [4, 5, 6, 7])
-    def test_every_claimed_first_order_cell_family(self, element_type):
+    @pytest.mark.parametrize("cell_type", [4, 5, 6, 7])
+    def test_every_claimed_first_order_cell_family(self, cell_type):
         gmsh.initialize()
         try:
-            gmsh.model.add(f"first_order_{element_type}")
-            _add_discrete_cell(element_type, FIRST_ORDER_CELLS[element_type])
+            gmsh.model.add(f"first_order_{cell_type}")
+            _add_discrete_cell(cell_type, FIRST_ORDER_CELLS[cell_type])
             mesh = GmshImporter().get_mesh_data()
         finally:
             gmsh.finalize()
 
-        assert mesh["n_elements"] == 1
-        assert mesh["cell_type_codes"].tolist() == [element_type]
+        assert mesh["n_cells"] == 1
+        assert mesh["cell_type_codes"].tolist() == [cell_type]
         assert mesh["cell_orders"].tolist() == [1]
         assert mesh["provenance"]["contract"] == "gmsh-api-first-order-3d-v1"
 
@@ -73,13 +73,13 @@ class TestGmshImporter:
         # A permuted corner ordering would collapse or invert the unit cube.
         assert grid.volume == pytest.approx(1.0)
 
-    @pytest.mark.parametrize("element_type", [4, 6, 7])
-    def test_non_hexahedral_mesh_keeps_polyhedral_export(self, element_type):
+    @pytest.mark.parametrize("cell_type", [4, 6, 7])
+    def test_non_hexahedral_mesh_keeps_polyhedral_export(self, cell_type):
         """Mixed and non-hex families stay on the general polyhedron path."""
         gmsh.initialize()
         try:
-            gmsh.model.add(f"no_cell_vertices_{element_type}")
-            _add_discrete_cell(element_type, FIRST_ORDER_CELLS[element_type])
+            gmsh.model.add(f"no_cell_vertices_{cell_type}")
+            _add_discrete_cell(cell_type, FIRST_ORDER_CELLS[cell_type])
             mesh = GmshImporter().get_mesh_data()
         finally:
             gmsh.finalize()
@@ -128,12 +128,12 @@ class TestGmshImporter:
         assert np.all(neighbours >= 0)
         assert np.all(owners[:n_int] != neighbours[:n_int])
         assert np.all(owners[n_int:] >= 0)
-        assert np.all(owners[n_int:] < mesh["n_elements"])
+        assert np.all(owners[n_int:] < mesh["n_cells"])
         for f in mesh["faces"]:
             assert np.all(f >= 0)
         assert mesh["source_point_ids"].shape == (mesh["n_points"],)
-        assert mesh["source_cell_ids"].shape == (mesh["n_elements"],)
-        assert mesh["cell_type_codes"].shape == (mesh["n_elements"],)
+        assert mesh["source_cell_ids"].shape == (mesh["n_cells"],)
+        assert mesh["cell_type_codes"].shape == (mesh["n_cells"],)
         assert np.all(mesh["cell_orders"] == 1)
         assert mesh["provenance"]["format"] == "gmsh"
 
@@ -153,5 +153,5 @@ class TestGmshImporter:
 
         names = {b["name"] for b in mesh["boundary"]}
         assert len(names) >= 1
-        total_bnd_faces = sum(b["nFaces"] for b in mesh["boundary"])
+        total_bnd_faces = sum(b["n_faces"] for b in mesh["boundary"])
         assert total_bnd_faces == mesh["n_faces"] - mesh["n_interior_faces"]

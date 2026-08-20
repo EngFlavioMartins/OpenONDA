@@ -1,7 +1,7 @@
 """Body-conformal carved-cube mesh audit (AGENT_PLAN M1).
 
 Certifies that ``coupling_box_mesh(..., hole_box=...)`` — the generator used by
-the cubeFlow tutorial — produces a valid body-fitted representation of the cube:
+the cube_flow tutorial — produces a valid body-fitted representation of the cube:
 
 * no fluid cells inside the body;
 * the wall patch is a closed 2-manifold (ΣSf = 0, every wall edge shared by
@@ -63,7 +63,7 @@ def _wall_patch(mesh):
 
 def _wall_faces(mesh):
     patch = _wall_patch(mesh)
-    return np.arange(patch["startFace"], patch["startFace"] + patch["nFaces"])
+    return np.arange(patch["start_face"], patch["start_face"] + patch["n_faces"])
 
 
 def test_production_validator_accepts(carved):
@@ -74,7 +74,7 @@ def test_production_validator_accepts(carved):
 
 def test_no_fluid_cells_inside_body(carved):
     mesh, geo = carved
-    c = geo["element_centroids"][: mesh["n_elements"]]
+    c = geo["cell_centroids"][: mesh["n_cells"]]
     inside = (
         (c[:, 0] > HOLE[0])
         & (c[:, 0] < HOLE[1])
@@ -88,13 +88,13 @@ def test_no_fluid_cells_inside_body(carved):
 
 def test_positive_volumes_and_valid_connectivity(carved):
     mesh, geo = carved
-    vols = geo["element_volumes"][: mesh["n_elements"]]
+    vols = geo["cell_volumes"][: mesh["n_cells"]]
     assert np.all(vols > 0.0)
     owners = np.asarray(mesh["owners"])
     neighbours = np.asarray(mesh["neighbours"])
     n_int = mesh["n_interior_faces"]
-    assert owners.min() >= 0 and owners.max() < mesh["n_elements"]
-    assert neighbours.min() >= 0 and neighbours.max() < mesh["n_elements"]
+    assert owners.min() >= 0 and owners.max() < mesh["n_cells"]
+    assert neighbours.min() >= 0 and neighbours.max() < mesh["n_cells"]
     assert np.all(owners[:n_int] != neighbours)
 
 
@@ -145,7 +145,7 @@ def test_patch_classification(carved):
     assert types == {"numericalBoundary": "patch", "cube": "wall"}
     # Patches tile the boundary face range exactly, without gaps or overlap.
     n_int = mesh["n_interior_faces"]
-    spans = sorted((b["startFace"], b["startFace"] + b["nFaces"]) for b in mesh["boundary"])
+    spans = sorted((b["start_face"], b["start_face"] + b["n_faces"]) for b in mesh["boundary"])
     assert spans[0][0] == n_int
     assert spans[-1][1] == mesh["n_faces"]
     for (_, end), (start, _) in zip(spans, spans[1:], strict=False):
@@ -159,9 +159,9 @@ def test_face_count_conservation():
     full = coupling_box_mesh(BOX, 0.25)
     carved_mesh = coupling_box_mesh(BOX, 0.25, hole_box=HOLE, wall_patch_name="cube")
     n_hole = 4**3  # (1.0 / 0.25)³ removed cells
-    assert carved_mesh["n_elements"] == full["n_elements"] - n_hole
+    assert carved_mesh["n_cells"] == full["n_cells"] - n_hole
     wall = _wall_patch(carved_mesh)
-    assert wall["nFaces"] == 6 * 4**2  # exposed surface of the 4³ block
+    assert wall["n_faces"] == 6 * 4**2  # exposed surface of the 4³ block
 
 
 def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
@@ -171,13 +171,13 @@ def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
     config = FVMSetup(
         case_name="body_fitted",
         time=TimeConfig(time_step_size=0.05, end_time=0.1),
-        transport=TransportConfig(nu=1e-3),
+        transport=TransportConfig(kinematic_viscosity=1e-3),
         boundaries=[
             BoundaryConfig(
                 name="numericalBoundary",
-                type_velocity="fixedValue",
-                value_velocity=[1.0, 0.0, 0.0],
-                type_p="fixedFluxPressure",
+                velocity_type="fixedValue",
+                velocity_value=[1.0, 0.0, 0.0],
+                pressure_type="fixedFluxPressure",
             ),
             BoundaryConfig.wall("cube"),
         ],

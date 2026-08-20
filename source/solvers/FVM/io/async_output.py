@@ -7,7 +7,7 @@ from threading import Lock
 
 import numpy as np
 
-from ..config.types import OutputSetup
+from ..config.types import OutputConfig
 from .vtk_exporter import PVDManager, VTKExporter
 
 
@@ -34,11 +34,11 @@ class BufferedVTKWriter:
         self,
         mesh_data,
         pvd_path: str,
-        output: OutputSetup | None = None,
+        output: OutputConfig | None = None,
     ):
         self._mesh_data = mesh_data
         self._pvd_path = pvd_path
-        self._output = output or OutputSetup()
+        self._output = output or OutputConfig()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fvm-vtk")
         self._pending: Future | None = None
         self._closed = False

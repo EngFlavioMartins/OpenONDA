@@ -38,7 +38,7 @@ def assemble_diffusion_term_interior(
     Returns:
         dict: Flux coefficients
             - flux_cf: Owner coefficient (n_interior_faces,)
-            - flux_ff: Neighbor coefficient (n_interior_faces,)
+            - flux_ff: Neighbour coefficient (n_interior_faces,)
             - flux_vf: Explicit correction (n_interior_faces,)
             - flux_tf: Total flux (n_interior_faces,)
     """
@@ -119,11 +119,11 @@ def assemble_diffusion_term_boundary_fixed_value(
     """
 
     n_interior_faces = mesh_data["n_interior_faces"]
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
 
     # Get boundary patch info
-    start_face = boundary_patch["startFace"]
-    n_faces = boundary_patch["nFaces"]
+    start_face = boundary_patch["start_face"]
+    n_faces = boundary_patch["n_faces"]
     end_face = start_face + n_faces
 
     # Boundary face indices
@@ -136,7 +136,7 @@ def assemble_diffusion_term_boundary_fixed_value(
     # In uFVM: boundary elements are stored after interior elements
     # Element index = n_elements + (face_index - n_interior_faces)
     b_elem_start = start_face - n_interior_faces
-    b_elem_indices = np.arange(n_elements + b_elem_start, n_elements + b_elem_start + n_faces)
+    b_elem_indices = np.arange(n_cells + b_elem_start, n_cells + b_elem_start + n_faces)
 
     # Get geometric data for boundary faces
     sf_b = geo_data["face_sf"][b_face_indices]
@@ -158,7 +158,7 @@ def assemble_diffusion_term_boundary_fixed_value(
     # Matrix: A[owner, owner] += gamma * geo_diff
     # RHS: b[owner] -= gamma * geo_diff * phi_b (known boundary value)
     flux_cf = gamma_b * geo_diff_b
-    flux_ff = np.zeros_like(flux_cf)  # No neighbor contribution (BC is fixed)
+    flux_ff = np.zeros_like(flux_cf)  # No neighbour contribution (BC is fixed)
 
     # Explicit correction: contribution from known boundary value
     # This goes to RHS: b[owner] -= flux_vf
@@ -239,8 +239,8 @@ def assemble_diffusion_term(
     # Assemble boundary faces
     for boundary in boundaries:
         bc_type = boundary.get("bc_type")
-        if boundary.get("bc_type_velocity") is not None:
-            strategy = BOUNDARIES.strategy(boundary["bc_type_velocity"], "U", "diffusion")
+        if boundary.get("velocity_type") is not None:
+            strategy = BOUNDARIES.strategy(boundary["velocity_type"], "U", "diffusion")
         else:
             strategy = BOUNDARIES.strategy(bc_type, "scalar", "diffusion")
         if strategy in (
@@ -254,8 +254,8 @@ def assemble_diffusion_term(
             continue
 
         elif strategy is BoundaryStrategy.CYCLIC:
-            start = boundary["startFace"]
-            indices = np.arange(start, start + boundary["nFaces"])
+            start = boundary["start_face"]
+            indices = np.arange(start, start + boundary["n_faces"])
             owners_b = mesh_data["owners"][indices]
             neighbours_b = mesh_data["boundary_neighbours"][indices]
             if np.any(neighbours_b < 0):
@@ -343,8 +343,8 @@ def assemble_diffusion_term(
                     "normalValueTangentialGradient diffusion requires the full velocity "
                     "field and a component index"
                 )
-            start = int(boundary["startFace"])
-            n_patch_faces = int(boundary["nFaces"])
+            start = int(boundary["start_face"])
+            n_patch_faces = int(boundary["n_faces"])
             indices = np.arange(start, start + n_patch_faces)
             owners_b = mesh_data["owners"][indices]
             sf = np.asarray(geo_data["face_sf"], dtype=np.float64)[indices]

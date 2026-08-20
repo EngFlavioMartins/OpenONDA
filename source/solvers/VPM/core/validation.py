@@ -17,8 +17,8 @@ def _compute_particle_statistics(system):
     """Extract particle statistics for time step validation."""
     positions = system.particles.position_cpu()
     velocities = system.particles.velocity_cpu()
-    radii = system.particles.radius_cpu()
-    viscosities = system.particles.viscosity_cpu()
+    radii = system.particles.core_radius_cpu()
+    viscosities = system.particles.kinematic_viscosity_cpu()
 
     N = len(positions)
 
@@ -36,9 +36,9 @@ def _compute_particle_statistics(system):
 
     # Turbulent viscosity
     nu_turbulent_max = 0.0
-    if hasattr(system, "LES") and system.LES is not None:
+    if hasattr(system, "LES") and system.turbulence_model is not None:
         try:
-            nu_t_array = system.particles.viscosity_turbulent_cpu()
+            nu_t_array = system.particles.eddy_viscosity_cpu()
             nu_turbulent_max = float(np.max(nu_t_array)) if len(nu_t_array) > 0 else 0.0
         except Exception:
             pass
@@ -174,7 +174,7 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
     """
 
     # Check preconditions
-    if system.particles.number_of_particles == 0:
+    if system.particles.n_particles == 0:
         raise RuntimeError("No particles in system. Call add_vortex_particles() first.")
 
     if not 0 < safety_factor <= 1.0:
@@ -191,7 +191,7 @@ def _validate_time_step_sizing(system, safety_factor=0.8, verbose=True):
     nu_turbulent_max = stats["nu_turbulent_max"]
     nu_eff_max = stats["nu_eff_max"]
     grad_u_max = stats["grad_u_max"]
-    N = system.particles.number_of_particles
+    N = system.particles.n_particles
 
     # Initialise issue list
     issues = []

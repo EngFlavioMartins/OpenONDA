@@ -22,13 +22,13 @@ class TestMatrixAssembly:
         for b in mesh["boundary"]:
             b["bc_type"] = "zeroGradient"
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        phi = np.ones(n_elem + n_bnd)
-        grad_phi = compute_gauss_gradient(phi, mesh, geo)
+        face_flux = np.ones(n_elem + n_bnd)
+        grad_phi = compute_gauss_gradient(face_flux, mesh, geo)
         gamma = np.ones(n_elem)
 
-        flux_data = assemble_diffusion_term(phi, grad_phi, gamma, mesh, geo, mesh["boundary"])
+        flux_data = assemble_diffusion_term(face_flux, grad_phi, gamma, mesh, geo, mesh["boundary"])
         A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh)
         b = assemble_rhs_from_fluxes_vectorized(flux_data, mesh)
         assert np.allclose(A @ np.ones(n_elem) - b, 0.0, atol=1e-12)
@@ -38,14 +38,14 @@ class TestMatrixAssembly:
         for b in mesh["boundary"]:
             b["bc_type"] = "zeroGradient"
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        U = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
-        mdot = compute_volumetric_face_flux(U, mesh, geo)
-        phi = np.ones(n_elem + n_bnd)
+        velocity = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
+        mdot = compute_volumetric_face_flux(velocity, mesh, geo)
+        face_flux = np.ones(n_elem + n_bnd)
 
         flux_data = assemble_convection_term(
-            phi, mdot, mesh, geo, mesh["boundary"], scheme="upwind"
+            face_flux, mdot, mesh, geo, mesh["boundary"], scheme="upwind"
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh)
         b = assemble_rhs_from_fluxes_vectorized(flux_data, mesh)
@@ -66,7 +66,7 @@ class TestMatrixAssembly:
         assert not hasattr(workspace, "contributions")
         assert workspace.pattern.indptr.dtype == np.int32
         assert np.shares_memory(workspace.pattern.indptr, workspace.matrix.indptr)
-        assert len(workspace.pattern.diagonal_slots) == mesh["n_elements"]
+        assert len(workspace.pattern.diagonal_slots) == mesh["n_cells"]
         assert len(workspace.pattern.offdiagonal_slots) <= (
             2 * mesh["n_interior_faces"] + mesh["n_faces"] - mesh["n_interior_faces"]
         )

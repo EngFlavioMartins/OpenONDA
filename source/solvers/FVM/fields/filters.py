@@ -25,7 +25,7 @@ class CellBoxFilter:
     Effective width is roughly one cell either side, i.e. it follows the LOCAL
     cell size rather than a fixed length.  That is usually what you want on a
     graded mesh, but it does mean the filter width varies through the domain —
-    check ``geo_data['element_volumes']`` if a specific physical width matters.
+    check ``geo_data['cell_volumes']`` if a specific physical width matters.
 
     Parallel note: one application needs no halo exchange provided the caller's
     ghost rows are current, because owned rows only read their own one-ring.
@@ -56,7 +56,7 @@ class CellBoxFilter:
         if centre_weight not in valid:
             raise ValueError(f"centre_weight must be one of {valid}, got {centre_weight!r}")
         n_int = int(mesh_data["n_interior_faces"])
-        vol = np.asarray(geo_data["element_volumes"], dtype=np.float64)
+        vol = np.asarray(geo_data["cell_volumes"], dtype=np.float64)
         own = np.asarray(mesh_data["owners"])[:n_int]
         nei = np.asarray(mesh_data["neighbours"])[:n_int]
 

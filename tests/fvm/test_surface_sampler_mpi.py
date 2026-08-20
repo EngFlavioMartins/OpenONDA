@@ -20,12 +20,12 @@ pytest.importorskip("petsc4py", reason="parallel FVM test requires petsc4py")
 
 from source.solvers.FVM import (  # noqa: E402
     BoundaryConfig,
-    ExecutionConfig,
+    ComputeConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -41,17 +41,17 @@ pytestmark = pytest.mark.mpi
 def _config():
     return FVMSetup(
         case_name="surface-mpi",
-        execution=ExecutionConfig.petsc_partitioned(),
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
-        schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+        execution=ComputeConfig.petsc_partitioned(),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, output_interval_steps=100),
+        schemes=DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="cg",
-            momentum_tol=1e-6,
-            pressure_tol=1e-6,
+            momentum_tolerance=1e-6,
+            pressure_tolerance=1e-6,
         ),
         pimple=PimpleControl(n_correctors=2),
-        transport=TransportConfig(density=1.0, nu=0.02),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),
@@ -71,12 +71,12 @@ def _config():
             )
         ],
         initial_velocity=[1.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
 
 
 def test_surface_sampler_files_are_root_owned(tmp_path):
-    context = ParallelContext.create(ExecutionConfig.petsc_replicated())
+    context = ParallelContext.create(ComputeConfig.petsc_replicated())
     mesh = structured_box(2, 2, 2)
     case_dir = Path(
         context.bcast(

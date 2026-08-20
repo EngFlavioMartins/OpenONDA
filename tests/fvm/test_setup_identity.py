@@ -1,16 +1,16 @@
 """docs/nomenclature.md: solver constructors store their *Setup object as
-``self.setup`` and never keep a parallel ``self.config`` vocabulary."""
+``self.setup`` and never keep a parallel ``self.setup`` vocabulary."""
 
 import contextlib
 import io
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -21,11 +21,11 @@ from ._structured_mesh import structured_box
 def _make_setup() -> FVMSetup:
     return FVMSetup(
         case_name="setup-identity",
-        time=TimeConfig(time_step_size=0.1, end_time=1.0, write_interval=999),
-        schemes=SchemesConfig(convection_scheme="central"),
+        time=TimeConfig(time_step_size=0.1, end_time=1.0, output_interval_steps=999),
+        schemes=DiscretizationConfig(convection_scheme="central"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2),
-        transport=TransportConfig(density=1.0, nu=0.05),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.05),
         boundaries=[
             BoundaryConfig.wall(n) for n in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
         ],

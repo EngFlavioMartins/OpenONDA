@@ -22,15 +22,23 @@ _HEADER_ROWS = 20
 _MIB = 1024.0 * 1024.0
 
 _RESIDUAL_LABELS = {
-    "U": "Velocity residual",
+    "velocity": "Velocity residual",
     "U_increment": "Velocity increment",
     "U_x": "Velocity-x residual",
     "U_y": "Velocity-y residual",
     "U_z": "Velocity-z residual",
-    "p": "Pressure residual",
+    "kinematic_pressure": "Pressure residual",
     "p_initial": "Pressure initial residual",
 }
-_RESIDUAL_ORDER = ("U", "U_increment", "U_x", "U_y", "U_z", "p", "p_initial")
+_RESIDUAL_ORDER = (
+    "velocity",
+    "U_increment",
+    "U_x",
+    "U_y",
+    "U_z",
+    "kinematic_pressure",
+    "p_initial",
+)
 
 _MEMORY_LABELS = {
     "mesh_topology": "Mesh topology",
@@ -282,7 +290,7 @@ class Logging:
         self.enabled = bool(enabled)
         self.console = bool(console)
         self.mode = resolve_mode("simple" if config is None else str(config.mode))
-        self.interval = 1 if config is None else int(config.interval)
+        self.interval_steps = 1 if config is None else int(config.interval_steps)
         self.profiler: Any | None = None
         self.log_file_path: Path | None = None
 
@@ -405,16 +413,16 @@ class Logging:
 
     def turbulence_info(
         self,
-        nut: np.ndarray | None,
+        eddy_viscosity: np.ndarray | None,
         nu_molecular: float,
         *,
         statistics: tuple[float, float, float] | None = None,
     ) -> None:
         """Record turbulent-viscosity diagnostics."""
         if statistics is None:
-            if nut is None:
+            if eddy_viscosity is None:
                 return
-            values = np.asarray(nut)
+            values = np.asarray(eddy_viscosity)
             if values.size == 0:
                 return
             statistics = (
@@ -441,9 +449,9 @@ class Logging:
         self._flush_step()
 
     def _reportable(self, record: _StepRecord) -> bool:
-        if record.warnings or self._reported_steps == 0 or self.interval <= 1:
+        if record.warnings or self._reported_steps == 0 or self.interval_steps <= 1:
             return True
-        return record.step % self.interval == 0
+        return record.step % self.interval_steps == 0
 
     def _flush_step(self) -> None:
         record, self._step = self._step, None
@@ -491,8 +499,10 @@ class Logging:
             "time": f"{record.time:.3e}",
             "dt": f"{record.time_step_size:.3e}",
             "Co": "-" if record.courant is None else f"{record.courant:.3f}",
-            "res(U)": "-" if "U" not in residuals else f"{residuals['U']:.2e}",
-            "res(p)": "-" if "p" not in residuals else f"{residuals['p']:.2e}",
+            "res(U)": "-" if "velocity" not in residuals else f"{residuals['velocity']:.2e}",
+            "res(p)": "-"
+            if "kinematic_pressure" not in residuals
+            else f"{residuals['kinematic_pressure']:.2e}",
             "|div U|": ("-" if record.continuity_max is None else f"{record.continuity_max:.2e}"),
             "Cd": "" if drag is None else f"{drag:.4f}",
             "s/step": f"{record.elapsed:.2f}",
@@ -539,7 +549,7 @@ class Logging:
 
         if partition is None:
             mesh_items = [
-                ("Cells", f"{int(mesh['n_elements']):,}"),
+                ("Cells", f"{int(mesh['n_cells']):,}"),
                 ("Faces", f"{int(mesh['n_faces']):,}"),
                 ("Interior Faces", f"{int(mesh['n_interior_faces']):,}"),
                 ("Boundary Patches", str(len(mesh["boundary"]))),
@@ -579,7 +589,7 @@ class Logging:
                 "PHYSICS",
                 [
                     ("Density", f"{config.transport.density:.6g} kg/m³"),
-                    ("Kinematic Viscosity", f"{config.transport.nu:.6e} m²/s"),
+                    ("Kinematic Viscosity", f"{config.transport.kinematic_viscosity:.6e} m²/s"),
                     ("Turbulence Model", turbulence_name),
                 ],
             )
@@ -587,7 +597,7 @@ class Logging:
         boundary_items = [
             (
                 boundary.name,
-                f"U={boundary.type_velocity}, p={boundary.type_p}, value={boundary.value_velocity}",
+                f"U={boundary.velocity_type}, p={boundary.pressure_type}, value={boundary.velocity_value}",
             )
             for boundary in config.boundaries
         ]
@@ -601,7 +611,7 @@ class Logging:
                     ("Solution Directory", str(Path(solver.case_dir) / "solution")),
                     ("Log File", str(log_file_path or "disabled")),
                     ("Log Mode", str(getattr(sink, "mode", "simple"))),
-                    ("Log Interval", f"{getattr(sink, 'interval', 1)} steps"),
+                    ("Log Interval", f"{getattr(sink, 'interval_steps', 1)} steps"),
                     ("Visualization", "VTK XML, cell-centred, appended binary"),
                     ("Output Compression", str(config.output.compression).upper()),
                     (
@@ -630,7 +640,7 @@ class Logging:
                 ("Case", str(solver.setup.case_name)),
                 ("Time", f"{solver.time:.5f} s"),
                 ("Step", str(solver.step)),
-                ("Local Cells", f"{solver.mesh_data['n_elements']:,}"),
+                ("Local Cells", f"{solver.mesh_data['n_cells']:,}"),
                 ("Algorithm", str(solver.setup.pimple.algorithm)),
             ],
         )

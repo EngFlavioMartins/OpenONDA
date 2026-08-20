@@ -109,7 +109,7 @@ class PressurePhysics(PhysicsBase):
 
     def __init__(
         self,
-        particles_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "GAUSSIAN",
         max_particles: int = MAX_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
     ):  # type: ignore
@@ -121,7 +121,7 @@ class PressurePhysics(PhysicsBase):
             max_particles: Maximum number of particles
             accumulator_dtype: Data type for accumulation
         """
-        super().__init__(particles_kernel, max_particles, accumulator_dtype)
+        super().__init__(particle_kernel, max_particles, accumulator_dtype)
 
         # Additional temporary fields for pressure gradient computation
         self._initialize_pressure_fields()
@@ -211,7 +211,7 @@ class PressurePhysics(PhysicsBase):
             If return_velocity is True:
                 tuple[np.ndarray, np.ndarray]: (grad_p [M,3], u_target [M,3])
         """
-        N = particles.number_of_particles
+        N = particles.n_particles
         M = len(target_positions)
 
         if N == 0 or M == 0:
@@ -222,7 +222,7 @@ class PressurePhysics(PhysicsBase):
 
         # Default step size
         if laplacian_spacing is None:
-            laplacian_spacing = float(np.mean(particles.radius_cpu()))
+            laplacian_spacing = float(np.mean(particles.core_radius_cpu()))
 
         # STEP 1: Compute velocity at target points
         u_target = self.compute_target_velocities(
@@ -307,7 +307,7 @@ class PressurePhysics(PhysicsBase):
             If return_velocity is True:
                 tuple[dict, np.ndarray]: (components_dict, u_target [M, 3])
         """
-        N = particles.number_of_particles
+        N = particles.n_particles
         M = len(target_positions)
 
         if N == 0 or M == 0:
@@ -323,7 +323,7 @@ class PressurePhysics(PhysicsBase):
         target_positions = np.asarray(target_positions, dtype=np.float64).reshape(-1, 3)
 
         if laplacian_spacing is None:
-            laplacian_spacing = float(np.mean(particles.radius_cpu()))
+            laplacian_spacing = float(np.mean(particles.core_radius_cpu()))
 
         # Velocity at targets
         u_target = self.compute_target_velocities(
@@ -401,7 +401,7 @@ class PressurePhysics(PhysicsBase):
         Returns:
             np.ndarray: Pressure gradient at each particle [N, 3], units [Pa/m]
         """
-        N = particles.number_of_particles
+        N = particles.n_particles
         if N == 0:
             return np.zeros((0, 3), dtype=np.float64)
 
@@ -471,13 +471,13 @@ class PressurePhysics(PhysicsBase):
         """
         if temporal_method != "eulerian":
             raise ValueError("Treecode pressure gradients require temporal_method='eulerian'")
-        N = particles.number_of_particles
+        N = particles.n_particles
         points = np.asarray(target_positions, dtype=np.float64).reshape(-1, 3)
         count = len(points)
         targets = points
         if include_viscous:
             if particle_spacing is None:
-                particle_spacing = float(np.mean(particles.radius_cpu())) if N > 0 else 1.0
+                particle_spacing = float(np.mean(particles.core_radius_cpu())) if N > 0 else 1.0
             offsets = np.eye(3, dtype=np.float64) * float(particle_spacing)
             targets = np.concatenate(
                 [
@@ -506,7 +506,7 @@ class PressurePhysics(PhysicsBase):
             gradient_h = (
                 float(particle_spacing)
                 if particle_spacing is not None
-                else (float(np.mean(particles.radius_cpu())) if N > 0 else 0.05)
+                else (float(np.mean(particles.core_radius_cpu())) if N > 0 else 0.05)
             )
             for axis in range(3):
                 offset = np.zeros(3, dtype=np.float64)
@@ -579,7 +579,7 @@ class PressurePhysics(PhysicsBase):
             np.ndarray: du/dt at each target point (M, 3)
         """
         M = len(target_positions)
-        N = particles.number_of_particles
+        N = particles.n_particles
 
         if N == 0:
             return np.zeros((M, 3), dtype=np.float64)
@@ -594,7 +594,7 @@ class PressurePhysics(PhysicsBase):
 
         # Compute stretching rate: dα/dt = (∇u)ᵀ · α on GPU
         self._compute_stretching_rate_kernel(
-            particles.circulation, particles.velocity_gradient, self.dalpha_dt_field, N
+            particles.vortex_strength, particles.velocity_gradient, self.dalpha_dt_field, N
         )
 
         # Compute temporal term on GPU
@@ -602,8 +602,8 @@ class PressurePhysics(PhysicsBase):
             self.pressure_target_positions,
             particles.position,
             particles.velocity,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             self.dalpha_dt_field,
             self.temporal_term_field,
             M,

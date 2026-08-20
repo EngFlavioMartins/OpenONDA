@@ -14,7 +14,7 @@ import os
 
 
 def append_loads_to_csv(
-    backup_file_name: str, time: float, loads: dict, directory: str = "solution"
+    checkpoint_name: str, time: float, loads: dict, directory: str = "solution"
 ) -> None:
     """Append aerodynamic loads to CSV file.
 
@@ -29,7 +29,7 @@ def append_loads_to_csv(
     os.makedirs(out_dir, exist_ok=True)
 
     # Extract base name to avoid path issues
-    base_name = os.path.basename(backup_file_name)
+    base_name = os.path.basename(checkpoint_name)
     filename = os.path.join(out_dir, f"loads_{base_name}.csv")
     file_exists = os.path.isfile(filename)
 

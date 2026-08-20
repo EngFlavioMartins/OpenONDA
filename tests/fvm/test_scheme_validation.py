@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 
 from source.solvers.FVM.config.types import (
+    DiscretizationConfig,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TurbulenceConfig,
 )
 from source.solvers.FVM.schemes import (
@@ -24,7 +24,7 @@ def _params(**overrides):
     """Merged solver-parameter namespace, as the solver feeds
     ``validate_solver_params`` (union of the grouped configs' fields)."""
     flat: dict = {}
-    for group in (SchemesConfig(), LinearSolverConfig(), PimpleControl()):
+    for group in (DiscretizationConfig(), LinearSolverConfig(), PimpleControl()):
         flat.update(vars(group))
     flat.update(overrides)
     return SimpleNamespace(**flat)
@@ -39,9 +39,13 @@ def _params_from(groups):
 
 def test_default_and_factory_params_are_valid():
     validate_solver_params(_params())
-    validate_solver_params(_params_from((SchemesConfig(), LinearSolverConfig(), PimpleControl())))
     validate_solver_params(
-        _params_from((SchemesConfig(), LinearSolverConfig(), PimpleControl(algorithm="SIMPLE")))
+        _params_from((DiscretizationConfig(), LinearSolverConfig(), PimpleControl()))
+    )
+    validate_solver_params(
+        _params_from(
+            (DiscretizationConfig(), LinearSolverConfig(), PimpleControl(algorithm="SIMPLE"))
+        )
     )
 
 
@@ -70,7 +74,7 @@ def test_adaptive_bdf2_rejected_until_variable_step_weights_exist():
     from source.solvers.FVM import TimeConfig
 
     params = _params_from(
-        (SchemesConfig(time_scheme="backward"), LinearSolverConfig(), PimpleControl())
+        (DiscretizationConfig(time_scheme="backward"), LinearSolverConfig(), PimpleControl())
     )
     time = TimeConfig.transient(time_step_size=0.1, duration=1.0)
     time.adjust_timestep = True
@@ -81,11 +85,11 @@ def test_adaptive_bdf2_rejected_until_variable_step_weights_exist():
 @pytest.mark.parametrize(
     "field,bad",
     [
-        ("pressure_tol", 0.0),
-        ("momentum_tol", -1.0),
-        ("pressure_rel_tol", -0.1),
-        ("momentum_final_rel_tol", 1.1),
-        ("pressure_maxiter", 0),
+        ("pressure_tolerance", 0.0),
+        ("momentum_tolerance", -1.0),
+        ("pressure_relative_tolerance", -0.1),
+        ("momentum_final_relative_tolerance", 1.1),
+        ("pressure_max_iterations", 0),
     ],
 )
 def test_invalid_linear_solver_controls_rejected(field, bad):
@@ -105,8 +109,8 @@ def test_invalid_pressure_nullspace_policy_rejected():
 
 def test_unsupported_boundary_condition_rejected():
     boundaries = [
-        {"name": "inlet", "bc_type_velocity": "fixedValue", "bc_type_p": "zeroGradient"},
-        {"name": "outlet", "bc_type_velocity": "zeroGradient", "bc_type_p": "waveTransmissive"},
+        {"name": "inlet", "velocity_type": "fixedValue", "pressure_type": "zeroGradient"},
+        {"name": "outlet", "velocity_type": "zeroGradient", "pressure_type": "waveTransmissive"},
     ]
     with pytest.raises(ValueError, match="waveTransmissive"):
         validate_boundary_conditions(boundaries)
@@ -122,8 +126,8 @@ def test_registry_resolves_every_claimed_operator_to_a_strategy():
 
 def test_direct_pressure_update_cannot_fall_back_for_unknown_bc(hand_built_3d_mesh):
     mesh = hand_built_3d_mesh
-    boundaries = [dict(patch, bc_type_p="typoGradient") for patch in mesh["boundary"]]
-    n_total = mesh["n_elements"] + mesh["n_faces"] - mesh["n_interior_faces"]
+    boundaries = [dict(patch, pressure_type="typoGradient") for patch in mesh["boundary"]]
+    n_total = mesh["n_cells"] + mesh["n_faces"] - mesh["n_interior_faces"]
     with pytest.raises(ValueError, match="typoGradient.*ghost for p"):
         update_scalar_boundaries(np.zeros(n_total), mesh, boundaries, field_name="p")
 
@@ -140,7 +144,7 @@ def test_turbulence_models():
         validate_turbulence(cfg)
     with pytest.raises(ValueError, match="Unknown turbulence model"):
         validate_turbulence(TurbulenceConfig(model="kEpsilon"))
-    with pytest.raises(ValueError, match="Ck"):
-        validate_turbulence(TurbulenceConfig.equilibrium_smagorinsky(Ck=-0.1))
-    with pytest.raises(ValueError, match="Ce"):
-        validate_turbulence(TurbulenceConfig.equilibrium_smagorinsky(Ce=0.0))
+    with pytest.raises(ValueError, match="c_k"):
+        validate_turbulence(TurbulenceConfig.equilibrium_smagorinsky(c_k=-0.1))
+    with pytest.raises(ValueError, match="c_e"):
+        validate_turbulence(TurbulenceConfig.equilibrium_smagorinsky(c_e=0.0))

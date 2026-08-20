@@ -182,12 +182,12 @@ def test_transfer_reuses_native_ibm_solid_geometry():
     fvm = SimpleNamespace(
         ibm=SimpleNamespace(bodies=[body]),
         setup=SimpleNamespace(boundaries=[]),
-        get_cell_center_coordinates=lambda: np.array([[-0.95, -0.95, -0.05], [0.95, 0.95, 0.05]]),
+        get_cell_centre_coordinates=lambda: np.array([[-0.95, -0.95, -0.05], [0.95, 0.95, 0.05]]),
     )
     coupler = SimpleNamespace(
         setup=config,
         vpm_time_step_size=0.1,
-        nu=0.01,
+        kinematic_viscosity=0.01,
         fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -0.1, 0.1]),
         vpm=None,
     )
@@ -219,13 +219,13 @@ def test_transfer_uses_separate_transfer_region_box():
     fvm = SimpleNamespace(
         ibm=SimpleNamespace(bodies=[]),
         setup=SimpleNamespace(boundaries=[]),
-        get_cell_center_coordinates=lambda: np.array([[-0.9, 0.0, 0.0], [0.9, 0.0, 0.0]]),
+        get_cell_centre_coordinates=lambda: np.array([[-0.9, 0.0, 0.0], [0.9, 0.0, 0.0]]),
     )
     transfer = VorticityTransfer(
         SimpleNamespace(
             setup=config,
             vpm_time_step_size=0.1,
-            nu=0.01,
+            kinematic_viscosity=0.01,
             fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]),
             vpm=None,
         )

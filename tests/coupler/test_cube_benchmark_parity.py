@@ -198,7 +198,7 @@ def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_pa
     coupler._read_fvm_state()
     assert coupler.fvm_time_step_size == pytest.approx(bench.FVM_TIME_STEP_SIZE)
     assert coupler.end_time == pytest.approx(bench.T_END)
-    assert coupler.nu == pytest.approx(bench.NU)
+    assert coupler.kinematic_viscosity == pytest.approx(bench.NU)
     assert np.allclose(coupler.fvm_box, bench.FVM_BOX, atol=1e-12)
 
 
@@ -209,7 +209,7 @@ def test_pressure_anchor_selection_caches_nonmaster_empty_view():
         def __init__(self):
             self.calls = 0
 
-        def get_cell_center_coordinates(self):
+        def get_cell_centre_coordinates(self):
             self.calls += 1
             return np.empty((0, 3))
 

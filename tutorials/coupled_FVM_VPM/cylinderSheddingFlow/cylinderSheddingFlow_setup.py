@@ -32,26 +32,7 @@ from pathlib import Path
 import numpy as np
 
 from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
-from openonda.fvm import (
-    AdaptiveCartesianMesher,
-    BoundaryConfig,
-    BoxRefinement,
-    ExecutionConfig,
-    FVMSetup,
-    IBMForceSampler,
-    ImmersedBody,
-    LinearSolverConfig,
-    LineSampler as FVMLineSampler,
-    OutputSetup,
-    PimpleControl,
-    SamplingSchedule,
-    SchemesConfig,
-    SurfaceSampler as FVMSurfaceSampler,
-    TimeConfig,
-    TransportConfig,
-    TurbulenceConfig as FVMTurbulenceConfig,
-    create_fvm_solver,
-)
+import openonda.fvm as fvm
 from seed_perturbation import build_seed_velocity
 
 CASE_DIR = Path(__file__).resolve().parent
@@ -62,17 +43,17 @@ SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 # --------------------------------------------------------------------------- #
 DIAMETER = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
-RHO = 1.0
+DENSITY = 1.0
 REYNOLDS = 150.0
-U_INF = float(np.linalg.norm(FREESTREAM_VELOCITY))
-NU = U_INF * DIAMETER / REYNOLDS
+FREESTREAM_VELOCITY = float(np.linalg.norm(FREESTREAM_VELOCITY))
+KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS
 
 INITIAL_VELOCITY = FREESTREAM_VELOCITY
 # Production horizon: 100 convective units leaves a robust (~30 s) saturated
 # window for the unseeded reference, whose slow growth (A0 ~ 1e-5) pushes its
 # onset past t~65.  A short 80-unit run leaves too little post-onset record for
 # a reliable Welch/FFT saturated frequency.
-T_END = 1.0 if SMOKE else 100.0
+END_TIME = 1.0 if SMOKE else 100.0
 
 # --------------------------------------------------------------------------- #
 # FVM domain, mesh, and numerics
@@ -115,7 +96,7 @@ CYLINDER_LENGTH = FVM_BOX[5] - FVM_BOX[4]
 BODY_BOX = (-0.65, 0.65, -0.65, 0.65, FVM_BOX[4], FVM_BOX[5])
 WAKE_BOX = (-0.75, 3.0, -1.25, 1.25, -5.5, 5.5)
 
-# FVM time integration / discretisation (cubeFlow numerics, laminar).
+# FVM time integration / discretisation (cube_flow numerics, laminar).
 # Backward 2nd-order; CFL ~ 0.32 in the body region, 0.16 wake, 0.08 far field.
 FVM_TIME_STEP_SIZE = 0.02
 PIMPLE_N_CORRECTORS = 2
@@ -126,13 +107,13 @@ IBM_FORCING_LOOPS = 2
 if FVM_CORES > 1:
     # Direct-forcing IBM is not partition-aware, so parallel runs use the
     # replicated PETSc path (the factory's designated IBM parallel mode).
-    FVM_EXECUTION = ExecutionConfig(
+    FVM_EXECUTION = fvm.ComputeConfig(
         operator_backend="numba",
         linear_backend="petsc",
         parallel_mode="petsc_replicated",
     )
 else:
-    FVM_EXECUTION = ExecutionConfig(operator_backend="numba")
+    FVM_EXECUTION = fvm.ComputeConfig(operator_backend="numba")
 
 FVM_VOLUME_INTERVAL = 2.0
 
@@ -148,7 +129,7 @@ VPM_SCHEME = "RK2"
 PARTICLE_LIMIT = 200_000 if SMOKE else 1_000_000
 
 # GBD molecular diffusion with an absolute physical-vorticity floor scaled by
-# h^3, as in cubeFlow.  alpha = nu*dt/h^2 = (1/150)*0.10/0.125^2 ~ 0.043 < 1/6.
+# h^3, as in cube_flow.  alpha = nu*dt/h^2 = (1/150)*0.10/0.125^2 ~ 0.043 < 1/6.
 GBD_VORTICITY_FLOOR = 0.01
 TRANSFER_PRUNE_VORTICITY_MIN = 0.01
 TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
@@ -183,7 +164,7 @@ SEED_AMPLITUDE = float((os.environ.get("OPENONDA_SEED_AMPLITUDE") or "0").strip(
 # --------------------------------------------------------------------------- #
 # Immersed-boundary cylinder (infinite, spans the FVM slab)
 # --------------------------------------------------------------------------- #
-CYLINDER = ImmersedBody.extruded_cylinder_z(
+CYLINDER = fvm.ImmersedBody.extruded_cylinder_z(
     centre=[0.0, 0.0, 0.0],
     diameter=DIAMETER,
     z_bounds=CYLINDER_Z_BOUNDS,
@@ -195,12 +176,12 @@ CYLINDER = ImmersedBody.extruded_cylinder_z(
 # --------------------------------------------------------------------------- #
 # FVM mesh
 # --------------------------------------------------------------------------- #
-FVM_MESH = AdaptiveCartesianMesher(
+FVM_MESH = fvm.AdaptiveCartesianMesher(
     domain=FVM_BOX,
     max_cell_size=FVM_CELL_SIZE,
     refinements=(
-        BoxRefinement(BODY_BOX, FVM_BODY_CELL_SIZE, "bodyBox"),
-        BoxRefinement(WAKE_BOX, FVM_WAKE_CELL_SIZE, "wakeBox"),
+        fvm.BoxRefinement(BODY_BOX, FVM_BODY_CELL_SIZE, "bodyBox"),
+        fvm.BoxRefinement(WAKE_BOX, FVM_WAKE_CELL_SIZE, "wakeBox"),
     ),
     merge_outer_patch="numericalBoundary",
 )
@@ -209,51 +190,51 @@ FVM_MESH = AdaptiveCartesianMesher(
 # Samplers
 # --------------------------------------------------------------------------- #
 FVM_SAMPLERS = (
-    IBMForceSampler(
-        ref_velocity=U_INF,
+    fvm.IBMForceSampler(
+        ref_velocity=FREESTREAM_VELOCITY,
         ref_area=DIAMETER * CYLINDER_LENGTH,
         file_name="fvm_ibm_forces_history",
-        schedule=SamplingSchedule(every_time=FORCE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL),
     ),
-    FVMLineSampler(
+    fvm.LineSampler(
         start=[PROBE_X, 0.0, 0.0],
         end=[PROBE_X, 0.0, 0.0],
         n_points=1,
         file_name="fvm_midspan_probe",
-        schedule=SamplingSchedule(every_time=FORCE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL),
     ),
-    FVMLineSampler(
+    fvm.LineSampler(
         start=[PROBE_X, -TRANSVERSE_HALF, 0.0],
         end=[PROBE_X, TRANSVERSE_HALF, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_transverse_line",
-        schedule=SamplingSchedule(every_time=LINE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL),
     ),
-    FVMLineSampler(
+    fvm.LineSampler(
         start=[PROBE_X, 0.0, -SPAN_HALF],
         end=[PROBE_X, 0.0, SPAN_HALF],
         spacing=SAMPLE_SPACING,
         file_name="fvm_spanwise_line",
-        schedule=SamplingSchedule(every_time=LINE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL),
     ),
-    FVMSurfaceSampler(
+    fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
         normal=[0.0, 0.0, 1.0],
         bounds=MIDSPAN_SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
-        schedule=SamplingSchedule(every_time=SLICE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=SLICE_INTERVAL),
     ),
 )
 
 # --------------------------------------------------------------------------- #
 # FVM solver configuration
 # --------------------------------------------------------------------------- #
-FVM_SETUP = FVMSetup(
+FVM_SETUP = fvm.FVMSetup(
     case_name="cylinderSheddingFlow",
     cores=FVM_CORES,
     execution=FVM_EXECUTION,
-    output=OutputSetup(
+    output=fvm.OutputConfig(
         format="vtk_xml",
         data_location="cell",
         encoding="appended",
@@ -262,54 +243,54 @@ FVM_SETUP = FVMSetup(
         asynchronous=True,
         ghost_layers=0,
     ),
-    time=TimeConfig(
+    time=fvm.TimeConfig(
         time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
-        end_time=T_END,
-        write_interval=10**9,
-        write_interval_time=FVM_VOLUME_INTERVAL,
+        end_time=END_TIME,
+        output_interval_steps=10**9,
+        output_interval_time=FVM_VOLUME_INTERVAL,
         adjust_timestep=False,
     ),
-    schemes=SchemesConfig(
+    schemes=fvm.DiscretizationConfig(
         convection_scheme="linearUpwind",
         gradient_scheme="gauss",
         time_scheme="backward",
     ),
-    linear=LinearSolverConfig(
+    linear=fvm.LinearSolverConfig(
         linear_solver="bicgstab",
         pressure_solver="amg",
-        pressure_tol=1e-6,
-        pressure_rel_tol=0.01,
-        pressure_final_rel_tol=0.0,
-        momentum_tol=1e-4,
-        momentum_rel_tol=0.1,
-        momentum_final_rel_tol=0.0,
-        momentum_maxiter=2000,
+        pressure_tolerance=1e-6,
+        pressure_relative_tolerance=0.01,
+        pressure_final_relative_tolerance=0.0,
+        momentum_tolerance=1e-4,
+        momentum_relative_tolerance=0.1,
+        momentum_final_relative_tolerance=0.0,
+        momentum_max_iterations=2000,
         ilu_drop_tol=1e-4,
         ilu_fill_factor=10.0,
         ilu_reuse_tol=0.05,
     ),
-    pimple=PimpleControl(
+    pimple=fvm.PimpleControl(
         n_correctors=PIMPLE_N_CORRECTORS,
         n_outer_correctors=PIMPLE_N_OUTER_CORRECTORS,
         n_orthogonal_correctors=PIMPLE_N_ORTHOGONAL_CORRECTORS,
-        alpha_u=0.7,
-        alpha_p=0.3,
+        velocity_relaxation=0.7,
+        pressure_relaxation=0.3,
         ibm_forcing_loops=IBM_FORCING_LOOPS,
     ),
     samplers=FVM_SAMPLERS,
-    transport=TransportConfig(density=RHO, nu=NU),
-    turbulence=FVMTurbulenceConfig.none(),
+    transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
+    turbulence=fvm.TurbulenceConfig.none(),
     boundaries=[
-        BoundaryConfig(
+        fvm.BoundaryConfig(
             name="numericalBoundary",
-            type_velocity="fixedValue",
-            value_velocity=list(FREESTREAM_VELOCITY),
-            type_p="fixedFluxPressure",
+            velocity_type="fixedValue",
+            velocity_value=list(FREESTREAM_VELOCITY),
+            pressure_type="fixedFluxPressure",
         )
     ],
     initial_velocity=list(INITIAL_VELOCITY),
-    initial_p=0.0,
+    initial_kinematic_pressure=0.0,
 )
 
 # --------------------------------------------------------------------------- #
@@ -334,20 +315,20 @@ COUPLER_SETUP = CouplerSetup(
 )
 
 
-def _apply_seed(solver) -> None:
+def _apply_seed(fvm_solver) -> None:
     """Impose the controlled, divergence-free perturbation on the initial field."""
-    n_elements = solver.mesh_data["n_elements"]
-    centroids = np.asarray(solver.geo_data["element_centroids"][:n_elements], dtype=np.float64)
-    if centroids.shape[0] != n_elements:
+    n_cells = fvm_solver.mesh_data["n_cells"]
+    centroids = np.asarray(fvm_solver.geo_data["element_centroids"][:n_cells], dtype=np.float64)
+    if centroids.shape[0] != n_cells:
         raise RuntimeError("Seed requires the full cell-centroid array on every rank")
     velocity = build_seed_velocity(
         centroids,
         base_velocity=INITIAL_VELOCITY,
         epsilon=SEED_AMPLITUDE,
-        u_inf=U_INF,
+        u_inf=FREESTREAM_VELOCITY,
         diameter=DIAMETER,
     )
-    solver.set_initial_velocity(velocity)
+    fvm_solver.set_initial_velocity(velocity)
     peak = float(np.linalg.norm(velocity - np.asarray(INITIAL_VELOCITY), axis=1).max())
     print(f"  Applied controlled seed: eps={SEED_AMPLITUDE:.3e}, max|u'|/Uinf={peak / U_INF:.3e}")
 
@@ -403,7 +384,7 @@ def make_vpm_setup():
         viscous=ViscousConfig.gbd(
             particle_spacing=VPM_PARTICLE_SPACING,
             padding=3.0,
-            viscosity=NU,
+            viscosity=KINEMATIC_VISCOSITY,
             threshold_mode="absolute",
             threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
             max_nodes=PARTICLE_LIMIT,
@@ -439,7 +420,7 @@ def main() -> None:
         f"body/wake cell size={FVM_BODY_CELL_SIZE}/{FVM_WAKE_CELL_SIZE}, "
         f"particles<={PARTICLE_LIMIT}, seed={SEED_AMPLITUDE:g}"
     )
-    fvm_solver = create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.set_immersed_bodies(CYLINDER, h=FVM_BODY_CELL_SIZE)
     if SEED_AMPLITUDE > 0.0:
         _apply_seed(fvm_solver)
@@ -457,7 +438,7 @@ def main() -> None:
     if max_steps > 0:
         # The coupler derives its horizon from the FVM config's end_time during
         # initialize(), so cap that (the coupling step count follows).
-        capped_t = min(T_END, max_steps * VPM_TIME_STEP_SIZE)
+        capped_t = min(END_TIME, max_steps * VPM_TIME_STEP_SIZE)
         FVM_SETUP.time.end_time = float(capped_t)
         print(f"  [probe] capping run to {max_steps} VPM steps (t={capped_t:g})")
     coupled_solver.run()

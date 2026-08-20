@@ -38,12 +38,12 @@ from source.solvers.VPM.initial_conditions import (
     TaylorGreenVortexVPM,
     VortexRingVPM,
 )
-from source.solvers.VPM.io.backup import BackupSystem
+from source.solvers.VPM.io.checkpoint import CheckpointManager
 from source.solvers.VPM.io.sampling import LineSampler, SurfaceSampler
 
 __all__ = [
     "AdvectionConfig",
-    "BackupSystem",
+    "CheckpointManager",
     "DoubletFlowVPM",
     "DivergenceRelaxationConfig",
     "DivergenceRelaxationError",

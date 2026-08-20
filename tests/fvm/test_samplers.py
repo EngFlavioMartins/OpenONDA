@@ -9,13 +9,13 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     ForceSampler,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     LineSampler,
     PimpleControl,
-    SchemesConfig,
     SurfaceSampler,
     TimeConfig,
     TransportConfig,
@@ -63,11 +63,11 @@ FORCES_HEADER = [
 def _config(samplers=()):
     return FVMSetup(
         case_name="samplers",
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.1, write_interval=1),
-        schemes=SchemesConfig(convection_scheme="upwind", time_scheme="euler_implicit"),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.1, output_interval_steps=1),
+        schemes=DiscretizationConfig(convection_scheme="upwind", time_scheme="euler_implicit"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2),
-        transport=TransportConfig(density=1.0, nu=0.02),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [0.5, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax"),
@@ -128,9 +128,9 @@ def test_line_sampler_appends_a_time_aware_row_per_point(tmp_path):
 def test_line_sampler_interpolates_a_uniform_field_exactly(tmp_path):
     sampler = LineSampler(start=[0.1, 0.5, 0.5], end=[0.9, 0.5, 0.5], n_points=5)
     solver = _solver(_config(), tmp_path)
-    solver.U[:] = 0.0
-    solver.U[:, 0] = 3.0
-    solver.p[:] = 7.0
+    solver.velocity[:] = 0.0
+    solver.velocity[:, 0] = 3.0
+    solver.kinematic_pressure[:] = 7.0
 
     data = sampler.sample(solver)
 
@@ -144,16 +144,16 @@ def test_line_sampler_reports_vorticity_of_a_linear_shear(tmp_path):
     sampler = LineSampler(start=[0.3, 0.5, 0.5], end=[0.7, 0.5, 0.5], n_points=4)
     solver = _solver(_config(), tmp_path)
     mesh = solver.mesh_data
-    n = mesh["n_elements"]
+    n = mesh["n_cells"]
     n_interior = mesh["n_interior_faces"]
 
     # u_x = 2*y  ->  omega_z = dv/dx - du/dy = -2. Boundary-face values must be
     # set consistently too, or the gradient reconstruction skews boundary cells.
-    y_cells = solver.geo_data["element_centroids"][:n, 1]
+    y_cells = solver.geo_data["cell_centroids"][:n, 1]
     y_faces = solver.geo_data["face_centroids"][n_interior:, 1]
-    solver.U[:] = 0.0
-    solver.U[:n, 0] = 2.0 * y_cells
-    solver.U[n:, 0] = 2.0 * y_faces
+    solver.velocity[:] = 0.0
+    solver.velocity[:n, 0] = 2.0 * y_cells
+    solver.velocity[n:, 0] = 2.0 * y_faces
     solver._invalidate_derived_fields()
 
     data = sampler.sample(solver)
@@ -171,12 +171,12 @@ def test_surface_sampler_writes_a_vts_with_vpm_compatible_arrays(tmp_path):
         file_name="slice_z0",
     )
     solver = _solver(_config(samplers=(sampler,)), tmp_path)
-    n = solver.mesh_data["n_elements"]
+    n = solver.mesh_data["n_cells"]
     n_interior = solver.mesh_data["n_interior_faces"]
-    cells = solver.geo_data["element_centroids"][:n]
+    cells = solver.geo_data["cell_centroids"][:n]
     faces = solver.geo_data["face_centroids"][n_interior:]
-    solver.U[:n, 0] = 2.0 * cells[:, 0] + 3.0 * cells[:, 1]
-    solver.U[n:, 0] = 2.0 * faces[:, 0] + 3.0 * faces[:, 1]
+    solver.velocity[:n, 0] = 2.0 * cells[:, 0] + 3.0 * cells[:, 1]
+    solver.velocity[n:, 0] = 2.0 * faces[:, 0] + 3.0 * faces[:, 1]
     solver._invalidate_derived_fields()
 
     expected = sampler.sample(solver)
@@ -270,18 +270,18 @@ def test_surface_sampler_masks_probes_inside_the_body(tmp_path):
         is_root = True
 
     parallel = _Parallel()
-    n_elements = mesh["n_elements"]
+    n_cells = mesh["n_cells"]
 
     class _Context:
         def __init__(self):
             self.parallel = parallel
             self.mesh_data = mesh
             self.geo_data = {}
-            self.U = np.ones((n_elements, 3))
-            self.p = np.ones(n_elements)
+            self.velocity = np.ones((n_cells, 3))
+            self.kinematic_pressure = np.ones(n_cells)
 
         def _vorticity_field(self):
-            return np.zeros((n_elements, 3))
+            return np.zeros((n_cells, 3))
 
     from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 

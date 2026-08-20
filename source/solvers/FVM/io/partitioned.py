@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import numpy as np
 
-from ..config.types import OutputSetup
+from ..config.types import OutputConfig
 from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter, atomic_write_text
 
@@ -77,19 +77,21 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
     arrays = {
         "global_cell_ids": partition.local_global_ids,
         "global_face_ids": solver.mesh_data["global_face_ids"],
-        "U": solver.U,
-        "p": solver.p,
-        "phi": solver.phi,
-        "phi_old": solver.phi_old,
-        "phi_old_old": solver.phi_old_old,
-        "U_old": solver.U_old,
-        "U_old_old": solver.U_old_old,
-        "nut": np.asarray([]) if solver.nut is None else solver.nut,
+        "velocity": solver.velocity,
+        "kinematic_pressure": solver.kinematic_pressure,
+        "face_flux": solver.face_flux,
+        "face_flux_old": solver.face_flux_old,
+        "face_flux_older": solver.face_flux_older,
+        "velocity_old": solver.velocity_old,
+        "velocity_older": solver.velocity_older,
+        "eddy_viscosity": np.asarray([])
+        if solver.eddy_viscosity is None
+        else solver.eddy_viscosity,
         "time": np.asarray(solver.time),
         "step": np.asarray(solver.step),
         "n_committed": np.asarray(solver._n_committed),
         "dt": np.asarray(solver.time_step_size),
-        "current_dt": np.asarray(solver._current_time_step_size),
+        "current_time_step_size": np.asarray(solver._current_time_step_size),
         "cfl_max": np.asarray(solver.cfl_max),
         "time_since_last_write": np.asarray(solver._time_since_last_write),
         "acceptance_counts": np.asarray(
@@ -192,29 +194,37 @@ def load_partitioned_solver_checkpoint(
     with np.load(target / manifest["files"][rank], allow_pickle=False) as archive:
         state = {name: np.array(archive[name], copy=True) for name in archive.files}
     if version == 1:
-        state["phi_old"] = state["phi"].copy()
-        state["phi_old_old"] = state["phi"].copy()
+        state["face_flux_old"] = state["face_flux"].copy()
+        state["face_flux_older"] = state["face_flux"].copy()
     partition = solver.parallel.partition
     if not np.array_equal(state.pop("global_cell_ids"), partition.local_global_ids):
         raise ValueError("Partitioned checkpoint cell IDs do not match")
     if not np.array_equal(state.pop("global_face_ids"), solver.mesh_data["global_face_ids"]):
         raise ValueError("Partitioned checkpoint face IDs do not match")
-    for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
+    for name in (
+        "velocity",
+        "kinematic_pressure",
+        "face_flux",
+        "face_flux_old",
+        "face_flux_older",
+        "velocity_old",
+        "velocity_older",
+    ):
         destination = np.asarray(getattr(solver, name))
         if state[name].shape != destination.shape or not np.all(np.isfinite(state[name])):
             raise ValueError(f"Partitioned checkpoint field {name} is incompatible")
         destination[:] = state[name]
-    nut = state["nut"]
-    if nut.size and (
-        nut.shape != (solver.mesh_data["n_elements"],)
-        or not np.all(np.isfinite(nut))
-        or np.any(nut < 0.0)
+    eddy_viscosity = state["eddy_viscosity"]
+    if eddy_viscosity.size and (
+        eddy_viscosity.shape != (solver.mesh_data["n_cells"],)
+        or not np.all(np.isfinite(eddy_viscosity))
+        or np.any(eddy_viscosity < 0.0)
     ):
         raise ValueError("Partitioned checkpoint turbulent viscosity is incompatible")
-    solver.nut = None if not nut.size else nut
+    solver.eddy_viscosity = None if not eddy_viscosity.size else eddy_viscosity
     solver.time = float(state["time"])
     solver.time_step_size = float(state["dt"])
-    solver._current_time_step_size = float(state["current_dt"])
+    solver._current_time_step_size = float(state["current_time_step_size"])
     solver.cfl_max = float(state["cfl_max"])
     solver._time_since_last_write = float(state["time_since_last_write"])
     solver.step = int(state["step"])
@@ -302,7 +312,7 @@ def write_partition_vtu(
     fields: dict[str, np.ndarray],
     comm,
     *,
-    output: OutputSetup | None = None,
+    output: OutputConfig | None = None,
     exporter: VTKExporter | None = None,
 ) -> Path:
     """Atomically publish one rank piece and a root parallel collection.
@@ -314,7 +324,7 @@ def write_partition_vtu(
     """
     if not stem or Path(stem).name != stem:
         raise ValueError("stem must be a non-empty filename component")
-    output = output or OutputSetup()
+    output = output or OutputConfig()
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
     n_owned = len(partition.owned_global_ids)
@@ -352,7 +362,7 @@ def write_partition_vtu(
         )
         visualization_mesh = mesh_data.get("_visualization_mesh")
         if visualization_mesh is None:
-            if mesh_data["n_elements"] != local_count:
+            if mesh_data["n_cells"] != local_count:
                 raise ValueError("Partitioned ghost output requires a visualization mesh")
             visualization_mesh = mesh_data
         point_fields = {
@@ -376,7 +386,7 @@ def write_partition_vtu(
             partition.owned_global_ids,
             dtype=np.int64,
         )
-        if mesh_data["n_elements"] == partition.global_n_cells:
+        if mesh_data["n_cells"] == partition.global_n_cells:
             cell_ids = partition.owned_global_ids
         else:
             cell_ids = np.arange(n_owned, dtype=np.int64)

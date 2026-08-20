@@ -129,12 +129,12 @@ def hand_built_3d_mesh():
     neighbours = np.array([1, 3, 5, 7, 2, 6, 3, 7, 4, 5, 6, 7], dtype=np.int32)
 
     boundary = [
-        {"name": "xmin", "startFace": 12, "nFaces": 4, "type": "patch"},
-        {"name": "xmax", "startFace": 16, "nFaces": 4, "type": "patch"},
-        {"name": "ymin", "startFace": 20, "nFaces": 4, "type": "patch"},
-        {"name": "ymax", "startFace": 24, "nFaces": 4, "type": "patch"},
-        {"name": "zmin", "startFace": 28, "nFaces": 4, "type": "patch"},
-        {"name": "zmax", "startFace": 32, "nFaces": 4, "type": "patch"},
+        {"name": "xmin", "start_face": 12, "n_faces": 4, "type": "patch"},
+        {"name": "xmax", "start_face": 16, "n_faces": 4, "type": "patch"},
+        {"name": "ymin", "start_face": 20, "n_faces": 4, "type": "patch"},
+        {"name": "ymax", "start_face": 24, "n_faces": 4, "type": "patch"},
+        {"name": "zmin", "start_face": 28, "n_faces": 4, "type": "patch"},
+        {"name": "zmax", "start_face": 32, "n_faces": 4, "type": "patch"},
     ]
 
     mesh_data = {
@@ -143,7 +143,7 @@ def hand_built_3d_mesh():
         "owners": owners,
         "neighbours": neighbours,
         "boundary": boundary,
-        "n_elements": 8,
+        "n_cells": 8,
         "n_faces": 36,
         "n_interior_faces": 12,
         "n_points": 27,

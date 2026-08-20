@@ -560,12 +560,12 @@ def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False, amg_key=Non
 def _solve_pressure(
     A,
     b,
-    amg_tol,
-    amg_maxiter,
+    amg_tolerance,
+    amg_max_iterations,
     tol,
     maxiter,
     x0,
-    amg_reuse_tol,
+    amg_reuse_tolerance,
     failure_policy,
     log_sink,
     amg_key,
@@ -588,7 +588,7 @@ def _solve_pressure(
         Solution vector.
     """
     setup_start = time.perf_counter()
-    x_early = _trivial_solution(A, b, x0, amg_tol)
+    x_early = _trivial_solution(A, b, x0, amg_tolerance)
     if x_early is not None:
         return x_early, {
             "preconditioner": "pyamg",
@@ -620,7 +620,7 @@ def _solve_pressure(
         }
 
     try:
-        ml, rebuilt = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tol, amg_key=amg_key)
+        ml, rebuilt = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tolerance, amg_key=amg_key)
         M = ml.aspreconditioner(cycle="V")
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
@@ -630,14 +630,24 @@ def _solve_pressure(
             nonlocal iterations
             iterations += 1
 
-        x, info = cg(A, b, M=M, rtol=amg_tol, maxiter=amg_maxiter, x0=x0, callback=count_iteration)
-        if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info, log_sink):
+        x, info = cg(
+            A,
+            b,
+            M=M,
+            rtol=amg_tolerance,
+            maxiter=amg_max_iterations,
+            x0=x0,
+            callback=count_iteration,
+        )
+        if info != 0 and _breakdown_converged(
+            A, b, x, amg_tolerance, "pressure CG", info, log_sink
+        ):
             info = 0
         if info != 0:
             # One rebuild handles coefficient drift that made a cached
             # hierarchy ineffective without silently accepting a poor solve.
             ml, rebuilt = _get_or_build_amg(
-                A, pyamg, reuse_tol=amg_reuse_tol, force_rebuild=True, amg_key=amg_key
+                A, pyamg, reuse_tol=amg_reuse_tolerance, force_rebuild=True, amg_key=amg_key
             )
             M = ml.aspreconditioner(cycle="V")
             setup_seconds = time.perf_counter() - setup_start
@@ -645,12 +655,14 @@ def _solve_pressure(
                 A,
                 b,
                 M=M,
-                rtol=amg_tol,
-                maxiter=amg_maxiter,
+                rtol=amg_tolerance,
+                maxiter=amg_max_iterations,
                 x0=x0,
                 callback=count_iteration,
             )
-            if info != 0 and _breakdown_converged(A, b, x, amg_tol, "pressure CG", info, log_sink):
+            if info != 0 and _breakdown_converged(
+                A, b, x, amg_tolerance, "pressure CG", info, log_sink
+            ):
                 info = 0
         if info != 0:
             raise RuntimeError(f"AMG-preconditioned pressure CG did not converge (info={info})")
@@ -685,12 +697,14 @@ def _solve_pressure(
         }
 
 
-def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, ilu_reuse_tol, A):
+def _get_or_build_ilu(
+    A_csc, reuse_ilu, ilu_key, ilu_drop_tolerance, ilu_fill_factor, ilu_reuse_tolerance, A
+):
     """Return an ILU preconditioner, optionally from cache.
 
     When ``reuse_ilu`` is ``True``, looks up the cache by key and only
     recomputes if the matrix diagonal has changed beyond
-    ``ilu_reuse_tol``.  When ``reuse_ilu`` is ``False``, computes a
+    ``ilu_reuse_tolerance``.  When ``reuse_ilu`` is ``False``, computes a
     transient (non-cached) ILU.
 
     Args:
@@ -706,26 +720,26 @@ def _get_or_build_ilu(A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, 
         An ``spilu`` factorisation object.
     """
     if not reuse_ilu:
-        ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
+        ilu = spilu(A_csc, drop_tol=ilu_drop_tolerance, fill_factor=ilu_fill_factor)
         return ilu, True
 
     key = _cache_key_from_matrix(A_csc, ilu_key)
     cached = _ILU_CACHE.get(key)
     if cached is None:
-        ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
+        ilu = spilu(A_csc, drop_tol=ilu_drop_tolerance, fill_factor=ilu_fill_factor)
         if len(_ILU_CACHE) >= _MAX_TRANSIENT_CACHE_ENTRIES:
             _ILU_CACHE.pop(next(iter(_ILU_CACHE)))
         _ILU_CACHE[key] = (ilu, A.diagonal().copy())
         return ilu, True
 
     ilu_cached, diag_snapshot = cached
-    if ilu_reuse_tol is not None and diag_snapshot is not None:
+    if ilu_reuse_tolerance is not None and diag_snapshot is not None:
         cur_diag = A.diagonal()
         rel_change = np.linalg.norm(cur_diag - diag_snapshot) / (
             np.linalg.norm(diag_snapshot) + 1e-16
         )
-        if rel_change > ilu_reuse_tol:
-            ilu = spilu(A_csc, drop_tol=ilu_drop_tol, fill_factor=ilu_fill_factor)
+        if rel_change > ilu_reuse_tolerance:
+            ilu = spilu(A_csc, drop_tol=ilu_drop_tolerance, fill_factor=ilu_fill_factor)
             _ILU_CACHE[key] = (ilu, A.diagonal().copy())
             return ilu, True
 
@@ -795,9 +809,9 @@ def _solve_with_ilu(
     x0,
     reuse_ilu,
     ilu_key,
-    ilu_drop_tol,
+    ilu_drop_tolerance,
     ilu_fill_factor,
-    ilu_reuse_tol,
+    ilu_reuse_tolerance,
     failure_policy,
     log_sink,
 ):
@@ -837,7 +851,7 @@ def _solve_with_ilu(
     try:
         A_csc = A.tocsc()
         ilu, rebuilt = _get_or_build_ilu(
-            A_csc, reuse_ilu, ilu_key, ilu_drop_tol, ilu_fill_factor, ilu_reuse_tol, A
+            A_csc, reuse_ilu, ilu_key, ilu_drop_tolerance, ilu_fill_factor, ilu_reuse_tolerance, A
         )
         setup_seconds = time.perf_counter() - setup_start
 
@@ -898,9 +912,9 @@ def solve_linear_system(
     x0=None,
     reuse_ilu=False,
     ilu_key=None,
-    ilu_drop_tol=1e-4,
+    ilu_drop_tolerance=1e-4,
     ilu_fill_factor=10,
-    ilu_reuse_tol=None,
+    ilu_reuse_tolerance=None,
     backend="scipy",
     parallel_context=None,
     nullspace=None,
@@ -1010,19 +1024,19 @@ def solve_linear_system(
     if method == "amg":
         if equation_type != "pressure":
             raise ValueError("AMG is supported only for pressure equations")
-        configured_amg_tol = kwargs.get("amg_tol", 4e-4)
-        amg_tol = tol if configured_amg_tol is None else float(configured_amg_tol)
-        amg_maxiter = kwargs.get("amg_maxiter", maxiter)
-        amg_reuse_tol = kwargs.get("amg_reuse_tol", 0.05)
+        configured_amg_tol = kwargs.get("amg_tolerance", 4e-4)
+        amg_tolerance = tol if configured_amg_tol is None else float(configured_amg_tol)
+        amg_max_iterations = kwargs.get("amg_max_iterations", maxiter)
+        amg_reuse_tolerance = kwargs.get("amg_reuse_tolerance", 0.05)
         solution, metadata = _solve_pressure(
             A,
             b,
-            amg_tol,
-            amg_maxiter,
+            amg_tolerance,
+            amg_max_iterations,
             tol,
             maxiter,
             x0,
-            amg_reuse_tol,
+            amg_reuse_tolerance,
             failure_policy,
             log_sink,
             amg_key,
@@ -1039,9 +1053,9 @@ def solve_linear_system(
             x0,
             reuse_ilu,
             ilu_key,
-            ilu_drop_tol,
+            ilu_drop_tolerance,
             ilu_fill_factor,
-            ilu_reuse_tol,
+            ilu_reuse_tolerance,
             failure_policy,
             log_sink,
         )
@@ -1057,9 +1071,9 @@ def solve_linear_system(
             x0,
             reuse_ilu,
             ilu_key,
-            ilu_drop_tol,
+            ilu_drop_tolerance,
             ilu_fill_factor,
-            ilu_reuse_tol,
+            ilu_reuse_tolerance,
             failure_policy,
             log_sink,
         )

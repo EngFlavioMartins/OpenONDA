@@ -33,13 +33,13 @@ def test_mass_conservation_on_carved_mesh(tmp_path):
     global boundary flux balances exactly (what enters leaves)."""
     solver = _run(tmp_path)
     mesh, geo = solver.mesh_data, solver.geo_data
-    div = compute_continuity_error(np.asarray(solver.phi), mesh, geo)
-    volumes = geo["element_volumes"][: mesh["n_elements"]]
+    div = compute_continuity_error(np.asarray(solver.face_flux), mesh, geo)
+    volumes = geo["cell_volumes"][: mesh["n_cells"]]
     local = np.abs(div) / volumes  # 1/s — local divergence
     assert local.max() < 1e-6, f"max cell divergence {local.max():.3e} 1/s"
     # Global: sum of boundary fluxes = sum of per-cell residuals ≈ 0.
     n_int = mesh["n_interior_faces"]
-    net_boundary = float(np.asarray(solver.phi)[n_int:].sum())
+    net_boundary = float(np.asarray(solver.face_flux)[n_int:].sum())
     assert abs(net_boundary) < 1e-8, f"net boundary flux {net_boundary:.3e} m³/s"
 
 
@@ -50,10 +50,10 @@ def test_wall_bc_enforcement_on_carved_cube(tmp_path):
     solver = _run(tmp_path)
     mesh = solver.mesh_data
     (wall,) = [b for b in mesh["boundary"] if b["name"] == "cube"]
-    faces = np.arange(wall["startFace"], wall["startFace"] + wall["nFaces"])
-    ghost = mesh["n_elements"] + (faces - mesh["n_interior_faces"])
-    assert np.all(np.asarray(solver.U)[ghost] == 0.0), "wall ghost velocity not zero"
-    assert np.all(np.asarray(solver.phi)[faces] == 0.0), "wall face flux not zero"
+    faces = np.arange(wall["start_face"], wall["start_face"] + wall["n_faces"])
+    ghost = mesh["n_cells"] + (faces - mesh["n_interior_faces"])
+    assert np.all(np.asarray(solver.velocity)[ghost] == 0.0), "wall ghost velocity not zero"
+    assert np.all(np.asarray(solver.face_flux)[faces] == 0.0), "wall face flux not zero"
 
 
 def test_deterministic_for_fixed_configuration(tmp_path):
@@ -61,7 +61,10 @@ def test_deterministic_for_fixed_configuration(tmp_path):
     fields and forces (no hidden nondeterminism in assembly, AMG, or ILU)."""
     a = _run(tmp_path / "a")
     b = _run(tmp_path / "b")
-    assert np.array_equal(np.asarray(a.U), np.asarray(b.U)), "velocity fields differ"
-    assert np.array_equal(np.asarray(a.p), np.asarray(b.p)), "pressure fields differ"
+    assert np.array_equal(np.asarray(a.velocity), np.asarray(b.velocity)), "velocity fields differ"
+    assert np.array_equal(
+        np.asarray(a.kinematic_pressure),
+        np.asarray(b.kinematic_pressure),
+    ), "pressure fields differ"
     fa, fb = a.last_forces["cube"], b.last_forces["cube"]
     assert np.array_equal(fa["Ftot"], fb["Ftot"]), f"forces differ: {fa['Ftot']} vs {fb['Ftot']}"

@@ -30,7 +30,7 @@ def _fill_cell_faces(owners, neighbours, offsets, n_interior, n_faces):
     return result
 
 
-def build_cell_face_csr(owners, neighbours, n_elements, n_faces):
+def build_cell_face_csr(owners, neighbours, n_cells, n_faces):
     """Return cell-to-face connectivity as compact CSR arrays.
 
     This replaces the former list-of-lists construction.  On the cubeFlow
@@ -41,11 +41,11 @@ def build_cell_face_csr(owners, neighbours, n_elements, n_faces):
     owners = np.ascontiguousarray(owners, dtype=np.int32)
     neighbours = np.ascontiguousarray(neighbours, dtype=np.int32)
     n_interior = len(neighbours)
-    counts = np.bincount(owners, minlength=n_elements)
-    counts += np.bincount(neighbours, minlength=n_elements)
+    counts = np.bincount(owners, minlength=n_cells)
+    counts += np.bincount(neighbours, minlength=n_cells)
     if int(counts.sum()) > np.iinfo(np.int32).max:
         raise OverflowError("FVM cell-face topology exceeds 32-bit addressing")
-    offsets = np.empty(n_elements + 1, dtype=np.int32)
+    offsets = np.empty(n_cells + 1, dtype=np.int32)
     offsets[0] = 0
     np.cumsum(counts, out=offsets[1:])
     return _fill_cell_faces(owners, neighbours, offsets, n_interior, n_faces), offsets
@@ -159,20 +159,20 @@ class MeshTopology:
             flattened_cell_faces, cell_face_offsets = build_cell_face_csr(
                 mesh_data["owners"],
                 mesh_data["neighbours"],
-                mesh_data["n_elements"],
+                mesh_data["n_cells"],
                 mesh_data["n_faces"],
             )
         patches = tuple(
             BoundaryPatch(
                 name=str(patch["name"]),
-                start_face=int(patch["startFace"]),
-                n_faces=int(patch["nFaces"]),
+                start_face=int(patch["start_face"]),
+                n_faces=int(patch["n_faces"]),
                 source_type=patch.get("type"),
                 physical_tag=patch.get("physical_tag"),
             )
             for patch in mesh_data["boundary"]
         )
-        n_cells = int(mesh_data["n_elements"])
+        n_cells = int(mesh_data["n_cells"])
         n_faces = int(mesh_data["n_faces"])
         return cls(
             face_nodes=_readonly(face_nodes, np.int32),
@@ -198,22 +198,22 @@ class MeshTopology:
         )
 
 
-def get_element_faces(owners, neighbours, n_elements, n_faces):
+def get_element_faces(owners, neighbours, n_cells, n_faces):
     """Build the face-index list for every cell.
 
     ``neighbours`` contains one entry per interior face; remaining faces are
     boundary faces and belong only to their owner cell.
     """
     n_interior_faces = len(neighbours)
-    element_faces: list[list[int]] = [[] for _ in range(n_elements)]
+    cell_faces: list[list[int]] = [[] for _ in range(n_cells)]
 
     for face_index in range(n_interior_faces):
         owner = owners[face_index]
         neighbour = neighbours[face_index]
-        element_faces[owner].append(face_index)
-        element_faces[neighbour].append(face_index)
+        cell_faces[owner].append(face_index)
+        cell_faces[neighbour].append(face_index)
 
     for face_index in range(n_interior_faces, n_faces):
-        element_faces[owners[face_index]].append(face_index)
+        cell_faces[owners[face_index]].append(face_index)
 
-    return element_faces
+    return cell_faces

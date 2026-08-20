@@ -57,10 +57,10 @@ FORCES_HEADER = [
 def _context_transport(context):
     """Return ``(rho, nu_eff)`` for the sampled state."""
     rho = context.setup.transport.density
-    nu_eff = context.setup.transport.nu
-    nut = getattr(context, "nut", None)
-    if nut is not None:
-        nu_eff = nu_eff + nut[: context.mesh_data["n_elements"]]
+    nu_eff = context.setup.transport.kinematic_viscosity
+    eddy_viscosity = getattr(context, "eddy_viscosity", None)
+    if eddy_viscosity is not None:
+        nu_eff = nu_eff + eddy_viscosity[: context.mesh_data["n_cells"]]
     return rho, nu_eff
 
 
@@ -141,8 +141,8 @@ class ForceSampler(Sampler):
         mu = nu_eff * rho
 
         forces = diagnostics.compute_surface_forces(
-            context.U,
-            context.p,
+            context.velocity,
+            context.kinematic_pressure,
             mu,
             rho,
             context.mesh_data,
@@ -234,8 +234,8 @@ class YPlusSampler(Sampler):
     def sample(self, context) -> dict[str, dict[str, float]]:
         """Compute y+ statistics for the current state (collective)."""
         stats = diagnostics.compute_y_plus(
-            context.U,
-            context.setup.transport.nu,
+            context.velocity,
+            context.setup.transport.kinematic_viscosity,
             context.mesh_data,
             context.geo_data,
             context.boundaries,
@@ -312,7 +312,7 @@ class IBMForceSampler(Sampler):
             )
         return {
             "forces": ibm.body_forces(rho=context.setup.transport.density),
-            "slip": ibm.slip_error(context.U),
+            "slip": ibm.slip_error(context.velocity),
         }
 
     def summary(self, context, data: dict) -> dict[str, tuple[float, float]]:

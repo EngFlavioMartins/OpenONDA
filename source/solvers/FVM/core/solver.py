@@ -37,11 +37,13 @@ def _load_velocity_field(setup, case_dir: str, n_total: int, mesh_data: dict) ->
     return np.tile(initial, (n_total, 1))
 
 
-def _load_pressure_field(setup, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
+def _load_kinematic_pressure_field(
+    setup, case_dir: str, n_total: int, mesh_data: dict
+) -> np.ndarray:
     """Initialise the pressure field from the Python configuration.
 
     Args:
-        setup:    FVMSetup (may have ``initial_p``).
+        setup:    FVMSetup (may have ``initial_kinematic_pressure``).
         case_dir: Case root directory.
         n_total:  Total number of elements (interior + boundary ghosts).
         mesh_data: Mesh dictionary.
@@ -50,16 +52,16 @@ def _load_pressure_field(setup, case_dir: str, n_total: int, mesh_data: dict) ->
         Pressure array ``(n_total,)``.
     """
     del case_dir, mesh_data
-    if setup.initial_p is None:
+    if setup.initial_kinematic_pressure is None:
         raise ValueError("initial_p must be provided in FVMSetup")
-    initial = np.asarray(setup.initial_p, dtype=np.float64)
+    initial = np.asarray(setup.initial_kinematic_pressure, dtype=np.float64)
     if initial.ndim != 0 or not np.isfinite(initial):
         raise ValueError("initial_p must be a finite scalar")
     return np.full(n_total, float(initial), dtype=np.float64)
 
 
-def _enforce_u_boundary_constraints(
-    U: np.ndarray, boundaries: list, n_elements: int, mesh_data: dict, geo_data: dict
+def _enforce_velocity_boundary_constraints(
+    velocity: np.ndarray, boundaries: list, n_cells: int, mesh_data: dict, geo_data: dict
 ) -> None:
     """Enforce velocity boundary constraints on ghost cells after initialisation.
 
@@ -77,47 +79,47 @@ def _enforce_u_boundary_constraints(
     from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 
     for boundary in boundaries:
-        bc_type = boundary.get("bc_type_velocity")
+        bc_type = boundary.get("velocity_type")
         strategy = BOUNDARIES.strategy(bc_type, "U", "ghost")
-        start = n_elements + (boundary["startFace"] - mesh_data["n_interior_faces"])
-        end = start + boundary["nFaces"]
+        start = n_cells + (boundary["start_face"] - mesh_data["n_interior_faces"])
+        end = start + boundary["n_faces"]
         if strategy is BoundaryStrategy.NO_SLIP:
-            U[start:end] = 0.0
+            velocity[start:end] = 0.0
         elif (
             strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM)
-            and boundary.get("value_velocity_field") is not None
+            and boundary.get("velocity_value_field") is not None
         ):
-            U[start:end] = boundary["value_velocity_field"]
+            velocity[start:end] = boundary["velocity_value_field"]
         elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM) and (
-            "value_velocity" in boundary
+            "velocity_value" in boundary
         ):
-            U[start:end] = boundary["value_velocity"]
+            velocity[start:end] = boundary["velocity_value"]
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.INLET_OUTLET,
         ):
             owners_b = mesh_data["owners"][
-                boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
+                boundary["start_face"] : boundary["start_face"] + boundary["n_faces"]
             ]
-            U[start:end] = U[owners_b]
+            velocity[start:end] = velocity[owners_b]
         elif strategy is BoundaryStrategy.CYCLIC:
-            faces = np.arange(boundary["startFace"], boundary["startFace"] + boundary["nFaces"])
+            faces = np.arange(boundary["start_face"], boundary["start_face"] + boundary["n_faces"])
             paired = mesh_data["boundary_neighbours"][faces]
             if np.any(paired < 0):
                 raise ValueError(f"Cyclic patch {boundary['name']!r} is not paired")
-            U[start:end] = U[paired]
+            velocity[start:end] = velocity[paired]
         elif strategy in (
             BoundaryStrategy.EMPTY,
             BoundaryStrategy.SLIP,
             BoundaryStrategy.SYMMETRY,
         ):
             owners_b = mesh_data["owners"][
-                boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
+                boundary["start_face"] : boundary["start_face"] + boundary["n_faces"]
             ]
             face_sf = geo_data["face_sf"][
-                boundary["startFace"] : boundary["startFace"] + boundary["nFaces"]
+                boundary["start_face"] : boundary["start_face"] + boundary["n_faces"]
             ]
-            owner_velocity = U[owners_b]
+            owner_velocity = velocity[owners_b]
             magnitudes = np.linalg.norm(face_sf, axis=1)
             valid = magnitudes > 1e-10
             projected = owner_velocity.copy()
@@ -126,7 +128,7 @@ def _enforce_u_boundary_constraints(
                 projected[valid] -= (
                     np.sum(owner_velocity[valid] * normals, axis=1)[:, np.newaxis] * normals
                 )
-            U[start:end] = projected
+            velocity[start:end] = projected
 
 
 class FVMSolver(CouplerInterfaceMixin):
@@ -175,7 +177,7 @@ class FVMSolver(CouplerInterfaceMixin):
         gradient = self._derived_fields.get("velocity_gradient")
         if gradient is None:
             gradient = gradients._resolve_gradient_fn(self.geo_data)(
-                self.U, self.mesh_data, self.geo_data
+                self.velocity, self.mesh_data, self.geo_data
             )
             self._derived_fields["velocity_gradient"] = gradient
         return gradient
@@ -187,7 +189,7 @@ class FVMSolver(CouplerInterfaceMixin):
         courant = self._derived_fields.get(key)
         if courant is None:
             courant = diagnostics.compute_courant_number(
-                self.U, self.phi, time_step_size, self.mesh_data, self.geo_data
+                self.velocity, self.face_flux, time_step_size, self.mesh_data, self.geo_data
             )
             self._derived_fields[key] = courant
         return courant
@@ -198,7 +200,7 @@ class FVMSolver(CouplerInterfaceMixin):
         vorticity = self._derived_fields.get("vorticity")
         if vorticity is None:
             vorticity = diagnostics.compute_vorticity(
-                self.U,
+                self.velocity,
                 self.mesh_data,
                 self.geo_data,
                 gradient=self._velocity_gradient(),
@@ -307,7 +309,10 @@ class FVMSolver(CouplerInterfaceMixin):
             )
         if not np.isfinite(self.setup.transport.density) or self.setup.transport.density <= 0.0:
             raise ValueError("Transport density must be finite and positive")
-        if not np.isfinite(self.setup.transport.nu) or self.setup.transport.nu <= 0.0:
+        if (
+            not np.isfinite(self.setup.transport.kinematic_viscosity)
+            or self.setup.transport.kinematic_viscosity <= 0.0
+        ):
             raise ValueError("Kinematic viscosity must be finite and positive")
         if self.setup.dynamic_mesh.method != "static":
             raise NotImplementedError(
@@ -333,12 +338,12 @@ class FVMSolver(CouplerInterfaceMixin):
         if self.parallel.is_partitioned:
             comm = self.parallel.comm
             assert comm is not None
-            if any(boundary.type_velocity == "cyclic" for boundary in self.setup.boundaries):
+            if any(boundary.velocity_type == "cyclic" for boundary in self.setup.boundaries):
                 raise NotImplementedError(
                     "Partitioned cyclic patches require periodic partition adjacency, which is "
                     "not yet implemented"
                 )
-            if self.setup.initial_velocity is None or self.setup.initial_p is None:
+            if self.setup.initial_velocity is None or self.setup.initial_kinematic_pressure is None:
                 raise ValueError("initial_velocity and initial_p must be provided in FVMSetup")
             quality = None
             preparation_error = None
@@ -518,7 +523,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
         # 3. Component Setup
         self._initialize_fields()
-        self.state = FieldState(self.U, self.p, self.phi)
+        self.state = FieldState(self.velocity, self.kinematic_pressure, self.face_flux)
         self._initialize_algorithm()
         self._initialize_turbulence()
 
@@ -557,7 +562,7 @@ class FVMSolver(CouplerInterfaceMixin):
         from ..solve import simple_solver
 
         simple_solver.update_scalar_boundaries(
-            self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
+            self.kinematic_pressure, self.mesh_data, self.boundaries, "p", face_flux=self.face_flux
         )
 
         # Wall y+ is a per-step diagnostic decoupled from any force cadence.
@@ -581,19 +586,19 @@ class FVMSolver(CouplerInterfaceMixin):
             found = False
             for b_mesh in self.boundaries:
                 if b_mesh["name"] == b_cfg.name:
-                    velocity = np.asarray(b_cfg.value_velocity, dtype=np.float64)
-                    if velocity.shape not in {(3,), (b_mesh["nFaces"], 3)}:
+                    velocity = np.asarray(b_cfg.velocity_value, dtype=np.float64)
+                    if velocity.shape not in {(3,), (b_mesh["n_faces"], 3)}:
                         raise ValueError(
                             f"Velocity value for patch {b_cfg.name!r} has shape {velocity.shape}; "
-                            f"expected (3,) or {(b_mesh['nFaces'], 3)}"
+                            f"expected (3,) or {(b_mesh['n_faces'], 3)}"
                         )
                     b_mesh.update(
                         {
-                            "bc_type_velocity": b_cfg.type_velocity,
-                            "bc_type_p": b_cfg.type_p,
-                            "value_p": b_cfg.value_p,
-                            "bc_type_nut": b_cfg.type_nut,
-                            "value_nut": b_cfg.value_nut,
+                            "velocity_type": b_cfg.velocity_type,
+                            "pressure_type": b_cfg.pressure_type,
+                            "kinematic_pressure_value": b_cfg.kinematic_pressure_value,
+                            "eddy_viscosity_type": b_cfg.eddy_viscosity_type,
+                            "eddy_viscosity_value": b_cfg.eddy_viscosity_value,
                         }
                     )
                     if b_cfg.mesh_type is not None:
@@ -601,12 +606,12 @@ class FVMSolver(CouplerInterfaceMixin):
                     else:
                         b_mesh.setdefault("type", "patch")
                     if b_cfg.neighbour_patch is not None:
-                        b_mesh["neighbourPatch"] = b_cfg.neighbour_patch
+                        b_mesh["neighbour_patch"] = b_cfg.neighbour_patch
                     if velocity.shape == (3,):
-                        b_mesh["value_velocity"] = velocity
-                        b_mesh.pop("value_velocity_field", None)
+                        b_mesh["velocity_value"] = velocity
+                        b_mesh.pop("velocity_value_field", None)
                     else:
-                        b_mesh["value_velocity_field"] = velocity
+                        b_mesh["velocity_value_field"] = velocity
                     found = True
                     break
             if not found:
@@ -623,29 +628,33 @@ class FVMSolver(CouplerInterfaceMixin):
         on the velocity ghost layer, and computes the initial volumetric face
         flux ``phi = U·Sf`` from the velocity field.
         """
-        n_elements = self.mesh_data["n_elements"]
-        n_total = self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"] + n_elements
+        n_cells = self.mesh_data["n_cells"]
+        n_total = self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"] + n_cells
 
-        self.U = _load_velocity_field(self.setup, self.case_dir, n_total, self.mesh_data)
-        self.p = _load_pressure_field(self.setup, self.case_dir, n_total, self.mesh_data)
-        self.U_old = self.U.copy()
-        # Second history level for BDF2 (u^{n-1}); ignored by BDF1.
-        self.U_old_old = self.U.copy()
-
-        _enforce_u_boundary_constraints(
-            self.U, self.boundaries, n_elements, self.mesh_data, self.geo_data
+        self.velocity = _load_velocity_field(self.setup, self.case_dir, n_total, self.mesh_data)
+        self.kinematic_pressure = _load_kinematic_pressure_field(
+            self.setup, self.case_dir, n_total, self.mesh_data
         )
-        self.parallel.exchange_halo(self.U[:n_elements])
-        self.parallel.exchange_halo(self.p[:n_elements])
+        self.velocity_old = self.velocity.copy()
+        # Second history level for BDF2 (u^{n-1}); ignored by BDF1.
+        self.velocity_older = self.velocity.copy()
+
+        _enforce_velocity_boundary_constraints(
+            self.velocity, self.boundaries, n_cells, self.mesh_data, self.geo_data
+        )
+        self.parallel.exchange_halo(self.velocity[:n_cells])
+        self.parallel.exchange_halo(self.kinematic_pressure[:n_cells])
 
         logging.Timer.start("Flux Init")
         from ..assemble import convection
 
-        self.phi = convection.compute_volumetric_face_flux(self.U, self.mesh_data, self.geo_data)
+        self.face_flux = convection.compute_volumetric_face_flux(
+            self.velocity, self.mesh_data, self.geo_data
+        )
         # Flux history for the transient Rhie-Chow correction.
         # (``fvc::ddtCorr``), which needs phi and U at the same time levels.
-        self.phi_old = self.phi.copy()
-        self.phi_old_old = self.phi.copy()
+        self.face_flux_old = self.face_flux.copy()
+        self.face_flux_older = self.face_flux.copy()
         logging.Timer.log("Flux Init", sink=self.logger)
 
     def _initialize_algorithm(self):
@@ -692,34 +701,36 @@ class FVMSolver(CouplerInterfaceMixin):
         if self._n_committed or self.step:
             raise RuntimeError("Initial velocity can only be set before the first time step")
 
-        n_elements = self.mesh_data["n_elements"]
+        n_cells = self.mesh_data["n_cells"]
         field = np.asarray(values, dtype=np.float64)
-        if field.shape != (n_elements, 3) or not np.all(np.isfinite(field)):
+        if field.shape != (n_cells, 3) or not np.all(np.isfinite(field)):
             raise ValueError(
-                f"Initial velocity must be finite with shape ({n_elements}, 3); got {field.shape}"
+                f"Initial velocity must be finite with shape ({n_cells}, 3); got {field.shape}"
             )
 
-        self.U[:n_elements] = field
+        self.velocity[:n_cells] = field
         if self.parallel.is_partitioned:
-            self.parallel.exchange_halo(self.U[:n_elements])
-        _enforce_u_boundary_constraints(
-            self.U, self.boundaries, n_elements, self.mesh_data, self.geo_data
+            self.parallel.exchange_halo(self.velocity[:n_cells])
+        _enforce_velocity_boundary_constraints(
+            self.velocity, self.boundaries, n_cells, self.mesh_data, self.geo_data
         )
-        self.U_old[:] = self.U
-        self.U_old_old[:] = self.U
+        self.velocity_old[:] = self.velocity
+        self.velocity_older[:] = self.velocity
 
         from ..assemble import convection
         from ..solve import simple_solver
 
-        self.phi = convection.compute_volumetric_face_flux(self.U, self.mesh_data, self.geo_data)
-        self.phi_old = self.phi.copy()
-        self.phi_old_old = self.phi.copy()
-        self.state = FieldState(self.U, self.p, self.phi)
+        self.face_flux = convection.compute_volumetric_face_flux(
+            self.velocity, self.mesh_data, self.geo_data
+        )
+        self.face_flux_old = self.face_flux.copy()
+        self.face_flux_older = self.face_flux.copy()
+        self.state = FieldState(self.velocity, self.kinematic_pressure, self.face_flux)
         simple_solver.update_scalar_boundaries(
-            self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
+            self.kinematic_pressure, self.mesh_data, self.boundaries, "p", face_flux=self.face_flux
         )
 
-    def set_initial_state(self, velocity: np.ndarray, pressure: np.ndarray) -> None:
+    def set_initial_state(self, velocity: np.ndarray, kinematic_pressure: np.ndarray) -> None:
         """Set a complete cell-centred initial state before the first step.
 
         This is intentionally narrower than checkpoint loading: it supports
@@ -728,20 +739,20 @@ class FVMSolver(CouplerInterfaceMixin):
         ownership.
         """
         self.set_initial_velocity(velocity)
-        n_elements = self.mesh_data["n_elements"]
-        pressure = np.asarray(pressure, dtype=np.float64).reshape(-1)
-        if pressure.shape != (n_elements,) or not np.all(np.isfinite(pressure)):
+        n_cells = self.mesh_data["n_cells"]
+        kinematic_pressure = np.asarray(kinematic_pressure, dtype=np.float64).reshape(-1)
+        if kinematic_pressure.shape != (n_cells,) or not np.all(np.isfinite(kinematic_pressure)):
             raise ValueError(
-                "Initial pressure must be finite with one value per interior cell; "
-                f"got {pressure.shape}, expected ({n_elements},)"
+                "Initial kinematic_pressure must be finite with one value per interior cell; "
+                f"got {kinematic_pressure.shape}, expected ({n_cells},)"
             )
-        self.p[:n_elements] = pressure
+        self.kinematic_pressure[:n_cells] = kinematic_pressure
         from ..solve import simple_solver
 
         simple_solver.update_scalar_boundaries(
-            self.p, self.mesh_data, self.boundaries, "p", face_flux=self.phi
+            self.kinematic_pressure, self.mesh_data, self.boundaries, "p", face_flux=self.face_flux
         )
-        self.state = FieldState(self.U, self.p, self.phi)
+        self.state = FieldState(self.velocity, self.kinematic_pressure, self.face_flux)
 
     def _initialize_turbulence(self):
         """Initialise the turbulence / LES model if configured.
@@ -752,7 +763,7 @@ class FVMSolver(CouplerInterfaceMixin):
         ``self.time`` and ``self.step`` to their initial values.
         """
         self.turbulence = None
-        self.nut = None
+        self.eddy_viscosity = None
         if self.setup.turbulence and self.setup.turbulence.model.lower() != "none":
             from ..turbulence import create_model
 
@@ -778,12 +789,14 @@ class FVMSolver(CouplerInterfaceMixin):
             Effective kinematic viscosity (scalar or per-element array).
         """
         if self.turbulence is not None:
-            self.nut = self.turbulence.compute_nut(self.U, self.mesh_data, self.geo_data)
-            self.parallel.exchange_halo(self.nut[: self.mesh_data["n_elements"]])
-            if not np.all(np.isfinite(self.nut)) or np.any(self.nut < 0.0):
+            self.eddy_viscosity = self.turbulence.compute_eddy_viscosity(
+                self.velocity, self.mesh_data, self.geo_data
+            )
+            self.parallel.exchange_halo(self.eddy_viscosity[: self.mesh_data["n_cells"]])
+            if not np.all(np.isfinite(self.eddy_viscosity)) or np.any(self.eddy_viscosity < 0.0):
                 raise FloatingPointError("Turbulence model returned invalid eddy viscosity")
-            return self.setup.transport.nu + self.nut
-        return self.setup.transport.nu
+            return self.setup.transport.kinematic_viscosity + self.eddy_viscosity
+        return self.setup.transport.kinematic_viscosity
 
     def set_immersed_bodies(self, bodies, h: float | None = None) -> "object":
         """Attach immersed bodies (discrete direct-forcing IBM) to the solver.
@@ -870,7 +883,7 @@ class FVMSolver(CouplerInterfaceMixin):
             raise RuntimeError(
                 "Incomplete blending source: lambdaRelax and Utarget must be registered together"
             )
-        n = self.mesh_data["n_elements"]
+        n = self.mesh_data["n_cells"]
         lam = np.asarray(lam, dtype=np.float64)[:n]
         ut = np.asarray(ut, dtype=np.float64)[:n]
 
@@ -894,7 +907,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self._blending_filter = CellBoxFilter(
                 self.mesh_data, self.geo_data, centre_weight="neighbour_sum"
             )
-        u = np.asarray(self.U, dtype=np.float64)[:n]
+        u = np.asarray(self.velocity, dtype=np.float64)[:n]
         u_high = u - self._blending_filter(u)
         return lam[:, np.newaxis] * (ut + u_high), lam
 
@@ -928,27 +941,27 @@ class FVMSolver(CouplerInterfaceMixin):
             sink=self.logger,
         )
         # BDF2 needs u^{n-1}; available only once at least one step is committed.
-        u_old_old_arg = self.U_old_old if self._n_committed >= 1 else None
+        u_old_old_arg = self.velocity_older if self._n_committed >= 1 else None
         logging.Timer.start("Blending source")
         src_exp, src_imp = self._blending_source()
         logging.Timer.log("Blending source", sink=self.logger)
 
-        self.U, self.p, self.phi, residuals = self.algorithm.step(
-            self.U,
-            self.p,
-            self.phi,
-            self.U_old,
+        self.velocity, self.kinematic_pressure, self.face_flux, residuals = self.algorithm.step(
+            self.velocity,
+            self.kinematic_pressure,
+            self.face_flux,
+            self.velocity_old,
             step_time_step_size,
             rho=self.setup.transport.density,
             nu=nu_eff,
-            U_old_old=u_old_old_arg,
+            velocity_older=u_old_old_arg,
             source_explicit=src_exp,
             source_implicit=src_imp,
-            phi_old=self.phi_old,
-            phi_old_old=self.phi_old_old if self._n_committed >= 1 else None,
+            face_flux_old=self.face_flux_old,
+            face_flux_older=self.face_flux_older if self._n_committed >= 1 else None,
         )
         self._invalidate_derived_fields()
-        self.state = FieldState(self.U, self.p, self.phi)
+        self.state = FieldState(self.velocity, self.kinematic_pressure, self.face_flux)
         self._last_residuals = residuals
         self.logger.convergence_info(residuals)
 
@@ -956,8 +969,8 @@ class FVMSolver(CouplerInterfaceMixin):
         # has ~0 net flux per cell.  Surfacing this makes loss of mass
         # conservation visible instead of silent.
         logging.Timer.start("Continuity diagnostics")
-        cont = diagnostics.compute_continuity_error(self.phi, self.mesh_data, self.geo_data)
-        vol = self.geo_data["element_volumes"]
+        cont = diagnostics.compute_continuity_error(self.face_flux, self.mesh_data, self.geo_data)
+        vol = self.geo_data["cell_volumes"]
         n_owned = self.parallel.n_owned if self.parallel.is_partitioned else len(vol)
         local_max = float(np.max(np.abs(cont[:n_owned]) / (vol[:n_owned] + 1e-30)))
         local_sum = float(np.sum(np.abs(cont[:n_owned])))
@@ -977,26 +990,32 @@ class FVMSolver(CouplerInterfaceMixin):
         from ..fields import diagnostics
         from ..solve.contracts import StepDiagnostics
 
-        n = self.mesh_data["n_elements"]
+        n = self.mesh_data["n_cells"]
         n_owned = self.parallel.n_owned if self.parallel.is_partitioned else n
-        interior_u = np.asarray(self.U[:n_owned])
-        interior_p = np.asarray(self.p[:n_owned])
+        interior_u = np.asarray(self.velocity[:n_owned])
+        interior_p = np.asarray(self.kinematic_pressure[:n_owned])
         cfl = self._courant_field(step_time_step_size)
         self.cfl_max = float(self.parallel.global_max(float(np.max(cfl[:n_owned]))))
         local_nonfinite = int(
             np.count_nonzero(~np.isfinite(interior_u))
             + np.count_nonzero(~np.isfinite(interior_p))
-            + np.count_nonzero(~np.isfinite(self.phi))
+            + np.count_nonzero(~np.isfinite(self.face_flux))
         )
         nonfinite_count = int(self.parallel.global_sum(local_nonfinite))
         turbulence_min = None
         turbulence_max = None
-        if self.nut is not None:
+        if self.eddy_viscosity is not None:
             nonfinite_count += int(
-                self.parallel.global_sum(int(np.count_nonzero(~np.isfinite(self.nut[:n_owned]))))
+                self.parallel.global_sum(
+                    int(np.count_nonzero(~np.isfinite(self.eddy_viscosity[:n_owned])))
+                )
             )
-            turbulence_min = float(self.parallel.global_min(float(np.nanmin(self.nut[:n_owned]))))
-            turbulence_max = float(self.parallel.global_max(float(np.nanmax(self.nut[:n_owned]))))
+            turbulence_min = float(
+                self.parallel.global_min(float(np.nanmin(self.eddy_viscosity[:n_owned])))
+            )
+            turbulence_max = float(
+                self.parallel.global_max(float(np.nanmax(self.eddy_viscosity[:n_owned])))
+            )
         n_interior = self.mesh_data["n_interior_faces"]
         linear_results = tuple(getattr(self.algorithm, "last_linear_results", ()))
         velocity_min = np.asarray(
@@ -1012,14 +1031,14 @@ class FVMSolver(CouplerInterfaceMixin):
             * self.setup.transport.density
             * float(
                 np.sum(
-                    self.geo_data["element_volumes"][:n_owned]
+                    self.geo_data["cell_volumes"][:n_owned]
                     * np.sum(interior_u * interior_u, axis=1)
                 )
             )
         )
         local_enstrophy = diagnostics.enstrophy_from_gradient(
             self._velocity_gradient(),
-            self.geo_data["element_volumes"],
+            self.geo_data["cell_volumes"],
             n_owned,
         )
         return StepDiagnostics(
@@ -1033,7 +1052,7 @@ class FVMSolver(CouplerInterfaceMixin):
             continuity_max=self.continuity_max,
             continuity_sum=self.continuity_sum,
             boundary_mass_balance=float(
-                self.parallel.global_sum(float(np.sum(self.phi[n_interior:])))
+                self.parallel.global_sum(float(np.sum(self.face_flux[n_interior:])))
             ),
             cfl_max=self.cfl_max,
             velocity_min=tuple(float(value) for value in velocity_min),
@@ -1132,12 +1151,10 @@ class FVMSolver(CouplerInterfaceMixin):
         # Compute CFL after step (for next step's dt adjustment)
         if cfg_time.adjust_timestep:
             Co_field = diagnostics.compute_courant_number(
-                self.U, self.phi, step_time_step_size, self.mesh_data, self.geo_data
+                self.velocity, self.face_flux, step_time_step_size, self.mesh_data, self.geo_data
             )
             n_owned = (
-                self.parallel.n_owned
-                if self.parallel.is_partitioned
-                else self.mesh_data["n_elements"]
+                self.parallel.n_owned if self.parallel.is_partitioned else self.mesh_data["n_cells"]
             )
             self.cfl_max = float(self.parallel.global_max(float(np.max(Co_field[:n_owned]))))
         self.logger.courant_info(
@@ -1160,10 +1177,10 @@ class FVMSolver(CouplerInterfaceMixin):
         run per-step force logging and output control."""
         # Roll the BDF time-history ring: U_old_old <- u^n, U_old <- u^{n+1}.
         logging.Timer.start("Field history commit")
-        self.U_old_old[:] = self.U_old[:]
-        self.U_old[:] = self.U[:]
-        self.phi_old_old[:] = self.phi_old[:]
-        self.phi_old[:] = self.phi[:]
+        self.velocity_older[:] = self.velocity_old[:]
+        self.velocity_old[:] = self.velocity[:]
+        self.face_flux_older[:] = self.face_flux_old[:]
+        self.face_flux_old[:] = self.face_flux[:]
         self._n_committed += 1
         self.step += 1
         self.time += self._current_time_step_size
@@ -1183,21 +1200,19 @@ class FVMSolver(CouplerInterfaceMixin):
         logging.Timer.log("Samplers", sink=self.logger)
 
         logging.Timer.start("Turbulence statistics")
-        if self.turbulence and self.nut is not None:
+        if self.turbulence and self.eddy_viscosity is not None:
             n_owned = (
-                self.parallel.n_owned
-                if self.parallel.is_partitioned
-                else self.mesh_data["n_elements"]
+                self.parallel.n_owned if self.parallel.is_partitioned else self.mesh_data["n_cells"]
             )
-            owned_nut = self.nut[:n_owned]
+            owned_nut = self.eddy_viscosity[:n_owned]
             nut_minimum = float(self.parallel.global_min(float(np.min(owned_nut))))
             nut_maximum = float(self.parallel.global_max(float(np.max(owned_nut))))
             nut_sum = float(self.parallel.global_sum(float(np.sum(owned_nut))))
             nut_count = int(self.parallel.global_sum(int(n_owned)))
             if self.parallel.is_root:
                 self.logger.turbulence_info(
-                    self.nut,
-                    self.setup.transport.nu,
+                    self.eddy_viscosity,
+                    self.setup.transport.kinematic_viscosity,
                     statistics=(nut_minimum, nut_maximum, nut_sum / nut_count),
                 )
         logging.Timer.log("Turbulence statistics", sink=self.logger)
@@ -1205,14 +1220,14 @@ class FVMSolver(CouplerInterfaceMixin):
         # Output control — time-based if write_interval_time is set, else step-based
         logging.Timer.start("Visualization output")
         if (self.parallel.is_root or self.parallel.is_partitioned) and self.auto_write:
-            wrt_time = cfg_time.write_interval_time
+            wrt_time = cfg_time.output_interval_time
             if wrt_time is not None:
                 self._time_since_last_write += step_time_step_size
                 if self._time_since_last_write >= wrt_time:
                     self.write_vtk()
                     self._time_since_last_write = 0.0
             else:
-                if self.step % cfg_time.write_interval == 0:
+                if self.step % cfg_time.output_interval_steps == 0:
                     self.write_vtk()
         logging.Timer.log("Visualization output", sink=self.logger)
 
@@ -1286,13 +1301,13 @@ class FVMSolver(CouplerInterfaceMixin):
             filename = os.path.join(sol_dir, f"{self.setup.case_name}_{self.step:06d}.vtu")
 
         fields = {
-            "U": self.U,
-            "p": self.p,
+            "U": self.velocity,
+            "p": self.kinematic_pressure,
             "Co": self._courant_field(self._current_time_step_size),
             "vorticity": self._vorticity_field(),
         }
-        if self.nut is not None:
-            fields["nut"] = self.nut
+        if self.eddy_viscosity is not None:
+            fields["nut"] = self.eddy_viscosity
 
         if self.parallel.is_partitioned:
             from pathlib import Path
@@ -1300,7 +1315,7 @@ class FVMSolver(CouplerInterfaceMixin):
             from ..io.partitioned import write_partition_vtu
             from ..io.vtk_exporter import VTKExporter
 
-            n_local = self.mesh_data["n_elements"]
+            n_local = self.mesh_data["n_cells"]
             stem = Path(filename).stem
             if self.vtk_exporter is None:
                 export_mesh = self.mesh_data.get("_visualization_mesh", self.mesh_data)

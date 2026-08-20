@@ -68,9 +68,9 @@ class SnapshotContext:
         mesh_data: dict,
         geo_data: dict,
         boundaries: list,
-        U: np.ndarray,
+        velocity: np.ndarray,
         p: np.ndarray,
-        nut: np.ndarray | None,
+        eddy_viscosity: np.ndarray | None,
         time: float,
         step: int,
         time_step_size: float,
@@ -82,9 +82,9 @@ class SnapshotContext:
         self.mesh_data = mesh_data
         self.geo_data = geo_data
         self.boundaries = boundaries
-        self.U = U
-        self.p = p
-        self.nut = nut
+        self.velocity = velocity
+        self.kinematic_pressure = p
+        self.eddy_viscosity = eddy_viscosity
         self.time = time
         self.step = step
         self._current_time_step_size = time_step_size
@@ -101,7 +101,7 @@ class SnapshotContext:
         gradient = self._derived_fields.get("velocity_gradient")
         if gradient is None:
             gradient = gradients._resolve_gradient_fn(self.geo_data)(
-                self.U, self.mesh_data, self.geo_data
+                self.velocity, self.mesh_data, self.geo_data
             )
             self._derived_fields["velocity_gradient"] = gradient
         return gradient
@@ -112,7 +112,7 @@ class SnapshotContext:
         vorticity = self._derived_fields.get("vorticity")
         if vorticity is None:
             vorticity = diagnostics.compute_vorticity(
-                self.U,
+                self.velocity,
                 self.mesh_data,
                 self.geo_data,
                 gradient=self._velocity_gradient(),
@@ -156,7 +156,7 @@ class PostProcess:
 
         self.case_dir = str(Path(case_dir).resolve())
         samplers = tuple(samplers) if samplers is not None else tuple(config.samplers or ())
-        self.config = replace(config, samplers=samplers)
+        self.setup = replace(config, samplers=samplers)
         self.mesh_data = _materialize_mesh(mesh)
         self.boundaries = self._setup_boundaries(self.mesh_data)
         self.geo_data = self._build_geometry(self.mesh_data)
@@ -167,7 +167,7 @@ class PostProcess:
         from ..mesh import geometry
         from ..mesh.coupled import configure_cyclic_boundaries
 
-        gs = self.config.schemes.gradient_scheme
+        gs = self.setup.schemes.gradient_scheme
         geo = geometry.compute_mesh_geometry(
             mesh_data, gradient_scheme=gs, compute_lsq=False, logger=None
         )
@@ -178,17 +178,17 @@ class PostProcess:
 
     def _setup_boundaries(self, mesh_data: dict) -> list:
         boundaries = mesh_data["boundary"]
-        for b_cfg in self.config.boundaries:
+        for b_cfg in self.setup.boundaries:
             for b_mesh in boundaries:
                 if b_mesh["name"] == b_cfg.name:
-                    velocity = np.asarray(b_cfg.value_velocity, dtype=np.float64)
+                    velocity = np.asarray(b_cfg.velocity_value, dtype=np.float64)
                     b_mesh.update(
                         {
-                            "bc_type_velocity": b_cfg.type_velocity,
-                            "bc_type_p": b_cfg.type_p,
-                            "value_p": b_cfg.value_p,
-                            "bc_type_nut": b_cfg.type_nut,
-                            "value_nut": b_cfg.value_nut,
+                            "velocity_type": b_cfg.velocity_type,
+                            "pressure_type": b_cfg.pressure_type,
+                            "kinematic_pressure_value": b_cfg.kinematic_pressure_value,
+                            "eddy_viscosity_type": b_cfg.eddy_viscosity_type,
+                            "eddy_viscosity_value": b_cfg.eddy_viscosity_value,
                         }
                     )
                     if b_cfg.mesh_type is not None:
@@ -196,18 +196,18 @@ class PostProcess:
                     else:
                         b_mesh.setdefault("type", "patch")
                     if b_cfg.neighbour_patch is not None:
-                        b_mesh["neighbourPatch"] = b_cfg.neighbour_patch
+                        b_mesh["neighbour_patch"] = b_cfg.neighbour_patch
                     if velocity.shape == (3,):
-                        b_mesh["value_velocity"] = velocity
-                        b_mesh.pop("value_velocity_field", None)
+                        b_mesh["velocity_value"] = velocity
+                        b_mesh.pop("velocity_value_field", None)
                     else:
-                        b_mesh["value_velocity_field"] = velocity
+                        b_mesh["velocity_value_field"] = velocity
                     break
         return boundaries
 
     def _pvd_frames(self) -> list[tuple[float, int, Path]]:
         solution_dir = Path(self.case_dir) / "solution"
-        pvd_path = solution_dir / f"{self.config.case_name}.pvd"
+        pvd_path = solution_dir / f"{self.setup.case_name}.pvd"
         if not pvd_path.exists():
             candidates = sorted(solution_dir.glob("*.pvd"))
             if not candidates:
@@ -289,27 +289,29 @@ class PostProcess:
         from ..solve import simple_solver
 
         mesh_data = self.mesh_data
-        n_elements = mesh_data["n_elements"]
-        n_total = mesh_data["n_faces"] - mesh_data["n_interior_faces"] + n_elements
+        n_cells = mesh_data["n_cells"]
+        n_total = mesh_data["n_faces"] - mesh_data["n_interior_faces"] + n_cells
 
-        U = np.zeros((n_total, 3), dtype=np.float64)
+        velocity = np.zeros((n_total, 3), dtype=np.float64)
         p = np.zeros(n_total, dtype=np.float64)
-        U[:n_elements] = fields["U"]
-        p[:n_elements] = fields["p"]
+        velocity[:n_cells] = fields["U"]
+        p[:n_cells] = fields["p"]
 
-        phi = convection.compute_volumetric_face_flux(U, mesh_data, self.geo_data)
+        face_flux = convection.compute_volumetric_face_flux(velocity, mesh_data, self.geo_data)
         simple_solver._update_velocity_bcs(
-            U,
-            phi,
+            velocity,
+            face_flux,
             self.boundaries,
             mesh_data["owners"],
             self.geo_data,
-            n_elements,
+            n_cells,
             mesh_data["n_interior_faces"],
             mesh_data=mesh_data,
         )
-        simple_solver.update_scalar_boundaries(p, mesh_data, self.boundaries, "p", face_flux=phi)
-        return U, p
+        simple_solver.update_scalar_boundaries(
+            p, mesh_data, self.boundaries, "p", face_flux=face_flux
+        )
+        return velocity, p
 
     def _archived_timesteps(self) -> dict[int, float]:
         """Return accepted ``time_step_size`` values keyed by archived solver step."""
@@ -349,8 +351,8 @@ class PostProcess:
         frames = self._pvd_frames()
         archived_time_step_size = self._archived_timesteps()
         sampled: list[tuple[float, int]] = []
-        n_elements = self.mesh_data["n_elements"]
-        default_time_step_size = float(self.config.time.time_step_size)
+        n_cells = self.mesh_data["n_cells"]
+        default_time_step_size = float(self.setup.time.time_step_size)
         for index, (time, step, path) in enumerate(frames):
             # Recover the real archived advance: the time between this archived
             # snapshot and the previously archived one (falls back to the
@@ -361,17 +363,17 @@ class PostProcess:
                 time_step_size = default_time_step_size
             else:
                 time_step_size = float(frames[index][0] - frames[index - 1][0])
-            fields = self._read_snapshot(path, n_elements)
-            U, p = self._reconstruct_state(fields)
+            fields = self._read_snapshot(path, n_cells)
+            velocity, p = self._reconstruct_state(fields)
             context = SnapshotContext(
-                setup=self.config,
+                setup=self.setup,
                 case_dir=self.case_dir,
                 mesh_data=self.mesh_data,
                 geo_data=self.geo_data,
                 boundaries=self.boundaries,
-                U=U,
+                velocity=velocity,
                 p=p,
-                nut=fields["nut"],
+                eddy_viscosity=fields["nut"],
                 time=time,
                 step=step,
                 time_step_size=time_step_size,

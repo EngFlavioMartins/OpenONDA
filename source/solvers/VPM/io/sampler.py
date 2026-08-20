@@ -48,17 +48,17 @@ class SamplerExecutor:
         if sampler_entries is None:
             return
 
-        n_particles = solver.particles.number_of_particles
+        n_particles = solver.particles.n_particles
         if n_particles < 2:
             return
 
-        circ = solver.particles_circulation
+        circ = solver.particle_vortex_strength
         max_circ_mag = np.max(np.linalg.norm(circ, axis=1)) if n_particles > 0 else 0.0
         if max_circ_mag < 1e-8:
             return
 
         samples_dir = resolve_samples_dir(
-            solver.backup_directory,
+            solver.checkpoint_directory,
             getattr(solver.setup, "sample_subdirectory", None),
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
@@ -172,7 +172,7 @@ class SamplerExecutor:
         with filepath.open("a", newline="", encoding="utf-8") as stream:
             writer = csv.writer(stream, lineterminator="\n")
             if write_header:
-                writer.writerow(["flow_time", "time_step", *SAMPLER_CSV_COLUMNS])
+                writer.writerow(["time", "time_step", *SAMPLER_CSV_COLUMNS])
             step = "" if step is None else int(step)
             for values in zip(
                 *(np.asarray(data[name]).reshape(-1) for name in SAMPLER_CSV_COLUMNS),

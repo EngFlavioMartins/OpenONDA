@@ -325,7 +325,7 @@ class SurfaceSampler:
                 - 'dudx', 'dudy', 'dudz', 'dvdx', 'dvdy', 'dvdz', 'dwdx', 'dwdy', 'dwdz': Velocity gradient tensor components [1/s]
         """
         # Guard: if no particles exist, return zero fields (avoid SVD crash)
-        n_particles = solver.particles.number_of_particles
+        n_particles = solver.particles.n_particles
         if n_particles == 0:
             n_pts = len(self.grid_points)
             zeros_vec = np.zeros((n_pts, 3), dtype=np.float64)
@@ -760,7 +760,7 @@ class LineSampler:
                 - 'dudx', 'dudy', 'dudz', 'dvdx', 'dvdy', 'dvdz', 'dwdx', 'dwdy', 'dwdz': Velocity gradient tensor components [1/s]
         """
         # Guard: if no particles exist, return zero fields (avoid SVD crash)
-        n_particles = solver.particles.number_of_particles
+        n_particles = solver.particles.n_particles
         if n_particles == 0:
             n_pts = self.n_points
             zeros_vec = np.zeros((n_pts, 3), dtype=np.float64)

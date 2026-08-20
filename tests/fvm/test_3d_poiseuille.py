@@ -43,18 +43,18 @@ def square_duct_bulk_velocity(*, half_width=0.5, pressure_gradient=1.0, terms=40
 def _solve_duct(cross_stream_cells):
     mesh = structured_box(2, cross_stream_cells, cross_stream_cells, lx=0.25)
     geometry = compute_mesh_geometry(mesh, gradient_scheme="lsq")
-    n_cells = mesh["n_elements"]
+    n_cells = mesh["n_cells"]
     n_interior = mesh["n_interior_faces"]
     field = np.zeros(n_cells + mesh["n_faces"] - n_interior)
 
     for patch in mesh["boundary"]:
         patch["bc_type"] = "fixedValue"
-        faces = np.arange(patch["startFace"], patch["startFace"] + patch["nFaces"])
+        faces = np.arange(patch["start_face"], patch["start_face"] + patch["n_faces"])
         ghosts = n_cells + faces - n_interior
-        centers = geometry["face_centroids"][faces]
-        field[ghosts] = square_duct_velocity(centers[:, 1] - 0.5, centers[:, 2] - 0.5)
+        centres = geometry["face_centroids"][faces]
+        field[ghosts] = square_duct_velocity(centres[:, 1] - 0.5, centres[:, 2] - 0.5)
 
-    volumes = geometry["element_volumes"]
+    volumes = geometry["cell_volumes"]
     for _ in range(80):
         gradient = compute_lsq_gradient(field, mesh, geometry)
         flux = diffusion.assemble_diffusion_term(
@@ -70,8 +70,8 @@ def _solve_duct(cross_stream_cells):
     else:
         raise AssertionError("Square-duct non-orthogonal iteration did not converge")
 
-    centers = geometry["element_centroids"]
-    exact = square_duct_velocity(centers[:, 1] - 0.5, centers[:, 2] - 0.5)
+    centres = geometry["cell_centroids"]
+    exact = square_duct_velocity(centres[:, 1] - 0.5, centres[:, 2] - 0.5)
     profile_error = np.sqrt(np.sum(volumes * (field[:n_cells] - exact) ** 2) / np.sum(volumes))
     numerical_bulk = np.sum(volumes * field[:n_cells]) / np.sum(volumes)
     exact_bulk = square_duct_bulk_velocity()

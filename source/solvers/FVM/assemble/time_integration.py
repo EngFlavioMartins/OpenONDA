@@ -12,7 +12,7 @@ Converted from uFVM cfdAssembleTransientTermEuler.m
 import numpy as np
 
 
-def assemble_transient_term_euler_implicit(phi_old, time_step_size, rho, geo_data):
+def assemble_transient_term_euler_implicit(face_flux_old, time_step_size, rho, geo_data):
     """
     Assemble transient term using Euler implicit scheme.
 
@@ -33,18 +33,20 @@ def assemble_transient_term_euler_implicit(phi_old, time_step_size, rho, geo_dat
             - bc: RHS contribution (n_elements,)
     """
 
-    volumes = geo_data["element_volumes"]
+    volumes = geo_data["cell_volumes"]
 
     # Coefficient: ρV/Δt
     ac = rho * volumes / time_step_size
 
     # RHS: (ρV/Δt) * φ_old
-    bc = ac * phi_old
+    bc = ac * face_flux_old
 
     return {"ac": ac, "bc": bc}
 
 
-def advance_euler_explicit(phi_old, spatial_matrix, spatial_rhs, time_step_size, rho, volumes):
+def advance_euler_explicit(
+    face_flux_old, spatial_matrix, spatial_rhs, time_step_size, rho, volumes
+):
     """Advance one scalar-transport step with forward Euler.
 
     The steady finite-volume operators use ``A_spatial @ phi = b_spatial``.
@@ -71,18 +73,18 @@ def advance_euler_explicit(phi_old, spatial_matrix, spatial_rhs, time_step_size,
         numpy.ndarray: Cell-centred scalar at the new time, shape
         ``(n_cells,)``.
     """
-    phi_old = np.asarray(phi_old, dtype=np.float64)
+    face_flux_old = np.asarray(face_flux_old, dtype=np.float64)
     spatial_rhs = np.asarray(spatial_rhs, dtype=np.float64)
     volumes = np.asarray(volumes, dtype=np.float64)
     density = np.asarray(rho, dtype=np.float64)
 
-    if phi_old.ndim != 1:
+    if face_flux_old.ndim != 1:
         raise ValueError("phi_old must be one-dimensional")
-    if spatial_rhs.shape != phi_old.shape or volumes.shape != phi_old.shape:
+    if spatial_rhs.shape != face_flux_old.shape or volumes.shape != face_flux_old.shape:
         raise ValueError("spatial_rhs and volumes must have the same shape as phi_old")
     if density.ndim == 0:
-        density = np.full(phi_old.shape, float(density), dtype=np.float64)
-    if density.shape != phi_old.shape:
+        density = np.full(face_flux_old.shape, float(density), dtype=np.float64)
+    if density.shape != face_flux_old.shape:
         raise ValueError("rho must be scalar or have the same shape as phi_old")
     if not np.isfinite(time_step_size) or time_step_size <= 0.0:
         raise ValueError("time_step_size must be finite and positive")
@@ -91,5 +93,5 @@ def advance_euler_explicit(phi_old, spatial_matrix, spatial_rhs, time_step_size,
     if not np.all(np.isfinite(volumes)) or np.any(volumes <= 0.0):
         raise ValueError("volumes must contain finite positive values")
 
-    residual = spatial_rhs - np.asarray(spatial_matrix @ phi_old, dtype=np.float64)
-    return phi_old + time_step_size * residual / (density * volumes)
+    residual = spatial_rhs - np.asarray(spatial_matrix @ face_flux_old, dtype=np.float64)
+    return face_flux_old + time_step_size * residual / (density * volumes)

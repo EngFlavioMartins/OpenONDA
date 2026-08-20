@@ -77,18 +77,18 @@ def _resolve_pressure_constraint(params) -> str:
 
 def _pressure_requires_constraint(boundaries, U_star, mesh_data, geo_data) -> bool:
     """Return whether the assembled pressure operator has a constant null space."""
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     for boundary in boundaries:
-        bc_type = boundary.get("bc_type_p")
+        bc_type = boundary.get("pressure_type")
         strategy = BOUNDARIES.strategy(bc_type, "p", "pressure")
         if strategy is BoundaryStrategy.FIXED_VALUE:
             local_requires_constraint = False
             break
         if strategy is BoundaryStrategy.FREESTREAM:
-            start = boundary["startFace"]
-            nf = boundary["nFaces"]
-            ghosts = n_elements + np.arange(start - n_interior, start - n_interior + nf)
+            start = boundary["start_face"]
+            nf = boundary["n_faces"]
+            ghosts = n_cells + np.arange(start - n_interior, start - n_interior + nf)
             flux = np.sum(U_star[ghosts] * geo_data["face_sf"][start : start + nf], axis=1)
             if np.any(flux >= 0.0):
                 local_requires_constraint = False
@@ -102,10 +102,10 @@ def _pressure_requires_constraint(boundaries, U_star, mesh_data, geo_data) -> bo
 
 
 def compute_ddt_flux_correction(
-    U_old,
-    U_old_old,
-    phi_old,
-    phi_old_old,
+    velocity_old,
+    velocity_older,
+    face_flux_old,
+    face_flux_older,
     time_step_size,
     mesh_data,
     geo_data,
@@ -144,26 +144,26 @@ def compute_ddt_flux_correction(
     Returns a volumetric flux increment per unit ``rAU`` — the caller scales it
     by the face-interpolated ``DU``.
     """
-    if phi_old is None or time_step_size is None or U_old is None:
+    if face_flux_old is None or time_step_size is None or velocity_old is None:
         return None
 
     n_faces = mesh_data["n_faces"]
     n_interior = mesh_data["n_interior_faces"]
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
 
     if str(ddt_scheme).lower() in ("backward", "bdf2") and (
-        U_old_old is not None and phi_old_old is not None
+        velocity_older is not None and face_flux_older is not None
     ):
         coefft0, coefft00 = 2.0, 0.5
     else:
         coefft0, coefft00 = 1.0, 0.0
 
-    phi_old = np.asarray(phi_old, dtype=np.float64)
-    U_old = np.asarray(U_old, dtype=np.float64)
-    U_history = U_old.copy()
+    face_flux_old = np.asarray(face_flux_old, dtype=np.float64)
+    velocity_old = np.asarray(velocity_old, dtype=np.float64)
+    U_history = velocity_old.copy()
     U_history *= coefft0
     if coefft00 != 0.0:
-        U_history -= coefft00 * np.asarray(U_old_old, dtype=np.float64)
+        U_history -= coefft00 * np.asarray(velocity_older, dtype=np.float64)
 
     # Sf . interpolate(U_history), matching fvc::dotInterpolate.
     owners = mesh_data["owners"]
@@ -179,41 +179,43 @@ def compute_ddt_flux_correction(
         nei = neighbours[start:stop]
         w = weights[start:stop, np.newaxis]
         history_face = w * U_history[nei] + (1.0 - w) * U_history[own]
-        old_face = w * U_old[nei] + (1.0 - w) * U_old[own]
-        history_flux = coefft0 * phi_old[start:stop]
+        old_face = w * velocity_old[nei] + (1.0 - w) * velocity_old[own]
+        history_flux = coefft0 * face_flux_old[start:stop]
         if coefft00 != 0.0:
-            history_flux -= coefft00 * np.asarray(phi_old_old)[start:stop]
+            history_flux -= coefft00 * np.asarray(face_flux_older)[start:stop]
         phi_corr = history_flux - np.einsum("ij,ij->i", history_face, face_sf[start:stop])
-        reference = phi_old[start:stop] - np.einsum("ij,ij->i", old_face, face_sf[start:stop])
+        reference = face_flux_old[start:stop] - np.einsum("ij,ij->i", old_face, face_sf[start:stop])
         coupling = 1.0 - np.minimum(
-            np.abs(reference) / (np.abs(phi_old[start:stop]) + np.finfo(np.float64).tiny),
+            np.abs(reference) / (np.abs(face_flux_old[start:stop]) + np.finfo(np.float64).tiny),
             1.0,
         )
         correction[start:stop] = coupling * phi_corr / float(time_step_size)
 
     for start in range(n_interior, n_faces, chunk_size):
         stop = min(start + chunk_size, n_faces)
-        ghosts = n_elements + np.arange(start - n_interior, stop - n_interior)
-        history_flux = coefft0 * phi_old[start:stop]
+        ghosts = n_cells + np.arange(start - n_interior, stop - n_interior)
+        history_flux = coefft0 * face_flux_old[start:stop]
         if coefft00 != 0.0:
-            history_flux -= coefft00 * np.asarray(phi_old_old)[start:stop]
+            history_flux -= coefft00 * np.asarray(face_flux_older)[start:stop]
         phi_corr = history_flux - np.einsum("ij,ij->i", U_history[ghosts], face_sf[start:stop])
-        reference = phi_old[start:stop] - np.einsum("ij,ij->i", U_old[ghosts], face_sf[start:stop])
+        reference = face_flux_old[start:stop] - np.einsum(
+            "ij,ij->i", velocity_old[ghosts], face_sf[start:stop]
+        )
         coupling = 1.0 - np.minimum(
-            np.abs(reference) / (np.abs(phi_old[start:stop]) + np.finfo(np.float64).tiny),
+            np.abs(reference) / (np.abs(face_flux_old[start:stop]) + np.finfo(np.float64).tiny),
             1.0,
         )
         correction[start:stop] = coupling * phi_corr / float(time_step_size)
 
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_velocity"), "U", "ghost")
+        strategy = BOUNDARIES.strategy(boundary.get("velocity_type"), "U", "ghost")
         if strategy in (
             BoundaryStrategy.FIXED_VALUE,
             BoundaryStrategy.NO_SLIP,
             BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT,
         ):
-            start = boundary["startFace"]
-            correction[start : start + boundary["nFaces"]] = 0.0
+            start = boundary["start_face"]
+            correction[start : start + boundary["n_faces"]] = 0.0
 
     return correction
 
@@ -338,7 +340,7 @@ def _update_fixed_flux_pressure_boundaries(
     pressure_free_face_flux=None,
 ):
     """Update ``fixedFluxPressure`` from the pressure-free face flux."""
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     face_sf = geo_data["face_sf"]
@@ -347,7 +349,7 @@ def _update_fixed_flux_pressure_boundaries(
 
     fixed_flux_patches = []
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "ghost")
+        strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "p", "ghost")
         if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE or (
             strategy is BoundaryStrategy.FREESTREAM
             and boundary.get("_directional_fixed_flux_pressure", False)
@@ -369,13 +371,13 @@ def _update_fixed_flux_pressure_boundaries(
             raise ValueError("pressure_free_face_flux must have one value per face")
     else:
         DU_vector = DU[:, np.newaxis] if np.asarray(DU).ndim == 1 else DU
-        U_hbya = U_star[:n_elements] + DU_vector * grad_p[:n_elements]
+        U_hbya = U_star[:n_cells] + DU_vector * grad_p[:n_cells]
 
     changed = False
     for boundary in fixed_flux_patches:
-        start = boundary["startFace"]
-        nf = boundary["nFaces"]
-        ghost = n_elements + (start - n_interior) + np.arange(nf)
+        start = boundary["start_face"]
+        nf = boundary["n_faces"]
+        ghost = n_cells + (start - n_interior) + np.arange(nf)
         own = owners[start : start + nf]
         if boundary.get("fixed_flux_pressure_external", False):
             delta = boundary.get("fixed_flux_pressure_delta")
@@ -405,7 +407,9 @@ def _update_fixed_flux_pressure_boundaries(
         boundary["fixed_flux_pressure_delta"] = delta
         if boundary.get("_directional_fixed_flux_pressure", False):
             outflow = np.asarray(boundary["_fixed_freestream_outflow"], dtype=bool)
-            p[ghost] = np.where(outflow, float(boundary.get("value_p", 0.0)), p[own] + delta)
+            p[ghost] = np.where(
+                outflow, float(boundary.get("kinematic_pressure_value", 0.0)), p[own] + delta
+            )
         else:
             p[ghost] = p[own] + delta
         changed = True
@@ -421,7 +425,7 @@ def _update_fixed_flux_pressure_boundaries(
 def _process_boundary_faces_jit(
     n_boundary_faces,
     n_interior,
-    n_elements,
+    n_cells,
     owners,
     face_sf,
     face_cf_vector,
@@ -475,7 +479,7 @@ def _process_boundary_faces_jit(
 
         bc_code = bc_type_codes[i]
 
-        b_elem_idx = n_elements + (i_face - n_interior)
+        b_elem_idx = n_cells + (i_face - n_interior)
         Ub0, Ub1, Ub2 = U_star[b_elem_idx, 0], U_star[b_elem_idx, 1], U_star[b_elem_idx, 2]
         velocity_flux = Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2
 
@@ -547,8 +551,8 @@ def _pressure_boundary_signature(boundaries) -> tuple[tuple[int, int, str], ...]
     """Return the structural part of the pressure-boundary configuration."""
     signature = []
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
-        signature.append((int(boundary["startFace"]), int(boundary["nFaces"]), strategy.name))
+        strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "p", "pressure")
+        signature.append((int(boundary["start_face"]), int(boundary["n_faces"]), strategy.name))
     return tuple(signature)
 
 
@@ -561,7 +565,7 @@ def _pressure_boundary_matrix_is_reusable(boundaries) -> bool:
     as a conventional fixed-value/fixed-gradient layout.
     """
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+        strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "p", "pressure")
         if (
             strategy is BoundaryStrategy.FREESTREAM
             and boundary.get("_fixed_freestream_outflow") is None
@@ -576,10 +580,10 @@ def build_pressure_boundary_layout(boundaries, n_interior, n_faces) -> PressureB
     codes = np.empty(n_bnd, dtype=np.int32)
     face_indices = np.arange(n_interior, n_faces, dtype=np.int32)
     for boundary in boundaries:
-        start = int(boundary["startFace"])
-        nf = int(boundary["nFaces"])
+        start = int(boundary["start_face"])
+        nf = int(boundary["n_faces"])
         local = slice(start - n_interior, start - n_interior + nf)
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+        strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "p", "pressure")
         if strategy is BoundaryStrategy.FIXED_VALUE:
             code = 1
         elif strategy is BoundaryStrategy.EMPTY:
@@ -603,8 +607,8 @@ def _pressure_boundary_values(boundaries, n_interior, n_faces) -> np.ndarray:
     """Read kinematic-pressure values without rebuilding face topology."""
     values = np.zeros(n_faces - n_interior, dtype=np.float64)
     for boundary in boundaries:
-        start = int(boundary["startFace"])
-        nf = int(boundary["nFaces"])
+        start = int(boundary["start_face"])
+        nf = int(boundary["n_faces"])
         local = slice(start - n_interior, start - n_interior + nf)
         field = boundary.get("value_p_field")
         if field is not None:
@@ -616,7 +620,7 @@ def _pressure_boundary_values(boundaries, n_interior, n_faces) -> np.ndarray:
                 )
             values[local] = field_values
         else:
-            val = boundary.get("value_p", boundary.get("value", 0.0))
+            val = boundary.get("kinematic_pressure_value", boundary.get("value", 0.0))
             if val is not None:
                 values[local] = val
     return values
@@ -678,8 +682,8 @@ def adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interi
     outflow_local = 0.0
     adjustable_slices: list[tuple[int, int, np.ndarray]] = []
     for boundary in boundaries:
-        start = int(boundary["startFace"])
-        nf = int(boundary["nFaces"])
+        start = int(boundary["start_face"])
+        nf = int(boundary["n_faces"])
         if nf == 0:
             continue
         patch_flux = flux_vf[start : start + nf]
@@ -687,7 +691,7 @@ def adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interi
         if np.any(boundary_neighbours[start : start + nf] >= 0):
             continue
         net_local += float(np.sum(patch_flux))
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_velocity"), "U", "flux")
+        strategy = BOUNDARIES.strategy(boundary.get("velocity_type"), "U", "flux")
         if strategy in floating:
             # Scale exactly the faces the pressure matrix treats as
             # adjustable: the assembly's own classification when present.
@@ -852,7 +856,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     mesh_data,
     geo_data,
     boundaries,
-    alpha_u=1.0,
+    velocity_relaxation=1.0,
     pressure_constraint="reference",
     matrix_workspace=None,
     operator_backend="numpy",
@@ -866,7 +870,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     Assemble pressure correction equation using Modified Rhie-Chow interpolation.
 
     This implementation uses the "H-by-A" reconstruction method:
-    1. Reconstruct velocity without pressure gradient at cell centers (HbyA).
+    1. Reconstruct velocity without pressure gradient at cell centres (HbyA).
     2. Interpolate HbyA to faces.
     3. Add compact pressure gradient drive at faces.
 
@@ -886,7 +890,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     Returns:
         tuple: (A_p, b_p, f_vf) where f_vf is the Rhie-Chow corrected flux (phi_star).
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
     owners = mesh_data["owners"]
@@ -897,10 +901,10 @@ def assemble_pressure_correction_equation_rhie_chow(
     # pressure/non-orthogonal corrections in one PIMPLE outer iteration, so
     # retain its inverse and face conductance instead of rebuilding two
     # full-mesh arrays on every inner solve.
-    volumes = geo_data["element_volumes"]
+    volumes = geo_data["cell_volumes"]
     if correction_workspace is None:
         # Restore physical A_U from relaxed A_U for Rhie-Chow D-coefficients
-        A_U_physical = A_U * alpha_u
+        A_U_physical = A_U * velocity_relaxation
         DU = _compute_rhie_chow_coefficients(volumes, A_U_physical)
         face_conductance = _compute_pressure_face_conductance(mesh_data, geo_data, DU)
     else:
@@ -929,19 +933,19 @@ def assemble_pressure_correction_equation_rhie_chow(
     # Modified Rhie-Chow: U_f = Avg(U + D*GradP) - Avg(D)*CompactGradP
     # This is much more robust on persistent checkerboarding.
 
-    # 1. Reconstruct "H/A" velocity at cell centers (Velocity without pressure gradient)
-    # U_center = H/A - grad_p * DU
-    # So H/A = U_center + grad_p * DU
-    # We use U_star as U_center (it includes -grad_p * DU approx)
+    # 1. Reconstruct "H/A" velocity at cell centres (Velocity without pressure gradient)
+    # U_centre = H/A - grad_p * DU
+    # So H/A = U_centre + grad_p * DU
+    # We use U_star as U_centre (it includes -grad_p * DU approx)
     scalar_diagonal = np.asarray(DU).ndim == 1
     DU_vector = DU[:, np.newaxis] if scalar_diagonal else DU
-    U_HbyA = U_star[:n_elements] + DU_vector * grad_p[:n_elements]
+    U_HbyA = U_star[:n_cells] + DU_vector * grad_p[:n_cells]
 
     # Fuse the interior-face interpolation and non-orthogonal correction in a
     # compiled loop. Besides being faster than eight chains of NumPy advanced
     # indexing per PIMPLE step, this avoids retaining DU, HbyA, edge,
     # non-orthogonal, and gradient temporaries at the same time.
-    grad_p_interior = grad_p[:n_elements]
+    grad_p_interior = grad_p[:n_cells]
     if not reuse_matrix:
         assert flux_cf is not None and flux_ff is not None
         flux_cf[:n_interior] = face_conductance[:n_interior]
@@ -986,16 +990,16 @@ def assemble_pressure_correction_equation_rhie_chow(
         # pressure matrix never saw — which surfaces as a divergence
         # checkerboard anchored at the patch corners.
         for boundary in boundaries:
-            strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+            strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "p", "pressure")
             if strategy is BoundaryStrategy.FREESTREAM:
-                start = int(boundary["startFace"])
-                nf = int(boundary["nFaces"])
+                start = int(boundary["start_face"])
+                nf = int(boundary["n_faces"])
                 fixed_outflow = boundary.get("_fixed_freestream_outflow")
                 if fixed_outflow is not None:
                     boundary["_freestream_outflow"] = fixed_outflow
                 else:
                     ghost = U_star[
-                        n_elements + (start - n_interior) : n_elements + (start - n_interior) + nf
+                        n_cells + (start - n_interior) : n_cells + (start - n_interior) + nf
                     ]
                     sf_patch = geo_data["face_sf"][start : start + nf]
                     boundary["_freestream_outflow"] = np.einsum("ij,ij->i", ghost, sf_patch) >= 0.0
@@ -1003,7 +1007,7 @@ def assemble_pressure_correction_equation_rhie_chow(
         cf_b, ff_b, vf_b = _process_boundary_faces_jit(
             n_boundary_faces,
             n_interior,
-            n_elements,
+            n_cells,
             owners,
             geo_data["face_sf"],
             geo_data["face_cf_vector"],
@@ -1031,8 +1035,8 @@ def assemble_pressure_correction_equation_rhie_chow(
             external_flux = boundary.get("external_face_flux")
             if external_flux is None:
                 continue
-            start = int(boundary["startFace"])
-            nf = int(boundary["nFaces"])
+            start = int(boundary["start_face"])
+            nf = int(boundary["n_faces"])
             field = np.asarray(external_flux, dtype=float).reshape(-1)
             if field.shape != (nf,) or not np.all(np.isfinite(field)):
                 raise ValueError(
@@ -1138,19 +1142,19 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=None):
     Returns:
         Extended ``p_prime`` array ``(n_elements + n_boundary_faces,)``.
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
     owners = mesh_data["owners"]
-    p_prime_ext = np.zeros(n_elements + (n_faces - n_interior))
-    p_prime_ext[:n_elements] = p_prime
+    p_prime_ext = np.zeros(n_cells + (n_faces - n_interior))
+    p_prime_ext[:n_cells] = p_prime
     for boundary in boundaries:
-        start = boundary["startFace"]
-        nf = boundary["nFaces"]
-        idx = n_elements + (start - n_interior)
+        start = boundary["start_face"]
+        nf = boundary["n_faces"]
+        idx = n_cells + (start - n_interior)
         own = owners[start : start + nf]
-        bc_type_p = boundary.get("bc_type_p")
-        strategy = BOUNDARIES.strategy(bc_type_p, "p", "ghost")
+        pressure_type = boundary.get("pressure_type")
+        strategy = BOUNDARIES.strategy(pressure_type, "p", "ghost")
         if strategy is BoundaryStrategy.FIXED_VALUE:
             p_prime_ext[idx : idx + nf] = 0.0
         elif strategy is BoundaryStrategy.CYCLIC:
@@ -1177,7 +1181,7 @@ def _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=None):
     return p_prime_ext
 
 
-def _correct_interior_fluxes(phi, p_prime, mesh_data, face_conductance):
+def _correct_interior_fluxes(face_flux, p_prime, mesh_data, face_conductance):
     """Correct interior face fluxes with the Rhie-Chow pressure correction.
 
     Applies the volumetric-flux correction ``Δφ = g⋅(p'_P − p'_N)`` where *g* is
@@ -1194,10 +1198,12 @@ def _correct_interior_fluxes(phi, p_prime, mesh_data, face_conductance):
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
     geo_diff = face_conductance[:n_interior]
-    phi[:n_interior] += geo_diff * (p_prime[owners[:n_interior]] - p_prime[neighbours[:n_interior]])
+    face_flux[:n_interior] += geo_diff * (
+        p_prime[owners[:n_interior]] - p_prime[neighbours[:n_interior]]
+    )
 
 
-def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance):
+def _correct_boundary_fluxes(face_flux, p_prime, boundaries, owners, face_conductance):
     """Correct boundary-face fluxes for ``fixedValue`` pressure boundaries.
 
     Only patches whose pressure BC type is ``fixedValue`` receive a
@@ -1211,27 +1217,27 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance)
         face_conductance: Shared pressure-face conductance array.
     """
     for boundary in boundaries:
-        start = boundary["startFace"]
-        nf = boundary["nFaces"]
+        start = boundary["start_face"]
+        nf = boundary["n_faces"]
         idx = np.arange(start, start + nf)
         own = owners[idx]
         geo_diff_b = face_conductance[idx]
-        bc_type = boundary.get("bc_type_p")
+        bc_type = boundary.get("pressure_type")
         strategy = BOUNDARIES.strategy(bc_type, "p", "flux")
         if strategy is BoundaryStrategy.FIXED_VALUE:
-            phi[idx] += geo_diff_b * p_prime[own]
+            face_flux[idx] += geo_diff_b * p_prime[own]
         elif strategy is BoundaryStrategy.CYCLIC:
             paired = boundary.get("_paired_cells")
             if paired is None:
                 # The mesh-level array is not part of this helper's historical
                 # signature; cyclic setup stores the same view on each patch.
                 raise ValueError(f"Cyclic patch {boundary.get('name')!r} lacks paired cells")
-            phi[idx] += geo_diff_b * (p_prime[own] - p_prime[paired])
+            face_flux[idx] += geo_diff_b * (p_prime[own] - p_prime[paired])
         elif strategy is BoundaryStrategy.FREESTREAM:
             outflow = boundary.get("_freestream_outflow")
             if outflow is None:
-                outflow = phi[idx] >= 0.0
-            phi[idx] += np.where(outflow, geo_diff_b * p_prime[own], 0.0)
+                outflow = face_flux[idx] >= 0.0
+            face_flux[idx] += np.where(outflow, geo_diff_b * p_prime[own], 0.0)
         elif strategy not in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.FIXED_FLUX_PRESSURE,
@@ -1241,7 +1247,7 @@ def _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance)
             raise RuntimeError(f"Unhandled pressure flux strategy {strategy!r}")
 
 
-def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
+def _apply_inlet_outlet_bc(velocity, face_flux, boundary, owners, n_cells, n_interior):
     """inletOutlet velocity BC: zeroGradient on outflow, fixed value on inflow.
 
     Per face: outgoing flux (φ ≥ 0) → extrapolate from the owner cell
@@ -1251,19 +1257,19 @@ def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
     pressure-correction refreshes must not replace its non-uniform VPM-BC trace
     with the uniform freestream.
     """
-    start = boundary["startFace"]
-    nf = boundary["nFaces"]
-    idx = n_elements + (start - n_interior)
+    start = boundary["start_face"]
+    nf = boundary["n_faces"]
+    idx = n_cells + (start - n_interior)
     own = owners[start : start + nf]
-    if boundary.get("value_velocity_field") is not None:
-        inlet_val = np.asarray(boundary["value_velocity_field"], dtype=float)
+    if boundary.get("velocity_value_field") is not None:
+        inlet_val = np.asarray(boundary["velocity_value_field"], dtype=float)
         if inlet_val.shape != (nf, 3):
             raise ValueError(
                 f"Per-face inlet velocity for patch {boundary.get('name')!r} "
                 f"must have shape ({nf}, 3), got {inlet_val.shape}"
             )
     else:
-        inlet_val = np.asarray(boundary.get("value_velocity", [0.0, 0.0, 0.0]), dtype=float)
+        inlet_val = np.asarray(boundary.get("velocity_value", [0.0, 0.0, 0.0]), dtype=float)
         if inlet_val.shape != (3,):
             raise ValueError(
                 f"Uniform inlet velocity for patch {boundary.get('name')!r} "
@@ -1271,11 +1277,11 @@ def _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior):
             )
     outflow = boundary.get("_freestream_outflow")
     if outflow is None:
-        outflow = phi[start : start + nf] >= 0.0
-    U[idx : idx + nf] = np.where(outflow[:, np.newaxis], U[own], inlet_val)
+        outflow = face_flux[start : start + nf] >= 0.0
+    velocity[idx : idx + nf] = np.where(outflow[:, np.newaxis], velocity[own], inlet_val)
 
 
-def _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries):
+def _apply_zero_gradient_bc(velocity, face_flux, boundary, owners, n_cells, n_interior, boundaries):
     """Apply a zero-gradient velocity BC (extrapolate from the owner cell).
 
     Sets the ghost-cell velocity equal to the owner-cell value.
@@ -1289,42 +1295,42 @@ def _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, bo
         n_interior:  Number of interior faces.
         boundaries:  List of all boundary patches.
     """
-    start = boundary["startFace"]
-    nf = boundary["nFaces"]
-    idx = n_elements + (start - n_interior)
+    start = boundary["start_face"]
+    nf = boundary["n_faces"]
+    idx = n_cells + (start - n_interior)
     own = owners[start : start + nf]
-    U[idx : idx + nf] = U[own]
+    velocity[idx : idx + nf] = velocity[own]
 
 
-def _apply_cyclic_bc(U, boundary, mesh_data, n_elements, n_interior):
+def _apply_cyclic_bc(velocity, boundary, mesh_data, n_cells, n_interior):
     """Copy paired owner values into the cyclic patch ghost layer."""
-    start = boundary["startFace"]
-    nf = boundary["nFaces"]
-    idx = n_elements + (start - n_interior)
+    start = boundary["start_face"]
+    nf = boundary["n_faces"]
+    idx = n_cells + (start - n_interior)
     paired = mesh_data["boundary_neighbours"][start : start + nf]
     if np.any(paired < 0):
         raise ValueError(f"Cyclic patch {boundary['name']!r} is not paired")
-    U[idx : idx + nf] = U[paired]
+    velocity[idx : idx + nf] = velocity[paired]
 
 
-def _apply_fixed_value_bc(U, boundary, n_elements, n_interior, strategy):
+def _apply_fixed_value_bc(velocity, boundary, n_cells, n_interior, strategy):
     """Apply fixedValue or noSlip velocity BC.
 
     Honours a per-face ``value_velocity_field`` (n_faces_patch, 3) when present (e.g. a
     non-uniform coupler VPM BC), otherwise the uniform ``value_velocity``.
     """
-    start = boundary["startFace"]
-    nf = boundary["nFaces"]
-    idx = n_elements + (start - n_interior)
+    start = boundary["start_face"]
+    nf = boundary["n_faces"]
+    idx = n_cells + (start - n_interior)
     if strategy is BoundaryStrategy.NO_SLIP:
-        U[idx : idx + nf] = [0.0, 0.0, 0.0]
-    elif boundary.get("value_velocity_field") is not None:
-        U[idx : idx + nf] = boundary["value_velocity_field"]
-    elif "value_velocity" in boundary:
-        U[idx : idx + nf] = np.array(boundary["value_velocity"])
+        velocity[idx : idx + nf] = [0.0, 0.0, 0.0]
+    elif boundary.get("velocity_value_field") is not None:
+        velocity[idx : idx + nf] = boundary["velocity_value_field"]
+    elif "velocity_value" in boundary:
+        velocity[idx : idx + nf] = np.array(boundary["velocity_value"])
 
 
-def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
+def _apply_slip_bc(velocity, boundary, owners, geo_data, n_cells, n_interior):
     """Apply a slip / symmetry / empty velocity BC.
 
     Removes the component normal to the boundary face from the
@@ -1338,15 +1344,15 @@ def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
         n_elements: Number of interior elements.
         n_interior: Number of interior faces.
     """
-    start = boundary["startFace"]
-    nf = boundary["nFaces"]
-    idx = n_elements + (start - n_interior)
+    start = boundary["start_face"]
+    nf = boundary["n_faces"]
+    idx = n_cells + (start - n_interior)
     own = owners[start : start + nf]
     face_sf = geo_data["face_sf"][start : start + nf]
     # This is deliberately the same array expression as the predictor's
     # empty-boundary update.  In particular, a degenerate face retains the
     # owner value as the old scalar helper did.
-    owner_velocity = U[own]
+    owner_velocity = velocity[own]
     magnitudes = np.linalg.norm(face_sf, axis=1)
     valid = magnitudes > 1e-10
     projected = owner_velocity.copy()
@@ -1354,11 +1360,11 @@ def _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior):
         normals = face_sf[valid] / magnitudes[valid, np.newaxis]
         normal_velocity = np.sum(owner_velocity[valid] * normals, axis=1)
         projected[valid] -= normal_velocity[:, np.newaxis] * normals
-    U[idx : idx + nf] = projected
+    velocity[idx : idx + nf] = projected
 
 
 def _update_velocity_bcs(
-    U, phi, boundaries, owners, geo_data, n_elements, n_interior, mesh_data=None
+    velocity, face_flux, boundaries, owners, geo_data, n_cells, n_interior, mesh_data=None
 ):
     """Update all velocity boundary conditions after a pressure-correction step.
 
@@ -1380,43 +1386,47 @@ def _update_velocity_bcs(
         n_interior:  Number of interior faces.
     """
     for boundary in boundaries:
-        bc_type_u = boundary.get("bc_type_velocity") or boundary.get("bc_type")
+        bc_type_u = boundary.get("velocity_type") or boundary.get("bc_type")
         strategy = BOUNDARIES.strategy(bc_type_u, "U", "ghost")
         if strategy is BoundaryStrategy.ZERO_GRADIENT:
-            _apply_zero_gradient_bc(U, phi, boundary, owners, n_elements, n_interior, boundaries)
+            _apply_zero_gradient_bc(
+                velocity, face_flux, boundary, owners, n_cells, n_interior, boundaries
+            )
         elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
-            _apply_inlet_outlet_bc(U, phi, boundary, owners, n_elements, n_interior)
+            _apply_inlet_outlet_bc(velocity, face_flux, boundary, owners, n_cells, n_interior)
         elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
-            _apply_fixed_value_bc(U, boundary, n_elements, n_interior, strategy)
+            _apply_fixed_value_bc(velocity, boundary, n_cells, n_interior, strategy)
         elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
             if mesh_data is None:
                 raise ValueError("Mixed velocity boundary update requires mesh_data")
-            update_normal_velocity_tangential_gradient_boundary(U, boundary, mesh_data, geo_data)
+            update_normal_velocity_tangential_gradient_boundary(
+                velocity, boundary, mesh_data, geo_data
+            )
         elif strategy in (
             BoundaryStrategy.EMPTY,
             BoundaryStrategy.SLIP,
             BoundaryStrategy.SYMMETRY,
         ):
-            _apply_slip_bc(U, boundary, owners, geo_data, n_elements, n_interior)
+            _apply_slip_bc(velocity, boundary, owners, geo_data, n_cells, n_interior)
         elif strategy is BoundaryStrategy.CYCLIC:
             if mesh_data is None:
                 raise ValueError("Cyclic boundary update requires mesh_data")
-            _apply_cyclic_bc(U, boundary, mesh_data, n_elements, n_interior)
+            _apply_cyclic_bc(velocity, boundary, mesh_data, n_cells, n_interior)
         else:
             raise RuntimeError(f"Unhandled velocity ghost strategy {strategy!r}")
 
 
 def correct_velocity_and_flux(
-    U,
-    phi,
+    velocity,
+    face_flux,
     p_prime,
     A_U,
     mesh_data,
     geo_data,
     boundaries,
     rho=1.0,
-    alpha_u=1.0,
-    alpha_p=1.0,
+    velocity_relaxation=1.0,
+    pressure_relaxation=1.0,
     workspace: PressureCorrectionWorkspace | None = None,
 ):
     """
@@ -1428,24 +1438,24 @@ def correct_velocity_and_flux(
     Uses UN-RELAXED diagonal for DU consistency: DU = V / (A_U * alpha_u).
     This matches the Rhie-Chow assembly which also uses the un-relaxed A_U.
 
-    ``alpha_p`` scales the **cell-velocity** correction only, never the face
+    ``pressure_relaxation`` scales the **cell-velocity** correction only, never the face
     flux. The pressure equation corrects ``phi`` with the full flux correction
     (so mass conservation never depends on a relaxation factor), then rebuilds
     the cell velocity from the relaxed pressure. Passing the full
     correction to ``U`` while the caller stores only ``alpha_p * p_prime``
     leaves velocity and pressure describing different states, and the outer
-    loop then converges to a fixed point that depends on ``alpha_p`` instead of
+    loop then converges to a fixed point that depends on ``pressure_relaxation`` instead of
     the pressure-relaxation-independent solution.
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     _validate_reference_density(rho)
 
     if workspace is None:
-        volumes = geo_data["element_volumes"]
+        volumes = geo_data["cell_volumes"]
         # Restore un-relaxed diagonal for DU consistency.
-        A_U_physical = A_U * alpha_u
+        A_U_physical = A_U * velocity_relaxation
         DU = _compute_rhie_chow_coefficients(volumes, A_U_physical)
         face_conductance = _compute_pressure_face_conductance(mesh_data, geo_data, DU)
     else:
@@ -1453,24 +1463,24 @@ def correct_velocity_and_flux(
         face_conductance = workspace.face_conductance
 
     # 1. Correct Cell Velocity
-    p_prime_ext = _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=phi)
+    p_prime_ext = _extend_p_prime_bcs(p_prime, mesh_data, boundaries, face_flux=face_flux)
     _grad_fn = gradients._resolve_gradient_fn(geo_data)
     grad_p_prime = _grad_fn(p_prime_ext, mesh_data, geo_data)
     if grad_p_prime.ndim == 3:
         grad_p_prime = grad_p_prime.squeeze(-1)
     DU_vector = DU[:, np.newaxis] if np.asarray(DU).ndim == 1 else DU
-    U[:n_elements] -= alpha_p * DU_vector * grad_p_prime[:n_elements]
+    velocity[:n_cells] -= pressure_relaxation * DU_vector * grad_p_prime[:n_cells]
 
     # 2. Correct Face Fluxes
-    _correct_interior_fluxes(phi, p_prime, mesh_data, face_conductance)
-    _correct_boundary_fluxes(phi, p_prime, boundaries, owners, face_conductance)
+    _correct_interior_fluxes(face_flux, p_prime, mesh_data, face_conductance)
+    _correct_boundary_fluxes(face_flux, p_prime, boundaries, owners, face_conductance)
 
     # 3. Update Velocity BCs
     _update_velocity_bcs(
-        U, phi, boundaries, owners, geo_data, n_elements, n_interior, mesh_data=mesh_data
+        velocity, face_flux, boundaries, owners, geo_data, n_cells, n_interior, mesh_data=mesh_data
     )
 
-    return U, phi
+    return velocity, face_flux
 
 
 def _remove_normal_component(U_owner, face_vector):
@@ -1536,7 +1546,8 @@ def _apply_scalar_bc(
         else:
             phi[indices] = phi[owners_b] + np.asarray(delta, dtype=float)
     elif strategy is BoundaryStrategy.FIXED_VALUE:
-        val = boundary.get(f"value_{field_name}")
+        value_key = "kinematic_pressure_value" if field_name == "p" else f"{field_name}_value"
+        val = boundary.get(value_key)
         if val is None:
             val = boundary.get("value")
         if val is None:
@@ -1554,7 +1565,8 @@ def _apply_scalar_bc(
             if face_flux is None:
                 raise ValueError("Freestream scalar update requires face fluxes")
             outflow = np.asarray(face_flux) >= 0.0
-        val = boundary.get(f"value_{field_name}")
+        value_key = "kinematic_pressure_value" if field_name == "p" else f"{field_name}_value"
+        val = boundary.get(value_key)
         if val is None:
             val = boundary.get("value")
         if val is None:
@@ -1584,16 +1596,16 @@ def update_scalar_boundaries(phi, mesh_data, boundaries, field_name="p", face_fl
         boundaries: Boundary conditions
         field_name: Name of field ('p', etc.) to check BC type
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
 
     for boundary in boundaries:
-        start = boundary["startFace"]
-        n_bfaces = boundary["nFaces"]
+        start = boundary["start_face"]
+        n_bfaces = boundary["n_faces"]
 
         # Boundary element indices
-        b_elem_start = n_elements + (start - n_interior)
+        b_elem_start = n_cells + (start - n_interior)
         b_elem_indices = np.arange(b_elem_start, b_elem_start + n_bfaces)
         owners_b = owners[start : start + n_bfaces]
         paired = mesh_data.get("boundary_neighbours")
@@ -1601,7 +1613,8 @@ def update_scalar_boundaries(phi, mesh_data, boundaries, field_name="p", face_fl
         patch_flux = None if face_flux is None else np.asarray(face_flux)[start : start + n_bfaces]
 
         # Get BC type
-        bc_type = boundary.get(f"bc_type_{field_name}") or boundary.get("bc_type")
+        boundary_type_key = "pressure_type" if field_name == "p" else f"{field_name}_type"
+        bc_type = boundary.get(boundary_type_key) or boundary.get("bc_type")
         registry_field = "p" if field_name == "p" else "scalar"
         strategy = BOUNDARIES.strategy(bc_type, registry_field, "ghost")
         _apply_scalar_bc(
@@ -1626,7 +1639,7 @@ class SIMPLESolver:
 
     The algorithm iterates until ``max_iter`` is reached or the residuals
     fall below ``tolerance``.  Under-relaxation is applied through
-    ``alpha_u`` (velocity) and ``alpha_p`` (pressure).
+    ``velocity_relaxation`` (velocity) and ``pressure_relaxation`` (pressure).
 
     This class also serves as the base for the transient :class:`PIMPLESolver`.
 
@@ -1654,7 +1667,7 @@ class SIMPLESolver:
             geo_data: Geometric quantities dictionary.
             boundaries: List of boundary condition dictionaries.
             params: Optional dict of solver parameters overriding defaults.
-                Supported keys: ``alpha_u``, ``alpha_p``, ``max_iter``,
+                Supported keys: ``velocity_relaxation``, ``pressure_relaxation``, ``max_iter``,
                 ``tolerance``, ``convection_scheme``, ``linear_solver``.
         """
         self.mesh_data = mesh_data
@@ -1663,8 +1676,8 @@ class SIMPLESolver:
 
         # Default parameters
         self.params: dict[str, Any] = {
-            "alpha_u": 0.7,
-            "alpha_p": 0.3,
+            "velocity_relaxation": 0.7,
+            "pressure_relaxation": 0.3,
             "max_iter": 100,
             "tolerance": 1e-6,
             "convection_scheme": "deferred",
@@ -1699,18 +1712,18 @@ class SIMPLESolver:
 
     def step(
         self,
-        U,
+        velocity,
         p,
-        phi,
-        U_old=None,
+        face_flux,
+        velocity_old=None,
         time_step_size=None,
         rho=1.0,
         nu=0.01,
-        U_old_old=None,
+        velocity_older=None,
         source_explicit=None,
         source_implicit=None,
-        phi_old=None,
-        phi_old_old=None,
+        face_flux_old=None,
+        face_flux_older=None,
     ):
         """Perform one SIMPLE pressure–velocity correction.
 
@@ -1742,9 +1755,9 @@ class SIMPLESolver:
         """
         # 1. Solve momentum predictor
         U_star, A_U, momentum_diagnostics = momentum.solve_momentum_predictor(
-            U,
+            velocity,
             p,
-            phi,
+            face_flux,
             rho,
             nu,
             self.mesh_data,
@@ -1752,7 +1765,7 @@ class SIMPLESolver:
             self.boundaries,
             convection_scheme=self.params["convection_scheme"],
             solver=self.params.get("momentum_solver") or self.params["linear_solver"],
-            under_relaxation=self.params["alpha_u"],
+            under_relaxation=self.params["velocity_relaxation"],
             time_step_size=time_step_size,  # Use dt if provided (e.g. for PIMPLE)
             source_explicit=source_explicit,
             source_implicit=source_implicit,
@@ -1760,12 +1773,12 @@ class SIMPLESolver:
             parallel_context=self.params.get("_parallel_context"),
             failure_policy=self.params.get("linear_failure_policy", "raise"),
             log_sink=self.params.get("_logger"),
-            momentum_tol=self.params.get("momentum_tol", 1e-4),
-            maxiter=self.params.get("momentum_maxiter", 1000),
+            momentum_tolerance=self.params.get("momentum_tolerance", 1e-4),
+            maxiter=self.params.get("momentum_max_iterations", 1000),
             reuse_ilu=self.params.get("reuse_ilu", False),
-            ilu_drop_tol=self.params.get("ilu_drop_tol", 1e-4),
+            ilu_drop_tolerance=self.params.get("ilu_drop_tolerance", 1e-4),
             ilu_fill_factor=self.params.get("ilu_fill_factor", 10),
-            ilu_reuse_tol=self.params.get("ilu_reuse_tol"),
+            ilu_reuse_tolerance=self.params.get("ilu_reuse_tolerance"),
             matrix_workspace=self._momentum_matrix_workspace,
             operator_backend=self.params.get("_operator_backend", "numpy"),
             return_diagnostics=True,
@@ -1784,7 +1797,7 @@ class SIMPLESolver:
             self.mesh_data,
             self.geo_data,
             self.boundaries,
-            alpha_u=self.params["alpha_u"],
+            velocity_relaxation=self.params["velocity_relaxation"],
             pressure_constraint=pressure_constraint,
             matrix_workspace=self._pressure_matrix_workspace,
             operator_backend=self.params.get("_operator_backend", "numpy"),
@@ -1795,8 +1808,8 @@ class SIMPLESolver:
             b_p,
             method=self.params.get("pressure_solver") or self.params["linear_solver"],
             equation_type="pressure",
-            tol=self.params.get("pressure_tol", 1e-8),
-            maxiter=self.params.get("pressure_maxiter", 500),
+            tol=self.params.get("pressure_tolerance", 1e-8),
+            maxiter=self.params.get("pressure_max_iterations", 500),
             backend=self.params.get("_linear_backend", "scipy"),
             parallel_context=self.params.get("_parallel_context"),
             failure_policy=self.params.get("linear_failure_policy", "raise"),
@@ -1812,10 +1825,10 @@ class SIMPLESolver:
         # 3. Correct velocity and flux
         # Calculate residual before in-place modification of U_star
         velocity_increment = np.linalg.norm(
-            U_star[: self.mesh_data["n_elements"]] - U[: self.mesh_data["n_elements"]]
-        ) / (np.linalg.norm(U[: self.mesh_data["n_elements"]]) + 1e-10)
+            U_star[: self.mesh_data["n_cells"]] - velocity[: self.mesh_data["n_cells"]]
+        ) / (np.linalg.norm(velocity[: self.mesh_data["n_cells"]]) + 1e-10)
 
-        U, phi = correct_velocity_and_flux(
+        velocity, face_flux = correct_velocity_and_flux(
             U_star,
             phi_star,
             p_prime,
@@ -1824,15 +1837,17 @@ class SIMPLESolver:
             self.geo_data,
             self.boundaries,
             rho=rho,
-            alpha_u=self.params["alpha_u"],
-            alpha_p=self.params["alpha_p"],
+            velocity_relaxation=self.params["velocity_relaxation"],
+            pressure_relaxation=self.params["pressure_relaxation"],
         )
 
         # 4. Update pressure
-        p[: self.mesh_data["n_elements"]] += self.params["alpha_p"] * p_prime
+        p[: self.mesh_data["n_cells"]] += self.params["pressure_relaxation"] * p_prime
 
         # Update pressure boundaries
-        update_scalar_boundaries(p, self.mesh_data, self.boundaries, field_name="p", face_flux=phi)
+        update_scalar_boundaries(
+            p, self.mesh_data, self.boundaries, field_name="p", face_flux=face_flux
+        )
 
         # 5. Residuals
         self.last_res_p = normalized_residual(A_p, p_prime, b_p)
@@ -1840,8 +1855,10 @@ class SIMPLESolver:
             (values["final_residual"] for values in momentum_diagnostics.values()),
             default=0.0,
         )
-        continuity = field_diagnostics.compute_continuity_error(phi, self.mesh_data, self.geo_data)
-        volumes = self.geo_data["element_volumes"]
+        continuity = field_diagnostics.compute_continuity_error(
+            face_flux, self.mesh_data, self.geo_data
+        )
+        volumes = self.geo_data["cell_volumes"]
         continuity_max = float(np.max(np.abs(continuity) / (volumes + 1e-30)))
         self.last_linear_results = tuple(
             values["linear_result"] for values in momentum_diagnostics.values()
@@ -1862,7 +1879,7 @@ class SIMPLESolver:
                 for component, values in momentum_diagnostics.items()
             }
         )
-        return U, p, phi, residuals
+        return velocity, p, face_flux, residuals
 
     def solve(self, U_init, p_init, rho=1.0, nu=0.01):
         """Solve a steady incompressible flow using the SIMPLE algorithm.
@@ -1883,7 +1900,7 @@ class SIMPLESolver:
         Returns:
             Tuple ``(U, p, phi, converged)`` where *converged* is a bool.
         """
-        U = U_init.copy()
+        velocity = U_init.copy()
         p = p_init.copy()
         logger: Any = self.params.get("_logger")
 
@@ -1895,7 +1912,7 @@ class SIMPLESolver:
                     ("Tolerance", f"{self.params['tolerance']:.3e}"),
                     (
                         "Under-relaxation",
-                        f"U={self.params['alpha_u']}, p={self.params['alpha_p']}",
+                        f"U={self.params['velocity_relaxation']}, p={self.params['pressure_relaxation']}",
                     ),
                 ],
             )
@@ -1903,10 +1920,10 @@ class SIMPLESolver:
         # Initialize Flux (phi) if not provided
         from ..assemble import convection
 
-        phi = convection.compute_volumetric_face_flux(U, self.mesh_data, self.geo_data)
+        face_flux = convection.compute_volumetric_face_flux(velocity, self.mesh_data, self.geo_data)
 
         for iteration in range(int(self.params["max_iter"])):
-            U, p, phi, residuals = self.step(U, p, phi, rho=rho, nu=nu)
+            velocity, p, face_flux, residuals = self.step(velocity, p, face_flux, rho=rho, nu=nu)
 
             residual_p = self.last_res_p
             residual_u = residuals["U_increment"]
@@ -1936,8 +1953,8 @@ class SIMPLESolver:
             ):
                 if logger is not None:
                     logger.info(f"SIMPLE converged in {iteration} iterations")
-                return U, p, phi, True
+                return velocity, p, face_flux, True
 
         if logger is not None:
             logger.warning(f"SIMPLE did not converge in {self.params['max_iter']} iterations")
-        return U, p, phi, False
+        return velocity, p, face_flux, False

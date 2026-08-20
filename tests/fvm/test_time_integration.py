@@ -15,21 +15,21 @@ class TestTimeIntegration:
     def test_single_step_decay(self, hand_built_3d_mesh):
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
 
         lam = 2.0
         time_step_size = 0.1
-        phi_old = np.ones(n_elem) * 10.0
+        face_flux_old = np.ones(n_elem) * 10.0
 
         # Manually assemble: V·(φ - φ_old)/dt + λ·V·φ = 0
         # → (V/dt)·φ + (λ·V)·φ = (V/dt)·φ_old
         # → A·φ = b
-        volumes = geo["element_volumes"]
+        volumes = geo["cell_volumes"]
         A_diag = volumes / time_step_size + lam * volumes
-        b = volumes / time_step_size * phi_old
+        b = volumes / time_step_size * face_flux_old
 
         phi_new = b / A_diag
-        expected = phi_old / (1.0 + lam * time_step_size)
+        expected = face_flux_old / (1.0 + lam * time_step_size)
         assert np.allclose(phi_new, expected), (
             f"max error = {np.max(np.abs(phi_new - expected)):.2e}"
         )
@@ -38,31 +38,31 @@ class TestTimeIntegration:
         """Check assemble_transient_term_euler_implicit produces correct diagonal."""
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
 
         rho = 1.0
         time_step_size = 0.1
-        phi_old = np.ones(n_elem) * 10.0
-        result = assemble_transient_term_euler_implicit(phi_old, time_step_size, rho, geo)
-        volumes = geo["element_volumes"]
+        face_flux_old = np.ones(n_elem) * 10.0
+        result = assemble_transient_term_euler_implicit(face_flux_old, time_step_size, rho, geo)
+        volumes = geo["cell_volumes"]
         expected_ac = rho * volumes / time_step_size
-        expected_bc = expected_ac * phi_old
+        expected_bc = expected_ac * face_flux_old
         assert np.allclose(result["ac"], expected_ac), "transient term ac mismatch"
         assert np.allclose(result["bc"], expected_bc), "transient term bc mismatch"
 
     def test_explicit_euler_advances_from_spatial_residual(self):
         """Forward Euler uses b - Aφ; it is not a zero-diagonal linear solve."""
-        phi_old = np.array([10.0, 4.0])
+        face_flux_old = np.array([10.0, 4.0])
         volumes = np.array([2.0, 0.5])
         rho = np.array([1.0, 3.0])
         decay_rate = 2.0
         time_step_size = 0.1
         matrix = diags(decay_rate * rho * volumes, format="csr")
-        rhs = np.zeros_like(phi_old)
+        rhs = np.zeros_like(face_flux_old)
 
-        phi_new = advance_euler_explicit(phi_old, matrix, rhs, time_step_size, rho, volumes)
+        phi_new = advance_euler_explicit(face_flux_old, matrix, rhs, time_step_size, rho, volumes)
 
-        assert np.allclose(phi_new, phi_old * (1.0 - decay_rate * time_step_size))
+        assert np.allclose(phi_new, face_flux_old * (1.0 - decay_rate * time_step_size))
 
     def test_explicit_diffusion_preserves_uniform_field(self, hand_built_3d_mesh):
         """The public scalar path applies the explicit residual update."""
@@ -70,12 +70,12 @@ class TestTimeIntegration:
         for boundary in mesh["boundary"]:
             boundary["bc_type"] = "zeroGradient"
         geometry = compute_mesh_geometry(mesh)
-        n_total = mesh["n_elements"] + mesh["n_faces"] - mesh["n_interior_faces"]
-        phi = np.full(n_total, 3.0)
+        n_total = mesh["n_cells"] + mesh["n_faces"] - mesh["n_interior_faces"]
+        face_flux = np.full(n_total, 3.0)
         solver = ScalarEquationSolver(mesh, geometry, mesh["boundary"])
 
         history = solver.solve_transient_diffusion(
-            phi,
+            face_flux,
             gamma=0.2,
             density=1.0,
             time_step_size=0.01,
@@ -90,19 +90,19 @@ class TestTimeIntegration:
         """Over 3 steps, φ should decay monotonically toward zero."""
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
 
         lam = 1.0
         time_step_size = 0.5
-        volumes = geo["element_volumes"]
-        phi = np.ones(n_elem) * 10.0
+        volumes = geo["cell_volumes"]
+        face_flux = np.ones(n_elem) * 10.0
 
-        history = [phi.copy()]
+        history = [face_flux.copy()]
         for _ in range(3):
             A_diag = volumes / time_step_size + lam * volumes
-            b = volumes / time_step_size * phi
-            phi = b / A_diag
-            history.append(phi.copy())
+            b = volumes / time_step_size * face_flux
+            face_flux = b / A_diag
+            history.append(face_flux.copy())
 
         for i in range(1, len(history)):
             assert np.all(history[i] <= history[i - 1] * (1 + 1e-12)), (

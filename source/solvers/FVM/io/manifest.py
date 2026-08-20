@@ -54,7 +54,7 @@ def build_manifest(solver) -> dict[str, Any]:
         "execution": asdict(solver.setup.execution),
         "mesh_quality": solver.mesh_quality,
         "mesh": {
-            "cells": int(solver.mesh_data["n_elements"]),
+            "cells": int(solver.mesh_data["n_cells"]),
             "faces": int(solver.mesh_data["n_faces"]),
             "points": int(solver.mesh_data.get("n_points", len(solver.mesh_data["points"]))),
             "provenance": solver.mesh_data.get("provenance"),

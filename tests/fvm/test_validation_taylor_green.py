@@ -25,11 +25,11 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -39,17 +39,17 @@ from ._structured_mesh import structured_box
 TWO_PI = 2.0 * np.pi
 
 
-def _tgv_U(x, y, t, nu):
-    F = np.exp(-2.0 * nu * t)
+def _tgv_U(x, y, t, kinematic_viscosity):
+    F = np.exp(-2.0 * kinematic_viscosity * t)
     return np.column_stack(
         [F * np.sin(x) * np.cos(y), -F * np.cos(x) * np.sin(y), np.zeros_like(x)]
     )
 
 
-def _run(N, scheme, nu=0.1, time_step_size=0.005, nsteps=10):
+def _run(N, scheme, kinematic_viscosity=0.1, time_step_size=0.005, nsteps=10):
     """Return (relative L2 velocity error at T, KE(T), analytic KE(T), KE(0))."""
     mesh = structured_box(N, N, 1, lx=TWO_PI, ly=TWO_PI, lz=TWO_PI / N)
-    sp_schemes = SchemesConfig(convection_scheme=scheme, time_scheme="backward")
+    sp_schemes = DiscretizationConfig(convection_scheme=scheme, time_scheme="backward")
     sp_linear = LinearSolverConfig(linear_solver="spsolve")
     sp_pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
     bnds = [
@@ -62,26 +62,28 @@ def _run(N, scheme, nu=0.1, time_step_size=0.005, nsteps=10):
     cfg = FVMSetup(
         case_name="tgv",
         time=TimeConfig(
-            time_step_size=time_step_size, end_time=time_step_size * nsteps, write_interval=10**9
+            time_step_size=time_step_size,
+            end_time=time_step_size * nsteps,
+            output_interval_steps=10**9,
         ),
         schemes=sp_schemes,
         linear=sp_linear,
         pimple=sp_pimple,
-        transport=TransportConfig(density=1.0, nu=nu),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=kinematic_viscosity),
         boundaries=bnds,
         initial_velocity=[0, 0, 0],
     )
     with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
         s = FVMSolver(cfg, case_dir=d, mesh_data=mesh)
         s.auto_write = False
-        ne = mesh["n_elements"]
+        ne = mesh["n_cells"]
         cc, vol = (
-            s.geo_data["element_centroids"],
-            s.geo_data["element_volumes"],
+            s.geo_data["cell_centroids"],
+            s.geo_data["cell_volumes"],
         )
 
-        s.set_initial_velocity(_tgv_U(cc[:, 0], cc[:, 1], 0.0, nu))
-        ke0 = 0.5 * float(np.sum(np.sum(s.U[:ne] ** 2, axis=1) * vol))
+        s.set_initial_velocity(_tgv_U(cc[:, 0], cc[:, 1], 0.0, kinematic_viscosity))
+        ke0 = 0.5 * float(np.sum(np.sum(s.velocity[:ne] ** 2, axis=1) * vol))
 
         t = 0.0
         for _ in range(nsteps):
@@ -89,13 +91,13 @@ def _run(N, scheme, nu=0.1, time_step_size=0.005, nsteps=10):
             s.solve_pimple(time_step_size)
             s.advance_time()
 
-        Uex = _tgv_U(cc[:, 0], cc[:, 1], t, nu)
+        Uex = _tgv_U(cc[:, 0], cc[:, 1], t, kinematic_viscosity)
         rel = float(
-            np.sqrt(np.sum(vol[:, None] * (s.U[:ne] - Uex) ** 2) / np.sum(vol))
+            np.sqrt(np.sum(vol[:, None] * (s.velocity[:ne] - Uex) ** 2) / np.sum(vol))
             / np.sqrt(np.sum(vol[:, None] * Uex**2) / np.sum(vol))
         )
-        ke = 0.5 * float(np.sum(np.sum(s.U[:ne] ** 2, axis=1) * vol))
-        return rel, ke, ke0 * np.exp(-4 * nu * t), ke0
+        ke = 0.5 * float(np.sum(np.sum(s.velocity[:ne] ** 2, axis=1) * vol))
+        return rel, ke, ke0 * np.exp(-4 * kinematic_viscosity * t), ke0
 
 
 @pytest.mark.slow

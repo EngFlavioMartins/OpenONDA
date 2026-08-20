@@ -7,14 +7,11 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from dataclasses import asdict
 import json
 import os
 from typing import TYPE_CHECKING
 
-import h5py
-
-from .backup import BackupSystem
+from .checkpoint import CheckpointManager
 from .sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
@@ -39,8 +36,11 @@ class SolverIO:
         """
         self.solver = solver
 
-        if hasattr(self.solver.setup, "backup_directory") and self.solver.setup.backup_directory:
-            self.export_dir = self.solver.setup.backup_directory
+        if (
+            hasattr(self.solver.setup, "backup_directory")
+            and self.solver.setup.checkpoint_directory
+        ):
+            self.export_dir = self.solver.setup.checkpoint_directory
         else:
             self.export_dir = "solution"
 
@@ -48,20 +48,20 @@ class SolverIO:
         self._xdmf_series_entries = []  # Track VPM particle time-series entries
 
     @property
-    def backup_frequency(self) -> int:
-        return self.solver.backup_frequency
+    def checkpoint_interval_steps(self) -> int:
+        return self.solver.checkpoint_interval_steps
 
     @property
-    def backup_file_name(self) -> str:
-        return (self.solver.backup_file_name or "").strip()
+    def checkpoint_name(self) -> str:
+        return (self.solver.checkpoint_name or "").strip()
 
     @property
     def vpm_prefix(self) -> str:
-        return f"vpm_{self.backup_file_name}" if self.backup_file_name else "vpm"
+        return f"vpm_{self.backup_file_name}" if self.checkpoint_name else "vpm"
 
     @property
     def vlm_prefix(self) -> str:
-        return f"vlm_{self.backup_file_name}" if self.backup_file_name else "vlm"
+        return f"vlm_{self.backup_file_name}" if self.checkpoint_name else "vlm"
 
     @property
     def step(self) -> int:
@@ -71,7 +71,7 @@ class SolverIO:
     def time(self) -> float:
         return self.solver.time
 
-    def should_backup(self, step: int | None = None) -> bool:
+    def should_checkpoint(self, step: int | None = None) -> bool:
         """
         Check if backup should be performed at given timestep.
 
@@ -82,23 +82,25 @@ class SolverIO:
             True if backup should be performed
         """
         ts = step if step is not None else self.step
-        return self.backup_frequency > 0 and (ts % self.backup_frequency == 0 or ts == 0)
+        return self.checkpoint_interval_steps > 0 and (
+            ts % self.checkpoint_interval_steps == 0 or ts == 0
+        )
 
-    def backup(self, verbose: bool = True):
+    def write_checkpoint(self, verbose: bool = True):
         """
         Perform complete backup: HDF5 state + VTK visualization + CSV loads.
 
         This consolidates all backup logic from the solver into a single call.
         """
-        if not self.should_backup():
+        if not self.should_checkpoint():
             return
 
         # Ensure export directory exists
         os.makedirs(self.export_dir, exist_ok=True)
 
         # 1. HDF5 Backup (for restart)
-        backup_path = os.path.join(self.export_dir, self.vpm_prefix)
-        BackupSystem.backup_solver(self.solver, backup_path, verbose=verbose)
+        checkpoint_path = os.path.join(self.export_dir, self.vpm_prefix)
+        CheckpointManager.write_checkpoint(self.solver, checkpoint_path, verbose=verbose)
 
         # Track VPM particle data for XDMF series
         xdmf_filename = f"{self.vpm_prefix}_{self.step:06d}.xdmf"
@@ -129,38 +131,44 @@ class SolverIO:
         import csv
 
         fld = diagnostics_history
-        if len(fld.get("flow_time", [])) == 0:
+        if len(fld.get("time", [])) == 0:
             print("[INFO] No diagnostics to export.")
             return
         with open(filename, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(
                 [
-                    "flow_time",
-                    "vpm_total_circ_mag",
-                    "fvm_total_circ_mag",
-                    "interp_total_circ_mag",
+                    "time",
+                    "vpm_total_vortex_strength_magnitude",
+                    "fvm_total_vortex_strength_magnitude",
+                    "interpolated_total_vortex_strength_magnitude",
                     "n_injected",
                     "n_candidates",
-                    "observed_dt",
+                    "observed_time_step_size",
                     "centroid_x",
                     "centroid_y",
                     "centroid_z",
                 ]
             )
-            for i in range(len(fld["flow_time"])):
+            for i in range(len(fld["time"])):
                 centroid = fld["centroid"][i] if i < len(fld["centroid"]) else (0.0, 0.0, 0.0)
                 writer.writerow(
                     [
-                        fld["flow_time"][i],
-                        fld["vpm_total_circ_mag"][i] if i < len(fld["vpm_total_circ_mag"]) else 0.0,
-                        fld["fvm_total_circ_mag"][i] if i < len(fld["fvm_total_circ_mag"]) else 0.0,
-                        fld["interp_total_circ_mag"][i]
-                        if i < len(fld["interp_total_circ_mag"])
+                        fld["time"][i],
+                        fld["vpm_total_vortex_strength_magnitude"][i]
+                        if i < len(fld["vpm_total_vortex_strength_magnitude"])
+                        else 0.0,
+                        fld["fvm_total_vortex_strength_magnitude"][i]
+                        if i < len(fld["fvm_total_vortex_strength_magnitude"])
+                        else 0.0,
+                        fld["interpolated_total_vortex_strength_magnitude"][i]
+                        if i < len(fld["interpolated_total_vortex_strength_magnitude"])
                         else 0.0,
                         fld["n_injected"][i] if i < len(fld["n_injected"]) else 0,
                         fld["n_candidates"][i] if i < len(fld["n_candidates"]) else 0,
-                        fld["observed_dt"][i] if i < len(fld["observed_dt"]) else 0.0,
+                        fld["observed_time_step_size"][i]
+                        if i < len(fld["observed_time_step_size"])
+                        else 0.0,
                         centroid[0],
                         centroid[1],
                         centroid[2],
@@ -179,7 +187,7 @@ class SolverIO:
         import pandas as pd
 
         samples_dir = resolve_samples_dir(
-            solver.backup_directory,
+            solver.checkpoint_directory,
             getattr(solver.setup, "sample_subdirectory", None),
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
@@ -187,10 +195,10 @@ class SolverIO:
 
         impulse = solver._flow_integrals.get("linear_impulse", np.zeros(3))
         ang_impulse = solver._flow_integrals.get("angular_impulse", np.zeros(3))
-        strength = solver._flow_integrals.get("strength", np.zeros(3))
-        particle_strength = solver.particles_circulation
-        turbulent_viscosity = solver.particles.viscosity_turbulent_cpu()
-        effective_viscosity = solver.particles.viscosity_effective_cpu()
+        strength = solver._flow_integrals.get("vortex_strength", np.zeros(3))
+        particle_vortex_strength = solver.particle_vortex_strength
+        turbulent_viscosity = solver.particles.eddy_viscosity_cpu()
+        effective_viscosity = solver.particles.effective_viscosity_cpu()
 
         row = {
             "time": solver.time,
@@ -201,22 +209,24 @@ class SolverIO:
             "dEdt": solver.kinetic_energy_dissipation_rate,
             "neg_nu_enstrophy": solver.vorticity_dissipation_rate,
             "helicity": solver.total_helicity,
-            "strength_magnitude": solver.total_strength_magnitude,
-            "strength_x": float(strength[0]),
-            "strength_y": float(strength[1]),
-            "strength_z": float(strength[2]),
+            "vortex_strength_magnitude": solver.total_vortex_strength_magnitude,
+            "vortex_strength_x": float(strength[0]),
+            "vortex_strength_y": float(strength[1]),
+            "vortex_strength_z": float(strength[2]),
             "impulse_x": float(impulse[0]),
             "impulse_y": float(impulse[1]),
             "impulse_z": float(impulse[2]),
             "angular_impulse_x": float(ang_impulse[0]),
             "angular_impulse_y": float(ang_impulse[1]),
             "angular_impulse_z": float(ang_impulse[2]),
-            "n_particles": solver.particles.number_of_particles,
-            "max_gamma": float(np.linalg.norm(particle_strength, axis=1).max(initial=0.0)),
-            "turbulent_viscosity_mean": float(turbulent_viscosity.mean())
+            "n_particles": solver.particles.n_particles,
+            "max_vortex_strength": float(
+                np.linalg.norm(particle_vortex_strength, axis=1).max(initial=0.0)
+            ),
+            "eddy_viscosity_mean": float(turbulent_viscosity.mean())
             if len(turbulent_viscosity)
             else 0.0,
-            "turbulent_viscosity_max": float(turbulent_viscosity.max(initial=0.0)),
+            "eddy_viscosity_max": float(turbulent_viscosity.max(initial=0.0)),
             "effective_viscosity_mean": float(effective_viscosity.mean())
             if len(effective_viscosity)
             else 0.0,
@@ -234,11 +244,11 @@ class SolverIO:
         else:
             df.to_csv(csv_path, mode="a", header=False, index=False)
 
-    def save_config(self, filename: str) -> None:
+    def save_setup(self, filename: str) -> None:
         """Save solver configuration to JSON."""
-        config_dict = asdict(self.solver.setup)
+        setup_dict = self.solver.setup.to_dict()
         with open(filename, "w") as f:
-            json.dump(config_dict, f, indent=4)
+            json.dump(setup_dict, f, indent=4)
         print(f"Configuration saved to {filename}")
 
     def load_particle_field(self, filename: str, remove_current_particles: bool = False):
@@ -266,7 +276,7 @@ class SolverIO:
             panel_file = f"{filename}_panels.{format}"
             export_panels_vtk(self.solver, panel_file, compression)
 
-        if include_particles and self.solver.particles.number_of_particles > 0:
+        if include_particles and self.solver.particles.n_particles > 0:
             self.solver.particles.save_vortex_particles(f"{filename}_particles.vtp")
 
         # Field export is not yet implemented; particles are handled above.
@@ -360,106 +370,6 @@ class SolverIO:
             )
         except Exception as e:
             print(f"   (Warning) Could not write VLM PVD file: {e}")
-
-    def _write_xdmf_series(self, base_name: str):
-        """Write/update XDMF temporal collection file for VPM particle time-series."""
-        try:
-            series_path = f"{self.export_dir}/{base_name}_series.xdmf"
-
-            # Filter entries to only include those with existing HDF5 files
-            valid_entries = []
-            for time_val, xdmf_filename in self._xdmf_series_entries:
-                h5_filename = xdmf_filename.replace(".xdmf", ".h5")
-                h5_path = os.path.join(self.export_dir, h5_filename)
-                if os.path.exists(h5_path):
-                    valid_entries.append((time_val, xdmf_filename))
-
-            # Update internal list to remove stale entries
-            self._xdmf_series_entries = valid_entries
-
-            if not valid_entries:
-                return  # No valid entries, skip writing
-
-            # Load number of particles from the latest HDF5 file
-            latest_h5 = os.path.join(self.export_dir, valid_entries[-1][1].replace(".xdmf", ".h5"))
-            with h5py.File(latest_h5, "r") as f:
-                int(f["solver"].attrs["number_of_particles"])
-
-            # Write XDMF temporal collection
-            with open(series_path, "w") as f:
-                f.write('<?xml version="1.0" ?>\n')
-                f.write('<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')
-                f.write('<Xdmf Version="3.0">\n')
-                f.write("  <Domain>\n")
-                f.write(
-                    '    <Grid Name="VortexParticles_TimeSeries" GridType="Collection" CollectionType="Temporal">\n'
-                )
-
-                for time_val, xdmf_filename in valid_entries:
-                    h5_filename = xdmf_filename.replace(".xdmf", ".h5")
-                    timestep_num = int(xdmf_filename.split("_")[-1].replace(".xdmf", ""))
-
-                    # Get actual particle count from each file
-                    h5_path = os.path.join(self.export_dir, h5_filename)
-                    with h5py.File(h5_path, "r") as hf:
-                        n_particles_this = int(hf["solver"].attrs["number_of_particles"])
-
-                    f.write(f'      <Grid Name="TimeStep_{timestep_num:06d}" GridType="Uniform">\n')
-                    f.write(
-                        f'        <Topology TopologyType="Polyvertex" NumberOfElements="{n_particles_this}"/>\n'
-                    )
-                    f.write('        <Geometry GeometryType="XYZ">\n')
-                    f.write(
-                        f'          <DataItem Dimensions="{n_particles_this} 3" NumberType="Float" Precision="4" Format="HDF">\n'
-                    )
-                    f.write(f"            {h5_filename}:/particles/position\n")
-                    f.write("          </DataItem>\n")
-                    f.write("        </Geometry>\n")
-                    f.write(f'        <Time Value="{time_val:.6g}"/>')
-                    f.write(
-                        '        <Attribute Name="Velocity" AttributeType="Vector" Center="Node">\n'
-                    )
-                    f.write(
-                        f'          <DataItem Dimensions="{n_particles_this} 3" NumberType="Float" Precision="4" Format="HDF">\n'
-                    )
-                    f.write(f"            {h5_filename}:/particles/velocity\n")
-                    f.write("          </DataItem>\n")
-                    f.write("        </Attribute>\n")
-                    f.write(
-                        '        <Attribute Name="BackgroundVelocity" AttributeType="Vector" Center="Node">\n'
-                    )
-                    f.write(
-                        f'          <DataItem Dimensions="{n_particles_this} 3" NumberType="Float" Precision="4" Format="HDF">\n'
-                    )
-                    f.write(f"            {h5_filename}:/particles/freestream_velocity\n")
-                    f.write("          </DataItem>\n")
-                    f.write("        </Attribute>\n")
-                    f.write(
-                        '        <Attribute Name="Circulation" AttributeType="Vector" Center="Node">\n'
-                    )
-                    f.write(
-                        f'          <DataItem Dimensions="{n_particles_this} 3" NumberType="Float" Precision="4" Format="HDF">\n'
-                    )
-                    f.write(f"            {h5_filename}:/particles/circulation\n")
-                    f.write("          </DataItem>\n")
-                    f.write("        </Attribute>\n")
-                    f.write(
-                        '        <Attribute Name="Vorticity" AttributeType="Vector" Center="Node">\n'
-                    )
-                    f.write(
-                        f'          <DataItem Dimensions="{n_particles_this} 3" NumberType="Float" Precision="4" Format="HDF">\n'
-                    )
-                    f.write(f"            {h5_filename}:/particles/vorticity\n")
-                    f.write("          </DataItem>\n")
-                    f.write("        </Attribute>\n")
-                    f.write("      </Grid>\n")
-
-                f.write("    </Grid>\n")
-                f.write("  </Domain>\n")
-                f.write("</Xdmf>\n")
-
-        except Exception as e:
-            print(f"   (Warning) Could not write XDMF series file: {e}")
 
 
 __all__ = ["SolverIO"]

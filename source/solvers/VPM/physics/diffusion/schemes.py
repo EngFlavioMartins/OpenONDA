@@ -28,12 +28,12 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
 
     def __init__(
         self,
-        particles_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "GAUSSIAN",
         max_particles: int = MAX_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
     ):
         """Initialize diffusion physics module."""
-        super().__init__(particles_kernel, max_particles, accumulator_dtype)
+        super().__init__(particle_kernel, max_particles, accumulator_dtype)
         self._init_grid_diffusion()
 
     # CORE SPREADING METHOD (CSM)

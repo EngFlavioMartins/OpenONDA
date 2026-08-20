@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.FVM.config.types import OutputSetup
+from source.solvers.FVM.config.types import OutputConfig
 from source.solvers.FVM.io.partitioned import (
     reconstruct_partition_checkpoint,
     write_partition_checkpoint,
@@ -36,7 +36,7 @@ def test_partitions_cover_owned_cells_and_physical_faces_once(size):
     physical_faces = np.concatenate(
         [partition.physical_boundary_face_global_ids for partition in partitions]
     )
-    np.testing.assert_array_equal(owned, np.arange(mesh["n_elements"]))
+    np.testing.assert_array_equal(owned, np.arange(mesh["n_cells"]))
     np.testing.assert_array_equal(
         np.sort(physical_faces), np.arange(mesh["n_interior_faces"], mesh["n_faces"])
     )
@@ -75,7 +75,7 @@ def test_polyhedral_visualization_mesh_contains_complete_halo_cells():
     visualization = local_mesh["_visualization_mesh"]
 
     assert len(partition.ghost_global_ids) > 0
-    assert visualization["n_elements"] == len(partition.local_global_ids)
+    assert visualization["n_cells"] == len(partition.local_global_ids)
     assert np.all(np.diff(visualization["cell_face_offsets"]) == 6)
     assert np.all(visualization["cell_faces"] >= 0)
 
@@ -111,12 +111,12 @@ def test_localized_mesh_has_complete_owned_stencils(size):
         np.add.at(incident, neighbours[owned_neighbours], 1)
         assert np.all(incident == 6)
         np.testing.assert_array_equal(
-            local_geo["element_volumes"][:n_owned],
-            geo["element_volumes"][partition.owned_global_ids],
+            local_geo["cell_volumes"][:n_owned],
+            geo["cell_volumes"][partition.owned_global_ids],
         )
-        assert local_mesh["global_cell_ids"].shape[0] == local_mesh["n_elements"]
+        assert local_mesh["global_cell_ids"].shape[0] == local_mesh["n_cells"]
         visualization = local_mesh["_visualization_mesh"]
-        assert visualization["n_elements"] == len(partition.local_global_ids)
+        assert visualization["n_cells"] == len(partition.local_global_ids)
         np.testing.assert_array_equal(
             visualization["global_cell_ids"],
             partition.local_global_ids,
@@ -187,7 +187,7 @@ def test_partition_vtu_writes_cell_data_and_parallel_metadata(tmp_path):
     assert "velocity" in smooth.point_data
 
     parallel = pv.read(collection)
-    assert parallel.n_cells == mesh["n_elements"]
+    assert parallel.n_cells == mesh["n_cells"]
     assert "pressure" in parallel.cell_data
 
 
@@ -203,7 +203,7 @@ def test_partition_vtu_can_omit_visualization_ghosts(tmp_path):
         partition,
         {"pressure": partition.local_global_ids.astype(float)},
         _SerialComm(),
-        output=OutputSetup(ghost_layers=0),
+        output=OutputConfig(ghost_layers=0),
     )
 
     text = collection.read_text(encoding="utf-8")
@@ -224,7 +224,7 @@ def test_partition_vtu_float32_fields(tmp_path):
         partition,
         {"pressure": partition.local_global_ids.astype(float)},
         _SerialComm(),
-        output=OutputSetup(precision="float32"),
+        output=OutputConfig(precision="float32"),
     )
 
     assert 'type="Float32" Name="pressure"' in collection.read_text(encoding="utf-8")
@@ -299,15 +299,15 @@ def test_four_rank_pvtu_round_trip_preserves_adaptive_mesh_geometry(tmp_path):
             partition,
             {},
             _SerialComm(),
-            output=OutputSetup(ghost_layers=1),
+            output=OutputConfig(ghost_layers=1),
         )
 
     collection = pv.read(tmp_path / "preserved4.pvtu")
     global_ids = np.asarray(collection.cell_data["GlobalCellIds"])
     ghost = np.asarray(collection.cell_data["vtkGhostType"])
     owned_ids = global_ids[ghost == 0]
-    assert len(owned_ids) == mesh["n_elements"]
-    np.testing.assert_array_equal(np.sort(owned_ids), np.arange(mesh["n_elements"]))
+    assert len(owned_ids) == mesh["n_cells"]
+    np.testing.assert_array_equal(np.sort(owned_ids), np.arange(mesh["n_cells"]))
 
     points = np.asarray(collection.points)
     cells = np.asarray(collection.cells_dict[collection.celltypes[0]]).reshape(-1, 8)

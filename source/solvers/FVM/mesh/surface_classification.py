@@ -106,16 +106,16 @@ def closest_point_on_triangles(
 
 
 def triangle_box_overlap(
-    box_center: np.ndarray, box_half: np.ndarray, v0: np.ndarray, v1: np.ndarray, v2: np.ndarray
+    box_centre: np.ndarray, box_half: np.ndarray, v0: np.ndarray, v1: np.ndarray, v2: np.ndarray
 ) -> np.ndarray:
     """Separating-axis triangle/AABB overlap test (Akenine-Moller).
 
     ``v0``, ``v1``, ``v2`` have shape ``(n, 3)``; returns a boolean mask of
     shape ``(n,)``.
     """
-    t0 = v0 - box_center
-    t1 = v1 - box_center
-    t2 = v2 - box_center
+    t0 = v0 - box_centre
+    t1 = v1 - box_centre
+    t2 = v2 - box_centre
 
     tri_min = np.minimum(np.minimum(t0, t1), t2)
     tri_max = np.maximum(np.maximum(t0, t1), t2)
@@ -257,12 +257,12 @@ class SurfaceIndex:
         candidates = self.candidate_triangles(box_min, box_max)
         if candidates.size == 0:
             return False
-        center = 0.5 * (box_min + box_max)
+        centre = 0.5 * (box_min + box_max)
         half = 0.5 * (box_max - box_min)
         v0 = self.triangles[candidates, 0]
         v1 = self.triangles[candidates, 1]
         v2 = self.triangles[candidates, 2]
-        return bool(np.any(triangle_box_overlap(center, half, v0, v1, v2)))
+        return bool(np.any(triangle_box_overlap(centre, half, v0, v1, v2)))
 
     def is_inside(self, points: np.ndarray, *, chunk_size: int = 500) -> np.ndarray:
         """Point-in-closed-manifold test by ray-parity, with degenerate retry."""

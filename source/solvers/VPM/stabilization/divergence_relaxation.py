@@ -51,7 +51,7 @@ class DivergenceRelaxationError(RuntimeError):
 class DivergenceRelaxationResult:
     """Accepted reassignment and its independently measurable diagnostics."""
 
-    circulation: np.ndarray
+    vortex_strength: np.ndarray
     correction: np.ndarray
     projection_sweeps: int
     iterations: int
@@ -68,7 +68,7 @@ class DivergenceRelaxationResult:
     circulation_reference_error: float
     linear_impulse_reference_error: float
     angular_impulse_reference_error: float
-    circulation_error: float
+    vortex_strength_error: float
     linear_impulse_error: float
     angular_impulse_error: float
     total_variation_change_relative: float
@@ -253,10 +253,10 @@ class GaussianParticleGridOperator:
             axis=-1,
         )
 
-    def apply(self, circulation: np.ndarray) -> np.ndarray:
+    def apply(self, vortex_strength: np.ndarray) -> np.ndarray:
         """Apply the symmetric particle-space interpolation operator."""
 
-        return self.gather(self.smooth(self.scatter(circulation)))
+        return self.gather(self.smooth(self.scatter(vortex_strength)))
 
     def helmholtz_project(self, field: np.ndarray) -> tuple[np.ndarray, float, float]:
         """Project a padded grid vector field onto its solenoidal subspace."""
@@ -314,11 +314,11 @@ class GaussianParticleGridOperator:
 
     def relaxation_residual(
         self,
-        circulation: np.ndarray,
+        vortex_strength: np.ndarray,
     ) -> tuple[np.ndarray, float, float]:
         """Return ``P(K Gamma) - K Gamma`` at particle locations."""
 
-        blob_grid = self.smooth(self.scatter(circulation))
+        blob_grid = self.smooth(self.scatter(vortex_strength))
         target_grid, before, after = self.helmholtz_project(blob_grid)
         return self.gather(target_grid) - self.gather(blob_grid), before, after
 
@@ -393,13 +393,13 @@ class _MomentNullspace:
 
 def _constrained_divergence_relaxation_once(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
     volume: np.ndarray,
     *,
     grid_spacing: float,
     regularization: float = 0.1,
-    solver_rtol: float = 1e-5,
+    solver_relative_tolerance: float = 1e-5,
     max_iterations: int = 30,
     max_grid_nodes: int = 8_000_000,
     max_correction_norm: float = 2e-2,
@@ -418,10 +418,10 @@ def _constrained_divergence_relaxation_once(
     """Return one accepted, reference-restoring Winckelmans relaxation."""
 
     position = np.asarray(position, dtype=np.float64)
-    circulation = np.asarray(circulation, dtype=np.float64)
+    vortex_strength = np.asarray(vortex_strength, dtype=np.float64)
     radius = np.asarray(radius, dtype=np.float64)
     volume = np.asarray(volume, dtype=np.float64)
-    if position.shape != circulation.shape or position.ndim != 2 or position.shape[1] != 3:
+    if position.shape != vortex_strength.shape or position.ndim != 2 or position.shape[1] != 3:
         raise ValueError("position and circulation must both have shape (N, 3)")
     if radius.shape != (len(position),) or volume.shape != (len(position),):
         raise ValueError("radius and volume must have shape (N,)")
@@ -429,7 +429,7 @@ def _constrained_divergence_relaxation_once(
         raise ValueError("all particle volumes must be positive")
     if regularization <= 0.0:
         raise ValueError("regularization must be positive")
-    if solver_rtol <= 0.0 or max_iterations < 1:
+    if solver_relative_tolerance <= 0.0 or max_iterations < 1:
         raise ValueError("solver_rtol must be positive and max_iterations at least one")
     if not 0.0 < spectral_convergence_fraction <= 1.0:
         raise ValueError("spectral_convergence_fraction must be in (0, 1]")
@@ -442,7 +442,7 @@ def _constrained_divergence_relaxation_once(
     ):
         raise ValueError("reference_scales must contain three positive values")
 
-    before_moments = gaussian_particle_moments(position, circulation, radius)
+    before_moments = gaussian_particle_moments(position, vortex_strength, radius)
     if target_moments is None:
         target_total = before_moments[0]
         target_impulse = before_moments[2]
@@ -462,7 +462,7 @@ def _constrained_divergence_relaxation_once(
         ):
             raise ValueError("target moments must be finite")
 
-    strength = np.linalg.norm(circulation, axis=1)
+    strength = np.linalg.norm(vortex_strength, axis=1)
     operator = GaussianParticleGridOperator(
         position,
         radius,
@@ -470,9 +470,9 @@ def _constrained_divergence_relaxation_once(
         spacing=grid_spacing,
         max_grid_nodes=max_grid_nodes,
     )
-    residual, grid_divergence_before, _ = operator.relaxation_residual(circulation)
+    residual, grid_divergence_before, _ = operator.relaxation_residual(vortex_strength)
     initial_residual_norm = float(np.linalg.norm(residual))
-    blob_norm = float(np.linalg.norm(operator.apply(circulation)))
+    blob_norm = float(np.linalg.norm(operator.apply(vortex_strength)))
     rows = gaussian_invariant_rows(position, radius)
     nullspace = _MomentNullspace(rows, volume)
     full_moment_change = np.concatenate(
@@ -506,7 +506,7 @@ def _constrained_divergence_relaxation_once(
         )
     moment_correction_norm = float(np.linalg.norm(moment_correction))
     circulation_norm = max(
-        float(np.linalg.norm(circulation)),
+        float(np.linalg.norm(vortex_strength)),
         np.finfo(float).tiny,
     )
     if moment_correction_norm > 0.9 * max_correction_norm * circulation_norm:
@@ -517,7 +517,7 @@ def _constrained_divergence_relaxation_once(
             gate="correction norm",
         )
 
-    repaired = circulation + moment_correction
+    repaired = vortex_strength + moment_correction
     repaired_residual, _, _ = operator.relaxation_residual(repaired)
     negligible_residual = initial_residual_norm <= 128.0 * np.finfo(float).eps * max(blob_norm, 1.0)
     negligible_moment_change = moment_correction_norm <= 128.0 * np.finfo(float).eps * max(
@@ -525,8 +525,8 @@ def _constrained_divergence_relaxation_once(
     )
     if negligible_residual and negligible_moment_change:
         return DivergenceRelaxationResult(
-            circulation=circulation.copy(),
-            correction=np.zeros_like(circulation),
+            vortex_strength=vortex_strength.copy(),
+            correction=np.zeros_like(vortex_strength),
             projection_sweeps=1,
             iterations=0,
             regularization=regularization,
@@ -542,7 +542,7 @@ def _constrained_divergence_relaxation_once(
             circulation_reference_error=0.0,
             linear_impulse_reference_error=0.0,
             angular_impulse_reference_error=0.0,
-            circulation_error=0.0,
+            vortex_strength_error=0.0,
             linear_impulse_error=0.0,
             angular_impulse_error=0.0,
             total_variation_change_relative=0.0,
@@ -579,7 +579,7 @@ def _constrained_divergence_relaxation_once(
     solution, info = cg(
         linear_operator,
         right_hand_side.ravel(),
-        rtol=solver_rtol,
+        rtol=solver_relative_tolerance,
         atol=0.0,
         maxiter=max_iterations,
         callback=note_iteration,
@@ -603,9 +603,9 @@ def _constrained_divergence_relaxation_once(
         * correction_scale
     )
     raw_correction = moment_correction + trust_region_scale * divergence_correction
-    candidate = circulation + raw_correction
+    candidate = vortex_strength + raw_correction
 
-    energy_direction = nullspace.to_correction(circulation / sqrt_volume[:, None])
+    energy_direction = nullspace.to_correction(vortex_strength / sqrt_volume[:, None])
     energy_direction_norm = float(np.linalg.norm(energy_direction))
     if energy_direction_norm <= np.finfo(float).tiny:
         raise DivergenceRelaxationError(
@@ -613,7 +613,7 @@ def _constrained_divergence_relaxation_once(
         )
     energy_direction *= circulation_norm / energy_direction_norm
 
-    enstrophy_gradient = operator.apply(circulation)
+    enstrophy_gradient = operator.apply(vortex_strength)
     enstrophy_direction = nullspace.to_correction(enstrophy_gradient / sqrt_volume[:, None])
     enstrophy_direction -= (
         np.vdot(enstrophy_direction, energy_direction) / np.vdot(energy_direction, energy_direction)
@@ -621,7 +621,7 @@ def _constrained_divergence_relaxation_once(
     enstrophy_direction_norm = float(np.linalg.norm(enstrophy_direction))
     for axis in range(3):
         trial = nullspace.to_correction(
-            position[:, axis, None] * circulation / sqrt_volume[:, None]
+            position[:, axis, None] * vortex_strength / sqrt_volume[:, None]
         )
         trial -= (
             np.vdot(trial, energy_direction) / np.vdot(energy_direction, energy_direction)
@@ -638,7 +638,7 @@ def _constrained_divergence_relaxation_once(
 
     before_integrals = gaussian_fourier_integrals(
         position,
-        circulation,
+        vortex_strength,
         radius,
         volume,
         spacing=grid_spacing,
@@ -795,7 +795,7 @@ def _constrained_divergence_relaxation_once(
         restoration.x[0] * energy_direction + restoration.x[1] * enstrophy_direction
     )
     correction = raw_correction + invariant_correction
-    relaxed = circulation + correction
+    relaxed = vortex_strength + correction
     after_integrals = gaussian_fourier_integrals(
         position,
         relaxed,
@@ -808,7 +808,7 @@ def _constrained_divergence_relaxation_once(
     circulation_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
     linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
     angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
-    circulation_error = float(np.linalg.norm(after_moments[0] - achieved_total))
+    vortex_strength_error = float(np.linalg.norm(after_moments[0] - achieved_total))
     linear_impulse_error = float(np.linalg.norm(after_moments[2] - achieved_impulse))
     angular_impulse_error = float(np.linalg.norm(after_moments[3] - achieved_angular))
     circulation_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
@@ -868,12 +868,13 @@ def _constrained_divergence_relaxation_once(
 
     moment_scale = max(before_moments[1], np.finfo(float).tiny)
     impulse_scale = max(
-        0.5 * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum(dtype=np.float64)),
+        0.5
+        * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum(dtype=np.float64)),
         np.finfo(float).tiny,
     )
     angular_terms = (
-        np.cross(position, np.cross(position, circulation)) / 3.0
-        - radius[:, None] ** 2 * circulation / 3.0
+        np.cross(position, np.cross(position, vortex_strength)) / 3.0
+        - radius[:, None] ** 2 * vortex_strength / 3.0
     )
     angular_scale = max(
         float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
@@ -902,7 +903,7 @@ def _constrained_divergence_relaxation_once(
     )
     moment_tolerance = 4096.0 * np.finfo(float).eps
     moment_checks = (
-        ("vector circulation", circulation_error, moment_scale),
+        ("vector circulation", vortex_strength_error, moment_scale),
         ("linear impulse", linear_impulse_error, impulse_scale),
         ("angular impulse", angular_impulse_error, angular_scale),
     )
@@ -942,7 +943,7 @@ def _constrained_divergence_relaxation_once(
                 gate=name,
             )
     return DivergenceRelaxationResult(
-        circulation=relaxed,
+        vortex_strength=relaxed,
         correction=correction,
         projection_sweeps=1,
         iterations=iterations,
@@ -959,7 +960,7 @@ def _constrained_divergence_relaxation_once(
         circulation_reference_error=circulation_reference_error,
         linear_impulse_reference_error=linear_impulse_reference_error,
         angular_impulse_reference_error=angular_impulse_reference_error,
-        circulation_error=circulation_error,
+        vortex_strength_error=vortex_strength_error,
         linear_impulse_error=linear_impulse_error,
         angular_impulse_error=angular_impulse_error,
         total_variation_change_relative=variation_change_relative,
@@ -976,13 +977,13 @@ def _constrained_divergence_relaxation_once(
 
 def _constrained_divergence_relaxation_sweep(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
     volume: np.ndarray,
     *,
     grid_spacing: float,
     regularization: float = 0.1,
-    solver_rtol: float = 1e-5,
+    solver_relative_tolerance: float = 1e-5,
     max_iterations: int = 30,
     max_grid_nodes: int = 8_000_000,
     max_correction_norm: float = 2e-2,
@@ -1021,12 +1022,12 @@ def _constrained_divergence_relaxation_sweep(
             try:
                 return _constrained_divergence_relaxation_once(
                     position,
-                    circulation,
+                    vortex_strength,
                     radius,
                     volume,
                     grid_spacing=grid_spacing,
                     regularization=regularization,
-                    solver_rtol=solver_rtol,
+                    solver_relative_tolerance=solver_relative_tolerance,
                     max_iterations=max_iterations,
                     max_grid_nodes=max_grid_nodes,
                     max_correction_norm=max_correction_norm,
@@ -1061,7 +1062,7 @@ def _constrained_divergence_relaxation_sweep(
 
 def _combine_projection_sweeps(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
     volume: np.ndarray,
     sweeps: list[DivergenceRelaxationResult],
@@ -1082,9 +1083,9 @@ def _combine_projection_sweeps(
 ) -> DivergenceRelaxationResult:
     """Audit several monotone sweeps as one original-to-final transaction."""
 
-    relaxed = sweeps[-1].circulation
-    correction = relaxed - circulation
-    before_moments = gaussian_particle_moments(position, circulation, radius)
+    relaxed = sweeps[-1].vortex_strength
+    correction = relaxed - vortex_strength
+    before_moments = gaussian_particle_moments(position, vortex_strength, radius)
     after_moments = gaussian_particle_moments(position, relaxed, radius)
     if target_moments is None:
         target_total = before_moments[0]
@@ -1105,7 +1106,7 @@ def _combine_projection_sweeps(
     circulation_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
     linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
     angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
-    circulation_error = float(np.linalg.norm(after_moments[0] - achieved_total))
+    vortex_strength_error = float(np.linalg.norm(after_moments[0] - achieved_total))
     linear_impulse_error = float(np.linalg.norm(after_moments[2] - achieved_impulse))
     angular_impulse_error = float(np.linalg.norm(after_moments[3] - achieved_angular))
     circulation_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
@@ -1117,7 +1118,7 @@ def _combine_projection_sweeps(
 
     before_integrals = gaussian_fourier_integrals(
         position,
-        circulation,
+        vortex_strength,
         radius,
         volume,
         spacing=grid_spacing,
@@ -1165,16 +1166,16 @@ def _combine_projection_sweeps(
     enstrophy_spectral_error = abs(enstrophy_change_relative - previous_enstrophy_change)
     helicity_spectral_error = abs(helicity_change_relative - previous_helicity_change)
 
-    circulation_norm = max(float(np.linalg.norm(circulation)), np.finfo(float).tiny)
+    circulation_norm = max(float(np.linalg.norm(vortex_strength)), np.finfo(float).tiny)
     correction_norm_relative = float(np.linalg.norm(correction) / circulation_norm)
     operator = GaussianParticleGridOperator(
         position,
         radius,
-        np.linalg.norm(circulation, axis=1),
+        np.linalg.norm(vortex_strength, axis=1),
         spacing=grid_spacing,
         max_grid_nodes=max_grid_nodes,
     )
-    initial_residual, grid_divergence_before, _ = operator.relaxation_residual(circulation)
+    initial_residual, grid_divergence_before, _ = operator.relaxation_residual(vortex_strength)
     final_residual, grid_divergence_after, _ = operator.relaxation_residual(relaxed)
     initial_residual_norm = float(np.linalg.norm(initial_residual))
     final_residual_ratio = (
@@ -1185,12 +1186,13 @@ def _combine_projection_sweeps(
 
     moment_scale = max(before_moments[1], np.finfo(float).tiny)
     impulse_scale = max(
-        0.5 * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum(dtype=np.float64)),
+        0.5
+        * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum(dtype=np.float64)),
         np.finfo(float).tiny,
     )
     angular_terms = (
-        np.cross(position, np.cross(position, circulation)) / 3.0
-        - radius[:, None] ** 2 * circulation / 3.0
+        np.cross(position, np.cross(position, vortex_strength)) / 3.0
+        - radius[:, None] ** 2 * vortex_strength / 3.0
     )
     angular_scale = max(
         float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
@@ -1198,7 +1200,7 @@ def _combine_projection_sweeps(
     )
     moment_tolerance = 4096.0 * np.finfo(float).eps
     for name, error, scale in (
-        ("vector circulation", circulation_error, moment_scale),
+        ("vector circulation", vortex_strength_error, moment_scale),
         ("linear impulse", linear_impulse_error, impulse_scale),
         ("angular impulse", angular_impulse_error, angular_scale),
     ):
@@ -1261,7 +1263,7 @@ def _combine_projection_sweeps(
             )
 
     return DivergenceRelaxationResult(
-        circulation=relaxed,
+        vortex_strength=relaxed,
         correction=correction,
         projection_sweeps=len(sweeps),
         iterations=sum(sweep.iterations for sweep in sweeps),
@@ -1280,7 +1282,7 @@ def _combine_projection_sweeps(
         circulation_reference_error=circulation_reference_error,
         linear_impulse_reference_error=linear_impulse_reference_error,
         angular_impulse_reference_error=angular_impulse_reference_error,
-        circulation_error=circulation_error,
+        vortex_strength_error=vortex_strength_error,
         linear_impulse_error=linear_impulse_error,
         angular_impulse_error=angular_impulse_error,
         total_variation_change_relative=variation_change_relative,
@@ -1297,13 +1299,13 @@ def _combine_projection_sweeps(
 
 def constrained_divergence_relaxation(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
     volume: np.ndarray,
     *,
     grid_spacing: float,
     regularization: float = 0.1,
-    solver_rtol: float = 1e-5,
+    solver_relative_tolerance: float = 1e-5,
     max_iterations: int = 30,
     max_grid_nodes: int = 8_000_000,
     max_correction_norm: float = 2e-2,
@@ -1335,7 +1337,7 @@ def constrained_divergence_relaxation(
         "enstrophy spectral convergence",
         "helicity spectral convergence",
     }
-    working_circulation = np.asarray(circulation, dtype=np.float64)
+    working_circulation = np.asarray(vortex_strength, dtype=np.float64)
     sweeps: list[DivergenceRelaxationResult] = []
     last_error: DivergenceRelaxationError | None = None
     for sweep_index in range(max_projection_sweeps):
@@ -1349,7 +1351,7 @@ def constrained_divergence_relaxation(
                     volume,
                     grid_spacing=grid_spacing,
                     regularization=regularization,
-                    solver_rtol=solver_rtol,
+                    solver_relative_tolerance=solver_relative_tolerance,
                     max_iterations=max_iterations,
                     max_grid_nodes=max_grid_nodes,
                     max_correction_norm=max_correction_norm,
@@ -1382,7 +1384,7 @@ def constrained_divergence_relaxation(
             try:
                 return _combine_projection_sweeps(
                     position,
-                    circulation,
+                    vortex_strength,
                     radius,
                     volume,
                     candidate_sweeps,
@@ -1414,5 +1416,5 @@ def constrained_divergence_relaxation(
             assert last_error is not None
             raise last_error
         sweeps.append(full_sweep)
-        working_circulation = full_sweep.circulation
+        working_circulation = full_sweep.vortex_strength
     raise AssertionError("projection sweep loop terminated without a result")

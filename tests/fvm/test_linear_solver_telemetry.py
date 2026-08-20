@@ -37,7 +37,7 @@ def test_amg_rebuild_and_reuse_are_reported():
         "method": "amg",
         "equation_type": "pressure",
         "tol": 1.0e-10,
-        "amg_tol": 1.0e-10,
+        "amg_tolerance": 1.0e-10,
         "return_info": True,
     }
     _, first = linear_interface.solve_linear_system(matrix, rhs, **options)

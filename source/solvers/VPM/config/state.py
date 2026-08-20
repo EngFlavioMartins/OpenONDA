@@ -1,335 +1,347 @@
-"""Restart/state models and the flow-model validator for the VPM solver.
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
-"""
+"""Serializable VPM state models and state-management helpers."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, TypeVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
+F = TypeVar("F", bound=Callable[..., Any])
 
-def CachedParticleProperty(func):
-    """
-    Decorator for caching expensive particle property calculations.
 
-    Caches results based on the current time step to avoid redundant computations.
-    Uses per-property timestamp to ensure independence.
-    """
+def cached_particle_property(func: F) -> F:
+    """Cache an expensive particle property for the current solver step."""
     cache_name = f"_{func.__name__}_cache"
-    step_name = f"_{func.__name__}_step"
+    cache_step_name = f"_{func.__name__}_cache_step"
 
+    @wraps(func)
     def wrapper(self, use_cache: bool = True):
-        # Check if cache is valid and should be used
         cache_valid = (
             use_cache
-            and hasattr(self, step_name)
-            and getattr(self, step_name) == self.step
+            and getattr(self, "_cache_step", None) != -1
+            and getattr(self, cache_step_name, None) == self.step
             and hasattr(self, cache_name)
         )
-
-        # Also check global invalidation signal (-1)
-        if hasattr(self, "_cached_step") and self._cached_step == -1:
-            cache_valid = False
-
         if not cache_valid:
-            result = func(self)
-            setattr(self, cache_name, result)
-            setattr(self, step_name, self.step)
-
+            setattr(self, cache_name, func(self))
+            setattr(self, cache_step_name, self.step)
         return getattr(self, cache_name)
 
-    return wrapper
+    return wrapper  # type: ignore[return-value]
 
 
-# =========================================================
-# PYDANTIC MODELS FOR SERIALIZATION AND STATE MANAGEMENT
-# =========================================================
 class SolverState(BaseModel):
-    """
-    Pydantic model for serializing and deserializing solver state.
+    """Serializable scalar state for a VPM solver.
 
-    This model handles the complete simulation state including parameters,
-    timing information, and configuration settings. It supports robust
-    backup/restore operations with validation.
+    Legacy aliases apply only while reading old serialized state. Runtime code
+    is expected to expose the canonical names directly.
     """
 
-    model_config = ConfigDict(extra="allow", validate_assignment=True, populate_by_name=True)
+    model_config = ConfigDict(
+        extra="allow",
+        validate_assignment=True,
+        populate_by_name=True,
+    )
 
-    # Core simulation parameters (required for initialization)
-    time_step_size: float = Field(gt=0.0, description="Time step size in seconds")
+    time_step_size: float = Field(gt=0.0)
     time: float = Field(
-        ge=0.0,
         default=0.0,
-        description="Current simulation time",
+        ge=0.0,
         validation_alias=AliasChoices("time", "flow_time"),
     )
     step: int = Field(
-        ge=0,
         default=0,
-        description="Current time step number",
+        ge=0,
         validation_alias=AliasChoices("step", "time_step"),
     )
-
-    # Method and model configuration
-    # Method and model configuration
-    # time_integration_scheme: removed in favor of specific schemes
-    advection_scheme: str = Field(default="RK3", description="Advection time integration scheme")
-    stretching_scheme: str = Field(default="RK3", description="Stretching time integration scheme")
-
-    processing_unit: str = Field(default="AUTO", description="Computation backend")
-    flow_model: str = Field(default="DNS", description="Flow physics model")
-    viscous_scheme: str = Field(default="CS", description="Viscous modeling scheme")
-
-    # Additional config fields for full reconstruction
-    stretching_enabled: bool = Field(default=True, description="Whether stretching is enabled")
-    stretching_mode: str = Field(default="TRANSPOSED", description="Stretching mode")
-    particles_kernel: str = Field(default="GAUSSIAN", description="Particle kernel function")
-
-    # Simulation control parameters
-    backup_file_name: str = Field(default="", description="Optional backup file name infix")
-    backup_directory: str = Field(default="solution", description="Output directory for backups")
-    logging_frequency: int = Field(default=0, description="Log frequency in steps")
-    timing_frequency: int = Field(
-        default=0, description="Runtime-profile report frequency in steps"
+    advection_scheme: str = "RK3"
+    stretching_scheme: str = "RK3"
+    compute_device: str = Field(
+        default="AUTO",
+        validation_alias=AliasChoices(
+            "compute_device",
+            "processing_unit",
+        ),
     )
-    backup_frequency: int = Field(default=0, description="Backup frequency in steps")
-
-    # Runtime state (optional, set during execution)
-    simulation_time: float | None = Field(default=0.0, ge=0.0, description="Total wall-clock time")
-    cached_step: int | None = Field(default=0, description="Last cached computation step")
-    E_previous: float | None = Field(
-        default=0.0, description="Previous energy for decay calculation"
+    flow_model: str = "DNS"
+    viscous_scheme: str = "CS"
+    stretching_enabled: bool = True
+    stretching_mode: str = "TRANSPOSED"
+    particle_kernel: str = Field(
+        default="GAUSSIAN",
+        validation_alias=AliasChoices(
+            "particle_kernel",
+            "particles_kernel",
+        ),
     )
-    E_previous2: float | None = Field(default=0.0, description="Energy from 2 steps ago")
+    checkpoint_name: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "checkpoint_name",
+            "backup_file_name",
+        ),
+    )
+    checkpoint_directory: str = Field(
+        default="solution",
+        validation_alias=AliasChoices(
+            "checkpoint_directory",
+            "backup_directory",
+        ),
+    )
+    logging_interval_steps: int = Field(
+        default=0,
+        ge=0,
+        validation_alias=AliasChoices(
+            "logging_interval_steps",
+            "logging_frequency",
+        ),
+    )
+    timing_interval_steps: int = Field(
+        default=0,
+        ge=0,
+        validation_alias=AliasChoices(
+            "timing_interval_steps",
+            "timing_frequency",
+        ),
+    )
+    checkpoint_interval_steps: int = Field(
+        default=0,
+        ge=0,
+        validation_alias=AliasChoices(
+            "checkpoint_interval_steps",
+            "backup_frequency",
+        ),
+    )
+    wall_time: float | None = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices(
+            "wall_time",
+            "simulation_time",
+        ),
+    )
+    cache_step: int | None = Field(
+        default=0,
+        validation_alias=AliasChoices(
+            "cache_step",
+            "cached_step",
+        ),
+    )
 
-    @field_validator("processing_unit")
+    @field_validator("compute_device")
     @classmethod
-    def validate_processing_unit(cls, v: str) -> str:
-        """Validate processing unit."""
-        valid_units = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
-        v_upper = v.upper()
-        if v_upper not in valid_units:
-            raise ValueError(f"Invalid processing unit: {v}. Must be one of {valid_units}")
-        return v_upper
+    def validate_compute_device(cls, value: str) -> str:
+        valid = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
+        value = value.upper()
+        if value not in valid:
+            raise ValueError(f"compute_device must be one of {sorted(valid)}")
+        return value
 
     @field_validator("flow_model")
     @classmethod
-    def validate_flow_model(cls, v: str) -> str:
-        """Validate flow model."""
-        valid_models = {"DNS", "LES"}
-        v_upper = v.upper()
-        if v_upper not in valid_models:
-            raise ValueError(f"Invalid flow model: {v}. Must be one of {valid_models}")
-        return v_upper
+    def validate_flow_model(cls, value: str) -> str:
+        valid = {"DNS", "LES", "INVISCID"}
+        value = value.upper()
+        if value not in valid:
+            raise ValueError(f"flow_model must be one of {sorted(valid)}")
+        return value
 
     @classmethod
-    def from_solver(cls, solver) -> "SolverState":
-        """
-        Convert solver object to SolverState for serialization.
-
-        Args:
-              solver: The solver instance to convert
-
-        Returns:
-              SolverState: Serializable state representation
-
-        Raises:
-              ValueError: If solver has invalid or missing required attributes
-
-        Examples:
-              >>> state = SolverState.from_solver(solver)
-              >>> state.time_step_size
-              0.01
-        """
-        try:
-            # Extract core attributes, handling missing values gracefully
-            solver_dict = {}
-            for key, value in solver.__dict__.items():
-                # Skip non-serializable attributes and private attributes
-                if key in ["particles", "physics", "turbulence", "config", "io"] or key.startswith(
-                    "_"
-                ):
-                    continue
-
-                # Include only serializable types
-                if isinstance(value, int | float | str | list | bool | type(None)):
-                    solver_dict[key] = value
-
-            return cls(**solver_dict)
-        except Exception as e:
-            raise ValueError(f"Failed to convert solver to state: {e}") from e
-
-    def to_solver(self):
-        """Convert SolverState back to a solver object.
-
-        The reverse (``to_solver``) conversion is not provided here: building a
-        :class:`VPMSolver` belongs to ``core`` and would make the leaf ``config``
-        package depend on ``core`` (see ARCHITECTURE.md).  Use ``from_solver``
-        to serialise, and construct the solver in ``core`` from the config.
-        """
-        raise NotImplementedError(
-            "SolverState.to_solver was removed; config must not construct a VPMSolver. "
-            "Build the solver in source.solvers.VPM.core from VPMSetup instead."
+    def from_solver(cls, solver: Any) -> SolverState:
+        """Create a scalar-state snapshot from a canonical ``VPMSolver``."""
+        return cls(
+            time_step_size=solver.time_step_size,
+            time=solver.time,
+            step=solver.step,
+            advection_scheme=solver.advection_scheme,
+            stretching_scheme=solver.stretching_scheme,
+            compute_device=solver.compute_device,
+            flow_model=solver.flow_model,
+            viscous_scheme=solver.viscous_scheme,
+            stretching_enabled=solver.stretching_enabled,
+            stretching_mode=solver.stretching_mode,
+            particle_kernel=solver.particle_kernel,
+            checkpoint_name=solver.checkpoint_name,
+            checkpoint_directory=solver.checkpoint_directory,
+            logging_interval_steps=solver.logging_interval_steps,
+            timing_interval_steps=solver.timing_interval_steps,
+            checkpoint_interval_steps=solver.checkpoint_interval_steps,
+            wall_time=solver.wall_time,
+            cache_step=getattr(solver, "_cache_step", 0),
         )
 
 
 class ParticlesState(BaseModel):
-    """
-    Pydantic model for serializing complete particle state.
+    """Serializable VPM particle state with canonical live-field names."""
 
-    This model handles all particle data including positions, velocities, strengths,
-    and computed fields. It provides robust validation and efficient conversion
-    to/from the Particles class.
-    """
-
-    model_config = ConfigDict(extra="allow", validate_assignment=True)
-
-    # Core particle data (always present)
-    positions: list[list[float]] = Field(description="Particle positions [N, 3]")
-    velocities: list[list[float]] = Field(description="Particle velocities [N, 3]")
-    strengths: list[list[float]] = Field(description="Particle strengths [N, 3]")
-    radii: list[float] = Field(description="Particle radii [N]")
-    volumes: list[float] = Field(description="Particle volumes [N]")
-    viscosities: list[float] = Field(description="Particle molecular viscosities [N]")
-    viscosities_t: list[float] = Field(description="Particle turbulent viscosities [N]")
-    group_ids: list[int] = Field(description="Particle group identifiers [N]")
-
-    # Optional computed fields (may not always be present)
-    grad_u: list[list[list[float]]] | None = Field(
-        default=None, description="Velocity gradient tensors [N, 3, 3]"
-    )
-    vorticities: list[list[float]] | None = Field(
-        default=None, description="Particle vorticities [N, 3]"
+    model_config = ConfigDict(
+        extra="allow",
+        validate_assignment=True,
+        populate_by_name=True,
     )
 
-    @field_validator("positions", "velocities", "strengths")
-    @classmethod
-    def validate_vector_fields(cls, v: list[list[float]]) -> list[list[float]]:
-        """Validate vector fields have consistent 3D structure."""
-        if not v:
-            return v
-        for i, vec in enumerate(v):
-            if len(vec) != 3:
-                raise ValueError(f"Vector at index {i} must have 3 components, got {len(vec)}")
-        return v
+    position: list[list[float]] = Field(validation_alias=AliasChoices("position", "positions"))
+    velocity: list[list[float]] = Field(validation_alias=AliasChoices("velocity", "velocities"))
+    vortex_strength: list[list[float]] = Field(
+        validation_alias=AliasChoices(
+            "vortex_strength",
+            "strengths",
+            "circulation",
+        )
+    )
+    core_radius: list[float] = Field(
+        validation_alias=AliasChoices(
+            "core_radius",
+            "radii",
+            "radius",
+        )
+    )
+    volume: list[float] = Field(validation_alias=AliasChoices("volume", "volumes"))
+    kinematic_viscosity: list[float] = Field(
+        validation_alias=AliasChoices(
+            "kinematic_viscosity",
+            "viscosities",
+            "viscosity",
+        )
+    )
+    eddy_viscosity: list[float] = Field(
+        validation_alias=AliasChoices(
+            "eddy_viscosity",
+            "viscosities_t",
+            "viscosity_turbulent",
+        )
+    )
+    effective_viscosity: list[float] | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "effective_viscosity",
+            "viscosities_effective",
+            "viscosity_effective",
+        ),
+    )
+    group_id: list[int] = Field(validation_alias=AliasChoices("group_id", "group_ids"))
+    velocity_gradient: list[list[list[float]]] | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "velocity_gradient",
+            "grad_u",
+        ),
+    )
+    strain_rate: list[list[list[float]]] | None = None
+    vorticity: list[list[float]] | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "vorticity",
+            "vorticities",
+        ),
+    )
+    zone_id: list[int] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("zone_id", "zone_ids"),
+    )
 
-    @field_validator("radii", "volumes", "viscosities", "viscosities_t")
+    @field_validator("position", "velocity", "vortex_strength")
     @classmethod
-    def validate_positive_scalars(cls, v: list[float]) -> list[float]:
-        """Validate scalar fields are positive."""
-        for i, val in enumerate(v):
-            if val < 0:
-                raise ValueError(f"Value at index {i} must be non-negative, got {val}")
-        return v
+    def validate_vector_fields(
+        cls,
+        values: list[list[float]],
+    ) -> list[list[float]]:
+        for index, vector in enumerate(values):
+            if len(vector) != 3:
+                raise ValueError(
+                    f"Vector at index {index} must have 3 components, got {len(vector)}"
+                )
+        return values
+
+    @field_validator("vorticity")
+    @classmethod
+    def validate_optional_vector_field(
+        cls,
+        values: list[list[float]] | None,
+    ) -> list[list[float]] | None:
+        if values is None:
+            return None
+        for index, vector in enumerate(values):
+            if len(vector) != 3:
+                raise ValueError(
+                    f"Vector at index {index} must have 3 components, got {len(vector)}"
+                )
+        return values
+
+    @field_validator(
+        "core_radius",
+        "volume",
+        "kinematic_viscosity",
+        "eddy_viscosity",
+    )
+    @classmethod
+    def validate_non_negative_scalars(
+        cls,
+        values: list[float],
+    ) -> list[float]:
+        for index, value in enumerate(values):
+            if value < 0.0:
+                raise ValueError(f"Value at index {index} must be non-negative, got {value}")
+        return values
+
+    @classmethod
+    def from_particles(
+        cls,
+        particles: Any,
+    ) -> ParticlesState:
+        """Create a serializable snapshot from the live particle container."""
+        state = cls(
+            position=particles.position_cpu().tolist(),
+            velocity=particles.velocity_cpu().tolist(),
+            vortex_strength=(particles.vortex_strength_cpu().tolist()),
+            core_radius=particles.core_radius_cpu().tolist(),
+            volume=particles.volume_cpu().tolist(),
+            kinematic_viscosity=(particles.kinematic_viscosity_cpu().tolist()),
+            eddy_viscosity=(particles.eddy_viscosity_cpu().tolist()),
+            effective_viscosity=(particles.effective_viscosity_cpu().tolist()),
+            group_id=particles.group_id_cpu().tolist(),
+            velocity_gradient=(particles.velocity_gradient_cpu().tolist()),
+            strain_rate=particles.strain_rate_cpu().tolist(),
+            vorticity=particles.vorticity_cpu().tolist(),
+            zone_id=particles.zone_id_cpu().tolist(),
+        )
+        state.validate_consistency()
+        return state
 
     def validate_consistency(self) -> None:
-        """Validate that all fields have consistent sizes."""
-        n_particles = len(self.positions)
-
-        # Check all required fields have same length
-        fields_to_check = [
-            ("velocities", self.velocities),
-            ("strengths", self.strengths),
-            ("radii", self.radii),
-            ("volumes", self.volumes),
-            ("viscosities", self.viscosities),
-            ("viscosities_t", self.viscosities_t),
-            ("group_ids", self.group_ids),
-        ]
-
-        for field_name, field_data in fields_to_check:
-            if len(field_data) != n_particles:
-                raise ValueError(
-                    f"Field '{field_name}' has {len(field_data)} elements, "
-                    f"expected {n_particles} to match positions"
-                )
-
-        # Check optional fields if present
-        if self.grad_u is not None and len(self.grad_u) != n_particles:
-            raise ValueError(f"grad_u field size mismatch: {len(self.grad_u)} != {n_particles}")
-        if self.vorticities is not None and len(self.vorticities) != n_particles:
-            raise ValueError(
-                f"vorticities field size mismatch: {len(self.vorticities)} != {n_particles}"
-            )
-
-    @classmethod
-    def from_particles(cls, particles) -> "ParticlesState":
-        """
-        Convert Particles object to ParticlesState for serialization.
-
-        Args:
-              particles: The particles instance to convert
-
-        Returns:
-              ParticlesState: Serializable particle state
-
-        Raises:
-              ValueError: If particles object is invalid or conversion fails
-
-        Examples:
-              >>> state = ParticlesState.from_particles(particles)
-              >>> len(state.positions)
-              10000
-        """
-        try:
-            # Convert Taichi fields to numpy arrays, then to lists
-            data = {
-                "positions": particles.positions.to_numpy().tolist(),
-                "velocities": particles.velocities.to_numpy().tolist(),
-                "strengths": particles.strengths.to_numpy().tolist(),
-                "radii": particles.radii.to_numpy().tolist(),
-                "volumes": particles.volumes.to_numpy().tolist(),
-                "viscosities": particles.viscosities.to_numpy().tolist(),
-                "viscosities_t": particles.viscosities_t.to_numpy().tolist(),
-                "group_ids": particles.group_ids.to_numpy().tolist(),
-                "vorticities": particles.vorticities.to_numpy().tolist(),
-            }
-
-            # Add optional fields if they exist and are properly initialized
-            if hasattr(particles, "grad_u") and particles.grad_u is not None:
-                try:
-                    grad_u_array = particles.grad_u.to_numpy()
-                    if grad_u_array.size > 0:
-                        data["grad_u"] = grad_u_array.tolist()
-                except Exception:
-                    pass  # Skip if conversion fails
-
-            state = cls(**data)
-            state.validate_consistency()
-            return state
-
-        except Exception as e:
-            raise ValueError(f"Failed to convert particles to state: {e}") from e
-
-    def to_particles(self):
-        """Convert ParticlesState back to a Particles object.
-
-        The reverse (``to_particles``) conversion is not provided here: building
-        a :class:`Particles` belongs to ``particles`` and would make the leaf
-        ``config`` package depend on ``particles`` (see ARCHITECTURE.md).  Use
-        ``from_particles`` to serialise, and construct the container in
-        ``particles`` from the state.
-        """
-        raise NotImplementedError(
-            "ParticlesState.to_particles was removed; config must not construct a "
-            "Particles container.  Build it in source.solvers.VPM.particles instead."
-        )
+        """Require all particle fields to contain the same particle count."""
+        n_particles = len(self.position)
+        for name in (
+            "velocity",
+            "vortex_strength",
+            "core_radius",
+            "volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "effective_viscosity",
+            "group_id",
+            "velocity_gradient",
+            "strain_rate",
+            "vorticity",
+            "zone_id",
+        ):
+            value = getattr(self, name)
+            if value is not None and len(value) != n_particles:
+                raise ValueError(f"{name} has {len(value)} entries; expected {n_particles}")
 
 
-# =========================================================
-# UTILITY FUNCTIONS FOR FLOW MODEL SETTING
-# =========================================================
-def SetFlowModel(psys, flow_model: str):
-    """
-    Set flow model and configure associated parameters.
-    Note: Validation is already done in VPMSetup, so this just sets the model.
-    """
-    if flow_model == "DNS":
-        psys.flow_model_description = "DNS ::: (ω.∇)u + (v)(∇²)ω"
-
-    elif flow_model == "LES":
-        # LES model description will be set based on smagorinsky type in ParticlesLES
-        psys.flow_model_description = "LES ::: (ω.∇)u + (v+vt)(∇²)ω"
-
-    elif flow_model == "INVISCID":
-        psys.flow_model_description = "INV ::: (ω.∇)u (stretching only)"
-
-    psys.flow_model = flow_model
+def set_flow_model(
+    solver: Any,
+    flow_model: str,
+) -> None:
+    """Set the solver flow model and concise physical description."""
+    descriptions = {
+        "DNS": "DNS ::: (ω·∇)u + ν∇²ω",
+        "LES": "LES ::: (ω·∇)u + (ν+νt)∇²ω",
+        "INVISCID": "INV ::: (ω·∇)u",
+    }
+    solver.flow_model = flow_model
+    if flow_model in descriptions:
+        solver.flow_model_description = descriptions[flow_model]

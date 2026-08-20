@@ -16,7 +16,7 @@ def _one_cell_cube():
     )
     face_centres = 0.5 * sf
     mesh = {
-        "n_elements": 1,
+        "n_cells": 1,
         "n_interior_faces": 0,
         "n_faces": 6,
         "owners": np.zeros(6, dtype=np.int32),
@@ -28,10 +28,10 @@ def _one_cell_cube():
         "face_sf": sf,
         "face_cf_vector": face_centres,
         "face_centroids": face_centres,
-        "element_centroids": np.zeros((1, 3)),
+        "cell_centroids": np.zeros((1, 3)),
         "face_weights": np.full(6, 0.5),
         "wall_dist": np.full(6, 0.5),
-        "element_volumes": np.ones(1),
+        "cell_volumes": np.ones(1),
         "gradient_scheme": "gauss",
     }
     return mesh, geo
@@ -69,28 +69,28 @@ def test_linear_manufactured_field_has_exact_mixed_diffusive_flux():
     tangential_gradient = d_u_dn - np.einsum("ij,ij->i", d_u_dn, normals)[:, None] * normals
     patch = {
         "name": "cut",
-        "startFace": 0,
-        "nFaces": 6,
-        "bc_type_velocity": "normalValueTangentialGradient",
+        "start_face": 0,
+        "n_faces": 6,
+        "velocity_type": "normalValueTangentialGradient",
         "normal_velocity_field": normal_velocity,
         "tangential_gradient_field": tangential_gradient,
     }
     mesh["boundary"] = [patch]
     velocity = np.vstack((offset, face_velocity))
-    nu = 0.17
+    kinematic_viscosity = 0.17
 
     for component in range(3):
         flux = assemble_diffusion_term(
             velocity[:, component],
             np.zeros((7, 3)),
-            nu,
+            kinematic_viscosity,
             mesh,
             geo,
             [patch],
             vector_field=velocity,
             component=component,
         )
-        expected = -nu * d_u_dn[:, component]
+        expected = -kinematic_viscosity * d_u_dn[:, component]
         np.testing.assert_allclose(flux["flux_tf"], expected, atol=2.0e-14)
 
 
@@ -98,17 +98,17 @@ def test_mixed_boundary_activates_component_momentum_diagonals():
     mesh, geo = _one_cell_cube()
     mixed = {
         "name": "xcut",
-        "startFace": 0,
-        "nFaces": 2,
-        "bc_type_velocity": "normalValueTangentialGradient",
+        "start_face": 0,
+        "n_faces": 2,
+        "velocity_type": "normalValueTangentialGradient",
         "normal_velocity_field": np.zeros(2),
         "tangential_gradient_field": np.zeros((2, 3)),
     }
     floating = {
         "name": "other",
-        "startFace": 2,
-        "nFaces": 4,
-        "bc_type_velocity": "zeroGradient",
+        "start_face": 2,
+        "n_faces": 4,
+        "velocity_type": "zeroGradient",
     }
     boundaries = [mixed, floating]
     mesh["boundary"] = boundaries
@@ -129,7 +129,7 @@ def test_mixed_boundary_activates_component_momentum_diagonals():
         solver="spsolve",
         under_relaxation=1.0,
         time_step_size=0.2,
-        U_old=velocity,
+        velocity_old=velocity,
     )
 
     assert momentum_diagonal.shape == (1, 3)

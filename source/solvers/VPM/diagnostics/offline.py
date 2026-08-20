@@ -46,7 +46,7 @@ class FlowIntegrals:
     helicity: float
     enstrophy: float
     vorticity_dissipation_rate: float
-    strength_magnitude: float
+    vortex_strength_magnitude: float
     total_strength: np.ndarray  # (3,)
     linear_impulse: np.ndarray  # (3,)
     angular_impulse: np.ndarray  # (3,)
@@ -54,17 +54,20 @@ class FlowIntegrals:
 
 
 class ParticleContainerWrapper:
-    """
-    Lightweight wrapper to mimic Particles class interface for ParticleFieldEvaluation.
+    """Minimal particle-field interface used by offline diagnostics."""
 
-    Wraps Taichi fields to provide .position, .circulation, etc. access.
-    """
-
-    def __init__(self, position, circulation, radius, viscosity_effective, count):
+    def __init__(
+        self,
+        position,
+        vortex_strength,
+        core_radius,
+        effective_viscosity,
+        count,
+    ):
         self.position = position
-        self.circulation = circulation
-        self.radius = radius
-        self.viscosity_effective = viscosity_effective
+        self.vortex_strength = vortex_strength
+        self.core_radius = core_radius
+        self.effective_viscosity = effective_viscosity
         self._count = count
 
     def __len__(self):
@@ -174,22 +177,39 @@ class OfflineFlowDiagnostics:
             solver = f["solver"]
             particles = f["particles"]
 
-            data["time"] = float(solver.attrs["flow_time"])
-            data["n_particles"] = int(solver.attrs["number_of_particles"])
+            time_key = "time" if "time" in solver.attrs else "time"
+            count_key = "n_particles" if "n_particles" in solver.attrs else "number_of_particles"
+            data["time"] = float(solver.attrs[time_key])
+            data["n_particles"] = int(solver.attrs[count_key])
+
+            def particle_dataset(canonical: str, legacy: str):
+                key = canonical if canonical in particles else legacy
+                return particles[key]
 
             n: int = data["n_particles"]
             if n > 0:
                 data["position"] = particles["position"][:n]
-                data["circulation"] = particles["circulation"][:n]
-                data["radius"] = particles["radius"][:n]
-                data["viscosity"] = particles["viscosity"][:n]
-                data["viscosity_turbulent"] = particles["viscosity_turbulent"][:n]
-                data["viscosity_eff"] = data["viscosity"] + data["viscosity_turbulent"]
+                data["vortex_strength"] = particle_dataset("vortex_strength", "circulation")[:n]
+                data["core_radius"] = particle_dataset("core_radius", "radius")[:n]
+                data["kinematic_viscosity"] = particle_dataset("kinematic_viscosity", "viscosity")[
+                    :n
+                ]
+                data["eddy_viscosity"] = particle_dataset("eddy_viscosity", "viscosity_turbulent")[
+                    :n
+                ]
+                if "effective_viscosity" in particles:
+                    data["effective_viscosity"] = particles["effective_viscosity"][:n]
+                elif "viscosity_effective" in particles:
+                    data["effective_viscosity"] = particles["viscosity_effective"][:n]
+                else:
+                    data["effective_viscosity"] = (
+                        data["kinematic_viscosity"] + data["eddy_viscosity"]
+                    )
             else:
                 data["position"] = np.empty((0, 3), dtype=np.float32)
-                data["circulation"] = np.empty((0, 3), dtype=np.float32)
-                data["radius"] = np.empty((0,), dtype=np.float32)
-                data["viscosity_eff"] = np.empty((0,), dtype=np.float32)
+                data["vortex_strength"] = np.empty((0, 3), dtype=np.float32)
+                data["core_radius"] = np.empty((0,), dtype=np.float32)
+                data["effective_viscosity"] = np.empty((0,), dtype=np.float32)
 
         return data
 
@@ -205,7 +225,7 @@ class OfflineFlowDiagnostics:
                 helicity=0.0,
                 enstrophy=0.0,
                 vorticity_dissipation_rate=0.0,
-                strength_magnitude=0.0,
+                vortex_strength_magnitude=0.0,
                 total_strength=np.zeros(3),
                 linear_impulse=np.zeros(3),
                 angular_impulse=np.zeros(3),
@@ -220,16 +240,16 @@ class OfflineFlowDiagnostics:
 
         # Copy data to Taichi
         pos_field.from_numpy(data["position"].astype(np.float32))
-        str_field.from_numpy(data["circulation"].astype(np.float32))
-        rad_field.from_numpy(data["radius"].astype(np.float32))
-        visc_field.from_numpy(data["viscosity_eff"].astype(np.float32))
+        str_field.from_numpy(data["vortex_strength"].astype(np.float32))
+        rad_field.from_numpy(data["core_radius"].astype(np.float32))
+        visc_field.from_numpy(data["effective_viscosity"].astype(np.float32))
 
         # Create wrapper mimicking Particles class
         particles_wrapper = ParticleContainerWrapper(
             position=pos_field,
-            circulation=str_field,
-            radius=rad_field,
-            viscosity_effective=visc_field,
+            vortex_strength=str_field,
+            core_radius=rad_field,
+            effective_viscosity=visc_field,
             count=n,
         )
 
@@ -241,7 +261,7 @@ class OfflineFlowDiagnostics:
             helicity=results_dict["helicity"],
             enstrophy=results_dict["enstrophy"],
             vorticity_dissipation_rate=results_dict["vorticity_dissipation_rate"],
-            strength_magnitude=results_dict["strength_magnitude"],
+            vortex_strength_magnitude=results_dict["vortex_strength_magnitude"],
             total_strength=results_dict["strength"],
             linear_impulse=results_dict["linear_impulse"],
             angular_impulse=results_dict["angular_impulse"],
@@ -260,7 +280,7 @@ class OfflineFlowDiagnostics:
         """
         # Initialize evaluator (reuse across steps to maintain energy history for dE/dt)
         self.evaluator = ParticleFieldEvaluation(
-            particles_kernel="GAUSSIAN",
+            particle_kernel="GAUSSIAN",
             max_particles=self._estimate_max_particles(),
             accumulator_dtype=ti.f64,
         )
@@ -292,7 +312,9 @@ class OfflineFlowDiagnostics:
         # Check last file
         try:
             with h5py.File(self.h5_files[-1], "r") as f:
-                return int(f["solver"].attrs["number_of_particles"]) * 2  # Safety factor
+                attrs = f["solver"].attrs
+                count_key = "n_particles" if "n_particles" in attrs else "number_of_particles"
+                return int(attrs[count_key]) * 2  # Safety factor
         except Exception:
             return 10000
 
@@ -429,11 +451,11 @@ def ComputeOfflineDiagnostics(
         >>> ComputeOfflineDiagnostics(xdmf_path='solution/vpm_temporal.xdmf')
     """
     # Import BackupSystem internally to minimize user-facing imports
-    from ..io import BackupSystem
+    from ..io import CheckpointManager
 
     # Resolve XDMF path
     if backup_pattern is not None:
-        xdmf_path = BackupSystem.create_temporal_xdmf(backup_pattern=backup_pattern)
+        xdmf_path = CheckpointManager.create_temporal_xdmf(backup_pattern=backup_pattern)
     elif xdmf_path is None:
         raise ValueError("Either backup_pattern or xdmf_path must be provided")
 

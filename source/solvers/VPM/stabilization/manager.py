@@ -65,25 +65,25 @@ class StabilizationHealth:
     """Global physical state of the particle cloud, measured in O(N)."""
 
     particles: int
-    circulation: np.ndarray
-    strength_magnitude: float
+    vortex_strength: np.ndarray
+    vortex_strength_magnitude: float
     peak_strength: float
     peak_vorticity: float
 
     @classmethod
     def measure(cls, particles) -> StabilizationHealth:
         """Snapshot the cloud from the strengths and volumes already on hand."""
-        count = particles.number_of_particles
+        count = particles.n_particles
         if count == 0:
             return cls(0, np.zeros(3), 0.0, 0.0, 0.0)
-        circulation = np.asarray(particles.circulation_cpu(), dtype=np.float64)
+        vortex_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64)
         volume = np.asarray(particles.volume_cpu(), dtype=np.float64)
-        magnitude = np.linalg.norm(circulation, axis=1)
+        magnitude = np.linalg.norm(vortex_strength, axis=1)
         vorticity = magnitude / np.maximum(volume, np.finfo(float).tiny)
         return cls(
             particles=count,
-            circulation=circulation.sum(axis=0),
-            strength_magnitude=float(magnitude.sum(dtype=np.float64)),
+            vortex_strength=vortex_strength.sum(axis=0),
+            vortex_strength_magnitude=float(magnitude.sum(dtype=np.float64)),
             peak_strength=float(magnitude.max(initial=0.0)),
             peak_vorticity=float(vorticity.max(initial=0.0)),
         )
@@ -146,13 +146,13 @@ class StabilizationManager:
         # A readable placeholder rather than "": the record goes to CSV, and an
         # empty field reads back as a missing value.
         self.last_mechanism = "none"
-        self.last_circulation_error = 0.0
+        self.last_vortex_strength_error = 0.0
         self.last_strength_growth = 0.0
         self.last_vorticity_growth = 0.0
         self.max_vorticity_growth = 0.0
         # Lineage and reference state the workers need across events.  It is
         # part of the restart state, so the checkpoint reads and writes it.
-        self.reference_strengths: np.ndarray | None = None
+        self.reference_vortex_strength: np.ndarray | None = None
         self.reference_lengths: np.ndarray | None = None
         self.reference_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
 
@@ -179,9 +179,13 @@ class StabilizationManager:
         """
         cfg = self.config
         after = self.measure()
-        scale = max(before.strength_magnitude, np.finfo(float).tiny)
-        circulation_error = float(np.linalg.norm(after.circulation - before.circulation)) / scale
-        strength_growth = (after.strength_magnitude - before.strength_magnitude) / scale
+        scale = max(before.vortex_strength_magnitude, np.finfo(float).tiny)
+        vortex_strength_error = (
+            float(np.linalg.norm(after.vortex_strength - before.vortex_strength)) / scale
+        )
+        strength_growth = (
+            after.vortex_strength_magnitude - before.vortex_strength_magnitude
+        ) / scale
         vorticity_growth = (after.peak_vorticity - before.peak_vorticity) / max(
             before.peak_vorticity, np.finfo(float).tiny
         )
@@ -191,23 +195,25 @@ class StabilizationManager:
         # Recorded for every mechanism.  A rotation carries circulation with it
         # by construction, so for those this number is the reported transfer
         # rather than an error, and only the gate below is skipped.
-        self.last_circulation_error = circulation_error
+        self.last_vortex_strength_error = vortex_strength_error
         self.last_strength_growth = strength_growth
         self.last_vorticity_growth = vorticity_growth
         self.max_vorticity_growth = max(self.max_vorticity_growth, vorticity_growth)
 
         Logging.message(
             f"[Stabilization] {mechanism}: {before.particles} -> {after.particles} particles, "
-            f"dSumGamma/S={circulation_error:.2e}, dS/S={strength_growth:+.2e}, "
+            f"dSumGamma/S={vortex_strength_error:.2e}, dS/S={strength_growth:+.2e}, "
             f"dOmegaMax/OmegaMax={vorticity_growth:+.2e}" + (f", {detail}" if detail else "")
         )
 
         checks = []
         if conserves_circulation:
-            checks.append(("circulation error", circulation_error, cfg.max_circulation_error))
+            checks.append(
+                ("circulation error", vortex_strength_error, cfg.max_vortex_strength_error)
+            )
         if preserves_discretization:
             checks += [
-                ("strength growth", strength_growth, cfg.max_strength_growth),
+                ("strength growth", strength_growth, cfg.max_vortex_strength_growth),
                 ("peak-vorticity growth", vorticity_growth, cfg.max_vorticity_growth),
             ]
         for name, value, limit in checks:
@@ -224,7 +230,7 @@ class StabilizationManager:
         return {
             "stabilization_events": self.events,
             "stabilization_last_mechanism": self.last_mechanism,
-            "stabilization_circulation_error": self.last_circulation_error,
+            "stabilization_vortex_strength_error": self.last_vortex_strength_error,
             "stabilization_strength_growth": self.last_strength_growth,
             "stabilization_vorticity_growth": self.last_vorticity_growth,
             "stabilization_max_vorticity_growth": self.max_vorticity_growth,
@@ -235,7 +241,7 @@ class StabilizationManager:
         self.events = int(values.get("stabilization_events", self.events))
         self.last_mechanism = str(values.get("stabilization_last_mechanism", self.last_mechanism))
         for key, attribute in (
-            ("stabilization_circulation_error", "last_circulation_error"),
+            ("stabilization_vortex_strength_error", "last_vortex_strength_error"),
             ("stabilization_strength_growth", "last_strength_growth"),
             ("stabilization_vorticity_growth", "last_vorticity_growth"),
             ("stabilization_max_vorticity_growth", "max_vorticity_growth"),
@@ -255,7 +261,7 @@ class StabilizationManager:
             active.append("filament refinement")
         if cfg.divergence_relaxation.enabled:
             active.append("divergence relaxation")
-        if cfg.regularization_frequency > 0:
+        if cfg.regularization_interval_steps > 0:
             active.append("conservative regularization")
         if cfg.remove_particles_by_bounds is not None:
             active.append("bounded-domain retention")
@@ -296,7 +302,7 @@ class StabilizationManager:
     def capture_reference_state(self) -> None:
         """Capture the lineage and moment references the workers relax toward."""
         particles = self.ctx.particles
-        if self.reference_strengths is not None or particles.number_of_particles == 0:
+        if self.reference_vortex_strength is not None or particles.n_particles == 0:
             return
         if not (
             self.config.filament_refinement.enabled or self.config.divergence_relaxation.enabled
@@ -305,16 +311,16 @@ class StabilizationManager:
 
         from .filament_refinement import gaussian_particle_moments
 
-        circulation = particles.circulation_cpu()
+        vortex_strength = particles.vortex_strength_cpu()
         volume = particles.volume_cpu()
-        magnitude = np.linalg.norm(circulation, axis=1)
+        magnitude = np.linalg.norm(vortex_strength, axis=1)
         floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
-        self.reference_strengths = np.maximum(magnitude, floor)
+        self.reference_vortex_strength = np.maximum(magnitude, floor)
         self.reference_lengths = np.cbrt(volume)
         moments = gaussian_particle_moments(
             particles.position_cpu(),
-            circulation,
-            particles.radius_cpu(),
+            vortex_strength,
+            particles.core_radius_cpu(),
         )
         self.reference_moments = tuple(
             np.asarray(moments[index], dtype=np.float64).copy() for index in (0, 2, 3)
@@ -341,7 +347,7 @@ class StabilizationManager:
             not cfg.pedrizzetti_relaxation_enabled
             or self.ctx.flow_model == "POTENTIAL"
             or not self._due(
-                cfg.pedrizzetti_relaxation_frequency, cfg.pedrizzetti_relaxation_start_step
+                cfg.pedrizzetti_relaxation_interval_steps, cfg.pedrizzetti_relaxation_start_step
             )
         ):
             return
@@ -350,7 +356,7 @@ class StabilizationManager:
         statistics = self.operators.apply_pedrizzetti_relaxation(
             self.ctx.particles,
             cfg.pedrizzetti_relaxation_factor,
-            conserve_strength=cfg.pedrizzetti_relaxation_conserve_strength,
+            conserve_strength=cfg.pedrizzetti_relaxation_preserve_vortex_strength,
         )
         self.accept(
             "Pedrizzetti relaxation",
@@ -371,15 +377,15 @@ class StabilizationManager:
 
         from .filament_refinement import FilamentRefinementError, split_stretched_filaments
 
-        if self.reference_strengths is None or self.reference_lengths is None:
+        if self.reference_vortex_strength is None or self.reference_lengths is None:
             raise FilamentRefinementError(
                 "filament-refinement lineage references were not captured before time integration"
             )
         particles = ctx.particles
         position = particles.position_cpu()
-        if len(self.reference_strengths) != len(position) or len(self.reference_lengths) != len(
-            position
-        ):
+        if len(self.reference_vortex_strength) != len(position) or len(
+            self.reference_lengths
+        ) != len(position):
             raise FilamentRefinementError(
                 "filament-refinement lineage state no longer matches the particle cloud"
             )
@@ -390,12 +396,12 @@ class StabilizationManager:
         before = self.measure()
         result = split_stretched_filaments(
             position,
-            particles.circulation_cpu(),
-            particles.radius_cpu(),
+            particles.vortex_strength_cpu(),
+            particles.core_radius_cpu(),
             particles.volume_cpu(),
-            reference_strength=self.reference_strengths,
+            reference_vortex_strength=self.reference_vortex_strength,
             reference_length=self.reference_lengths,
-            max_stretch_factor=cfg.max_strength_factor,
+            max_stretch_factor=cfg.max_vortex_strength_factor,
             offset_fraction=cfg.offset_fraction,
             max_particles=capacity,
         )
@@ -406,17 +412,17 @@ class StabilizationManager:
         ctx.replace_vortex_particles(
             position=result.position.astype(ctx.np_dtype),
             velocity=particles.velocity_cpu()[source],
-            circulation=result.circulation.astype(ctx.np_dtype),
-            radius=result.radius.astype(ctx.np_dtype),
+            vortex_strength=result.vortex_strength.astype(ctx.np_dtype),
+            core_radius=result.radius.astype(ctx.np_dtype),
             volume=result.volume.astype(ctx.np_dtype),
-            viscosity=particles.viscosity_cpu()[source],
-            viscosity_turbulent=particles.viscosity_turbulent_cpu()[source],
+            kinematic_viscosity=particles.kinematic_viscosity_cpu()[source],
+            eddy_viscosity=particles.eddy_viscosity_cpu()[source],
             group_id=particles.group_id_cpu()[source],
             zone_id=particles.zone_id_cpu()[source],
             report_removal=False,
         )
         # Refinement replaces particles without representing physical removal.
-        self.reference_strengths = result.reference_strength
+        self.reference_vortex_strength = result.reference_vortex_strength
         self.reference_lengths = result.reference_length
         self.accept(
             "filament refinement",
@@ -442,11 +448,11 @@ class StabilizationManager:
             )
         particles = ctx.particles
         position = particles.position_cpu().astype(np.float64)
-        circulation = particles.circulation_cpu().astype(np.float64)
-        radius = particles.radius_cpu().astype(np.float64)
+        vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
+        radius = particles.core_radius_cpu().astype(np.float64)
         volume = particles.volume_cpu().astype(np.float64)
         reference_scales = (
-            cfg.circulation_reference_scale,
+            cfg.vortex_strength_reference_scale,
             cfg.linear_impulse_reference_scale,
             cfg.angular_impulse_reference_scale,
         )
@@ -454,12 +460,12 @@ class StabilizationManager:
         before = self.measure()
         result = constrained_divergence_relaxation(
             position,
-            circulation,
+            vortex_strength,
             radius,
             volume,
             grid_spacing=cfg.grid_spacing,
             regularization=cfg.regularization,
-            solver_rtol=cfg.solver_rtol,
+            solver_relative_tolerance=cfg.solver_relative_tolerance,
             max_iterations=cfg.max_iterations,
             max_projection_sweeps=cfg.max_projection_sweeps,
             max_grid_nodes=cfg.max_grid_nodes,
@@ -474,16 +480,16 @@ class StabilizationManager:
                 reference_scales if all(value is not None for value in reference_scales) else None
             ),
             reference_tolerances=(
-                cfg.circulation_reference_tolerance,
+                cfg.vortex_strength_reference_tolerance,
                 cfg.linear_impulse_reference_tolerance,
                 cfg.angular_impulse_reference_tolerance,
             ),
             target_moments=self.reference_moments,
         )
 
-        uploaded_circulation = result.circulation.astype(ctx.np_dtype)
+        uploaded_circulation = result.vortex_strength.astype(ctx.np_dtype)
         ctx.set_particles_properties(strengths=uploaded_circulation)
-        self._rescale_lineage_reference(circulation, uploaded_circulation.astype(np.float64))
+        self._rescale_lineage_reference(vortex_strength, uploaded_circulation.astype(np.float64))
         self.accept(
             "divergence relaxation",
             before,
@@ -496,7 +502,7 @@ class StabilizationManager:
     def apply_regularization(self) -> None:
         """Redistribute a distorted cloud when its discretization health demands it."""
         cfg = self.config
-        if not self._due(cfg.regularization_frequency, cfg.regularization_start_step):
+        if not self._due(cfg.regularization_interval_steps, cfg.regularization_start_step):
             return
 
         from .regularization import regularize
@@ -532,30 +538,30 @@ class StabilizationManager:
 
     # -- lineage bookkeeping ---------------------------------------------------
 
-    def _rescale_lineage_reference(self, circulation: np.ndarray, relaxed: np.ndarray) -> None:
+    def _rescale_lineage_reference(self, vortex_strength: np.ndarray, relaxed: np.ndarray) -> None:
         """Keep the refinement lineage consistent with reassigned strengths."""
-        reference = self.reference_strengths
-        if reference is None or len(reference) != len(circulation):
+        reference = self.reference_vortex_strength
+        if reference is None or len(reference) != len(vortex_strength):
             return
-        old_magnitude = np.linalg.norm(circulation, axis=1)
+        old_magnitude = np.linalg.norm(vortex_strength, axis=1)
         new_magnitude = np.linalg.norm(relaxed, axis=1)
         floor = max(float(old_magnitude.max(initial=0.0)) * 1e-14, np.finfo(float).tiny)
         updated = np.asarray(reference, dtype=np.float64).copy()
         scalable = old_magnitude > floor
         updated[scalable] *= new_magnitude[scalable] / old_magnitude[scalable]
         updated[~scalable] = np.maximum(updated[~scalable], new_magnitude[~scalable])
-        self.reference_strengths = np.maximum(updated, floor)
+        self.reference_vortex_strength = np.maximum(updated, floor)
 
     def resize_lineage_reference(self, source_index: np.ndarray | None = None) -> None:
         """Re-map the lineage state after the particle set changed elsewhere."""
-        if self.reference_strengths is None:
+        if self.reference_vortex_strength is None:
             return
         if source_index is None:
-            self.reference_strengths = None
+            self.reference_vortex_strength = None
             self.reference_lengths = None
             self.reference_moments = None
             return
-        self.reference_strengths = self.reference_strengths[source_index]
+        self.reference_vortex_strength = self.reference_vortex_strength[source_index]
         self.reference_lengths = self.reference_lengths[source_index]
 
     def on_removal(self, *, indices=None, keep_mask=None, remove_all: bool = False) -> None:
@@ -565,45 +571,45 @@ class StabilizationManager:
         references never drift from the live cloud.  A no-op when no lineage has
         been captured yet (``reference_strengths is None``).
         """
-        if self.reference_strengths is None or self.reference_lengths is None:
+        if self.reference_vortex_strength is None or self.reference_lengths is None:
             return
         if remove_all:
-            self.reference_strengths = np.empty(0, dtype=np.float64)
+            self.reference_vortex_strength = np.empty(0, dtype=np.float64)
             self.reference_lengths = np.empty(0, dtype=np.float64)
             return
         if keep_mask is not None:
             keep = np.asarray(keep_mask, dtype=bool)
         elif indices is not None and len(indices) > 0:
-            keep = np.ones(len(self.reference_strengths), dtype=bool)
+            keep = np.ones(len(self.reference_vortex_strength), dtype=bool)
             keep[np.asarray(indices, dtype=np.int64)] = False
         else:
             return
-        self.reference_strengths = np.asarray(self.reference_strengths)[keep]
+        self.reference_vortex_strength = np.asarray(self.reference_vortex_strength)[keep]
         self.reference_lengths = np.asarray(self.reference_lengths)[keep]
 
     def on_replacement(self, magnitude: np.ndarray, volume: np.ndarray) -> None:
         """Reset the lineage references to the new cloud's own magnitudes."""
-        if self.reference_strengths is None:
+        if self.reference_vortex_strength is None:
             return
         floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
-        self.reference_strengths = np.maximum(magnitude, floor)
+        self.reference_vortex_strength = np.maximum(magnitude, floor)
         self.reference_lengths = np.cbrt(np.asarray(volume, dtype=np.float64))
 
     def on_add(
         self, magnitude: np.ndarray, volume: np.ndarray, start: int, loading: bool = False
     ) -> None:
         """Extend the lineage references for an appended batch of particles."""
-        if self.reference_strengths is None or self.reference_lengths is None:
+        if self.reference_vortex_strength is None or self.reference_lengths is None:
             return
         if loading:
             return
-        if len(self.reference_strengths) != start:
+        if len(self.reference_vortex_strength) != start:
             raise RuntimeError(
                 "filament-refinement lineage state did not match the cloud before insertion"
             )
         floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
-        self.reference_strengths = np.concatenate(
-            (self.reference_strengths, np.maximum(magnitude, floor))
+        self.reference_vortex_strength = np.concatenate(
+            (self.reference_vortex_strength, np.maximum(magnitude, floor))
         )
         self.reference_lengths = np.concatenate(
             (self.reference_lengths, np.cbrt(np.asarray(volume, dtype=np.float64)))

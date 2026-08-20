@@ -20,5 +20,5 @@ def apply_random_walk(owner, particles, time_step_size: float):
     owner._resize_temp_fields(N)
     # No temp field is touched, so the temp-field zeroing is deliberately skipped.
     owner.update_position_rwm_kernel(
-        particles.position, particles.viscosity_effective, time_step_size, N
+        particles.position, particles.effective_viscosity, time_step_size, N
     )

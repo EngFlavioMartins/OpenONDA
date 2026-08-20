@@ -73,8 +73,8 @@ class MeshGeometry:
             face_centroids=_readonly(geo_data["face_centroids"]),
             face_area_vectors=_readonly(geo_data["face_sf"]),
             face_areas=_readonly(geo_data["face_areas"]),
-            cell_centroids=_readonly(geo_data["element_centroids"]),
-            cell_volumes=_readonly(geo_data["element_volumes"]),
+            cell_centroids=_readonly(geo_data["cell_centroids"]),
+            cell_volumes=_readonly(geo_data["cell_volumes"]),
             interpolation_weights=_readonly(geo_data["face_weights"]),
             cell_face_vectors=_readonly(geo_data["face_cf_vector"]),
             wall_distance=_readonly(geo_data["wall_dist"]),
@@ -87,10 +87,10 @@ def compute_geometry(
     faces,
     owners,
     neighbours,
-    n_elements,
+    n_cells,
     n_faces,
     n_interior_faces,
-    element_faces,
+    cell_faces,
     *,
     logger=None,
 ):
@@ -124,8 +124,8 @@ def compute_geometry(
     face_sf = np.zeros((n_faces, 3), dtype=np.float64)
     face_areas = np.zeros(n_faces, dtype=np.float64)
 
-    element_centroids = np.zeros((n_elements, 3), dtype=np.float64)
-    element_volumes = np.zeros(n_elements, dtype=np.float64)
+    cell_centroids = np.zeros((n_cells, 3), dtype=np.float64)
+    cell_volumes = np.zeros(n_cells, dtype=np.float64)
 
     face_weights = np.zeros(n_faces, dtype=np.float64)
     face_cf_vector = np.zeros((n_faces, 3), dtype=np.float64)  # faceCF in uFVM (owner to neighbour)
@@ -207,20 +207,21 @@ def compute_geometry(
     # ``compute_mesh_geometry`` normally passes CSR connectivity.  Only the
     # counts persist globally; padded connectivity and all gathered face
     # tensors are bounded to one block.
-    if isinstance(element_faces, tuple):
-        cell_faces, cell_face_offsets = element_faces
-        elem_counts = np.diff(cell_face_offsets).astype(np.int32, copy=False)
-        max_faces = int(np.max(elem_counts, initial=0))
+    cell_faces_are_csr = isinstance(cell_faces, tuple)
+    if cell_faces_are_csr:
+        cell_faces, cell_face_offsets = cell_faces
+        cell_counts = np.diff(cell_face_offsets).astype(np.int32, copy=False)
+        max_faces = int(np.max(cell_counts, initial=0))
     else:
-        max_faces = max(len(f) for f in element_faces)
-        elem_counts = np.fromiter((len(f) for f in element_faces), dtype=np.int32)
+        max_faces = max(len(f) for f in cell_faces)
+        cell_counts = np.fromiter((len(f) for f in cell_faces), dtype=np.int32)
 
-    element_chunk = 50_000
-    for start in range(0, n_elements, element_chunk):
-        stop = min(start + element_chunk, n_elements)
-        count_block = elem_counts[start:stop]
+    cell_chunk = 50_000
+    for start in range(0, n_cells, cell_chunk):
+        stop = min(start + cell_chunk, n_cells)
+        count_block = cell_counts[start:stop]
         padded = np.full((stop - start, max_faces), -1, dtype=np.int32)
-        if isinstance(element_faces, tuple):
+        if cell_faces_are_csr:
             first_entry = int(cell_face_offsets[start])
             last_entry = int(cell_face_offsets[stop])
             if last_entry > first_entry:
@@ -231,37 +232,37 @@ def compute_geometry(
                 )
                 padded[rows, columns] = cell_faces[first_entry:last_entry]
         else:
-            for local, faces_for_cell in enumerate(element_faces[start:stop]):
+            for local, faces_for_cell in enumerate(cell_faces[start:stop]):
                 padded[local, : len(faces_for_cell)] = faces_for_cell
 
         safe_faces = padded.copy()
         safe_faces[safe_faces < 0] = 0
         valid = padded >= 0
-        elem_face_centroids = face_centroids[safe_faces]
-        elem_centre = (
-            np.sum(elem_face_centroids * valid[:, :, np.newaxis], axis=1)
+        cell_face_centroids = face_centroids[safe_faces]
+        cell_centre = (
+            np.sum(cell_face_centroids * valid[:, :, np.newaxis], axis=1)
             / count_block[:, np.newaxis]
         )
-        elem_face_sf = face_sf[safe_faces]
+        cell_face_sf = face_sf[safe_faces]
         face_owners = owners[safe_faces]
-        element_ids = np.arange(start, stop)[:, np.newaxis]
-        signs = np.where(element_ids == face_owners, 1.0, -1.0)
+        cell_ids = np.arange(start, stop)[:, np.newaxis]
+        signs = np.where(cell_ids == face_owners, 1.0, -1.0)
         local_volumes = (
             np.sum(
-                elem_face_sf
+                cell_face_sf
                 * signs[:, :, np.newaxis]
-                * (elem_face_centroids - elem_centre[:, np.newaxis, :]),
+                * (cell_face_centroids - cell_centre[:, np.newaxis, :]),
                 axis=2,
             )
             / 3.0
         )
         local_volumes *= valid
         local_sum = np.sum(local_volumes, axis=1)
-        local_centroids = 0.75 * elem_face_centroids + 0.25 * elem_centre[:, np.newaxis, :]
+        local_centroids = 0.75 * cell_face_centroids + 0.25 * cell_centre[:, np.newaxis, :]
         weighted = np.sum(local_centroids * local_volumes[:, :, np.newaxis], axis=1)
         safe_volume = np.where(local_sum == 0.0, 1.0, local_sum)
-        element_centroids[start:stop] = weighted / safe_volume[:, np.newaxis]
-        element_volumes[start:stop] = local_sum
+        cell_centroids[start:stop] = weighted / safe_volume[:, np.newaxis]
+        cell_volumes[start:stop] = local_sum
     logging.Timer.log(
         "Element Geometry",
         sink=logger,
@@ -280,8 +281,8 @@ def compute_geometry(
         own = owners[face_slice]
         nei = neighbours[face_slice]
         normals = face_sf[face_slice] / face_areas[face_slice, np.newaxis]
-        owner_centres = element_centroids[own]
-        neighbour_centres = element_centroids[nei]
+        owner_centres = cell_centroids[own]
+        neighbour_centres = cell_centroids[nei]
         owner_to_face = face_centroids[face_slice] - owner_centres
         neighbour_to_face = face_centroids[face_slice] - neighbour_centres
         face_cf_vector[face_slice] = neighbour_centres - owner_centres
@@ -302,7 +303,7 @@ def compute_geometry(
         stop = min(start + secondary_chunk, n_faces)
         face_slice = slice(start, stop)
         own = owners[face_slice]
-        vector = face_centroids[face_slice] - element_centroids[own]
+        vector = face_centroids[face_slice] - cell_centroids[own]
         normals = face_sf[face_slice] / face_areas[face_slice, np.newaxis]
         face_cf_vector[face_slice] = vector
         face_weights[face_slice] = 1.0
@@ -312,8 +313,8 @@ def compute_geometry(
         "face_centroids": face_centroids,
         "face_sf": face_sf,
         "face_areas": face_areas,
-        "element_centroids": element_centroids,
-        "element_volumes": element_volumes,
+        "cell_centroids": cell_centroids,
+        "cell_volumes": cell_volumes,
         "face_weights": face_weights,
         "face_cf_vector": face_cf_vector,
         "wall_dist": wall_dist,
@@ -332,16 +333,16 @@ def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, compute_lsq=Tru
     # a Python list for every cell.
     from . import topology
 
-    element_faces = mesh_data.get("cell_faces")
+    cell_faces = mesh_data.get("cell_faces")
     cell_face_offsets = mesh_data.get("cell_face_offsets")
-    if element_faces is None or cell_face_offsets is None:
-        element_faces, cell_face_offsets = topology.build_cell_face_csr(
+    if cell_faces is None or cell_face_offsets is None:
+        cell_faces, cell_face_offsets = topology.build_cell_face_csr(
             mesh_data["owners"],
             mesh_data["neighbours"],
-            mesh_data["n_elements"],
+            mesh_data["n_cells"],
             mesh_data["n_faces"],
         )
-        mesh_data["cell_faces"] = element_faces
+        mesh_data["cell_faces"] = cell_faces
         mesh_data["cell_face_offsets"] = cell_face_offsets
 
     geo_data = compute_geometry(
@@ -349,10 +350,10 @@ def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, compute_lsq=Tru
         mesh_data["faces"],
         mesh_data["owners"],
         mesh_data["neighbours"],
-        mesh_data["n_elements"],
+        mesh_data["n_cells"],
         mesh_data["n_faces"],
         mesh_data["n_interior_faces"],
-        (element_faces, cell_face_offsets),
+        (cell_faces, cell_face_offsets),
         logger=logger,
     )
 

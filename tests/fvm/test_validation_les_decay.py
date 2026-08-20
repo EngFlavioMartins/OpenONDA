@@ -10,11 +10,11 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
@@ -45,17 +45,19 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
     config = FVMSetup(
         case_name=f"tgv-wale-{level}",
         time=TimeConfig.transient(
-            time_step_size=time_step_size, duration=steps * time_step_size, write_interval=10**9
+            time_step_size=time_step_size,
+            duration=steps * time_step_size,
+            output_interval_steps=10**9,
         ),
-        schemes=SchemesConfig(convection_scheme="central", time_scheme="backward"),
+        schemes=DiscretizationConfig(convection_scheme="central", time_scheme="backward"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="amg",
-            momentum_tol=1e-8,
-            pressure_tol=1e-9,
+            momentum_tolerance=1e-8,
+            pressure_tolerance=1e-9,
         ),
         pimple=PimpleControl(n_correctors=2, n_outer_correctors=1),
-        transport=TransportConfig(density=1.0, nu=1.0 / 1600.0),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=1.0 / 1600.0),
         turbulence=TurbulenceConfig.wale(),
         boundaries=boundaries,
         initial_velocity=[0.0, 0.0, 0.0],
@@ -64,9 +66,9 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
     with tempfile.TemporaryDirectory() as case_dir, contextlib.redirect_stdout(io.StringIO()):
         solver = FVMSolver(config, case_dir=case_dir, mesh_data=mesh)
         solver.auto_write = False
-        n_cells = mesh["n_elements"]
-        centers = solver.geo_data["element_centroids"]
-        x, y, z = centers.T
+        n_cells = mesh["n_cells"]
+        centres = solver.geo_data["cell_centroids"]
+        x, y, z = centres.T
         velocity = np.column_stack(
             (
                 np.sin(x) * np.cos(y) * np.cos(z),
@@ -76,18 +78,22 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
         )
         pressure = (np.cos(2.0 * x) + np.cos(2.0 * y)) * (np.cos(2.0 * z) + 2.0) / 16.0
         solver.set_initial_velocity(velocity)
-        solver.p[:n_cells] = pressure - np.mean(pressure)
-        update_scalar_boundaries(solver.p, mesh, solver.boundaries, field_name="p")
-        solver.phi = compute_volumetric_face_flux(solver.U, mesh, solver.geo_data)
+        solver.kinematic_pressure[:n_cells] = pressure - np.mean(pressure)
+        update_scalar_boundaries(solver.kinematic_pressure, mesh, solver.boundaries, field_name="p")
+        solver.face_flux = compute_volumetric_face_flux(solver.velocity, mesh, solver.geo_data)
 
-        volumes = solver.geo_data["element_volumes"]
+        volumes = solver.geo_data["cell_volumes"]
         total_volume = np.sum(volumes)
-        energy = [0.5 * np.sum(volumes * np.sum(solver.U[:n_cells] ** 2, axis=1)) / total_volume]
+        energy = [
+            0.5 * np.sum(volumes * np.sum(solver.velocity[:n_cells] ** 2, axis=1)) / total_volume
+        ]
         for _ in range(steps):
             solver.solve_pimple(time_step_size)
             solver.advance_time()
             energy.append(
-                0.5 * np.sum(volumes * np.sum(solver.U[:n_cells] ** 2, axis=1)) / total_volume
+                0.5
+                * np.sum(volumes * np.sum(solver.velocity[:n_cells] ** 2, axis=1))
+                / total_volume
             )
 
     times = np.arange(steps + 1) * time_step_size

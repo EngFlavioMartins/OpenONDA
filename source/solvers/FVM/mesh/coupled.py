@@ -8,8 +8,8 @@ from .validation import MeshValidationError
 
 
 def _patch_faces(patch: dict) -> np.ndarray:
-    start = int(patch["startFace"])
-    return np.arange(start, start + int(patch["nFaces"]), dtype=np.int32)
+    start = int(patch["start_face"])
+    return np.arange(start, start + int(patch["n_faces"]), dtype=np.int32)
 
 
 def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
@@ -28,11 +28,11 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
     cyclic = {
         name: patch
         for name, patch in patches.items()
-        if patch.get("bc_type_velocity") == "cyclic" or patch.get("bc_type_p") == "cyclic"
+        if patch.get("velocity_type") == "cyclic" or patch.get("pressure_type") == "cyclic"
     }
 
     for name, patch in cyclic.items():
-        if patch.get("bc_type_velocity") != "cyclic" or patch.get("bc_type_p") != "cyclic":
+        if patch.get("velocity_type") != "cyclic" or patch.get("pressure_type") != "cyclic":
             raise MeshValidationError(
                 f"Cyclic patch {name!r} must use cyclic for both velocity and pressure"
             )
@@ -42,7 +42,7 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
                 f"Cyclic patch {name!r} uses unsupported transform {transform!r}; "
                 "only translational coupling is implemented"
             )
-        neighbour_name = patch.get("neighbourPatch") or patch.get("neighbour_patch")
+        neighbour_name = patch.get("neighbour_patch") or patch.get("neighbour_patch")
         if not neighbour_name:
             raise MeshValidationError(f"Cyclic patch {name!r} is missing neighbourPatch")
         neighbour = patches.get(str(neighbour_name))
@@ -50,11 +50,11 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
             raise MeshValidationError(
                 f"Cyclic patch {name!r} references unknown neighbourPatch {neighbour_name!r}"
             )
-        if neighbour.get("bc_type_velocity") != "cyclic" or neighbour.get("bc_type_p") != "cyclic":
+        if neighbour.get("velocity_type") != "cyclic" or neighbour.get("pressure_type") != "cyclic":
             raise MeshValidationError(
                 f"Cyclic neighbour {neighbour_name!r} must use cyclic for velocity and pressure"
             )
-        reciprocal = neighbour.get("neighbourPatch") or neighbour.get("neighbour_patch")
+        reciprocal = neighbour.get("neighbour_patch") or neighbour.get("neighbour_patch")
         if reciprocal != name:
             raise MeshValidationError(
                 f"Cyclic patches {name!r} and {neighbour_name!r} are not reciprocal"
@@ -106,7 +106,7 @@ def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
     geo_data["boundary_translations"] = translations
     if np.any(coupled):
         owners = mesh_data["owners"]
-        centres = geo_data["element_centroids"]
+        centres = geo_data["cell_centroids"]
         face_centres = geo_data["face_centroids"]
         image_centres = centres[paired_cells[coupled]] + translations[coupled]
         vectors = image_centres - centres[owners[coupled]]

@@ -3,11 +3,11 @@
 Implements the compact coupling API on the FVM ``FVMSolver``:
 
 Getters
-    ``get_cell_center_coordinates``, ``get_cell_volumes``, ``get_velocity_field``,
+    ``get_cell_centre_coordinates``, ``get_cell_volumes``, ``get_velocity_field``,
     ``get_velocity_field_into``, ``get_velocity_gradient_field``,
     ``get_velocity_gradient_field_into``, ``get_vorticity_field``,
     ``get_vorticity_field_into``,
-    ``get_boundary_face_center_coordinates``,
+    ``get_boundary_face_centre_coordinates``,
     ``get_boundary_face_normals``, ``get_boundary_face_areas``, ``n_procs``.
 Setters
     ``set_cell_scalar_field``, ``set_cell_vector_field``, ``set_time_step``,
@@ -46,7 +46,7 @@ class CouplerInterfaceMixin:
     mesh_data: dict[str, Any]
     geo_data: dict[str, Any]
     boundaries: list[dict[str, Any]]
-    U: np.ndarray
+    velocity: np.ndarray
     p: np.ndarray
     setup: Any
     registered_fields: dict[str, np.ndarray]
@@ -189,7 +189,7 @@ class CouplerInterfaceMixin:
         boundary = self._optional_patch(patch_name)
         if boundary is None:
             return boundary, np.empty(0, dtype=np.int64), slice(0, 0)
-        start, n_faces = int(boundary["startFace"]), int(boundary["nFaces"])
+        start, n_faces = int(boundary["start_face"]), int(boundary["n_faces"])
         face_slice = slice(start, start + n_faces)
         global_ids = np.asarray(self.mesh_data["global_face_ids"][face_slice], dtype=np.int64)
         return boundary, global_ids, face_slice
@@ -308,18 +308,18 @@ class CouplerInterfaceMixin:
             ``startFace`` … ``startFace + nFaces - 1``.
         """
         b = self._patch(patch_name)
-        start, nf = b["startFace"], b["nFaces"]
+        start, nf = b["start_face"], b["n_faces"]
         return b, slice(start, start + nf)
 
     # ── getters: cell fields ─────────────────────────────────────────────────
-    def get_cell_center_coordinates(self):
+    def get_cell_centre_coordinates(self):
         """Return cell-centroid coordinates ``(nCells, 3)``, C-contiguous.
 
         Returns:
             Array of interior-cell centroids in physical space.
         """
-        n = self.mesh_data["n_elements"]
-        return self._gather_owned_cells(self.geo_data["element_centroids"][:n], trailing_shape=(3,))
+        n = self.mesh_data["n_cells"]
+        return self._gather_owned_cells(self.geo_data["cell_centroids"][:n], trailing_shape=(3,))
 
     def get_cell_volumes(self):
         """Return cell volumes ``(nCells,)``, C-contiguous.
@@ -327,7 +327,7 @@ class CouplerInterfaceMixin:
         Returns:
             Array of interior-cell volumes.
         """
-        return self._gather_owned_cells(self.geo_data["element_volumes"])
+        return self._gather_owned_cells(self.geo_data["cell_volumes"])
 
     def get_velocity_field(self):
         """Return the current velocity field ``(nCells, 3)``, C-contiguous.
@@ -335,8 +335,8 @@ class CouplerInterfaceMixin:
         Returns:
             Velocity vector at each interior cell centre.
         """
-        n = self.mesh_data["n_elements"]
-        return self._gather_owned_cells(self.U[:n], trailing_shape=(3,))
+        n = self.mesh_data["n_cells"]
+        return self._gather_owned_cells(self.velocity[:n], trailing_shape=(3,))
 
     def get_velocity_field_into(self, out):
         """Copy the velocity field into a pre-allocated buffer.
@@ -364,8 +364,8 @@ class CouplerInterfaceMixin:
 
     def get_pressure_field(self):
         """Return the kinematic pressure ``p/rho`` at cell centres ``(nCells,)``."""
-        n = self.mesh_data["n_elements"]
-        return self._gather_owned_cells(np.asarray(self.p, dtype=np.float64)[:n])
+        n = self.mesh_data["n_cells"]
+        return self._gather_owned_cells(np.asarray(self.kinematic_pressure, dtype=np.float64)[:n])
 
     def shift_pressure_field(self, delta):
         """Add a uniform constant to the pressure field (all ranks, local).
@@ -390,7 +390,7 @@ class CouplerInterfaceMixin:
         if not np.isfinite(value):
             raise ValueError("pressure shift must be finite")
         # Shift owned cells *and* ghosts so halo exchanges stay consistent.
-        self.p = np.asarray(self.p, dtype=np.float64) + value
+        self.kinematic_pressure = np.asarray(self.kinematic_pressure, dtype=np.float64) + value
         for boundary in self.boundaries:
             if boundary.get("value_p_field") is not None:
                 boundary["value_p_field"] = np.asarray(boundary["value_p_field"]) + value
@@ -399,7 +399,7 @@ class CouplerInterfaceMixin:
         """Return ``grad(U)`` at cell centres with shape ``(nCells, 3, 3)``."""
         if not self.parallel.is_partitioned and not self.parallel.is_root:
             return np.empty((0, 3, 3), dtype=np.float64)
-        n = self.mesh_data["n_elements"]
+        n = self.mesh_data["n_cells"]
         grad_u = self._velocity_gradient()
         return self._gather_owned_cells(
             np.asarray(grad_u, dtype=np.float64)[:n],
@@ -429,8 +429,8 @@ class CouplerInterfaceMixin:
 
         if not self.parallel.is_partitioned and not self.parallel.is_root:
             return np.empty((0, 3), dtype=np.float64)
-        n = self.mesh_data["n_elements"]
-        omega = diagnostics.compute_vorticity(self.U, self.mesh_data, self.geo_data)
+        n = self.mesh_data["n_cells"]
+        omega = diagnostics.compute_vorticity(self.velocity, self.mesh_data, self.geo_data)
         return self._gather_owned_cells(np.asarray(omega).reshape(-1, 3)[:n], trailing_shape=(3,))
 
     def get_vorticity_field_into(self, out):
@@ -457,7 +457,7 @@ class CouplerInterfaceMixin:
         return arr
 
     # ── getters: boundary-face geometry (per patch) ──────────────────────────
-    def get_boundary_face_center_coordinates(self, patch_name):
+    def get_boundary_face_centre_coordinates(self, patch_name):
         """Return face-centroid coordinates ``(nFaces, 3)`` for a patch.
 
         Args:
@@ -529,7 +529,7 @@ class CouplerInterfaceMixin:
             values: 1-D array of length ``nCells``.
         """
         values = self._scatter_cell_values(values)
-        expected = self.mesh_data["n_elements"]
+        expected = self.mesh_data["n_cells"]
         if values.shape != (expected,) or not np.all(np.isfinite(values)):
             raise ValueError(f"Cell scalar field {name!r} must be finite with shape ({expected},)")
         self.registered_fields[name] = values
@@ -547,7 +547,7 @@ class CouplerInterfaceMixin:
             [np.asarray(x, np.float64), np.asarray(y, np.float64), np.asarray(z, np.float64)]
         )
         field = self._scatter_cell_values(field, trailing_shape=(3,))
-        expected = self.mesh_data["n_elements"]
+        expected = self.mesh_data["n_cells"]
         if field.shape != (expected, 3) or not np.all(np.isfinite(field)):
             raise ValueError(
                 f"Cell vector field {name!r} must be finite with shape ({expected}, 3)"
@@ -577,7 +577,7 @@ class CouplerInterfaceMixin:
         nu = float(nu)
         if not np.isfinite(nu) or nu <= 0.0:
             raise ValueError(f"Kinematic viscosity must be finite and positive; got {nu!r}")
-        self.setup.transport.nu = nu
+        self.setup.transport.kinematic_viscosity = nu
 
     # ── setters: velocity boundary conditions ────────────────────────────────
     def set_dirichlet_velocity_boundary_condition_vec(self, u_target, patch_name):
@@ -586,13 +586,13 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        if field.shape != (b["nFaces"], 3) or not np.all(np.isfinite(field)):
+        if field.shape != (b["n_faces"], 3) or not np.all(np.isfinite(field)):
             raise ValueError(
                 f"Dirichlet data for patch {patch_name!r} must be finite with shape "
-                f"({b['nFaces']}, 3)"
+                f"({b['n_faces']}, 3)"
             )
-        b["bc_type_velocity"] = "fixedValue"
-        b["value_velocity_field"] = field
+        b["velocity_type"] = "fixedValue"
+        b["velocity_value_field"] = field
         b.pop("_fixed_freestream_outflow", None)
         b.pop("_freestream_outflow", None)
         self._write_patch_ghosts(b, field)
@@ -608,7 +608,7 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        n_faces = b["nFaces"]
+        n_faces = b["n_faces"]
         if normal_field.shape != (n_faces,) or not np.all(np.isfinite(normal_field)):
             raise ValueError(
                 f"Normal velocity for patch {patch_name!r} must be finite with shape ({n_faces},)"
@@ -619,7 +619,7 @@ class CouplerInterfaceMixin:
                 f"({n_faces}, 3)"
             )
 
-        start = b["startFace"]
+        start = b["start_face"]
         surface_vectors = np.asarray(
             self.geo_data["face_sf"][start : start + n_faces], dtype=np.float64
         )
@@ -630,17 +630,17 @@ class CouplerInterfaceMixin:
         removed_normal = np.einsum("ij,ij->i", gradient_field, normals)
         gradient_field = gradient_field - removed_normal[:, np.newaxis] * normals
 
-        b["bc_type_velocity"] = "normalValueTangentialGradient"
+        b["velocity_type"] = "normalValueTangentialGradient"
         b["normal_velocity_field"] = normal_field
         b["tangential_gradient_field"] = gradient_field
         b["tangential_gradient_removed_normal_max"] = (
             float(np.max(np.abs(removed_normal))) if n_faces else 0.0
         )
-        b.pop("value_velocity_field", None)
+        b.pop("velocity_value_field", None)
         b.pop("_fixed_freestream_outflow", None)
         b.pop("_freestream_outflow", None)
         update_normal_velocity_tangential_gradient_boundary(
-            self.U, b, self.mesh_data, self.geo_data
+            self.velocity, b, self.mesh_data, self.geo_data
         )
 
     def set_freestream_velocity_boundary_condition_vec(self, u_target, patch_name):
@@ -656,13 +656,13 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        if field.shape != (b["nFaces"], 3) or not np.all(np.isfinite(field)):
+        if field.shape != (b["n_faces"], 3) or not np.all(np.isfinite(field)):
             raise ValueError(
                 f"Characteristic VPM-BC data for patch {patch_name!r} must be finite "
-                f"with shape ({b['nFaces']}, 3)"
+                f"with shape ({b['n_faces']}, 3)"
             )
-        b["bc_type_velocity"] = "freestream"
-        b["value_velocity_field"] = field
+        b["velocity_type"] = "freestream"
+        b["velocity_value_field"] = field
         b.pop("_fixed_freestream_outflow", None)
         b.pop("_freestream_outflow", None)
         self._write_patch_ghosts(b, field)
@@ -683,10 +683,10 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        if field.shape != (b["nFaces"], 3) or not np.all(np.isfinite(field)):
+        if field.shape != (b["n_faces"], 3) or not np.all(np.isfinite(field)):
             raise ValueError(
                 f"Directional freestream data for patch {patch_name!r} must be finite "
-                f"with shape ({b['nFaces']}, 3)"
+                f"with shape ({b['n_faces']}, 3)"
             )
 
         direction = np.asarray(outflow_direction, dtype=float).reshape(-1)
@@ -695,7 +695,7 @@ class CouplerInterfaceMixin:
             raise ValueError("outflow_direction must be a finite nonzero three-component vector")
         direction /= magnitude
 
-        start, n_faces = b["startFace"], b["nFaces"]
+        start, n_faces = b["start_face"], b["n_faces"]
         surface_vectors = np.asarray(self.geo_data["face_sf"][start : start + n_faces], dtype=float)
         normals = surface_vectors / np.linalg.norm(surface_vectors, axis=1)[:, None]
         alignment = normals @ direction
@@ -703,8 +703,8 @@ class CouplerInterfaceMixin:
         if not np.any(outflow):
             raise ValueError(f"Patch {patch_name!r} has no face aligned with outflow_direction")
 
-        b["bc_type_velocity"] = "freestream"
-        b["value_velocity_field"] = field
+        b["velocity_type"] = "freestream"
+        b["velocity_value_field"] = field
         b["_fixed_freestream_outflow"] = outflow
         b["_freestream_outflow"] = outflow
         self._write_patch_ghosts(b, field)
@@ -717,8 +717,8 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        b["bc_type_p"] = "freestream"
-        b["value_p"] = value
+        b["pressure_type"] = "freestream"
+        b["kinematic_pressure_value"] = value
         b.pop("_directional_fixed_flux_pressure", None)
         b.pop("fixed_flux_pressure_external", None)
         b.pop("fixed_flux_pressure_delta", None)
@@ -740,8 +740,8 @@ class CouplerInterfaceMixin:
             return
         if b.get("_fixed_freestream_outflow") is None:
             raise ValueError("Directional pressure requires a directional freestream velocity mask")
-        b["bc_type_p"] = "freestream"
-        b["value_p"] = value
+        b["pressure_type"] = "freestream"
+        b["kinematic_pressure_value"] = value
         b["_directional_fixed_flux_pressure"] = True
         b.pop("fixed_flux_pressure_external", None)
         b.pop("fixed_flux_pressure_delta", None)
@@ -758,27 +758,27 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        if field.shape != (b["nFaces"],) or not np.all(np.isfinite(field)):
+        if field.shape != (b["n_faces"],) or not np.all(np.isfinite(field)):
             raise ValueError(
                 f"Pressure increments for patch {patch_name!r} must be finite with "
-                f"shape ({b['nFaces']},)"
+                f"shape ({b['n_faces']},)"
             )
-        b["bc_type_p"] = "fixedFluxPressure"
+        b["pressure_type"] = "fixedFluxPressure"
         b["fixed_flux_pressure_external"] = True
         b["fixed_flux_pressure_delta"] = field
-        n_elements = self.mesh_data["n_elements"]
+        n_cells = self.mesh_data["n_cells"]
         n_interior = self.mesh_data["n_interior_faces"]
-        start, nf = b["startFace"], b["nFaces"]
+        start, nf = b["start_face"], b["n_faces"]
         owners = self.mesh_data["owners"][start : start + nf]
-        ghosts = n_elements + np.arange(start - n_interior, start - n_interior + nf)
-        self.p[ghosts] = self.p[owners] + field
+        ghosts = n_cells + np.arange(start - n_interior, start - n_interior + nf)
+        self.kinematic_pressure[ghosts] = self.kinematic_pressure[owners] + field
 
     def set_flux_consistent_pressure_boundary_condition(self, patch_name):
         """Pair a prescribed velocity flux with native ``fixedFluxPressure``."""
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        b["bc_type_p"] = "fixedFluxPressure"
+        b["pressure_type"] = "fixedFluxPressure"
         b.pop("fixed_flux_pressure_external", None)
         b.pop("fixed_flux_pressure_delta", None)
         b.pop("fixed_gradient_delta", None)
@@ -789,8 +789,8 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        nf = b["nFaces"]
-        start = b["startFace"]
+        nf = b["n_faces"]
+        start = b["start_face"]
         sf = self.geo_data["face_sf"][start : start + nf]
         normals = sf / np.linalg.norm(sf, axis=1)[:, None]
         if field.shape != (nf, 3):
@@ -808,16 +808,16 @@ class CouplerInterfaceMixin:
             normals,
         )
         delta = gradient_normal * distance
-        b["bc_type_p"] = "fixedGradient"
+        b["pressure_type"] = "fixedGradient"
         b["fixed_gradient_delta"] = delta
         b.pop("fixed_flux_pressure_external", None)
         b.pop("fixed_flux_pressure_delta", None)
 
-        n_elements = self.mesh_data["n_elements"]
+        n_cells = self.mesh_data["n_cells"]
         n_interior = self.mesh_data["n_interior_faces"]
         owners = self.mesh_data["owners"][start : start + nf]
-        ghosts = n_elements + np.arange(start - n_interior, start - n_interior + nf)
-        self.p[ghosts] = self.p[owners] + delta
+        ghosts = n_cells + np.arange(start - n_interior, start - n_interior + nf)
+        self.kinematic_pressure[ghosts] = self.kinematic_pressure[owners] + delta
 
     def set_external_face_flux_boundary_condition(self, face_flux, patch_name):
         """Prescribe replayed volumetric fluxes on a boundary patch.
@@ -833,9 +833,9 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        if field.shape != (b["nFaces"],) or not np.all(np.isfinite(field)):
+        if field.shape != (b["n_faces"],) or not np.all(np.isfinite(field)):
             raise ValueError(
-                f"Face fluxes for patch {patch_name!r} must be finite with shape ({b['nFaces']},)"
+                f"Face fluxes for patch {patch_name!r} must be finite with shape ({b['n_faces']},)"
             )
         b["external_face_flux"] = field
 
@@ -853,8 +853,8 @@ class CouplerInterfaceMixin:
                       ``nFaces``).
             field:    Per-face values ``(nFaces, 3)`` to impose.
         """
-        n_elem = self.mesh_data["n_elements"]
+        n_elem = self.mesh_data["n_cells"]
         n_int = self.mesh_data["n_interior_faces"]
-        start, nf = boundary["startFace"], boundary["nFaces"]
+        start, nf = boundary["start_face"], boundary["n_faces"]
         idx = n_elem + (start - n_int)
-        self.U[idx : idx + nf] = field
+        self.velocity[idx : idx + nf] = field

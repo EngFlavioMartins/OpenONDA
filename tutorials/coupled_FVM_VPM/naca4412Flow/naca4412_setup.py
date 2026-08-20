@@ -24,25 +24,7 @@ import sys
 import numpy as np
 
 from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
-from openonda.fvm import (
-    BoundaryConfig,
-    ExecutionConfig,
-    FVMSetup,
-    IBMForceSampler,
-    ImmersedBody,
-    LinearSolverConfig,
-    LineSampler as FVMLineSampler,
-    OutputSetup,
-    PimpleControl,
-    SamplingSchedule,
-    SchemesConfig,
-    SurfaceSampler as FVMSurfaceSampler,
-    TimeConfig,
-    TransportConfig,
-    TurbulenceConfig as FVMTurbulenceConfig,
-    coupling_box_mesh,
-    create_fvm_solver,
-)
+import openonda.fvm as fvm
 from openonda.vpm import (
     AdvectionConfig,
     LineSampler as VPMLineSampler,
@@ -63,22 +45,22 @@ NACA_CODE = "4412"
 ALPHA_DEG = 10.0
 CHORD = 1.0
 SPAN = 5.0
-RHO = 1.0
+DENSITY = 1.0
 REYNOLDS = 1000.0
 SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
 FVM_TIME_STEP_SIZE = float(os.environ.get("OPENONDA_FVM_DT", "0.01"))
 VPM_TIME_STEP_SIZE = float(os.environ.get("OPENONDA_VPM_DT", "0.04"))
-T_END = float(os.environ.get("OPENONDA_T_END", "0.12" if SMOKE else "12.0"))
+END_TIME = float(os.environ.get("OPENONDA_T_END", "0.12" if SMOKE else "12.0"))
 ANGLE = math.radians(ALPHA_DEG)
 FREESTREAM_VELOCITY = (math.cos(ANGLE), math.sin(ANGLE), 0.0)
-NU = np.linalg.norm(FREESTREAM_VELOCITY) * CHORD / REYNOLDS
+KINEMATIC_VISCOSITY = np.linalg.norm(FREESTREAM_VELOCITY) * CHORD / REYNOLDS
 FVM_BOX = (-1.2, 1.4, -0.8, 0.8, -3.3, 3.3)
 VPM_DOMAIN = (-2.5, 10.0, -2.0, 2.0, -4.0, 4.0)
 MAX_PARTICLES = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
 VPM_CORE_RADIUS_RATIO = 1.5
 IBM_MARKER_RATIO = float(os.environ.get("OPENONDA_IBM_MARKER_RATIO", "2.5"))
 WRITE_INTERVAL = VPM_TIME_STEP_SIZE if SMOKE else 0.8
-SAMPLE_INTERVAL = min(WRITE_INTERVAL, T_END)
+SAMPLE_INTERVAL = min(WRITE_INTERVAL, END_TIME)
 FVM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / FVM_TIME_STEP_SIZE)))
 VPM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / VPM_TIME_STEP_SIZE)))
 
@@ -117,8 +99,8 @@ def naca4_vertices(code: str, n_chord: int = 161) -> np.ndarray:
 
 
 AIRFOIL_VERTICES = naca4_vertices(NACA_CODE)
-FVM_MESH = coupling_box_mesh(FVM_BOX, SPACING, patch_name="numericalBoundary")
-AIRFOIL = ImmersedBody.extruded_polygon_z(
+FVM_MESH = fvm.coupling_box_mesh(FVM_BOX, SPACING, patch_name="numericalBoundary")
+AIRFOIL = fvm.ImmersedBody.extruded_polygon_z(
     AIRFOIL_VERTICES,
     z_bounds=[-0.5 * SPAN, 0.5 * SPAN],
     particle_spacing=SPACING,
@@ -128,25 +110,25 @@ AIRFOIL = ImmersedBody.extruded_polygon_z(
 )
 
 FVM_SAMPLERS = (
-    IBMForceSampler(
+    fvm.IBMForceSampler(
         ref_velocity=float(np.linalg.norm(FREESTREAM_VELOCITY)),
         ref_area=CHORD * SPAN,
-        schedule=SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
+        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
     ),
-    FVMLineSampler(
+    fvm.LineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SPACING,
         file_name="fvm_centerline",
-        schedule=SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
+        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
     ),
-    FVMSurfaceSampler(
+    fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
         normal=[0.0, 0.0, 1.0],
         bounds=[FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]],
         spacing=SPACING,
         file_name="fvm_slice_z0",
-        schedule=SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
+        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
     ),
 )
 
@@ -166,61 +148,61 @@ VPM_SAMPLERS = (
     ),
 )
 
-FVM_SETUP = FVMSetup(
+FVM_SETUP = fvm.FVMSetup(
     case_name="naca4412Flow",
     cores=1,
-    execution=ExecutionConfig(operator_backend="numba"),
-    output=OutputSetup(
+    execution=fvm.ComputeConfig(operator_backend="numba"),
+    output=fvm.OutputConfig(
         compression="lz4",
         precision="float32",
         asynchronous=False,
         ghost_layers=0,
     ),
-    time=TimeConfig(
+    time=fvm.TimeConfig(
         time_step_size=FVM_TIME_STEP_SIZE,
-        end_time=T_END,
-        write_interval=10**9,
-        write_interval_time=WRITE_INTERVAL,
+        end_time=END_TIME,
+        output_interval_steps=10**9,
+        output_interval_time=WRITE_INTERVAL,
     ),
-    schemes=SchemesConfig(
+    schemes=fvm.DiscretizationConfig(
         convection_scheme="limitedLinear",
         gradient_scheme="gauss",
         time_scheme="backward",
     ),
-    linear=LinearSolverConfig(
+    linear=fvm.LinearSolverConfig(
         pressure_solver="amg",
-        pressure_tol=1e-6,
-        pressure_rel_tol=0.01,
-        momentum_tol=1e-6,
-        momentum_rel_tol=0.1,
-        momentum_maxiter=2000,
+        pressure_tolerance=1e-6,
+        pressure_relative_tolerance=0.01,
+        momentum_tolerance=1e-6,
+        momentum_relative_tolerance=0.1,
+        momentum_max_iterations=2000,
     ),
-    pimple=PimpleControl(
+    pimple=fvm.PimpleControl(
         n_correctors=2,
         n_outer_correctors=2,
-        alpha_u=0.7,
-        alpha_p=0.3,
+        velocity_relaxation=0.7,
+        pressure_relaxation=0.3,
         ibm_forcing_loops=2,
     ),
     samplers=FVM_SAMPLERS,
-    transport=TransportConfig(density=RHO, nu=NU),
-    turbulence=FVMTurbulenceConfig.smagorinsky(Cs=0.17),
+    transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
+    turbulence=fvm.TurbulenceConfig.smagorinsky(Cs=0.17),
     boundaries=[
-        BoundaryConfig(
+        fvm.BoundaryConfig(
             name="numericalBoundary",
-            type_velocity="fixedValue",
-            value_velocity=list(FREESTREAM_VELOCITY),
-            type_p="fixedFluxPressure",
+            velocity_type="fixedValue",
+            velocity_value=list(FREESTREAM_VELOCITY),
+            pressure_type="fixedFluxPressure",
         )
     ],
     initial_velocity=list(FREESTREAM_VELOCITY),
-    initial_p=0.0,
+    initial_kinematic_pressure=0.0,
 )
 
 VPM_SETUP = VPMSetup(
     time_step_size=VPM_TIME_STEP_SIZE,
     freestream_velocity=list(FREESTREAM_VELOCITY),
-    viscous=ViscousConfig.cs(viscosity=NU, characteristic_distance=SPACING),
+    viscous=ViscousConfig.cs(viscosity=KINEMATIC_VISCOSITY, characteristic_distance=SPACING),
     stretching=StretchingConfig.transposed(scheme="RK2"),
     advection=AdvectionConfig(scheme="RK2"),
     turbulence=VPMTurbulenceConfig.les_smagorinsky(cs=0.17),
@@ -306,7 +288,7 @@ def main() -> None:
     print(
         f"  FVM dt={FVM_TIME_STEP_SIZE}s / VPM dt={VPM_TIME_STEP_SIZE}s, spacing={SPACING}, particles<={MAX_PARTICLES}"
     )
-    fvm_solver = create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
+    fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.set_immersed_bodies(AIRFOIL, particle_spacing=SPACING)
     fvm_solver.write_vtk()
 

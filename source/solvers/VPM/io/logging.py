@@ -234,7 +234,7 @@ class Logging:
         label_w = 0
 
         # Integral Quantities
-        n_particles = getattr(getattr(system, "particles", None), "number_of_particles", None)
+        n_particles = getattr(getattr(system, "particles", None), "n_particles", None)
         int_items = [
             ("Number of Particles", f"{int(n_particles):d}" if n_particles is not None else "n/a"),
             (
@@ -300,8 +300,8 @@ class Logging:
         try:
             hist = getattr(system, "_diagnostics_history", None)
             time_step_size_items = []
-            if hist is not None and len(hist.get("observed_dt", [])) > 0:
-                time_step_sizes = np.array(hist["observed_dt"])
+            if hist is not None and len(hist.get("observed_time_step_size", [])) > 0:
+                time_step_sizes = np.array(hist["observed_time_step_size"])
                 dts_nz = time_step_sizes[time_step_sizes > 0]
                 if dts_nz.size > 0:
                     time_step_size_items.append(
@@ -474,9 +474,9 @@ class Logging:
         lines.extend(Logging._format_viscous_time_step_size_limits(system))
 
         if hasattr(system, "particles") and len(system.particles) > 0:
-            viscosities = system.particles.viscosity_cpu()
-            viscosities_t = system.particles.viscosity_turbulent_cpu()
-            viscosities_eff = system.particles.viscosity_effective_cpu()
+            viscosities = system.particles.kinematic_viscosity_cpu()
+            viscosities_t = system.particles.eddy_viscosity_cpu()
+            viscosities_eff = system.particles.effective_viscosity_cpu()
 
             lines.append(f"  Molecular Viscosity (nu)    : {viscosities[0]:.3e} m²/s")
 
@@ -505,8 +505,8 @@ class Logging:
         lines.append("\n" + "-" * 60)
         lines.append("TURBULENCE MODEL")
         lines.append("-" * 60)
-        if hasattr(system, "LES") and system.LES is not None:
-            lines.append(str(system.LES))
+        if hasattr(system, "LES") and system.turbulence_model is not None:
+            lines.append(str(system.turbulence_model))
         elif system.flow_model == "INVISCID":
             lines.append("  Status: Not applicable (INVISCID — stretching only)")
         elif system.flow_model == "POTENTIAL":
@@ -519,7 +519,7 @@ class Logging:
     def _format_monitoring_io(system) -> list:
         """Format monitoring and I/O section."""
         lines = []
-        name = (system.backup_file_name or "").strip()
+        name = (system.checkpoint_name or "").strip()
         prefix = f"vpm_{name}" if name else "vpm"
         lines.append("\n" + "-" * 60)
         lines.append("MONITORING & I/O")
@@ -626,10 +626,10 @@ class Logging:
             lines.append(f"    C_stab                 : {coefficient:.3f}")
         else:
             lines.append("  Stretching viscosity     : Disabled")
-        regularization_frequency = getattr(cfg, "regularization_frequency", 0)
-        if regularization_frequency > 0:
+        regularization_interval_steps = getattr(cfg, "regularization_frequency", 0)
+        if regularization_interval_steps > 0:
             lines.append("  Conservative filter     : Enabled")
-            lines.append(f"    Check every           : {regularization_frequency:d} steps")
+            lines.append(f"    Check every           : {regularization_interval_steps:d} steps")
             lines.append(
                 "    Grid spacing          : "
                 f"{getattr(cfg, 'regularization_grid_spacing', 0.0):.3e} m"
@@ -710,7 +710,7 @@ class Logging:
         Returns:
             str: Formatted summary string
         """
-        total_strength = system.total_strength_magnitude
+        total_strength = system.total_vortex_strength_magnitude
 
         lines = []
         lines.append("-" * 60)
@@ -740,8 +740,12 @@ class Logging:
         lines.append(f"  Time Step Size           : {system.time_step_size:.2e} s")
 
         # Turbulence model information
-        if hasattr(system, "turbulence") and system.LES and hasattr(system.LES, "get_filter_info"):
-            filter_info = system.LES.get_filter_info()
+        if (
+            hasattr(system, "turbulence")
+            and system.turbulence_model
+            and hasattr(system.turbulence_model, "get_filter_info")
+        ):
+            filter_info = system.turbulence_model.get_filter_info()
             lines.append("")
             lines.append("TURBULENCE MODEL:")
 
@@ -768,7 +772,7 @@ class Logging:
         lines.append(f"  Total Strength           : {total_strength:.2E} m³/s")
 
         # I/O and monitoring
-        name = (system.backup_file_name or "").strip()
+        name = (system.checkpoint_name or "").strip()
         prefix = f"vpm_{name}" if name else "vpm"
         lines.append("")
         lines.append("MONITORING & I/O:")
@@ -787,10 +791,10 @@ class Logging:
             system: Solver instance containing `LES` turbulence model object
         """
         # Only log if LES model is active
-        if not hasattr(system, "LES") or system.LES is None:
+        if not hasattr(system, "LES") or system.turbulence_model is None:
             return
 
-        les = system.LES
+        les = system.turbulence_model
         # Determine model name
         model_name = "Classical Smagorinsky"
 
@@ -853,7 +857,7 @@ class Logging:
                 return
 
             forces = vlm._last_forces
-            n_p = system.particles.number_of_particles
+            n_p = system.particles.n_particles
 
             print("-" * 60)
             print("VLM FORCES")
@@ -867,7 +871,7 @@ class Logging:
         except Exception as e:
             try:
                 forces = system.vlm_solver._last_forces
-                print(f"  VLM: CL={forces['CL']:.3f} n={system.particles.number_of_particles}")
+                print(f"  VLM: CL={forces['CL']:.3f} n={system.particles.n_particles}")
             except Exception:
                 pass
             print(f"(warning) Failed to log VLM forces: {e}", flush=True)

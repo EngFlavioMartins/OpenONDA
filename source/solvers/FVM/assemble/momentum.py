@@ -43,7 +43,7 @@ def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
     Returns an acceleration ``(n_elements, 3)`` in m/s², i.e. already divided by
     the cell volume, ready to add to ``source_explicit``.
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
     owners = mesh_data["owners"]
@@ -60,7 +60,7 @@ def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
         transposed = np.einsum("fji,fi->fj", grad_face, sf)
         return nu_face[:, np.newaxis] * (transposed - (2.0 / 3.0) * trace[:, np.newaxis] * sf)
 
-    source = np.zeros((n_elements, 3), dtype=np.float64)
+    source = np.zeros((n_cells, 3), dtype=np.float64)
 
     # A full interpolated tensor costs 72 bytes per face before its flux and
     # interpolation temporaries.  Bound the working set independently of mesh
@@ -91,7 +91,7 @@ def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
             stop = min(start + chunk_size, n_faces)
             faces_b = np.arange(start, stop)
             owners_b = owners[faces_b]
-            ghosts_b = n_elements + (faces_b - n_interior)
+            ghosts_b = n_cells + (faces_b - n_interior)
             nu_face = (
                 np.full(stop - start, nu_scalar, dtype=np.float64)
                 if nu_cells is None
@@ -100,7 +100,7 @@ def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
             flux_b = _face_flux(grad_U[ghosts_b], nu_face, face_sf[faces_b])
             np.add.at(source, owners_b, flux_b)
 
-    source /= geo_data["element_volumes"][:, np.newaxis]
+    source /= geo_data["cell_volumes"][:, np.newaxis]
     return source
 
 
@@ -117,10 +117,10 @@ def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
             keys extracted for the specified component.
     """
     b_mom = b.copy()
-    if "bc_type_velocity" in b:
-        b_mom["bc_type"] = b["bc_type_velocity"]
-    if "value_velocity" in b:
-        val = b["value_velocity"]
+    if "velocity_type" in b:
+        b_mom["bc_type"] = b["velocity_type"]
+    if "velocity_value" in b:
+        val = b["velocity_value"]
         b_mom["value"] = val[i_comp] if (np.ndim(val) == 1 and len(val) == 3) else val
     return b_mom
 
@@ -180,7 +180,7 @@ def _apply_empty_bc_ustar(U_star, b_elem_indices, owners_b, face_sf):
     U_star[b_elem_indices] = projected
 
 
-def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
+def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_cells):
     """Apply post-solve boundary condition to the predicted velocity field.
 
     Modifies ``U_star`` in-place at the boundary elements according to
@@ -196,11 +196,11 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
         geo_data: Geometric data containing ``face_sf``.
         n_elements: Number of interior elements.
     """
-    start_face = boundary["startFace"]
-    n_faces = boundary["nFaces"]
+    start_face = boundary["start_face"]
+    n_faces = boundary["n_faces"]
     b_elem_start = start_face - mesh_data["n_interior_faces"]
-    b_elem_indices = np.arange(n_elements + b_elem_start, n_elements + b_elem_start + n_faces)
-    bc_type = boundary.get("bc_type_velocity")
+    b_elem_indices = np.arange(n_cells + b_elem_start, n_cells + b_elem_start + n_faces)
+    bc_type = boundary.get("velocity_type")
     strategy = BOUNDARIES.strategy(bc_type, "U", "ghost")
 
     if strategy in (
@@ -219,10 +219,10 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
     elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
         if strategy is BoundaryStrategy.NO_SLIP:
             U_star[b_elem_indices] = [0.0, 0.0, 0.0]
-        elif boundary.get("value_velocity_field") is not None:
-            U_star[b_elem_indices] = boundary["value_velocity_field"]
-        elif "value_velocity" in boundary:
-            U_star[b_elem_indices] = np.array(boundary["value_velocity"])
+        elif boundary.get("velocity_value_field") is not None:
+            U_star[b_elem_indices] = boundary["velocity_value_field"]
+        elif "velocity_value" in boundary:
+            U_star[b_elem_indices] = np.array(boundary["velocity_value"])
         else:
             raise ValueError(
                 f"Fixed velocity boundary {boundary.get('name')!r} has no configured value"
@@ -240,9 +240,9 @@ def _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements):
 
 
 def assemble_momentum_equation(
-    U,
+    velocity,
     p,
-    phi,
+    face_flux,
     rho,
     nu,
     mesh_data,
@@ -250,8 +250,8 @@ def assemble_momentum_equation(
     boundaries,
     convection_scheme="deferred",
     time_step_size=None,
-    U_old=None,
-    U_old_old=None,
+    velocity_old=None,
+    velocity_older=None,
     ddt_scheme="euler",
     source_explicit=None,
     source_implicit=None,
@@ -292,7 +292,7 @@ def assemble_momentum_equation(
             - H: H operator (for pressure correction)
     """
 
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
 
     density = np.asarray(rho, dtype=np.float64)
     if density.ndim != 0:
@@ -308,14 +308,14 @@ def assemble_momentum_equation(
             raise ValueError("nu must be finite and positive")
     else:
         nu = viscosity
-        if nu.shape != (n_elements,) or not np.all(np.isfinite(nu)) or np.any(nu <= 0.0):
-            raise ValueError(f"nu must be finite and positive with shape ({n_elements},)")
+        if nu.shape != (n_cells,) or not np.all(np.isfinite(nu)) or np.any(nu <= 0.0):
+            raise ValueError(f"nu must be finite and positive with shape ({n_cells},)")
 
     # Resolve gradient scheme
     _grad_fn = gradients._resolve_gradient_fn(geo_data)
 
     # Compute velocity gradient
-    grad_U = _grad_fn(U, mesh_data, geo_data)
+    grad_U = _grad_fn(velocity, mesh_data, geo_data)
 
     # Compute pressure gradient
     grad_p = _grad_fn(p, mesh_data, geo_data)
@@ -325,14 +325,14 @@ def assemble_momentum_equation(
     # The incompressible equation is divided by the constant reference
     # density. ``phi`` therefore remains volumetric flux and ``nu`` remains
     # kinematic viscosity throughout the operator.
-    volumetric_flux = np.asarray(phi, dtype=np.float64)
+    volumetric_flux = np.asarray(face_flux, dtype=np.float64)
 
     results = {}
     common_matrix = None
     common_diagonal = None
-    vol = geo_data["element_volumes"]
+    vol = geo_data["cell_volumes"]
     has_directional_mixed_bc = any(
-        BOUNDARIES.strategy(boundary.get("bc_type_velocity"), "U", "diffusion")
+        BOUNDARIES.strategy(boundary.get("velocity_type"), "U", "diffusion")
         is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT
         for boundary in boundaries
     )
@@ -345,7 +345,7 @@ def assemble_momentum_equation(
     # Assemble for each component
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
         # Get velocity component
-        U_comp = U[:, i_comp]
+        U_comp = velocity[:, i_comp]
 
         # Get gradient component
         grad_U_comp = (
@@ -362,8 +362,8 @@ def assemble_momentum_equation(
             mesh_data,
             geo_data,
             momentum_boundaries,
-            face_flux=phi,
-            vector_field=U,
+            face_flux=face_flux,
+            vector_field=velocity,
             component=i_comp,
             include_total_flux=False,
         )
@@ -408,12 +408,16 @@ def assemble_momentum_equation(
             if has_directional_mixed_bc and matrix_workspace is not None:
                 assembled_matrix = assembled_matrix.copy()
             if time_step_size is not None:
-                use_bdf2 = ddt_scheme == "backward" and U_old is not None and U_old_old is not None
+                use_bdf2 = (
+                    ddt_scheme == "backward"
+                    and velocity_old is not None
+                    and velocity_older is not None
+                )
                 transient_diagonal = (1.5 if use_bdf2 else 1.0) * vol / time_step_size
                 assembled_matrix.setdiag(assembled_matrix.diagonal() + transient_diagonal)
             if source_implicit is not None:
                 assembled_matrix.setdiag(
-                    assembled_matrix.diagonal() + source_implicit[:n_elements] * vol
+                    assembled_matrix.diagonal() + source_implicit[:n_cells] * vol
                 )
             if has_directional_mixed_bc:
                 A = assembled_matrix
@@ -433,7 +437,7 @@ def assemble_momentum_equation(
         )
 
         # 5. Add pressure gradient to RHS: -∇p * V
-        grad_p_comp = grad_p[:n_elements, i_comp]
+        grad_p_comp = grad_p[:n_cells, i_comp]
         b -= grad_p_comp * vol
 
         # 5b. Explicit transpose part of the deviatoric viscous stress.
@@ -444,10 +448,12 @@ def assemble_momentum_equation(
         if time_step_size is not None:
             coefficient = vol / time_step_size
             old_component = (
-                U_old[:n_elements, i_comp] if U_old is not None else U[:n_elements, i_comp]
+                velocity_old[:n_cells, i_comp]
+                if velocity_old is not None
+                else velocity[:n_cells, i_comp]
             )
-            if ddt_scheme == "backward" and U_old_old is not None:
-                b += coefficient * (2.0 * old_component - 0.5 * U_old_old[:n_elements, i_comp])
+            if ddt_scheme == "backward" and velocity_older is not None:
+                b += coefficient * (2.0 * old_component - 0.5 * velocity_older[:n_cells, i_comp])
             else:
                 b += coefficient * old_component
 
@@ -455,7 +461,7 @@ def assemble_momentum_equation(
         #     Su → RHS (+Su·V); Sp → diagonal (+Sp·V), keeping U implicit.
         #     Used by MMS forcing and the coupling blending source S = λ(Utarget − U).
         if source_explicit is not None:
-            b += source_explicit[:n_elements, i_comp] * vol
+            b += source_explicit[:n_cells, i_comp] * vol
         results[comp_name] = {
             "A": A,
             "b": b,
@@ -470,9 +476,9 @@ def assemble_momentum_equation(
 
 
 def solve_momentum_predictor(
-    U,
+    velocity,
     p,
-    phi,
+    face_flux,
     rho,
     nu,
     mesh_data,
@@ -482,8 +488,8 @@ def solve_momentum_predictor(
     solver="spsolve",
     under_relaxation=0.7,
     time_step_size=None,
-    U_old=None,
-    U_old_old=None,
+    velocity_old=None,
+    velocity_older=None,
     ddt_scheme="euler",
     source_explicit=None,
     source_implicit=None,
@@ -497,16 +503,16 @@ def solve_momentum_predictor(
     ``(n_cells, 3)`` and ``source_implicit`` has shape ``(n_cells,)``.
     """
 
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_boundary = mesh_data["n_faces"] - mesh_data["n_interior_faces"]
 
     # Assemble momentum equations
     matrix_workspace = solver_kwargs.pop("matrix_workspace", None)
     operator_backend = solver_kwargs.pop("operator_backend", "numpy")
     mom_eqs = assemble_momentum_equation(
-        U,
+        velocity,
         p,
-        phi,
+        face_flux,
         rho,
         nu,
         mesh_data,
@@ -514,8 +520,8 @@ def solve_momentum_predictor(
         boundaries,
         convection_scheme,
         time_step_size=time_step_size,
-        U_old=U_old,
-        U_old_old=U_old_old,
+        velocity_old=velocity_old,
+        velocity_older=velocity_older,
         ddt_scheme=ddt_scheme,
         source_explicit=source_explicit,
         source_implicit=source_implicit,
@@ -524,12 +530,12 @@ def solve_momentum_predictor(
     )
 
     # Solve for each component
-    U_star = np.zeros((n_elements + n_boundary, 3))
+    U_star = np.zeros((n_cells + n_boundary, 3))
     matrices_are_shared = all(mom_eqs[name]["A"] is mom_eqs["x"]["A"] for name in ("y", "z"))
     # Standard boundaries retain the compact shared diagonal.  The
     # directional mixed condition returns component diagonals for the
     # pressure/Rhie-Chow vector path that already supports them.
-    A_U = np.empty(n_elements if matrices_are_shared else (n_elements, 3), dtype=np.float64)
+    A_U = np.empty(n_cells if matrices_are_shared else (n_cells, 3), dtype=np.float64)
     solve_diagnostics = {}
     linear_backend = solver_kwargs.pop("linear_backend", "scipy")
     parallel_context = solver_kwargs.pop("parallel_context", None)
@@ -546,7 +552,7 @@ def solve_momentum_predictor(
         rhs_columns = []
         for i_comp, comp_name in enumerate(["x", "y", "z"]):
             b = mom_eqs[comp_name]["b"]
-            source_relax = (1.0 - under_relaxation) * diag_new * U[:n_elements, i_comp]
+            source_relax = (1.0 - under_relaxation) * diag_new * velocity[:n_cells, i_comp]
             rhs_columns.append(b + source_relax)
         B = np.column_stack(rhs_columns)
         X, shared_result = solve_linear_system(A_shared, B, method="spsolve", return_info=True)
@@ -555,9 +561,11 @@ def solve_momentum_predictor(
 
         A_U[:] = diag_new
         for i_comp, comp_name in enumerate(["x", "y", "z"]):
-            U_star[:n_elements, i_comp] = X[:, i_comp]
+            U_star[:n_cells, i_comp] = X[:, i_comp]
             b_relaxed = B[:, i_comp]
-            x_initial = U_old[:n_elements, i_comp] if U_old is not None else np.zeros(n_elements)
+            x_initial = (
+                velocity_old[:n_cells, i_comp] if velocity_old is not None else np.zeros(n_cells)
+            )
             solve_diagnostics[comp_name] = {
                 "initial_residual": normalized_residual(A_shared, x_initial, b_relaxed),
                 "final_residual": normalized_residual(A_shared, X[:, i_comp], b_relaxed),
@@ -571,7 +579,7 @@ def solve_momentum_predictor(
             )
 
         for boundary in boundaries:
-            _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements)
+            _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_cells)
         if return_diagnostics:
             return U_star, A_U, solve_diagnostics
         return U_star, A_U
@@ -603,17 +611,17 @@ def solve_momentum_predictor(
 
         # Add source term to RHS to ensure consistency at convergence
         # U[:n_elements, i_comp] is the old velocity value
-        source_relax = (1.0 - under_relaxation) * diag_new * U[:n_elements, i_comp]
+        source_relax = (1.0 - under_relaxation) * diag_new * velocity[:n_cells, i_comp]
         b_relaxed = b + source_relax
 
         # Determine initial guess x0 for iterative solver: prefer U_old (previous time step) if available
-        momentum_tol = solver_kwargs.get("momentum_tol", 1e-4)
-        momentum_rel_tol = solver_kwargs.get("momentum_rel_tol", 0.0)
+        momentum_tolerance = solver_kwargs.get("momentum_tolerance", 1e-4)
+        momentum_relative_tolerance = solver_kwargs.get("momentum_relative_tolerance", 0.0)
         x0_vec = None
-        if U_old is not None:
-            if np.asarray(U_old).shape[0] < n_elements:
+        if velocity_old is not None:
+            if np.asarray(velocity_old).shape[0] < n_cells:
                 raise ValueError("U_old does not contain every interior cell")
-            x0_vec = U_old[:n_elements, i_comp]
+            x0_vec = velocity_old[:n_cells, i_comp]
 
         # Solve with optional initial guess and tuned tolerance.
         U_comp_star, linear_result = solve_linear_system(
@@ -621,8 +629,8 @@ def solve_momentum_predictor(
             b_relaxed,
             method=solver,
             equation_type="momentum",
-            tol=momentum_tol,
-            rel_tol=momentum_rel_tol,
+            tol=momentum_tolerance,
+            rel_tol=momentum_relative_tolerance,
             x0=x0_vec,
             ilu_key=component_ilu_key,
             backend=linear_backend,
@@ -638,13 +646,13 @@ def solve_momentum_predictor(
         }
 
         # Store results
-        U_star[:n_elements, i_comp] = U_comp_star
+        U_star[:n_cells, i_comp] = U_comp_star
 
     if parallel_context is not None and parallel_context.is_partitioned:
         parallel_context.exchange_halo(A_U)
 
     for boundary in boundaries:
-        _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_elements)
+        _apply_ustar_bc(U_star, boundary, mesh_data, geo_data, n_cells)
 
     if return_diagnostics:
         return U_star, A_U, solve_diagnostics

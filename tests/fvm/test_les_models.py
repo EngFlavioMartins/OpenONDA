@@ -33,18 +33,20 @@ from ._structured_mesh import structured_box
 def _field_on_mesh(mesh, geo, fn):
     """Velocity array (interior + boundary ghosts) sampled from analytic fn(x,y,z)."""
     for patch in mesh["boundary"]:
-        patch["bc_type_velocity"] = "fixedValue"
-    n_elem = mesh["n_elements"]
+        patch["velocity_type"] = "fixedValue"
+    n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    cc, fc = geo["element_centroids"], geo["face_centroids"]
-    U = np.zeros((n_elem + mesh["n_faces"] - n_int, 3))
-    U[:n_elem] = fn(cc[:, 0], cc[:, 1], cc[:, 2])
+    cc, fc = geo["cell_centroids"], geo["face_centroids"]
+    velocity = np.zeros((n_elem + mesh["n_faces"] - n_int, 3))
+    velocity[:n_elem] = fn(cc[:, 0], cc[:, 1], cc[:, 2])
     for b in mesh["boundary"]:
-        for j in range(b["nFaces"]):
-            fi = b["startFace"] + j
+        for j in range(b["n_faces"]):
+            fi = b["start_face"] + j
             gi = n_elem + (fi - n_int)
-            U[gi] = fn(np.array([fc[fi, 0]]), np.array([fc[fi, 1]]), np.array([fc[fi, 2]])).ravel()
-    return U
+            velocity[gi] = fn(
+                np.array([fc[fi, 0]]), np.array([fc[fi, 1]]), np.array([fc[fi, 2]])
+            ).ravel()
+    return velocity
 
 
 def _uniform(x, y, z):
@@ -76,13 +78,13 @@ class TestLESModels:
         }
 
     def _nut(self, key, fn):
-        U = _field_on_mesh(self.mesh, self.geo, fn)
-        return self.models[key].compute_nut(U, self.mesh, self.geo)
+        velocity = _field_on_mesh(self.mesh, self.geo, fn)
+        return self.models[key].compute_eddy_viscosity(velocity, self.mesh, self.geo)
 
     def test_uniform_flow_zero_nut(self):
         for key in self.models:
-            nut = self._nut(key, _uniform)
-            assert np.max(np.abs(nut)) < 1e-12, f"{key} nut nonzero for uniform flow"
+            eddy_viscosity = self._nut(key, _uniform)
+            assert np.max(np.abs(eddy_viscosity)) < 1e-12, f"{key} nut nonzero for uniform flow"
 
     def test_pure_shear_wale_and_sigma_vanish(self):
         smag = self._nut("smag", _pure_shear)
@@ -94,10 +96,10 @@ class TestLESModels:
 
     def test_equilibrium_smagorinsky_matches_incompressible_reduction(self):
         model = self.models["equilibrium_smag"]
-        nut = self._nut("equilibrium_smag", _pure_shear)
-        delta = self.geo["element_volumes"] ** (1.0 / 3.0)
+        eddy_viscosity = self._nut("equilibrium_smag", _pure_shear)
+        delta = self.geo["cell_volumes"] ** (1.0 / 3.0)
         expected = model.equivalent_Cs**2 * delta**2
-        np.testing.assert_allclose(nut, expected, rtol=1e-12, atol=1e-14)
+        np.testing.assert_allclose(eddy_viscosity, expected, rtol=1e-12, atol=1e-14)
 
     def test_equilibrium_smagorinsky_uses_full_algebraic_energy_equation(self):
         model = self.models["equilibrium_smag"]
@@ -108,7 +110,7 @@ class TestLESModels:
         trace = float(np.sum(diagonal))
         dev = diagonal - trace / 3.0
         contraction = float(np.dot(dev, diagonal))
-        delta = self.geo["element_volumes"] ** (1.0 / 3.0)
+        delta = self.geo["cell_volumes"] ** (1.0 / 3.0)
         a = model.Ce / delta
         b = (2.0 / 3.0) * trace
         c = 2.0 * model.Ck * delta * contraction
@@ -127,8 +129,8 @@ class TestLESModels:
         assert np.max(wale) > 1e-6, "WALE should be nonzero for solid rotation"
 
     def test_dynamic_smagorinsky_finite_nonneg(self):
-        nut = self._nut("dyn", _pure_shear)
-        assert np.all(np.isfinite(nut)) and np.all(nut >= 0.0)
+        eddy_viscosity = self._nut("dyn", _pure_shear)
+        assert np.all(np.isfinite(eddy_viscosity)) and np.all(eddy_viscosity >= 0.0)
         assert np.max(np.abs(self._nut("dyn", _uniform))) < 1e-12
 
     @pytest.mark.parametrize("model", ["smag", "equilibrium_smag", "wale", "sigma", "dyn"])
@@ -136,7 +138,7 @@ class TestLESModels:
         velocity = _field_on_mesh(self.mesh, self.geo, _uniform)
         velocity[0, 0] = np.nan
         with pytest.raises(FloatingPointError, match="non-finite|invalid"):
-            self.models[model].compute_nut(velocity, self.mesh, self.geo)
+            self.models[model].compute_eddy_viscosity(velocity, self.mesh, self.geo)
 
     @pytest.mark.parametrize(
         ("config", "attribute"),

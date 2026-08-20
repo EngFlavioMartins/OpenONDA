@@ -15,10 +15,10 @@ from source.solvers.FVM.mesh.surface_classification import (
 
 def uv_sphere_triangles(radius: float, n_theta: int = 24, n_phi: int = 16) -> np.ndarray:
     """Watertight UV-sphere triangulation centred at the origin."""
-    phi = np.linspace(0.0, np.pi, n_phi + 1)
+    face_flux = np.linspace(0.0, np.pi, n_phi + 1)
     theta = np.linspace(0.0, 2.0 * np.pi, n_theta, endpoint=False)
     verts = np.empty((n_phi + 1, n_theta, 3))
-    for i, p in enumerate(phi):
+    for i, p in enumerate(face_flux):
         verts[i, :, 0] = radius * np.sin(p) * np.cos(theta)
         verts[i, :, 1] = radius * np.sin(p) * np.sin(theta)
         verts[i, :, 2] = radius * np.cos(p)

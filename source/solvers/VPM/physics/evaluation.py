@@ -39,7 +39,7 @@ class ParticleFieldEvaluation:
 
     def __init__(
         self,
-        particles_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "GAUSSIAN",
         max_particles: int = MAX_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
     ):
@@ -52,7 +52,7 @@ class ParticleFieldEvaluation:
             accumulator_dtype: Taichi dtype for accumulation (ti.f32 or ti.f64)
         """
         self.max_particles = max_particles
-        self.particles_kernel = particles_kernel.upper()
+        self.particle_kernel = particle_kernel.upper()
         self.accumulator_dtype = accumulator_dtype
 
         # Initialize GPU fields for storing results
@@ -152,19 +152,19 @@ class ParticleFieldEvaluation:
         """Define Taichi kernels based on the selected kernel type."""
 
         # Import kernel creator function based on type
-        if self.particles_kernel == "GAUSSIAN":
+        if self.particle_kernel == "GAUSSIAN":
             from ..kernels.gaussian import create_gaussian_kernels
 
             kernel_dict = create_gaussian_kernels(self.accumulator_dtype)
-        elif self.particles_kernel == "HIGH_ORDER_GAUSSIAN":
+        elif self.particle_kernel == "HIGH_ORDER_GAUSSIAN":
             from ..kernels.high_order_gaussian import create_high_order_gaussian_kernels
 
             kernel_dict = create_high_order_gaussian_kernels(self.accumulator_dtype)
-        elif self.particles_kernel == "SUPER_GAUSSIAN":
+        elif self.particle_kernel == "SUPER_GAUSSIAN":
             from ..kernels.super_gaussian import create_super_gaussian_kernels
 
             kernel_dict = create_super_gaussian_kernels(self.accumulator_dtype)
-        elif self.particles_kernel == "WINCKELMANS":
+        elif self.particle_kernel == "WINCKELMANS":
             from ..kernels.winckelmans import create_winckelmans_kernels
 
             kernel_dict = create_winckelmans_kernels(self.accumulator_dtype)
@@ -636,7 +636,7 @@ class ParticleFieldEvaluation:
         # Call kernel
         self.compute_global_centroid_kernel(
             particles.position,
-            particles.circulation,
+            particles.vortex_strength,
             N,
             self._centroid_result,
         )
@@ -664,8 +664,8 @@ class ParticleFieldEvaluation:
                 - 'enstrophy': Total enstrophy [1/s²]
                 - 'vorticity_dissipation_rate': Vorticity dissipation rate [1/s³]
                 - 'kinetic_energy_dissipation_rate': Energy dissipation rate [J/s]
-                - 'strength_magnitude': Total strength magnitude [1/s]
-                - 'strength': Total strength vector [1/s]
+                - 'vortex_strength_magnitude': Total strength magnitude [1/s]
+                - 'vortex_strength': Total strength vector [1/s]
                 - 'linear_impulse': Linear impulse vector [m³/s]
                 - 'angular_impulse': Angular impulse vector [m⁴/s]
         """
@@ -673,7 +673,7 @@ class ParticleFieldEvaluation:
         if N == 0:
             # Return zero values for empty particle system
             return self._get_zero_results()
-        if N > _DIRECT_INTEGRAL_LIMIT and self.particles_kernel == "GAUSSIAN":
+        if N > _DIRECT_INTEGRAL_LIMIT and self.particle_kernel == "GAUSSIAN":
             return self._compute_fourier_flow_integrals(particles, time, record_history)
 
         self._resize_fields(N)
@@ -684,10 +684,10 @@ class ParticleFieldEvaluation:
         # Call the combined kernel
         self.compute_flow_integrals_kernel(
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             particles.volume,
-            particles.viscosity_effective,
+            particles.effective_viscosity,
             self.total_quantities_results,
             N,
         )
@@ -708,8 +708,8 @@ class ParticleFieldEvaluation:
             "enstrophy_test": float(r.enstrophy_test),
             "vorticity_dissipation_rate": float(r.dissipation),
             "kinetic_energy_dissipation_rate": dE_dt,
-            "strength_magnitude": float(r.str_mag),
-            "strength": np.array([float(r.gamma_x), float(r.gamma_y), float(r.gamma_z)]),
+            "vortex_strength_magnitude": float(r.str_mag),
+            "vortex_strength": np.array([float(r.gamma_x), float(r.gamma_y), float(r.gamma_z)]),
             "linear_impulse": np.array([float(r.imp_x), float(r.imp_y), float(r.imp_z)]),
             "angular_impulse": np.array([float(r.ang_x), float(r.ang_y), float(r.ang_z)]),
         }
@@ -723,10 +723,10 @@ class ParticleFieldEvaluation:
         from ..numerics.fourier_integrals import gaussian_fourier_integrals
 
         position = particles.position_cpu().astype(np.float64)
-        circulation = particles.circulation_cpu().astype(np.float64)
-        radius = particles.radius_cpu().astype(np.float64)
+        circulation = particles.vortex_strength_cpu().astype(np.float64)
+        radius = particles.core_radius_cpu().astype(np.float64)
         volume = particles.volume_cpu().astype(np.float64)
-        viscosity = particles.viscosity_effective_cpu().astype(np.float64)
+        viscosity = particles.effective_viscosity_cpu().astype(np.float64)
         spectral = gaussian_fourier_integrals(
             position,
             circulation,
@@ -752,8 +752,8 @@ class ParticleFieldEvaluation:
             "enstrophy_test": spectral.enstrophy_test,
             "vorticity_dissipation_rate": spectral.viscous_energy_dissipation,
             "kinetic_energy_dissipation_rate": self._compute_energy_dissipation_rate(),
-            "strength_magnitude": float(np.linalg.norm(circulation, axis=1).sum()),
-            "strength": total,
+            "vortex_strength_magnitude": float(np.linalg.norm(circulation, axis=1).sum()),
+            "vortex_strength": total,
             "linear_impulse": impulse,
             "angular_impulse": angular,
         }
@@ -779,8 +779,8 @@ class ParticleFieldEvaluation:
 
         self.compute_particles_kinetic_energy_kernel(
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             self.particle_kinetic_energy,
         )
 
@@ -806,7 +806,10 @@ class ParticleFieldEvaluation:
         self.particle_helicity.fill(0.0)
 
         self.compute_particles_helicity_kernel(
-            particles.position, particles.circulation, particles.radius, self.particle_helicity
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            self.particle_helicity,
         )
 
         return self._download_scalar_field(self.particle_helicity, N)
@@ -831,7 +834,10 @@ class ParticleFieldEvaluation:
         self.particle_enstrophy.fill(0.0)
 
         self.compute_particles_enstrophy_kernel(
-            particles.position, particles.circulation, particles.radius, self.particle_enstrophy
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            self.particle_enstrophy,
         )
 
         return self._download_scalar_field(self.particle_enstrophy, N)
@@ -843,11 +849,11 @@ class ParticleFieldEvaluation:
             particles: Particles object with position, circulation, radius.
             out_field: ti.Vector.field(3, ...) to receive ω_h values (written in-place).
         """
-        N = particles.number_of_particles
+        N = particles.n_particles
         if N == 0:
             return
         self.reconstruct_vorticity_kernel(
-            particles.position, particles.circulation, particles.radius, out_field, N
+            particles.position, particles.vortex_strength, particles.core_radius, out_field, N
         )
 
     def compute_centroids_of_circulation(self, particles) -> dict[int, np.ndarray]:
@@ -883,7 +889,7 @@ class ParticleFieldEvaluation:
             # Compute centroid
             self.compute_group_centroid_kernel(
                 particles.position,
-                particles.circulation,
+                particles.vortex_strength,
                 particles.group_id,
                 N,
                 int(group_id),
@@ -947,8 +953,8 @@ class ParticleFieldEvaluation:
             "enstrophy_test": 0.0,
             "vorticity_dissipation_rate": 0.0,
             "kinetic_energy_dissipation_rate": 0.0,
-            "strength_magnitude": 0.0,
-            "strength": np.array([0.0, 0.0, 0.0]),
+            "vortex_strength_magnitude": 0.0,
+            "vortex_strength": np.array([0.0, 0.0, 0.0]),
             "linear_impulse": np.array([0.0, 0.0, 0.0]),
             "angular_impulse": np.array([0.0, 0.0, 0.0]),
         }

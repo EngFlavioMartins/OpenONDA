@@ -192,7 +192,7 @@ class TaichiTreecode:
         # -------------------------------------------------------------
         # TARGET POINT FIELDS
         # -------------------------------------------------------------
-        self.max_targets = max_particles
+        self.max_evaluation_points = max_particles
         self.target_positions = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.target_velocities = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
         self.target_velocity_gradients = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_particles)
@@ -1795,7 +1795,7 @@ class TaichiTreecode:
         M = len(target_positions)
         if M == 0:
             return np.zeros((0, 3), dtype=np.float32)
-        if self.max_targets < M:
+        if self.max_evaluation_points < M:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)
@@ -1816,7 +1816,7 @@ class TaichiTreecode:
         M = len(target_positions)
         if M == 0:
             return np.zeros((0, 3, 3), dtype=np.float32)
-        if self.max_targets < M:
+        if self.max_evaluation_points < M:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)
@@ -1837,7 +1837,7 @@ class TaichiTreecode:
                 np.zeros((0, 3), dtype=np.float32),
                 np.zeros((0, 3, 3), dtype=np.float32),
             )
-        if self.max_targets < M:
+        if self.max_evaluation_points < M:
             raise ValueError(f"Too many targets: {M} > {self.max_targets}")
         self.n_targets[None] = M
         self._upload_vector_array(target_positions, self.target_positions, M)

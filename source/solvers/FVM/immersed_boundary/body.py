@@ -370,14 +370,14 @@ class ImmersedBody:
             raise ValueError("Sphere h and alpha must be finite and positive")
         n = max(int(round(np.pi * diameter**2 / (alpha * h) ** 2)), 8)
         k = np.arange(n) + 0.5
-        phi = np.arccos(1.0 - 2.0 * k / n)
+        face_flux = np.arccos(1.0 - 2.0 * k / n)
         golden = np.pi * (1.0 + np.sqrt(5.0))
         theta = golden * k
         r = 0.5 * diameter
         X = np.empty((n, 3))
-        X[:, 0] = centre[0] + r * np.cos(theta) * np.sin(phi)
-        X[:, 1] = centre[1] + r * np.sin(theta) * np.sin(phi)
-        X[:, 2] = centre[2] + r * np.cos(phi)
+        X[:, 0] = centre[0] + r * np.cos(theta) * np.sin(face_flux)
+        X[:, 1] = centre[1] + r * np.sin(theta) * np.sin(face_flux)
+        X[:, 2] = centre[2] + r * np.cos(face_flux)
         geometry = {
             "type": "sphere",
             "centre": centre.copy(),

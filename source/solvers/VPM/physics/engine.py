@@ -37,14 +37,14 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
     def __init__(
         self,
-        particles_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "GAUSSIAN",
         max_particles: int = MAX_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
-        max_targets: int = 200000,
+        max_evaluation_points: int = 200000,
     ):
         """Initialize the unified physics engine."""
         # Initialize base classes
-        super().__init__(particles_kernel, max_particles, accumulator_dtype, max_targets)
+        super().__init__(particle_kernel, max_particles, accumulator_dtype, max_evaluation_points)
         self._init_grid_diffusion()
 
         # Optional advection velocity override: fn(pos (N,3), vel_bs (N,3)) -> (N,3).
@@ -234,8 +234,8 @@ class _AdvectionHandler:
         """
         self._parent.velocity_self(
             pos_field,
-            particles.circulation if strength_field is None else strength_field,
-            particles.radius,
+            particles.vortex_strength if strength_field is None else strength_field,
+            particles.core_radius,
             out_field,
             particles.velocity_background,
             N,
@@ -398,7 +398,7 @@ class _CoupledAdvectionStretchingHandler:
         self._stage_rhs(
             particles,
             particles.position,
-            particles.circulation,
+            particles.vortex_strength,
             particles.velocity,
             p.dstr_dt_temp,
             mode_int,
@@ -414,7 +414,7 @@ class _CoupledAdvectionStretchingHandler:
             particles.position, particles.velocity, p.pos_temp, time_step_size, N
         )
         p.step_euler_forward_kernel(
-            particles.circulation, p.dstr_dt_temp, p.str_temp, time_step_size, N
+            particles.vortex_strength, p.dstr_dt_temp, p.str_temp, time_step_size, N
         )
 
         # k2 = f(y1).  A tree topology cannot merely be refitted here because
@@ -438,7 +438,7 @@ class _CoupledAdvectionStretchingHandler:
                 particles.position, particles.velocity, p.vel_temp, time_step_size, N
             )
             p.step_rk2_combine_kernel(
-                particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, time_step_size, N
+                particles.vortex_strength, p.dstr_dt_temp, p.dstr_dt_temp2, time_step_size, N
             )
             return
 
@@ -460,7 +460,7 @@ class _CoupledAdvectionStretchingHandler:
             0.25 * time_step_size,
             N,
         )
-        p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
+        p.step_euler_forward_kernel(particles.vortex_strength, p.str_temp2, p.str_temp2, 1.0, N)
 
         # k3 = f(y2)
         self._stage_rhs(
@@ -486,7 +486,7 @@ class _CoupledAdvectionStretchingHandler:
             N,
         )
         p.step_rk3_ssp_combine_kernel(
-            particles.circulation,
+            particles.vortex_strength,
             p.dstr_dt_temp,
             p.dstr_dt_temp2,
             p.dstr_dt_temp3,
@@ -533,7 +533,7 @@ class _CoupledAdvectionStretchingHandler:
             if p.velocity_method == "TREECODE":
                 theta = min(p.velocity_theta, p._stretching._treecode_theta)
                 tree = p._get_or_create_treecode(N, theta)
-                tree.build(position, strength, particles.radius, N)
+                tree.build(position, strength, particles.core_radius, N)
                 p._target_tree_key = None
                 background = particles.velocity_background
                 background_np = np.array(
@@ -547,7 +547,7 @@ class _CoupledAdvectionStretchingHandler:
                 p.compute_velocity_and_gradient_kernel(
                     position,
                     strength,
-                    particles.radius,
+                    particles.core_radius,
                     velocity_out,
                     particles.velocity_gradient,
                     particles.strain_rate,
@@ -567,7 +567,7 @@ class _CoupledAdvectionStretchingHandler:
             p._stretching._rate(
                 position,
                 strength,
-                particles.radius,
+                particles.core_radius,
                 rate_out,
                 mode_int,
                 N,
@@ -588,7 +588,7 @@ class _CoupledAdvectionStretchingHandler:
             p.conserve_rate_moments(
                 position,
                 strength,
-                particles.radius,
+                particles.core_radius,
                 velocity_out,
                 rate_out,
                 N,
@@ -679,14 +679,18 @@ class _StretchingHandler:
         if scheme == "EULER":
             self._rate(
                 particles.position,
-                particles.circulation,
-                particles.radius,
+                particles.vortex_strength,
+                particles.core_radius,
                 p.dstr_dt_temp,
                 mode_int,
                 N,
             )
             p.step_euler_forward_kernel(
-                particles.circulation, p.dstr_dt_temp, particles.circulation, time_step_size, N
+                particles.vortex_strength,
+                p.dstr_dt_temp,
+                particles.vortex_strength,
+                time_step_size,
+                N,
             )
 
         elif scheme == "RK2":
@@ -736,10 +740,15 @@ class _StretchingHandler:
         """RK2 stretching."""
         p = self._parent
         self._rate(
-            particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            p.dstr_dt_temp,
+            mode_int,
+            N,
         )
         p.step_euler_forward_kernel(
-            particles.circulation, p.dstr_dt_temp, p.str_temp, time_step_size, N
+            particles.vortex_strength, p.dstr_dt_temp, p.str_temp, time_step_size, N
         )
         # The next rate reads ``str_temp``.  Keep that RK dependency explicit
         # across backends; on Vulkan it also separates two expensive direct
@@ -748,30 +757,35 @@ class _StretchingHandler:
         self._rate(
             particles.position,
             p.str_temp,
-            particles.radius,
+            particles.core_radius,
             p.dstr_dt_temp2,
             mode_int,
             N,
             reuse_tree=True,
         )
         p.step_rk2_combine_kernel(
-            particles.circulation, p.dstr_dt_temp, p.dstr_dt_temp2, time_step_size, N
+            particles.vortex_strength, p.dstr_dt_temp, p.dstr_dt_temp2, time_step_size, N
         )
 
     def _stretching_rk3(self, particles, time_step_size, mode_int, N):
         """RK3 stretching."""
         p = self._parent
         self._rate(
-            particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            p.dstr_dt_temp,
+            mode_int,
+            N,
         )
         p.step_euler_forward_kernel(
-            particles.circulation, p.dstr_dt_temp, p.str_temp, time_step_size, N
+            particles.vortex_strength, p.dstr_dt_temp, p.str_temp, time_step_size, N
         )
         ti.sync()
         self._rate(
             particles.position,
             p.str_temp,
-            particles.radius,
+            particles.core_radius,
             p.dstr_dt_temp2,
             mode_int,
             N,
@@ -785,19 +799,19 @@ class _StretchingHandler:
             0.25 * time_step_size,
             N,
         )
-        p.step_euler_forward_kernel(particles.circulation, p.str_temp2, p.str_temp2, 1.0, N)
+        p.step_euler_forward_kernel(particles.vortex_strength, p.str_temp2, p.str_temp2, 1.0, N)
         ti.sync()
         self._rate(
             particles.position,
             p.str_temp2,
-            particles.radius,
+            particles.core_radius,
             p.dstr_dt_temp3,
             mode_int,
             N,
             reuse_tree=True,
         )
         p.step_rk3_ssp_combine_kernel(
-            particles.circulation,
+            particles.vortex_strength,
             p.dstr_dt_temp,
             p.dstr_dt_temp2,
             p.dstr_dt_temp3,
@@ -809,49 +823,54 @@ class _StretchingHandler:
         """RK4 stretching."""
         p = self._parent
         self._rate(
-            particles.position, particles.circulation, particles.radius, p.dstr_dt_temp, mode_int, N
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            p.dstr_dt_temp,
+            mode_int,
+            N,
         )
         p.step_euler_forward_kernel(
-            particles.circulation, p.dstr_dt_temp, p.str_temp, 0.5 * time_step_size, N
+            particles.vortex_strength, p.dstr_dt_temp, p.str_temp, 0.5 * time_step_size, N
         )
         ti.sync()
         self._rate(
             particles.position,
             p.str_temp,
-            particles.radius,
+            particles.core_radius,
             p.dstr_dt_temp2,
             mode_int,
             N,
             reuse_tree=True,
         )
         p.step_euler_forward_kernel(
-            particles.circulation, p.dstr_dt_temp2, p.str_temp, 0.5 * time_step_size, N
+            particles.vortex_strength, p.dstr_dt_temp2, p.str_temp, 0.5 * time_step_size, N
         )
         ti.sync()
         self._rate(
             particles.position,
             p.str_temp,
-            particles.radius,
+            particles.core_radius,
             p.dstr_dt_temp3,
             mode_int,
             N,
             reuse_tree=True,
         )
         p.step_euler_forward_kernel(
-            particles.circulation, p.dstr_dt_temp3, p.str_temp, time_step_size, N
+            particles.vortex_strength, p.dstr_dt_temp3, p.str_temp, time_step_size, N
         )
         ti.sync()
         self._rate(
             particles.position,
             p.str_temp,
-            particles.radius,
+            particles.core_radius,
             p.vel_temp,
             mode_int,
             N,
             reuse_tree=True,
         )
         p.step_rk4_combine_kernel(
-            particles.circulation,
+            particles.vortex_strength,
             p.dstr_dt_temp,
             p.dstr_dt_temp2,
             p.dstr_dt_temp3,

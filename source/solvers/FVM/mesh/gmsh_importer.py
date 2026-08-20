@@ -81,7 +81,7 @@ def _register_face_nodes(
 
 def _process_cell_faces_by_type(
     model,
-    elem_type: int,
+    cell_type: int,
     cell_tags,
     face_map: dict,
     face_nodes_map: dict,
@@ -104,7 +104,7 @@ def _process_cell_faces_by_type(
         cell_tag_to_idx: Mapping from Gmsh element tag to local cell index.
         face_type: Number of nodes per face (3 for tri, 4 for quad).
     """
-    face_nodes = model.mesh.getElementFaceNodes(elem_type, face_type)
+    face_nodes = model.mesh.getElementFaceNodes(cell_type, face_type)
     if len(face_nodes) == 0:
         return
     num_nodes_per_face = face_type
@@ -147,11 +147,11 @@ def _build_face_map_from_cells(
     """
     face_map: dict[tuple[int, ...], list[int]] = {}
     face_nodes_map: dict[tuple[int, ...], list[int]] = {}
-    for i, elem_type in enumerate(cell_types):
+    for i, cell_type in enumerate(cell_types):
         for face_type in [3, 4]:
             _process_cell_faces_by_type(
                 model,
-                elem_type,
+                cell_type,
                 cell_tags_list[i],
                 face_map,
                 face_nodes_map,
@@ -193,14 +193,14 @@ def _collect_boundary_patches(
         entities = model.getEntitiesForPhysicalGroup(dim, tag)
         patch_face_keys: list = []
         for entity in entities:
-            elem_types, elem_tags_list, elem_node_tags_list = model.mesh.getElements(
+            cell_types, cell_tags_list, cell_node_tags_list = model.mesh.getElements(
                 dim, tag=entity
             )
-            for i_type in range(len(elem_types)):
-                tags = elem_node_tags_list[i_type]
-                elem_tags = elem_tags_list[i_type]
-                num_nodes = len(tags) // len(elem_tags)
-                for k in range(len(elem_tags)):
+            for i_type in range(len(cell_types)):
+                tags = cell_node_tags_list[i_type]
+                cell_tags = cell_tags_list[i_type]
+                num_nodes = len(tags) // len(cell_tags)
+                for k in range(len(cell_tags)):
                     f_nodes = tags[k * num_nodes : (k + 1) * num_nodes]
                     key = tuple(sorted(node_tag_to_idx[t] for t in f_nodes))
                     if key in face_map:
@@ -307,22 +307,22 @@ class GmshImporter:
         cell_type_codes = []
         cell_families = []
         cell_orders = []
-        for element_type, tags in zip(cell_types, cell_tags_list, strict=True):
+        for cell_type, tags in zip(cell_types, cell_tags_list, strict=True):
             name, _dim, order, _n_nodes, _local, _n_primary = model.mesh.getElementProperties(
-                element_type
+                cell_type
             )
             if int(order) != 1:
                 raise ValueError(
-                    f"Unsupported high-order Gmsh element {name!r} (type {element_type}, "
+                    f"Unsupported high-order Gmsh element {name!r} (type {cell_type}, "
                     f"order {order}); the FVM importer accepts first-order cells only"
                 )
-            if int(element_type) not in SUPPORTED_GMSH_CELL_TYPES:
+            if int(cell_type) not in SUPPORTED_GMSH_CELL_TYPES:
                 raise ValueError(
-                    f"Unsupported Gmsh volume element {name!r} (type {element_type}); "
+                    f"Unsupported Gmsh volume element {name!r} (type {cell_type}); "
                     "supported first-order cell types: tetrahedron (4), hexahedron (5), "
                     "prism (6), pyramid (7)"
                 )
-            cell_type_codes.extend([int(element_type)] * len(tags))
+            cell_type_codes.extend([int(cell_type)] * len(tags))
             cell_families.extend([str(name)] * len(tags))
             cell_orders.extend([int(order)] * len(tags))
 
@@ -384,8 +384,8 @@ class GmshImporter:
             boundary_patches.append(
                 {
                     "name": patch["name"],
-                    "startFace": start_face,
-                    "nFaces": n_faces_in_patch,
+                    "start_face": start_face,
+                    "n_faces": n_faces_in_patch,
                     "type": "patch",
                     "physical_tag": patch.get("physical_tag"),
                     "source_dimension": patch.get("dimension"),
@@ -401,7 +401,7 @@ class GmshImporter:
             "n_points": len(node_tags),
             "n_faces": len(final_faces),
             "n_interior_faces": n_internal,
-            "n_elements": n_cells,
+            "n_cells": n_cells,
             "source_point_ids": np.asarray(node_tags, dtype=np.int64),
             "source_cell_ids": np.asarray(all_cell_tags, dtype=np.int64),
             "cell_type_codes": np.asarray(cell_type_codes, dtype=np.int32),

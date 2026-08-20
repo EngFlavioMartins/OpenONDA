@@ -32,15 +32,17 @@ def _grad_phi_exact(x, y, z):
     )
 
 
-def _source_adv_diff(x, y, z, U, nu):
+def _source_adv_diff(x, y, z, velocity, kinematic_viscosity):
     """∇·(Uφ) - ν∇²φ with φ = sin(πx)sin(πy)sin(πz)."""
     sx, sy, sz = np.sin(np.pi * x), np.sin(np.pi * y), np.sin(np.pi * z)
     cx, cy, cz = np.cos(np.pi * x), np.cos(np.pi * y), np.cos(np.pi * z)
     div_conv = (
-        U[0] * np.pi * cx * sy * sz + U[1] * np.pi * sx * cy * sz + U[2] * np.pi * sx * sy * cz
+        velocity[0] * np.pi * cx * sy * sz
+        + velocity[1] * np.pi * sx * cy * sz
+        + velocity[2] * np.pi * sx * sy * cz
     )
     lap = -3.0 * np.pi**2 * sx * sy * sz
-    return div_conv - nu * lap
+    return div_conv - kinematic_viscosity * lap
 
 
 def _l2_error(computed, exact, volumes):
@@ -69,25 +71,25 @@ def _make_mms_mesh(lcar):
 
 def _setup_dirichlet_bcs(mesh, geo):
     """Set φ = φ_exact on all boundary faces."""
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
     fc = geo["face_centroids"]
-    phi = np.zeros(n_elem + mesh["n_faces"] - n_int)
-    phi[:n_elem] = _phi_exact(
-        geo["element_centroids"][:, 0],
-        geo["element_centroids"][:, 1],
-        geo["element_centroids"][:, 2],
+    face_flux = np.zeros(n_elem + mesh["n_faces"] - n_int)
+    face_flux[:n_elem] = _phi_exact(
+        geo["cell_centroids"][:, 0],
+        geo["cell_centroids"][:, 1],
+        geo["cell_centroids"][:, 2],
     )
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
-        b["bc_type_velocity"] = "fixedValue"
-        b["value_velocity"] = [1.0, 1.0, 1.0]
-        start, nf = b["startFace"], b["nFaces"]
+        b["velocity_type"] = "fixedValue"
+        b["velocity_value"] = [1.0, 1.0, 1.0]
+        start, nf = b["start_face"], b["n_faces"]
         for j in range(nf):
             fi = start + j
             gi = n_elem + (fi - n_int)
-            phi[gi] = _phi_exact(fc[fi, 0], fc[fi, 1], fc[fi, 2])
-    return phi
+            face_flux[gi] = _phi_exact(fc[fi, 0], fc[fi, 1], fc[fi, 2])
+    return face_flux
 
 
 class TestMMSSteadyAdvectionDiffusion:
@@ -95,35 +97,37 @@ class TestMMSSteadyAdvectionDiffusion:
 
     @pytest.mark.slow
     def test_convergence_upwind(self):
-        nu = 0.01
-        U = np.array([1.0, 1.0, 1.0])
+        kinematic_viscosity = 0.01
+        velocity = np.array([1.0, 1.0, 1.0])
 
         errors = []
         h_vals = []
         for lcar in [0.5, 0.25, 0.125]:
             mesh = _make_mms_mesh(lcar)
             geo = compute_mesh_geometry(mesh)
-            n_elem = mesh["n_elements"]
+            n_elem = mesh["n_cells"]
             n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-            cents = geo["element_centroids"]
+            cents = geo["cell_centroids"]
 
-            phi = _setup_dirichlet_bcs(mesh, geo)
-            vol = geo["element_volumes"]
+            face_flux = _setup_dirichlet_bcs(mesh, geo)
+            vol = geo["cell_volumes"]
 
             # Velocity field
-            U_field = np.tile(U, (n_elem + n_bnd, 1))
+            U_field = np.tile(velocity, (n_elem + n_bnd, 1))
 
             # Mass flow rate
             mdot = compute_volumetric_face_flux(U_field, mesh, geo)
 
             # Diffusion
-            grad_phi = compute_gauss_gradient(phi, mesh, geo)
-            gamma = nu * np.ones(n_elem)
-            diff_flux = assemble_diffusion_term(phi, grad_phi, gamma, mesh, geo, mesh["boundary"])
+            grad_phi = compute_gauss_gradient(face_flux, mesh, geo)
+            gamma = kinematic_viscosity * np.ones(n_elem)
+            diff_flux = assemble_diffusion_term(
+                face_flux, grad_phi, gamma, mesh, geo, mesh["boundary"]
+            )
 
             # Convection (upwind)
             conv_flux = assemble_convection_term(
-                phi, mdot, mesh, geo, mesh["boundary"], scheme="upwind"
+                face_flux, mdot, mesh, geo, mesh["boundary"], scheme="upwind"
             )
 
             # Combine fluxes
@@ -139,7 +143,9 @@ class TestMMSSteadyAdvectionDiffusion:
             # The PDE is: ∇·(Uφ) - ν∇²φ = S.
             # A·φ = b represents the LHS operator (convection + diffusion).
             # So: A·φ = b_boundary + S·V → b_solved = b_assembled + S·V
-            S = _source_adv_diff(cents[:, 0], cents[:, 1], cents[:, 2], U, nu)
+            S = _source_adv_diff(
+                cents[:, 0], cents[:, 1], cents[:, 2], velocity, kinematic_viscosity
+            )
             b += S * vol
 
             phi_sol = solve_linear_system(A, b, method="spsolve", equation_type="scalar")

@@ -55,10 +55,10 @@ class PhysicsBase:
 
     def __init__(
         self,
-        particles_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "GAUSSIAN",
         max_particles: int = MAX_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
-        max_targets: int = 200000,
+        max_evaluation_points: int = 200000,
     ):
         """
         Initialize physics base with kernel type and field allocation.
@@ -70,12 +70,12 @@ class PhysicsBase:
             accumulator_dtype: Data type for accumulation (ti.f32 or ti.f64)
             max_targets: Fixed capacity for at-point field evaluations
         """
-        self.particles_kernel = particles_kernel.upper()
+        self.particle_kernel = particle_kernel.upper()
         self.max_particles = max_particles
         self.accumulator_dtype = accumulator_dtype
         self.np_dtype = np.float32 if accumulator_dtype == ti.f32 else np.float64
-        self.max_targets = int(max_targets)
-        if self.max_targets < 1:
+        self.max_evaluation_points = int(max_evaluation_points)
+        if self.max_evaluation_points < 1:
             raise ValueError("max_targets must be at least 1")
 
         # Determine compute dtype from accumulator dtype
@@ -148,7 +148,7 @@ class PhysicsBase:
         self._axisymmetric_orbit_count = ti.field(dtype=ti.i32, shape=(self.max_particles,))
         self._angular_core_coefficient = (
             0.0
-            if self.particles_kernel
+            if self.particle_kernel
             in {
                 "HIGH_ORDER_GAUSSIAN",
                 "SUPER_GAUSSIAN",
@@ -158,7 +158,7 @@ class PhysicsBase:
 
         # Initialize Taichi fields
         self._initialize_temp_fields()
-        self._initialize_target_fields(self.max_targets)
+        self._initialize_target_fields(self.max_evaluation_points)
 
         # Bind kernel functions based on particle kernel type
         self._define_taichi_kernels()
@@ -752,7 +752,7 @@ class PhysicsBase:
                 max_particles=alloc_size,
                 max_nodes=2 * alloc_size,
                 theta=theta,
-                kernel_type=self.particles_kernel,
+                kernel_type=self.particle_kernel,
                 multipole_order=self.treecode_multipole_order,
                 sort_particle_targets=self.treecode_sort_particle_targets,
                 traversal_block_dim=self.treecode_traversal_block_dim,
@@ -762,7 +762,7 @@ class PhysicsBase:
             # Update theta in case it changed
             self._treecode.theta = theta
             self._treecode.theta_sq = theta * theta
-            self._treecode.set_kernel_type(self.particles_kernel)
+            self._treecode.set_kernel_type(self.particle_kernel)
             self._treecode.set_multipole_order(self.treecode_multipole_order)
             self._treecode.set_sort_particle_targets(self.treecode_sort_particle_targets)
             self._treecode.traversal_block_dim = self.treecode_traversal_block_dim
@@ -782,19 +782,19 @@ class PhysicsBase:
         from ..numerics.kernels_common import create_kernels
 
         # Select kernel module based on type
-        if self.particles_kernel == "GAUSSIAN":
+        if self.particle_kernel == "GAUSSIAN":
             from ..kernels.gaussian import create_gaussian_kernels
 
             kernel_functions = create_gaussian_kernels(self.accumulator_dtype)
-        elif self.particles_kernel == "HIGH_ORDER_GAUSSIAN":
+        elif self.particle_kernel == "HIGH_ORDER_GAUSSIAN":
             from ..kernels.high_order_gaussian import create_high_order_gaussian_kernels
 
             kernel_functions = create_high_order_gaussian_kernels(self.accumulator_dtype)
-        elif self.particles_kernel == "SUPER_GAUSSIAN":
+        elif self.particle_kernel == "SUPER_GAUSSIAN":
             from ..kernels.super_gaussian import create_super_gaussian_kernels
 
             kernel_functions = create_super_gaussian_kernels(self.accumulator_dtype)
-        elif self.particles_kernel == "WINCKELMANS":
+        elif self.particle_kernel == "WINCKELMANS":
             from ..kernels.winckelmans import create_winckelmans_kernels
 
             kernel_functions = create_winckelmans_kernels(self.accumulator_dtype)
@@ -913,7 +913,7 @@ class PhysicsBase:
         revision = getattr(particles, "state_revision", None)
         key = None if revision is None else (id(tree), id(particles), int(revision), int(N))
         if key is None or self._target_tree_key != key:
-            tree.build(particles.position, particles.circulation, particles.radius, N)
+            tree.build(particles.position, particles.vortex_strength, particles.core_radius, N)
             self._target_tree_key = key
         return tree
 
@@ -938,8 +938,8 @@ class PhysicsBase:
 
         self.compute_velocities_kernel(
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             particles.velocity,
             bg_vel,
             N,
@@ -1018,8 +1018,8 @@ class PhysicsBase:
         self.compute_target_velocity_kernel(
             self.target_positions,
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             self.target_velocities,
             bg_vel,
             M,
@@ -1065,8 +1065,8 @@ class PhysicsBase:
         self.compute_target_velocity_kernel(
             target_positions,
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             out_field,
             bg_vel,
             M,
@@ -1106,8 +1106,8 @@ class PhysicsBase:
 
         # Get particle data and filter by zone_mask
         positions = particles.position_cpu()
-        circulations = particles.circulation_cpu()
-        radii = particles.radius_cpu()
+        circulations = particles.vortex_strength_cpu()
+        radii = particles.core_radius_cpu()
 
         # Apply zone mask
         filtered_pos = positions[zone_mask]
@@ -1238,7 +1238,11 @@ class PhysicsBase:
         self._resize_temp_fields(N)
 
         self.compute_vorticities_kernel(
-            particles.position, particles.circulation, particles.radius, particles.vorticity, N
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            particles.vorticity,
+            N,
         )
 
     def compute_target_vorticities(self, particles, target_positions: np.ndarray) -> np.ndarray:
@@ -1268,8 +1272,8 @@ class PhysicsBase:
         self.compute_target_vorticity_kernel(
             self.target_positions,
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             self.target_vorticities,
             M,
             N,
@@ -1296,8 +1300,8 @@ class PhysicsBase:
 
         self.compute_velocity_gradients_kernel(
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             particles.velocity_gradient,
             particles.strain_rate,
             N,
@@ -1332,8 +1336,8 @@ class PhysicsBase:
         self.compute_target_velocity_gradient_kernel(
             self.target_positions,
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             self.target_velocity_gradients,
             M,
             N,
@@ -1358,7 +1362,7 @@ class PhysicsBase:
 
         tree = self._get_or_create_treecode(N, theta)
         # Build from GPU fields directly
-        tree.build(particles.position, particles.circulation, particles.radius, N)
+        tree.build(particles.position, particles.vortex_strength, particles.core_radius, N)
         self._target_tree_key = None
         bg = particles.velocity_background
         bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
@@ -1477,7 +1481,7 @@ class PhysicsBase:
             return
 
         tree = self._get_or_create_treecode(N, theta)
-        tree.build(particles.position, particles.circulation, particles.radius, N)
+        tree.build(particles.position, particles.vortex_strength, particles.core_radius, N)
         self._target_tree_key = None
 
         # On-device traversal + field-to-field copy: ∇u and S
@@ -1495,7 +1499,7 @@ class PhysicsBase:
         if N == 0:
             return
         tree = self._get_or_create_treecode(N, theta)
-        tree.build(particles.position, particles.circulation, particles.radius, N)
+        tree.build(particles.position, particles.vortex_strength, particles.core_radius, N)
         self._target_tree_key = None
         bg = particles.velocity_background
         bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
@@ -1515,8 +1519,8 @@ class PhysicsBase:
         self._resize_temp_fields(N)
         self.compute_velocity_and_gradient_kernel(
             particles.position,
-            particles.circulation,
-            particles.radius,
+            particles.vortex_strength,
+            particles.core_radius,
             particles.velocity,
             particles.velocity_gradient,
             particles.strain_rate,
@@ -1543,7 +1547,11 @@ class PhysicsBase:
             return
         self._resize_temp_fields(N)
         self.compute_kinetic_energy_kernel(
-            particles.position, particles.circulation, particles.radius, particles.kinetic_energy, N
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            particles.kinetic_energy,
+            N,
         )
 
     def compute_helicity(self, particles):
@@ -1563,5 +1571,9 @@ class PhysicsBase:
             return
         self._resize_temp_fields(N)
         self.compute_helicity_kernel(
-            particles.position, particles.circulation, particles.radius, particles.helicity, N
+            particles.position,
+            particles.vortex_strength,
+            particles.core_radius,
+            particles.helicity,
+            N,
         )

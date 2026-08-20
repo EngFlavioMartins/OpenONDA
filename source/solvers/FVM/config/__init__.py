@@ -1,18 +1,17 @@
-"""
-FVM Configuration Module
-"""
+"""Public configuration models for the incompressible FVM solver."""
 
 from .types import (
     BoundaryConfig,
-    DynamicMeshConfig,
-    ExecutionConfig,
+    ComputeConfig,
+    DiscretizationConfig,
     FVMSetup,
     LinearSolverConfig,
-    MeshConfig,
-    OutputSetup,
+    LoggingConfig,
+    MeshMotionConfig,
+    MeshQualityConfig,
+    OutputConfig,
     PimpleControl,
     RunAcceptancePolicy,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
@@ -20,15 +19,16 @@ from .types import (
 
 __all__ = [
     "BoundaryConfig",
-    "DynamicMeshConfig",
-    "ExecutionConfig",
+    "ComputeConfig",
+    "DiscretizationConfig",
     "FVMSetup",
     "LinearSolverConfig",
-    "MeshConfig",
-    "OutputSetup",
+    "LoggingConfig",
+    "MeshMotionConfig",
+    "MeshQualityConfig",
+    "OutputConfig",
     "PimpleControl",
     "RunAcceptancePolicy",
-    "SchemesConfig",
     "TimeConfig",
     "TransportConfig",
     "TurbulenceConfig",

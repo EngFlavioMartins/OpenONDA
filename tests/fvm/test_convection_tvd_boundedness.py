@@ -33,43 +33,43 @@ N = 20
 def _setup():
     mesh = structured_box(N, N, 1)
     geo = compute_mesh_geometry(mesh)
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    cc = geo["element_centroids"]
+    cc = geo["cell_centroids"]
 
     # Uniform +x advection; ghosts included.
-    U = np.tile([1.0, 0.0, 0.0], (n_elem + mesh["n_faces"] - n_int, 1)).astype(float)
-    mdot = compute_volumetric_face_flux(U, mesh, geo)
+    velocity = np.tile([1.0, 0.0, 0.0], (n_elem + mesh["n_faces"] - n_int, 1)).astype(float)
+    mdot = compute_volumetric_face_flux(velocity, mesh, geo)
 
     # Step initial field: 1 upstream (x<0.5), 0 downstream.
-    phi = np.zeros(n_elem + mesh["n_faces"] - n_int)
-    phi[:n_elem] = (cc[:, 0] < 0.5).astype(float)
+    face_flux = np.zeros(n_elem + mesh["n_faces"] - n_int)
+    face_flux[:n_elem] = (cc[:, 0] < 0.5).astype(float)
     # Boundary ghosts: inlet (xmin) holds the upstream value 1; all others
     # zero-gradient (copy owner).
     for b in mesh["boundary"]:
-        own = mesh["owners"][b["startFace"] : b["startFace"] + b["nFaces"]]
-        idx = n_elem + (b["startFace"] - n_int)
+        own = mesh["owners"][b["start_face"] : b["start_face"] + b["n_faces"]]
+        idx = n_elem + (b["start_face"] - n_int)
         if b["name"] == "xmin":
             b["bc_type"] = "fixedValue"
-            phi[idx : idx + b["nFaces"]] = 1.0
+            face_flux[idx : idx + b["n_faces"]] = 1.0
         else:
             b["bc_type"] = "zeroGradient"
-            phi[idx : idx + b["nFaces"]] = phi[own]
-    return mesh, geo, U, mdot, phi
+            face_flux[idx : idx + b["n_faces"]] = face_flux[own]
+    return mesh, geo, velocity, mdot, face_flux
 
 
-def _one_explicit_step(mesh, geo, mdot, phi, scheme, cfl=0.5):
-    n_elem = mesh["n_elements"]
-    vol = geo["element_volumes"]
-    grad = compute_gauss_gradient(phi, mesh, geo)[:, :, 0]
+def _one_explicit_step(mesh, geo, mdot, face_flux, scheme, cfl=0.5):
+    n_elem = mesh["n_cells"]
+    vol = geo["cell_volumes"]
+    grad = compute_gauss_gradient(face_flux, mesh, geo)[:, :, 0]
     conv = assemble_convection_term(
-        phi, mdot, mesh, geo, mesh["boundary"], scheme=scheme, grad_phi=grad
+        face_flux, mdot, mesh, geo, mesh["boundary"], scheme=scheme, grad_phi=grad
     )
     A = assemble_matrix_from_fluxes_vectorized(conv, mesh)
     b = assemble_rhs_from_fluxes_vectorized(conv, mesh)
-    dudt = (-(A @ phi[:n_elem]) + b) / vol
+    dudt = (-(A @ face_flux[:n_elem]) + b) / vol
     time_step_size = cfl * (1.0 / N)  # |U| = 1, dx = 1/N
-    return phi[:n_elem] + time_step_size * dudt
+    return face_flux[:n_elem] + time_step_size * dudt
 
 
 class TestTVDBoundedness:
@@ -82,16 +82,16 @@ class TestTVDBoundedness:
         assert apply_limiter("superbee", ratio)[3] == pytest.approx(2.0)
 
     def test_tvd_schemes_are_bounded(self):
-        mesh, geo, U, mdot, phi = _setup()
+        mesh, geo, velocity, mdot, face_flux = _setup()
         for scheme in ("upwind", "limitedLinear", "vanLeer", "MUSCL", "minmod"):
-            phi_new = _one_explicit_step(mesh, geo, mdot, phi, scheme)
+            phi_new = _one_explicit_step(mesh, geo, mdot, face_flux, scheme)
             assert phi_new.min() > -self.TOL, f"{scheme} undershoot: min={phi_new.min():.3e}"
             assert phi_new.max() < 1.0 + self.TOL, f"{scheme} overshoot: max={phi_new.max():.3e}"
 
     def test_central_overshoots(self):
         """Contrast: pure central (linear) is not monotone and produces
         over/undershoot on the same step — motivating the TVD family."""
-        mesh, geo, U, mdot, phi = _setup()
-        phi_new = _one_explicit_step(mesh, geo, mdot, phi, "central")
+        mesh, geo, velocity, mdot, face_flux = _setup()
+        phi_new = _one_explicit_step(mesh, geo, mdot, face_flux, "central")
         overshoot = max(phi_new.max() - 1.0, -phi_new.min())
         assert overshoot > 1e-3, f"central unexpectedly bounded (overshoot={overshoot:.3e})"

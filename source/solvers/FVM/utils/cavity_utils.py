@@ -29,7 +29,7 @@ def needs_pressure_reference(boundaries):
         bool: True if pressure reference should be applied
     """
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("bc_type_p"), "p", "pressure")
+        strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "p", "pressure")
         if strategy is BoundaryStrategy.FIXED_VALUE:
             return False
     return True

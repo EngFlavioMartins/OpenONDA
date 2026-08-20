@@ -3,7 +3,7 @@
 Certifies that ``AdaptiveCartesianMesher`` treats the STL body as the geometry
 authority (``preserve_body_geometry=True``):
 
-* A  body exactly commensurable with the requested dyadic lattice (the cubeFlow
+* A  body exactly commensurable with the requested dyadic lattice (the cube_flow
    cube) keeps the requested background spacing, zero padding and an exact wall.
 * B  an incompatible body width is never modified: the finest spacing is
    refined to divide the body exactly and the outer domain is padded outward.
@@ -43,7 +43,7 @@ def write_box_stl(path, lo, hi) -> None:
     corners = np.array(
         [[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
     )
-    center = (lo + hi) / 2.0
+    centre = (lo + hi) / 2.0
     triangles = []
     for axis in range(3):
         tangents = [a for a in range(3) if a != axis]
@@ -58,7 +58,7 @@ def write_box_stl(path, lo, hi) -> None:
             face = face[np.argsort(angles)]
             for a, b, c in ((0, 1, 2), (0, 2, 3)):
                 normal = np.cross(face[b] - face[a], face[c] - face[a])
-                if np.dot(normal, face_centre - center) < 0:
+                if np.dot(normal, face_centre - centre) < 0:
                     a, b = b, a
                 triangles.append((face[a], face[b], face[c]))
     with open(path, "wb") as stream:
@@ -88,7 +88,9 @@ def wall_bounds(mesh, wall_patch_name=WALL_PATCH):
     faces = np.asarray(mesh["faces"])
     points = np.asarray(mesh["points"], dtype=np.float64)
     patch = next(p for p in mesh["boundary"] if p["name"] == wall_patch_name)
-    vertices = points[np.unique(faces[patch["startFace"] : patch["startFace"] + patch["nFaces"]])]
+    vertices = points[
+        np.unique(faces[patch["start_face"] : patch["start_face"] + patch["n_faces"]])
+    ]
     return vertices.min(axis=0), vertices.max(axis=0)
 
 
@@ -192,7 +194,7 @@ def test_wall_on_surface_postcondition_fires_on_shifted_solid():
             [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]], dtype=float
         ),
         "faces": np.array([[0, 1, 2, 3]], dtype=np.int32),
-        "boundary": [{"name": "cube", "startFace": 0, "nFaces": 1}],
+        "boundary": [{"name": "cube", "start_face": 0, "n_faces": 1}],
     }
     with pytest.raises(ValueError, match="Wall patch"):
         _validate_wall_on_surface(fake_mesh, (0.0, 1.0, 0.0, 1.0, 0.0, 1.0), "cube")
@@ -220,7 +222,7 @@ def test_overlap_validator_catches_centroid_outside_volume_penetrating_cell():
     mesh_data = {
         "points": points,
         "cell_vertices": np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.int64),
-        "n_elements": 1,
+        "n_cells": 1,
     }
     # Cell centroid is (0.45, 0.5, 0.5), outside body_bounds on x alone; the
     # cell's AABB (x in [0.3, 0.6]) still crosses the body face at x=0.5 with

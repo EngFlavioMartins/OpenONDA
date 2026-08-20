@@ -9,13 +9,13 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ExecutionConfig,
+    ComputeConfig,
+    DiscretizationConfig,
     FieldState,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -69,12 +69,14 @@ def _run_steps(tmp_path, backend, steps=1):
     mesh = structured_box(3, 2, 2)
     config = FVMSetup(
         case_name=f"pimple_{backend}",
-        execution=ExecutionConfig(operator_backend=backend),
-        time=TimeConfig.transient(time_step_size=0.01, duration=steps * 0.01, write_interval=100),
-        schemes=SchemesConfig(convection_scheme="upwind"),
+        execution=ComputeConfig(operator_backend=backend),
+        time=TimeConfig.transient(
+            time_step_size=0.01, duration=steps * 0.01, output_interval_steps=100
+        ),
+        schemes=DiscretizationConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=1),
-        transport=TransportConfig(density=1.0, nu=0.01),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),
@@ -84,7 +86,7 @@ def _run_steps(tmp_path, backend, steps=1):
             BoundaryConfig.wall("zmax"),
         ],
         initial_velocity=[1.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = FVMSolver(config, str(tmp_path / backend), mesh_data=mesh)
@@ -94,7 +96,12 @@ def _run_steps(tmp_path, backend, steps=1):
             diagnostics = solver.solve_pimple(0.01)
             solver.advance_time()
     assert diagnostics is not None
-    return solver.U.copy(), solver.p.copy(), solver.phi.copy(), diagnostics
+    return (
+        solver.velocity.copy(),
+        solver.kinematic_pressure.copy(),
+        solver.face_flux.copy(),
+        diagnostics,
+    )
 
 
 def test_numba_one_step_matches_numpy(tmp_path):

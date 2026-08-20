@@ -20,7 +20,7 @@ def _chain(n: int = 12):
         "owners": np.arange(n - 1),
         "neighbours": np.arange(1, n),
     }
-    geo = {"element_volumes": np.ones(n)}
+    geo = {"cell_volumes": np.ones(n)}
     return mesh, geo
 
 

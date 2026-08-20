@@ -19,36 +19,36 @@ class TestRhieChowConsistency:
         geo = compute_mesh_geometry(mesh)
         for b in mesh["boundary"]:
             b["bc_type"] = "zeroGradient"
-            b["bc_type_velocity"] = "zeroGradient"
-            b["bc_type_p"] = "zeroGradient"
+            b["velocity_type"] = "zeroGradient"
+            b["pressure_type"] = "zeroGradient"
 
-        n_elem = mesh["n_elements"]
-        volumes = geo["element_volumes"]
+        n_elem = mesh["n_cells"]
+        volumes = geo["cell_volumes"]
         A_U = np.ones((n_elem, 3)) * 10.0  # per-component diagonal
-        alpha_u = 0.7
+        velocity_relaxation = 0.7
 
         # Expected DUs (per component)
-        A_U_phys = A_U * alpha_u  # (n_elem, 3)
+        A_U_phys = A_U * velocity_relaxation  # (n_elem, 3)
         expected_DU = volumes[:, np.newaxis] / A_U_phys  # (n_elem, 3)
 
         # From assembly (uses A_U * alpha_u internally)
-        U = np.zeros((n_elem + mesh["n_faces"] - mesh["n_interior_faces"], 3))
+        velocity = np.zeros((n_elem + mesh["n_faces"] - mesh["n_interior_faces"], 3))
         p = np.zeros(n_elem + mesh["n_faces"] - mesh["n_interior_faces"])
         A_p, b_p, phi_star = assemble_pressure_correction_equation_rhie_chow(
-            U,
+            velocity,
             A_U,
             p,
             1.0,
             mesh,
             geo,
             mesh["boundary"],
-            alpha_u=alpha_u,
+            velocity_relaxation=velocity_relaxation,
         )
 
         # From correction (uses A_U * alpha_u internally)
         p_prime = np.zeros(n_elem)
         U_corr, phi_corr = correct_velocity_and_flux(
-            U.copy(),
+            velocity.copy(),
             phi_star.copy(),
             p_prime,
             A_U,
@@ -56,7 +56,7 @@ class TestRhieChowConsistency:
             geo,
             mesh["boundary"],
             rho=1.0,
-            alpha_u=alpha_u,
+            velocity_relaxation=velocity_relaxation,
         )
 
         # Direct computation
@@ -67,8 +67,8 @@ class TestRhieChowConsistency:
         """DU(alpha_u=0.5) should be 2× DU(alpha_u=1.0)."""
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
-        volumes = geo["element_volumes"]
-        A_U = np.ones((mesh["n_elements"], 3)) * 10.0
+        volumes = geo["cell_volumes"]
+        A_U = np.ones((mesh["n_cells"], 3)) * 10.0
 
         DU_1 = _compute_rhie_chow_coefficients(volumes, A_U * 1.0)
         DU_05 = _compute_rhie_chow_coefficients(volumes, A_U * 0.5)
@@ -89,28 +89,28 @@ class TestRhieChowConsistency:
         geo = compute_mesh_geometry(mesh)
 
         for patch in mesh["boundary"]:
-            patch["bc_type_velocity"] = "zeroGradient"
-            patch["bc_type_p"] = "fixedValue" if patch["name"] == "xmax" else "zeroGradient"
-            patch["value_p"] = 0.0
+            patch["velocity_type"] = "zeroGradient"
+            patch["pressure_type"] = "fixedValue" if patch["name"] == "xmax" else "zeroGradient"
+            patch["kinematic_pressure_value"] = 0.0
 
-        n = mesh["n_elements"]
+        n = mesh["n_cells"]
         nb = mesh["n_faces"] - mesh["n_interior_faces"]
         rng = np.random.default_rng(17)
-        U = rng.normal(scale=0.1, size=(n + nb, 3))
+        velocity = rng.normal(scale=0.1, size=(n + nb, 3))
         p = rng.normal(scale=0.05, size=n + nb)
         update_scalar_boundaries(p, mesh, mesh["boundary"], field_name="p")
         A_U = np.full((n, 3), 4.0)
 
         A_p, b_p, phi_star = assemble_pressure_correction_equation_rhie_chow(
-            U, A_U, p, 1.0, mesh, geo, mesh["boundary"]
+            velocity, A_U, p, 1.0, mesh, geo, mesh["boundary"]
         )
         p_prime = spsolve(A_p, b_p)
-        _, phi = correct_velocity_and_flux(
-            U.copy(), phi_star.copy(), p_prime, A_U, mesh, geo, mesh["boundary"]
+        _, face_flux = correct_velocity_and_flux(
+            velocity.copy(), phi_star.copy(), p_prime, A_U, mesh, geo, mesh["boundary"]
         )
 
         linear_residual = np.linalg.norm(A_p @ p_prime - b_p)
-        continuity = compute_continuity_error(phi, mesh, geo)
+        continuity = compute_continuity_error(face_flux, mesh, geo)
         assert linear_residual < 1e-11
         assert np.max(np.abs(continuity)) < 2e-11
 
@@ -120,7 +120,7 @@ class TestRhieChowConsistency:
         mesh = structured_box(2, 2, 2)
         mesh["points"][:, 0] += 0.25 * mesh["points"][:, 1]
         geo = compute_mesh_geometry(mesh)
-        DU = np.ones((mesh["n_elements"], 3))
+        DU = np.ones((mesh["n_cells"], 3))
         conductance = _compute_pressure_face_conductance(mesh, geo, DU)
         assert conductance.shape == (mesh["n_faces"],)
         assert np.all(conductance > 0.0)
@@ -134,11 +134,11 @@ class TestRhieChowConsistency:
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
         for boundary in mesh["boundary"]:
-            boundary["bc_type_velocity"] = "zeroGradient"
-            boundary["bc_type_p"] = "zeroGradient"
-        n = mesh["n_elements"]
+            boundary["velocity_type"] = "zeroGradient"
+            boundary["pressure_type"] = "zeroGradient"
+        n = mesh["n_cells"]
         nb = mesh["n_faces"] - mesh["n_interior_faces"]
-        U = np.zeros((n + nb, 3))
+        velocity = np.zeros((n + nb, 3))
         p = np.zeros(n + nb)
         A_U = np.full((n, 3), 2.0)
         calls = 0
@@ -150,12 +150,12 @@ class TestRhieChowConsistency:
             return original(*args, **kwargs)
 
         monkeypatch.setattr(simple, "_compute_pressure_face_conductance", counted)
-        _A, _b, phi, workspace = simple.assemble_pressure_correction_equation_rhie_chow(
-            U, A_U, p, 1.0, mesh, geo, mesh["boundary"], return_workspace=True
+        _A, _b, face_flux, workspace = simple.assemble_pressure_correction_equation_rhie_chow(
+            velocity, A_U, p, 1.0, mesh, geo, mesh["boundary"], return_workspace=True
         )
         simple.correct_velocity_and_flux(
-            U.copy(),
-            np.array(phi, copy=True),
+            velocity.copy(),
+            np.array(face_flux, copy=True),
             np.zeros(n),
             A_U,
             mesh,

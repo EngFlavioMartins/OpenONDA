@@ -15,7 +15,7 @@ import numpy as np
 from . import gradients
 
 
-def compute_courant_number(U, phi, time_step_size, mesh_data, geo_data):
+def compute_courant_number(velocity, face_flux, time_step_size, mesh_data, geo_data):
     """
     Compute Courant number field.
     Co = 0.5 * dt * sum(|phi_f|) / V_c
@@ -30,19 +30,19 @@ def compute_courant_number(U, phi, time_step_size, mesh_data, geo_data):
     Returns:
         Co: Courant number field (n_elements)
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
-    volumes = np.asarray(geo_data["element_volumes"], dtype=np.float64)
+    volumes = np.asarray(geo_data["cell_volumes"], dtype=np.float64)
     if not np.all(np.isfinite(volumes)) or np.any(volumes <= 0.0):
         raise ValueError("element volumes must be finite and positive")
 
     # Absolute flux
-    abs_phi = np.abs(phi)
+    abs_phi = np.abs(face_flux)
 
     # Initialize Co field
-    Co = np.zeros(n_elements)
+    Co = np.zeros(n_cells)
 
     # Interior faces contribution
     np.add.at(Co, owners[:n_interior], abs_phi[:n_interior])
@@ -57,7 +57,7 @@ def compute_courant_number(U, phi, time_step_size, mesh_data, geo_data):
     return Co
 
 
-def compute_continuity_error(phi, mesh_data, geo_data):
+def compute_continuity_error(face_flux, mesh_data, geo_data):
     """Per-cell continuity residual ∮ U·dS = Σ_f (±φ_f) [m³/s].
 
     For a discretely divergence-free (incompressible) solution this net face
@@ -73,22 +73,22 @@ def compute_continuity_error(phi, mesh_data, geo_data):
     Returns:
         np.ndarray: net flux per cell (n_elements,).
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
 
-    div = np.zeros(n_elements)
-    np.add.at(div, owners[:n_interior], phi[:n_interior])
-    np.add.at(div, neighbours[:n_interior], -phi[:n_interior])
-    np.add.at(div, owners[n_interior:], phi[n_interior:])
+    div = np.zeros(n_cells)
+    np.add.at(div, owners[:n_interior], face_flux[:n_interior])
+    np.add.at(div, neighbours[:n_interior], -face_flux[:n_interior])
+    np.add.at(div, owners[n_interior:], face_flux[n_interior:])
     return div
 
 
-def compute_kinetic_energy(U, geo_data, density=1.0):
+def compute_kinetic_energy(velocity, geo_data, density=1.0):
     """Return volume-integrated kinetic energy for the interior cells."""
-    volumes = np.asarray(geo_data["element_volumes"], dtype=np.float64)
-    velocity = np.asarray(U[: len(volumes)], dtype=np.float64)
+    volumes = np.asarray(geo_data["cell_volumes"], dtype=np.float64)
+    velocity = np.asarray(velocity[: len(volumes)], dtype=np.float64)
     rho = np.asarray(density, dtype=np.float64)
     if rho.ndim == 0:
         rho = np.full(len(volumes), float(rho))
@@ -97,19 +97,19 @@ def compute_kinetic_energy(U, geo_data, density=1.0):
     return 0.5 * float(np.sum(rho * volumes * np.sum(velocity * velocity, axis=1)))
 
 
-def compute_enstrophy(U, mesh_data, geo_data):
+def compute_enstrophy(velocity, mesh_data, geo_data):
     """Return ``0.5 ∫ |curl(U)|² dV`` over the interior cells."""
-    vorticity = compute_vorticity(U, mesh_data, geo_data)
-    volumes = np.asarray(geo_data["element_volumes"], dtype=np.float64)
+    vorticity = compute_vorticity(velocity, mesh_data, geo_data)
+    volumes = np.asarray(geo_data["cell_volumes"], dtype=np.float64)
     return 0.5 * float(np.sum(volumes * np.sum(vorticity * vorticity, axis=1)))
 
 
-def vorticity_from_gradient(grad_U, n_elements: int | None = None):
+def vorticity_from_gradient(grad_U, n_cells: int | None = None):
     """Return curl(U) from an already reconstructed velocity gradient."""
     gradient = np.asarray(grad_U, dtype=np.float64)
     if gradient.ndim != 3 or gradient.shape[1:] != (3, 3):
         raise ValueError("Velocity gradient must have shape (n, 3, 3)")
-    n = gradient.shape[0] if n_elements is None else int(n_elements)
+    n = gradient.shape[0] if n_cells is None else int(n_cells)
     vorticity = np.empty((n, 3), dtype=np.float64)
     vorticity[:, 0] = gradient[:n, 1, 2] - gradient[:n, 2, 1]
     vorticity[:, 1] = gradient[:n, 2, 0] - gradient[:n, 0, 2]
@@ -118,9 +118,9 @@ def vorticity_from_gradient(grad_U, n_elements: int | None = None):
 
 
 @njit(cache=True)
-def _enstrophy_from_gradient_kernel(gradient, volumes, n_elements):
+def _enstrophy_from_gradient_kernel(gradient, volumes, n_cells):
     total = 0.0
-    for cell in range(n_elements):
+    for cell in range(n_cells):
         omega_x = gradient[cell, 1, 2] - gradient[cell, 2, 1]
         omega_y = gradient[cell, 2, 0] - gradient[cell, 0, 2]
         omega_z = gradient[cell, 0, 1] - gradient[cell, 1, 0]
@@ -128,19 +128,19 @@ def _enstrophy_from_gradient_kernel(gradient, volumes, n_elements):
     return 0.5 * total
 
 
-def enstrophy_from_gradient(grad_U, volumes, n_elements: int | None = None) -> float:
+def enstrophy_from_gradient(grad_U, volumes, n_cells: int | None = None) -> float:
     """Integrate enstrophy without allocating a full vorticity field."""
     gradient = np.asarray(grad_U, dtype=np.float64)
     cell_volumes = np.asarray(volumes, dtype=np.float64)
     if gradient.ndim != 3 or gradient.shape[1:] != (3, 3):
         raise ValueError("Velocity gradient must have shape (n, 3, 3)")
-    n = gradient.shape[0] if n_elements is None else int(n_elements)
+    n = gradient.shape[0] if n_cells is None else int(n_cells)
     if not 0 <= n <= gradient.shape[0] or cell_volumes.shape[0] < n:
         raise ValueError("Enstrophy integration range exceeds gradient or volume storage")
     return float(_enstrophy_from_gradient_kernel(gradient, cell_volumes, n))
 
 
-def compute_vorticity(U, mesh_data, geo_data, *, gradient=None):
+def compute_vorticity(velocity, mesh_data, geo_data, *, gradient=None):
     """
     Compute vorticity field: w = curl(U)
 
@@ -157,8 +157,8 @@ def compute_vorticity(U, mesh_data, geo_data, *, gradient=None):
     # accepting a supplied gradient prevents duplicate full-domain work.
     if gradient is None:
         _grad_fn = gradients._resolve_gradient_fn(geo_data)
-        gradient = _grad_fn(U, mesh_data, geo_data)
-    return vorticity_from_gradient(gradient, mesh_data["n_elements"])
+        gradient = _grad_fn(velocity, mesh_data, geo_data)
+    return vorticity_from_gradient(gradient, mesh_data["n_cells"])
 
 
 def _normalize_patch_names(patch_names):
@@ -190,7 +190,7 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
 
     Args:
         boundary: Boundary dictionary.  Must contain key ``"name"``, and
-            may contain ``"bc_type_velocity"`` and ``"type"``.
+            may contain ``"velocity_type"`` and ``"type"``.
         patch_names: Explicit list of patch names to select, or ``None``
             for auto-detection.
 
@@ -205,7 +205,7 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
 
 
 def _compute_face_viscous_forces(
-    U,
+    velocity,
     gradU,
     owners_idx,
     boundary_idx,
@@ -254,7 +254,9 @@ def _compute_face_viscous_forces(
 
     # gradU[d, c] = d(U_c)/d(x_d).  Replace only its normal projection,
     # retaining the reconstructed tangential derivatives.
-    sn_grad = (np.asarray(U[boundary_idx]) - np.asarray(U[owners_idx])) / distance[:, None]
+    sn_grad = (np.asarray(velocity[boundary_idx]) - np.asarray(velocity[owners_idx])) / distance[
+        :, None
+    ]
     reconstructed_sn_grad = np.einsum("fi,fij->fj", n_vec, grad_face)
     grad_face += n_vec[:, :, None] * (sn_grad - reconstructed_sn_grad)[:, None, :]
 
@@ -301,7 +303,7 @@ def _compute_force_coefficients(Ftot, moment, ref_U, ref_area, rho, ref_length=N
     return result
 
 
-def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
+def compute_y_plus(velocity, nu, mesh_data, geo_data, boundaries, patch_names=None):
     """
     Compute y+ for wall boundaries and return statistics.
 
@@ -331,10 +333,10 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
         cell_nu = None
         scalar_nu = float(nu_values)
     else:
-        n_elements = mesh_data["n_elements"]
-        if nu_values.ndim != 1 or len(nu_values) < n_elements:
-            raise ValueError(f"nu must be scalar or contain at least {n_elements} cell values")
-        cell_nu = nu_values[:n_elements]
+        n_cells = mesh_data["n_cells"]
+        if nu_values.ndim != 1 or len(nu_values) < n_cells:
+            raise ValueError(f"nu must be scalar or contain at least {n_cells} cell values")
+        cell_nu = nu_values[:n_cells]
         if not np.all(np.isfinite(cell_nu)) or np.any(cell_nu <= 0.0):
             raise ValueError("nu must contain finite positive values")
         scalar_nu = None
@@ -346,12 +348,12 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
             continue
 
         name = boundary["name"]
-        start = boundary["startFace"]
-        nf = boundary["nFaces"]
+        start = boundary["start_face"]
+        nf = boundary["n_faces"]
         idx = np.arange(start, start + nf)
         own = owners[idx]
 
-        # 1. Wall distance: cell center to face center
+        # 1. Wall distance: cell centre to face centre
         # wall_dist is usually pre-computed in geo_data for FVM
         if "wall_dist" in geo_data:
             d = geo_data["wall_dist"][idx]
@@ -362,8 +364,8 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
         if not np.all(np.isfinite(d)) or np.any(d <= 0.0):
             raise ValueError(f"wall distance must be finite and positive on patch {name!r}")
 
-        # 2. Velocity at cell center (tangential to wall)
-        U_c = U[own]
+        # 2. Velocity at cell centre (tangential to wall)
+        U_c = velocity[own]
         sf = geo_data["face_sf"][idx]
         mag_sf = np.linalg.norm(sf, axis=1)
         if not np.all(np.isfinite(mag_sf)) or np.any(mag_sf <= 0.0):
@@ -391,14 +393,14 @@ def compute_y_plus(U, nu, mesh_data, geo_data, boundaries, patch_names=None):
             "min": float(np.min(y_plus)),
             "max": float(np.max(y_plus)),
             "avg": float(np.mean(y_plus)),
-            "nFaces": nf,
+            "n_faces": nf,
         }
 
     return y_plus_stats
 
 
 def compute_surface_face_loads(
-    U,
+    velocity,
     p,
     mu,
     rho,
@@ -418,7 +420,7 @@ def compute_surface_face_loads(
     """
     from .gradients import _resolve_gradient_fn as _resolve_grad
 
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     rho_value = float(np.asarray(rho))
@@ -431,35 +433,37 @@ def compute_surface_face_loads(
     mu_values = np.asarray(mu)
     if not np.all(np.isfinite(mu_values)) or np.any(mu_values < 0.0):
         raise ValueError("Dynamic viscosity must be finite and non-negative")
-    if mu_values.ndim > 0 and mu_values.shape != (n_elements,):
+    if mu_values.ndim > 0 and mu_values.shape != (n_cells,):
         raise ValueError(
-            f"Dynamic viscosity must be scalar or have shape ({n_elements},), got {mu_values.shape}"
+            f"Dynamic viscosity must be scalar or have shape ({n_cells},), got {mu_values.shape}"
         )
     gradU = None
     if not np.all(mu_values == 0.0):
         gradU = (
-            gradient if gradient is not None else _resolve_grad(geo_data)(U, mesh_data, geo_data)
+            gradient
+            if gradient is not None
+            else _resolve_grad(geo_data)(velocity, mesh_data, geo_data)
         )
         if gradU.ndim == 3:
-            gradU = gradU[:n_elements]
+            gradU = gradU[:n_cells]
 
     results = {}
     for boundary in boundaries:
         name = boundary["name"]
         if name not in patch_names:
             continue
-        start = int(boundary["startFace"])
-        nf = int(boundary["nFaces"])
+        start = int(boundary["start_face"])
+        nf = int(boundary["n_faces"])
         face_idx = np.arange(start, start + nf)
         owners_idx = owners[face_idx]
-        boundary_idx = n_elements + (face_idx - n_interior)
+        boundary_idx = n_cells + (face_idx - n_interior)
         sf = np.asarray(geo_data["face_sf"])[face_idx]
         area = np.linalg.norm(sf, axis=1)
         normal = sf / (area[:, None] + 1e-30)
         p_face = np.asarray(p, dtype=np.float64)[boundary_idx]
         pressure_force = rho_value * p_face[:, None] * sf
         viscous_force = -_compute_face_viscous_forces(
-            U,
+            velocity,
             gradU,
             owners_idx,
             boundary_idx,
@@ -484,7 +488,7 @@ def compute_surface_face_loads(
 
 
 def compute_surface_forces(
-    U,
+    velocity,
     p,
     mu,
     rho,
@@ -517,7 +521,7 @@ def compute_surface_forces(
         dict: mapping patch name -> {force: [Fx,Fy,Fz], Cd: , Cl: }
     """
     face_loads = compute_surface_face_loads(
-        U,
+        velocity,
         p,
         mu,
         rho,
@@ -551,7 +555,7 @@ def compute_surface_forces(
             "Ftot": Ftot,
             "Mtot": moment,
             "coeffs": coeffs,
-            "nFaces": len(loads["face_areas"]),
+            "n_faces": len(loads["face_areas"]),
         }
 
     return results
@@ -570,14 +574,14 @@ def merge_partition_forces(parts):
                     "Ftot": np.zeros(3),
                     "Mtot": np.zeros(3),
                     "coeffs": {},
-                    "nFaces": 0,
+                    "n_faces": 0,
                 },
             )
             for key in ("Fp", "Fv", "Ftot", "Mtot"):
                 target[key] += np.asarray(values[key], dtype=np.float64)
             for key, value in values["coeffs"].items():
                 target["coeffs"][key] = target["coeffs"].get(key, 0.0) + float(value)
-            target["nFaces"] += int(values["nFaces"])
+            target["n_faces"] += int(values["n_faces"])
     return merged
 
 
@@ -586,21 +590,21 @@ def merge_partition_yplus(parts):
     merged = {}
     for rank_stats in parts:
         for name, values in rank_stats.items():
-            count = int(values["nFaces"])
+            count = int(values["n_faces"])
             target = merged.setdefault(
                 name,
-                {"min": np.inf, "max": -np.inf, "weighted": 0.0, "nFaces": 0},
+                {"min": np.inf, "max": -np.inf, "weighted": 0.0, "n_faces": 0},
             )
             target["min"] = min(target["min"], float(values["min"]))
             target["max"] = max(target["max"], float(values["max"]))
             target["weighted"] += float(values["avg"]) * count
-            target["nFaces"] += count
+            target["n_faces"] += count
     return {
         name: {
             "min": values["min"],
             "max": values["max"],
-            "avg": values["weighted"] / values["nFaces"],
-            "nFaces": values["nFaces"],
+            "avg": values["weighted"] / values["n_faces"],
+            "n_faces": values["n_faces"],
         }
         for name, values in merged.items()
     }

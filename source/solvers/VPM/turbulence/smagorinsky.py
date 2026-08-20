@@ -1,24 +1,6 @@
-"""
-Smagorinsky Subgrid-Scale Turbulence Model for VPM Solver.
-==========================================================
-Kinetic-energy equilibrium Smagorinsky model: nu_t = C_k Δ √k_eq
-where k_eq = C_k Δ² |S|² / C_e  and  Δ = V^(1/3) (particle volume cube root).
+"""Equilibrium Smagorinsky SGS model used by the VPM solver."""
 
-Key design choices:
-  - Filter width  Δ = V^(1/3): pins the LES scale to the Lagrangian resolution
-    (not to σ, which grows artificially during Core Spreading).
-  - Strain-only measure  |S|² = 2 S_ij S_ij: excludes rotation so the model
-    does not activate inside laminar vortex cores where |Ω| >> |S|.
-  - No separate circulation damping: Core Spreading with nu_eff = nu + nu_t
-    already models the full SGS diffusion; a second drain would double-count.
-
-The turbulence model does not modify vortex stretching or particle strengths.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026 / Refactored May 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
-"""
+from __future__ import annotations
 
 import taichi as ti
 
@@ -27,145 +9,120 @@ from ..config.constants import MAX_PARTICLES, SMAGORINSKY_CONSTANT
 
 @ti.data_oriented
 class SmagorinskyModel:
-    """
-    Kinetic-energy equilibrium Smagorinsky subgrid-scale model.
-
-    Eddy viscosity: nu_t = C_k · Δ · √k_eq
-    Equilibrium SGS energy: k_eq = C_k · Δ² · |S|² / C_e
-
-    Derivation (local production–dissipation balance):
-        P = nu_t |S|² = C_e k^(3/2) / Δ  →  k_eq = C_k Δ² |S|² / C_e
-        nu_t = C_k Δ √k_eq  = (C_k^{3/2} / √C_e) Δ² |S|
-
-    This is equivalent to the classical model nu_t = (C_s Δ)² |S| with:
-        C_s² = C_k √(C_k / C_e)
-
-    With C_k=0.094 and C_e=1.048 this recovers C_s ≈ 0.168.
-
-    Filter width:  Δ = V^(1/3)  (cube root of particle volume).
-    Strain measure:  |S|² = 2 S_ij S_ij  (symmetric part of ∇u only).
-    """
+    """Equilibrium Smagorinsky eddy-viscosity model."""
 
     def __init__(
         self,
         max_particles: int = MAX_PARTICLES,
-        kernel_type: str = "GAUSSIAN",
-        cs: float = SMAGORINSKY_CONSTANT,
-        ce: float = 1.048,
+        particle_kernel: str = "GAUSSIAN",
+        c_s: float = SMAGORINSKY_CONSTANT,
+        c_e: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
-    ):
-        """
-        Initialize the Smagorinsky SGS eddy-viscosity model.
-
-        Stores model constants, computes the derived ``ck`` parameter from
-        ``cs`` and ``ce`` (see class docstring for the relation), and
-        pre-allocates Taichi fields for the filter width and strain-rate
-        magnitude.
-
-        Args:
-            max_particles: Maximum number of particles for field allocation.
-            kernel_type: Base regularization kernel type (e.g. ``"GAUSSIAN"``).
-            cs: Smagorinsky constant (default from ``SMAGORINSKY_CONSTANT``).
-            ce: Model dissipation constant (default 1.048).
-            accumulator_dtype: Taichi floating-point type used by LES scratch fields.
-        """
-        self.LES_filter_type = "SMAGORINSKY"
+    ) -> None:
+        self.model_name = "SMAGORINSKY"
         self.max_particles = max_particles
-        self.cs = cs
-        self.ce = ce
-        self.ck = (cs**2 * ce**0.5) ** (2.0 / 3.0)
+        self.particle_kernel = particle_kernel.upper()
+        self.c_s = c_s
+        self.c_e = c_e
+        self.c_k = (c_s**2 * c_e**0.5) ** (2.0 / 3.0)
 
-        # Pre-allocate fields needed for eddy-viscosity computation
-        self._delta_field = ti.field(dtype=accumulator_dtype, shape=max_particles)
-        self._Sij_norm_field = ti.field(dtype=accumulator_dtype, shape=max_particles)
+        self._filter_width = ti.field(dtype=accumulator_dtype, shape=max_particles)
+        self._strain_rate_magnitude = ti.field(dtype=accumulator_dtype, shape=max_particles)
 
-    def initialize(self, particles):
-        pass
+    def initialize(self, particles) -> None:
+        """Initialize model state; no additional state is required."""
+        del particles
 
-    def compute(self, particles, time_step_size: float = None):
-        """
-        Main compute step for Smagorinsky model.
+    def compute(
+        self,
+        particles,
+        time_step_size: float | None = None,
+    ) -> None:
+        """Evaluate eddy and effective viscosity on the current particles."""
+        del time_step_size
 
-        Computes turbulent eddy viscosity: nu_t = C_k · Δ · √k_eq
-        where k_eq = C_k · Δ² · |S|² / C_e  and  Δ = V^(1/3).
-
-        Args:
-            particles: Particle system (particles.strain_rate must be current).
-            time_step_size: Unused; retained for API compatibility.
-        """
-        N = len(particles)
-        if N == 0:
+        n_particles = len(particles)
+        if n_particles == 0:
             return
 
-        self._compute_filter_sizes_kernel(particles.volume, self._delta_field, N)
-        self._compute_strain_rate_magnitude_kernel(particles.strain_rate, self._Sij_norm_field, N)
-        self._compute_smagorinsky_kernel(
-            self._delta_field,
-            self._Sij_norm_field,
-            N,
-            particles.viscosity,
-            particles.viscosity_turbulent,
-            particles.viscosity_effective,
-            self.ck,
-            self.ce,
+        self._compute_filter_width(
+            particles.volume,
+            self._filter_width,
+            n_particles,
+        )
+        self._compute_strain_rate_magnitude(
+            particles.strain_rate,
+            self._strain_rate_magnitude,
+            n_particles,
+        )
+        self._compute_eddy_viscosity(
+            self._filter_width,
+            self._strain_rate_magnitude,
+            n_particles,
+            particles.kinematic_viscosity,
+            particles.eddy_viscosity,
+            particles.effective_viscosity,
+            self.c_k,
+            self.c_e,
         )
 
-    def __str__(self):
-        lines = [
-            "  Model Type    : Smagorinsky",
-            f"  C_s          : {self.cs:.4f}",
-            f"  C_k          : {self.ck:.6f}  [C_k = (C_s^2 (C_e)^(1/2))^(2/3)]",
-            f"  C_e          : {self.ce:.4f}",
-            "  Filter width  : Vp^(1/3)",
-        ]
-        return "\n".join(lines)
+    def __str__(self) -> str:
+        return "\n".join(
+            [
+                "  Model type   : Smagorinsky",
+                f"  C_s          : {self.c_s:.4f}",
+                f"  C_k          : {self.c_k:.6f}",
+                f"  C_e          : {self.c_e:.4f}",
+                "  Filter width : V_p^(1/3)",
+            ]
+        )
 
     @ti.kernel
-    def _compute_filter_sizes_kernel(
-        self, volumes: ti.template(), deltas: ti.template(), N: ti.i32
+    def _compute_filter_width(
+        self,
+        volume: ti.template(),
+        filter_width: ti.template(),
+        n_particles: ti.i32,
     ):
-        """Compute LES filter width as the cube root of particle volume: Δ = V^(1/3)."""
-        for i in range(N):
-            v = volumes[i]
-            deltas[i] = ti.pow(v, 1.0 / 3.0) if v > 0.0 else 0.0
+        for i in range(n_particles):
+            particle_volume = volume[i]
+            filter_width[i] = ti.pow(particle_volume, 1.0 / 3.0) if particle_volume > 0.0 else 0.0
 
     @ti.kernel
-    def _compute_strain_rate_magnitude_kernel(
-        self, strain_rate: ti.template(), Sij_norm: ti.template(), N: ti.i32
+    def _compute_strain_rate_magnitude(
+        self,
+        strain_rate: ti.template(),
+        strain_rate_magnitude: ti.template(),
+        n_particles: ti.i32,
     ):
-        """
-        Compute strain-rate magnitude |S| = √(2 S_ij S_ij) from the
-        symmetric strain tensor S_ij = ½(∂_i u_j + ∂_j u_i).
-        """
-        for i in range(N):
-            magnitude = 0.0
+        for i in range(n_particles):
+            squared_norm = 0.0
             for a in ti.static(range(3)):
                 for b in ti.static(range(3)):
-                    S_ab = strain_rate[i][a, b]
-                    magnitude += S_ab * S_ab
-            Sij_norm[i] = ti.sqrt(2.0 * magnitude)
+                    component = strain_rate[i][a, b]
+                    squared_norm += component * component
+            strain_rate_magnitude[i] = ti.sqrt(2.0 * squared_norm)
 
     @ti.kernel
-    def _compute_smagorinsky_kernel(
+    def _compute_eddy_viscosity(
         self,
-        deltas: ti.template(),
-        Sij_norm: ti.template(),
-        N: ti.i32,
-        viscosity: ti.template(),
-        viscosities_t: ti.template(),
-        viscosities_eff: ti.template(),
-        ck: ti.f32,
-        ce: ti.f32,
+        filter_width: ti.template(),
+        strain_rate_magnitude: ti.template(),
+        n_particles: ti.i32,
+        kinematic_viscosity: ti.template(),
+        eddy_viscosity: ti.template(),
+        effective_viscosity: ti.template(),
+        c_k: ti.f32,
+        c_e: ti.f32,
     ):
-        """Kinetic-energy equilibrium Smagorinsky model: nu_t = C_k·Δ·√k_eq."""
-        for i in range(N):
-            delta = deltas[i]
-            s_mag = Sij_norm[i]
-            k_eq = ck * delta * delta * s_mag * s_mag / ce
-            nu_t = ck * delta * ti.sqrt(ti.max(k_eq, 0.0))
+        for i in range(n_particles):
+            delta = filter_width[i]
+            strain_magnitude = strain_rate_magnitude[i]
+            equilibrium_energy = c_k * delta * delta * strain_magnitude * strain_magnitude / c_e
+            nu_t = c_k * delta * ti.sqrt(ti.max(equilibrium_energy, 0.0))
 
             if ti.math.isnan(nu_t) or ti.math.isinf(nu_t):
                 nu_t = 0.0
 
-            viscosities_t[i] = nu_t
-            viscosities_eff[i] = viscosity[i] + nu_t
+            eddy_viscosity[i] = nu_t
+            effective_viscosity[i] = kinematic_viscosity[i] + nu_t

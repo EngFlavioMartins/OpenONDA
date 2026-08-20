@@ -94,28 +94,34 @@ def validate_solver_params(solver, time=None) -> None:
         errors.append("  PISO requires n_outer_correctors == 1")
     if getattr(solver, "min_outer_correctors", 1) > getattr(solver, "n_outer_correctors", 1):
         errors.append("  min_outer_correctors cannot exceed n_outer_correctors")
-    for name in ("alpha_u", "alpha_p"):
+    for name in ("velocity_relaxation", "pressure_relaxation"):
         value = float(getattr(solver, name, 1.0))
         if not 0.0 < value <= 1.0:
             errors.append(f"  {name}={value!r} must satisfy 0 < {name} <= 1")
-    for name in ("tolerance", "momentum_tol", "pressure_tol", "amg_reuse_tol", "ilu_drop_tol"):
+    for name in (
+        "tolerance",
+        "momentum_tolerance",
+        "pressure_tolerance",
+        "amg_reuse_tolerance",
+        "ilu_drop_tolerance",
+    ):
         value = float(getattr(solver, name, 1e-6))
         if not value > 0.0:
             errors.append(f"  {name}={value!r} must be > 0")
     for name in (
-        "momentum_rel_tol",
-        "momentum_final_rel_tol",
-        "pressure_rel_tol",
-        "pressure_final_rel_tol",
+        "momentum_relative_tolerance",
+        "momentum_final_relative_tolerance",
+        "pressure_relative_tolerance",
+        "pressure_final_relative_tolerance",
     ):
         value = getattr(solver, name, 0.0)
         if value is not None and not 0.0 <= float(value) <= 1.0:
             errors.append(f"  {name}={value!r} must satisfy 0 <= {name} <= 1")
-    for name in ("momentum_maxiter", "pressure_maxiter"):
+    for name in ("momentum_max_iterations", "pressure_max_iterations"):
         value = getattr(solver, name, 1)
         if not isinstance(value, int) or value < 1:
             errors.append(f"  {name}={value!r} must be an integer >= 1")
-    for name in ("amg_tol",):
+    for name in ("amg_tolerance",):
         value = getattr(solver, name, None)
         if value is not None and float(value) <= 0.0:
             errors.append(f"  {name}={value!r} must be > 0 when set")
@@ -123,7 +129,7 @@ def validate_solver_params(solver, time=None) -> None:
         value = getattr(solver, name, None)
         if value is not None and float(value) <= 0.0:
             errors.append(f"  {name}={value!r} must be > 0 when set")
-    for name in ("amg_maxiter",):
+    for name in ("amg_max_iterations",):
         value = getattr(solver, name, None)
         if value is not None and (not isinstance(value, int) or value < 1):
             errors.append(f"  {name}={value!r} must be an integer >= 1 when set")
@@ -144,7 +150,7 @@ def validate_solver_params(solver, time=None) -> None:
             errors.append(
                 f"  end_time={time.end_time!r} must be greater than start_time={time.start_time!r}"
             )
-        if not isinstance(time.write_interval, int) or time.write_interval < 1:
+        if not isinstance(time.output_interval_steps, int) or time.output_interval_steps < 1:
             errors.append(f"  write_interval={time.write_interval!r} must be an integer >= 1")
         if bool(time.adjust_timestep):
             if not 0.0 < float(time.min_time_step_size) <= float(time.max_time_step_size):
@@ -165,10 +171,10 @@ def validate_turbulence(config) -> None:
         )
     name = str(config.model).lower()
     if name in {"equilibriumsmagorinsky", "equilibrium_smagorinsky"}:
-        if not np.isfinite(config.Ck) or float(config.Ck) < 0.0:
-            raise ValueError("Equilibrium Smagorinsky Ck must be finite and non-negative")
-        if not np.isfinite(config.Ce) or float(config.Ce) <= 0.0:
-            raise ValueError("Equilibrium Smagorinsky Ce must be finite and positive")
+        if not np.isfinite(config.c_k) or float(config.c_k) < 0.0:
+            raise ValueError("Equilibrium Smagorinsky c_k must be finite and non-negative")
+        if not np.isfinite(config.c_e) or float(config.c_e) <= 0.0:
+            raise ValueError("Equilibrium Smagorinsky c_e must be finite and positive")
 
 
 def validate_acceptance_policy(policy) -> None:
@@ -193,19 +199,19 @@ def validate_boundary_conditions(boundaries) -> None:
     errors = []
     for patch in boundaries:
         name = patch.get("name", "<unnamed>")
-        type_u = patch.get("bc_type_velocity")
-        type_p = patch.get("bc_type_p")
-        if type_u not in VELOCITY_BOUNDARY_TYPES:
+        velocity_type = patch.get("velocity_type")
+        pressure_type = patch.get("pressure_type")
+        if velocity_type not in VELOCITY_BOUNDARY_TYPES:
             errors.append(
-                f"  patch {name!r}: velocity BC {type_u!r} unsupported; "
+                f"  patch {name!r}: velocity BC {velocity_type!r} unsupported; "
                 f"valid: {sorted(VELOCITY_BOUNDARY_TYPES)}"
             )
-        if type_p not in PRESSURE_BOUNDARY_TYPES:
+        if pressure_type not in PRESSURE_BOUNDARY_TYPES:
             errors.append(
-                f"  patch {name!r}: pressure BC {type_p!r} unsupported; "
+                f"  patch {name!r}: pressure BC {pressure_type!r} unsupported; "
                 f"valid: {sorted(PRESSURE_BOUNDARY_TYPES)}"
             )
-        if type_u in VELOCITY_BOUNDARY_TYPES:
+        if velocity_type in VELOCITY_BOUNDARY_TYPES:
             for operator in (
                 "gradient",
                 "convection",
@@ -215,8 +221,8 @@ def validate_boundary_conditions(boundaries) -> None:
                 "ghost",
                 "diagnostics",
             ):
-                BOUNDARIES.require(type_u, "U", operator)
-        if type_p in PRESSURE_BOUNDARY_TYPES:
+                BOUNDARIES.require(velocity_type, "U", operator)
+        if pressure_type in PRESSURE_BOUNDARY_TYPES:
             for operator in (
                 "gradient",
                 "pressure",
@@ -224,6 +230,6 @@ def validate_boundary_conditions(boundaries) -> None:
                 "ghost",
                 "diagnostics",
             ):
-                BOUNDARIES.require(type_p, "p", operator)
+                BOUNDARIES.require(pressure_type, "p", operator)
     if errors:
         raise ValueError("Unsupported FVM boundary conditions:\n" + "\n".join(errors))

@@ -1,10 +1,14 @@
-"""Physics-first construction helper for the VPM solver."""
+"""Construction helper for the VPM solver."""
 
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
-from .config.types import VPMSetup
+from .config.setup import VPMSetup
+
+if TYPE_CHECKING:
+    from .core.solver import VPMSolver
 
 _RANK_VARIABLES = (
     "OMPI_COMM_WORLD_RANK",
@@ -16,6 +20,7 @@ _RANK_VARIABLES = (
 
 
 def _is_root_process() -> bool:
+    """Return whether the current process owns the VPM particle state."""
     for name in _RANK_VARIABLES:
         value = os.environ.get(name)
         if value is not None:
@@ -23,15 +28,15 @@ def _is_root_process() -> bool:
     return True
 
 
-def create_vpm_solver(setup: VPMSetup):
+def create_vpm_solver(setup: VPMSetup) -> VPMSolver | None:
     """Construct the VPM solver on the process that owns particle state.
 
-    Serial cases naturally build one solver. In a coupled MPI case only the
-    root process owns the VPM/GPU state; other ranks return ``None`` for the
-    coupler's distributed FVM path.
+    Serial runs construct one solver. In distributed FVM-VPM coupling, only the
+    root process owns the VPM/GPU state and other ranks return ``None``.
     """
     if not _is_root_process():
         return None
+
     from .core.solver import VPMSolver
 
     return VPMSolver(setup=setup)

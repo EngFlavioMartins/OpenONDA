@@ -4,14 +4,14 @@ import pytest
 pytest.importorskip("pyvista", reason="PyVista FVM test dependency is not installed")
 pytest.importorskip("vtk", reason="VTK FVM test dependency is not installed")
 
-from source.solvers.FVM.config.types import OutputSetup
+from source.solvers.FVM.config.types import OutputConfig
 from source.solvers.FVM.io.vtk_exporter import PVDManager, VTKExporter
 
 
 class TestVTKExporter:
     def test_export_scalar_and_vector(self, gmsh_unit_cube, tmp_path):
         mesh = gmsh_unit_cube
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
 
         fields = {
             "p": np.ones(n_elem),
@@ -40,7 +40,7 @@ class TestVTKExporter:
 
     def test_export_point_interpolation(self, gmsh_unit_cube, tmp_path):
         mesh = gmsh_unit_cube
-        fields = {"p": np.ones(mesh["n_elements"])}
+        fields = {"p": np.ones(mesh["n_cells"])}
 
         path = tmp_path / "test_interp.vtu"
         exporter = VTKExporter(mesh)
@@ -54,11 +54,11 @@ class TestVTKExporter:
     def test_export_float32_fields(self, gmsh_unit_cube, tmp_path):
         path = tmp_path / "float32.vtu"
         fields = {
-            "p": np.ones(gmsh_unit_cube["n_elements"]),
-            "U": np.ones((gmsh_unit_cube["n_elements"], 3)),
+            "p": np.ones(gmsh_unit_cube["n_cells"]),
+            "U": np.ones((gmsh_unit_cube["n_cells"], 3)),
         }
 
-        VTKExporter(gmsh_unit_cube, OutputSetup(precision="float32")).export(
+        VTKExporter(gmsh_unit_cube, OutputConfig(precision="float32")).export(
             str(path),
             fields,
         )
@@ -104,7 +104,7 @@ class TestVTKExporter:
         mesh, points, centroids, field, linear = self._graded_box_with_linear_field()
 
         path = tmp_path / "graded.vtu"
-        setup = OutputSetup(asynchronous=False, point_interpolation="boundary_weighted")
+        setup = OutputConfig(asynchronous=False, point_interpolation="boundary_weighted")
         VTKExporter(mesh, setup).export(str(path), {"phi": field})
         data = pv.read(str(path))
 
@@ -126,7 +126,7 @@ class TestVTKExporter:
         mesh, _points, _centroids, field, _linear = self._graded_box_with_linear_field()
 
         path = tmp_path / "plain.vtu"
-        VTKExporter(mesh, OutputSetup(asynchronous=False)).export(str(path), {"phi": field})
+        VTKExporter(mesh, OutputConfig(asynchronous=False)).export(str(path), {"phi": field})
 
         data = pv.read(str(path))
         assert "phi" in data.cell_data
@@ -134,11 +134,11 @@ class TestVTKExporter:
 
     def test_rejects_unknown_point_interpolation(self):
         with pytest.raises(ValueError, match="point_interpolation"):
-            OutputSetup(point_interpolation="idw")
+            OutputConfig(point_interpolation="idw")
 
     def test_export_writes_vtu(self, gmsh_unit_cube, tmp_path):
         mesh = gmsh_unit_cube
-        fields = {"p": np.ones(mesh["n_elements"])}
+        fields = {"p": np.ones(mesh["n_cells"])}
         exporter = VTKExporter(mesh)
         path = tmp_path / "test_write.vtu"
         exporter.export(str(path), fields, interpolate_to_points=False)
@@ -147,8 +147,8 @@ class TestVTKExporter:
 
     def test_export_can_disable_compression(self, gmsh_unit_cube, tmp_path):
         path = tmp_path / "uncompressed.vtu"
-        exporter = VTKExporter(gmsh_unit_cube, OutputSetup(compression="none"))
-        exporter.export(str(path), {"p": np.ones(gmsh_unit_cube["n_elements"])})
+        exporter = VTKExporter(gmsh_unit_cube, OutputConfig(compression="none"))
+        exporter.export(str(path), {"p": np.ones(gmsh_unit_cube["n_cells"])})
 
         text = path.read_text(encoding="utf-8")
         assert 'format="appended"' in text
@@ -188,7 +188,7 @@ def test_preserved_body_geometry_survives_vtk_export(tmp_path):
     mesh = mesher.build()
     path = tmp_path / "preserved.vtu"
     exporter = VTKExporter(mesh)
-    exporter.export(str(path), {"p": np.zeros(mesh["n_elements"])})
+    exporter.export(str(path), {"p": np.zeros(mesh["n_cells"])})
 
     data = pv.read(str(path))
     points = np.asarray(data.points, dtype=np.float64)
@@ -202,4 +202,4 @@ def test_preserved_body_geometry_survives_vtk_export(tmp_path):
     )
     volumes = overlap[:, 0] * overlap[:, 1] * overlap[:, 2]
     assert np.count_nonzero(volumes > 1e-12) == 0
-    assert data.n_cells == mesh["n_elements"]
+    assert data.n_cells == mesh["n_cells"]

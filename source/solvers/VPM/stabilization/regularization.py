@@ -70,14 +70,14 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
 
     particles = ctx.particles
     position = particles.position_cpu().astype(np.float64)
-    circulation = particles.circulation_cpu().astype(np.float64)
-    radius = particles.radius_cpu().astype(np.float64)
+    vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
+    radius = particles.core_radius_cpu().astype(np.float64)
     volume = particles.volume_cpu().astype(np.float64)
-    viscosity = particles.viscosity_cpu().astype(np.float64)
+    viscosity = particles.kinematic_viscosity_cpu().astype(np.float64)
     if len(position) == 0:
         return
 
-    before_health = discretization_health(position, circulation, radius)
+    before_health = discretization_health(position, vortex_strength, radius)
     capacity_count = None
     if cfg.regularization_max_particles is not None:
         capacity_count = max(
@@ -106,7 +106,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     ):
         return
 
-    before_moments = gaussian_particle_moments(position, circulation, radius)
+    before_moments = gaussian_particle_moments(position, vortex_strength, radius)
     before_integrals = ctx.field_diagnostics.compute_flow_integrals(
         particles,
         ctx.time(),
@@ -115,16 +115,16 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     old_state = {
         "position": position.astype(ctx.np_dtype),
         "velocity": particles.velocity_cpu().astype(ctx.np_dtype),
-        "circulation": circulation.astype(ctx.np_dtype),
+        "circulation": vortex_strength.astype(ctx.np_dtype),
         "radius": radius.astype(ctx.np_dtype),
         "volume": volume.astype(ctx.np_dtype),
         "viscosity": viscosity.astype(ctx.np_dtype),
-        "viscosity_turbulent": particles.viscosity_turbulent_cpu().astype(ctx.np_dtype),
+        "viscosity_turbulent": particles.eddy_viscosity_cpu().astype(ctx.np_dtype),
         "zone_id": particles.zone_id_cpu().astype(np.int32),
         "group_id": particles.group_id_cpu().astype(np.int32),
     }
     removed_before = ctx.particles_removed()
-    circulation_removed_before = ctx.circulation_removed().copy()
+    circulation_removed_before = ctx.vortex_strength_removed().copy()
     molecular_viscosity = float(viscosity.mean())
     projection_only = (
         cfg.regularization_max_particles is not None
@@ -185,11 +185,11 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         ctx.replace_vortex_particles(
             position=np.asarray(proposal["position"], dtype=ctx.np_dtype),
             velocity=new_velocity,
-            circulation=uploaded_strength,
-            radius=np.asarray(proposal["radius"], dtype=ctx.np_dtype),
+            vortex_strength=uploaded_strength,
+            core_radius=np.asarray(proposal["radius"], dtype=ctx.np_dtype),
             volume=np.asarray(proposal["volume"], dtype=ctx.np_dtype),
-            viscosity=new_viscosity,
-            viscosity_turbulent=new_viscosity_turbulent,
+            kinematic_viscosity=new_viscosity,
+            eddy_viscosity=new_viscosity_turbulent,
             zone_id=new_zone_id,
             group_id=new_group_id,
         )
@@ -203,7 +203,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     def restore_old_field() -> None:
         ctx.replace_vortex_particles(**old_state)
         ctx.set_particles_removed(removed_before)
-        ctx.set_circulation_removed(circulation_removed_before)
+        ctx.set_vortex_strength_removed(circulation_removed_before)
 
     def evaluate_moment_corrected_candidate():
         candidate_radius = np.asarray(proposal["radius"], dtype=np.float64)
@@ -405,7 +405,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                 max_projection_sweeps=1,
                 target_moments=(before_moments[0], before_moments[2], before_moments[3]),
             )
-            uploaded, after_integrals = upload_and_integrate(projection_result.circulation)
+            uploaded, after_integrals = upload_and_integrate(projection_result.vortex_strength)
 
     except Exception:
         restore_old_field()
@@ -436,12 +436,13 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         )
 
     impulse_scale = max(
-        0.5 * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum(dtype=np.float64)),
+        0.5
+        * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum(dtype=np.float64)),
         np.finfo(float).tiny,
     )
     angular_terms = (
-        np.cross(position, np.cross(position, circulation)) / 3.0
-        - radius[:, None] ** 2 * circulation / 3.0
+        np.cross(position, np.cross(position, vortex_strength)) / 3.0
+        - radius[:, None] ** 2 * vortex_strength / 3.0
     )
     angular_scale = max(
         float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
@@ -464,7 +465,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         )
 
     ctx.set_particles_removed(0)
-    ctx.set_circulation_removed(np.zeros(3, dtype=ctx.np_dtype))
+    ctx.set_vortex_strength_removed(np.zeros(3, dtype=ctx.np_dtype))
 
     return RegularizationOutcome(
         particles_before=len(position),

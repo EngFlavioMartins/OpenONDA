@@ -1,20 +1,8 @@
-"""Configuration types for the VPM solver (compatibility facade).
+"""Aggregate imports for VPM configuration and state types.
 
-The type definitions now live in per-subsystem modules under ``config/``:
-
-- ``advection.py``            AdvectionConfig
-- ``viscous.py``              ViscousConfig
-- ``stretching.py``           StretchingConfig
-- ``turbulence.py``           TurbulenceConfig
-- ``velocity.py``             VelocityConfig
-- ``filament_refinement.py``  FilamentRefinementConfig
-- ``divergence_relaxation.py`` DivergenceRelaxationConfig
-- ``stabilization.py``        StabilizationConfig
-- ``setup.py``                VPMSetup (the umbrella that aggregates every subsystem)
-- ``state.py``                SolverState, ParticlesState, CachedParticleProperty, SetFlowModel
-
-This module re-exports them so ``from ...config.types import X`` keeps working;
-new code should import from the per-subsystem module directly.
+Subsystem modules remain the canonical definition sites. This module exists only
+as a convenient import surface inside the VPM package; it does not provide
+legacy-name aliases.
 """
 
 import sys
@@ -25,10 +13,10 @@ from .filament_refinement import FilamentRefinementConfig
 from .setup import VPMSetup
 from .stabilization import StabilizationConfig
 from .state import (
-    CachedParticleProperty,
     ParticlesState,
-    SetFlowModel,
     SolverState,
+    cached_particle_property,
+    set_flow_model,
 )
 from .stretching import StretchingConfig
 from .turbulence import TurbulenceConfig
@@ -39,11 +27,9 @@ sys.tracebacklimit = 0
 
 __all__ = [
     "AdvectionConfig",
-    "CachedParticleProperty",
     "DivergenceRelaxationConfig",
     "FilamentRefinementConfig",
     "ParticlesState",
-    "SetFlowModel",
     "SolverState",
     "StabilizationConfig",
     "StretchingConfig",
@@ -51,4 +37,6 @@ __all__ = [
     "VPMSetup",
     "VelocityConfig",
     "ViscousConfig",
+    "cached_particle_property",
+    "set_flow_model",
 ]

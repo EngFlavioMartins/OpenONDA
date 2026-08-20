@@ -16,23 +16,23 @@ def _exact(points):
 
 
 def _set_dirichlet_ghosts(field, mesh, geo):
-    n_cells = mesh["n_elements"]
+    n_cells = mesh["n_cells"]
     n_internal = mesh["n_interior_faces"]
     for patch in mesh["boundary"]:
         patch["bc_type"] = "fixedValue"
-        faces = np.arange(patch["startFace"], patch["startFace"] + patch["nFaces"])
+        faces = np.arange(patch["start_face"], patch["start_face"] + patch["n_faces"])
         ghosts = n_cells + faces - n_internal
         field[ghosts] = _exact(geo["face_centroids"][faces])
 
 
 def _solve_poisson(mesh):
     geo = compute_mesh_geometry(mesh, gradient_scheme="lsq")
-    n_cells = mesh["n_elements"]
+    n_cells = mesh["n_cells"]
     n_total = n_cells + mesh["n_faces"] - mesh["n_interior_faces"]
     field = np.zeros(n_total)
     _set_dirichlet_ghosts(field, mesh, geo)
-    source = 3.0 * np.pi**2 * _exact(geo["element_centroids"])
-    volumes = geo["element_volumes"]
+    source = 3.0 * np.pi**2 * _exact(geo["cell_centroids"])
+    volumes = geo["cell_volumes"]
 
     for _ in range(80):
         gradient = compute_lsq_gradient(field, mesh, geo)
@@ -49,7 +49,7 @@ def _solve_poisson(mesh):
     else:
         raise AssertionError("Non-orthogonal Poisson iteration did not converge")
 
-    error = field[:n_cells] - _exact(geo["element_centroids"])
+    error = field[:n_cells] - _exact(geo["cell_centroids"])
     return np.sqrt(np.sum(volumes * error**2) / np.sum(volumes))
 
 

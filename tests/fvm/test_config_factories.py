@@ -2,11 +2,11 @@ import pytest
 
 from source.solvers.FVM.config.types import (
     BoundaryConfig,
-    ExecutionConfig,
+    ComputeConfig,
     FVMSetup,
     LinearSolverConfig,
-    MeshConfig,
-    OutputSetup,
+    MeshQualityConfig,
+    OutputConfig,
     PimpleControl,
     TimeConfig,
     TransportConfig,
@@ -21,27 +21,27 @@ class TestConfigFactories:
     def test_boundary_config_inlet(self):
         bc = BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0])
         assert bc.name == "inlet"
-        assert bc.type_velocity == "fixedValue"
-        assert bc.value_velocity == [1.0, 0.0, 0.0]
-        assert bc.type_p == "zeroGradient"
+        assert bc.velocity_type == "fixedValue"
+        assert bc.velocity_value == [1.0, 0.0, 0.0]
+        assert bc.pressure_type == "zeroGradient"
 
     def test_boundary_config_outlet(self):
-        bc = BoundaryConfig.outlet("outlet", p=0.0)
+        bc = BoundaryConfig.outlet("outlet", kinematic_pressure=0.0)
         assert bc.name == "outlet"
-        assert bc.type_p == "fixedValue"
-        assert bc.value_p == 0.0
+        assert bc.pressure_type == "fixedValue"
+        assert bc.kinematic_pressure_value == 0.0
 
     def test_boundary_config_wall(self):
         bc = BoundaryConfig.wall("wall")
-        assert bc.type_velocity == "fixedValue"
-        assert bc.value_velocity == [0.0, 0.0, 0.0]
-        assert bc.type_p == "zeroGradient"
+        assert bc.velocity_type == "fixedValue"
+        assert bc.velocity_value == [0.0, 0.0, 0.0]
+        assert bc.pressure_type == "zeroGradient"
         assert bc.mesh_type == "wall"
 
     def test_boundary_config_empty(self):
         bc = BoundaryConfig.empty("empty")
-        assert bc.type_velocity == "empty"
-        assert bc.type_p == "empty"
+        assert bc.velocity_type == "empty"
+        assert bc.pressure_type == "empty"
         assert bc.mesh_type == "empty"
 
     def test_time_config_transient(self):
@@ -60,42 +60,42 @@ class TestConfigFactories:
         pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
         assert pimple.algorithm == "PIMPLE"
         assert pimple.n_correctors == 2
-        assert pimple.alpha_u == 1.0
-        assert pimple.alpha_p == 1.0
+        assert pimple.velocity_relaxation == 1.0
+        assert pimple.pressure_relaxation == 1.0
 
     def test_simple_control(self):
-        pimple = PimpleControl(algorithm="SIMPLE", alpha_u=0.7, alpha_p=0.3)
+        pimple = PimpleControl(algorithm="SIMPLE", velocity_relaxation=0.7, pressure_relaxation=0.3)
         assert pimple.algorithm == "SIMPLE"
-        assert pimple.alpha_u == 0.7
-        assert pimple.alpha_p == 0.3
+        assert pimple.velocity_relaxation == 0.7
+        assert pimple.pressure_relaxation == 0.3
 
     def test_transport_config_air(self):
         tc = TransportConfig.air()
         assert tc.density == 1.225
-        assert tc.nu == 1.5e-5
+        assert tc.kinematic_viscosity == 1.5e-5
 
     def test_transport_config_water(self):
         tc = TransportConfig.water()
         assert tc.density == 1000.0
-        assert tc.nu == 1e-6
+        assert tc.kinematic_viscosity == 1e-6
 
     def test_turbulence_config_smagorinsky(self):
-        tc = TurbulenceConfig.smagorinsky(Cs=0.17)
+        tc = TurbulenceConfig.smagorinsky(c_s=0.17)
         assert tc.model == "Smagorinsky"
-        assert tc.Cs == 0.17
+        assert tc.c_s == 0.17
 
     def test_turbulence_config_equilibrium_smagorinsky(self):
         tc = TurbulenceConfig.equilibrium_smagorinsky()
         assert tc.model == "EquilibriumSmagorinsky"
-        assert tc.Ck == pytest.approx(0.094)
-        assert tc.Ce == pytest.approx(1.048)
-        assert tc.Cs == pytest.approx(tc.Ck**0.75 / tc.Ce**0.25)
+        assert tc.c_k == pytest.approx(0.094)
+        assert tc.c_e == pytest.approx(1.048)
+        assert tc.c_s == pytest.approx(tc.c_k**0.75 / tc.c_e**0.25)
 
     def test_fvm_config_roundtrip_json(self, tmp_path):
         config = FVMSetup(
             case_name="test_case",
             cores=3,
-            mesh=MeshConfig(max_aspect_ratio=100.0),
+            mesh=MeshQualityConfig(max_aspect_ratio=100.0),
             time=TimeConfig.transient(time_step_size=0.1, duration=10.0),
             transport=TransportConfig.air(),
             boundaries=[BoundaryConfig.inlet("in", [1, 0, 0])],
@@ -115,7 +115,7 @@ class TestConfigFactories:
         config = FVMSetup(
             case_name="complete",
             linear=LinearSolverConfig(reuse_ilu=False),
-            output=OutputSetup(
+            output=OutputConfig(
                 compression="none",
                 asynchronous=False,
                 ghost_layers=0,
@@ -161,7 +161,7 @@ class TestConfigFactories:
         user_setup = FVMSetup(
             case_name="parallel_ibm",
             cores=4,
-            execution=ExecutionConfig.petsc_replicated(),
+            execution=ComputeConfig.petsc_replicated(),
         )
         runtime_setup = _runtime_setup(user_setup)
 
@@ -170,7 +170,7 @@ class TestConfigFactories:
         assert not runtime_setup.output.asynchronous
 
     def test_output_setup_is_cell_centred_appended_lz4_by_default(self):
-        output = OutputSetup()
+        output = OutputConfig()
 
         assert output.data_location == "cell"
         assert output.encoding == "appended"
@@ -191,7 +191,7 @@ class TestConfigFactories:
     )
     def test_output_setup_rejects_unqualified_modes(self, keyword, value):
         with pytest.raises((TypeError, ValueError)):
-            OutputSetup(**{keyword: value})
+            OutputConfig(**{keyword: value})
 
     def test_physics_first_name_is_canonical(self):
         from source.solvers.FVM import FVMSetup

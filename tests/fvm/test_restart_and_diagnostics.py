@@ -12,12 +12,12 @@ from scipy import sparse
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
     RunAcceptancePolicy,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -31,7 +31,7 @@ from ._structured_mesh import structured_box
 
 
 def _config(time_scheme="euler_implicit", samplers=None, **solver_overrides):
-    solver_schemes = SchemesConfig(convection_scheme="upwind", time_scheme=time_scheme)
+    solver_schemes = DiscretizationConfig(convection_scheme="upwind", time_scheme=time_scheme)
     solver_linear = LinearSolverConfig(linear_solver="spsolve")
     solver_pimple = PimpleControl(n_correctors=2)
     for name, value in solver_overrides.items():
@@ -43,11 +43,11 @@ def _config(time_scheme="euler_implicit", samplers=None, **solver_overrides):
             raise AttributeError(f"no solver group owns field {name!r}")
     return FVMSetup(
         case_name="restart_contract",
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.1, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.1, output_interval_steps=100),
         schemes=solver_schemes,
         linear=solver_linear,
         pimple=solver_pimple,
-        transport=TransportConfig(density=1.0, nu=0.02),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [0.5, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax"),
@@ -85,7 +85,15 @@ def test_restart_matches_uninterrupted_bdf_integration(tmp_path, time_scheme):
     with contextlib.redirect_stdout(io.StringIO()):
         resumed.advance()
 
-    for name in ("U", "p", "phi", "phi_old", "phi_old_old", "U_old", "U_old_old"):
+    for name in (
+        "velocity",
+        "kinematic_pressure",
+        "face_flux",
+        "face_flux_old",
+        "face_flux_older",
+        "velocity_old",
+        "velocity_older",
+    ):
         np.testing.assert_allclose(getattr(resumed, name), getattr(reference, name), atol=1e-13)
     assert resumed.time == pytest.approx(reference.time)
     assert resumed.step == reference.step
@@ -98,7 +106,7 @@ def test_restart_rejects_incompatible_config_and_mesh(tmp_path):
     original.save_state(checkpoint)
 
     changed_config = _config()
-    changed_config.transport.nu *= 2.0
+    changed_config.transport.kinematic_viscosity *= 2.0
     with pytest.raises(ValueError, match="configuration hash"):
         _solver(changed_config, tmp_path / "changed").load_state(checkpoint)
 
@@ -121,7 +129,7 @@ def test_restart_allows_an_explicit_end_time_extension(tmp_path):
     restored.load_state(checkpoint, allow_config_change=True)
 
     assert restored.time == original.time
-    np.testing.assert_array_equal(restored.U, original.U)
+    np.testing.assert_array_equal(restored.velocity, original.velocity)
 
 
 def _force_sampler():
@@ -228,17 +236,22 @@ def test_scipy_linear_result_discloses_solver_health():
 
 def test_steady_simple_does_not_confuse_linear_and_nonlinear_convergence(monkeypatch):
     solver = SIMPLESolver.__new__(SIMPLESolver)
-    solver.params = {"max_iter": 2, "tolerance": 1e-3, "alpha_u": 0.7, "alpha_p": 0.3}
+    solver.params = {
+        "max_iter": 2,
+        "tolerance": 1e-3,
+        "velocity_relaxation": 0.7,
+        "pressure_relaxation": 0.3,
+    }
     solver.mesh_data = {}
     solver.geo_data = {}
     solver.residuals = []
     increments = iter((1.0, 0.1))
 
-    def step(U, p, phi, **kwargs):
+    def step(velocity, p, face_flux, **kwargs):
         solver.last_res_p = 1e-14
         solver.last_res_u = 1e-14
         solver.last_outer_diagnostics = (SimpleNamespace(continuity_max=1e-14),)
-        return U, p, phi, {"U_increment": next(increments)}
+        return velocity, p, face_flux, {"U_increment": next(increments)}
 
     solver.step = step
     monkeypatch.setattr(
@@ -309,8 +322,8 @@ def test_acceptance_policy_uses_sustained_window(tmp_path):
     config.acceptance = RunAcceptancePolicy(residual_abort=0.5, sustained_steps=2)
     solver = _solver(config, tmp_path)
 
-    def unhealthy_step(U, p, phi, *args, **kwargs):
-        return U, p, phi, {"U": 1.0, "p": 1.0}
+    def unhealthy_step(velocity, p, face_flux, *args, **kwargs):
+        return velocity, p, face_flux, {"U": 1.0, "p": 1.0}
 
     solver.algorithm.step = unhealthy_step
     solver.algorithm.last_linear_results = ()
@@ -337,5 +350,5 @@ def test_run_manifest_records_reproducibility_identity(tmp_path):
     assert len(data["config_hash"]) == 64
     assert len(data["mesh_hash"]) == 64
     assert data["execution"]["operator_backend"] == "numpy"
-    assert data["mesh"]["cells"] == solver.mesh_data["n_elements"]
+    assert data["mesh"]["cells"] == solver.mesh_data["n_cells"]
     assert data["packages"]["numpy"]

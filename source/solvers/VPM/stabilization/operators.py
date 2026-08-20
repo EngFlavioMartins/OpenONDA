@@ -93,12 +93,12 @@ class StabilizationOperators:
                 "stabilization_viscosity_active_fraction": 0.0,
             }
         self._apply_stretching_viscosity_kernel(
-            particles.circulation,
+            particles.vortex_strength,
             particles.strain_rate,
             particles.volume,
-            particles.viscosity,
-            particles.viscosity_turbulent,
-            particles.viscosity_effective,
+            particles.kinematic_viscosity,
+            particles.eddy_viscosity,
+            particles.effective_viscosity,
             float(coefficient),
             count,
         )
@@ -189,7 +189,7 @@ class StabilizationOperators:
                 "pedrizzetti_relaxed_fraction": 0.0,
             }
         self._apply_pedrizzetti_relaxation_kernel(
-            particles.circulation,
+            particles.vortex_strength,
             particles.velocity_gradient,
             float(factor),
             1 if conserve_strength else 0,

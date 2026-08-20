@@ -15,7 +15,7 @@ def diff_data(hand_built_3d_mesh):
     """Pre-compute mesh data with zeroGradient BCs for diffusion tests."""
     mesh = hand_built_3d_mesh
     geo = compute_mesh_geometry(mesh)
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
 
     # Add bc_type to boundary patches
@@ -23,16 +23,16 @@ def diff_data(hand_built_3d_mesh):
         b["bc_type"] = "zeroGradient"
 
     # Build full φ field (interior + ghost)
-    phi = np.zeros(n_elem + n_bnd)
-    phi[:n_elem] = 1.0  # φ=1 everywhere → zero gradient → no diffusion flux
+    face_flux = np.zeros(n_elem + n_bnd)
+    face_flux[:n_elem] = 1.0  # φ=1 everywhere → zero gradient → no diffusion flux
 
     # Compute gradient
-    grad_phi = compute_gauss_gradient(phi, mesh, geo)
+    grad_phi = compute_gauss_gradient(face_flux, mesh, geo)
 
     # Diffusion coefficient = 1 everywhere
     gamma = np.ones(n_elem)
 
-    return {"mesh": mesh, "geo": geo, "phi": phi, "grad_phi": grad_phi, "gamma": gamma}
+    return {"mesh": mesh, "geo": geo, "phi": face_flux, "grad_phi": grad_phi, "gamma": gamma}
 
 
 class TestDiffusionMatrixSPD:
@@ -94,7 +94,7 @@ class TestDiffusionMatrixSPD:
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, diff_data["mesh"])
         b = assemble_rhs_from_fluxes_vectorized(flux_data, diff_data["mesh"])
-        residual = A @ diff_data["phi"][: diff_data["mesh"]["n_elements"]] - b
+        residual = A @ diff_data["phi"][: diff_data["mesh"]["n_cells"]] - b
         assert np.allclose(residual, 0.0, atol=1e-12), (
             f"max residual = {np.max(np.abs(residual)):.2e}"
         )

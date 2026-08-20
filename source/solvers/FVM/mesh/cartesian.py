@@ -107,7 +107,7 @@ def structured_box(nx: int, ny: int, nz: int, lx=1.0, ly=1.0, lz=1.0) -> dict:
     start = n_interior
     for name in names:
         boundaries.append(
-            {"name": name, "startFace": start, "nFaces": len(patches[name]), "type": "patch"}
+            {"name": name, "start_face": start, "n_faces": len(patches[name]), "type": "patch"}
         )
         faces.extend(patches[name])
         owners.extend(patch_owners[name])
@@ -119,7 +119,7 @@ def structured_box(nx: int, ny: int, nz: int, lx=1.0, ly=1.0, lz=1.0) -> dict:
         "owners": np.asarray(owners, dtype=np.int32),
         "neighbours": np.asarray(interior_neighbours, dtype=np.int32),
         "boundary": boundaries,
-        "n_elements": nx * ny * nz,
+        "n_cells": nx * ny * nz,
         "n_faces": len(faces),
         "n_interior_faces": n_interior,
         "n_points": len(points),

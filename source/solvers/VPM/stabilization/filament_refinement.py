@@ -32,17 +32,17 @@ class FilamentRefinementResult:
     """Particle arrays and transfer diagnostics produced by one refinement."""
 
     position: np.ndarray
-    circulation: np.ndarray
+    vortex_strength: np.ndarray
     radius: np.ndarray
     volume: np.ndarray
-    reference_strength: np.ndarray
+    reference_vortex_strength: np.ndarray
     reference_length: np.ndarray
     source_index: np.ndarray
     refined_parent_index: np.ndarray
     refined_particles: int
     maximum_stretch_ratio: float
-    circulation_error: float
-    strength_variation_error: float
+    vortex_strength_error: float
+    vortex_strength_variation_error: float
     linear_impulse_error: float
     angular_impulse_error: float
     isolated_energy_change: float
@@ -59,7 +59,7 @@ class GaussianIntegralTransfer:
 
 def particle_moments(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
     *,
     angular_core_coefficient: float,
@@ -67,19 +67,19 @@ def particle_moments(
     """Return ``(sum Gamma, sum|Gamma|, I, A)`` for a supported blob kernel."""
 
     position = np.asarray(position, dtype=np.float64)
-    circulation = np.asarray(circulation, dtype=np.float64)
+    vortex_strength = np.asarray(vortex_strength, dtype=np.float64)
     radius = np.asarray(radius, dtype=np.float64)
-    if position.shape != circulation.shape or position.ndim != 2 or position.shape[1] != 3:
+    if position.shape != vortex_strength.shape or position.ndim != 2 or position.shape[1] != 3:
         raise ValueError("position and circulation must both have shape (N, 3)")
     if radius.shape != (len(position),):
         raise ValueError("radius must have shape (N,)")
 
-    total = circulation.sum(axis=0, dtype=np.float64)
-    variation = float(np.linalg.norm(circulation, axis=1).sum(dtype=np.float64))
-    impulse = 0.5 * np.cross(position, circulation).sum(axis=0, dtype=np.float64)
-    angular = np.cross(position, np.cross(position, circulation)).sum(
+    total = vortex_strength.sum(axis=0, dtype=np.float64)
+    variation = float(np.linalg.norm(vortex_strength, axis=1).sum(dtype=np.float64))
+    impulse = 0.5 * np.cross(position, vortex_strength).sum(axis=0, dtype=np.float64)
+    angular = np.cross(position, np.cross(position, vortex_strength)).sum(
         axis=0, dtype=np.float64
-    ) / 3.0 - angular_core_coefficient * (radius[:, None] ** 2 * circulation).sum(
+    ) / 3.0 - angular_core_coefficient * (radius[:, None] ** 2 * vortex_strength).sum(
         axis=0, dtype=np.float64
     )
     return total, variation, impulse, angular
@@ -87,13 +87,13 @@ def particle_moments(
 
 def gaussian_particle_moments(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
 ) -> tuple[np.ndarray, float, np.ndarray, np.ndarray]:
     """Return ``(sum Gamma, sum|Gamma|, I, A)`` for Gaussian vortex blobs."""
     return particle_moments(
         position,
-        circulation,
+        vortex_strength,
         radius,
         angular_core_coefficient=1.0 / 3.0,
     )
@@ -216,7 +216,7 @@ def _gaussian_pair_integrals(
 
 def gaussian_refinement_integral_transfer(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
     result: FilamentRefinementResult,
 ) -> GaussianIntegralTransfer:
@@ -237,34 +237,34 @@ def gaussian_refinement_integral_transfer(
 
     old_self = _gaussian_pair_integrals(
         position[selected],
-        circulation[selected],
+        vortex_strength[selected],
         radius[selected],
         position[selected],
-        circulation[selected],
+        vortex_strength[selected],
         radius[selected],
     )
     old_cross = _gaussian_pair_integrals(
         position[selected],
-        circulation[selected],
+        vortex_strength[selected],
         radius[selected],
         position[retained],
-        circulation[retained],
+        vortex_strength[retained],
         radius[retained],
     )
     new_self = _gaussian_pair_integrals(
         result.position[child_start:],
-        result.circulation[child_start:],
+        result.vortex_strength[child_start:],
         result.radius[child_start:],
         result.position[child_start:],
-        result.circulation[child_start:],
+        result.vortex_strength[child_start:],
         result.radius[child_start:],
     )
     new_cross = _gaussian_pair_integrals(
         result.position[child_start:],
-        result.circulation[child_start:],
+        result.vortex_strength[child_start:],
         result.radius[child_start:],
         result.position[:child_start],
-        result.circulation[:child_start],
+        result.vortex_strength[:child_start],
         result.radius[:child_start],
     )
 
@@ -277,7 +277,7 @@ def gaussian_refinement_integral_transfer(
 
 def _assert_transform_is_exact(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
     before: tuple[np.ndarray, float, np.ndarray, np.ndarray],
     after: tuple[np.ndarray, float, np.ndarray, np.ndarray],
@@ -290,12 +290,13 @@ def _assert_transform_is_exact(
     """
 
     impulse_scale = max(
-        0.5 * float(np.linalg.norm(np.cross(position, circulation), axis=1).sum(dtype=np.float64)),
+        0.5
+        * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum(dtype=np.float64)),
         np.finfo(float).tiny,
     )
     angular_terms = (
-        np.cross(position, np.cross(position, circulation)) / 3.0
-        - radius[:, None] ** 2 * circulation / 3.0
+        np.cross(position, np.cross(position, vortex_strength)) / 3.0
+        - radius[:, None] ** 2 * vortex_strength / 3.0
     )
     angular_scale = max(
         float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
@@ -319,11 +320,11 @@ def _assert_transform_is_exact(
 
 def split_stretched_filaments(
     position: np.ndarray,
-    circulation: np.ndarray,
+    vortex_strength: np.ndarray,
     radius: np.ndarray,
     volume: np.ndarray,
     *,
-    reference_strength: np.ndarray,
+    reference_vortex_strength: np.ndarray,
     reference_length: np.ndarray,
     max_stretch_factor: float,
     offset_fraction: float = 0.25,
@@ -345,16 +346,18 @@ def split_stretched_filaments(
     """
 
     position = np.asarray(position, dtype=np.float64)
-    circulation = np.asarray(circulation, dtype=np.float64)
+    vortex_strength = np.asarray(vortex_strength, dtype=np.float64)
     radius = np.asarray(radius, dtype=np.float64)
     volume = np.asarray(volume, dtype=np.float64)
-    reference_strength = np.asarray(reference_strength, dtype=np.float64)
+    reference_vortex_strength = np.asarray(reference_vortex_strength, dtype=np.float64)
     reference_length = np.asarray(reference_length, dtype=np.float64)
-    if position.shape != circulation.shape or position.ndim != 2 or position.shape[1] != 3:
+    if position.shape != vortex_strength.shape or position.ndim != 2 or position.shape[1] != 3:
         raise ValueError("position and circulation must both have shape (N, 3)")
     if radius.shape != (len(position),) or volume.shape != (len(position),):
         raise ValueError("radius and volume must both have shape (N,)")
-    if reference_strength.shape != (len(position),) or reference_length.shape != (len(position),):
+    if reference_vortex_strength.shape != (len(position),) or reference_length.shape != (
+        len(position),
+    ):
         raise ValueError("reference_strength and reference_length must both have shape (N,)")
     if max_stretch_factor <= 1.0:
         raise ValueError("max_stretch_factor must be greater than one")
@@ -363,7 +366,7 @@ def split_stretched_filaments(
     if (
         np.any(radius <= 0.0)
         or np.any(volume <= 0.0)
-        or np.any(reference_strength <= 0.0)
+        or np.any(reference_vortex_strength <= 0.0)
         or np.any(reference_length <= 0.0)
     ):
         raise ValueError(
@@ -371,16 +374,16 @@ def split_stretched_filaments(
         )
     if not (
         np.isfinite(position).all()
-        and np.isfinite(circulation).all()
+        and np.isfinite(vortex_strength).all()
         and np.isfinite(radius).all()
         and np.isfinite(volume).all()
-        and np.isfinite(reference_strength).all()
+        and np.isfinite(reference_vortex_strength).all()
         and np.isfinite(reference_length).all()
     ):
         raise ValueError("particle arrays must be finite")
 
-    magnitude = np.linalg.norm(circulation, axis=1)
-    stretch_ratio = magnitude / reference_strength
+    magnitude = np.linalg.norm(vortex_strength, axis=1)
+    stretch_ratio = magnitude / reference_vortex_strength
     selected = np.flatnonzero(stretch_ratio > max_stretch_factor)
     refined_count = len(selected)
     final_count = len(position) + refined_count
@@ -394,24 +397,24 @@ def split_stretched_filaments(
         source = np.arange(len(position), dtype=np.int64)
         return FilamentRefinementResult(
             position=position.copy(),
-            circulation=circulation.copy(),
+            vortex_strength=vortex_strength.copy(),
             radius=radius.copy(),
             volume=volume.copy(),
-            reference_strength=reference_strength.copy(),
+            reference_vortex_strength=reference_vortex_strength.copy(),
             reference_length=reference_length.copy(),
             source_index=source,
             refined_parent_index=selected,
             refined_particles=0,
             maximum_stretch_ratio=(float(stretch_ratio.max()) if len(stretch_ratio) else 0.0),
-            circulation_error=0.0,
-            strength_variation_error=0.0,
+            vortex_strength_error=0.0,
+            vortex_strength_variation_error=0.0,
             linear_impulse_error=0.0,
             angular_impulse_error=0.0,
             isolated_energy_change=0.0,
         )
 
     retained = np.flatnonzero(stretch_ratio <= max_stretch_factor)
-    direction = circulation[selected] / magnitude[selected, None]
+    direction = vortex_strength[selected] / magnitude[selected, None]
     current_line_length = reference_length[selected] * stretch_ratio[selected]
     displacement_magnitude = offset_fraction * current_line_length
     displacement = displacement_magnitude[:, None] * direction
@@ -426,9 +429,9 @@ def split_stretched_filaments(
     )
     new_circulation = np.concatenate(
         (
-            circulation[retained],
-            0.5 * circulation[selected],
-            0.5 * circulation[selected],
+            vortex_strength[retained],
+            0.5 * vortex_strength[selected],
+            0.5 * vortex_strength[selected],
         ),
         axis=0,
     )
@@ -438,7 +441,7 @@ def split_stretched_filaments(
     child_reference_length = 0.5 * current_line_length
     new_reference_strength = np.concatenate(
         (
-            reference_strength[retained],
+            reference_vortex_strength[retained],
             child_reference_strength,
             child_reference_strength,
         )
@@ -452,26 +455,26 @@ def split_stretched_filaments(
     )
     source = np.concatenate((retained, selected, selected)).astype(np.int64, copy=False)
 
-    before = gaussian_particle_moments(position, circulation, radius)
+    before = gaussian_particle_moments(position, vortex_strength, radius)
     after = gaussian_particle_moments(new_position, new_circulation, new_radius)
-    _assert_transform_is_exact(position, circulation, radius, before, after)
+    _assert_transform_is_exact(position, vortex_strength, radius, before, after)
     return FilamentRefinementResult(
         position=new_position,
-        circulation=new_circulation,
+        vortex_strength=new_circulation,
         radius=new_radius,
         volume=new_volume,
-        reference_strength=new_reference_strength,
+        reference_vortex_strength=new_reference_strength,
         reference_length=new_reference_length,
         source_index=source,
         refined_parent_index=selected,
         refined_particles=refined_count,
         maximum_stretch_ratio=float(stretch_ratio.max()),
-        circulation_error=float(np.linalg.norm(after[0] - before[0])),
-        strength_variation_error=abs(after[1] - before[1]),
+        vortex_strength_error=float(np.linalg.norm(after[0] - before[0])),
+        vortex_strength_variation_error=abs(after[1] - before[1]),
         linear_impulse_error=float(np.linalg.norm(after[2] - before[2])),
         angular_impulse_error=float(np.linalg.norm(after[3] - before[3])),
         isolated_energy_change=_isolated_split_energy_change(
-            circulation[selected],
+            vortex_strength[selected],
             radius[selected],
             displacement_magnitude,
         ),

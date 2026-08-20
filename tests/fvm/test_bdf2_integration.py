@@ -16,11 +16,11 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -30,30 +30,33 @@ from ._structured_mesh import structured_box
 
 def _run(scheme, n_steps=4):
     mesh = structured_box(6, 6, 1)
-    schemes = SchemesConfig(convection_scheme="central", time_scheme=scheme)
+    schemes = DiscretizationConfig(convection_scheme="central", time_scheme=scheme)
     linear = LinearSolverConfig(linear_solver="spsolve")
     pimple = PimpleControl(n_correctors=2)
     walls = [BoundaryConfig.wall(n) for n in ("xmin", "xmax", "ymin", "zmin")]
     lid = BoundaryConfig(
-        name="ymax", type_velocity="fixedValue", value_velocity=[1.0, 0, 0], type_p="zeroGradient"
+        name="ymax",
+        velocity_type="fixedValue",
+        velocity_value=[1.0, 0, 0],
+        pressure_type="zeroGradient",
     )
     cfg = FVMSetup(
         case_name="bdf2",
-        time=TimeConfig(time_step_size=0.05, end_time=0.25, write_interval=999),
+        time=TimeConfig(time_step_size=0.05, end_time=0.25, output_interval_steps=999),
         schemes=schemes,
         linear=linear,
         pimple=pimple,
-        transport=TransportConfig(density=1.0, nu=0.05),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.05),
         boundaries=walls + [lid, BoundaryConfig.empty("zmax")],
         initial_velocity=[0, 0, 0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
     with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
         s = FVMSolver(cfg, case_dir=d, mesh_data=mesh)
         s.auto_write = False
         for _ in range(n_steps):
             s.advance()
-        return s.U[: mesh["n_elements"]].copy()
+        return s.velocity[: mesh["n_cells"]].copy()
 
 
 def test_bdf2_engages_through_solver():

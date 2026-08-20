@@ -20,22 +20,22 @@ def _periodic_x_mesh(hand_built_3d_mesh):
         if patch["name"] == "xmin":
             patch.update(
                 bc_type="cyclic",
-                bc_type_velocity="cyclic",
-                bc_type_p="cyclic",
-                neighbourPatch="xmax",
+                velocity_type="cyclic",
+                pressure_type="cyclic",
+                neighbour_patch="xmax",
             )
         elif patch["name"] == "xmax":
             patch.update(
                 bc_type="cyclic",
-                bc_type_velocity="cyclic",
-                bc_type_p="cyclic",
-                neighbourPatch="xmin",
+                velocity_type="cyclic",
+                pressure_type="cyclic",
+                neighbour_patch="xmin",
             )
         else:
             patch.update(
                 bc_type="zeroGradient",
-                bc_type_velocity="zeroGradient",
-                bc_type_p="zeroGradient",
+                velocity_type="zeroGradient",
+                pressure_type="zeroGradient",
             )
     geo = geometry.compute_mesh_geometry(mesh, gradient_scheme="lsq")
     configure_cyclic_boundaries(mesh, geo)
@@ -67,12 +67,12 @@ def test_cyclic_sparse_coupling_is_symmetric_with_constant_nullspace(hand_built_
     matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(flux, mesh)
 
     assert np.allclose(matrix.toarray(), matrix.toarray().T)
-    assert np.allclose(matrix @ np.ones(mesh["n_elements"]), 0.0)
+    assert np.allclose(matrix @ np.ones(mesh["n_cells"]), 0.0)
 
 
 def test_cyclic_operators_preserve_a_constant_field(hand_built_3d_mesh):
     mesh, geo = _periodic_x_mesh(hand_built_3d_mesh)
-    n_cells = mesh["n_elements"]
+    n_cells = mesh["n_cells"]
     n_total = n_cells + mesh["n_faces"] - mesh["n_interior_faces"]
     scalar = np.ones(n_total)
     update_scalar_boundaries(scalar, mesh, mesh["boundary"], field_name="p")
@@ -99,7 +99,7 @@ def test_cyclic_operators_preserve_a_constant_field(hand_built_3d_mesh):
 
 def test_cyclic_pressure_operator_retains_only_constant_nullspace(hand_built_3d_mesh):
     mesh, geo = _periodic_x_mesh(hand_built_3d_mesh)
-    n_cells = mesh["n_elements"]
+    n_cells = mesh["n_cells"]
     n_total = n_cells + mesh["n_faces"] - mesh["n_interior_faces"]
     velocity = np.zeros((n_total, 3))
     pressure = np.zeros(n_total)
@@ -124,8 +124,10 @@ def test_cyclic_pressure_operator_retains_only_constant_nullspace(hand_built_3d_
 def test_cyclic_pair_must_be_reciprocal(hand_built_3d_mesh):
     mesh = copy.deepcopy(hand_built_3d_mesh)
     for patch in mesh["boundary"]:
-        patch.update(bc_type_velocity="zeroGradient", bc_type_p="zeroGradient")
-    mesh["boundary"][0].update(bc_type_velocity="cyclic", bc_type_p="cyclic", neighbourPatch="xmax")
+        patch.update(velocity_type="zeroGradient", pressure_type="zeroGradient")
+    mesh["boundary"][0].update(
+        velocity_type="cyclic", pressure_type="cyclic", neighbour_patch="xmax"
+    )
     geo = geometry.compute_mesh_geometry(mesh)
 
     with pytest.raises(MeshValidationError, match="must use cyclic"):

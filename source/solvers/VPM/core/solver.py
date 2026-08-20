@@ -19,18 +19,20 @@ from source.solvers.VPM.turbulence.turbulence import ParticlesLES
 from ..boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
 from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
-from ..config.backend import initialize_taichi_backend, reset_taichi_backend
 from ..config.constants import MAX_PARTICLES, MAX_SOURCES
-from ..config.types import SetFlowModel, StabilizationConfig, VPMSetup
+from ..config.setup import VPMSetup
+from ..config.stabilization import StabilizationConfig
+from ..config.state import set_flow_model
 from ..coupling import CouplingStepper
 from ..diagnostics.resolution import discretization_health
-from ..io.backup import BackupSystem
+from ..io.checkpoint import CheckpointManager
 from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import SamplerExecutor
 from ..io.solver_io import SolverIO
 from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
+from ..runtime.backend import initialize_taichi_backend, reset_taichi_backend
 from ..stabilization import StabilizationManager
 from ..stabilization.context import StabilizationContext
 from .evolution import EvolutionStepper
@@ -49,11 +51,11 @@ class VPMSolver:
 
     def __init__(self, setup: VPMSetup | None = None) -> None:
         """Initialize the VPM solver. See VPMSetup for all parameters."""
-        final_config = self._init_config(setup)
-        self._init_io_and_backend(final_config, final_config.debug_mode)
-        self._init_particles_and_physics(final_config)
-        self._init_turbulence_and_adaptation(final_config)
-        self._init_solvers(final_config)
+        final_setup = self._init_setup(setup)
+        self._init_io_and_backend(final_setup, final_setup.debug_mode)
+        self._init_particles_and_physics(final_setup)
+        self._init_turbulence_and_adaptation(final_setup)
+        self._init_solvers(final_setup)
         Logging.message(Logging.solver_info(self))
 
     @staticmethod
@@ -70,19 +72,19 @@ class VPMSolver:
         """Wait until all queued VPM backend work has completed."""
         ti.sync()
 
-    def _init_config(self, setup: VPMSetup | None) -> VPMSetup:
+    def _init_setup(self, setup: VPMSetup | None) -> VPMSetup:
         """Validate the setup and initialize scalar solver state."""
-        final_config = setup if setup is not None else VPMSetup.dns_simulation()
-        final_config._validate_config()
-        self.setup = final_config
-        self.time_step_size = final_config.time_step_size
-        self.time = final_config.time
-        self.step = final_config.step
-        self.time_integration = final_config.time_integration.upper()
-        self.coupled_max_strain_increment = final_config.coupled_max_strain_increment
-        self.coupled_max_advection_fraction = final_config.coupled_max_advection_fraction
-        self.coupled_max_substeps = final_config.coupled_max_substeps
-        axisymmetric_axis = final_config.axisymmetric_no_swirl_axis
+        final_setup = setup if setup is not None else VPMSetup.dns_simulation()
+        final_setup._validate_config()
+        self.setup = final_setup
+        self.time_step_size = final_setup.time_step_size
+        self.time = final_setup.time
+        self.step = final_setup.step
+        self.time_integration = final_setup.time_integration.upper()
+        self.coupled_max_strain_increment = final_setup.coupled_max_strain_increment
+        self.coupled_max_advection_fraction = final_setup.coupled_max_advection_fraction
+        self.coupled_max_substeps = final_setup.coupled_max_substeps
+        axisymmetric_axis = final_setup.axisymmetric_no_swirl_axis
         self.axisymmetric_axis = (
             -1 if axisymmetric_axis is None else {"x": 0, "y": 1, "z": 2}[axisymmetric_axis]
         )
@@ -94,13 +96,13 @@ class VPMSolver:
         self._dvh_time_step_size_info: str | None = None
         self._gbd_time_step_size_info: str | None = None
         self._rwm_time_step_size_info: str | None = None
-        vc = final_config.viscous
+        vc = final_setup.viscous
 
         # RWM accuracy criterion.
         if (
             vc.scheme == "RWM"
-            and vc.characteristic_distance is not None
-            and vc.characteristic_distance > 0
+            and vc.particle_spacing is not None
+            and vc.particle_spacing > 0
             and vc.viscosity is not None
             and vc.viscosity > 0
         ):
@@ -114,7 +116,7 @@ class VPMSolver:
                 )
             self._rwm_time_step_size_info = (
                 f"RWM accuracy limit particle_spacing²/(4nu) = {rwm_max_time_step_size:.4e} s "
-                f"(particle_spacing = {vc.characteristic_distance:.3e} m, "
+                f"(particle_spacing = {vc.particle_spacing:.3e} m, "
                 f"nu = {vc.viscosity:.3e} m²/s)."
             )
 
@@ -167,70 +169,70 @@ class VPMSolver:
                 f"Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s)."
             )
 
-        self.advection_scheme = final_config.advection.scheme
-        self.stretching_scheme = final_config.stretching.scheme
-        self.stretching_use_treecode = getattr(final_config.stretching, "use_treecode", False)
-        self.stretching_treecode_theta = getattr(final_config.stretching, "treecode_theta", 0.3)
+        self.advection_scheme = final_setup.advection.scheme
+        self.stretching_scheme = final_setup.stretching.scheme
+        self.stretching_use_treecode = getattr(final_setup.stretching, "use_treecode", False)
+        self.stretching_treecode_theta = getattr(final_setup.stretching, "treecode_theta", 0.3)
         self.stretching_conserve_moments = getattr(
-            final_config.stretching, "conserve_moments", False
+            final_setup.stretching, "conserve_moments", False
         )
-        self.stretching_conserve_energy = getattr(final_config.stretching, "conserve_energy", False)
-        self.processing_unit = final_config.processing_unit.upper()
-        self.flow_model = final_config.turbulence.flow_model.upper()
-        self.viscous_scheme = final_config.viscous.scheme
-        self._viscous_config = final_config.viscous
-        self.stabilization_config: StabilizationConfig = final_config.stabilization
-        self.particles_kernel = final_config.particles_kernel.upper()
-        self.backup_frequency = final_config.backup_frequency
-        self.logging_frequency = final_config.logging_frequency
-        self.timing_frequency = getattr(final_config, "timing_frequency", 0)
-        self.backup_file_name = final_config.backup_file_name
-        self.backup_directory = getattr(
-            final_config,
+        self.stretching_conserve_energy = getattr(final_setup.stretching, "conserve_energy", False)
+        self.compute_device = final_setup.compute_device.upper()
+        self.flow_model = final_setup.turbulence.flow_model.upper()
+        self.viscous_scheme = final_setup.viscous.scheme
+        self._viscous_config = final_setup.viscous
+        self.stabilization_config: StabilizationConfig = final_setup.stabilization
+        self.particle_kernel = final_setup.particle_kernel.upper()
+        self.checkpoint_interval_steps = final_setup.checkpoint_interval_steps
+        self.logging_interval_steps = final_setup.logging_interval_steps
+        self.timing_interval_steps = getattr(final_setup, "timing_frequency", 0)
+        self.checkpoint_name = final_setup.checkpoint_name
+        self.checkpoint_directory = getattr(
+            final_setup,
             "backup_directory",
-            getattr(final_config, "solution_name", "solution"),
+            getattr(final_setup, "solution_name", "solution"),
         )
-        if getattr(final_config, "clean", False):
+        if getattr(final_setup, "clean", False):
             import shutil as _shutil
 
-            _backup_path = Path(self.backup_directory)
+            _backup_path = Path(self.checkpoint_directory)
             if _backup_path.exists():
                 _shutil.rmtree(_backup_path)
-        Path(self.backup_directory).mkdir(parents=True, exist_ok=True)
-        return final_config
+        Path(self.checkpoint_directory).mkdir(parents=True, exist_ok=True)
+        return final_setup
 
-    def _init_io_and_backend(self, final_config: VPMSetup, debug_mode: bool) -> None:
+    def _init_io_and_backend(self, final_setup: VPMSetup, debug_mode: bool) -> None:
         """Set up output redirection, IO, precision, splitter/remesher, Taichi backend."""
         Logging.setup_output_redirection(self)
         self.io = SolverIO(self)
-        self.precision = getattr(final_config, "precision", "f32")
+        self.precision = getattr(final_setup, "precision", "f32")
         if self.precision not in ("f32", "f64"):
             raise ValueError(f"precision must be 'f32' or 'f64', got '{self.precision}'")
-        self.processing_unit = initialize_taichi_backend(
-            self.processing_unit,
+        self.compute_device = initialize_taichi_backend(
+            self.compute_device,
             debug_mode,
             self.precision,
-            device_memory_fraction=getattr(final_config, "device_memory_fraction", 0.5),
-            random_seed=final_config.random_seed,
+            device_memory_fraction=getattr(final_setup, "device_memory_fraction", 0.5),
+            random_seed=final_setup.random_seed,
         )
         print_openonda_header(self.precision)
-        SetFlowModel(self, flow_model=self.flow_model)
+        set_flow_model(self, flow_model=self.flow_model)
         self.compute_dtype = ti.f64 if self.precision == "f64" else ti.f32
         self.accumulator_dtype = self.compute_dtype
         self.np_dtype = np.float64 if self.precision == "f64" else np.float32
 
-    def _init_particles_and_physics(self, final_config: VPMSetup) -> None:
+    def _init_particles_and_physics(self, final_setup: VPMSetup) -> None:
         """Create particle container, physics engine, source fields, background velocity."""
-        max_p = getattr(final_config, "max_particles", MAX_PARTICLES)
+        max_p = getattr(final_setup, "max_particles", MAX_PARTICLES)
         self.particles = Particles(max_particles=max_p, float_dtype=self.precision)
         self.physics = PhysicsEngine(
-            particles_kernel=self.particles_kernel,
+            particle_kernel=self.particle_kernel,
             max_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
-            max_targets=getattr(final_config, "max_targets", 200000),
+            max_evaluation_points=getattr(final_setup, "max_targets", 200000),
         )
 
-        _vel_cfg = getattr(final_config, "velocity", None)
+        _vel_cfg = getattr(final_setup, "velocity", None)
         _vel_method = "TREECODE" if (_vel_cfg and _vel_cfg.method == "TREECODE") else "DIRECT"
         _vel_theta = _vel_cfg.theta if _vel_cfg else 0.5
         self.physics.configure_velocity(
@@ -241,22 +243,22 @@ class VPMSolver:
             traversal_block_dim=getattr(_vel_cfg, "traversal_block_dim", 128),
         )
 
-        _visc_cfg = getattr(final_config, "viscous", None)
+        _visc_cfg = getattr(final_setup, "viscous", None)
         if _visc_cfg is not None and hasattr(self.physics, "core_radius_ratio"):
             self.physics.core_radius_ratio = float(getattr(_visc_cfg, "core_radius_ratio", 2.5))
         if hasattr(self.physics, "configure_body_mask"):
             try:
-                self.physics.configure_body_mask(getattr(final_config, "body_stl", None))
+                self.physics.configure_body_mask(getattr(final_setup, "body_stl", None))
             except Exception as exc:
                 Logging.warning(f"Failed to configure DVH body mask: {exc}")
 
         # Grid diffusion on GPU uses a fixed workspace to avoid repeated allocation.
-        vpm_bounds = getattr(final_config, "vpm_domain_bounds", None)
-        vc = getattr(final_config, "viscous", None)
+        vpm_bounds = getattr(final_setup, "vpm_domain_bounds", None)
+        vc = getattr(final_setup, "viscous", None)
         scheme = getattr(vc, "scheme", "").upper() if vc is not None else ""
         is_grid_diffusion = scheme in {"DVH", "GBD"}
         fixed_grid_required = (
-            self.processing_unit in {"METAL", "VULKAN", "CUDA"} and is_grid_diffusion
+            self.compute_device in {"METAL", "VULKAN", "CUDA"} and is_grid_diffusion
         )
         if fixed_grid_required and hasattr(self.physics, "require_fixed_grid_allocation"):
             self.physics.require_fixed_grid_allocation(True)
@@ -283,28 +285,28 @@ class VPMSolver:
         self.source_positions = ti.Vector.field(3, dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_strengths = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_radii = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
-        self.num_sources = 0
+        self.n_sources = 0
         if hasattr(self.setup, "freestream_velocity"):
             self.particles.set_freestream_velocity(np.array(self.setup.freestream_velocity))
 
-    def _init_turbulence_and_adaptation(self, final_config: VPMSetup) -> None:
+    def _init_turbulence_and_adaptation(self, final_setup: VPMSetup) -> None:
         """Initialize LES turbulence, stretching settings, and diagnostics."""
-        max_p = getattr(final_config, "max_particles", MAX_PARTICLES)
-        self.LES = None
+        max_p = getattr(final_setup, "max_particles", MAX_PARTICLES)
+        self.turbulence_model = None
         if self.flow_model == "LES":
-            self.LES = ParticlesLES(
-                LES_filter_type=final_config.turbulence.model,
+            self.turbulence_model = ParticlesLES(
+                LES_filter_type=final_setup.turbulence.model,
                 max_particles=max_p,
-                kernel_type=self.particles_kernel,
-                cs=final_config.turbulence.cs,
-                ce=final_config.turbulence.ce,
+                kernel_type=self.particle_kernel,
+                cs=final_setup.turbulence.cs,
+                ce=final_setup.turbulence.ce,
                 accumulator_dtype=self.accumulator_dtype,
             )
-        self.stretching_enabled = final_config.stretching.enabled
-        self.stretching_mode = final_config.stretching.mode
+        self.stretching_enabled = final_setup.stretching.enabled
+        self.stretching_mode = final_setup.stretching.mode
 
         self.field_diagnostics = ParticleFieldEvaluation(
-            particles_kernel=self.particles_kernel,
+            particle_kernel=self.particle_kernel,
             max_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
         )
@@ -313,31 +315,30 @@ class VPMSolver:
         self._body_induced_fn = None
         self._stretch_time_step_size_warned: bool = False
         self._particles_removed_this_step = 0
-        self._circulation_removed_this_step = np.zeros(3, dtype=self.np_dtype)
+        self._vortex_strength_removed_this_step = np.zeros(3, dtype=self.np_dtype)
         # Size of the last core-spreading moment projection, relative to |Gamma|.
         self.core_spreading_correction_relative = 0.0
 
-    def _init_solvers(self, final_config: VPMSetup) -> None:
+    def _init_solvers(self, final_setup: VPMSetup) -> None:
         """Initialize the stabilization master and the optional sub-solvers."""
 
         # Time histories consumed by export_diagnostics_csv and the VLM report.
         self._diagnostics_history: dict = {
             "time": [],
-            "flow_time": [],
-            "vpm_total_circ_vec": [],
-            "vpm_total_circ_mag": [],
-            "fvm_total_circ_vec": [],
-            "fvm_total_circ_mag": [],
-            "interp_total_circ_vec": [],
-            "interp_total_circ_mag": [],
+            "vpm_total_vortex_strength": [],
+            "vpm_total_vortex_strength_magnitude": [],
+            "fvm_total_vortex_strength": [],
+            "fvm_total_vortex_strength_magnitude": [],
+            "interpolated_total_vortex_strength": [],
+            "interpolated_total_vortex_strength_magnitude": [],
             "centroid": [],
             "n_injected": [],
             "n_candidates": [],
-            "observed_dt": [],
+            "observed_time_step_size": [],
             "vlm_CL": [],
             "vlm_CD": [],
-            "vlm_gamma_bound_y": [],
-            "vlm_gamma_wake_y": [],
+            "vlm_bound_circulation_y": [],
+            "vlm_wake_circulation_y": [],
             "vlm_lesp_max": [],
             "vlm_n_particles": [],
         }
@@ -360,8 +361,8 @@ class VPMSolver:
                 set_particles_removed=lambda value: setattr(
                     self, "_particles_removed_this_step", value
                 ),
-                circulation_removed=lambda: self._circulation_removed_this_step,
-                set_circulation_removed=lambda value: setattr(
+                vortex_strength_removed=lambda: self._vortex_strength_removed_this_step,
+                set_vortex_strength_removed=lambda value: setattr(
                     self, "_circulation_removed_this_step", value
                 ),
                 domain_bounds_enforced=lambda: self._domain_bounds_enforced_this_step,
@@ -373,7 +374,7 @@ class VPMSolver:
         active = self.stabilization.active_mechanisms()
         if active:
             Logging.message("Stabilization: " + ", ".join(active))
-        self._init_optional_solvers(final_config)
+        self._init_optional_solvers(final_setup)
         # Detailed section timing forces a device barrier around every phase.
         # Make that diagnostic opt-in; the whole-step timer remains available in
         # normal production runs without serialising every kernel launch.
@@ -382,7 +383,7 @@ class VPMSolver:
             sync=ti.sync,
         )
         self._domain_bounds_enforced_this_step = False
-        self.simulation_time = 0.0
+        self.wall_time = 0.0
         # The step algorithm lives in the stepper; this facade drives it.
         self.stepper = EvolutionStepper(self)
         # Panel/VLM coupling orchestration runs inside the step.
@@ -397,12 +398,12 @@ class VPMSolver:
                 self.time_step_size, getattr(self.setup, "freestream_velocity", None)
             )
 
-    def _init_optional_solvers(self, final_config) -> None:
+    def _init_optional_solvers(self, final_setup) -> None:
         """Initialize optional sub-solvers (panel, VLM) with error handling."""
-        self.panel_solver = getattr(final_config, "panel_solver", None)
+        self.panel_solver = getattr(final_setup, "panel_solver", None)
         if self.panel_solver is not None:
             try:
-                body_stl = getattr(final_config, "body_stl", None)
+                body_stl = getattr(final_setup, "body_stl", None)
                 lattice = getattr(self.panel_solver, "lattice", None)
                 if body_stl and (lattice is None or lattice.num_panels == 0):
                     self.panel_solver.add_surface("body", body_stl)
@@ -418,12 +419,12 @@ class VPMSolver:
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize panel solver: {e}") from e
 
-        if final_config.vlm is None:
+        if final_setup.vlm is None:
             self.vlm_solver = None
         else:
             from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
-            self.vlm_solver = VLMSolver(final_config.vlm)
+            self.vlm_solver = VLMSolver(final_setup.vlm)
         if self.vlm_solver is not None:
             self._vpm_velocity_at_vlm = None
             self._vlm_velocity_at_vpm = None
@@ -437,14 +438,14 @@ class VPMSolver:
         self.io.export_diagnostics_csv(self._diagnostics_history, filename)
 
     @classmethod
-    def from_config_file(cls, filename: str) -> "VPMSolver":
+    def from_setup_file(cls, filename: str) -> "VPMSolver":
         """Create a solver from a JSON configuration file."""
         setup = VPMSetup.load_from_file(filename)
         return cls(setup=setup)
 
-    def save_config(self, filename: str) -> None:
+    def save_setup(self, filename: str) -> None:
         """Save the current solver configuration to a JSON file."""
-        self.io.save_config(filename)
+        self.io.save_setup(filename)
 
     # Basic protocol
 
@@ -469,7 +470,7 @@ class VPMSolver:
 
     def print_timing(self) -> None:
         """Print cumulative runtime-profiler statistics."""
-        self.profiler.set_particle_count(self.particles.number_of_particles)
+        self.profiler.set_particle_count(self.particles.n_particles)
         self.profiler.report()
 
     def advance(self) -> None:
@@ -504,7 +505,7 @@ class VPMSolver:
         if getattr(self.setup, "export_flow_integrals", True):
             self._export_flow_integrals_csv()
 
-        if self.LES is not None:
+        if self.turbulence_model is not None:
             Logging.les_diagnostics(self)
 
         self._execute_samplers()
@@ -621,7 +622,7 @@ class VPMSolver:
         return self._get_particle_field("vorticity")
 
     @property
-    def particles_circulation(self) -> np.ndarray:
+    def particle_vortex_strength(self) -> np.ndarray:
         """Alias for :attr:`particles_strengths`."""
         return self._get_particle_field("circulation")
 
@@ -640,12 +641,12 @@ class VPMSolver:
         """Refresh particle-resolution and field-quality diagnostics."""
         if not getattr(self.setup, "export_discretization_health", True):
             return
-        if self.particles.number_of_particles == 0:
+        if self.particles.n_particles == 0:
             self._discretization_health = {}
             return
         self._discretization_health = discretization_health(
             self.particles_positions,
-            self.particles_circulation,
+            self.particle_vortex_strength,
             self.particles_radii,
         )
 
@@ -654,12 +655,12 @@ class VPMSolver:
         ParticleFieldEvaluation.record_centroid_history(
             self._diagnostics_history,
             self.particles_positions,
-            self.particles_circulation,
+            self.particle_vortex_strength,
         )
 
     def _record_time_history(self) -> None:
         """Delegate to VLMDiagnostics."""
-        ft_hist = self._diagnostics_history.get("flow_time", [])
+        ft_hist = self._diagnostics_history.get("time", [])
         observed_time_step_size = self.time - ft_hist[-1] if len(ft_hist) >= 1 else 0.0
         VLMDiagnostics.record_time(self._diagnostics_history, self.time, observed_time_step_size)
 
@@ -673,7 +674,7 @@ class VPMSolver:
             self._diagnostics_history,
             self.step,
             self.time,
-            self.backup_directory,
+            self.checkpoint_directory,
             sample_subdirectory,
         )
         VLMLoadingDistribution.record_loading_distributions(
@@ -681,7 +682,7 @@ class VPMSolver:
             self._diagnostics_history,
             self.step,
             self.time,
-            self.backup_directory,
+            self.checkpoint_directory,
             sample_subdirectory,
         )
 
@@ -696,7 +697,7 @@ class VPMSolver:
             n_p,
             self.time,
             self.step,
-            self.backup_directory,
+            self.checkpoint_directory,
             getattr(self.setup, "sample_subdirectory", None),
         )
 
@@ -728,12 +729,12 @@ class VPMSolver:
     @property
     def total_strength(self) -> np.ndarray:
         """Total particle circulation vector."""
-        return self._flow_integrals.get("strength", np.array([0.0, 0.0, 0.0]))
+        return self._flow_integrals.get("vortex_strength", np.array([0.0, 0.0, 0.0]))
 
     @property
-    def total_strength_magnitude(self) -> float:
+    def total_vortex_strength_magnitude(self) -> float:
         """Magnitude of the total particle circulation."""
-        return self._flow_integrals.get("strength_magnitude", 0.0)
+        return self._flow_integrals.get("vortex_strength_magnitude", 0.0)
 
     @property
     def total_linear_impulse(self) -> np.ndarray:
@@ -853,7 +854,7 @@ class VPMSolver:
         if len(velocities) != len(points):
             raise ValueError("target velocity and position counts must match")
 
-        if self.num_sources > 0:
+        if self.n_sources > 0:
             n_targets = len(points)
             self.physics._resize_target_fields(n_targets)
             target_pos_ti = self.physics.target_positions
@@ -870,7 +871,7 @@ class VPMSolver:
                 self.source_radii,
                 target_vel_ti,
                 n_targets,
-                self.num_sources,
+                self.n_sources,
             )
             velocities = self.physics.extract_target_velocities(n_targets)
 
@@ -904,12 +905,12 @@ class VPMSolver:
         self, positions: np.ndarray, strengths: np.ndarray, radii: np.ndarray
     ) -> None:
         """Set regularized source particles used for body-blockage corrections."""
-        self.num_sources = len(positions)
-        if self.num_sources > MAX_SOURCES:
-            Logging.warning(f"Clipping {self.num_sources} sources to {MAX_SOURCES}")
-            self.num_sources = MAX_SOURCES
+        self.n_sources = len(positions)
+        if self.n_sources > MAX_SOURCES:
+            Logging.warning(f"Clipping {self.n_sources} sources to {MAX_SOURCES}")
+            self.n_sources = MAX_SOURCES
 
-        n = self.num_sources
+        n = self.n_sources
         # Taichi ``from_numpy`` requires the allocated shape.
         pos_buf = np.zeros((MAX_SOURCES, 3), dtype=self.np_dtype)
         str_buf = np.zeros(MAX_SOURCES, dtype=self.np_dtype)
@@ -970,7 +971,7 @@ class VPMSolver:
     ) -> np.ndarray:
         """Differentiate only the source and body corrections by centred differences."""
         gradient = np.asarray(particle_gradient, dtype=np.float64).reshape(-1, 3, 3).copy()
-        if (self._body_induced_fn is None and self.num_sources == 0) or len(points) == 0:
+        if (self._body_induced_fn is None and self.n_sources == 0) or len(points) == 0:
             return gradient
 
         step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
@@ -1063,7 +1064,7 @@ class VPMSolver:
         d_u_dn = np.einsum(
             "fij,fj->fi", np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3), unit_normals
         )
-        if self._body_induced_fn is not None or self.num_sources > 0:
+        if self._body_induced_fn is not None or self.n_sources > 0:
             step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
             plus = self._nonparticle_target_velocity(points + step * unit_normals)
             minus = self._nonparticle_target_velocity(points - step * unit_normals)
@@ -1103,14 +1104,14 @@ class VPMSolver:
         if nu is None:
             nu = (
                 float(np.mean(self.particles_viscosities))
-                if self.particles.number_of_particles > 0
+                if self.particles.n_particles > 0
                 else 1e-5
             )
         if not hasattr(self, "_pressure_physics"):
             from source.solvers.VPM.physics.pressure import PressurePhysics
 
             self._pressure_physics = PressurePhysics(
-                particles_kernel=self.particles_kernel,
+                particle_kernel=self.particle_kernel,
                 max_particles=int(self.setup.max_particles),
                 accumulator_dtype=self.accumulator_dtype,
             )
@@ -1140,7 +1141,7 @@ class VPMSolver:
                 body_fn=body_fn,
             )
 
-        if self.particles.number_of_particles > 0:
+        if self.particles.n_particles > 0:
             self.physics.compute_velocity_gradients(self.particles)
         return self._pressure_physics.compute_target_pressure_gradient_components(
             self.particles,
@@ -1172,18 +1173,18 @@ class VPMSolver:
             # Reduce removed circulation on device.
             circ_removed, _ = self.particles.subset_moments(particle_indices)
             self._particles_removed_this_step = len(particle_indices)
-            self._circulation_removed_this_step = circ_removed
+            self._vortex_strength_removed_this_step = circ_removed
 
         elif remove_all:
             # Sum removed circulation on device.
             circ_removed = self.particles.total_circulation()
 
             self._particles_removed_this_step = len(self.particles)
-            self._circulation_removed_this_step = circ_removed
+            self._vortex_strength_removed_this_step = circ_removed
 
         else:
             self._particles_removed_this_step = 0
-            self._circulation_removed_this_step = np.zeros(3)
+            self._vortex_strength_removed_this_step = np.zeros(3)
 
         # Trim the stabilization lineage references to match the removed set.
         if remove_all:
@@ -1223,15 +1224,15 @@ class VPMSolver:
                     "ViscousConfig.viscosity or pass an explicit array."
                 )
 
-        start = self.particles.number_of_particles
+        start = self.particles.n_particles
         self.particles.add_vortex_particles(
             position=position,
             velocity=velocity,
-            circulation=circulation,
-            radius=radius,
+            vortex_strength=circulation,
+            core_radius=radius,
             volume=volume,
-            viscosity=viscosity,
-            viscosity_turbulent=viscosity_turbulent,
+            kinematic_viscosity=viscosity,
+            eddy_viscosity=viscosity_turbulent,
             group_id=group_id,
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
@@ -1274,7 +1275,7 @@ class VPMSolver:
                 else np.zeros(3, dtype=self.np_dtype)
             )
             self._particles_removed_this_step = len(self.particles)
-            self._circulation_removed_this_step = circ_removed
+            self._vortex_strength_removed_this_step = circ_removed
 
         if viscosity is None:
             nu = getattr(self._viscous_config, "viscosity", None)
@@ -1306,10 +1307,10 @@ class VPMSolver:
     def update_particle_circulations(
         self,
         mask: np.ndarray,
-        delta_circ: np.ndarray,
+        vortex_strength_increment: np.ndarray,
     ) -> None:
         """Apply an in-place circulation delta to a masked subset of particles."""
-        self.particles.update_circulations_masked(mask, delta_circ)
+        self.particles.update_vortex_strength_masked(mask, vortex_strength_increment)
 
     def _print_timestep_validation_summary(self, results: dict) -> None:
         Logging.time_step_validation_summary(results)
@@ -1389,7 +1390,7 @@ class VPMSolver:
                     f"Valid properties: {list(valid_properties.keys())}"
                 )
 
-        N = self.particles.number_of_particles
+        N = self.particles.n_particles
         if N == 0:
             raise ValueError("Cannot set properties: particle system is empty")
 
@@ -1403,7 +1404,7 @@ class VPMSolver:
         for field_name, prop_value in validated_properties.items():
             self.particles.set_field(field_name, prop_value)
 
-        self.particles._cached_step = -1
+        self.particles._cache_step = -1
 
         property_names = list(properties.keys())
         if len(property_names) == 1:
@@ -1422,10 +1423,10 @@ class VPMSolver:
             os.makedirs(backup_dir, exist_ok=True)
 
         self._refresh_backup_particle_fields()
-        BackupSystem.backup_solver(self, filename, append_step=False, verbose=False)
+        CheckpointManager.write_checkpoint(self, filename, append_step=False, verbose=False)
 
         config_file = f"{filename}.config.json"
-        BackupSystem._save_configuration(self, config_file)
+        CheckpointManager.write_configuration(self, config_file)
 
         Logging.info(f"Complete state saved to: {filename}")
         Logging.message(f"       - {filename}.h5 (numerical data)")
@@ -1435,37 +1436,37 @@ class VPMSolver:
     def save_numerical_state(self, filename: str) -> None:
         """Save numerical state for a caller that already owns configuration."""
         self._refresh_backup_particle_fields()
-        BackupSystem.backup_solver(self, filename, append_step=False, verbose=False)
+        CheckpointManager.write_checkpoint(self, filename, append_step=False, verbose=False)
 
     def load_numerical_state(self, filename: str) -> None:
         """Restore numerical state into this configured VPM solver."""
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
-        BackupSystem.load_numerical_state(self, path)
+        CheckpointManager.load_numerical_state(self, path)
 
-    def backup_solution(self, backup_file_name: str = "backup") -> None:
+    def write_checkpoint(self, checkpoint_name: str = "backup") -> None:
         """Back up the solver state to a specified file."""
         self._refresh_backup_particle_fields()
-        BackupSystem.backup_solver(self, backup_file_name, verbose=True)
+        CheckpointManager.write_checkpoint(self, checkpoint_name, verbose=True)
 
-    def _backup_solution(self) -> None:
+    def _write_checkpoint(self) -> None:
         """Write a scheduled solver backup when one is due."""
-        if not self.io.should_backup():
+        if not self.io.should_checkpoint():
             return
 
         self._refresh_backup_particle_fields()
 
-        self.io.backup()
+        self.io.write_checkpoint()
 
     def _refresh_backup_particle_fields(self) -> None:
         """Refresh particle fields that are expected to be available in backups."""
-        N = self.particles.number_of_particles
+        N = self.particles.n_particles
         if N > 50_000:
             return
         if N > 0:
             self.physics.velocity_self(
                 self.particles.position,
-                self.particles.circulation,
-                self.particles.radius,
+                self.particles.vortex_strength,
+                self.particles.core_radius,
                 self.particles.velocity,
                 self.particles.velocity_background,
                 N,
@@ -1475,20 +1476,20 @@ class VPMSolver:
             self.stepper._update_velocity_gradients()
 
     @staticmethod
-    def continue_from_backup(backup_file_name: str | None = None) -> "VPMSolver | None":
+    def continue_from_backup(checkpoint_name: str | None = None) -> "VPMSolver | None":
         """Restore a solver from an HDF5 backup and its saved configuration."""
-        if not BackupSystem.validate_backup(backup_file_name):
-            raise ValueError(f"Backup validation failed for: {backup_file_name}")
+        if not CheckpointManager.validate_checkpoint(checkpoint_name):
+            raise ValueError(f"Backup validation failed for: {checkpoint_name}")
 
         Logging.message(f"\n{'-' * 60}")
         Logging.info("Resuming simulation from backup:")
-        Logging.message(f"       Base filename: {backup_file_name}")
+        Logging.message(f"       Base filename: {checkpoint_name}")
         Logging.message(f"{'-' * 60}\n")
 
         try:
-            hdf5_file = f"{backup_file_name}.h5"
-            config_file = f"{backup_file_name}.config.json"
-            legacy_config_file = f"{backup_file_name}_config.json"
+            hdf5_file = f"{checkpoint_name}.h5"
+            config_file = f"{checkpoint_name}.config.json"
+            legacy_config_file = f"{checkpoint_name}_config.json"
             if not os.path.exists(config_file) and os.path.exists(legacy_config_file):
                 config_file = legacy_config_file
 
@@ -1497,9 +1498,9 @@ class VPMSolver:
             if not os.path.exists(config_file):
                 raise FileNotFoundError(f"Configuration file not found: {config_file}")
 
-            setup = BackupSystem._load_configuration(config_file)
+            setup = CheckpointManager.load_configuration(config_file)
             restored_solver = VPMSolver(setup=setup)
-            BackupSystem._load_numerical_data(restored_solver, hdf5_file)
+            CheckpointManager._load_numerical_data(restored_solver, hdf5_file)
         except Exception as e:
             raise RuntimeError(f"Restore failed: {e}") from e
 
@@ -1510,7 +1511,7 @@ class VPMSolver:
         Logging.message("Simulation successfully restored!")
         Logging.message(f"Flow time: {restored_solver.time:.6f}")
         Logging.message(f"Time step: {restored_solver.step}")
-        Logging.message(f"Particles: {restored_solver.particles.number_of_particles}")
+        Logging.message(f"Particles: {restored_solver.particles.n_particles}")
         Logging.message(f"Backend: {restored_solver.setup.processing_unit}")
 
         return restored_solver
@@ -1555,14 +1556,14 @@ class VPMSolver:
         if len(bounds) != 6:
             raise ValueError("bounds must be [xmin, xmax, ymin, ymax, zmin, zmax]")
 
-        n_particles = self.particles.number_of_particles
+        n_particles = self.particles.n_particles
         if n_particles == 0:
             return 0
 
         xmin, xmax, ymin, ymax, zmin, zmax = bounds
 
         keep_mask = None
-        if self.stabilization.reference_strengths is not None:
+        if self.stabilization.reference_vortex_strength is not None:
             position = self.particles.position_cpu()
             inside = (
                 (xmin <= position[:, 0])

@@ -1,12 +1,9 @@
-"""
-Turbulence subpackage: the ParticlesLES large-eddy closure.
+"""Sub-grid turbulence models for the VPM solver."""
 
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
-"""
-
+from .smagorinsky import SmagorinskyModel
 from .turbulence import ParticlesLES
 
-__all__ = ["ParticlesLES"]
+__all__ = [
+    "ParticlesLES",
+    "SmagorinskyModel",
+]

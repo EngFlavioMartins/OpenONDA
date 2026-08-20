@@ -39,28 +39,28 @@ def _assemble_system(mesh, geo):
 
     Returns: A, b, phi_exact_interior, volumes
     """
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
     n_bnd = mesh["n_faces"] - n_int
-    cents = geo["element_centroids"]
+    cents = geo["cell_centroids"]
     fc = geo["face_centroids"]
 
-    phi = np.zeros(n_elem + n_bnd)
-    phi[:n_elem] = _phi_exact(cents[:, 0], cents[:, 1], cents[:, 2])
+    face_flux = np.zeros(n_elem + n_bnd)
+    face_flux[:n_elem] = _phi_exact(cents[:, 0], cents[:, 1], cents[:, 2])
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
-        start, nf = b["startFace"], b["nFaces"]
+        start, nf = b["start_face"], b["n_faces"]
         for j in range(nf):
             fi = start + j
             gi = n_elem + (fi - n_int)
-            phi[gi] = _phi_exact(fc[fi, 0], fc[fi, 1], fc[fi, 2])
+            face_flux[gi] = _phi_exact(fc[fi, 0], fc[fi, 1], fc[fi, 2])
 
-    grad_phi = compute_gauss_gradient(phi, mesh, geo)
+    grad_phi = compute_gauss_gradient(face_flux, mesh, geo)
     gamma = np.ones(n_elem)
-    flux_data = assemble_diffusion_term(phi, grad_phi, gamma, mesh, geo, mesh["boundary"])
+    flux_data = assemble_diffusion_term(face_flux, grad_phi, gamma, mesh, geo, mesh["boundary"])
     A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh)
     b = assemble_rhs_from_fluxes_vectorized(flux_data, mesh)
-    return A, b, phi[:n_elem], geo["element_volumes"]
+    return A, b, face_flux[:n_elem], geo["cell_volumes"]
 
 
 class TestMMSSteadyDiffusion:
@@ -109,5 +109,5 @@ class TestMMSSteadyDiffusion:
         R = A @ phi_exact - b
         b_mms = b + R
         phi_sol = solve_linear_system(A, b_mms, method="spsolve", equation_type="scalar")
-        assert phi_sol.shape == (mesh["n_elements"],)
+        assert phi_sol.shape == (mesh["n_cells"],)
         assert np.all(np.isfinite(phi_sol))

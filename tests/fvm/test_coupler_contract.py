@@ -17,11 +17,11 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -34,13 +34,13 @@ from source.solvers.FVM.solve.linear_interface import solve_linear_system
 from ._structured_mesh import structured_box
 
 CONTRACT_METHODS = [
-    "get_cell_center_coordinates",
+    "get_cell_centre_coordinates",
     "get_cell_volumes",
     "get_velocity_field",
     "get_velocity_field_into",
     "get_vorticity_field",
     "get_vorticity_field_into",
-    "get_boundary_face_center_coordinates",
+    "get_boundary_face_centre_coordinates",
     "get_boundary_face_normals",
     "get_boundary_face_areas",
     "n_procs",
@@ -62,17 +62,17 @@ CONTRACT_METHODS = [
 
 def _make_solver(init=(0.0, 0.0, 0.0)):
     mesh = structured_box(6, 6, 6)
-    sp_schemes = SchemesConfig(convection_scheme="central")
+    sp_schemes = DiscretizationConfig(convection_scheme="central")
     sp_linear = LinearSolverConfig(linear_solver="spsolve")
     sp_pimple = PimpleControl(n_correctors=2)
     bnds = [BoundaryConfig.wall(n) for n in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")]
     cfg = FVMSetup(
         case_name="coupler-contract",
-        time=TimeConfig(time_step_size=0.1, end_time=1.0, write_interval=999),
+        time=TimeConfig(time_step_size=0.1, end_time=1.0, output_interval_steps=999),
         schemes=sp_schemes,
         linear=sp_linear,
         pimple=sp_pimple,
-        transport=TransportConfig(density=1.0, nu=0.05),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.05),
         boundaries=bnds,
         initial_velocity=list(init),
     )
@@ -90,13 +90,13 @@ def test_all_contract_methods_present():
 
 def test_getter_shapes_and_normals():
     s, mesh = _make_solver()
-    n = mesh["n_elements"]
-    assert s.get_cell_center_coordinates().shape == (n, 3)
+    n = mesh["n_cells"]
+    assert s.get_cell_centre_coordinates().shape == (n, 3)
     assert s.get_cell_volumes().shape == (n,)
     assert s.get_velocity_field().shape == (n, 3)
     assert s.get_vorticity_field().shape == (n, 3)
-    nf = next(b["nFaces"] for b in mesh["boundary"] if b["name"] == "xmax")
-    assert s.get_boundary_face_center_coordinates("xmax").shape == (nf, 3)
+    nf = next(b["n_faces"] for b in mesh["boundary"] if b["name"] == "xmax")
+    assert s.get_boundary_face_centre_coordinates("xmax").shape == (nf, 3)
     normals = s.get_boundary_face_normals("xmax")
     assert np.allclose(np.linalg.norm(normals, axis=1), 1.0)
     assert s.get_boundary_face_areas("xmax").shape == (nf,)
@@ -105,7 +105,7 @@ def test_getter_shapes_and_normals():
 
 def test_field_getters_fill_existing_buffers():
     s, mesh = _make_solver()
-    n = mesh["n_elements"]
+    n = mesh["n_cells"]
     u_out = np.empty((n, 3), dtype=np.float64)
     w_out = np.empty((n, 3), dtype=np.float64)
 
@@ -117,7 +117,7 @@ def test_field_getters_fill_existing_buffers():
 
 def test_field_getters_reject_wrong_buffer_shape():
     s, mesh = _make_solver()
-    bad = np.empty((mesh["n_elements"], 2), dtype=np.float64)
+    bad = np.empty((mesh["n_cells"], 2), dtype=np.float64)
     with pytest.raises(ValueError):
         s.get_velocity_field_into(bad)
 
@@ -126,16 +126,16 @@ def test_replicated_parallel_getters_expose_cells_on_root_only():
     root, mesh = _make_solver()
     root.parallel = ParallelContext(mode="petsc_replicated", rank=0, size=2)
     assert root.n_procs() == 2
-    assert root.get_velocity_field().shape == (mesh["n_elements"], 3)
+    assert root.get_velocity_field().shape == (mesh["n_cells"], 3)
 
     worker, _ = _make_solver()
     worker.parallel = ParallelContext(mode="petsc_replicated", rank=1, size=2)
     assert worker.n_procs() == 2
-    assert worker.get_cell_center_coordinates().shape == (0, 3)
+    assert worker.get_cell_centre_coordinates().shape == (0, 3)
     assert worker.get_cell_volumes().shape == (0,)
     assert worker.get_velocity_field().shape == (0, 3)
     assert worker.get_vorticity_field().shape == (0, 3)
-    assert worker.get_boundary_face_center_coordinates("xmax").shape == (0, 3)
+    assert worker.get_boundary_face_centre_coordinates("xmax").shape == (0, 3)
     assert worker.get_boundary_face_normals("xmax").shape == (0, 3)
     assert worker.get_boundary_face_areas("xmax").shape == (0,)
 
@@ -149,12 +149,12 @@ def test_scalar_param_setters():
     s, _ = _make_solver()
     s.set_time_step(0.05)
     s.set_kinematic_viscosity(0.02)
-    assert s.time_step_size == 0.05 and s.setup.transport.nu == 0.02
+    assert s.time_step_size == 0.05 and s.setup.transport.kinematic_viscosity == 0.02
 
 
 def test_registered_fields_build_blending_source():
     s, mesh = _make_solver()
-    n = mesh["n_elements"]
+    n = mesh["n_cells"]
     lam = np.full(n, 3.0)
     ut = np.tile([2.0, -1.0, 0.5], (n, 1))
     s.set_cell_scalar_field("lambdaRelax", lam)
@@ -179,7 +179,7 @@ def test_driver_split_solve_then_advance():
 def test_vector_dirichlet_writes_ghosts():
     s, mesh = _make_solver()
     b = next(b for b in mesh["boundary"] if b["name"] == "xmin")
-    nf = b["nFaces"]
+    nf = b["n_faces"]
     values = np.column_stack(
         [
             np.full(nf, 3.0),
@@ -188,9 +188,9 @@ def test_vector_dirichlet_writes_ghosts():
         ]
     )
     s.set_dirichlet_velocity_boundary_condition_vec(values, "xmin")
-    idx = mesh["n_elements"] + (b["startFace"] - mesh["n_interior_faces"])
-    assert np.allclose(s.U[idx : idx + nf], values)
-    assert b["bc_type_velocity"] == "fixedValue"
+    idx = mesh["n_cells"] + (b["start_face"] - mesh["n_interior_faces"])
+    assert np.allclose(s.velocity[idx : idx + nf], values)
+    assert b["velocity_type"] == "fixedValue"
 
 
 def test_blending_source_relaxes_velocity_to_target():
@@ -199,19 +199,19 @@ def test_blending_source_relaxes_velocity_to_target():
     closed box)."""
     mesh = structured_box(6, 6, 6)
     geo = compute_mesh_geometry(mesh)
-    n = mesh["n_elements"]
+    n = mesh["n_cells"]
     nb = mesh["n_faces"] - mesh["n_interior_faces"]
     for b in mesh["boundary"]:
-        b["bc_type_velocity"] = "zeroGradient"
-    U = np.zeros((n + nb, 3))
+        b["velocity_type"] = "zeroGradient"
+    velocity = np.zeros((n + nb, 3))
     p = np.zeros(n + nb)
-    phi = compute_volumetric_face_flux(U, mesh, geo)
+    face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
     target = np.tile([2.0, -1.0, 0.5], (n, 1))
     lam = np.full(n, 1.0e4)
     mom = assemble_momentum_equation(
-        U,
+        velocity,
         p,
-        phi,
+        face_flux,
         1.0,
         0.05,
         mesh,
@@ -219,7 +219,7 @@ def test_blending_source_relaxes_velocity_to_target():
         mesh["boundary"],
         convection_scheme="central",
         time_step_size=0.1,
-        U_old=U,
+        velocity_old=velocity,
         source_explicit=lam[:, None] * target,
         source_implicit=lam,
     )
@@ -235,7 +235,7 @@ def test_fvm_solver_owns_its_setup_object():
     mesh = structured_box(6, 6, 6)
     cfg = FVMSetup(
         case_name="setup-identity",
-        time=TimeConfig(time_step_size=0.1, end_time=1.0, write_interval=999),
+        time=TimeConfig(time_step_size=0.1, end_time=1.0, output_interval_steps=999),
         boundaries=[
             BoundaryConfig.wall(n) for n in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
         ],

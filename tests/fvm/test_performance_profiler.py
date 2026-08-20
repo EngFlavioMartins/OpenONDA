@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from source.solvers.FVM.config.types import LogConfig
+from source.solvers.FVM.config.types import LoggingConfig
 from source.solvers.FVM.io.logging import Logging, Timer
 from source.solvers.FVM.io.profiling import PerformanceProfiler, numpy_allocation_inventory
 from source.solvers.FVM.solve.linear_interface import LinearSolveResult
@@ -19,7 +19,7 @@ def _serial_context():
 
 
 def _debug_logger(tmp_path):
-    return Logging(tmp_path, config=LogConfig(mode="debug", console=False))
+    return Logging(tmp_path, config=LoggingConfig(mode="debug", console=False))
 
 
 def test_profiler_writes_phase_linear_and_memory_telemetry(tmp_path):
@@ -85,7 +85,7 @@ def test_timer_records_phases_without_emitting_standalone_lines(tmp_path):
 
 
 def test_simple_mode_keeps_the_json_record_but_prints_no_table(tmp_path):
-    logger = Logging(tmp_path, config=LogConfig(mode="simple", console=False))
+    logger = Logging(tmp_path, config=LoggingConfig(mode="simple", console=False))
     profiler = PerformanceProfiler(tmp_path, _serial_context(), logger, enabled=True)
     logger.profiler = profiler
     profiler.begin_step(step=1, time=0.01, time_step_size=0.01)
@@ -125,14 +125,14 @@ def test_numpy_inventory_deduplicates_views_and_shared_references():
     solver = SimpleNamespace(
         mesh_data={"owners": base[:20], "shared": base},
         geo_data={"volume": np.ones(5)},
-        U=base[20:],
+        velocity=base[20:],
         p=None,
-        phi=None,
-        U_old=None,
-        U_old_old=None,
-        phi_old=None,
-        phi_old_old=None,
-        nut=None,
+        face_flux=None,
+        velocity_old=None,
+        velocity_older=None,
+        face_flux_old=None,
+        face_flux_older=None,
+        eddy_viscosity=None,
         turbulence=None,
         algorithm=None,
         _derived_fields={},

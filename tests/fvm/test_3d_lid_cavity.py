@@ -10,11 +10,11 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -42,31 +42,33 @@ def _cosine_clustered_cube(level: int) -> tuple[dict, np.ndarray]:
 
 def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
     mesh, coordinates = _cosine_clustered_cube(level)
-    params_schemes = SchemesConfig(convection_scheme="limitedLinear")
+    params_schemes = DiscretizationConfig(convection_scheme="limitedLinear")
     params_linear = LinearSolverConfig(linear_solver="spsolve")
-    params_pimple = PimpleControl(algorithm="SIMPLE", alpha_u=0.7, alpha_p=0.3)
+    params_pimple = PimpleControl(
+        algorithm="SIMPLE", velocity_relaxation=0.7, pressure_relaxation=0.3
+    )
     config = FVMSetup(
         case_name=f"cubic-cavity-{level}",
-        time=TimeConfig.transient(time_step_size=0.01, duration=50.0, write_interval=10**9),
+        time=TimeConfig.transient(time_step_size=0.01, duration=50.0, output_interval_steps=10**9),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        transport=TransportConfig(density=1.0, nu=1.0e-3),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=1.0e-3),
         boundaries=[
             BoundaryConfig.wall("xmin"),
             BoundaryConfig.wall("xmax"),
             BoundaryConfig.wall("ymin"),
             BoundaryConfig(
                 "ymax",
-                type_velocity="fixedValue",
-                value_velocity=[1.0, 0.0, 0.0],
-                type_p="zeroGradient",
+                velocity_type="fixedValue",
+                velocity_value=[1.0, 0.0, 0.0],
+                pressure_type="zeroGradient",
             ),
             BoundaryConfig.wall("zmin"),
             BoundaryConfig.wall("zmax"),
         ],
         initial_velocity=[0.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = FVMSolver(config, mesh_data=mesh)
@@ -79,7 +81,7 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
         else:
             raise AssertionError(f"cavity level {level} did not reach the nonlinear tolerance")
 
-    velocity = solver.U[: mesh["n_elements"]].reshape(level, level, level, 3)
+    velocity = solver.velocity[: mesh["n_cells"]].reshape(level, level, level, 3)
     middle = [level // 2] if level % 2 else [level // 2 - 1, level // 2]
     u_line = velocity[np.ix_(middle, np.arange(level), middle, [0])].mean(axis=(0, 2, 3))
     v_line = velocity[np.ix_(middle, middle, np.arange(level), [1])].mean(axis=(0, 1, 3))
@@ -95,7 +97,7 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
 
 @pytest.mark.verification
 @pytest.mark.slow
-def test_cubic_lid_cavity_converges_toward_published_centerline_data():
+def test_cubic_lid_cavity_converges_toward_published_centreline_data():
     reference = np.asarray([REFERENCE[name][0] for name in ("u_min", "v_min", "v_max")])
     levels = (6, 8, 12)
     results = [_run_cavity(level) for level in levels]

@@ -28,12 +28,12 @@ class ScalarEquationSolver:
         self.mesh_data = mesh_data
         self.geo_data = geo_data
         self.boundaries = boundaries
-        self.n_elements = mesh_data["n_elements"]
+        self.n_cells = mesh_data["n_cells"]
         self._grad_fn = gradients._resolve_gradient_fn(geo_data)
 
     def _advance_transient_step(
         self,
-        phi_old,
+        face_flux_old,
         spatial_matrix,
         spatial_rhs,
         density,
@@ -45,18 +45,18 @@ class ScalarEquationSolver:
         """Advance one scalar step from the assembled steady spatial balance."""
         if time_scheme == "euler_explicit":
             return time_integration.advance_euler_explicit(
-                phi_old,
+                face_flux_old,
                 spatial_matrix,
                 spatial_rhs,
                 time_step_size,
                 density,
-                self.geo_data["element_volumes"],
+                self.geo_data["cell_volumes"],
             )
         if time_scheme != "euler_implicit":
             raise ValueError(f"Unknown scalar time scheme: {time_scheme}")
 
         transient = time_integration.assemble_transient_term_euler_implicit(
-            phi_old, time_step_size, density, self.geo_data
+            face_flux_old, time_step_size, density, self.geo_data
         )
         spatial_matrix.setdiag(spatial_matrix.diagonal() + transient["ac"])
         rhs = spatial_rhs + transient["bc"]
@@ -73,13 +73,13 @@ class ScalarEquationSolver:
         """Return face mass flux using linearly interpolated density."""
         density = np.asarray(density, dtype=np.float64)
         if density.ndim == 0:
-            density = np.full(self.n_elements, float(density))
-        if density.ndim != 1 or len(density) < self.n_elements:
+            density = np.full(self.n_cells, float(density))
+        if density.ndim != 1 or len(density) < self.n_cells:
             raise ValueError(
                 f"density must be scalar or contain at least {self.n_elements} cell values"
             )
-        if not np.all(np.isfinite(density[: self.n_elements])) or np.any(
-            density[: self.n_elements] <= 0.0
+        if not np.all(np.isfinite(density[: self.n_cells])) or np.any(
+            density[: self.n_cells] <= 0.0
         ):
             raise ValueError("density values must be finite and positive")
 
@@ -113,7 +113,7 @@ class ScalarEquationSolver:
 
         # Ensure gamma is array
         if np.isscalar(gamma):
-            gamma = np.full(self.n_elements, gamma)
+            gamma = np.full(self.n_cells, gamma)
 
         # Compute gradient
         grad_phi = self._grad_fn(phi_initial, self.mesh_data, self.geo_data)
@@ -133,10 +133,10 @@ class ScalarEquationSolver:
         )
 
         # Combine with boundary values
-        n_boundary = len(phi_initial) - self.n_elements
-        phi_solution = np.zeros(self.n_elements + n_boundary)
-        phi_solution[: self.n_elements] = phi_interior
-        phi_solution[self.n_elements :] = phi_initial[self.n_elements :]  # Preserve BCs
+        n_boundary = len(phi_initial) - self.n_cells
+        phi_solution = np.zeros(self.n_cells + n_boundary)
+        phi_solution[: self.n_cells] = phi_interior
+        phi_solution[self.n_cells :] = phi_initial[self.n_cells :]  # Preserve BCs
 
         return phi_solution
 
@@ -204,7 +204,7 @@ class ScalarEquationSolver:
             A, b, method=solver, equation_type="scalar", tol=1e-6, **kwargs
         )
         phi_solution = np.asarray(phi_initial, dtype=np.float64).copy()
-        phi_solution[: self.n_elements] = phi_interior
+        phi_solution[: self.n_cells] = phi_interior
         update_scalar_boundaries(phi_solution, self.mesh_data, self.boundaries, field_name="phi")
         return phi_solution
 
@@ -238,23 +238,23 @@ class ScalarEquationSolver:
 
         # Ensure arrays
         if np.isscalar(density):
-            density = np.full(self.n_elements, density, dtype=np.float64)
+            density = np.full(self.n_cells, density, dtype=np.float64)
         if np.isscalar(gamma):
-            gamma = np.full(self.n_elements, gamma, dtype=np.float64)
+            gamma = np.full(self.n_cells, gamma, dtype=np.float64)
 
         # Storage
         solutions = [phi_initial.copy()]  # Store full field including boundaries
-        phi = phi_initial.copy()
+        face_flux = phi_initial.copy()
 
         for _step in range(n_steps):
-            phi_old = phi[: self.n_elements].copy()
+            face_flux_old = face_flux[: self.n_cells].copy()
 
             # Compute gradient
-            grad_phi = self._grad_fn(phi, self.mesh_data, self.geo_data)
+            grad_phi = self._grad_fn(face_flux, self.mesh_data, self.geo_data)
 
             # Assemble diffusion
             diff_flux = diffusion.assemble_diffusion_term(
-                phi, grad_phi, gamma, self.mesh_data, self.geo_data, self.boundaries
+                face_flux, grad_phi, gamma, self.mesh_data, self.geo_data, self.boundaries
             )
 
             # Assemble the steady spatial balance Aφ = b.  The selected time
@@ -265,7 +265,7 @@ class ScalarEquationSolver:
             )
             b_diff = matrix_assembly.assemble_rhs_from_fluxes_vectorized(diff_flux, self.mesh_data)
             phi_new_interior = self._advance_transient_step(
-                phi_old,
+                face_flux_old,
                 A_diff,
                 b_diff,
                 density,
@@ -274,11 +274,11 @@ class ScalarEquationSolver:
                 solver,
                 kwargs,
             )
-            phi[: self.n_elements] = phi_new_interior
-            update_scalar_boundaries(phi, self.mesh_data, self.boundaries, field_name="phi")
+            face_flux[: self.n_cells] = phi_new_interior
+            update_scalar_boundaries(face_flux, self.mesh_data, self.boundaries, field_name="phi")
 
             # Store full solution including boundaries
-            solutions.append(phi.copy())
+            solutions.append(face_flux.copy())
 
         return solutions
 
@@ -329,31 +329,31 @@ class ScalarEquationSolver:
 
         # Ensure arrays
         if np.isscalar(density):
-            density = np.full(self.n_elements, density, dtype=np.float64)
+            density = np.full(self.n_cells, density, dtype=np.float64)
         if np.isscalar(gamma):
-            gamma = np.full(self.n_elements, gamma, dtype=np.float64)
+            gamma = np.full(self.n_cells, gamma, dtype=np.float64)
 
         # Storage
         solutions = [phi_initial.copy()]
-        phi = phi_initial.copy()
+        face_flux = phi_initial.copy()
 
         # Mass flow rate (assuming steady flow for now)
         mdot = self._mass_flow_rate(velocity, density)
 
         for _step in range(n_steps):
-            phi_old = phi[: self.n_elements].copy()
+            face_flux_old = face_flux[: self.n_cells].copy()
 
             # Compute gradient
-            grad_phi = self._grad_fn(phi, self.mesh_data, self.geo_data)
+            grad_phi = self._grad_fn(face_flux, self.mesh_data, self.geo_data)
 
             # Assemble diffusion
             diff_flux = diffusion.assemble_diffusion_term(
-                phi, grad_phi, gamma, self.mesh_data, self.geo_data, self.boundaries
+                face_flux, grad_phi, gamma, self.mesh_data, self.geo_data, self.boundaries
             )
 
             # Assemble convection
             conv_flux = convection.assemble_convection_term(
-                phi,
+                face_flux,
                 mdot,
                 self.mesh_data,
                 self.geo_data,
@@ -379,7 +379,7 @@ class ScalarEquationSolver:
             )
 
             phi_new_interior = self._advance_transient_step(
-                phi_old,
+                face_flux_old,
                 A_combined,
                 b_combined,
                 density,
@@ -388,9 +388,9 @@ class ScalarEquationSolver:
                 solver,
                 kwargs,
             )
-            phi[: self.n_elements] = phi_new_interior
-            update_scalar_boundaries(phi, self.mesh_data, self.boundaries, field_name="phi")
-            solutions.append(phi.copy())
+            face_flux[: self.n_cells] = phi_new_interior
+            update_scalar_boundaries(face_flux, self.mesh_data, self.boundaries, field_name="phi")
+            solutions.append(face_flux.copy())
 
         return solutions
 

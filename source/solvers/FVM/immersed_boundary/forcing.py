@@ -35,14 +35,14 @@ def roma_delta_1d(r: np.ndarray) -> np.ndarray:
     the grid spacing ``h``; the physical kernel is ``φ(r)/h`` per direction.
     """
     r = np.abs(np.asarray(r, dtype=np.float64))
-    phi = np.zeros_like(r)
+    face_flux = np.zeros_like(r)
     inner = r <= 0.5
-    phi[inner] = (1.0 + np.sqrt(np.maximum(-3.0 * r[inner] ** 2 + 1.0, 0.0))) / 3.0
+    face_flux[inner] = (1.0 + np.sqrt(np.maximum(-3.0 * r[inner] ** 2 + 1.0, 0.0))) / 3.0
     outer = (r > 0.5) & (r <= 1.5)
-    phi[outer] = (
+    face_flux[outer] = (
         5.0 - 3.0 * r[outer] - np.sqrt(np.maximum(-3.0 * (1.0 - r[outer]) ** 2 + 1.0, 0.0))
     ) / 6.0
-    return phi
+    return face_flux
 
 
 def _detect_empty_axis(mesh_data, geo_data) -> int | None:
@@ -52,8 +52,8 @@ def _detect_empty_axis(mesh_data, geo_data) -> int | None:
     the extruded (non-solved) direction.
     """
     for b in mesh_data["boundary"]:
-        if b.get("bc_type_velocity") == "empty":
-            sf = geo_data["face_sf"][b["startFace"] : b["startFace"] + b["nFaces"]]
+        if b.get("velocity_type") == "empty":
+            sf = geo_data["face_sf"][b["start_face"] : b["start_face"] + b["n_faces"]]
             n = np.abs(sf).sum(axis=0)
             return int(np.argmax(n))
     return None
@@ -89,9 +89,9 @@ class IBMForcing:
         self.mesh_data = mesh_data
         self.geo_data = geo_data
 
-        n_elements = mesh_data["n_elements"]
-        centroids = geo_data["element_centroids"][:n_elements]
-        volumes = geo_data["element_volumes"][:n_elements]
+        n_cells = mesh_data["n_cells"]
+        centroids = geo_data["cell_centroids"][:n_cells]
+        volumes = geo_data["cell_volumes"][:n_cells]
 
         # Marker bookkeeping: one global array, slices per body.
         self._body_slices = []
@@ -142,13 +142,13 @@ class IBMForcing:
                 continue
             cells = np.asarray(cells, dtype=np.int64)
             d = centroids[cells] - self.X[s]
-            phi = np.ones(len(cells))
+            face_flux = np.ones(len(cells))
             for a in axes:
-                phi *= roma_delta_1d(d[:, a] / self.h)
-            nz = phi > 0.0
+                face_flux *= roma_delta_1d(d[:, a] / self.h)
+            nz = face_flux > 0.0
             rows.append(np.full(nz.sum(), s, dtype=np.int64))
             cols.append(cells[nz])
-            delta_vals.append(phi[nz] / self.h**ndim)
+            delta_vals.append(face_flux[nz] / self.h**ndim)
 
         if not rows or sum(len(r) for r in rows) == 0:
             raise ValueError(
@@ -160,7 +160,7 @@ class IBMForcing:
         delta_vals = np.concatenate(delta_vals)
 
         # D: raw kernel values delta_h(x_j - X_s)   (Ns x Ncells)
-        self._D = csr_matrix((delta_vals, (rows, cols)), shape=(ns, n_elements))
+        self._D = csr_matrix((delta_vals, (rows, cols)), shape=(ns, n_cells))
         # W: interpolation weights delta * dV, row-normalised so constants are
         # reproduced exactly even on mildly non-uniform supports.
         w_raw = self._D.multiply(dv[np.newaxis, :]).tocsr()
@@ -203,10 +203,10 @@ class IBMForcing:
     # Operators
     # ------------------------------------------------------------------ #
 
-    def interpolate(self, U: np.ndarray) -> np.ndarray:
+    def interpolate(self, velocity: np.ndarray) -> np.ndarray:
         """Interpolate a cell field to the markers: ``I[U]_s`` (Ns, ...)."""
-        n = self.mesh_data["n_elements"]
-        return self._W @ U[:n]
+        n = self.mesh_data["n_cells"]
+        return self._W @ velocity[:n]
 
     def spread(self, F: np.ndarray) -> np.ndarray:
         """Spread a Lagrangian field to cells: ``S[F]_j = Σ_s F_s δ_s(x_j) ε_s``."""
@@ -229,7 +229,9 @@ class IBMForcing:
         """Reset the per-step Lagrangian force accumulator (for force logging)."""
         self.last_F = np.zeros_like(self.last_F)
 
-    def multidirect_correct(self, U: np.ndarray, time_step_size: float, n_iter: int = 2) -> None:
+    def multidirect_correct(
+        self, velocity: np.ndarray, time_step_size: float, n_iter: int = 2
+    ) -> None:
         """Multidirect forcing iterations (Kempe & Fröhlich 2012 / Breugem 2012).
 
         After the forced momentum solve the marker slip is not exactly zero
@@ -246,16 +248,18 @@ class IBMForcing:
             time_step_size:     Time-step size.
             n_iter: Number of residual-forcing iterations.
         """
-        n = self.mesh_data["n_elements"]
+        n = self.mesh_data["n_cells"]
         for _ in range(n_iter):
-            dF = (self.U_target - self.interpolate(U)) / time_step_size
-            U[:n] += time_step_size * self.spread(dF)
+            dF = (self.U_target - self.interpolate(velocity)) / time_step_size
+            velocity[:n] += time_step_size * self.spread(dF)
             self.last_F = self.last_F + dF
-        self.last_slip = float(np.linalg.norm(self.U_target - self.interpolate(U), axis=1).max())
+        self.last_slip = float(
+            np.linalg.norm(self.U_target - self.interpolate(velocity), axis=1).max()
+        )
 
-    def slip_error(self, U: np.ndarray) -> float:
+    def slip_error(self, velocity: np.ndarray) -> float:
         """Max marker slip ``max_s |I[U]_s − U_target_s|`` (no-slip monitor)."""
-        u_marker = self.interpolate(U)
+        u_marker = self.interpolate(velocity)
         return float(np.linalg.norm(self.U_target - u_marker, axis=1).max())
 
     def body_forces(self, rho: float = 1.0) -> dict:

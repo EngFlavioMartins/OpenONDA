@@ -10,12 +10,12 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     LineSampler,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -27,11 +27,11 @@ from ._structured_mesh import structured_box
 def _config(samplers):
     return FVMSetup(
         case_name="postproc",
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.05, write_interval=1),
-        schemes=SchemesConfig(convection_scheme="upwind", time_scheme="euler_implicit"),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.05, output_interval_steps=1),
+        schemes=DiscretizationConfig(convection_scheme="upwind", time_scheme="euler_implicit"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2),
-        transport=TransportConfig(density=1.0, nu=0.02),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [0.5, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax"),

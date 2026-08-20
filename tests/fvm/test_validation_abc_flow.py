@@ -10,11 +10,11 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -26,9 +26,9 @@ from ._structured_mesh import structured_box
 TWO_PI = 2.0 * np.pi
 
 
-def _abc_velocity(points: np.ndarray, time: float, nu: float) -> np.ndarray:
+def _abc_velocity(points: np.ndarray, time: float, kinematic_viscosity: float) -> np.ndarray:
     x, y, z = points.T
-    amplitude = np.exp(-nu * time)
+    amplitude = np.exp(-kinematic_viscosity * time)
     return amplitude * np.column_stack(
         [np.sin(z) + np.cos(y), np.sin(x) + np.cos(z), np.sin(y) + np.cos(x)]
     )
@@ -44,41 +44,43 @@ def _run_abc(level: int, *, time_step_size: float = 0.005, steps: int = 4) -> tu
         BoundaryConfig.cyclic("zmin", "zmax"),
         BoundaryConfig.cyclic("zmax", "zmin"),
     ]
-    nu = 0.1
-    params_schemes = SchemesConfig(convection_scheme="central", time_scheme="backward")
+    kinematic_viscosity = 0.1
+    params_schemes = DiscretizationConfig(convection_scheme="central", time_scheme="backward")
     params_linear = LinearSolverConfig(linear_solver="spsolve")
     params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=2)
     config = FVMSetup(
         case_name="abc-periodic-3d",
         time=TimeConfig(
-            time_step_size=time_step_size, end_time=steps * time_step_size, write_interval=10**9
+            time_step_size=time_step_size,
+            end_time=steps * time_step_size,
+            output_interval_steps=10**9,
         ),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        transport=TransportConfig(density=1.0, nu=nu),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=kinematic_viscosity),
         boundaries=boundaries,
         initial_velocity=[0.0, 0.0, 0.0],
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = FVMSolver(config, mesh_data=mesh)
         solver.auto_write = False
-        n_cells = mesh["n_elements"]
-        centers = solver.geo_data["element_centroids"]
-        initial_velocity = _abc_velocity(centers, 0.0, nu)
+        n_cells = mesh["n_cells"]
+        centres = solver.geo_data["cell_centroids"]
+        initial_velocity = _abc_velocity(centres, 0.0, kinematic_viscosity)
         solver.set_initial_velocity(initial_velocity)
-        solver.p[:n_cells] = -0.5 * np.sum(initial_velocity**2, axis=1)
-        solver.p[:n_cells] -= np.mean(solver.p[:n_cells])
-        update_scalar_boundaries(solver.p, mesh, solver.boundaries, field_name="p")
-        solver.phi = compute_volumetric_face_flux(solver.U, mesh, solver.geo_data)
+        solver.kinematic_pressure[:n_cells] = -0.5 * np.sum(initial_velocity**2, axis=1)
+        solver.kinematic_pressure[:n_cells] -= np.mean(solver.kinematic_pressure[:n_cells])
+        update_scalar_boundaries(solver.kinematic_pressure, mesh, solver.boundaries, field_name="p")
+        solver.face_flux = compute_volumetric_face_flux(solver.velocity, mesh, solver.geo_data)
 
         for _ in range(steps):
             solver.solve_pimple(time_step_size)
             solver.advance_time()
 
-    exact = _abc_velocity(centers, steps * time_step_size, nu)
-    volumes = solver.geo_data["element_volumes"]
-    error = np.sqrt(np.sum(volumes[:, None] * (solver.U[:n_cells] - exact) ** 2))
+    exact = _abc_velocity(centres, steps * time_step_size, kinematic_viscosity)
+    volumes = solver.geo_data["cell_volumes"]
+    error = np.sqrt(np.sum(volumes[:, None] * (solver.velocity[:n_cells] - exact) ** 2))
     norm = np.sqrt(np.sum(volumes[:, None] * exact**2))
     return float(error / norm), solver.last_diagnostics.continuity_max
 

@@ -14,7 +14,7 @@ import taichi as ti
 
 # Import VPM constants
 from ..config.constants import MAX_PARTICLES
-from ..config.types import CachedParticleProperty
+from ..config.state import cached_particle_property
 from ..io.logging import Logging
 
 
@@ -107,9 +107,9 @@ class Particles:
         self._max_particles = max_particles
         self.float_dtype = float_dtype or "f32"
         self._taichi_dtype = ti.f32 if self.float_dtype == "f32" else ti.f64
-        self.number_of_particles = 0
+        self.n_particles = 0
         self.step = 0  # For cache invalidation
-        self._cached_step = -1  # Track when cache was last updated
+        self._cache_step = -1  # Track when cache was last updated
         # Monotone source-state version for consumers that cache spatial
         # acceleration structures.  Velocity/diagnostic writes do not affect
         # Biot-Savart sources; positions, circulation, radii, and population do.
@@ -145,7 +145,7 @@ class Particles:
     def touch_state(self) -> None:
         """Invalidate acceleration structures after a source-state mutation."""
         self._state_revision += 1
-        self._cached_step = -1
+        self._cache_step = -1
 
     def _init_taichi_fields(self):
         """Initialize all Taichi fields for particle data storage with configurable dtype."""
@@ -153,14 +153,14 @@ class Particles:
         # Vector fields for 3D properties
         self.position = ti.Vector.field(3, dtype=dtype, shape=self._max_particles)
         self.velocity = ti.Vector.field(3, dtype=dtype, shape=self._max_particles)
-        self.circulation = ti.Vector.field(3, dtype=dtype, shape=self._max_particles)
+        self.vortex_strength = ti.Vector.field(3, dtype=dtype, shape=self._max_particles)
         self.vorticity = ti.Vector.field(3, dtype=dtype, shape=self._max_particles)
         # Scalar fields
-        self.radius = ti.field(dtype=dtype, shape=self._max_particles)
+        self.core_radius = ti.field(dtype=dtype, shape=self._max_particles)
         self.volume = ti.field(dtype=dtype, shape=self._max_particles)
-        self.viscosity = ti.field(dtype=dtype, shape=self._max_particles)
-        self.viscosity_turbulent = ti.field(dtype=dtype, shape=self._max_particles)
-        self.viscosity_effective = ti.field(dtype=dtype, shape=self._max_particles)
+        self.kinematic_viscosity = ti.field(dtype=dtype, shape=self._max_particles)
+        self.eddy_viscosity = ti.field(dtype=dtype, shape=self._max_particles)
+        self.effective_viscosity = ti.field(dtype=dtype, shape=self._max_particles)
         self.group_id = ti.field(dtype=ti.i32, shape=self._max_particles)
         # Matrix fields
         self.velocity_gradient = ti.Matrix.field(3, 3, dtype=dtype, shape=self._max_particles)
@@ -168,7 +168,7 @@ class Particles:
         self.zone_id = ti.field(dtype=ti.i32, shape=self._max_particles)
 
         # Device-side counter for atomic operations
-        self.device_number_of_particles = ti.field(dtype=ti.i32, shape=())
+        self.device_n_particles = ti.field(dtype=ti.i32, shape=())
 
         # Removal tag field for GPU-based particle filtering (1 = remove, 0 = keep)
         self._removal_tags = ti.field(dtype=ti.i32, shape=self._max_particles)
@@ -176,7 +176,7 @@ class Particles:
         # Device-side accumulators for subset moment reductions (e.g. circulation
         # and linear impulse of removed particles) — kept on device to avoid a
         # full position/circulation download just to sum a handful of indices.
-        self._subset_circulation = ti.Vector.field(3, dtype=dtype, shape=())
+        self._subset_vortex_strength = ti.Vector.field(3, dtype=dtype, shape=())
         self._subset_impulse = ti.Vector.field(3, dtype=dtype, shape=())
 
         # Global background velocity (single 3D vector shared by all particles)
@@ -185,11 +185,11 @@ class Particles:
 
     def sync_device_counter(self):
         """Sync host particle count to device field."""
-        self.device_number_of_particles[None] = self.number_of_particles
+        self.device_n_particles[None] = self.n_particles
 
     def sync_host_counter(self):
         """Sync device particle count to host."""
-        self.number_of_particles = self.device_number_of_particles[None]
+        self.n_particles = self.device_n_particles[None]
 
     def _grow_capacity(self, needed: int) -> None:
         """Validate that a particle insertion fits the startup allocation."""
@@ -351,12 +351,12 @@ class Particles:
         return {
             "position": self._extract_vector(self.position, n),
             "velocity": self._extract_vector(self.velocity, n),
-            "circulation": self._extract_vector(self.circulation, n),
-            "radius": self._extract_scalar(self.radius, n),
+            "vortex_strength": self._extract_vector(self.vortex_strength, n),
+            "core_radius": self._extract_scalar(self.core_radius, n),
             "volume": self._extract_scalar(self.volume, n),
-            "viscosity": self._extract_scalar(self.viscosity, n),
-            "viscosity_turbulent": self._extract_scalar(self.viscosity_turbulent, n),
-            "viscosity_effective": self._extract_scalar(self.viscosity_effective, n),
+            "kinematic_viscosity": self._extract_scalar(self.kinematic_viscosity, n),
+            "eddy_viscosity": self._extract_scalar(self.eddy_viscosity, n),
+            "effective_viscosity": self._extract_scalar(self.effective_viscosity, n),
             "group_id": self._extract_int(self.group_id, n),
             "velocity_gradient": self._extract_matrix(self.velocity_gradient, n),
             "strain_rate": self._extract_matrix(self.strain_rate, n),
@@ -447,13 +447,13 @@ class Particles:
     @ti.kernel
     def _accumulate_subset_moments(self, indices: ti.types.ndarray(), n_idx: ti.i32):  # type: ignore
         """Sum circulation ΣΓ and linear impulse 0.5·Σ(r×Γ) over a subset of indices (device-side)."""
-        self._subset_circulation[None] = ti.Vector.zero(self._taichi_dtype, 3)
+        self._subset_vortex_strength[None] = ti.Vector.zero(self._taichi_dtype, 3)
         self._subset_impulse[None] = ti.Vector.zero(self._taichi_dtype, 3)
         for m in range(n_idx):
             i = indices[m]
             p = self.position[i]
-            c = self.circulation[i]
-            self._subset_circulation[None] += c
+            c = self.vortex_strength[i]
+            self._subset_vortex_strength[None] += c
             self._subset_impulse[None] += 0.5 * p.cross(c)
 
     def subset_moments(self, indices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -474,24 +474,24 @@ class Particles:
             zero = np.zeros(3, dtype=self._np_float_dtype)
             return zero, zero.copy()
         self._accumulate_subset_moments(idx, idx.size)
-        circ = self._subset_circulation[None].to_numpy()
+        vortex_strength = self._subset_vortex_strength[None].to_numpy()
         impulse = self._subset_impulse[None].to_numpy()
-        return circ, impulse
+        return vortex_strength, impulse
 
     @ti.kernel
-    def _accumulate_prefix_circulation(self, n: ti.i32):  # type: ignore
+    def _accumulate_prefix_vortex_strength(self, n: ti.i32):  # type: ignore
         """Sum ΣΓ over the first n live particles (device-side)."""
-        self._subset_circulation[None] = ti.Vector.zero(self._taichi_dtype, 3)
+        self._subset_vortex_strength[None] = ti.Vector.zero(self._taichi_dtype, 3)
         for i in range(n):
-            self._subset_circulation[None] += self.circulation[i]
+            self._subset_vortex_strength[None] += self.vortex_strength[i]
 
-    def total_circulation(self) -> np.ndarray:
+    def total_vortex_strength(self) -> np.ndarray:
         """Sum ΣΓ over all live particles on device, returning a shape-(3,) array."""
-        n = self.number_of_particles
+        n = self.n_particles
         if n == 0:
             return np.zeros(3, dtype=self._np_float_dtype)
-        self._accumulate_prefix_circulation(n)
-        return self._subset_circulation[None].to_numpy()
+        self._accumulate_prefix_vortex_strength(n)
+        return self._subset_vortex_strength[None].to_numpy()
 
     @ti.kernel
     def _tag_particles_in_bounds_kernel(
@@ -538,7 +538,7 @@ class Particles:
         self,
         positions: ti.template(),
         velocities: ti.template(),
-        strengths: ti.template(),
+        vortex_strength: ti.template(),
         vorticities: ti.template(),
         radii: ti.template(),
         volumes: ti.template(),
@@ -565,7 +565,7 @@ class Particles:
                 if write_idx != i:  # Only copy if indices differ
                     positions[write_idx] = positions[i]
                     velocities[write_idx] = velocities[i]
-                    strengths[write_idx] = strengths[i]
+                    vortex_strength[write_idx] = vortex_strength[i]
                     vorticities[write_idx] = vorticities[i]
                     radii[write_idx] = radii[i]
                     volumes[write_idx] = volumes[i]
@@ -607,7 +607,7 @@ class Particles:
         if len(bounds) != 6:
             raise ValueError("bounds must be [xmin, xmax, ymin, ymax, zmin, zmax]")
 
-        n = self.number_of_particles
+        n = self.n_particles
         if n == 0:
             return 0
 
@@ -641,11 +641,11 @@ class Particles:
 
         new_position = position[keep_mask]
         new_velocity = self._extract_vector(self.velocity, n)[keep_mask]
-        new_circulation = self._extract_vector(self.circulation, n)[keep_mask]
-        new_radius = self._extract_scalar(self.radius, n)[keep_mask]
+        new_vortex_strength = self._extract_vector(self.vortex_strength, n)[keep_mask]
+        new_radius = self._extract_scalar(self.core_radius, n)[keep_mask]
         new_volume = self._extract_scalar(self.volume, n)[keep_mask]
-        new_viscosity = self._extract_scalar(self.viscosity, n)[keep_mask]
-        new_viscosity_turbulent = self._extract_scalar(self.viscosity_turbulent, n)[keep_mask]
+        new_viscosity = self._extract_scalar(self.kinematic_viscosity, n)[keep_mask]
+        new_viscosity_turbulent = self._extract_scalar(self.eddy_viscosity, n)[keep_mask]
         new_group_id = self._extract_int(self.group_id, n)[keep_mask]
         new_zone_id = self._extract_int(self.zone_id, n)[keep_mask]
         new_velocity_gradient = self._extract_matrix(self.velocity_gradient, n)[keep_mask]
@@ -654,11 +654,11 @@ class Particles:
         self.replace_from_numpy(
             position=new_position,
             velocity=new_velocity,
-            circulation=new_circulation,
-            radius=new_radius,
+            vortex_strength=new_vortex_strength,
+            core_radius=new_radius,
             volume=new_volume,
-            viscosity=new_viscosity,
-            viscosity_turbulent=new_viscosity_turbulent,
+            kinematic_viscosity=new_viscosity,
+            eddy_viscosity=new_viscosity_turbulent,
             group_id=new_group_id,
             zone_id=new_zone_id,
             velocity_gradient=new_velocity_gradient,
@@ -671,13 +671,13 @@ class Particles:
         self,
         position,
         velocity,
-        circulation,
+        vortex_strength,
         vorticity,
-        radius,
+        core_radius,
         volume,
-        viscosity,
-        viscosity_turbulent,
-        viscosity_effective,
+        kinematic_viscosity,
+        eddy_viscosity,
+        effective_viscosity,
         group_id,
         zone_id,
         velocity_gradient,
@@ -693,7 +693,7 @@ class Particles:
         fields on every call would cause GPU memory exhaustion.
         """
         N = position.shape[0]
-        start_idx = self.number_of_particles
+        start_idx = self.n_particles
 
         # Check if we have enough space
         if start_idx + N > self._max_particles:
@@ -702,15 +702,15 @@ class Particles:
         # Copy vectors directly using pre-compiled kernels (no temp fields!)
         self._copy_vectors_chunked(position, self.position, start_idx, N)
         self._copy_vectors_chunked(velocity, self.velocity, start_idx, N)
-        self._copy_vectors_chunked(circulation, self.circulation, start_idx, N)
+        self._copy_vectors_chunked(vortex_strength, self.vortex_strength, start_idx, N)
         self._copy_vectors_chunked(vorticity, self.vorticity, start_idx, N)
 
         # Copy scalars directly
-        self._copy_scalars_chunked(radius, self.radius, start_idx, N)
+        self._copy_scalars_chunked(core_radius, self.core_radius, start_idx, N)
         self._copy_scalars_chunked(volume, self.volume, start_idx, N)
-        self._copy_scalars_chunked(viscosity, self.viscosity, start_idx, N)
-        self._copy_scalars_chunked(viscosity_turbulent, self.viscosity_turbulent, start_idx, N)
-        self._copy_scalars_chunked(viscosity_effective, self.viscosity_effective, start_idx, N)
+        self._copy_scalars_chunked(kinematic_viscosity, self.kinematic_viscosity, start_idx, N)
+        self._copy_scalars_chunked(eddy_viscosity, self.eddy_viscosity, start_idx, N)
+        self._copy_scalars_chunked(effective_viscosity, self.effective_viscosity, start_idx, N)
 
         # Copy integer fields
         self._copy_ints_chunked(group_id, self.group_id, start_idx, N)
@@ -783,12 +783,12 @@ class Particles:
         self,
         position,
         velocity,
-        circulation,
-        radius,
+        vortex_strength,
+        core_radius,
         volume,
-        viscosity,
-        viscosity_turbulent,
-        viscosity_effective,
+        kinematic_viscosity,
+        eddy_viscosity,
+        effective_viscosity,
         group_id,
         velocity_gradient,
         strain_rate,
@@ -801,16 +801,16 @@ class Particles:
         # Validate all inputs and convert to f32/i32
         position = self._validate_numpy_input(position, (3,), "position")
         velocity = self._validate_numpy_input(velocity, (3,), "velocity")
-        circulation = self._validate_numpy_input(circulation, (3,), "circulation")
+        vortex_strength = self._validate_numpy_input(vortex_strength, (3,), "vortex_strength")
         vorticity = self._validate_numpy_input(vorticity, (3,), "vorticity")
-        radius = self._validate_numpy_input(radius, (), "radius")
+        core_radius = self._validate_numpy_input(core_radius, (), "core_radius")
         volume = self._validate_numpy_input(volume, (), "volume")
-        viscosity = self._validate_numpy_input(viscosity, (), "viscosity")
-        viscosity_turbulent = self._validate_numpy_input(
-            viscosity_turbulent, (), "viscosity_turbulent"
+        kinematic_viscosity = self._validate_numpy_input(
+            kinematic_viscosity, (), "kinematic_viscosity"
         )
-        viscosity_effective = self._validate_numpy_input(
-            viscosity_effective, (), "viscosity_effective"
+        eddy_viscosity = self._validate_numpy_input(eddy_viscosity, (), "eddy_viscosity")
+        effective_viscosity = self._validate_numpy_input(
+            effective_viscosity, (), "effective_viscosity"
         )
         group_id = self._validate_numpy_input(group_id, (), "group_id")
         zone_id = self._validate_numpy_input(zone_id, (), "zone_id")
@@ -823,85 +823,85 @@ class Particles:
         # intentionally separate from the chunked append path above.
         self._replace_field_native("vector", self.position, position, count)
         self._replace_field_native("vector", self.velocity, velocity, count)
-        self._replace_field_native("vector", self.circulation, circulation, count)
+        self._replace_field_native("vector", self.vortex_strength, vortex_strength, count)
         self._replace_field_native("vector", self.vorticity, vorticity, count)
-        self._replace_field_native("scalar", self.radius, radius, count)
+        self._replace_field_native("scalar", self.core_radius, core_radius, count)
         self._replace_field_native("scalar", self.volume, volume, count)
-        self._replace_field_native("scalar", self.viscosity, viscosity, count)
-        self._replace_field_native("scalar", self.viscosity_turbulent, viscosity_turbulent, count)
-        self._replace_field_native("scalar", self.viscosity_effective, viscosity_effective, count)
+        self._replace_field_native("scalar", self.kinematic_viscosity, kinematic_viscosity, count)
+        self._replace_field_native("scalar", self.eddy_viscosity, eddy_viscosity, count)
+        self._replace_field_native("scalar", self.effective_viscosity, effective_viscosity, count)
         self._replace_field_native("int", self.group_id, group_id, count)
         self._replace_field_native("int", self.zone_id, zone_id, count)
         self._replace_field_native("matrix", self.velocity_gradient, velocity_gradient, count)
         self._replace_field_native("matrix", self.strain_rate, strain_rate, count)
 
-        self.number_of_particles = count
+        self.n_particles = count
 
     # CPU access methods (return NumPy arrays) - now with caching
-    @CachedParticleProperty
+    @cached_particle_property
     def position_cpu(self):
         """Get positions as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_vector(self.position, self.number_of_particles)
+        return self._extract_vector(self.position, self.n_particles)
 
-    @CachedParticleProperty
+    @cached_particle_property
     def velocity_cpu(self):
         """Get velocities as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_vector(self.velocity, self.number_of_particles)
+        return self._extract_vector(self.velocity, self.n_particles)
 
-    @CachedParticleProperty
-    def circulation_cpu(self):
+    @cached_particle_property
+    def vortex_strength_cpu(self):
         """Get strengths as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_vector(self.circulation, self.number_of_particles)
+        return self._extract_vector(self.vortex_strength, self.n_particles)
 
-    @CachedParticleProperty
-    def radius_cpu(self):
+    @cached_particle_property
+    def core_radius_cpu(self):
         """Get radii as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_scalar(self.radius, self.number_of_particles)
+        return self._extract_scalar(self.core_radius, self.n_particles)
 
-    @CachedParticleProperty
+    @cached_particle_property
     def volume_cpu(self):
         """Get volumes as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_scalar(self.volume, self.number_of_particles)
+        return self._extract_scalar(self.volume, self.n_particles)
 
-    @CachedParticleProperty
-    def viscosity_cpu(self):
+    @cached_particle_property
+    def kinematic_viscosity_cpu(self):
         """Get viscosities as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_scalar(self.viscosity, self.number_of_particles)
+        return self._extract_scalar(self.kinematic_viscosity, self.n_particles)
 
-    @CachedParticleProperty
-    def viscosity_turbulent_cpu(self):
+    @cached_particle_property
+    def eddy_viscosity_cpu(self):
         """Get turbulent viscosities as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_scalar(self.viscosity_turbulent, self.number_of_particles)
+        return self._extract_scalar(self.eddy_viscosity, self.n_particles)
 
-    @CachedParticleProperty
-    def viscosity_effective_cpu(self):
+    @cached_particle_property
+    def effective_viscosity_cpu(self):
         """Get effective viscosities as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_scalar(self.viscosity_effective, self.number_of_particles)
+        return self._extract_scalar(self.effective_viscosity, self.n_particles)
 
-    @CachedParticleProperty
+    @cached_particle_property
     def group_id_cpu(self):
         """Get group IDs as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_int(self.group_id, self.number_of_particles)
+        return self._extract_int(self.group_id, self.n_particles)
 
-    @CachedParticleProperty
+    @cached_particle_property
     def velocity_gradient_cpu(self):
         """Get gradient of velocity field on CPU - cached per time step."""
-        return self._extract_matrix(self.velocity_gradient, self.number_of_particles)
+        return self._extract_matrix(self.velocity_gradient, self.n_particles)
 
-    @CachedParticleProperty
+    @cached_particle_property
     def strain_rate_cpu(self):
         """Get strain rate tensors as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_matrix(self.strain_rate, self.number_of_particles)
+        return self._extract_matrix(self.strain_rate, self.n_particles)
 
-    @CachedParticleProperty
+    @cached_particle_property
     def vorticity_cpu(self):
         """Get vorticities as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_vector(self.vorticity, self.number_of_particles)
+        return self._extract_vector(self.vorticity, self.n_particles)
 
-    @CachedParticleProperty
+    @cached_particle_property
     def zone_id_cpu(self):
         """Get zone IDs as NumPy array (CPU copy) - cached per time step."""
-        return self._extract_int(self.zone_id, self.number_of_particles)
+        return self._extract_int(self.zone_id, self.n_particles)
 
     def velocity_background_cpu(self) -> np.ndarray:
         """Get background velocity as NumPy array (3,)."""
@@ -922,25 +922,25 @@ class Particles:
         ]
 
     def __len__(self):
-        return int(self.number_of_particles)
+        return int(self.n_particles)
 
     def __str__(self):
         """Return formatted string representation of particle system statistics."""
         lines = []
 
-        N = self.number_of_particles
+        N = self.n_particles
         lines.append(f"  Number of Particles      : {N:,}")
 
         if N > 0:
             # Get particle data
             positions = self.position_cpu()
-            radii = self.radius_cpu()
+            radii = self.core_radius_cpu()
             volumes = self.volume_cpu()
-            strengths = self.circulation_cpu()
+            vortex_strength = self.vortex_strength_cpu()
             velocities = self.velocity_cpu()
 
             # Compute statistics
-            strength_mag = np.linalg.norm(strengths, axis=1)
+            vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
             velocity_mag = np.linalg.norm(velocities, axis=1)
 
             # Spatial extent
@@ -971,9 +971,15 @@ class Particles:
             lines.append(f"    Total                  : {np.sum(volumes):.4e} m³")
 
             lines.append("  Vortex Strength Magnitude:")
-            lines.append(f"    Min                    : {np.min(strength_mag):.4e} m³/s")
-            lines.append(f"    Max                    : {np.max(strength_mag):.4e} m³/s")
-            lines.append(f"    Mean                   : {np.mean(strength_mag):.4e} m³/s")
+            lines.append(
+                f"    Min                    : {np.min(vortex_strength_magnitude):.4e} m³/s"
+            )
+            lines.append(
+                f"    Max                    : {np.max(vortex_strength_magnitude):.4e} m³/s"
+            )
+            lines.append(
+                f"    Mean                   : {np.mean(vortex_strength_magnitude):.4e} m³/s"
+            )
 
             lines.append("  Velocity Magnitude:")
             lines.append(f"    Min                    : {np.min(velocity_mag):.4e} m/s")
@@ -1000,12 +1006,12 @@ class Particles:
         return {
             "position": self.position_cpu()[index],
             "velocity": self.velocity_cpu()[index],
-            "strength": self.circulation_cpu()[index],
-            "radius": self.radius_cpu()[index],
+            "strength": self.vortex_strength_cpu()[index],
+            "core_radius": self.core_radius_cpu()[index],
             "volume": self.volume_cpu()[index],
-            "viscosity": self.viscosity_cpu()[index],
-            "viscosity_t": self.viscosity_turbulent_cpu()[index],
-            "viscosity_eff": self.viscosity_effective_cpu()[index],
+            "kinematic_viscosity": self.kinematic_viscosity_cpu()[index],
+            "viscosity_t": self.eddy_viscosity_cpu()[index],
+            "viscosity_eff": self.effective_viscosity_cpu()[index],
             "group_id": self.group_id_cpu()[index],
             "velocity_gradient": self.velocity_gradient_cpu()[index],
             "strain_rate": self.strain_rate_cpu()[index],
@@ -1015,7 +1021,7 @@ class Particles:
 
     def _log_population(self, change: str, source: str) -> None:
         """Report the population left behind by an operation that changed it."""
-        total = int(self.number_of_particles)
+        total = int(self.n_particles)
         capacity = self.capacity
         fraction = 100.0 * total / capacity if capacity else 0.0
         Logging.message(
@@ -1034,10 +1040,10 @@ class Particles:
         self,
         position: np.ndarray = np.zeros(3),
         velocity: np.ndarray = np.zeros(3),
-        strength: np.ndarray = np.zeros(3),
-        radius: float = 1.0,
+        vortex_strength: np.ndarray = np.zeros(3),
+        core_radius: float = 1.0,
         volume: float = 1.0,
-        viscosity: float = 0.0,
+        kinematic_viscosity: float = 0.0,
         viscosity_t: float = 0.0,
         group_id: int = 0,
         zone_id: int = 0,
@@ -1045,44 +1051,44 @@ class Particles:
         vorticity: np.ndarray = np.zeros(3),
     ):
         # Ensure we have space for one more particle
-        self._grow_capacity(self.number_of_particles + 1)
+        self._grow_capacity(self.n_particles + 1)
 
         # Prepare data arrays with a single particle (using float32 for Taichi compatibility)
         position = np.ascontiguousarray(position, dtype=np.float32).reshape(1, 3)
         velocity = np.ascontiguousarray(velocity, dtype=np.float32).reshape(1, 3)
-        strength = np.ascontiguousarray(strength, dtype=np.float32).reshape(1, 3)
+        vortex_strength = np.ascontiguousarray(vortex_strength, dtype=np.float32).reshape(1, 3)
         vorticity = np.ascontiguousarray(vorticity, dtype=np.float32).reshape(1, 3)
         grad_u = np.ascontiguousarray(grad_u, dtype=np.float32).reshape(1, 3, 3)
         Sij = np.ascontiguousarray(np.zeros((1, 3, 3), dtype=np.float32))
 
         # Scalar values
         # Scalar values
-        radius = np.array([radius], dtype=np.float32).reshape(1)
+        core_radius = np.array([core_radius], dtype=np.float32).reshape(1)
         volume = np.array([volume], dtype=np.float32).reshape(1)
-        viscosity = np.array([viscosity], dtype=np.float32).reshape(1)
+        kinematic_viscosity = np.array([kinematic_viscosity], dtype=np.float32).reshape(1)
         viscosity_t = np.array([viscosity_t], dtype=np.float32).reshape(1)
-        viscosity_eff = np.array([viscosity + viscosity_t], dtype=np.float32).reshape(1)
+        viscosity_eff = np.array([kinematic_viscosity + viscosity_t], dtype=np.float32).reshape(1)
         group_id = np.array([group_id], dtype=np.int32).reshape(1)
         zone_id = np.array([zone_id], dtype=np.int32).reshape(1)
 
         # Copy to Taichi fields at the current end position
-        idx = self.number_of_particles
+        idx = self.n_particles
         self._copy_to_taichi_vectors(position, self.position, idx, 1)
         self._copy_to_taichi_vectors(velocity, self.velocity, idx, 1)
-        self._copy_to_taichi_vectors(strength, self.circulation, idx, 1)
+        self._copy_to_taichi_vectors(vortex_strength, self.vortex_strength, idx, 1)
         self._copy_to_taichi_vectors(vorticity, self.vorticity, idx, 1)
-        self._copy_to_taichi_scalars(radius, self.radius, idx, 1)
+        self._copy_to_taichi_scalars(core_radius, self.core_radius, idx, 1)
         self._copy_to_taichi_scalars(volume, self.volume, idx, 1)
-        self._copy_to_taichi_scalars(viscosity, self.viscosity, idx, 1)
-        self._copy_to_taichi_scalars(viscosity_t, self.viscosity_turbulent, idx, 1)
-        self._copy_to_taichi_scalars(viscosity_eff, self.viscosity_effective, idx, 1)
+        self._copy_to_taichi_scalars(kinematic_viscosity, self.kinematic_viscosity, idx, 1)
+        self._copy_to_taichi_scalars(viscosity_t, self.eddy_viscosity, idx, 1)
+        self._copy_to_taichi_scalars(viscosity_eff, self.effective_viscosity, idx, 1)
         self._copy_to_taichi_ints(group_id, self.group_id, idx, 1)
         self._copy_to_taichi_ints(zone_id, self.zone_id, idx, 1)
         self._copy_to_taichi_matrices(grad_u, self.velocity_gradient, idx, 1)
         self._copy_to_taichi_matrices(Sij, self.strain_rate, idx, 1)
 
         # Increment particle count
-        self.number_of_particles += 1
+        self.n_particles += 1
         self.touch_state()
         self._log_particles_added(1, "single")
 
@@ -1090,11 +1096,11 @@ class Particles:
         self,
         position: np.ndarray,
         velocity: np.ndarray,
-        circulation: np.ndarray,
-        radius: np.ndarray,
+        vortex_strength: np.ndarray,
+        core_radius: np.ndarray,
         volume: np.ndarray,
-        viscosity: np.ndarray,
-        viscosity_turbulent: np.ndarray = None,
+        kinematic_viscosity: np.ndarray,
+        eddy_viscosity: np.ndarray = None,
         group_id: np.ndarray = None,
         zone_id: np.ndarray = None,
         velocity_gradient: np.ndarray = None,
@@ -1124,13 +1130,13 @@ class Particles:
         # ---- INPUT VALIDATION: NaN/Inf CHECKS ----
         _validate_finite_array(position, "position")
         _validate_finite_array(velocity, "velocity")
-        _validate_finite_array(circulation, "circulation")
-        _validate_finite_array(radius, "radius")
+        _validate_finite_array(vortex_strength, "vortex_strength")
+        _validate_finite_array(core_radius, "core_radius")
         _validate_finite_array(volume, "volume")
-        _validate_finite_array(viscosity, "viscosity")
+        _validate_finite_array(kinematic_viscosity, "kinematic_viscosity")
 
-        if viscosity_turbulent is not None:
-            _validate_finite_array(viscosity_turbulent, "viscosity_turbulent")
+        if eddy_viscosity is not None:
+            _validate_finite_array(eddy_viscosity, "eddy_viscosity")
         if velocity_gradient is not None:
             _validate_finite_array(velocity_gradient, "velocity_gradient")
 
@@ -1142,25 +1148,25 @@ class Particles:
         time_step_size = self._np_float_dtype
         position = np.ascontiguousarray(position, dtype=time_step_size)
         velocity = np.ascontiguousarray(velocity, dtype=time_step_size)
-        circulation = np.ascontiguousarray(circulation, dtype=time_step_size)
-        radius = np.ascontiguousarray(radius, dtype=time_step_size)
+        vortex_strength = np.ascontiguousarray(vortex_strength, dtype=time_step_size)
+        core_radius = np.ascontiguousarray(core_radius, dtype=time_step_size)
         volume = np.ascontiguousarray(volume, dtype=time_step_size)
-        viscosity = np.ascontiguousarray(viscosity, dtype=time_step_size)
+        kinematic_viscosity = np.ascontiguousarray(kinematic_viscosity, dtype=time_step_size)
 
         N = position.shape[0]
-        if position.shape[1] != 3 or velocity.shape[1] != 3 or circulation.shape[1] != 3:
+        if position.shape[1] != 3 or velocity.shape[1] != 3 or vortex_strength.shape[1] != 3:
             raise ValueError("Position, velocity, and circulation must have shape (N x 3).")
-        if not (radius.shape[0] == N):
+        if not (core_radius.shape[0] == N):
             raise ValueError("Radius must match the number of positions.")
 
         # Ensure all arrays are contiguous and have the correct shape
-        if viscosity_turbulent is None:
-            viscosity_turbulent = np.zeros(N, dtype=time_step_size)
+        if eddy_viscosity is None:
+            eddy_viscosity = np.zeros(N, dtype=time_step_size)
         else:
-            viscosity_turbulent = np.ascontiguousarray(viscosity_turbulent, dtype=time_step_size)
+            eddy_viscosity = np.ascontiguousarray(eddy_viscosity, dtype=time_step_size)
 
         # Calculate effective viscosity
-        viscosity_effective = viscosity + viscosity_turbulent
+        effective_viscosity = kinematic_viscosity + eddy_viscosity
 
         # Prepare other fields
         group_id = _coerce_int_id_array(group_id, N)
@@ -1176,26 +1182,26 @@ class Particles:
         strain_rate = np.zeros((N, 3, 3), dtype=time_step_size)
 
         # Initialize vorticity field: vorticity = circulation / volume
-        vorticity = (circulation / volume[:, None]).astype(time_step_size)
+        vorticity = (vortex_strength / volume[:, None]).astype(time_step_size)
 
         # Ensure we have enough space for all particles
-        total_particles = self.number_of_particles + N
+        total_particles = self.n_particles + N
         self._grow_capacity(total_particles)
 
         # Copy all data to Taichi fields at once
-        start_idx = self.number_of_particles
+        start_idx = self.n_particles
 
         # Try fast batch add first (for initial particle loading)
         if not self._fast_batch_add(
             position,
             velocity,
-            circulation,
+            vortex_strength,
             vorticity,
-            radius,
+            core_radius,
             volume,
-            viscosity,
-            viscosity_turbulent,
-            viscosity_effective,
+            kinematic_viscosity,
+            eddy_viscosity,
+            effective_viscosity,
             group_id,
             zone_id,
             velocity_gradient,
@@ -1204,20 +1210,20 @@ class Particles:
             # Fall back to element-by-element copy for appending
             self._copy_vectors_chunked(position, self.position, start_idx, N)
             self._copy_vectors_chunked(velocity, self.velocity, start_idx, N)
-            self._copy_vectors_chunked(circulation, self.circulation, start_idx, N)
+            self._copy_vectors_chunked(vortex_strength, self.vortex_strength, start_idx, N)
             self._copy_vectors_chunked(vorticity, self.vorticity, start_idx, N)
-            self._copy_scalars_chunked(radius, self.radius, start_idx, N)
+            self._copy_scalars_chunked(core_radius, self.core_radius, start_idx, N)
             self._copy_scalars_chunked(volume, self.volume, start_idx, N)
-            self._copy_scalars_chunked(viscosity, self.viscosity, start_idx, N)
-            self._copy_scalars_chunked(viscosity_turbulent, self.viscosity_turbulent, start_idx, N)
-            self._copy_scalars_chunked(viscosity_effective, self.viscosity_effective, start_idx, N)
+            self._copy_scalars_chunked(kinematic_viscosity, self.kinematic_viscosity, start_idx, N)
+            self._copy_scalars_chunked(eddy_viscosity, self.eddy_viscosity, start_idx, N)
+            self._copy_scalars_chunked(effective_viscosity, self.effective_viscosity, start_idx, N)
             self._copy_ints_chunked(group_id, self.group_id, start_idx, N)
             self._copy_ints_chunked(zone_id, self.zone_id, start_idx, N)
             self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, start_idx, N)
             self._copy_matrices_chunked(strain_rate, self.strain_rate, start_idx, N)
 
         # Update particle count
-        self.number_of_particles = total_particles
+        self.n_particles = total_particles
 
         self.touch_state()
         self._log_particles_added(N, "numpy arrays")
@@ -1226,27 +1232,27 @@ class Particles:
         self,
         position: np.ndarray,
         velocity: np.ndarray,
-        circulation: np.ndarray,
-        radius: np.ndarray,
+        vortex_strength: np.ndarray,
+        core_radius: np.ndarray,
         volume: np.ndarray,
-        viscosity: np.ndarray,
-        viscosity_turbulent: np.ndarray = None,
+        kinematic_viscosity: np.ndarray,
+        eddy_viscosity: np.ndarray = None,
         group_id: np.ndarray = None,
         zone_id: np.ndarray = None,
         velocity_gradient: np.ndarray = None,
         strain_rate: np.ndarray = None,
     ) -> None:
         """Replace the active particle cloud with NumPy arrays."""
-        previous = int(self.number_of_particles)
+        previous = int(self.n_particles)
         _validate_finite_array(position, "position")
         _validate_finite_array(velocity, "velocity")
-        _validate_finite_array(circulation, "circulation")
-        _validate_finite_array(radius, "radius")
+        _validate_finite_array(vortex_strength, "vortex_strength")
+        _validate_finite_array(core_radius, "core_radius")
         _validate_finite_array(volume, "volume")
-        _validate_finite_array(viscosity, "viscosity")
+        _validate_finite_array(kinematic_viscosity, "kinematic_viscosity")
 
-        if viscosity_turbulent is not None:
-            _validate_finite_array(viscosity_turbulent, "viscosity_turbulent")
+        if eddy_viscosity is not None:
+            _validate_finite_array(eddy_viscosity, "eddy_viscosity")
         if velocity_gradient is not None:
             _validate_finite_array(velocity_gradient, "velocity_gradient")
         if strain_rate is not None:
@@ -1255,30 +1261,30 @@ class Particles:
         time_step_size = self._np_float_dtype
         position = np.ascontiguousarray(position, dtype=time_step_size)
         velocity = np.ascontiguousarray(velocity, dtype=time_step_size)
-        circulation = np.ascontiguousarray(circulation, dtype=time_step_size)
-        radius = np.ascontiguousarray(radius, dtype=time_step_size)
+        vortex_strength = np.ascontiguousarray(vortex_strength, dtype=time_step_size)
+        core_radius = np.ascontiguousarray(core_radius, dtype=time_step_size)
         volume = np.ascontiguousarray(volume, dtype=time_step_size)
-        viscosity = np.ascontiguousarray(viscosity, dtype=time_step_size)
+        kinematic_viscosity = np.ascontiguousarray(kinematic_viscosity, dtype=time_step_size)
 
         N = position.shape[0]
         if N == 0:
-            self.number_of_particles = 0
+            self.n_particles = 0
             self.sync_device_counter()
             self.touch_state()
             self._log_particles_replaced(previous, "numpy arrays, emptied")
             return
-        if position.shape != (N, 3) or velocity.shape != (N, 3) or circulation.shape != (N, 3):
+        if position.shape != (N, 3) or velocity.shape != (N, 3) or vortex_strength.shape != (N, 3):
             raise ValueError("Position, velocity, and circulation must have shape (N x 3).")
-        if radius.shape != (N,) or volume.shape != (N,) or viscosity.shape != (N,):
+        if core_radius.shape != (N,) or volume.shape != (N,) or kinematic_viscosity.shape != (N,):
             raise ValueError("Radius, volume, and viscosity must have shape (N,).")
 
-        if viscosity_turbulent is None:
-            viscosity_turbulent = np.zeros(N, dtype=time_step_size)
+        if eddy_viscosity is None:
+            eddy_viscosity = np.zeros(N, dtype=time_step_size)
         else:
-            viscosity_turbulent = np.ascontiguousarray(viscosity_turbulent, dtype=time_step_size)
-            if viscosity_turbulent.shape != (N,):
+            eddy_viscosity = np.ascontiguousarray(eddy_viscosity, dtype=time_step_size)
+            if eddy_viscosity.shape != (N,):
                 raise ValueError("Turbulent viscosity must have shape (N,).")
-        viscosity_effective = viscosity + viscosity_turbulent
+        effective_viscosity = kinematic_viscosity + eddy_viscosity
 
         group_id = _coerce_int_id_array(group_id, N)
         zone_id = _coerce_int_id_array(zone_id, N)
@@ -1295,19 +1301,19 @@ class Particles:
             strain_rate = np.ascontiguousarray(strain_rate, dtype=time_step_size)
         if velocity_gradient.shape != (N, 3, 3) or strain_rate.shape != (N, 3, 3):
             raise ValueError("Velocity gradient and strain rate must have shape (N, 3, 3).")
-        vorticity = (circulation / volume[:, None]).astype(time_step_size)
+        vorticity = (vortex_strength / volume[:, None]).astype(time_step_size)
 
         self._grow_capacity(N)
 
         self._populate_from_numpy(
             position,
             velocity,
-            circulation,
-            radius,
+            vortex_strength,
+            core_radius,
             volume,
-            viscosity,
-            viscosity_turbulent,
-            viscosity_effective,
+            kinematic_viscosity,
+            eddy_viscosity,
+            effective_viscosity,
             group_id,
             velocity_gradient,
             strain_rate,
@@ -1325,11 +1331,11 @@ class Particles:
         count: int,
         position: ti.template(),
         velocity: ti.template(),
-        strength: ti.template(),
-        radius: ti.template(),
+        vortex_strength: ti.template(),
+        core_radius: ti.template(),
         volume: ti.template(),
         group_id: int = 0,
-        viscosity: float = 1.5e-5,
+        kinematic_viscosity: float = 1.5e-5,
     ) -> bool:
         """
         Add particles directly from Taichi fields (GPU-to-GPU transfer).
@@ -1349,7 +1355,7 @@ class Particles:
         Returns:
             bool: True if successful, False if container is full
         """
-        start_idx = self.number_of_particles
+        start_idx = self.n_particles
 
         # Check if we have space
         if start_idx + count > self._max_particles:
@@ -1378,19 +1384,19 @@ class Particles:
                 # Copy vectors
                 self.position[dest_idx] = src_pos[i]
                 self.velocity[dest_idx] = src_vel[i]
-                self.circulation[dest_idx] = src_str[i]
+                self.vortex_strength[dest_idx] = src_str[i]
 
                 # Copy scalars
-                self.radius[dest_idx] = src_rad[i]
+                self.core_radius[dest_idx] = src_rad[i]
                 self.volume[dest_idx] = src_vol[i]
 
                 # Set fixed properties
-                self.viscosity[dest_idx] = p_viscosity
+                self.kinematic_viscosity[dest_idx] = p_viscosity
                 self.group_id[dest_idx] = p_group_id
 
                 # Initialize others to zero
-                self.viscosity_turbulent[dest_idx] = 0.0
-                self.viscosity_effective[dest_idx] = p_viscosity
+                self.eddy_viscosity[dest_idx] = 0.0
+                self.effective_viscosity[dest_idx] = p_viscosity
                 self.vorticity[dest_idx] = ti.Vector([0.0, 0.0, 0.0])
                 self.zone_id[dest_idx] = 0
 
@@ -1400,11 +1406,19 @@ class Particles:
 
         # Launch copy kernel
         copy_particles_kernel(
-            start_idx, count, position, velocity, strength, radius, volume, group_id, viscosity
+            start_idx,
+            count,
+            position,
+            velocity,
+            vortex_strength,
+            core_radius,
+            volume,
+            group_id,
+            kinematic_viscosity,
         )
 
         # Update counter
-        self.number_of_particles += count
+        self.n_particles += count
         self.sync_device_counter()
         self.touch_state()
         self._log_particles_added(count, "VLM wake buffer")
@@ -1415,11 +1429,11 @@ class Particles:
         self,
         positions,  # ti.Vector.field
         velocities,  # ti.Vector.field
-        strengths,  # ti.Vector.field
+        vortex_strength,  # ti.Vector.field
         radii,  # ti.field
         volumes,  # ti.field
         count: int,
-        viscosity: float,
+        kinematic_viscosity: float,
     ):
         """
         Add particles directly from Taichi fields (GPU-to-GPU transfer).
@@ -1440,27 +1454,27 @@ class Particles:
             return
 
         # Ensure we have capacity
-        total_particles = self.number_of_particles + count
+        total_particles = self.n_particles + count
         self._grow_capacity(total_particles)
 
-        start_idx = self.number_of_particles
+        start_idx = self.n_particles
 
         # Direct Taichi-to-Taichi copy via kernel
         # Initializes all particle properties to match numpy version behavior
         self._copy_from_vlm_wake(
             positions,
             velocities,
-            strengths,
+            vortex_strength,
             radii,
             volumes,
             self.position,
             self.velocity,
-            self.circulation,
-            self.radius,
+            self.vortex_strength,
+            self.core_radius,
             self.volume,
-            self.viscosity,
-            self.viscosity_turbulent,
-            self.viscosity_effective,
+            self.kinematic_viscosity,
+            self.eddy_viscosity,
+            self.effective_viscosity,
             self.vorticity,
             self.group_id,
             self.zone_id,  # Pass self.zone_id
@@ -1468,11 +1482,11 @@ class Particles:
             self.strain_rate,
             start_idx,
             count,
-            viscosity,
+            kinematic_viscosity,
         )
 
         # Update particle count
-        self.number_of_particles = total_particles
+        self.n_particles = total_particles
 
         self.touch_state()
         self._log_particles_added(count, "GPU transfer")
@@ -1499,7 +1513,7 @@ class Particles:
         dst_Sij: ti.template(),
         start_idx: ti.i32,
         count: ti.i32,
-        viscosity: ti.f32,
+        kinematic_viscosity: ti.f32,
     ):
         """
         Taichi kernel for GPU-to-GPU particle copy from VLM wake buffer.
@@ -1525,9 +1539,9 @@ class Particles:
             dst_vol[dst_idx] = src_vol[i]
 
             # Set viscosity fields (matching numpy version)
-            dst_visc[dst_idx] = viscosity
+            dst_visc[dst_idx] = kinematic_viscosity
             dst_visc_t[dst_idx] = 0.0
-            dst_visc_eff[dst_idx] = viscosity  # eff = molecular + turbulent
+            dst_visc_eff[dst_idx] = kinematic_viscosity  # eff = molecular + turbulent
 
             # Compute vorticity from strength and volume (matching numpy version)
             # vorticity = strength / volume
@@ -1553,16 +1567,16 @@ class Particles:
             Logging.message(f"   [Particles] skipped {particle_file_name}: pyvista not available")
             return
 
-        n = int(self.number_of_particles)
+        n = int(self.n_particles)
         point_cloud = pv.PolyData(self.position_cpu())
         point_cloud.point_data["Velocity"] = self.velocity_cpu()
-        point_cloud.point_data["Strength"] = self.circulation_cpu()
-        point_cloud.point_data["Radius"] = self.radius_cpu()
-        point_cloud.point_data["Volumes"] = self.volume_cpu()
-        point_cloud.point_data["Viscosity"] = self.viscosity_cpu()
-        point_cloud.point_data["Viscosity_t"] = self.viscosity_turbulent_cpu()
-        point_cloud.point_data["Group_ID"] = self.group_id_cpu()
-        point_cloud.point_data["Grad_U"] = self.velocity_gradient_cpu().reshape(n, 9)
+        point_cloud.point_data["VortexStrength"] = self.vortex_strength_cpu()
+        point_cloud.point_data["CoreRadius"] = self.core_radius_cpu()
+        point_cloud.point_data["Volume"] = self.volume_cpu()
+        point_cloud.point_data["KinematicViscosity"] = self.kinematic_viscosity_cpu()
+        point_cloud.point_data["EddyViscosity"] = self.eddy_viscosity_cpu()
+        point_cloud.point_data["GroupID"] = self.group_id_cpu()
+        point_cloud.point_data["VelocityGradient"] = self.velocity_gradient_cpu().reshape(n, 9)
         point_cloud.save(particle_file_name)
 
         Logging.message(f"   [Particles] wrote {n} to {particle_file_name}")
@@ -1575,30 +1589,30 @@ class Particles:
             raise ImportError("pyvista is required for VTP file operations")
 
         if remove_current_particles:
-            self.number_of_particles = 0
+            self.n_particles = 0
 
         point_cloud = pv.read(particle_file_name)
 
         positions = np.array(point_cloud.points, dtype=np.float32)
         velocities = np.array(point_cloud.point_data["Velocity"], dtype=np.float32)
-        strengths = np.array(point_cloud.point_data["Strength"], dtype=np.float32)
-        radii = np.array(point_cloud.point_data["Radius"], dtype=np.float32)
-        volumes = np.array(point_cloud.point_data["Volumes"], dtype=np.float32)
-        viscosities = np.array(point_cloud.point_data["Viscosity"], dtype=np.float32)
-        viscosities_t = np.array(point_cloud.point_data["Viscosity_t"], dtype=np.float32)
-        group_id = np.array(point_cloud.point_data["Group_ID"], dtype=np.int32)
-        grad_u = np.array(point_cloud.point_data["Grad_U"], dtype=np.float32)
+        vortex_strength = np.array(point_cloud.point_data["VortexStrength"], dtype=np.float32)
+        radii = np.array(point_cloud.point_data["CoreRadius"], dtype=np.float32)
+        volumes = np.array(point_cloud.point_data["Volume"], dtype=np.float32)
+        viscosities = np.array(point_cloud.point_data["KinematicViscosity"], dtype=np.float32)
+        viscosities_t = np.array(point_cloud.point_data["EddyViscosity"], dtype=np.float32)
+        group_id = np.array(point_cloud.point_data["GroupID"], dtype=np.int32)
+        grad_u = np.array(point_cloud.point_data["VelocityGradient"], dtype=np.float32)
         grad_u = grad_u.reshape(len(grad_u), 3, 3)
 
         # Use the class's add_particle_field method for consistency
         self.add_vortex_particles(
             position=positions,
             velocity=velocities,
-            circulation=strengths,
-            radius=radii,
+            vortex_strength=vortex_strength,
+            core_radius=radii,
             volume=volumes,
-            viscosity=viscosities,
-            viscosity_turbulent=viscosities_t,
+            kinematic_viscosity=viscosities,
+            eddy_viscosity=viscosities_t,
             group_id=group_id,
             velocity_gradient=grad_u,
         )
@@ -1607,14 +1621,14 @@ class Particles:
 
     @staticmethod
     def _per_group_removal_mask(
-        group_ids: np.ndarray, strength_mags: np.ndarray, percent: float
+        group_ids: np.ndarray, vortex_strength_magnitudes: np.ndarray, percent: float
     ) -> np.ndarray:
-        N = len(strength_mags)
+        N = len(vortex_strength_magnitudes)
         unique_groups = np.unique(group_ids)
         remove_mask = np.zeros(N, dtype=bool)
         for gid in unique_groups:
             group_mask = group_ids == gid
-            group_strengths = strength_mags[group_mask]
+            group_strengths = vortex_strength_magnitudes[group_mask]
             if len(group_strengths) == 0:
                 continue
             max_s = np.max(group_strengths)
@@ -1643,21 +1657,23 @@ class Particles:
             - per_group=False: Uses global maximum across all particles. This can cause
               uneven removal if groups have different strength scales.
         """
-        N = self.number_of_particles
+        N = self.n_particles
 
         # Early return if no particles or no removal requested
         if N == 0 or percent <= 0.0:
             return np.empty(0, dtype=np.int64)
 
-        strengths = self.circulation_cpu()
-        strength_mags = np.linalg.norm(strengths, axis=1)
+        vortex_strength = self.vortex_strength_cpu()
+        vortex_strength_magnitudes = np.linalg.norm(vortex_strength, axis=1)
 
         if per_group:
             group_ids = self.group_id_cpu()
-            remove_mask = self._per_group_removal_mask(group_ids, strength_mags, percent)
+            remove_mask = self._per_group_removal_mask(
+                group_ids, vortex_strength_magnitudes, percent
+            )
         else:
             # Use global threshold (original behavior - can cause uneven removal)
-            max_strength_global = np.max(strength_mags)
+            max_strength_global = np.max(vortex_strength_magnitudes)
             if max_strength_global == 0:
                 print(
                     "(Warning) _remove_weak_particles: all particle strengths are zero — skipping removal to avoid emptying the system."
@@ -1665,7 +1681,7 @@ class Particles:
                 return np.empty(0, dtype=np.int64)
             else:
                 cutoff = (percent / 100.0) * max_strength_global
-                remove_mask = strength_mags < cutoff
+                remove_mask = vortex_strength_magnitudes < cutoff
 
         indices_to_remove = np.where(remove_mask)[0]
 
@@ -1680,7 +1696,9 @@ class Particles:
             self.remove_vortex_particles(indices=indices_to_remove, remove_all=False)
         return indices_to_remove
 
-    def update_circulations_masked(self, mask: np.ndarray, delta_circ: np.ndarray) -> None:
+    def update_vortex_strength_masked(
+        self, mask: np.ndarray, vortex_strength_increment: np.ndarray
+    ) -> None:
         """Apply an in-place circulation delta to a masked subset of particles.
 
         The operation is: Γ_i ← Γ_i + ΔΓ_i  for all i where mask[i] is True.
@@ -1689,35 +1707,35 @@ class Particles:
             mask:       Boolean array of shape (N,) selecting which particles to update.
             delta_circ: Float array of shape (M, 3) where M = mask.sum().
         """
-        N = self.number_of_particles
+        N = self.n_particles
         if N == 0 or int(mask.sum()) == 0:
             return
-        circ = self._extract_vector(self.circulation, N)
-        circ[mask] += delta_circ.astype(circ.dtype)
-        self._copy_vectors_chunked(circ, self.circulation, 0, N)
+        vortex_strength = self._extract_vector(self.vortex_strength, N)
+        vortex_strength[mask] += vortex_strength_increment.astype(vortex_strength.dtype)
+        self._copy_vectors_chunked(vortex_strength, self.vortex_strength, 0, N)
         self.touch_state()
 
     def remove_vortex_particles(self, indices, remove_all: bool = False):
         if remove_all:
-            self.number_of_particles = 0
+            self.n_particles = 0
         else:
             # Get current data
-            current_data = self._extract_cpu_data(self.number_of_particles)
+            current_data = self._extract_cpu_data(self.n_particles)
 
             # Create mask for particles to keep
-            mask = np.ones(self.number_of_particles, dtype=bool)
+            mask = np.ones(self.n_particles, dtype=bool)
             mask[indices] = False
 
             # Filter all arrays
             filtered_data = {
                 "position": current_data["position"][mask],
                 "velocity": current_data["velocity"][mask],
-                "circulation": current_data["circulation"][mask],
-                "radius": current_data["radius"][mask],
+                "vortex_strength": current_data["vortex_strength"][mask],
+                "core_radius": current_data["core_radius"][mask],
                 "volume": current_data["volume"][mask],
-                "viscosity": current_data["viscosity"][mask],
-                "viscosity_turbulent": current_data["viscosity_turbulent"][mask],
-                "viscosity_effective": current_data["viscosity_effective"][mask],
+                "kinematic_viscosity": current_data["kinematic_viscosity"][mask],
+                "eddy_viscosity": current_data["eddy_viscosity"][mask],
+                "effective_viscosity": current_data["effective_viscosity"][mask],
                 "group_id": current_data["group_id"][mask],
                 "velocity_gradient": current_data["velocity_gradient"][mask],
                 "strain_rate": current_data["strain_rate"][mask],
@@ -1726,21 +1744,21 @@ class Particles:
             }
 
             # Repopulate fields with filtered data
-            self.number_of_particles = 0  # Reset count
+            self.n_particles = 0  # Reset count
             if filtered_data["position"].shape[0] > 0:
                 self._populate_from_numpy(**filtered_data)
         self.touch_state()
 
     def set_field(self, field_name: str, values: np.ndarray):
         """
-        Set a specific field (e.g., 'viscosity', 'radius', 'circulation', etc.) with new values.
+        Set a specific field (e.g., 'kinematic_viscosity', 'core_radius', 'vortex_strength', etc.) with new values.
         Handles scalar, vector, matrix, and int fields.
         """
         if not hasattr(self, field_name):
             raise ValueError(f"Field '{field_name}' does not exist in Particles class.")
 
         field = getattr(self, field_name)
-        count = self.number_of_particles
+        count = self.n_particles
         if values.shape[0] != count:
             raise ValueError(
                 f"Values for field '{field_name}' must have the same number of particles ({count})."
@@ -1749,14 +1767,14 @@ class Particles:
         # Determine field type and expected shape
         # Scalar fields
         scalar_fields = [
-            "radius",
+            "core_radius",
             "volume",
-            "viscosity",
-            "viscosity_turbulent",
-            "viscosity_effective",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "effective_viscosity",
         ]
         int_fields = ["group_id", "zone_id"]
-        vector_fields = ["position", "velocity", "circulation", "vorticity"]
+        vector_fields = ["position", "velocity", "vortex_strength", "vorticity"]
         matrix_fields = ["velocity_gradient", "strain_rate"]
 
         if field_name in scalar_fields:
@@ -1773,136 +1791,10 @@ class Particles:
             self._copy_matrices_chunked(values, field, 0, count)
         else:
             raise ValueError(f"Field '{field_name}' type not recognized for set_field.")
-        if field_name in {"position", "circulation", "radius"}:
+        if field_name in {"position", "vortex_strength", "core_radius"}:
             self.touch_state()
 
     # ---- Backup methods ----
-    def backup_solution(self, backup_file_name, step):
-        """
-        Export particle data to an HDF5 file (.h5).
-
-        This is a faster alternative to VTK files that is still compatible with ParaView.
-        ParaView can read HDF5 files using the 'XDMF Reader' with an accompanying .xmf file.
-        """
-        # Format step number as 6-digit sequential id (ParaView-friendly)
-        step_str = str(step).zfill(6)
-
-        # Get NumPy arrays from Taichi fields (CPU copies)
-        points = self.position_cpu()
-        velocities = self.velocity_cpu()
-        strengths = self.circulation_cpu()
-        vorticities = self.vorticity_cpu()
-        radii = self.radius_cpu()
-        volumes = self.volume_cpu()
-        group_id = self.group_id_cpu()
-        viscosities = self.viscosity_cpu()
-        viscosities_t = self.viscosity_turbulent_cpu()
-        grad_u = self.velocity_gradient_cpu()
-        Sij = self.strain_rate_cpu()
-
-        # File names with underscore + 6-digit sequential id: <name>_XXXXXX.ext
-        h5_filename = f"{backup_file_name}_{step_str}.h5"
-        xmf_filename = f"{backup_file_name}_{step_str}.xmf"
-
-        try:
-            # Save data to HDF5 file
-            with h5py.File(h5_filename, "w") as f:
-                # Create geometry group
-                geometry = f.create_group("Geometry")
-                geometry.create_dataset(
-                    "Points", data=points, compression="gzip", compression_opts=6
-                )
-
-                # Create fields group
-                fields = f.create_group("Fields")
-                fields.create_dataset(
-                    "Velocity", data=velocities, compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Strength", data=strengths, compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Vorticity", data=vorticities, compression="gzip", compression_opts=6
-                )
-                fields.create_dataset("Radius", data=radii, compression="gzip", compression_opts=6)
-                fields.create_dataset(
-                    "Volumes", data=volumes, compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Group_ID", data=group_id, compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Viscosity", data=viscosities, compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Viscosity_t", data=viscosities_t, compression="gzip", compression_opts=6
-                )
-
-                # Handle tensor fields
-                fields.create_dataset(
-                    "Grad_U",
-                    data=grad_u.reshape(len(grad_u), -1),
-                    compression="gzip",
-                    compression_opts=6,
-                )
-                fields.create_dataset(
-                    "strain_rate",
-                    data=Sij.reshape(len(Sij), -1),
-                    compression="gzip",
-                    compression_opts=6,
-                )
-                fields.create_dataset(
-                    "Grad_U_xx", data=grad_u[:, 0, 0], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Grad_U_yy", data=grad_u[:, 1, 1], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Grad_U_zz", data=grad_u[:, 2, 2], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Grad_U_xy", data=grad_u[:, 0, 1], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Grad_U_xz", data=grad_u[:, 0, 2], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Grad_U_yz", data=grad_u[:, 1, 2], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Sij_xx", data=Sij[:, 0, 0], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Sij_yy", data=Sij[:, 1, 1], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Sij_zz", data=Sij[:, 2, 2], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Sij_xy", data=Sij[:, 0, 1], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Sij_xz", data=Sij[:, 0, 2], compression="gzip", compression_opts=6
-                )
-                fields.create_dataset(
-                    "Sij_yz", data=Sij[:, 1, 2], compression="gzip", compression_opts=6
-                )
-
-                # Store metadata
-                metadata = f.create_group("Metadata")
-                metadata.attrs["time_step"] = step
-                metadata.attrs["num_particles"] = len(points)
-                metadata.attrs["format_version"] = "1.0"
-
-            # Create XDMF file for ParaView compatibility
-            precision_bytes = 4 if self.float_dtype == "f32" else 8
-            self._create_xdmf_file(xmf_filename, h5_filename, step, len(points), precision_bytes)
-
-            print(f"\u2022 Particle data exported to {h5_filename} (HDF5 format)")
-            print(f"\u2022 ParaView metadata written to {xmf_filename}")
-
-        except Exception as e:
-            print(f"(Error) Failed to save HDF5 file {h5_filename}: {e}")
 
     def _create_xdmf_file(self, xmf_filename, h5_filename, step, num_particles, precision_bytes=4):
         """Create XDMF metadata file for ParaView compatibility with HDF5 data."""
@@ -2055,7 +1947,7 @@ class Particles:
         positions = f["Geometry/Points"][:]
         fields = f["Fields"]
         velocities = fields["Velocity"][:]
-        strengths = fields["Strength"][:]
+        vortex_strength = fields["Strength"][:]
         vorticities = fields["Vorticity"][:]
         radii = fields["Radius"][:]
         volumes = fields["Volumes"][:]
@@ -2073,17 +1965,17 @@ class Particles:
                 grad_u = grad_u.reshape(num_particles, 3, 3)
             if len(Sij) > 0:
                 Sij = Sij.reshape(num_particles, 3, 3)
-            self.number_of_particles = 0
+            self.n_particles = 0
             self._populate_from_numpy(
                 position=positions,
                 velocity=velocities,
-                circulation=strengths,
+                vortex_strength=vortex_strength,
                 vorticity=vorticities,
-                radius=radii,
+                core_radius=radii,
                 volume=volumes,
                 group_id=group_id,
-                viscosity=viscosities,
-                viscosity_turbulent=viscosities_t,
+                kinematic_viscosity=viscosities,
+                eddy_viscosity=viscosities_t,
                 velocity_gradient=grad_u,
                 strain_rate=Sij,
             )
@@ -2107,16 +1999,16 @@ class Particles:
         count: int,
         position: ti.template(),
         velocity: ti.template(),
-        strength: ti.template(),
-        radius: ti.template(),
+        vortex_strength: ti.template(),
+        core_radius: ti.template(),
         volume: ti.template(),
         group_ids: ti.template(),
-        viscosity: float = 1.5e-5,
+        kinematic_viscosity: float = 1.5e-5,
     ) -> bool:
         """
         Add particles directly from Taichi fields with per-particle group IDs.
         """
-        start_idx = self.number_of_particles
+        start_idx = self.n_particles
 
         # Check if we have space
         if start_idx + count > self._max_particles:
@@ -2139,13 +2031,13 @@ class Particles:
                 dest_idx = dest_offset + i
                 self.position[dest_idx] = src_pos[i]
                 self.velocity[dest_idx] = src_vel[i]
-                self.circulation[dest_idx] = src_str[i]
-                self.radius[dest_idx] = src_rad[i]
+                self.vortex_strength[dest_idx] = src_str[i]
+                self.core_radius[dest_idx] = src_rad[i]
                 self.volume[dest_idx] = src_vol[i]
                 self.group_id[dest_idx] = src_gid[i]
-                self.viscosity[dest_idx] = p_viscosity
-                self.viscosity_turbulent[dest_idx] = 0.0
-                self.viscosity_effective[dest_idx] = p_viscosity
+                self.kinematic_viscosity[dest_idx] = p_viscosity
+                self.eddy_viscosity[dest_idx] = 0.0
+                self.effective_viscosity[dest_idx] = p_viscosity
 
                 vol = src_vol[i]
                 if vol > 1e-15:
@@ -2158,10 +2050,18 @@ class Particles:
                 self.strain_rate[dest_idx].fill(0.0)
 
         copy_particles_grouped_kernel(
-            start_idx, count, position, velocity, strength, radius, volume, group_ids, viscosity
+            start_idx,
+            count,
+            position,
+            velocity,
+            vortex_strength,
+            core_radius,
+            volume,
+            group_ids,
+            kinematic_viscosity,
         )
 
-        self.number_of_particles += count
+        self.n_particles += count
         self.sync_device_counter()
         self.touch_state()
         self._log_particles_added(count, "VLM wake buffer, grouped")

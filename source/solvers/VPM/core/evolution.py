@@ -63,7 +63,9 @@ class EvolutionStepper:
         self.particles.step = self.step
         self._debug_validate_particle_geometry("step entry")
 
-        diagnostics_due = self.logging_frequency > 0 and self.step % self.logging_frequency == 0
+        diagnostics_due = (
+            self.logging_interval_steps > 0 and self.step % self.logging_interval_steps == 0
+        )
 
         with self.profiler.step():
             if self.vlm_solver is not None:
@@ -90,7 +92,7 @@ class EvolutionStepper:
                 and not _gradients_required
                 and self.vlm_solver is None
                 and self.panel_solver is None
-                and self.num_sources == 0
+                and self.n_sources == 0
                 and getattr(self.physics, "velocity_override", None) is None
             )
             panel_affects_particle_velocity = (
@@ -101,7 +103,7 @@ class EvolutionStepper:
                 self.flow_model != "POTENTIAL"
                 and _adv != "NONE"
                 and _gradients_required
-                and self.num_sources == 0
+                and self.n_sources == 0
                 and not panel_affects_particle_velocity
                 and getattr(self.physics, "velocity_override", None) is None
             )
@@ -114,7 +116,7 @@ class EvolutionStepper:
                 if not _defer_stationary_velocity and (
                     _adv == "NONE"
                     or not _gradients_required
-                    or self.num_sources > 0
+                    or self.n_sources > 0
                     or panel_affects_particle_velocity
                 ):
                     with self.profiler.section("Velocity"):
@@ -179,7 +181,7 @@ class EvolutionStepper:
             self._debug_validate_particle_geometry("particle retention")
 
             with self.profiler.section("Backup / IO"):
-                self._backup_solution()
+                self._write_checkpoint()
 
         # The evolution kernels mutate particle source fields directly on the
         # device.  Publish one new source revision after the complete physical
@@ -187,23 +189,23 @@ class EvolutionStepper:
         # post-step boundary/panel queries cannot reuse the previous tree.
         self.particles.touch_state()
         self.profiler.report_step()
-        self.solver.simulation_time = self.profiler.wall_time
+        self.solver.wall_time = self.profiler.wall_time
 
-        if self.timing_frequency > 0 and self.step % self.timing_frequency == 0:
-            self.profiler.set_particle_count(self.particles.number_of_particles)
+        if self.timing_interval_steps > 0 and self.step % self.timing_interval_steps == 0:
+            self.profiler.set_particle_count(self.particles.n_particles)
             self.profiler.report()
 
-        if self.logging_frequency > 0 and self.step % self.logging_frequency == 0:
+        if self.logging_interval_steps > 0 and self.step % self.logging_interval_steps == 0:
             self.log_diagnostics()
 
     def _debug_validate_particle_geometry(self, stage: str) -> None:
         """Validate active particle radii and volumes when stage tracing is enabled."""
         if os.environ.get("VPM_VALIDATE_STAGES", "0") != "1":
             return
-        n = self.particles.number_of_particles
+        n = self.particles.n_particles
         if n == 0:
             return
-        radii = self.particles.radius_cpu(use_cache=False)
+        radii = self.particles.core_radius_cpu(use_cache=False)
         volumes = self.particles.volume_cpu(use_cache=False)
         invalid_radii = ~np.isfinite(radii) | (radii <= 0.0)
         invalid_volumes = ~np.isfinite(volumes) | (volumes <= 0.0)
@@ -243,11 +245,11 @@ class EvolutionStepper:
         )
         self.physics.velocity_self(
             self.particles.position,
-            self.particles.circulation,
-            self.particles.radius,
+            self.particles.vortex_strength,
+            self.particles.core_radius,
             self.particles.velocity,
             self.particles.velocity_background,
-            self.particles.number_of_particles,
+            self.particles.n_particles,
         )
 
         if (
@@ -258,15 +260,15 @@ class EvolutionStepper:
             ti.sync()
             self.panel_solver.compute_induced_velocity_direct(self.particles)
 
-        if self.num_sources > 0:
+        if self.n_sources > 0:
             self.physics.kernels["compute_target_source_velocity_kernel"](
                 self.particles.position,
                 self.source_positions,
                 self.source_strengths,
                 self.source_radii,
                 self.particles.velocity,
-                self.particles.number_of_particles,
-                self.num_sources,
+                self.particles.n_particles,
+                self.n_sources,
             )
 
     def _update_velocity_gradients(self, announce: bool = True) -> None:
@@ -299,19 +301,19 @@ class EvolutionStepper:
     def _update_LES_state(self, time_step_size: float | None = None) -> None:
         """Update LES viscosity from the current strain-rate field."""
         if self.flow_model == "LES":
-            self.LES.compute(
+            self.turbulence_model.compute(
                 self.particles,
                 time_step_size=self.time_step_size if time_step_size is None else time_step_size,
             )
             if self.axisymmetric_axis >= 0:
                 self._validate_axisymmetric_orbits()
                 self.physics.average_axisymmetric_scalar(
-                    self.particles.viscosity_turbulent,
+                    self.particles.eddy_viscosity,
                     self.particles.zone_id,
                     len(self.particles),
                 )
                 self.physics.average_axisymmetric_scalar(
-                    self.particles.viscosity_effective,
+                    self.particles.effective_viscosity,
                     self.particles.zone_id,
                     len(self.particles),
                 )
@@ -525,8 +527,8 @@ class EvolutionStepper:
 
         return particle_moments(
             self.particles.position_cpu(use_cache=False).astype(np.float64),
-            self.particles.circulation_cpu(use_cache=False).astype(np.float64),
-            self.particles.radius_cpu(use_cache=False).astype(np.float64),
+            self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64),
+            self.particles.core_radius_cpu(use_cache=False).astype(np.float64),
             angular_core_coefficient=self.physics._angular_core_coefficient,
         )
 
@@ -541,8 +543,8 @@ class EvolutionStepper:
         from ..stabilization.filament_refinement import particle_moments
 
         position = self.particles.position_cpu(use_cache=False).astype(np.float64)
-        circulation = self.particles.circulation_cpu(use_cache=False).astype(np.float64)
-        radius = self.particles.radius_cpu(use_cache=False).astype(np.float64)
+        circulation = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
+        radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
         volume = self.particles.volume_cpu(use_cache=False).astype(np.float64)
         core_coefficient = self.physics._angular_core_coefficient
         current = particle_moments(
@@ -579,7 +581,7 @@ class EvolutionStepper:
             correction_relative,
         )
 
-        uploaded = self.particles.circulation_cpu(use_cache=False).astype(np.float64)
+        uploaded = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
         restored = particle_moments(
             position,
             uploaded,
@@ -626,8 +628,8 @@ class EvolutionStepper:
         from ..stabilization.filament_refinement import particle_moments
 
         position = self.particles.position_cpu(use_cache=False).astype(np.float64)
-        circulation = self.particles.circulation_cpu(use_cache=False).astype(np.float64)
-        radius = self.particles.radius_cpu(use_cache=False).astype(np.float64)
+        circulation = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
+        radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
         volume = self.particles.volume_cpu(use_cache=False).astype(np.float64)
         core_coefficient = self.physics._angular_core_coefficient
         before = particle_moments(
@@ -638,7 +640,7 @@ class EvolutionStepper:
         )
 
         self.physics.core_spreading_diffusion(self.particles, time_step_size)
-        new_radius = self.particles.radius_cpu(use_cache=False).astype(np.float64)
+        new_radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
         uncorrected = particle_moments(
             position,
             circulation,
@@ -665,7 +667,7 @@ class EvolutionStepper:
             correction.astype(self.np_dtype),
         )
 
-        uploaded = self.particles.circulation_cpu(use_cache=False).astype(np.float64)
+        uploaded = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
         after = particle_moments(
             position,
             uploaded,
@@ -729,8 +731,8 @@ class EvolutionStepper:
                 from ..stabilization.filament_refinement import gaussian_particle_moments
 
                 old_position = self.particles.position_cpu().astype(np.float64)
-                old_circulation = self.particles.circulation_cpu().astype(np.float64)
-                old_radius = self.particles.radius_cpu().astype(np.float64)
+                old_circulation = self.particles.vortex_strength_cpu().astype(np.float64)
+                old_radius = self.particles.core_radius_cpu().astype(np.float64)
                 old_moments = gaussian_particle_moments(
                     old_position,
                     old_circulation,
@@ -802,11 +804,11 @@ class EvolutionStepper:
                 self.replace_vortex_particles(
                     position=new_p["position"],
                     velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),
-                    circulation=new_p["circulation"],
-                    radius=new_p["radius"],
+                    vortex_strength=new_p["circulation"],
+                    core_radius=new_p["radius"],
                     volume=new_p["volume"],
-                    viscosity=new_p.get("viscosity"),
-                    viscosity_turbulent=new_p.get("viscosity_turbulent"),
+                    kinematic_viscosity=new_p.get("viscosity"),
+                    eddy_viscosity=new_p.get("viscosity_turbulent"),
                     zone_id=new_p.get("zone_id", np.zeros(M, dtype=np.int32)),
                     group_id=new_p.get("group_id", np.zeros(M, dtype=np.int32)),
                 )
@@ -863,15 +865,19 @@ class EvolutionStepper:
         # Fall back to particle viscosity when the scheme has no scalar ν.
         nu = vc.viscosity
         if nu is None or nu <= 0.0:
-            n_part = self.particles.number_of_particles
-            nu = float(self.particles.viscosity_cpu()[:n_part].mean()) if n_part > 0 else 0.0
+            n_part = self.particles.n_particles
+            nu = (
+                float(self.particles.kinematic_viscosity_cpu()[:n_part].mean())
+                if n_part > 0
+                else 0.0
+            )
         if self.viscous_scheme == "DVH":
             # LES uses per-particle effective viscosity for the heat-kernel width.
             nu_eff = None
             if self.flow_model == "LES":
-                N = self.particles.number_of_particles
+                N = self.particles.n_particles
                 if N > 0:
-                    nu_eff = self.particles.viscosity_effective_cpu()
+                    nu_eff = self.particles.effective_viscosity_cpu()
             Logging.message(
                 f"\tPerforming DVH particle regeneration "
                 f"(particle_spacing={vc.dvh_grid_spacing:.3e}, nu={nu:.3e}, "
@@ -901,9 +907,9 @@ class EvolutionStepper:
             # LES uses per-particle effective viscosity in the grid Laplacian.
             nu_eff = None
             if self.flow_model == "LES":
-                N = self.particles.number_of_particles
+                N = self.particles.n_particles
                 if N > 0:
-                    nu_eff = self.particles.viscosity_effective_cpu()
+                    nu_eff = self.particles.effective_viscosity_cpu()
             Logging.message(
                 f"\tPerforming GBD diffusion"
                 f"(particle_spacing={vc.gbd_grid_spacing:.3e}, nu={nu:.3e}, "

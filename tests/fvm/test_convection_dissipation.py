@@ -43,29 +43,29 @@ def _tgv(x, y):
 def _setup():
     mesh = structured_box(24, 24, 1)
     geo = compute_mesh_geometry(mesh)
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    cc, fc = geo["element_centroids"], geo["face_centroids"]
+    cc, fc = geo["cell_centroids"], geo["face_centroids"]
 
-    U = np.zeros((n_elem + mesh["n_faces"] - n_int, 3))
-    U[:n_elem] = _tgv(cc[:, 0], cc[:, 1])
+    velocity = np.zeros((n_elem + mesh["n_faces"] - n_int, 3))
+    velocity[:n_elem] = _tgv(cc[:, 0], cc[:, 1])
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
-        for j in range(b["nFaces"]):
-            fi = b["startFace"] + j
+        for j in range(b["n_faces"]):
+            fi = b["start_face"] + j
             gi = n_elem + (fi - n_int)
-            U[gi] = _tgv(np.array([fc[fi, 0]]), np.array([fc[fi, 1]])).ravel()
-    return mesh, geo, U
+            velocity[gi] = _tgv(np.array([fc[fi, 0]]), np.array([fc[fi, 1]])).ravel()
+    return mesh, geo, velocity
 
 
-def _energy_production(mesh, geo, U, scheme):
+def _energy_production(mesh, geo, velocity, scheme):
     """P = Σ_c u_c·(du/dt|_conv)_c V_c, with du/dt|_conv = (−A_conv u + b_conv)/V."""
-    n_elem = mesh["n_elements"]
-    vol = geo["element_volumes"]
-    mdot = compute_volumetric_face_flux(U, mesh, geo)
+    n_elem = mesh["n_cells"]
+    vol = geo["cell_volumes"]
+    mdot = compute_volumetric_face_flux(velocity, mesh, geo)
     P = 0.0
     for i in range(3):
-        u_comp = U[:, i]
+        u_comp = velocity[:, i]
         grad = compute_gauss_gradient(u_comp, mesh, geo)[:, :, 0]
         conv = assemble_convection_term(
             u_comp, mdot, mesh, geo, mesh["boundary"], scheme=scheme, grad_phi=grad
@@ -80,19 +80,19 @@ def _energy_production(mesh, geo, U, scheme):
 class TestConvectionDissipation:
     def test_tgv_zero_boundary_flux(self):
         """Precondition: the TGV normal velocity vanishes on all box faces."""
-        mesh, geo, U = _setup()
-        mdot = compute_volumetric_face_flux(U, mesh, geo)
+        mesh, geo, velocity = _setup()
+        mdot = compute_volumetric_face_flux(velocity, mesh, geo)
         n_int = mesh["n_interior_faces"]
         assert np.abs(mdot[n_int:]).max() < 1e-12
 
     def test_central_conserves_upwind_dissipates(self):
-        mesh, geo, U = _setup()
-        n_elem = mesh["n_elements"]
-        ke = 0.5 * float(np.sum(np.sum(U[:n_elem] ** 2, axis=1) * geo["element_volumes"]))
+        mesh, geo, velocity = _setup()
+        n_elem = mesh["n_cells"]
+        ke = 0.5 * float(np.sum(np.sum(velocity[:n_elem] ** 2, axis=1) * geo["cell_volumes"]))
 
-        p_upwind = _energy_production(mesh, geo, U, "upwind") / ke
-        p_central = _energy_production(mesh, geo, U, "central") / ke
-        p_deferred = _energy_production(mesh, geo, U, "deferred") / ke
+        p_upwind = _energy_production(mesh, geo, velocity, "upwind") / ke
+        p_central = _energy_production(mesh, geo, velocity, "central") / ke
+        p_deferred = _energy_production(mesh, geo, velocity, "deferred") / ke
 
         # Upwind is strongly dissipative (destroys kinetic energy).
         assert p_upwind < -0.05, f"upwind P/KE={p_upwind:.3e} not dissipative"
@@ -106,13 +106,13 @@ class TestConvectionDissipation:
     def test_tvd_family_far_less_dissipative_than_upwind(self):
         """The bounded high-resolution (TVD) and blended schemes must all be
         dramatically less dissipative than upwind on the smooth TGV field."""
-        mesh, geo, U = _setup()
-        n_elem = mesh["n_elements"]
-        ke = 0.5 * float(np.sum(np.sum(U[:n_elem] ** 2, axis=1) * geo["element_volumes"]))
-        p_upwind = _energy_production(mesh, geo, U, "upwind") / ke
+        mesh, geo, velocity = _setup()
+        n_elem = mesh["n_cells"]
+        ke = 0.5 * float(np.sum(np.sum(velocity[:n_elem] ** 2, axis=1) * geo["cell_volumes"]))
+        p_upwind = _energy_production(mesh, geo, velocity, "upwind") / ke
 
         for scheme in ("limitedLinear", "vanLeer", "MUSCL", "minmod", "LUST"):
-            p = _energy_production(mesh, geo, U, scheme) / ke
+            p = _energy_production(mesh, geo, velocity, scheme) / ke
             # Dissipative (P<=0) but at least 3x less so than upwind on a smooth field.
             assert p <= 1e-12, f"{scheme} P/KE={p:.3e} should not produce energy"
             assert abs(p) < abs(p_upwind) / 3.0, (

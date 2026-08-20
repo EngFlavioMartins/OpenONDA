@@ -43,7 +43,7 @@ def _detect_2d_mesh(mesh_data: dict) -> bool:
         ``True`` if any boundary patch has type ``"empty"``.
     """
     return any(
-        boundary.get("bc_type_velocity") == "empty" for boundary in mesh_data.get("boundary", [])
+        boundary.get("velocity_type") == "empty" for boundary in mesh_data.get("boundary", [])
     )
 
 
@@ -62,12 +62,12 @@ def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
         Mesh thickness (float); ``1.0`` if no empty patch found.
     """
     for boundary in mesh_data.get("boundary", []):
-        if boundary.get("bc_type_velocity") == "empty":
-            start = boundary["startFace"]
+        if boundary.get("velocity_type") == "empty":
+            start = boundary["start_face"]
             own = mesh_data["owners"][start]
             face_c = geo_data["face_centroids"][start]
-            elem_c = geo_data["element_centroids"][own]
-            return float(2.0 * np.linalg.norm(face_c - elem_c))
+            cell_c = geo_data["cell_centroids"][own]
+            return float(2.0 * np.linalg.norm(face_c - cell_c))
     return 1.0
 
 
@@ -92,20 +92,18 @@ def _compute_filter_width(vol: np.ndarray, mesh_data: dict, geo_data: dict) -> n
     return vol ** (1.0 / 3.0)
 
 
-def _symmetric_velocity_gradient(U, mesh_data: dict, geo_data: dict) -> np.ndarray:
+def _symmetric_velocity_gradient(velocity, mesh_data: dict, geo_data: dict) -> np.ndarray:
     """Return ``D = symm(grad(U))`` for the interior cells.
 
     The native gradient layout is ``grad[c, j, i] = d(U_i)/d(x_j)``.  A
     transpose only changes the storage convention, not the symmetric tensor,
     so the expression below is independent of the gradient storage convention.
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     grad_fn = gradients._resolve_gradient_fn(geo_data)
-    grad_u = np.asarray(grad_fn(U, mesh_data, geo_data)[:n_elements], dtype=np.float64)
-    if grad_u.shape != (n_elements, 3, 3):
-        raise ValueError(
-            f"Velocity gradient has shape {grad_u.shape}; expected ({n_elements}, 3, 3)"
-        )
+    grad_u = np.asarray(grad_fn(velocity, mesh_data, geo_data)[:n_cells], dtype=np.float64)
+    if grad_u.shape != (n_cells, 3, 3):
+        raise ValueError(f"Velocity gradient has shape {grad_u.shape}; expected ({n_cells}, 3, 3)")
     if not np.all(np.isfinite(grad_u)):
         raise FloatingPointError("Smagorinsky velocity gradient contains non-finite values")
     return 0.5 * (grad_u + np.transpose(grad_u, (0, 2, 1)))
@@ -142,7 +140,7 @@ class Smagorinsky:
             Dict with keys ``model``, ``Cs``, ``filter_width_min``,
             ``filter_width_max``, ``filter_width_mean``.
         """
-        vol = self.geo_data["element_volumes"]
+        vol = self.geo_data["cell_volumes"]
         delta = vol ** (1.0 / 3.0)
         return {
             "model": "Smagorinsky",
@@ -152,7 +150,7 @@ class Smagorinsky:
             "filter_width_mean": float(np.mean(delta)),
         }
 
-    def compute_nut(self, U, mesh_data=None, geo_data=None):
+    def compute_eddy_viscosity(self, velocity, mesh_data=None, geo_data=None):
         """Compute turbulent viscosity (nut) per element.
 
         Args:
@@ -162,14 +160,14 @@ class Smagorinsky:
         """
         mesh_data = self.mesh_data if mesh_data is None else mesh_data
         geo_data = self.geo_data if geo_data is None else geo_data
-        n_elements = mesh_data["n_elements"]
+        n_cells = mesh_data["n_cells"]
 
         # Compute velocity gradient on elements (returns gradients for interior+boundary elements)
         _grad_fn = gradients._resolve_gradient_fn(geo_data)
-        grad_U = _grad_fn(U, mesh_data, geo_data)
+        grad_U = _grad_fn(velocity, mesh_data, geo_data)
 
         # We are only interested in interior element gradients (first n_elements)
-        grad_U_int = grad_U[:n_elements]
+        grad_U_int = grad_U[:n_cells]
 
         # grad_U_int shape: (n_elements,3,3) for vector fields
         if grad_U_int.ndim == 3 and grad_U_int.shape[1] == 3 and grad_U_int.shape[2] == 3:
@@ -180,19 +178,19 @@ class Smagorinsky:
             S_mag = np.sqrt(2.0 * S_sq)
         else:
             raise ValueError(
-                f"Velocity gradient has shape {grad_U_int.shape}; expected ({n_elements}, 3, 3)"
+                f"Velocity gradient has shape {grad_U_int.shape}; expected ({n_cells}, 3, 3)"
             )
 
         # Filter width Delta
-        vol = geo_data["element_volumes"]
+        vol = geo_data["cell_volumes"]
         delta = _compute_filter_width(vol, mesh_data, geo_data)
 
         Cs = self.Cs
-        nut = (Cs * delta) ** 2 * S_mag
+        eddy_viscosity = (Cs * delta) ** 2 * S_mag
 
-        if not np.all(np.isfinite(nut)) or np.any(nut < 0.0):
+        if not np.all(np.isfinite(eddy_viscosity)) or np.any(eddy_viscosity < 0.0):
             raise FloatingPointError("Smagorinsky model produced invalid eddy viscosity")
-        return nut
+        return eddy_viscosity
 
 
 class EquilibriumSmagorinsky:
@@ -237,7 +235,7 @@ class EquilibriumSmagorinsky:
     Construct the model directly for diagnostics::
 
         model = EquilibriumSmagorinsky(mesh_data, geo_data)
-        nut = model.compute_nut(U)
+        nut = model.compute_eddy_viscosity(U)
         k_sgs = model.compute_sgs_kinetic_energy(U)
 
     """
@@ -265,41 +263,40 @@ class EquilibriumSmagorinsky:
 
     def _resolve_inputs(
         self,
-        U,
+        velocity,
         mesh_data: dict | None,
         geo_data: dict | None,
     ) -> tuple[dict, dict, np.ndarray, np.ndarray]:
         mesh = self.mesh_data if mesh_data is None else mesh_data
         geometry = self.geo_data if geo_data is None else geo_data
-        strain = _symmetric_velocity_gradient(U, mesh, geometry)
-        delta = _compute_filter_width(geometry["element_volumes"], mesh, geometry)
+        strain = _symmetric_velocity_gradient(velocity, mesh, geometry)
+        delta = _compute_filter_width(geometry["cell_volumes"], mesh, geometry)
         return mesh, geometry, strain, delta
 
     def _compute_sgs_state(
         self,
-        U,
+        velocity,
         mesh_data: dict | None,
         geo_data: dict | None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return ``(k_sgs, delta)`` with bounded tensor working storage."""
         mesh = self.mesh_data if mesh_data is None else mesh_data
         geometry = self.geo_data if geo_data is None else geo_data
-        n_elements = int(mesh["n_elements"])
+        n_cells = int(mesh["n_cells"])
         grad_fn = gradients._resolve_gradient_fn(geometry)
-        grad_u = np.asarray(grad_fn(U, mesh, geometry), dtype=np.float64)
-        if grad_u.shape[1:] != (3, 3) or grad_u.shape[0] < n_elements:
+        grad_u = np.asarray(grad_fn(velocity, mesh, geometry), dtype=np.float64)
+        if grad_u.shape[1:] != (3, 3) or grad_u.shape[0] < n_cells:
             raise ValueError(
-                f"Velocity gradient has shape {grad_u.shape}; expected at least "
-                f"({n_elements}, 3, 3)"
+                f"Velocity gradient has shape {grad_u.shape}; expected at least ({n_cells}, 3, 3)"
             )
         if not np.all(np.isfinite(grad_u)):
             raise FloatingPointError("Smagorinsky velocity gradient contains non-finite values")
 
-        delta = _compute_filter_width(geometry["element_volumes"], mesh, geometry)
-        k_sgs = np.empty(n_elements, dtype=np.float64)
+        delta = _compute_filter_width(geometry["cell_volumes"], mesh, geometry)
+        k_sgs = np.empty(n_cells, dtype=np.float64)
         chunk_size = 100_000
-        for start in range(0, n_elements, chunk_size):
-            stop = min(start + chunk_size, n_elements)
+        for start in range(0, n_cells, chunk_size):
+            stop = min(start + chunk_size, n_cells)
             gradient = grad_u[start:stop]
             strain = 0.5 * (gradient + np.transpose(gradient, (0, 2, 1)))
             trace = np.einsum("fii->f", strain)
@@ -320,7 +317,7 @@ class EquilibriumSmagorinsky:
 
     def compute_sgs_kinetic_energy(
         self,
-        U,
+        velocity,
         mesh_data: dict | None = None,
         geo_data: dict | None = None,
     ) -> np.ndarray:
@@ -340,27 +337,25 @@ class EquilibriumSmagorinsky:
         numpy.ndarray
             Non-negative SGS kinetic energy with one value per interior cell.
         """
-        k_sgs, _ = self._compute_sgs_state(U, mesh_data, geo_data)
+        k_sgs, _ = self._compute_sgs_state(velocity, mesh_data, geo_data)
         return k_sgs
 
-    def compute_nut(
+    def compute_eddy_viscosity(
         self,
-        U,
+        velocity,
         mesh_data: dict | None = None,
         geo_data: dict | None = None,
     ) -> np.ndarray:
         """Compute algebraic-equilibrium SGS kinematic viscosity ``nu_t``."""
-        k_sgs, delta = self._compute_sgs_state(U, mesh_data, geo_data)
-        nut = self.Ck * delta * np.sqrt(k_sgs)
-        if not np.all(np.isfinite(nut)) or np.any(nut < 0.0):
+        k_sgs, delta = self._compute_sgs_state(velocity, mesh_data, geo_data)
+        eddy_viscosity = self.Ck * delta * np.sqrt(k_sgs)
+        if not np.all(np.isfinite(eddy_viscosity)) or np.any(eddy_viscosity < 0.0):
             raise FloatingPointError("Equilibrium Smagorinsky produced invalid eddy viscosity")
-        return nut
+        return eddy_viscosity
 
     def get_filter_info(self) -> dict[str, float | str]:
         """Return model coefficients and ``cubeRootVol`` filter statistics."""
-        delta = _compute_filter_width(
-            self.geo_data["element_volumes"], self.mesh_data, self.geo_data
-        )
+        delta = _compute_filter_width(self.geo_data["cell_volumes"], self.mesh_data, self.geo_data)
         return {
             "model": "EquilibriumSmagorinsky",
             "Ck": self.Ck,

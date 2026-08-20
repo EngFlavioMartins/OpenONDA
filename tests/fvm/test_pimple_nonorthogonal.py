@@ -7,11 +7,11 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -22,16 +22,16 @@ from ._structured_mesh import structured_box
 def test_nonorthogonal_sweep_returns_equation_residuals(tmp_path):
     mesh = structured_box(4, 3, 2)
     mesh["points"][:, 0] += 0.25 * mesh["points"][:, 1]
-    params_schemes = SchemesConfig(convection_scheme="upwind")
+    params_schemes = DiscretizationConfig(convection_scheme="upwind")
     params_linear = LinearSolverConfig(linear_solver="spsolve")
     params_pimple = PimpleControl(n_correctors=1, n_orthogonal_correctors=1)
     config = FVMSetup(
         case_name="skewed_pimple",
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=100),
+        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, output_interval_steps=100),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        transport=TransportConfig(density=1.0, nu=0.01),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),
@@ -41,7 +41,7 @@ def test_nonorthogonal_sweep_returns_equation_residuals(tmp_path):
             BoundaryConfig.wall("zmax"),
         ],
         initial_velocity=[1.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
 
     with contextlib.redirect_stdout(io.StringIO()):
@@ -53,4 +53,4 @@ def test_nonorthogonal_sweep_returns_equation_residuals(tmp_path):
         assert np.isfinite(residuals[key])
     assert residuals["p"] < 1e-10
     assert residuals["U"] < 1e-10
-    assert np.all(np.isfinite(solver.U[: mesh["n_elements"]]))
+    assert np.all(np.isfinite(solver.velocity[: mesh["n_cells"]]))

@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from ..config.types import OutputSetup
+from ..config.types import OutputConfig
 
 try:
     import pyvista as pv
@@ -46,7 +46,7 @@ def atomic_write_text(path: str | Path, content: str) -> None:
 class VTKExporter:
     """
     Exporters results to VTU format using PyVista.
-    Supports cell-centered data (Finite Volume).
+    Supports cell-centred data (Finite Volume).
     Mappings:
         - mesh_data['points'] -> VTK Points
         - mesh_data elements -> VTK Cells (Polyhedron)
@@ -55,7 +55,7 @@ class VTKExporter:
     def __init__(
         self,
         mesh_data: dict[str, Any],
-        output: OutputSetup | None = None,
+        output: OutputConfig | None = None,
     ):
         """Initialise the VTK exporter.
 
@@ -72,7 +72,7 @@ class VTKExporter:
                 "VTK export requires the optional FVM dependencies: pip install 'OpenONDA[fvm]'"
             )
         self.mesh_data = mesh_data
-        self.output = output or OutputSetup()
+        self.output = output or OutputConfig()
         self._grid = self._initialize_grid()
         self._point_operators: dict[bool, dict[str, np.ndarray]] = {}
 
@@ -135,7 +135,7 @@ class VTKExporter:
         if (
             cell_vertices is not None
             and cell_types is not None
-            and np.asarray(cell_vertices).shape == (self.mesh_data["n_elements"], 8)
+            and np.asarray(cell_vertices).shape == (self.mesh_data["n_cells"], 8)
             and np.all(np.asarray(cell_types) == 5)  # Gmsh's 8-node hex code
         ):
             vertices = np.asarray(cell_vertices, dtype=np.int64)
@@ -151,7 +151,7 @@ class VTKExporter:
         faces = self.mesh_data["faces"]
         owners = self.mesh_data["owners"]
         neighbours = self.mesh_data["neighbours"]
-        n_cells = self.mesh_data["n_elements"]
+        n_cells = self.mesh_data["n_cells"]
 
         # Group faces by cell
         cell_faces = self.mesh_data.get("cell_faces")
@@ -187,7 +187,7 @@ class VTKExporter:
     def _cell_vertex_incidence(self) -> tuple[np.ndarray, np.ndarray]:
         """Return ``(cell_index, point_index)`` pairs for every cell corner."""
         cell_vertices = self.mesh_data.get("cell_vertices")
-        n_cells = int(self.mesh_data["n_elements"])
+        n_cells = int(self.mesh_data["n_cells"])
         if cell_vertices is not None:
             vertices = np.asarray(cell_vertices, dtype=np.int64)
             if vertices.ndim == 2 and vertices.shape[0] == n_cells:
@@ -271,7 +271,7 @@ class VTKExporter:
 
         points = np.asarray(self.mesh_data["points"], dtype=np.float64)
         n_points = len(points)
-        n_cells = int(self.mesh_data["n_elements"])
+        n_cells = int(self.mesh_data["n_cells"])
 
         cell_ids, cell_points = self._cell_vertex_incidence()
         cell_centroids = self._centroids(cell_ids, cell_points, n_cells)
@@ -391,7 +391,7 @@ class VTKExporter:
         self._grid.cell_data.clear()
         for name, data in fields.items():
             values = self._field_array(data)
-            n_cells = self.mesh_data["n_elements"]
+            n_cells = self.mesh_data["n_cells"]
             n_with_boundary = (
                 n_cells + self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"]
             )
@@ -432,7 +432,7 @@ class VTKExporter:
     def export_cells(self, filename: str, cell_ids, fields: dict[str, np.ndarray]):
         """Write an explicitly selected cell partition without interpolation."""
         ids = np.asarray(cell_ids, dtype=np.int64)
-        if ids.ndim != 1 or np.any(ids < 0) or np.any(ids >= self.mesh_data["n_elements"]):
+        if ids.ndim != 1 or np.any(ids < 0) or np.any(ids >= self.mesh_data["n_cells"]):
             raise ValueError("cell_ids must be valid one-dimensional global cell indices")
         self._grid.cell_data.clear()
         self._grid.point_data.clear()

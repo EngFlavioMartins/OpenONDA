@@ -19,7 +19,7 @@ def _visualization_mesh(mesh_data, cell_ids: np.ndarray) -> dict[str, Any]:
     """
     from .topology import build_cell_face_csr
 
-    n_global_cells = int(mesh_data["n_elements"])
+    n_global_cells = int(mesh_data["n_cells"])
     global_cell_vertices = mesh_data.get("cell_vertices")
     global_cell_types = np.asarray(
         mesh_data.get("cell_type_codes", np.full(n_global_cells, -1)),
@@ -41,7 +41,7 @@ def _visualization_mesh(mesh_data, cell_ids: np.ndarray) -> dict[str, Any]:
             "faces": np.empty((0, 0), dtype=np.int32),
             "owners": np.empty(0, dtype=np.int64),
             "neighbours": np.empty(0, dtype=np.int64),
-            "n_elements": len(cell_ids),
+            "n_cells": len(cell_ids),
             "n_faces": 0,
             "n_interior_faces": 0,
             "boundary": [],
@@ -128,7 +128,7 @@ def _visualization_mesh(mesh_data, cell_ids: np.ndarray) -> dict[str, Any]:
         # placeholders keep the ordinary mesh schema intact.
         "owners": np.zeros(len(global_face_ids), dtype=np.int64),
         "neighbours": np.empty(0, dtype=np.int64),
-        "n_elements": len(cell_ids),
+        "n_cells": len(cell_ids),
         "n_faces": len(global_face_ids),
         "n_interior_faces": len(global_face_ids),
         "boundary": [],
@@ -198,7 +198,7 @@ class HaloSchedule:
     receive_local_indices: tuple[np.ndarray, ...]
 
     @property
-    def neighbor_ranks(self) -> tuple[int, ...]:
+    def neighbour_ranks(self) -> tuple[int, ...]:
         """Return a tuple of ranks that exchange at least one cell."""
         return tuple(
             rank
@@ -256,7 +256,7 @@ class CellPartition:
     def from_mesh_data(cls, mesh_data, rank: int, size: int) -> CellPartition:
         if not 0 <= rank < size:
             raise ValueError(f"rank {rank} outside communicator size {size}")
-        n_cells = int(mesh_data["n_elements"])
+        n_cells = int(mesh_data["n_cells"])
         n_faces = int(mesh_data["n_faces"])
         int32_limit = np.iinfo(np.int32).max
         if n_cells > int32_limit or n_faces > int32_limit:
@@ -355,7 +355,7 @@ class CellPartition:
         return positions_flat.reshape(requested.shape)
 
     def exchange_halo(self, local_field: np.ndarray, comm) -> None:
-        """Update ghost values with numeric nonblocking neighbor messages.
+        """Update ghost values with numeric nonblocking neighbour messages.
 
         The schedule stores local indices, so the steady path neither maps
         global IDs nor builds an all-rank Python payload list.  ``mpi4py``
@@ -374,7 +374,7 @@ class CellPartition:
 
         receives: list[tuple[np.ndarray, np.ndarray]] = []
         requests = []
-        for rank in self.halo.neighbor_ranks:
+        for rank in self.halo.neighbour_ranks:
             receive_indices = self.halo.receive_local_indices[rank]
             if len(receive_indices):
                 incoming = np.empty((len(receive_indices), *values.shape[1:]), dtype=values.dtype)
@@ -384,7 +384,7 @@ class CellPartition:
         # necessarily materializes the packing buffer, but it is numeric and
         # bounded by the interface rather than an all-rank object collective.
         send_buffers = []
-        for rank in self.halo.neighbor_ranks:
+        for rank in self.halo.neighbour_ranks:
             send_indices = self.halo.send_local_indices[rank]
             if len(send_indices):
                 outgoing = np.ascontiguousarray(values[send_indices])
@@ -412,7 +412,7 @@ def localize_mesh_and_geometry(
     """
     gradient_scheme = geo_data.get("gradient_scheme", "gauss")
     partition = CellPartition.from_mesh_data(mesh_data, rank, size)
-    n_global_cells = int(mesh_data["n_elements"])
+    n_global_cells = int(mesh_data["n_cells"])
     n_global_faces = int(mesh_data["n_faces"])
     n_global_interior = int(mesh_data["n_interior_faces"])
     face_ids = partition.local_face_global_ids
@@ -455,8 +455,8 @@ def localize_mesh_and_geometry(
 
     boundaries = []
     for patch in mesh_data["boundary"]:
-        first = int(patch["startFace"])
-        last = first + int(patch["nFaces"])
+        first = int(patch["start_face"])
+        last = first + int(patch["n_faces"])
         local_first = int(np.searchsorted(face_ids, first, side="left"))
         local_last = int(np.searchsorted(face_ids, last, side="left"))
         if local_first == local_last:
@@ -465,8 +465,8 @@ def localize_mesh_and_geometry(
         if np.any((selected_global < first) | (selected_global >= last)):
             raise RuntimeError(f"Localized boundary patch {patch['name']!r} is not contiguous")
         localized = deepcopy(patch)
-        localized["startFace"] = local_first
-        localized["nFaces"] = local_last - local_first
+        localized["start_face"] = local_first
+        localized["n_faces"] = local_last - local_first
         boundaries.append(localized)
 
     local_cell_ids = partition.local_global_ids
@@ -475,7 +475,7 @@ def localize_mesh_and_geometry(
         "faces": faces,
         "owners": np.ascontiguousarray(owners, dtype=np.int32),
         "neighbours": np.ascontiguousarray(neighbours, dtype=np.int32),
-        "n_elements": len(local_cell_ids),
+        "n_cells": len(local_cell_ids),
         "n_faces": len(face_ids),
         "n_interior_faces": interior_count,
         "boundary": boundaries,

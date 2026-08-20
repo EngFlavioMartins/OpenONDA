@@ -8,7 +8,7 @@ import types
 import numpy as np
 import pytest
 
-from source.solvers.FVM import ExecutionConfig, FVMSetup
+from source.solvers.FVM import ComputeConfig, FVMSetup
 from source.solvers.FVM.core.parallel import ParallelContext, detected_world_size
 
 
@@ -31,7 +31,7 @@ class _FakeMPI:
 
 
 def test_serial_context_is_default():
-    context = ParallelContext.create(ExecutionConfig())
+    context = ParallelContext.create(ComputeConfig())
     assert context.rank == 0
     assert context.size == 1
     assert context.is_root
@@ -41,11 +41,11 @@ def test_serial_context_rejects_accidental_mpi_launch(monkeypatch):
     monkeypatch.setenv("OMPI_COMM_WORLD_SIZE", "4")
     assert detected_world_size() == 4
     with pytest.raises(RuntimeError, match="launched with 4 MPI ranks"):
-        ParallelContext.create(ExecutionConfig())
+        ParallelContext.create(ComputeConfig())
 
 
 def test_replicated_mode_requires_petsc_backend():
-    execution = ExecutionConfig(parallel_mode="petsc_replicated", linear_backend="scipy")
+    execution = ComputeConfig(parallel_mode="petsc_replicated", linear_backend="scipy")
     with pytest.raises(ValueError, match="requires linear_backend='petsc'"):
         ParallelContext.create(execution)
 
@@ -55,7 +55,7 @@ def test_petsc_context_records_injected_communicator(monkeypatch):
     fake_package.PETSc = object()
     monkeypatch.setitem(sys.modules, "petsc4py", fake_package)
     context = ParallelContext.create(
-        ExecutionConfig.petsc_replicated(),
+        ComputeConfig.petsc_replicated(),
         comm=_FakeComm(rank=1, size=2),
         mpi=_FakeMPI,
     )
@@ -69,7 +69,7 @@ def test_execution_config_round_trip(tmp_path):
     path = tmp_path / "fvm.json"
     config = FVMSetup(
         case_name="parallel",
-        execution=ExecutionConfig.petsc_replicated(),
+        execution=ComputeConfig.petsc_replicated(),
     )
     config.save(path)
     loaded = FVMSetup.load(path)

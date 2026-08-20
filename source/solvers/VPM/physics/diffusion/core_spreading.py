@@ -18,5 +18,5 @@ def apply_core_spreading(owner, particles, time_step_size: float):
 
     owner._resize_temp_fields(N)
     owner.update_radius_csm_kernel(
-        particles.radius, particles.viscosity_effective, time_step_size, N
+        particles.core_radius, particles.effective_viscosity, time_step_size, N
     )

@@ -71,7 +71,7 @@ class SimulationMonitor:
         """
         self._ensure_output_dir()
 
-        base_name = os.path.basename(self.solver.backup_file_name)
+        base_name = os.path.basename(self.solver.checkpoint_name)
         filename = os.path.join(self.output_dir, f"loads_{base_name}.csv")
         file_exists = os.path.isfile(filename)
 
@@ -127,7 +127,7 @@ class SimulationMonitor:
         """
         self._ensure_output_dir()
 
-        base_name = os.path.basename(self.solver.backup_file_name)
+        base_name = os.path.basename(self.solver.checkpoint_name)
         filename = os.path.join(self.output_dir, f"vlm_loads_{base_name}.csv")
         file_exists = os.path.isfile(filename)
 

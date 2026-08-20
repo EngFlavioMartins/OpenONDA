@@ -17,19 +17,19 @@ def conv_data(hand_built_3d_mesh):
     """Pre-compute mesh with uniform U=(1,0,0) for convection tests."""
     mesh = hand_built_3d_mesh
     geo = compute_mesh_geometry(mesh)
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
 
     for b in mesh["boundary"]:
         b["bc_type"] = "zeroGradient"
 
     # Uniform velocity field (interior + ghost)
-    U = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
+    velocity = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
 
     # Mass flow rate
-    mdot = compute_volumetric_face_flux(U, mesh, geo)
+    mdot = compute_volumetric_face_flux(velocity, mesh, geo)
 
-    return {"mesh": mesh, "geo": geo, "U": U, "mdot": mdot}
+    return {"mesh": mesh, "geo": geo, "U": velocity, "mdot": mdot}
 
 
 class TestConvectionBounded:
@@ -37,11 +37,11 @@ class TestConvectionBounded:
 
     def test_upwind_is_m_matrix(self, conv_data):
         """Upwind convection matrix has off-diag ≤ 0 and diag > 0 (M-matrix)."""
-        n_elem = conv_data["mesh"]["n_elements"]
+        n_elem = conv_data["mesh"]["n_cells"]
         n_bnd = conv_data["mesh"]["n_faces"] - conv_data["mesh"]["n_interior_faces"]
-        phi = np.zeros(n_elem + n_bnd)
+        face_flux = np.zeros(n_elem + n_bnd)
         flux_data = assemble_convection_term(
-            phi,
+            face_flux,
             conv_data["mdot"],
             conv_data["mesh"],
             conv_data["geo"],
@@ -55,11 +55,11 @@ class TestConvectionBounded:
 
     def test_constant_field_zero_residual(self, conv_data):
         """If φ=const=1, convection RHS and matrix product should cancel."""
-        n_elem = conv_data["mesh"]["n_elements"]
+        n_elem = conv_data["mesh"]["n_cells"]
         n_bnd = conv_data["mesh"]["n_faces"] - conv_data["mesh"]["n_interior_faces"]
-        phi = np.ones(n_elem + n_bnd)
+        face_flux = np.ones(n_elem + n_bnd)
         flux_data = assemble_convection_term(
-            phi,
+            face_flux,
             conv_data["mdot"],
             conv_data["mesh"],
             conv_data["geo"],

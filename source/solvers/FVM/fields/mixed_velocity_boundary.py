@@ -64,13 +64,13 @@ def update_normal_velocity_tangential_gradient_boundary(
     geo_data: dict,
 ) -> None:
     """Refresh one mixed patch's face-valued ghost slots in-place."""
-    start = int(boundary["startFace"])
-    n_faces = int(boundary["nFaces"])
+    start = int(boundary["start_face"])
+    n_faces = int(boundary["n_faces"])
     faces = np.arange(start, start + n_faces)
-    n_elements = int(mesh_data["n_elements"])
+    n_cells = int(mesh_data["n_cells"])
     n_interior = int(mesh_data["n_interior_faces"])
     owners = np.asarray(mesh_data["owners"])[faces]
-    ghosts = n_elements + (faces - n_interior)
+    ghosts = n_cells + (faces - n_interior)
 
     surface_vectors = np.asarray(geo_data["face_sf"], dtype=np.float64)[faces]
     areas = np.linalg.norm(surface_vectors, axis=1)

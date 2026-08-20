@@ -308,15 +308,20 @@ def box_mesh_3d(
         n_outer = sum(quads.shape[0] for _, quads, _ in merged)
         if n_outer:
             boundary.append(
-                {"name": merge_outer_patch, "startFace": start, "nFaces": n_outer, "type": "patch"}
+                {
+                    "name": merge_outer_patch,
+                    "start_face": start,
+                    "n_faces": n_outer,
+                    "type": "patch",
+                }
             )
             start += n_outer
         for name, quads, _ in standalone:
             boundary.append(
                 {
                     "name": name,
-                    "startFace": start,
-                    "nFaces": quads.shape[0],
+                    "start_face": start,
+                    "n_faces": quads.shape[0],
                     "type": "empty" if empty_spanwise and name in {"zmin", "zmax"} else "patch",
                 }
             )
@@ -326,8 +331,8 @@ def box_mesh_3d(
             boundary.append(
                 {
                     "name": name,
-                    "startFace": start,
-                    "nFaces": quads.shape[0],
+                    "start_face": start,
+                    "n_faces": quads.shape[0],
                     "type": "empty" if empty_spanwise and name in {"zmin", "zmax"} else "patch",
                 }
             )
@@ -336,8 +341,8 @@ def box_mesh_3d(
         boundary.append(
             {
                 "name": wall_patch_name,
-                "startFace": start,
-                "nFaces": wall_quads.shape[0],
+                "start_face": start,
+                "n_faces": wall_quads.shape[0],
                 "type": "wall",
             }
         )
@@ -378,7 +383,7 @@ def box_mesh_3d(
         "owners": np.asarray(owners, dtype=np.int32),
         "neighbours": np.asarray(neighbours, dtype=np.int32),
         "boundary": boundary,
-        "n_elements": int(keep.sum()),
+        "n_cells": int(keep.sum()),
         "n_faces": all_quads.shape[0],
         "n_interior_faces": n_interior,
         "n_points": points.shape[0],

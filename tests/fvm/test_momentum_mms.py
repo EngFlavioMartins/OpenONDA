@@ -44,9 +44,13 @@ def _u_exact(x, y, z):
     return np.column_stack([ux, uy, uz])
 
 
-def _momentum_source(x, y, z, nu):
-    sx = 0.5 * PI * np.sin(2 * PI * x) + 2.0 * nu * PI**2 * np.sin(PI * x) * np.cos(PI * y)
-    sy = 0.5 * PI * np.sin(2 * PI * y) - 2.0 * nu * PI**2 * np.cos(PI * x) * np.sin(PI * y)
+def _momentum_source(x, y, z, kinematic_viscosity):
+    sx = 0.5 * PI * np.sin(2 * PI * x) + 2.0 * kinematic_viscosity * PI**2 * np.sin(
+        PI * x
+    ) * np.cos(PI * y)
+    sy = 0.5 * PI * np.sin(2 * PI * y) - 2.0 * kinematic_viscosity * PI**2 * np.cos(
+        PI * x
+    ) * np.sin(PI * y)
     sz = np.zeros_like(x)
     return np.column_stack([sx, sy, sz])
 
@@ -58,46 +62,46 @@ def _l2_vector(computed, exact, volumes):
 
 def _setup_exact_field(mesh, geo):
     """Cell-centre + boundary-ghost velocity set to u_exact (Dirichlet)."""
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
     n_bnd = mesh["n_faces"] - n_int
-    cc = geo["element_centroids"]
+    cc = geo["cell_centroids"]
     fc = geo["face_centroids"]
 
-    U = np.zeros((n_elem + n_bnd, 3))
-    U[:n_elem] = _u_exact(cc[:, 0], cc[:, 1], cc[:, 2])
+    velocity = np.zeros((n_elem + n_bnd, 3))
+    velocity[:n_elem] = _u_exact(cc[:, 0], cc[:, 1], cc[:, 2])
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
-        b["bc_type_velocity"] = "fixedValue"
-        b["value_velocity"] = [0.0, 0.0, 0.0]  # unused: ghosts below carry the exact value
-        start, nf = b["startFace"], b["nFaces"]
+        b["velocity_type"] = "fixedValue"
+        b["velocity_value"] = [0.0, 0.0, 0.0]  # unused: ghosts below carry the exact value
+        start, nf = b["start_face"], b["n_faces"]
         for j in range(nf):
             fi = start + j
             gi = n_elem + (fi - n_int)
-            U[gi] = _u_exact(
+            velocity[gi] = _u_exact(
                 np.array([fc[fi, 0]]), np.array([fc[fi, 1]]), np.array([fc[fi, 2]])
             ).ravel()
-    return U
+    return velocity
 
 
-def _solve_momentum_operator(mesh, geo, nu, scheme):
+def _solve_momentum_operator(mesh, geo, kinematic_viscosity, scheme):
     """Assemble + solve the steady momentum operator with the manufactured
     source; return (U_solution[n_elem, 3], U_exact[n_elem, 3], volumes)."""
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-    cc = geo["element_centroids"]
+    cc = geo["cell_centroids"]
 
-    U = _setup_exact_field(mesh, geo)
+    velocity = _setup_exact_field(mesh, geo)
     p = np.zeros(n_elem + n_bnd)
-    phi = compute_volumetric_face_flux(U, mesh, geo)
-    S = _momentum_source(cc[:, 0], cc[:, 1], cc[:, 2], nu)
+    face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
+    S = _momentum_source(cc[:, 0], cc[:, 1], cc[:, 2], kinematic_viscosity)
 
     mom = assemble_momentum_equation(
-        U,
+        velocity,
         p,
-        phi,
+        face_flux,
         1.0,
-        nu,
+        kinematic_viscosity,
         mesh,
         geo,
         mesh["boundary"],
@@ -113,7 +117,7 @@ def _solve_momentum_operator(mesh, geo, nu, scheme):
         U_sol[:, i] = solve_linear_system(A, b, method="spsolve", equation_type="momentum")
 
     U_exact = _u_exact(cc[:, 0], cc[:, 1], cc[:, 2])
-    return U_sol, U_exact, geo["element_volumes"]
+    return U_sol, U_exact, geo["cell_volumes"]
 
 
 def _observed_order(errors, h_vals):

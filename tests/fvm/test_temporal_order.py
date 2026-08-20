@@ -47,57 +47,57 @@ def _a_dot_grad_phi(x, y, a):
     return np.column_stack([gx, gy, np.zeros_like(x)])
 
 
-def _source(x, y, t, a, nu):
+def _source(x, y, t, a, kinematic_viscosity):
     """S = g'φ + g(a·∇)φ − ν g ∇²φ with g=e^{-t}, ∇²φ = −2π²φ."""
     g = np.exp(-t)
-    phi = _phi(x, y)
+    face_flux = _phi(x, y)
     adv = _a_dot_grad_phi(x, y, a)
-    return g * (-phi + adv + 2.0 * nu * PI**2 * phi)
+    return g * (-face_flux + adv + 2.0 * kinematic_viscosity * PI**2 * face_flux)
 
 
-def _set_ghosts(U, mesh, geo, t):
+def _set_ghosts(velocity, mesh, geo, t):
     """Write u_exact(t) into the boundary ghost cells (Dirichlet)."""
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
     fc = geo["face_centroids"]
     g = np.exp(-t)
     for b in mesh["boundary"]:
         b["bc_type"] = "fixedValue"
-        b["bc_type_velocity"] = "fixedValue"
-        b["value_velocity"] = [0.0, 0.0, 0.0]
-        for j in range(b["nFaces"]):
-            fi = b["startFace"] + j
+        b["velocity_type"] = "fixedValue"
+        b["velocity_value"] = [0.0, 0.0, 0.0]
+        for j in range(b["n_faces"]):
+            fi = b["start_face"] + j
             gi = n_elem + (fi - n_int)
-            U[gi] = g * _phi(np.array([fc[fi, 0]]), np.array([fc[fi, 1]])).ravel()
+            velocity[gi] = g * _phi(np.array([fc[fi, 0]]), np.array([fc[fi, 1]])).ravel()
 
 
-def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
+def _integrate(mesh, geo, n_steps, T, a, kinematic_viscosity, ddt_scheme="euler"):
     """March the linear momentum operator in time; return interior U(T).
 
     ``ddt_scheme`` selects BDF1 (``"euler"``) or BDF2 (``"backward"``).  BDF2 is
     self-starting (first step uses BDF1), so ``U_old_old`` is None on step 0.
     """
-    n_elem = mesh["n_elements"]
+    n_elem = mesh["n_cells"]
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-    cc = geo["element_centroids"]
+    cc = geo["cell_centroids"]
     time_step_size = T / n_steps
 
     # Frozen advecting flux from the constant velocity a.
     a_field = np.tile(a, (n_elem + n_bnd, 1)).astype(np.float64)
     phi_flux = compute_volumetric_face_flux(a_field, mesh, geo)
 
-    U = np.zeros((n_elem + n_bnd, 3))
-    U[:n_elem] = _phi(cc[:, 0], cc[:, 1])  # u(0) = φ
-    _set_ghosts(U, mesh, geo, 0.0)
+    velocity = np.zeros((n_elem + n_bnd, 3))
+    velocity[:n_elem] = _phi(cc[:, 0], cc[:, 1])  # u(0) = φ
+    _set_ghosts(velocity, mesh, geo, 0.0)
     p = np.zeros(n_elem + n_bnd)
 
-    U_old_old = None
+    velocity_older = None
     t = 0.0
     for _ in range(n_steps):
         t_new = t + time_step_size
-        U_old = U.copy()
-        _set_ghosts(U, mesh, geo, t_new)  # Dirichlet at the new time level
-        S = _source(cc[:, 0], cc[:, 1], t_new, a, nu)
+        velocity_old = velocity.copy()
+        _set_ghosts(velocity, mesh, geo, t_new)  # Dirichlet at the new time level
+        S = _source(cc[:, 0], cc[:, 1], t_new, a, kinematic_viscosity)
         # Use the fully-implicit central scheme (cell-Péclet < 2 here, so it is
         # bounded) to isolate the *time*-integration order: the deferred
         # scheme's explicit central correction is lagged by one solve and would
@@ -108,36 +108,36 @@ def _integrate(mesh, geo, n_steps, T, a, nu, ddt_scheme="euler"):
         # inject a first-order splitting error into a test intended to isolate
         # the BDF time operator.
         for _picard in range(8):
-            previous_iterate = U[:n_elem].copy()
+            previous_iterate = velocity[:n_elem].copy()
             mom = assemble_momentum_equation(
-                U,
+                velocity,
                 p,
                 phi_flux,
                 1.0,
-                nu,
+                kinematic_viscosity,
                 mesh,
                 geo,
                 mesh["boundary"],
                 convection_scheme="central",
                 time_step_size=time_step_size,
-                U_old=U_old,
-                U_old_old=U_old_old,
+                velocity_old=velocity_old,
+                velocity_older=velocity_older,
                 ddt_scheme=ddt_scheme,
                 source_explicit=S,
             )
             for i, comp in enumerate(["x", "y", "z"]):
-                U[:n_elem, i] = solve_linear_system(
+                velocity[:n_elem, i] = solve_linear_system(
                     mom[comp]["A"],
                     mom[comp]["b"],
                     method="spsolve",
                     equation_type="momentum",
                 )
-            change = np.linalg.norm(U[:n_elem] - previous_iterate)
-            if change <= 1e-12 * max(np.linalg.norm(U[:n_elem]), 1.0):
+            change = np.linalg.norm(velocity[:n_elem] - previous_iterate)
+            if change <= 1e-12 * max(np.linalg.norm(velocity[:n_elem]), 1.0):
                 break
-        U_old_old = U_old
+        velocity_older = velocity_old
         t = t_new
-    return U[:n_elem].copy()
+    return velocity[:n_elem].copy()
 
 
 def _l2(a, b, vol):
@@ -151,7 +151,7 @@ class TestTemporalOrder:
     T = 0.4
 
     def _order(self, mesh, geo, ddt_scheme):
-        vol = geo["element_volumes"]
+        vol = geo["cell_volumes"]
         u_n = _integrate(mesh, geo, 8, self.T, self.A, self.NU, ddt_scheme)
         u_2n = _integrate(mesh, geo, 16, self.T, self.A, self.NU, ddt_scheme)
         u_4n = _integrate(mesh, geo, 32, self.T, self.A, self.NU, ddt_scheme)

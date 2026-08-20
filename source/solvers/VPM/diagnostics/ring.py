@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 RING_DIAGNOSTIC_COLUMNS = (
-    "flow_time",
+    "time",
     "time_step",
     "group_id",
     "x_centroid",
@@ -49,7 +49,7 @@ class RingDiagnosticsSampler:
         step: int | None,
     ) -> None:
         positions = np.asarray(solver.particles_positions, dtype=np.float64)
-        circulation = np.asarray(solver.particles_circulation, dtype=np.float64)
+        circulation = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         group_ids = np.asarray(solver.particles_group_ids, dtype=np.int32)
 
         path.parent.mkdir(parents=True, exist_ok=True)

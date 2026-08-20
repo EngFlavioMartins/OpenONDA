@@ -21,11 +21,11 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -36,23 +36,25 @@ TIME_STEP_SIZE = 0.02
 N_STEPS = 4
 
 
-def _run(tmp_path, alpha_u, alpha_p, n_outer):
+def _run(tmp_path, velocity_relaxation, pressure_relaxation, n_outer):
     """March a startup channel flow and return the interior ``(U, p)``."""
     mesh = structured_box(6, 5, 4)
     config = FVMSetup(
         case_name="pimple_final",
         time=TimeConfig.transient(
-            time_step_size=TIME_STEP_SIZE, duration=TIME_STEP_SIZE * N_STEPS, write_interval=10**9
+            time_step_size=TIME_STEP_SIZE,
+            duration=TIME_STEP_SIZE * N_STEPS,
+            output_interval_steps=10**9,
         ),
-        schemes=SchemesConfig(convection_scheme="LUST", time_scheme="backward"),
+        schemes=DiscretizationConfig(convection_scheme="LUST", time_scheme="backward"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(
             n_correctors=2,
             n_outer_correctors=n_outer,
-            alpha_u=alpha_u,
-            alpha_p=alpha_p,
+            velocity_relaxation=velocity_relaxation,
+            pressure_relaxation=pressure_relaxation,
         ),
-        transport=TransportConfig(density=1.0, nu=0.01),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),
@@ -62,24 +64,26 @@ def _run(tmp_path, alpha_u, alpha_p, n_outer):
             BoundaryConfig.slip("zmax"),
         ],
         initial_velocity=[1.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
 
     with contextlib.redirect_stdout(io.StringIO()):
         solver = FVMSolver(config, str(tmp_path), mesh_data=mesh)
         solver.auto_write = False
-        n_elements = mesh["n_elements"]
+        n_cells = mesh["n_cells"]
         for _ in range(N_STEPS):
             solver.solve_pimple(TIME_STEP_SIZE)
             solver.advance_time()
-        return solver.U[:n_elements].copy(), solver.p[:n_elements].copy()
+        return solver.velocity[:n_cells].copy(), solver.kinematic_pressure[:n_cells].copy()
 
 
-@pytest.mark.parametrize("alpha_u, alpha_p", [(0.7, 0.3), (0.5, 0.2)])
-def test_single_outer_corrector_ignores_relaxation(tmp_path, alpha_u, alpha_p):
+@pytest.mark.parametrize("velocity_relaxation, pressure_relaxation", [(0.7, 0.3), (0.5, 0.2)])
+def test_single_outer_corrector_ignores_relaxation(
+    tmp_path, velocity_relaxation, pressure_relaxation
+):
     """The only corrector is the final one, so relaxation must be inert."""
     reference_U, reference_p = _run(tmp_path, 1.0, 1.0, n_outer=1)
-    relaxed_U, relaxed_p = _run(tmp_path, alpha_u, alpha_p, n_outer=1)
+    relaxed_U, relaxed_p = _run(tmp_path, velocity_relaxation, pressure_relaxation, n_outer=1)
 
     assert np.allclose(relaxed_U, reference_U, rtol=0.0, atol=1e-13)
     assert np.allclose(relaxed_p, reference_p, rtol=0.0, atol=1e-13)
@@ -134,22 +138,22 @@ def test_relative_linear_tolerances_are_disabled_at_final_stages(tmp_path, monke
     config = FVMSetup(
         case_name="pimple_linear_final",
         time=TimeConfig.transient(
-            time_step_size=TIME_STEP_SIZE, duration=TIME_STEP_SIZE, write_interval=10**9
+            time_step_size=TIME_STEP_SIZE, duration=TIME_STEP_SIZE, output_interval_steps=10**9
         ),
-        schemes=SchemesConfig(convection_scheme="upwind"),
+        schemes=DiscretizationConfig(convection_scheme="upwind"),
         linear=LinearSolverConfig(
             linear_solver="bicgstab",
-            momentum_tol=1e-6,
-            momentum_rel_tol=0.1,
-            pressure_tol=1e-6,
-            pressure_rel_tol=0.01,
+            momentum_tolerance=1e-6,
+            momentum_relative_tolerance=0.1,
+            pressure_tolerance=1e-6,
+            pressure_relative_tolerance=0.01,
         ),
         pimple=PimpleControl(
             n_correctors=2,
             n_outer_correctors=2,
             n_orthogonal_correctors=1,
         ),
-        transport=TransportConfig(density=1.0, nu=0.01),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.01),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),

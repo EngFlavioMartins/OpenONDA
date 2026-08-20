@@ -105,14 +105,14 @@ def numpy_allocation_inventory(solver: Any) -> dict[str, int]:
     fields = [
         getattr(solver, name, None)
         for name in (
-            "U",
-            "p",
-            "phi",
-            "U_old",
-            "U_old_old",
-            "phi_old",
-            "phi_old_old",
-            "nut",
+            "velocity",
+            "kinematic_pressure",
+            "face_flux",
+            "velocity_old",
+            "velocity_older",
+            "face_flux_old",
+            "face_flux_older",
+            "eddy_viscosity",
         )
     ]
     sources = (

@@ -32,7 +32,7 @@ def validate_topology(mesh_data):
         "owners",
         "neighbours",
         "boundary",
-        "n_elements",
+        "n_cells",
         "n_faces",
         "n_interior_faces",
     }
@@ -43,7 +43,7 @@ def validate_topology(mesh_data):
     owners = np.asarray(mesh_data["owners"])
     neighbours = np.asarray(mesh_data["neighbours"])
     faces = mesh_data["faces"]
-    n_cells = int(mesh_data["n_elements"])
+    n_cells = int(mesh_data["n_cells"])
     n_faces = int(mesh_data["n_faces"])
     n_internal = int(mesh_data["n_interior_faces"])
 
@@ -96,8 +96,8 @@ def validate_topology(mesh_data):
         name = str(patch.get("name", ""))
         _require(name and name not in seen_names, f"Invalid or duplicate boundary name {name!r}")
         seen_names.add(name)
-        start = int(patch.get("startFace", -1))
-        count = int(patch.get("nFaces", -1))
+        start = int(patch.get("start_face", -1))
+        count = int(patch.get("n_faces", -1))
         _require(count >= 0, f"Boundary {name!r} has a negative face count")
         _require(
             start == expected_start,
@@ -140,11 +140,11 @@ def validate_topology(mesh_data):
 
 def validate_geometry(mesh_data, geo_data):
     """Validate geometry and return mesh-quality extrema."""
-    n_cells = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_faces = mesh_data["n_faces"]
     n_internal = mesh_data["n_interior_faces"]
 
-    volumes = np.asarray(geo_data["element_volumes"])
+    volumes = np.asarray(geo_data["cell_volumes"])
     areas = np.asarray(geo_data["face_areas"])
     sf = np.asarray(geo_data["face_sf"])
     cf = np.asarray(geo_data["face_cf_vector"])
@@ -154,7 +154,7 @@ def validate_geometry(mesh_data, geo_data):
     _require(areas.shape == (n_faces,), "Face-area array has the wrong shape")
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
-    centroids = np.asarray(geo_data["element_centroids"])
+    centroids = np.asarray(geo_data["cell_centroids"])
     face_centroids = np.asarray(geo_data["face_centroids"])
 
     # Mesh validation used to allocate all quality vectors for all faces at
@@ -319,7 +319,7 @@ def validate_no_fluid_solid_overlap(mesh_data, solid_bounds, *, tolerance: float
     solid_min = solid_bounds[::2]
     solid_max = solid_bounds[1::2]
     points = np.asarray(mesh_data["points"], dtype=np.float64)
-    n_cells = int(mesh_data["n_elements"])
+    n_cells = int(mesh_data["n_cells"])
 
     cell_vertices = mesh_data.get("cell_vertices")
     if cell_vertices is not None and np.asarray(cell_vertices).ndim == 2:
@@ -407,7 +407,7 @@ def validate_curved_wall_conformance(
 
     faces = np.asarray(mesh_data["faces"])
     (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
-    first, count = int(wall["startFace"]), int(wall["nFaces"])
+    first, count = int(wall["start_face"]), int(wall["n_faces"])
     mesh_area = sum(_polygon_area(points[face]) for face in faces[first : first + count])
 
     surface_triangles = np.asarray(surface_triangles, dtype=np.float64)

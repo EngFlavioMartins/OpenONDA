@@ -12,14 +12,14 @@ class TestCourant:
         """U=(1,0,0), dt=0.1 on mesh with dx=1 → Co ≈ 0.1."""
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
 
-        U = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
-        phi = compute_volumetric_face_flux(U, mesh, geo)
+        velocity = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
+        face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
         time_step_size = 0.1
 
-        co = compute_courant_number(U, phi, time_step_size, mesh, geo)
+        co = compute_courant_number(velocity, face_flux, time_step_size, mesh, geo)
         assert co.shape[0] >= n_elem
         co_int = co[:n_elem]
         # On uniform mesh with dx=1, U=1, Co ≈ 0.1
@@ -31,7 +31,7 @@ class TestCourant:
         """Doubling U should double Co."""
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
 
         U1 = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))

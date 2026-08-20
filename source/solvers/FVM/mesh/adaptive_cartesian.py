@@ -318,8 +318,8 @@ def _validate_wall_on_surface(
 ) -> None:
     """Raise unless the wall patch vertex bounds coincide with the STL bounds."""
     (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
-    first = int(wall["startFace"])
-    faces = np.asarray(mesh_data["faces"])[first : first + int(wall["nFaces"])]
+    first = int(wall["start_face"])
+    faces = np.asarray(mesh_data["faces"])[first : first + int(wall["n_faces"])]
     vertices = np.asarray(mesh_data["points"])[np.unique(faces)]
     lower = vertices.min(axis=0)
     upper = vertices.max(axis=0)
@@ -391,7 +391,7 @@ def _conform_wall_to_surface(
         return
     (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
     faces = np.asarray(mesh_data["faces"])
-    first, count = int(wall["startFace"]), int(wall["nFaces"])
+    first, count = int(wall["start_face"]), int(wall["n_faces"])
     wall_point_ids = np.unique(faces[first : first + count])
 
     point_cells: dict[int, list[int]] = {}
@@ -1000,8 +1000,8 @@ class AdaptiveCartesianMesher:
             boundary.append(
                 {
                     "name": name,
-                    "startFace": start,
-                    "nFaces": len(codes),
+                    "start_face": start,
+                    "n_faces": len(codes),
                     "type": "wall" if name == self.wall_patch_name else "patch",
                 }
             )
@@ -1083,7 +1083,7 @@ class AdaptiveCartesianMesher:
             "owners": owners,
             "neighbours": neighbours,
             "boundary": boundary,
-            "n_elements": len(leaves),
+            "n_cells": len(leaves),
             "n_faces": len(faces),
             "n_interior_faces": len(neighbours),
             "n_points": len(points),

@@ -26,28 +26,28 @@ class TestVorticity:
         """ω = ∇×U for solid-body rotation on hand_built mesh."""
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        cents = geo["element_centroids"]
+        cents = geo["cell_centroids"]
 
         # Build velocity field with proper ghost cells for gradient computation
-        U = np.zeros((n_elem + n_bnd, 3))
-        U[:n_elem, 0] = -cents[:, 1]
-        U[:n_elem, 1] = cents[:, 0]
+        velocity = np.zeros((n_elem + n_bnd, 3))
+        velocity[:n_elem, 0] = -cents[:, 1]
+        velocity[:n_elem, 1] = cents[:, 0]
         for boundary in mesh["boundary"]:
-            boundary["bc_type_velocity"] = "zeroGradient"
+            boundary["velocity_type"] = "zeroGradient"
 
         # Set ghost cells to analytic velocity at face centroids
         fc = geo["face_centroids"]
         for b in mesh["boundary"]:
-            start, nf = b["startFace"], b["nFaces"]
+            start, nf = b["start_face"], b["n_faces"]
             for j in range(nf):
                 fi = start + j
                 gi = n_elem + (fi - mesh["n_interior_faces"])
-                U[gi, 0] = -fc[fi, 1]
-                U[gi, 1] = fc[fi, 0]
+                velocity[gi, 0] = -fc[fi, 1]
+                velocity[gi, 1] = fc[fi, 0]
 
-        gradU = compute_gauss_gradient(U, mesh, geo)
+        gradU = compute_gauss_gradient(velocity, mesh, geo)
         # ω = ∇ × U = (∂w/∂y − ∂v/∂z, ∂u/∂z − ∂w/∂x, ∂v/∂x − ∂u/∂y)
         # gradU[i, j, k] = ∂U_k/∂x_j
         dUdx = gradU[:n_elem, 0, :]  # (n_elem, 3): ∂u/∂x, ∂v/∂x, ∂w/∂x
@@ -65,26 +65,26 @@ class TestVorticity:
         """compute_vorticity() on solid-body rotation."""
         mesh = hand_built_3d_mesh
         geo = compute_mesh_geometry(mesh)
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        cents = geo["element_centroids"]
+        cents = geo["cell_centroids"]
 
-        U = np.zeros((n_elem + n_bnd, 3))
-        U[:n_elem, 0] = -cents[:, 1]
-        U[:n_elem, 1] = cents[:, 0]
+        velocity = np.zeros((n_elem + n_bnd, 3))
+        velocity[:n_elem, 0] = -cents[:, 1]
+        velocity[:n_elem, 1] = cents[:, 0]
         for boundary in mesh["boundary"]:
-            boundary["bc_type_velocity"] = "zeroGradient"
+            boundary["velocity_type"] = "zeroGradient"
 
         fc = geo["face_centroids"]
         for b in mesh["boundary"]:
-            start, nf = b["startFace"], b["nFaces"]
+            start, nf = b["start_face"], b["n_faces"]
             for j in range(nf):
                 fi = start + j
                 gi = n_elem + (fi - mesh["n_interior_faces"])
-                U[gi, 0] = -fc[fi, 1]
-                U[gi, 1] = fc[fi, 0]
+                velocity[gi, 0] = -fc[fi, 1]
+                velocity[gi, 1] = fc[fi, 0]
 
-        vort = compute_vorticity(U, mesh, geo)
+        vort = compute_vorticity(velocity, mesh, geo)
         expected = np.tile([0.0, 0.0, 2.0], (n_elem, 1))
         err = np.max(np.abs(vort[:n_elem] - expected))
         assert err < 1e-10, f"max ω error = {err:.2e} (from compute_vorticity)"

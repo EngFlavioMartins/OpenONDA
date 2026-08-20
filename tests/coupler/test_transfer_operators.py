@@ -186,7 +186,7 @@ def test_pressure_vpm_bc_uses_the_same_body_complete_velocity_as_dirichlet_data(
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
     coupler.vpm_time_step_size = 0.05
     coupler.rho = 1.0
-    coupler.nu = 1.0e-3
+    coupler.kinematic_viscosity = 1.0e-3
     coupler.setup = SimpleNamespace(
         vpm_bc_mode="pressure_gradient",
         vpm_particle_spacing=0.04,
@@ -491,23 +491,23 @@ def test_direct_circulation_target_bypasses_cell_remeshing():
 def test_vorticity_sign_matches_the_fvm_curl_convention():
     mesh = structured_box(3, 3, 3, lx=2.0, ly=2.0, lz=2.0)
     geometry = compute_mesh_geometry(mesh)
-    n_cells = mesh["n_elements"]
+    n_cells = mesh["n_cells"]
     n_boundary = mesh["n_faces"] - mesh["n_interior_faces"]
-    U = np.zeros((n_cells + n_boundary, 3))
+    velocity = np.zeros((n_cells + n_boundary, 3))
 
     centres = geometry["element_centroids"][:n_cells]
-    U[:n_cells, 0] = -centres[:, 1]  # U=(-y, x, 0), curl = +2 z
-    U[:n_cells, 1] = centres[:, 0]
+    velocity[:n_cells, 0] = -centres[:, 1]  # U=(-y, x, 0), curl = +2 z
+    velocity[:n_cells, 1] = centres[:, 0]
     for patch in mesh["boundary"]:
-        start, count = patch["startFace"], patch["nFaces"]
+        start, count = patch["start_face"], patch["n_faces"]
         for local in range(count):
             face = start + local
             ghost = n_cells + face - mesh["n_interior_faces"]
             point = geometry["face_centroids"][face]
-            U[ghost, :2] = (-point[1], point[0])
-            patch["bc_type_velocity"] = "zeroGradient"
+            velocity[ghost, :2] = (-point[1], point[0])
+            patch["velocity_type"] = "zeroGradient"
 
-    vorticity = compute_vorticity(U, mesh, geometry)[:n_cells]
+    vorticity = compute_vorticity(velocity, mesh, geometry)[:n_cells]
     np.testing.assert_allclose(vorticity, np.tile([0.0, 0.0, 2.0], (n_cells, 1)), atol=1e-12)
 
 

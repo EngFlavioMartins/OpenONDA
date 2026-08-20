@@ -67,14 +67,14 @@ class _FakeFVM:
         self.boundaries = []
         self.setup = SimpleNamespace(
             time=SimpleNamespace(time_step_size=0.02, end_time=1.0),
-            transport=SimpleNamespace(nu=1e-3, density=1.0),
+            transport=SimpleNamespace(kinematic_viscosity=1e-3, density=1.0),
             boundaries=[],
         )
 
     def n_procs(self):
         return 1
 
-    def get_cell_center_coordinates(self):
+    def get_cell_centre_coordinates(self):
         return np.zeros((0, 3))
 
     def get_cell_volumes(self):
@@ -89,7 +89,7 @@ class _FakeFVM:
     def set_cell_vector_field(self, name, vx, vy, vz):
         pass
 
-    def get_boundary_face_center_coordinates(self, patch):
+    def get_boundary_face_centre_coordinates(self, patch):
         return np.array(
             [
                 [-1.5, 0.0, 0.0],
@@ -153,7 +153,7 @@ def test_use_injected_flag_and_adoption(monkeypatch, tmp_path):
     # The native FVM configuration owns its sub-step and fluid properties.
     assert c.fvm_time_step_size == pytest.approx(0.02)
     assert c.vpm_time_step_size == pytest.approx(0.1)
-    assert c.nu == pytest.approx(1e-3)
+    assert c.kinematic_viscosity == pytest.approx(1e-3)
 
 
 def test_substep_count_derived_from_vpm_step(monkeypatch, tmp_path):

@@ -17,11 +17,11 @@ gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not insta
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -108,11 +108,11 @@ class TestEmptyBCQuasi3D:
 
         config = FVMSetup(
             case_name="quasi3d_duct",
-            time=TimeConfig.transient(time_step_size=0.05, duration=2.0, write_interval=100),
-            schemes=SchemesConfig(convection_scheme="upwind"),
+            time=TimeConfig.transient(time_step_size=0.05, duration=2.0, output_interval_steps=100),
+            schemes=DiscretizationConfig(convection_scheme="upwind"),
             linear=LinearSolverConfig(linear_solver="spsolve"),
             pimple=PimpleControl(n_correctors=2, n_outer_correctors=1),
-            transport=TransportConfig(density=1.0, nu=NU),
+            transport=TransportConfig(density=1.0, kinematic_viscosity=NU),
             boundaries=[
                 BoundaryConfig.inlet("inlet", [U_IN, 0.0, 0.0]),
                 BoundaryConfig.outlet("outlet", 0.0),
@@ -120,7 +120,7 @@ class TestEmptyBCQuasi3D:
                 BoundaryConfig.empty("empty"),
             ],
             initial_velocity=[0.0, 0.0, 0.0],
-            initial_p=0.0,
+            initial_kinematic_pressure=0.0,
         )
 
         solver = FVMSolver(config, str(tmp_path / "case"), mesh_data=mesh)
@@ -128,23 +128,23 @@ class TestEmptyBCQuasi3D:
         for _ in range(n_steps):
             solver.advance()
 
-        U = solver.U[: mesh["n_elements"]]
-        p = solver.p[: mesh["n_elements"]]
+        velocity = solver.velocity[: mesh["n_cells"]]
+        p = solver.kinematic_pressure[: mesh["n_cells"]]
 
-        assert np.isfinite(U).all(), "NaN/Inf in velocity — solver diverged"
+        assert np.isfinite(velocity).all(), "NaN/Inf in velocity — solver diverged"
         assert np.isfinite(p).all(), "NaN/Inf in pressure — solver diverged"
 
         # 1. Single z-layer
-        cents = solver.geo_data["element_centroids"]
+        cents = solver.geo_data["cell_centroids"]
         z_vals = np.unique(np.round(cents[:, 2], decimals=10))
         assert len(z_vals) == 1, f"Expected single z-layer for quasi-3D mesh, got {len(z_vals)}"
 
         # 2. Forward flow: mean Ux > 0
-        assert np.mean(U[:, 0]) > 0, "Net forward flow should be positive"
+        assert np.mean(velocity[:, 0]) > 0, "Net forward flow should be positive"
 
         # 3. Uz must be near zero everywhere (empty BC enforces 2D)
-        Uz_max = np.max(np.abs(U[:, 2]))
-        Uz_mean = np.mean(np.abs(U[:, 2]))
+        Uz_max = np.max(np.abs(velocity[:, 2]))
+        Uz_mean = np.mean(np.abs(velocity[:, 2]))
         assert Uz_max < 0.05, f"2D flow: max|Uz|={Uz_max:.6f}"
         assert Uz_mean < 0.005, f"2D flow: mean|Uz|={Uz_mean:.6f}"
 
@@ -161,8 +161,8 @@ class TestEmptyBCQuasi3D:
 
         patch_names = [b["name"] for b in mesh["boundary"]]
         result = compute_surface_forces(
-            solver.U,
-            solver.p,
+            solver.velocity,
+            solver.kinematic_pressure,
             NU * 1.0,
             1.0,
             mesh,

@@ -19,7 +19,7 @@ from source.solvers.FVM.mesh.validation import validate_mesh
 DOMAIN = (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
 BODY = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 SURFACE_FILE = (
-    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/assets/cube.stl"
+    Path(__file__).parents[2] / "tutorials/coupled_fvm_vpm/cube_flow/referenceFlow/assets/cube.stl"
 )
 
 
@@ -68,7 +68,7 @@ def test_topology_and_geometry_are_solver_valid(adaptive_mesh):
 
 def test_no_fluid_cells_inside_body(adaptive_mesh):
     _, mesh, geometry = adaptive_mesh
-    centres = geometry["element_centroids"][: mesh["n_elements"]]
+    centres = geometry["cell_centroids"][: mesh["n_cells"]]
     inside = np.all(
         (centres > np.asarray(BODY[::2])) & (centres < np.asarray(BODY[1::2])),
         axis=1,
@@ -79,7 +79,7 @@ def test_no_fluid_cells_inside_body(adaptive_mesh):
 def test_wall_is_closed_and_points_into_solid(adaptive_mesh):
     _, mesh, geometry = adaptive_mesh
     wall = _patch(mesh, "cube")
-    ids = np.arange(wall["startFace"], wall["startFace"] + wall["nFaces"])
+    ids = np.arange(wall["start_face"], wall["start_face"] + wall["n_faces"])
     sf = geometry["face_sf"][ids]
     centres = geometry["face_centroids"][ids]
     assert np.allclose(sf.sum(axis=0), 0.0, atol=1.0e-12)
@@ -97,7 +97,7 @@ def test_wall_is_closed_and_points_into_solid(adaptive_mesh):
 def test_transition_cells_are_polyhedral_and_two_to_one(adaptive_mesh):
     _, mesh, _ = adaptive_mesh
     cell_faces, offsets = build_cell_face_csr(
-        mesh["owners"], mesh["neighbours"], mesh["n_elements"], mesh["n_faces"]
+        mesh["owners"], mesh["neighbours"], mesh["n_cells"], mesh["n_faces"]
     )
     del cell_faces
     counts = np.diff(offsets)
@@ -128,7 +128,7 @@ def test_separate_outer_patch_layout():
         "zmin",
         "zmax",
     ]
-    assert all(patch["nFaces"] == 4 for patch in mesh["boundary"])
+    assert all(patch["n_faces"] == 4 for patch in mesh["boundary"])
 
 
 def test_fits_requested_background_and_snaps_refinement_bounds():
@@ -143,7 +143,7 @@ def test_fits_requested_background_and_snaps_refinement_bounds():
     assert mesher.max_cell_size == pytest.approx(2.0 / 7.0)
     assert mesher._base_counts() == (7, 7, 7)
     assert mesh["mesh_generation"]["requested_max_cell_size"] == pytest.approx(0.3)
-    assert mesh["n_elements"] > 7**3
+    assert mesh["n_cells"] > 7**3
 
 
 @pytest.mark.parametrize(

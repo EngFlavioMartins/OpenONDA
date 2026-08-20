@@ -19,11 +19,11 @@ import pytest
 
 from source.solvers.FVM import (
     BoundaryConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -50,15 +50,15 @@ def _cube_patch(mesh):
 
 
 def _blank_fields(mesh):
-    n_total = mesh["n_elements"] + (mesh["n_faces"] - mesh["n_interior_faces"])
+    n_total = mesh["n_cells"] + (mesh["n_faces"] - mesh["n_interior_faces"])
     return np.zeros((n_total, 3)), np.zeros(n_total)  # U, p
 
 
 def _wall_face_slice(mesh):
     """(global face index array, ghost-slab index array) for the cube patch."""
     cube = _cube_patch(mesh)
-    n_elem, n_int = mesh["n_elements"], mesh["n_interior_faces"]
-    faces = np.arange(cube["startFace"], cube["startFace"] + cube["nFaces"])
+    n_elem, n_int = mesh["n_cells"], mesh["n_interior_faces"]
+    faces = np.arange(cube["start_face"], cube["start_face"] + cube["n_faces"])
     ghost = n_elem + (faces - n_int)
     return faces, ghost
 
@@ -77,11 +77,11 @@ def test_cube_patch_is_closed_surface(cube_mesh):
 def test_uniform_pressure_gives_zero_net_force(cube_mesh):
     """Uniform p on the closed cube surface → net pressure force = 0."""
     mesh, geo = cube_mesh
-    U, p = _blank_fields(mesh)
+    velocity, p = _blank_fields(mesh)
     p[:] = 3.7
-    res = compute_surface_forces(U, p, 0.0, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"])[
-        "cube"
-    ]
+    res = compute_surface_forces(
+        velocity, p, 0.0, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"]
+    )["cube"]
     assert np.allclose(res["Fp"], 0.0, atol=1e-12), f"Fp={res['Fp']}"
 
 
@@ -91,7 +91,7 @@ def test_drag_sign_is_positive_for_front_high_back_low(cube_mesh):
     normals point out of the fluid — the orientation that makes Cd's sign right.
     """
     mesh, geo = cube_mesh
-    U, p = _blank_fields(mesh)
+    velocity, p = _blank_fields(mesh)
     faces, ghost = _wall_face_slice(mesh)
     fc = geo["face_centroids"][faces]
     # Select the upstream (x=-0.5) and downstream (x=+0.5) cube faces purely by
@@ -103,7 +103,7 @@ def test_drag_sign_is_positive_for_front_high_back_low(cube_mesh):
     p[ghost[front]] = 1.0  # stagnation over-pressure upstream
     p[ghost[back]] = -0.5  # base suction downstream
     res = compute_surface_forces(
-        U,
+        velocity,
         p,
         0.0,
         1.0,
@@ -127,14 +127,14 @@ def test_linear_pressure_field_matches_analytic_force(cube_mesh):
     V=1).  Here Fp = ρ·p·Sf with Sf out of the fluid (= -n̂_body dA), so
     Fp_x = +a·∮ x·(Sf_x) ... verified against a direct face sum."""
     mesh, geo = cube_mesh
-    U, p = _blank_fields(mesh)
+    velocity, p = _blank_fields(mesh)
     faces, ghost = _wall_face_slice(mesh)
     a, rho = 2.0, 1.5
     fc = geo["face_centroids"][faces]
     p[ghost] = a * fc[:, 0]
-    res = compute_surface_forces(U, p, 0.0, rho, mesh, geo, mesh["boundary"], patch_names=["cube"])[
-        "cube"
-    ]
+    res = compute_surface_forces(
+        velocity, p, 0.0, rho, mesh, geo, mesh["boundary"], patch_names=["cube"]
+    )["cube"]
     expected = rho * (geo["face_sf"][faces] * p[ghost][:, None]).sum(axis=0)
     assert np.allclose(res["Fp"], expected, atol=1e-12)
     # divergence-theorem value on the unit cube: |Fp_x| = ρ·a·V = ρ·a·1
@@ -148,17 +148,17 @@ def test_viscous_force_matches_boundary_diffusion_flux(cube_mesh):
     mesh, geo = cube_mesh
     for b in mesh["boundary"]:  # gradient reconstruction needs BC types
         b["bc_type"] = "zeroGradient"
-        b["bc_type_velocity"] = "zeroGradient"
-    U, p = _blank_fields(mesh)
+        b["velocity_type"] = "zeroGradient"
+    velocity, p = _blank_fields(mesh)
     faces, ghost = _wall_face_slice(mesh)
     fc = geo["face_centroids"][faces]
     back = np.abs(fc[:, 0] - 0.5) < 1e-9  # x=+0.5 faces (wall normal ‖ x)
     assert back.any()
     mu = 0.01
-    U[ghost[back], 1] = 1.0  # tangential (y) slip on the x-normal face only
-    res = compute_surface_forces(U, p, mu, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"])[
-        "cube"
-    ]
+    velocity[ghost[back], 1] = 1.0  # tangential (y) slip on the x-normal face only
+    res = compute_surface_forces(
+        velocity, p, mu, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"]
+    )["cube"]
     areas = np.linalg.norm(geo["face_sf"][faces[back]], axis=1)
     expected_y = -mu * np.sum(areas / geo["wall_dist"][faces[back]])
     assert res["Fv"][1] == pytest.approx(expected_y, rel=1e-9)
@@ -170,20 +170,22 @@ def test_yplus_on_couette_field_matches_analytic(cube_mesh):
     velocity, equals the closed form u_tau·d/ν with u_tau = sqrt(ν·Ut/d)."""
     mesh, geo = cube_mesh
     for b in mesh["boundary"]:
-        b.setdefault("bc_type_velocity", "noSlip" if b["name"] == "cube" else "zeroGradient")
-    U, _ = _blank_fields(mesh)
+        b.setdefault("velocity_type", "noSlip" if b["name"] == "cube" else "zeroGradient")
+    velocity, _ = _blank_fields(mesh)
     faces, _ = _wall_face_slice(mesh)
     fc = geo["face_centroids"][faces]
     back = np.abs(fc[:, 0] - 0.5) < 1e-9  # x-normal faces: U_y is tangential
     owners = mesh["owners"][faces[back]]
-    nu, ut = 1e-3, 0.5
-    U[owners, 1] = ut
-    stats = compute_y_plus(U, nu, mesh, geo, mesh["boundary"], patch_names=["cube"])
+    kinematic_viscosity, ut = 1e-3, 0.5
+    velocity[owners, 1] = ut
+    stats = compute_y_plus(
+        velocity, kinematic_viscosity, mesh, geo, mesh["boundary"], patch_names=["cube"]
+    )
     assert "cube" in stats
     s = stats["cube"]
     assert s["max"] > 0.0 and s["avg"] > 0.0
     d0 = float(geo["wall_dist"][faces[back][0]])
-    yplus_ref = np.sqrt(nu * ut / d0) * d0 / nu
+    yplus_ref = np.sqrt(kinematic_viscosity * ut / d0) * d0 / kinematic_viscosity
     assert s["max"] == pytest.approx(yplus_ref, rel=1e-6)
 
 
@@ -192,14 +194,14 @@ def test_yplus_uses_local_cell_viscosity():
     velocity = np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
     viscosity = np.array([1.0e-6, 4.0e-6])
     mesh = {
-        "n_elements": 2,
+        "n_cells": 2,
         "owners": np.array([0, 1], dtype=np.int32),
     }
     geometry = {
         "wall_dist": np.array([1.0e-3, 1.0e-3]),
         "face_sf": np.array([[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]]),
     }
-    boundaries = [{"name": "wall", "type": "wall", "startFace": 0, "nFaces": 2}]
+    boundaries = [{"name": "wall", "type": "wall", "start_face": 0, "n_faces": 2}]
 
     stats = compute_y_plus(velocity, viscosity, mesh, geometry, boundaries, patch_names=["wall"])[
         "wall"
@@ -222,10 +224,10 @@ def _split_outer_patches(mesh):
     start = mesh["n_interior_faces"]
     patches = []
     for name, count in zip(names, counts, strict=True):
-        patches.append({"name": name, "startFace": start, "nFaces": count, "type": "patch"})
+        patches.append({"name": name, "start_face": start, "n_faces": count, "type": "patch"})
         start += count
     cube = mesh["boundary"][-1]
-    patches.append({**cube, "startFace": start, "type": "wall"})
+    patches.append({**cube, "start_face": start, "type": "wall"})
     mesh["boundary"] = patches
     return mesh
 
@@ -244,7 +246,7 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
             wall_patch_name="cube",
         )
     )
-    params_schemes = SchemesConfig(
+    params_schemes = DiscretizationConfig(
         convection_scheme="central", gradient_scheme="gauss", time_scheme="euler_implicit"
     )
     params_linear = LinearSolverConfig(momentum_solver="bicgstab", pressure_solver="amg")
@@ -260,12 +262,12 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
     ]
     config = FVMSetup(
         case_name="ghost-cert",
-        time=TimeConfig.transient(time_step_size=0.05, duration=0.5, write_interval=10**9),
+        time=TimeConfig.transient(time_step_size=0.05, duration=0.5, output_interval_steps=10**9),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
         samplers=params_forces,
-        transport=TransportConfig(density=1.0, nu=0.05),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.05),
         boundaries=[
             BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("outlet", 0.0),
@@ -284,11 +286,11 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
             solver.advance()
 
     geo = solver.geo_data
-    n_elem, n_int = mesh["n_elements"], mesh["n_interior_faces"]
+    n_elem, n_int = mesh["n_cells"], mesh["n_interior_faces"]
     cube = next(b for b in mesh["boundary"] if b["name"] == "cube")
-    faces = np.arange(cube["startFace"], cube["startFace"] + cube["nFaces"])
+    faces = np.arange(cube["start_face"], cube["start_face"] + cube["n_faces"])
     ghost = n_elem + (faces - n_int)
-    p_ghost = np.asarray(solver.p)[ghost]
+    p_ghost = np.asarray(solver.kinematic_pressure)[ghost]
     fc = geo["face_centroids"][faces]
 
     # (1) the ghost is a real, populated field — not stale zeros

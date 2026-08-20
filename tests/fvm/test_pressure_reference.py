@@ -19,13 +19,18 @@ from source.solvers.FVM.utils.cavity_utils import (
 
 
 def test_reference_needed_only_without_dirichlet_pressure():
-    closed = [{"name": "walls", "nFaces": 100, "bc_type_p": "zeroGradient"}]
+    closed = [{"name": "walls", "n_faces": 100, "pressure_type": "zeroGradient"}]
     assert needs_pressure_reference(closed)
 
     # A single Dirichlet patch removes the constant pressure null space,
     # irrespective of its face-count-to-cell-count ratio.
     open_case = closed + [
-        {"name": "outlet", "nFaces": 1, "bc_type_p": "fixedValue", "value_p": 0.0}
+        {
+            "name": "outlet",
+            "n_faces": 1,
+            "pressure_type": "fixedValue",
+            "kinematic_pressure_value": 0.0,
+        }
     ]
     assert not needs_pressure_reference(open_case)
 
@@ -60,9 +65,9 @@ def test_nullspace_pressure_assembly_remains_singular_and_compatible(
     mesh = hand_built_3d_mesh
     geo = compute_mesh_geometry(mesh)
     for boundary in mesh["boundary"]:
-        boundary["bc_type_velocity"] = "zeroGradient"
-        boundary["bc_type_p"] = "zeroGradient"
-    n = mesh["n_elements"]
+        boundary["velocity_type"] = "zeroGradient"
+        boundary["pressure_type"] = "zeroGradient"
+    n = mesh["n_cells"]
     n_total = n + mesh["n_faces"] - mesh["n_interior_faces"]
     rng = np.random.default_rng(9)
     velocity = rng.normal(scale=0.1, size=(n_total, 3))
@@ -112,8 +117,8 @@ def test_pressure_iterative_path_solves_current_matrix():
         equation_type="pressure",
         tol=1e-11,
         maxiter=100,
-        amg_tol=1e-11,
-        amg_maxiter=100,
+        amg_tolerance=1e-11,
+        amg_max_iterations=100,
     )
     assert normalized_residual(A, x, b) < 1e-9
 

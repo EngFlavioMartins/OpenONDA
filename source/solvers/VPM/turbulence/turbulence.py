@@ -1,15 +1,6 @@
-"""
-Turbulence module for VPM solver.
-==================================
-Orchestrates subgrid-scale turbulence models (Smagorinsky eddy viscosity).
+"""LES turbulence-model orchestration for the VPM solver."""
 
-The turbulence model does not modify vortex stretching or particle strengths.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026 / Refactored May 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
-"""
+from __future__ import annotations
 
 import taichi as ti
 
@@ -19,58 +10,39 @@ from .smagorinsky import SmagorinskyModel
 
 @ti.data_oriented
 class ParticlesLES:
-    """
-    Large Eddy Simulation (LES) turbulence model for VPM.
-    Orchestrates a specific SGS eddy-viscosity model (e.g. Smagorinsky).
-    """
+    """Evaluate the configured VPM sub-grid eddy-viscosity model."""
 
     def __init__(
         self,
-        LES_filter_type: str,
+        model_name: str,
         max_particles: int = MAX_PARTICLES,
-        kernel_type: str = "GAUSSIAN",
-        cs: float = SMAGORINSKY_CONSTANT,
-        ce: float = 1.048,
+        particle_kernel: str = "GAUSSIAN",
+        c_s: float = SMAGORINSKY_CONSTANT,
+        c_e: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
-    ):
-        """
-        Initialize the LES turbulence model.
-
-        Selects and instantiates a sub-grid-scale model (e.g.
-        :class:`SmagorinskyModel`) based on ``LES_filter_type``, stores the
-        particle kernel type, and sets up diagnostic field trackers.
-
-        Args:
-            LES_filter_type: Identifier for the SGS model.  Supported values:
-                ``"SMAGORINSKY"``, ``"LES_SMAGORINSKY"``.
-            max_particles: Maximum number of particles for field allocation.
-            kernel_type: Base regularization kernel type (e.g. ``"GAUSSIAN"``).
-            cs: Smagorinsky constant (default from ``SMAGORINSKY_CONSTANT``).
-            ce: Model dissipation constant (default 1.048).
-            accumulator_dtype: Taichi floating-point type used by LES fields.
-        """
-        self.LES_filter_type = LES_filter_type
+    ) -> None:
+        self.model_name = model_name.upper()
         self.max_particles = max_particles
-        self.kernel_type = kernel_type.upper()
+        self.particle_kernel = particle_kernel.upper()
 
-        if LES_filter_type in ("SMAGORINSKY", "LES_SMAGORINSKY"):
-            self.model = SmagorinskyModel(
-                max_particles,
-                kernel_type,
-                cs,
-                ce,
-                accumulator_dtype,
-            )
-        else:
-            raise ValueError(f"Unknown LES filter type: {LES_filter_type}")
+        if self.model_name not in {"SMAGORINSKY", "LES_SMAGORINSKY"}:
+            raise ValueError(f"Unknown LES model: {model_name!r}")
 
-        self.particle_deltas = None
-        self._viscosities_t_min_field = ti.field(dtype=accumulator_dtype, shape=())
-        self._viscosities_t_max_field = ti.field(dtype=accumulator_dtype, shape=())
-        self.viscosities_t_min = 0.0
-        self.viscosities_t_max = 0.0
-        self.viscosities_t_ratio_min = 0.0
-        self.viscosities_t_ratio_max = 0.0
+        self.model = SmagorinskyModel(
+            max_particles=max_particles,
+            particle_kernel=particle_kernel,
+            c_s=c_s,
+            c_e=c_e,
+            accumulator_dtype=accumulator_dtype,
+        )
+
+        self._eddy_viscosity_min_field = ti.field(dtype=accumulator_dtype, shape=())
+        self._eddy_viscosity_max_field = ti.field(dtype=accumulator_dtype, shape=())
+        self.eddy_viscosity_min = 0.0
+        self.eddy_viscosity_max = 0.0
+        self.eddy_viscosity_ratio_min = 0.0
+        self.eddy_viscosity_ratio_max = 0.0
+        self.kinematic_viscosity = 0.0
 
     def __str__(self) -> str:
         return str(self.model)
@@ -80,75 +52,73 @@ class ParticlesLES:
         cls,
         turbulence_config: object,
         max_particles: int = MAX_PARTICLES,
-        kernel_type: str = "GAUSSIAN",
+        particle_kernel: str = "GAUSSIAN",
         accumulator_dtype: ti.types = ti.f32,
-    ) -> "ParticlesLES":
-        model_name = getattr(turbulence_config, "model", "LES_SMAGORINSKY")
-        cs = getattr(turbulence_config, "cs", SMAGORINSKY_CONSTANT)
-        ce = getattr(turbulence_config, "ce", 1.048)
+    ) -> ParticlesLES:
         return cls(
-            LES_filter_type=model_name,
+            model_name=getattr(turbulence_config, "model", "LES_SMAGORINSKY"),
             max_particles=max_particles,
-            kernel_type=kernel_type,
-            cs=cs,
-            ce=ce,
+            particle_kernel=particle_kernel,
+            c_s=getattr(turbulence_config, "c_s", SMAGORINSKY_CONSTANT),
+            c_e=getattr(turbulence_config, "c_e", 1.048),
             accumulator_dtype=accumulator_dtype,
         )
 
     def initialize(self, particles) -> None:
         self.model.initialize(particles)
 
-    def compute(self, particles, time_step_size: float = None):
-        """
-        Main interface for SGS eddy viscosity computation.
-        Delegates to the specific model implementation.
-        """
+    def compute(
+        self,
+        particles,
+        time_step_size: float | None = None,
+    ) -> None:
         self.model.compute(particles, time_step_size)
         self.update_turbulence_statistics(particles)
 
-    def update_turbulence_statistics(self, particles):
-        N = len(particles)
-        if N == 0:
+    def update_turbulence_statistics(self, particles) -> None:
+        n_particles = len(particles)
+        if n_particles == 0:
             return
-        self._seed_stats_kernel(
-            self._viscosities_t_min_field,
-            self._viscosities_t_max_field,
-            particles.viscosity_turbulent,
+
+        self._seed_statistics(
+            self._eddy_viscosity_min_field,
+            self._eddy_viscosity_max_field,
+            particles.eddy_viscosity,
         )
-        self._update_stats_kernel(
-            self._viscosities_t_min_field,
-            self._viscosities_t_max_field,
-            particles.viscosity_turbulent,
-            N,
+        self._reduce_statistics(
+            self._eddy_viscosity_min_field,
+            self._eddy_viscosity_max_field,
+            particles.eddy_viscosity,
+            n_particles,
         )
-        self.viscosities_t_min = float(self._viscosities_t_min_field[None])
-        self.viscosities_t_max = float(self._viscosities_t_max_field[None])
-        if hasattr(self, "viscosity") and self.viscosity > 0.0:
-            self.viscosities_t_ratio_min = self.viscosities_t_min / self.viscosity
-            self.viscosities_t_ratio_max = self.viscosities_t_max / self.viscosity
-        elif N > 0:
-            visc = particles.viscosity[0]
-            if visc > 0:
-                self.viscosity = visc
-                self.viscosities_t_ratio_min = self.viscosities_t_min / self.viscosity
-                self.viscosities_t_ratio_max = self.viscosities_t_max / self.viscosity
+
+        self.eddy_viscosity_min = float(self._eddy_viscosity_min_field[None])
+        self.eddy_viscosity_max = float(self._eddy_viscosity_max_field[None])
+
+        molecular_viscosity = float(particles.kinematic_viscosity[0])
+        self.kinematic_viscosity = molecular_viscosity
+        if molecular_viscosity > 0.0:
+            self.eddy_viscosity_ratio_min = self.eddy_viscosity_min / molecular_viscosity
+            self.eddy_viscosity_ratio_max = self.eddy_viscosity_max / molecular_viscosity
 
     @ti.kernel
-    def _seed_stats_kernel(self, vt_min: ti.template(), vt_max: ti.template(), vt: ti.template()):
-        vt_min[None] = vt[0]
-        vt_max[None] = vt[0]
-
-    @ti.kernel
-    def _update_stats_kernel(
+    def _seed_statistics(
         self,
-        vt_min: ti.template(),
-        vt_max: ti.template(),
-        vt: ti.template(),
-        N: ti.i32,
+        minimum: ti.template(),
+        maximum: ti.template(),
+        eddy_viscosity: ti.template(),
     ):
-        # Top-level loop: Taichi only parallelises the outermost for, so nesting
-        # this inside `if N > 0` serialised the reduction (measured 0.446 ms vs
-        # 0.207 ms at N = 100k).  The seeding is a separate kernel for that reason.
-        for i in range(N):
-            ti.atomic_min(vt_min[None], vt[i])
-            ti.atomic_max(vt_max[None], vt[i])
+        minimum[None] = eddy_viscosity[0]
+        maximum[None] = eddy_viscosity[0]
+
+    @ti.kernel
+    def _reduce_statistics(
+        self,
+        minimum: ti.template(),
+        maximum: ti.template(),
+        eddy_viscosity: ti.template(),
+        n_particles: ti.i32,
+    ):
+        for i in range(n_particles):
+            ti.atomic_min(minimum[None], eddy_viscosity[i])
+            ti.atomic_max(maximum[None], eddy_viscosity[i])

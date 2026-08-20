@@ -21,8 +21,8 @@ def _mesh(**kwargs):
 def _assert_patches_are_contiguous_and_complete(mesh):
     face = mesh["n_interior_faces"]
     for patch in mesh["boundary"]:
-        assert patch["startFace"] == face, f"gap before patch {patch['name']!r}"
-        face += patch["nFaces"]
+        assert patch["start_face"] == face, f"gap before patch {patch['name']!r}"
+        face += patch["n_faces"]
     assert face == mesh["n_faces"], "patches do not cover every boundary face"
 
 
@@ -43,14 +43,14 @@ def test_separated_faces_get_their_own_contiguous_patch(separate):
 
     # Face count is conserved: nothing was dropped or duplicated by the reorder.
     assert mesh["n_faces"] == _mesh()["n_faces"]
-    assert mesh["n_elements"] == _mesh()["n_elements"]
+    assert mesh["n_cells"] == _mesh()["n_cells"]
 
 
 def test_separated_outlet_keeps_its_outward_normal():
     mesh = _mesh(separate_outer=("outlet",))
     geometry = compute_mesh_geometry(mesh)
     patch = next(p for p in mesh["boundary"] if p["name"] == "outlet")
-    span = slice(patch["startFace"], patch["startFace"] + patch["nFaces"])
+    span = slice(patch["start_face"], patch["start_face"] + patch["n_faces"])
     sf = geometry["face_sf"][span]
     normals = sf / np.linalg.norm(sf, axis=1, keepdims=True)
     np.testing.assert_allclose(normals, np.tile([1.0, 0.0, 0.0], (len(normals), 1)), atol=1e-12)
@@ -59,13 +59,18 @@ def test_separated_outlet_keeps_its_outward_normal():
 def test_a_separated_outlet_can_anchor_the_pressure_datum():
     """The whole point: a Dirichlet pressure patch becomes expressible."""
     coupled = [
-        {"name": "numericalBoundary", "nFaces": 100, "bc_type_p": "fixedFluxPressure"},
+        {"name": "numericalBoundary", "n_faces": 100, "pressure_type": "fixedFluxPressure"},
     ]
     assert needs_pressure_reference(coupled), "coupled layout has a free pressure datum"
 
     reference = [
-        {"name": "numericalBoundary", "nFaces": 84, "bc_type_p": "fixedFluxPressure"},
-        {"name": "outlet", "nFaces": 16, "bc_type_p": "fixedValue", "value_p": 0.0},
+        {"name": "numericalBoundary", "n_faces": 84, "pressure_type": "fixedFluxPressure"},
+        {
+            "name": "outlet",
+            "n_faces": 16,
+            "pressure_type": "fixedValue",
+            "kinematic_pressure_value": 0.0,
+        },
     ]
     assert not needs_pressure_reference(reference)
 

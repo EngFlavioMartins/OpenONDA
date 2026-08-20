@@ -1,11 +1,30 @@
-"""
-Configuration subpackage: solver config dataclasses, constants, and backend setup.
+"""Configuration API for the Vortex Particle Method solver.
 
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+Importing this package does not initialize Taichi. Backend initialization occurs
+only when a VPM or VLM solver is constructed.
 """
 
-# CRITICAL: Initialize Taichi backend ONLY when VPMSolver or VLMSolver are instantiated.
-# This ensures user choices for precision (f32/f64) and backend (CPU/GPU) are respected.
+from .advection import AdvectionConfig
+from .divergence_relaxation import DivergenceRelaxationConfig
+from .filament_refinement import FilamentRefinementConfig
+from .setup import VPMSetup
+from .stabilization import StabilizationConfig
+from .state import ParticlesState, SolverState
+from .stretching import StretchingConfig
+from .turbulence import TurbulenceConfig
+from .velocity import VelocityConfig
+from .viscous import ViscousConfig
+
+__all__ = [
+    "AdvectionConfig",
+    "DivergenceRelaxationConfig",
+    "FilamentRefinementConfig",
+    "ParticlesState",
+    "SolverState",
+    "StabilizationConfig",
+    "StretchingConfig",
+    "TurbulenceConfig",
+    "VPMSetup",
+    "VelocityConfig",
+    "ViscousConfig",
+]

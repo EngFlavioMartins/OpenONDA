@@ -59,10 +59,10 @@ def reduce_contributions(slots, contributions, size: int) -> np.ndarray:
     return result
 
 
-def assemble_rhs(flux, owners, neighbours, n_elements: int, n_interior: int) -> np.ndarray:
+def assemble_rhs(flux, owners, neighbours, n_cells: int, n_interior: int) -> np.ndarray:
     """Assemble an owned-cell RHS using Taichi CPU atomics."""
     _ensure_cpu_runtime()
-    result = np.zeros(n_elements, dtype=np.float64)
+    result = np.zeros(n_cells, dtype=np.float64)
     _rhs_kernel(
         np.ascontiguousarray(flux, dtype=np.float64),
         np.ascontiguousarray(owners, dtype=np.int64),

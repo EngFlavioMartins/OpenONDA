@@ -14,7 +14,7 @@ output always lands in ``<case_root>/samples/``.
 
 Examples
 --------
->>> line = LineSampler(start=[0, 0, 0], end=[1, 0, 0], n_points=5, file_name="centerline")
+>>> line = LineSampler(start=[0, 0, 0], end=[1, 0, 0], n_points=5, file_name="centreline")
 >>> plane = SurfaceSampler(
 ...     point=[0, 0, 0.5], normal=[0, 0, 1],
 ...     bounds=[0, 1, 0, 1], spacing=0.25, file_name="slice_z0",
@@ -46,21 +46,21 @@ def _global_owned_view(context) -> tuple[np.ndarray, ...] | None:
         if n_owned is None:
             raise RuntimeError("Partitioned context has no owned-cell count")
         local = (
-            np.asarray(context.geo_data["element_centroids"][:n_owned], dtype=np.float64),
-            np.asarray(context.U[:n_owned], dtype=np.float64),
-            np.asarray(context.p[:n_owned], dtype=np.float64),
+            np.asarray(context.geo_data["cell_centroids"][:n_owned], dtype=np.float64),
+            np.asarray(context.velocity[:n_owned], dtype=np.float64),
+            np.asarray(context.kinematic_pressure[:n_owned], dtype=np.float64),
             np.asarray(context._vorticity_field()[:n_owned], dtype=np.float64),
         )
         gathered = parallel.comm.gather(local, root=0)
         if not parallel.is_root:
             return None
         return tuple(np.concatenate([part[k] for part in gathered]) for k in range(4))
-    n_elements = context.mesh_data["n_elements"]
+    n_cells = context.mesh_data["n_cells"]
     return (
-        np.asarray(context.geo_data["element_centroids"], dtype=np.float64),
-        np.asarray(context.U[:n_elements], dtype=np.float64),
-        np.asarray(context.p[:n_elements], dtype=np.float64),
-        np.asarray(context._vorticity_field()[:n_elements], dtype=np.float64),
+        np.asarray(context.geo_data["cell_centroids"], dtype=np.float64),
+        np.asarray(context.velocity[:n_cells], dtype=np.float64),
+        np.asarray(context.kinematic_pressure[:n_cells], dtype=np.float64),
+        np.asarray(context._vorticity_field()[:n_cells], dtype=np.float64),
     )
 
 
@@ -78,7 +78,7 @@ class _PointProbe(Sampler):
         super().__init__(file_name=file_name, schedule=schedule)
         self.points = np.asarray(points, dtype=float)
         self.k = int(k)
-        self.p = float(p)
+        self.kinematic_pressure = float(p)
         self._tree = None
         self._tree_key = None
 
@@ -94,7 +94,7 @@ class _PointProbe(Sampler):
         if k == 1:
             dists = dists[:, np.newaxis]
             indices = indices[:, np.newaxis]
-        weights = 1.0 / (dists + 1e-12) ** self.p
+        weights = 1.0 / (dists + 1e-12) ** self.kinematic_pressure
         weights /= weights.sum(axis=1, keepdims=True)
         values = np.asarray(field)[indices]
         if np.asarray(field).ndim == 1:
@@ -110,14 +110,14 @@ class _PointProbe(Sampler):
         basis = _global_owned_view(context)
         if basis is None:
             return None
-        centroids, U, p, omega = basis
+        centroids, velocity, p, omega = basis
         data = {
             "x": self.points[:, 0],
             "y": self.points[:, 1],
             "z": self.points[:, 2],
-            "Ux": self._interpolate(U[:, 0], centroids),
-            "Uy": self._interpolate(U[:, 1], centroids),
-            "Uz": self._interpolate(U[:, 2], centroids),
+            "Ux": self._interpolate(velocity[:, 0], centroids),
+            "Uy": self._interpolate(velocity[:, 1], centroids),
+            "Uz": self._interpolate(velocity[:, 2], centroids),
             "omega_x": self._interpolate(omega[:, 0], centroids),
             "omega_y": self._interpolate(omega[:, 1], centroids),
             "omega_z": self._interpolate(omega[:, 2], centroids),
@@ -136,10 +136,10 @@ class LineSampler(_PointProbe):
     --------
     >>> sampler = LineSampler(
     ...     start=[0, 0, 0], end=[1, 0, 0],
-    ...     n_points=5, file_name="centerline",
+    ...     n_points=5, file_name="centreline",
     ... )
     >>> sampler.name
-    'centerline'
+    'centreline'
     """
 
     def __init__(
@@ -188,7 +188,7 @@ class LineSampler(_PointProbe):
                 "end": self.end.tolist(),
                 "n_points": self.n_points,
                 "k": self.k,
-                "p": self.p,
+                "p": self.kinematic_pressure,
             }
         )
         return spec
@@ -315,7 +315,7 @@ class SurfaceSampler(_PointProbe):
                 "bounds": self.bounds.tolist(),
                 "spacing": self.spacing,
                 "k": self.k,
-                "p": self.p,
+                "p": self.kinematic_pressure,
                 "body_bounds": self._body_bounds.tolist()
                 if self._body_bounds is not None
                 else None,

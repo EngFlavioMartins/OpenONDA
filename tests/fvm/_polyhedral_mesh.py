@@ -103,7 +103,7 @@ def split_prism_box(n, *, mixed=False):
     boundary = []
     for name, entries in boundary_groups.items():
         boundary.append(
-            {"name": name, "startFace": len(faces), "nFaces": len(entries), "type": "patch"}
+            {"name": name, "start_face": len(faces), "n_faces": len(entries), "type": "patch"}
         )
         faces.extend(entry[0] for entry in entries)
         owners.extend(entry[1] for entry in entries)
@@ -114,7 +114,7 @@ def split_prism_box(n, *, mixed=False):
         "owners": np.asarray(owners, dtype=np.int32),
         "neighbours": np.asarray(neighbours, dtype=np.int32),
         "boundary": boundary,
-        "n_elements": len(cells),
+        "n_cells": len(cells),
         "n_faces": len(faces),
         "n_interior_faces": n_internal,
         "n_points": len(points),

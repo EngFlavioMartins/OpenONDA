@@ -45,7 +45,7 @@ class ConservationState:
     circulation_total: np.ndarray = field(default_factory=lambda: np.zeros(3))
     """Total circulation (bound + wake) [m^2/s]."""
 
-    circulation_error: float = 0.0
+    vortex_strength_error: float = 0.0
     """Relative error in circulation conservation [%]."""
 
     impulse_wake: np.ndarray = field(default_factory=lambda: np.zeros(3))
@@ -72,7 +72,7 @@ class ConservationState:
     n_particles_removed: int = 0
     """Number of particles removed."""
 
-    circulation_removed: float = 0.0
+    vortex_strength_removed: float = 0.0
     """Magnitude of circulation lost to particle removal [m^2/s]."""
 
 
@@ -92,11 +92,11 @@ class ConservationTracker:
         state.impulse_wake = solver.total_linear_impulse * self.density
         state.kinetic_energy = solver.total_kinetic_energy
         state.energy_dissipation_rate = solver.kinetic_energy_dissipation_rate
-        state.n_particles_total = solver.particles.number_of_particles
+        state.n_particles_total = solver.particles.n_particles
 
         if hasattr(solver, "_particles_removed_this_step"):
             state.n_particles_removed = solver._particles_removed_this_step
-            state.circulation_removed = solver._circulation_removed_this_step
+            state.vortex_strength_removed = solver._vortex_strength_removed_this_step
 
         if solver.vlm_solver is not None and solver.vlm_solver._solved:
             state.circulation_bound = solver.vlm_solver.compute_total_circulation()
@@ -116,7 +116,7 @@ class ConservationTracker:
             self._initial_circulation = np.linalg.norm(state.circulation_total)
 
         if self._initial_circulation > 1e-10:
-            state.circulation_error = (
+            state.vortex_strength_error = (
                 100.0
                 * abs(np.linalg.norm(state.circulation_total) - self._initial_circulation)
                 / self._initial_circulation
@@ -161,7 +161,7 @@ class ConservationTracker:
                         np.linalg.norm(state.circulation_bound),
                         np.linalg.norm(state.circulation_wake),
                         np.linalg.norm(state.circulation_total),
-                        state.circulation_error,
+                        state.vortex_strength_error,
                         *state.impulse_wake,
                         *state.force_kutta_joukowski,
                         state.kinetic_energy,
@@ -191,11 +191,11 @@ class ConservationTracker:
         print(f"Final total circulation:   {np.linalg.norm(final.circulation_total):.6e} m^2/s")
         print(f"Conservation error:        {final.circulation_error:.3f}%")
 
-        if final.circulation_error < 0.1:
+        if final.vortex_strength_error < 0.1:
             status = "EXCELLENT"
-        elif final.circulation_error < 1.0:
+        elif final.vortex_strength_error < 1.0:
             status = "GOOD"
-        elif final.circulation_error < 5.0:
+        elif final.vortex_strength_error < 5.0:
             status = "ACCEPTABLE"
         else:
             status = "POOR"

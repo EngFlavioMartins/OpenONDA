@@ -214,11 +214,11 @@ def _make_target_source_velocity_kernel(q_):
         source_radii: ti.template(),
         target_velocities: ti.template(),
         num_targets: ti.i32,
-        num_sources: ti.i32,
+        n_sources: ti.i32,
     ):  # type: ignore
         """Compute velocity induced by source particles at target positions."""
         M = num_targets
-        N = num_sources
+        N = n_sources
         for i in range(M):
             target_pos = target_positions[i]
             vel = target_pos * 0.0
@@ -843,12 +843,12 @@ def _create_utility_kernels(kernel_functions):
         for i in range(n):
             if i < positions.shape[0] and i < strengths.shape[0]:
                 strength_vec = strengths[i]
-                strength_mag = strength_vec.norm()
-                if strength_mag > EPSILON:
-                    total_strength_scalar += strength_mag
+                vortex_strength_magnitude = strength_vec.norm()
+                if vortex_strength_magnitude > EPSILON:
+                    total_strength_scalar += vortex_strength_magnitude
                     total_strength_vector += strength_vec
                     pos = positions[i]
-                    weighted_position += pos * strength_mag
+                    weighted_position += pos * vortex_strength_magnitude
         centroid = ti.Vector([0.0, 0.0, 0.0])
         if total_strength_scalar > EPSILON:
             centroid = weighted_position / total_strength_scalar

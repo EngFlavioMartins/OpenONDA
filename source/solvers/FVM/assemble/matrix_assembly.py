@@ -43,7 +43,7 @@ class MatrixAssemblyWorkspace:
         data = np.zeros(len(pattern.indices), dtype=np.float64)
         matrix = csr_matrix(
             (data, pattern.indices, pattern.indptr),
-            shape=(mesh_data["n_elements"], mesh_data["n_elements"]),
+            shape=(mesh_data["n_cells"], mesh_data["n_cells"]),
             copy=False,
         )
         return cls(
@@ -123,7 +123,7 @@ def _build_csr_pattern_numba(
     owners,
     neighbours,
     boundary_neighbours,
-    n_elements,
+    n_cells,
     n_interior,
     n_faces,
     include_boundaries,
@@ -133,7 +133,7 @@ def _build_csr_pattern_numba(
     # graph is only marginally larger than the final matrix (two entries per
     # internal face), unlike concatenate+linear-index+unique, whose rows,
     # columns, 64-bit keys, sort workspace, and inverse coexist at peak.
-    row_counts = np.ones(n_elements, dtype=np.int32)
+    row_counts = np.ones(n_cells, dtype=np.int32)
     for face in range(n_interior):
         row_counts[owners[face]] += 1
         row_counts[neighbours[face]] += 1
@@ -142,16 +142,16 @@ def _build_csr_pattern_numba(
             if boundary_neighbours[face] >= 0:
                 row_counts[owners[face]] += 1
 
-    raw_indptr = np.empty(n_elements + 1, dtype=np.int32)
+    raw_indptr = np.empty(n_cells + 1, dtype=np.int32)
     raw_indptr[0] = 0
-    for row in range(n_elements):
+    for row in range(n_cells):
         next_offset = int(raw_indptr[row]) + int(row_counts[row])
         if next_offset > 2_147_483_647:
             raise OverflowError("FVM CSR topology exceeds 32-bit addressing")
         raw_indptr[row + 1] = next_offset
     raw_indices = np.empty(raw_indptr[-1], dtype=np.int32)
     cursor = raw_indptr[:-1].copy()
-    for row in range(n_elements):
+    for row in range(n_cells):
         raw_indices[cursor[row]] = row
         cursor[row] += 1
     for face in range(n_interior):
@@ -171,8 +171,8 @@ def _build_csr_pattern_numba(
 
     # Cell stencils are short. Insertion-sorting each row in place avoids an
     # all-nnz argsort while producing canonical SciPy/PETSc column ordering.
-    unique_counts = np.empty(n_elements, dtype=np.int32)
-    for row in range(n_elements):
+    unique_counts = np.empty(n_cells, dtype=np.int32)
+    for row in range(n_cells):
         start = raw_indptr[row]
         stop = raw_indptr[row + 1]
         for position in range(start + 1, stop):
@@ -191,12 +191,12 @@ def _build_csr_pattern_numba(
                 previous_value = value
         unique_counts[row] = count_unique
 
-    indptr = np.empty(n_elements + 1, dtype=np.int32)
+    indptr = np.empty(n_cells + 1, dtype=np.int32)
     indptr[0] = 0
-    for row in range(n_elements):
+    for row in range(n_cells):
         indptr[row + 1] = indptr[row] + unique_counts[row]
     indices = np.empty(indptr[-1], dtype=np.int32)
-    for row in range(n_elements):
+    for row in range(n_cells):
         source_start = raw_indptr[row]
         source_stop = raw_indptr[row + 1]
         destination = indptr[row]
@@ -216,8 +216,8 @@ def _build_csr_pattern_numba(
     # Diagonal destinations repeat for every incident face. Store them once
     # per cell, plus the two genuinely face-specific off-diagonal entries.
     # This is the CSR equivalent of a diag/lower/upper LDU layout.
-    diagonal_slots = np.empty(n_elements, dtype=np.int32)
-    for row in range(n_elements):
+    diagonal_slots = np.empty(n_cells, dtype=np.int32)
+    for row in range(n_cells):
         diagonal_slots[row] = _find_sorted_column(indices, indptr[row], indptr[row + 1], row)
     offdiagonal_slots = np.empty(2 * n_interior + n_coupled, dtype=np.int32)
     for face in range(n_interior):
@@ -262,7 +262,7 @@ def _csr_pattern(mesh_data, include_boundaries: bool) -> _CSRPattern:
     if cached is not None:
         return cached
 
-    n_elements = int(mesh_data["n_elements"])
+    n_cells = int(mesh_data["n_cells"])
     n_interior = int(mesh_data["n_interior_faces"])
     n_faces = int(mesh_data["n_faces"])
     owners = np.asarray(mesh_data["owners"], dtype=np.int32)
@@ -276,7 +276,7 @@ def _csr_pattern(mesh_data, include_boundaries: bool) -> _CSRPattern:
         owners,
         neighbours,
         boundary_neighbours,
-        n_elements,
+        n_cells,
         n_interior,
         n_faces,
         include_boundaries,
@@ -463,7 +463,7 @@ def assemble_matrix_from_fluxes_vectorized(
         or computed on first use.
     """
 
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior_faces = mesh_data["n_interior_faces"]
     has_boundaries = len(flux_data["flux_cf"]) > n_interior_faces
 
@@ -479,7 +479,7 @@ def assemble_matrix_from_fluxes_vectorized(
             flux_data, mesh_data, include_boundaries=has_boundaries
         )
         rows, cols = indices
-        return csr_matrix((contributions, (rows, cols)), shape=(n_elements, n_elements))
+        return csr_matrix((contributions, (rows, cols)), shape=(n_cells, n_cells))
 
     pattern = _csr_pattern(mesh_data, has_boundaries)
     data = np.zeros(len(pattern.indices), dtype=np.float64)
@@ -492,14 +492,14 @@ def assemble_matrix_from_fluxes_vectorized(
     )
     return csr_matrix(
         (data, pattern.indices, pattern.indptr),
-        shape=(n_elements, n_elements),
+        shape=(n_cells, n_cells),
         copy=False,
     )
 
 
 @njit(cache=True)
-def _assemble_rhs_numba(flux_vf, owners, neighbours, n_elements, n_interior_faces):
-    result = np.zeros(n_elements, dtype=np.float64)
+def _assemble_rhs_numba(flux_vf, owners, neighbours, n_cells, n_interior_faces):
+    result = np.zeros(n_cells, dtype=np.float64)
     for face in range(n_interior_faces):
         value = flux_vf[face]
         result[owners[face]] -= value
@@ -514,7 +514,7 @@ def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data, *, backend: str = 
     Vectorized RHS assembly.
     """
 
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior_faces = mesh_data["n_interior_faces"]
 
     owners = mesh_data["owners"][:n_interior_faces]
@@ -526,7 +526,7 @@ def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data, *, backend: str = 
             np.asarray(flux_data["flux_vf"], dtype=np.float64),
             np.asarray(mesh_data["owners"], dtype=np.int64),
             np.asarray(mesh_data["neighbours"], dtype=np.int64),
-            n_elements,
+            n_cells,
             n_interior_faces,
         )
     if backend == "taichi":
@@ -536,7 +536,7 @@ def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data, *, backend: str = 
             flux_data["flux_vf"],
             mesh_data["owners"],
             mesh_data["neighbours"],
-            n_elements,
+            n_cells,
             n_interior_faces,
         )
     if backend != "numpy":
@@ -544,13 +544,13 @@ def assemble_rhs_from_fluxes_vectorized(flux_data, mesh_data, *, backend: str = 
 
     # ``np.bincount`` returns an integer array when the interior-face slice is
     # empty, even though boundary contributions below are floating point.
-    b = np.bincount(owners, weights=-flux_vf, minlength=n_elements).astype(np.float64, copy=False)
-    b += np.bincount(neighbours, weights=flux_vf, minlength=n_elements)
+    b = np.bincount(owners, weights=-flux_vf, minlength=n_cells).astype(np.float64, copy=False)
+    b += np.bincount(neighbours, weights=flux_vf, minlength=n_cells)
 
     # Boundary faces
     if len(flux_data["flux_vf"]) > n_interior_faces:
         owners_b = mesh_data["owners"][n_interior_faces:]
         flux_vf_b = flux_data["flux_vf"][n_interior_faces:]
-        b += np.bincount(owners_b, weights=-flux_vf_b, minlength=n_elements)
+        b += np.bincount(owners_b, weights=-flux_vf_b, minlength=n_cells)
 
     return b

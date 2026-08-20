@@ -1,7 +1,7 @@
 """Subgrid-scale LES eddy-viscosity models for the FVM solver.
 
 All models expose the same interface as :class:`..smagorinsky.Smagorinsky`
-(``compute_nut(U, mesh_data, geo_data) -> nut[n_elements]`` and
+(``compute_eddy_viscosity(U, mesh_data, geo_data) -> nut[n_elements]`` and
 ``get_filter_info()``), so they are drop-in alternatives selected by
 ``TurbulenceConfig.model``.
 
@@ -30,16 +30,16 @@ from ..fields.filters import CellBoxFilter
 from .smagorinsky import EquilibriumSmagorinsky, Smagorinsky, _compute_filter_width
 
 
-def _validated_eddy_viscosity(nut: np.ndarray, model: str) -> np.ndarray:
+def _validated_eddy_viscosity(eddy_viscosity: np.ndarray, model: str) -> np.ndarray:
     """Return a valid non-negative eddy viscosity or fail the run."""
-    if not np.all(np.isfinite(nut)):
+    if not np.all(np.isfinite(eddy_viscosity)):
         raise FloatingPointError(f"{model} produced non-finite eddy viscosity")
-    if np.any(nut < 0.0):
+    if np.any(eddy_viscosity < 0.0):
         raise FloatingPointError(f"{model} produced negative eddy viscosity")
-    return nut
+    return eddy_viscosity
 
 
-def _velocity_gradient_tensor(U, mesh_data, geo_data):
+def _velocity_gradient_tensor(velocity, mesh_data, geo_data):
     """Compute the velocity-gradient tensor for interior cells.
 
     Returns ``g[c, i, j] = ∂u_i/∂x_j`` for each cell *c*.
@@ -56,9 +56,9 @@ def _velocity_gradient_tensor(U, mesh_data, geo_data):
     Returns:
         Velocity-gradient tensor ``(n_elements, 3, 3)``.
     """
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     grad_fn = gradients._resolve_gradient_fn(geo_data)
-    grad = grad_fn(U, mesh_data, geo_data)[:n_elements]  # (n, 3, 3): [c,k,i]
+    grad = grad_fn(velocity, mesh_data, geo_data)[:n_cells]  # (n, 3, 3): [c,k,i]
     if not np.all(np.isfinite(grad)):
         raise FloatingPointError("LES velocity gradient contains non-finite values")
     return np.transpose(grad, (0, 2, 1))  # (n, 3, 3): [c,i,j] = ∂u_i/∂x_j
@@ -114,7 +114,7 @@ class WALE:
             Dict with keys ``model``, ``Cs`` (carries *C_w*), and
             ``filter_width_min/max/mean``.
         """
-        delta = self.geo_data["element_volumes"] ** (1.0 / 3.0)
+        delta = self.geo_data["cell_volumes"] ** (1.0 / 3.0)
         return {
             "model": "WALE",
             "Cs": self.Cw,
@@ -123,7 +123,7 @@ class WALE:
             "filter_width_mean": float(np.mean(delta)),
         }
 
-    def compute_nut(self, U, mesh_data=None, geo_data=None):
+    def compute_eddy_viscosity(self, velocity, mesh_data=None, geo_data=None):
         """Compute the subgrid-scale turbulent viscosity (WALE model).
 
         Args:
@@ -137,12 +137,12 @@ class WALE:
         mesh_data = self.mesh_data if mesh_data is None else mesh_data
         geo_data = self.geo_data if geo_data is None else geo_data
 
-        g = _velocity_gradient_tensor(U, mesh_data, geo_data)
+        g = _velocity_gradient_tensor(velocity, mesh_data, geo_data)
         op = _wale_operator(g)
 
-        delta = _compute_filter_width(geo_data["element_volumes"], mesh_data, geo_data)
-        nut = (self.Cw * delta) ** 2 * op
-        return _validated_eddy_viscosity(nut, "WALE")
+        delta = _compute_filter_width(geo_data["cell_volumes"], mesh_data, geo_data)
+        eddy_viscosity = (self.Cw * delta) ** 2 * op
+        return _validated_eddy_viscosity(eddy_viscosity, "WALE")
 
 
 class Sigma:
@@ -177,7 +177,7 @@ class Sigma:
             Dict with keys ``model``, ``Cs`` (carries *C_σ*), and
             ``filter_width_min/max/mean``.
         """
-        delta = self.geo_data["element_volumes"] ** (1.0 / 3.0)
+        delta = self.geo_data["cell_volumes"] ** (1.0 / 3.0)
         return {
             "model": "sigma",
             "Cs": self.Csigma,
@@ -186,7 +186,7 @@ class Sigma:
             "filter_width_mean": float(np.mean(delta)),
         }
 
-    def compute_nut(self, U, mesh_data=None, geo_data=None):
+    def compute_eddy_viscosity(self, velocity, mesh_data=None, geo_data=None):
         """Compute the subgrid-scale turbulent viscosity (sigma model).
 
         Args:
@@ -200,7 +200,7 @@ class Sigma:
         mesh_data = self.mesh_data if mesh_data is None else mesh_data
         geo_data = self.geo_data if geo_data is None else geo_data
 
-        g = _velocity_gradient_tensor(U, mesh_data, geo_data)
+        g = _velocity_gradient_tensor(velocity, mesh_data, geo_data)
         # Singular values σ1 ≥ σ2 ≥ σ3 ≥ 0 of the velocity-gradient tensor.
         sv = np.linalg.svd(g, compute_uv=False)  # (n, 3), descending
         s1, s2, s3 = sv[:, 0], sv[:, 1], sv[:, 2]
@@ -208,9 +208,9 @@ class Sigma:
         eps = 1e-30
         d_sigma = s3 * (s1 - s2) * (s2 - s3) / (s1 * s1 + eps)
 
-        delta = _compute_filter_width(geo_data["element_volumes"], mesh_data, geo_data)
-        nut = (self.Csigma * delta) ** 2 * d_sigma
-        return _validated_eddy_viscosity(nut, "sigma")
+        delta = _compute_filter_width(geo_data["cell_volumes"], mesh_data, geo_data)
+        eddy_viscosity = (self.Csigma * delta) ** 2 * d_sigma
+        return _validated_eddy_viscosity(eddy_viscosity, "sigma")
 
 
 class DynamicSmagorinsky:
@@ -264,7 +264,7 @@ class DynamicSmagorinsky:
             Dict with keys ``model``, ``Cs`` (sqrt of last C), and
             ``filter_width_min/max/mean``.
         """
-        delta = self.geo_data["element_volumes"] ** (1.0 / 3.0)
+        delta = self.geo_data["cell_volumes"] ** (1.0 / 3.0)
         return {
             "model": "dynamicSmagorinsky",
             "Cs": float(np.sqrt(max(self.last_C, 0.0))),
@@ -273,7 +273,7 @@ class DynamicSmagorinsky:
             "filter_width_mean": float(np.mean(delta)),
         }
 
-    def compute_nut(self, U, mesh_data=None, geo_data=None):
+    def compute_eddy_viscosity(self, velocity, mesh_data=None, geo_data=None):
         """Compute the subgrid-scale turbulent viscosity (dynamic procedure).
 
         Uses the Germano identity with a volume-weighted one-ring box test
@@ -289,14 +289,14 @@ class DynamicSmagorinsky:
         """
         mesh_data = self.mesh_data if mesh_data is None else mesh_data
         geo_data = self.geo_data if geo_data is None else geo_data
-        n_elem = mesh_data["n_elements"]
+        n_elem = mesh_data["n_cells"]
 
-        g = _velocity_gradient_tensor(U, mesh_data, geo_data)
+        g = _velocity_gradient_tensor(velocity, mesh_data, geo_data)
         S, SS = _strain_rate(g)
         Smag = np.sqrt(2.0 * SS)  # |S| = sqrt(2 S_ij S_ij)
 
-        u = U[:n_elem]
-        delta2 = _compute_filter_width(geo_data["element_volumes"], mesh_data, geo_data) ** 2
+        u = velocity[:n_elem]
+        delta2 = _compute_filter_width(geo_data["cell_volumes"], mesh_data, geo_data) ** 2
 
         # Leonard stresses L_ij = (u_i u_j)~ − u~_i u~_j
         uu = u[:, :, None] * u[:, None, :]  # (n,3,3)
@@ -321,8 +321,8 @@ class DynamicSmagorinsky:
         C = max(C, 0.0)  # clip backscatter for stability
         self.last_C = C
 
-        nut = C * delta2 * Smag
-        return _validated_eddy_viscosity(nut, "Dynamic Smagorinsky")
+        eddy_viscosity = C * delta2 * Smag
+        return _validated_eddy_viscosity(eddy_viscosity, "Dynamic Smagorinsky")
 
 
 def create_model(config, mesh_data, geo_data):
@@ -348,7 +348,7 @@ def create_model(config, mesh_data, geo_data):
         geo_data:  Geometry dictionary.
 
     Returns:
-        An LES model instance with a ``compute_nut(U)`` interface,
+        An LES model instance with a ``compute_eddy_viscosity(U)`` interface,
         or ``None`` for no-model (ILES/DNS).
 
     Raises:
@@ -360,15 +360,15 @@ def create_model(config, mesh_data, geo_data):
     if name in ("none", "", "iles", "dns"):
         return None
     if name == "wale":
-        return WALE(mesh_data, geo_data, Cw=config.Cs)
+        return WALE(mesh_data, geo_data, Cw=config.c_w)
     if name == "sigma":
-        return Sigma(mesh_data, geo_data, Csigma=config.Cs)
+        return Sigma(mesh_data, geo_data, Csigma=config.c_sigma)
     if name in ("dynamicsmagorinsky", "dynamic_smagorinsky"):
         return DynamicSmagorinsky(mesh_data, geo_data)
     if name in ("equilibriumsmagorinsky", "equilibrium_smagorinsky"):
-        return EquilibriumSmagorinsky(mesh_data, geo_data, Ck=config.Ck, Ce=config.Ce)
+        return EquilibriumSmagorinsky(mesh_data, geo_data, Ck=config.c_k, Ce=config.c_e)
     if name == "smagorinsky":
         if getattr(config, "dynamic", False):
             return DynamicSmagorinsky(mesh_data, geo_data)
-        return Smagorinsky(mesh_data, geo_data, Cs=config.Cs)
+        return Smagorinsky(mesh_data, geo_data, Cs=config.c_s)
     raise ValueError(f"Unknown turbulence model '{config.model}'")

@@ -12,16 +12,16 @@ def _l2_error(grad_computed, grad_exact, volumes):
     return np.sqrt(np.sum(volumes[:, np.newaxis] * (err**2))) / np.sqrt(np.sum(volumes))
 
 
-def _set_ghost_cells_to_analytic(phi, mesh, geo, func):
-    n_elem = mesh["n_elements"]
+def _set_ghost_cells_to_analytic(face_flux, mesh, geo, func):
+    n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
     fc = geo["face_centroids"]
     for b in mesh["boundary"]:
-        start, nf = b["startFace"], b["nFaces"]
+        start, nf = b["start_face"], b["n_faces"]
         for j in range(nf):
             fi = start + j
             gi = n_elem + (fi - n_int)
-            phi[gi] = func(fc[fi])
+            face_flux[gi] = func(fc[fi])
 
 
 class TestGradientConvergence:
@@ -30,21 +30,21 @@ class TestGradientConvergence:
     def test_gradient_quadratic_scalar(self, gmsh_unit_cube):
         mesh = gmsh_unit_cube
         geo = compute_mesh_geometry(mesh, gradient_scheme="lsq")
-        n_elem = mesh["n_elements"]
+        n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        cents = geo["element_centroids"]
+        cents = geo["cell_centroids"]
 
         def phi_func(c):
             return c[0] ** 2 + c[1] ** 2 + c[2] ** 2
 
-        phi = np.zeros(n_elem + n_bnd)
-        phi[:n_elem] = np.array([phi_func(c) for c in cents])
-        _set_ghost_cells_to_analytic(phi, mesh, geo, phi_func)
+        face_flux = np.zeros(n_elem + n_bnd)
+        face_flux[:n_elem] = np.array([phi_func(c) for c in cents])
+        _set_ghost_cells_to_analytic(face_flux, mesh, geo, phi_func)
 
-        grad = compute_lsq_gradient(phi, mesh, geo)
+        grad = compute_lsq_gradient(face_flux, mesh, geo)
         g = grad[:n_elem].squeeze()
         grad_exact = 2.0 * cents
-        err = _l2_error(g, grad_exact, geo["element_volumes"])
+        err = _l2_error(g, grad_exact, geo["cell_volumes"])
         assert err < 0.7, f"L₂ error too large: {err:.4f}"
 
     @pytest.mark.slow
@@ -72,16 +72,16 @@ class TestGradientConvergence:
                 return c[0] ** 2 + c[1] ** 2 + c[2] ** 2
 
             geo = compute_mesh_geometry(mesh, gradient_scheme="lsq")
-            cents = geo["element_centroids"]
-            n_elem = mesh["n_elements"]
+            cents = geo["cell_centroids"]
+            n_elem = mesh["n_cells"]
             n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-            phi = np.zeros(n_elem + n_bnd)
-            phi[:n_elem] = np.array([phi_func(c) for c in cents])
-            _set_ghost_cells_to_analytic(phi, mesh, geo, phi_func)
-            grad = compute_lsq_gradient(phi, mesh, geo)
+            face_flux = np.zeros(n_elem + n_bnd)
+            face_flux[:n_elem] = np.array([phi_func(c) for c in cents])
+            _set_ghost_cells_to_analytic(face_flux, mesh, geo, phi_func)
+            grad = compute_lsq_gradient(face_flux, mesh, geo)
             g = grad[:n_elem].squeeze()
             grad_exact = 2.0 * cents
-            err = _l2_error(g, grad_exact, geo["element_volumes"])
+            err = _l2_error(g, grad_exact, geo["cell_volumes"])
             errors.append(err)
 
         observed_order = np.polyfit(
@@ -97,14 +97,14 @@ class TestGradientConvergence:
         for n in (2, 4, 8):
             mesh = split_prism_box(n, mixed=mixed)
             geo = compute_mesh_geometry(mesh, gradient_scheme="lsq")
-            centres = geo["element_centroids"]
-            n_cells = mesh["n_elements"]
+            centres = geo["cell_centroids"]
+            n_cells = mesh["n_cells"]
             n_boundary = mesh["n_faces"] - mesh["n_interior_faces"]
             field = np.zeros(n_cells + n_boundary)
             field[:n_cells] = np.sum(centres**2, axis=1)
             _set_ghost_cells_to_analytic(field, mesh, geo, lambda point: np.sum(point**2))
             computed = compute_lsq_gradient(field, mesh, geo)[:n_cells].squeeze()
-            errors.append(_l2_error(computed, 2.0 * centres, geo["element_volumes"]))
+            errors.append(_l2_error(computed, 2.0 * centres, geo["cell_volumes"]))
             sizes.append(1.0 / n)
 
         observed_order = np.polyfit(np.log(sizes), np.log(errors), 1)[0]

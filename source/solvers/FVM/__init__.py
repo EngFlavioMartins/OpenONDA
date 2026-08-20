@@ -1,26 +1,20 @@
-#!/usr/bin/env python3
-"""Public API for the OpenONDA incompressible finite-volume solver.
-
-Internal operators remain available through their package paths, for example
-``source.solvers.FVM.mesh.geometry``.  They are intentionally not re-exported
-here so the stable API is small and unambiguous.
-"""
+"""Public API for the OpenONDA incompressible FVM solver."""
 
 from source.version import __version__
 
 from . import io
-from .config.types import (
+from .config import (
     BoundaryConfig,
-    DynamicMeshConfig,
-    ExecutionConfig,
+    ComputeConfig,
+    DiscretizationConfig,
     FVMSetup,
     LinearSolverConfig,
-    LogConfig,
-    MeshConfig,
-    OutputSetup,
+    LoggingConfig,
+    MeshMotionConfig,
+    MeshQualityConfig,
+    OutputConfig,
     PimpleControl,
     RunAcceptancePolicy,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
@@ -28,9 +22,16 @@ from .config.types import (
 from .core.solver import FVMSolver
 from .core.state import FieldState
 from .factory import create_fvm_solver
-from .mesh.adaptive_cartesian import AdaptiveCartesianMesher, BoxRefinement
+from .mesh.adaptive_cartesian import (
+    AdaptiveCartesianMesher,
+    BoxRefinement,
+)
 from .sampling.fields import LineSampler, SurfaceSampler
-from .sampling.forces import ForceSampler, IBMForceSampler, YPlusSampler
+from .sampling.forces import (
+    ForceSampler,
+    IBMForceSampler,
+    YPlusSampler,
+)
 from .solve import equation_solver
 from .solve.contracts import StepDiagnostics
 from .solve.linear_interface import LinearSolveResult
@@ -38,33 +39,33 @@ from .solve.linear_interface import LinearSolveResult
 __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 
 __all__ = [
-    "FVMSolver",
-    "__version__",
-    "FVMSetup",
-    "create_fvm_solver",
     "AdaptiveCartesianMesher",
-    "BoxRefinement",
-    "ExecutionConfig",
-    "MeshConfig",
-    "LogConfig",
-    "OutputSetup",
-    "RunAcceptancePolicy",
-    "TimeConfig",
-    "SchemesConfig",
-    "LinearSolverConfig",
-    "PimpleControl",
-    "ForceSampler",
-    "LineSampler",
-    "SurfaceSampler",
-    "IBMForceSampler",
-    "YPlusSampler",
-    "TransportConfig",
     "BoundaryConfig",
-    "DynamicMeshConfig",
-    "TurbulenceConfig",
-    "equation_solver",
-    "LinearSolveResult",
-    "StepDiagnostics",
+    "BoxRefinement",
+    "ComputeConfig",
+    "DiscretizationConfig",
+    "FVMSetup",
+    "FVMSolver",
     "FieldState",
+    "ForceSampler",
+    "IBMForceSampler",
+    "LinearSolveResult",
+    "LinearSolverConfig",
+    "LineSampler",
+    "LoggingConfig",
+    "MeshMotionConfig",
+    "MeshQualityConfig",
+    "OutputConfig",
+    "PimpleControl",
+    "RunAcceptancePolicy",
+    "StepDiagnostics",
+    "SurfaceSampler",
+    "TimeConfig",
+    "TransportConfig",
+    "TurbulenceConfig",
+    "YPlusSampler",
+    "__version__",
+    "create_fvm_solver",
+    "equation_solver",
     "io",
 ]

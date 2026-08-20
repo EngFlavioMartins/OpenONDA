@@ -128,12 +128,12 @@ def hand_built_3d_mesh():
     neighbours = np.array([1, 3, 5, 7, 2, 6, 3, 7, 4, 5, 6, 7], dtype=np.int32)
 
     boundary = [
-        {"name": "xmin", "startFace": 12, "nFaces": 4, "type": "patch"},
-        {"name": "xmax", "startFace": 16, "nFaces": 4, "type": "patch"},
-        {"name": "ymin", "startFace": 20, "nFaces": 4, "type": "patch"},
-        {"name": "ymax", "startFace": 24, "nFaces": 4, "type": "patch"},
-        {"name": "zmin", "startFace": 28, "nFaces": 4, "type": "patch"},
-        {"name": "zmax", "startFace": 32, "nFaces": 4, "type": "patch"},
+        {"name": "xmin", "start_face": 12, "n_faces": 4, "type": "patch"},
+        {"name": "xmax", "start_face": 16, "n_faces": 4, "type": "patch"},
+        {"name": "ymin", "start_face": 20, "n_faces": 4, "type": "patch"},
+        {"name": "ymax", "start_face": 24, "n_faces": 4, "type": "patch"},
+        {"name": "zmin", "start_face": 28, "n_faces": 4, "type": "patch"},
+        {"name": "zmax", "start_face": 32, "n_faces": 4, "type": "patch"},
     ]
 
     mesh_data = {
@@ -142,7 +142,7 @@ def hand_built_3d_mesh():
         "owners": owners,
         "neighbours": neighbours,
         "boundary": boundary,
-        "n_elements": 8,
+        "n_cells": 8,
         "n_faces": 36,
         "n_interior_faces": 12,
         "n_points": 27,
@@ -155,14 +155,14 @@ def main():
     mesh_data = hand_built_3d_mesh()
     geo_data = compute_mesh_geometry(mesh_data)
 
-    volumes = geo_data["element_volumes"]
+    volumes = geo_data["cell_volumes"]
     print("Element volumes:", volumes)
     assert np.allclose(volumes, 1.0), f"Volumes not all 1.0: {volumes}"
 
-    centroids = geo_data["element_centroids"]
+    centroids = geo_data["cell_centroids"]
     print("Element centroids:\n", centroids)
 
-    n_elements = mesh_data["n_elements"]
+    n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
 
     phi_elem = centroids[:, 0] + centroids[:, 1] + centroids[:, 2]
@@ -173,19 +173,21 @@ def main():
         + face_centroids[n_interior:, 1]
         + face_centroids[n_interior:, 2]
     )
-    phi = np.concatenate([phi_elem, phi_b])
+    face_flux = np.concatenate([phi_elem, phi_b])
 
-    grad_phi = compute_gauss_gradient(phi, mesh_data, geo_data)
-    grad_elem = grad_phi[:n_elements]
+    grad_phi = compute_gauss_gradient(face_flux, mesh_data, geo_data)
+    grad_elem = grad_phi[:n_cells]
     print("Gradient phi (element average):\n", grad_elem.mean(axis=0))
     expected = np.array([1.0, 1.0, 1.0])
     assert np.allclose(grad_elem.mean(axis=0), expected, atol=1e-10), (
         f"Gradient not [1,1,1]: {grad_elem.mean(axis=0)}"
     )
 
-    gamma = np.ones(n_elements, dtype=np.float64)
+    gamma = np.ones(n_cells, dtype=np.float64)
     boundaries = mesh_data["boundary"]
-    flux_data = assemble_diffusion_term(phi, grad_elem, gamma, mesh_data, geo_data, boundaries)
+    flux_data = assemble_diffusion_term(
+        face_flux, grad_elem, gamma, mesh_data, geo_data, boundaries
+    )
     A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data)
     A_dense = A.toarray()
     diag = A_dense.diagonal()
@@ -194,8 +196,8 @@ def main():
     output_path = output_dir / "golden_reference.npz"
     np.savez(
         output_path,
-        element_volumes=volumes,
-        element_centroids=centroids,
+        cell_volumes=volumes,
+        cell_centroids=centroids,
         face_sf=geo_data["face_sf"],
         face_areas=geo_data["face_areas"],
         face_weights=geo_data["face_weights"],
