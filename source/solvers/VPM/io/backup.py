@@ -247,10 +247,10 @@ class BackupSystem:
     def _save_configuration(solver, config_file: str) -> None:
         """Save solver configuration and metadata to JSON."""
         config_data = {
-            "solver_config": solver.config.to_dict(),
+            "solver_config": solver.setup.to_dict(),
             "backup_metadata": {
                 "backup_format_version": "2.2",
-                "original_backend": solver.config.processing_unit,
+                "original_backend": solver.setup.processing_unit,
                 "openonda_version": getattr(solver, "version", "unknown"),
                 "particle_count": int(
                     solver.particles.number_of_particles

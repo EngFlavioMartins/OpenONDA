@@ -55,7 +55,7 @@ class SnapshotContext:
     """Read-only sampling context exposing one archived FVM state.
 
     Presents the same sampling interface a live solver does (``mesh_data``,
-    ``geo_data``, ``boundaries``, ``config``, ``U``, ``p``, ``nut``,
+    ``geo_data``, ``boundaries``, ``setup``, ``U``, ``p``, ``nut``,
     ``parallel``, ``time``, ``step``, ``_current_dt``, plus the
     derived ``_velocity_gradient()``/``_vorticity_field()``), so the samplers
     and executor cannot tell online and offline apart.
@@ -63,7 +63,7 @@ class SnapshotContext:
 
     def __init__(
         self,
-        config,
+        setup,
         case_dir: str,
         mesh_data: dict,
         geo_data: dict,
@@ -77,7 +77,7 @@ class SnapshotContext:
     ):
         from ..core.parallel import ParallelContext
 
-        self.config = config
+        self.setup = setup
         self.case_dir = case_dir
         self.mesh_data = mesh_data
         self.geo_data = geo_data
@@ -322,13 +322,15 @@ class PostProcess:
                 try:
                     record = json.loads(line)
                     step = int(record["step"])
-                    time_step_size = float(record["dt"])
+                    time_step_size = float(record.get("time_step_size", record.get("dt")))
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     raise ValueError(
                         f"Invalid diagnostics record at {diagnostics}:{line_number}"
                     ) from exc
                 if time_step_size <= 0.0:
-                    raise ValueError(f"Invalid non-positive dt at {diagnostics}:{line_number}")
+                    raise ValueError(
+                        f"Invalid non-positive time step at {diagnostics}:{line_number}"
+                    )
                 values[step] = time_step_size
         return values
 
@@ -362,7 +364,7 @@ class PostProcess:
             fields = self._read_snapshot(path, n_elements)
             U, p = self._reconstruct_state(fields)
             context = SnapshotContext(
-                config=self.config,
+                setup=self.config,
                 case_dir=self.case_dir,
                 mesh_data=self.mesh_data,
                 geo_data=self.geo_data,

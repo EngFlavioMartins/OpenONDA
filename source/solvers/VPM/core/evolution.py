@@ -74,7 +74,7 @@ class EvolutionStepper:
                 with self.profiler.section("Panel coupling"):
                     self.coupling.advance_panel()
 
-            _adv = (self.config.advection.scheme if self.config.advection else "RK3").upper()
+            _adv = (self.setup.advection.scheme if self.setup.advection else "RK3").upper()
             _gradients_required = (
                 self.stretching_enabled
                 or self.flow_model == "LES"
@@ -271,8 +271,8 @@ class EvolutionStepper:
 
     def _update_velocity_gradients(self, announce: bool = True) -> None:
         """Evaluate particle velocity gradients with the configured direct or tree method."""
-        use_treecode = bool(self.config.velocity and self.config.velocity.method == "TREECODE")
-        theta = self.config.velocity.theta if self.config.velocity else 0.5
+        use_treecode = bool(self.setup.velocity and self.setup.velocity.method == "TREECODE")
+        theta = self.setup.velocity.theta if self.setup.velocity else 0.5
 
         if use_treecode:
             if announce:
@@ -285,8 +285,8 @@ class EvolutionStepper:
 
     def _update_velocity_and_gradients(self, announce: bool = True) -> None:
         """Evaluate particle velocity and ``∇u`` in one direct pass or tree traversal."""
-        use_treecode = bool(self.config.velocity and self.config.velocity.method == "TREECODE")
-        theta = self.config.velocity.theta if self.config.velocity else 0.5
+        use_treecode = bool(self.setup.velocity and self.setup.velocity.method == "TREECODE")
+        theta = self.setup.velocity.theta if self.setup.velocity else 0.5
         if use_treecode:
             if announce:
                 Logging.message(f"Updating fused u + ∇u (treecode, θ={theta})")

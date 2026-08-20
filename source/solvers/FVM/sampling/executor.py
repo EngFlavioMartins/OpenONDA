@@ -29,10 +29,13 @@ class FVMSamplerExecutor:
 
     @staticmethod
     def execute(solver, *, strict: bool = True) -> None:
-        samplers = list(getattr(solver.config, "samplers", ()) or ())
+        samplers = list(getattr(solver.setup, "samplers", ()) or ())
         auto_yplus = getattr(solver, "_default_yplus_sampler", None)
         if auto_yplus is not None and auto_yplus not in samplers:
             samplers.append(auto_yplus)
+        auto_ibm = getattr(solver, "_default_ibm_sampler", None)
+        if auto_ibm is not None and auto_ibm not in samplers:
+            samplers.append(auto_ibm)
         if not samplers:
             return
 

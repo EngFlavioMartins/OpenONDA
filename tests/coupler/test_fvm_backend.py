@@ -359,7 +359,7 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
         time = 0.0
         cfl_max = 0.0
         logger = _FakeStepLogger()
-        config = _FakeFVMConfig()
+        setup = _FakeFVMConfig()
 
         def __init__(self):
             self.calls = []
@@ -378,7 +378,7 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm = FakeFVM()
-    coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="characteristic")
+    coupler.setup = _fvm_setup(tmp_path, vpm_bc_mode="characteristic")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     apply_fvm_boundary(coupler, "numericalBoundary", target)
 
@@ -401,7 +401,7 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
         time = 0.0
         cfl_max = 0.0
         logger = _FakeStepLogger()
-        config = _FakeFVMConfig()
+        setup = _FakeFVMConfig()
 
         def __init__(self):
             self.calls = []
@@ -424,7 +424,7 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm = FakeFVM()
-    coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="directional_outflow")
+    coupler.setup = _fvm_setup(tmp_path, vpm_bc_mode="directional_outflow")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     apply_fvm_boundary(coupler, "numericalBoundary", target)
 
@@ -435,9 +435,7 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
         "advance",
     ]
     np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
-    np.testing.assert_array_equal(
-        coupler.fvm.calls[0][3], coupler.config.freestream_velocity_vector
-    )
+    np.testing.assert_array_equal(coupler.fvm.calls[0][3], coupler.setup.freestream_velocity_vector)
 
 
 def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
@@ -450,7 +448,7 @@ def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
         time = 0.0
         cfl_max = 0.0
         logger = _FakeStepLogger()
-        config = _FakeFVMConfig()
+        setup = _FakeFVMConfig()
 
         def __init__(self):
             self.calls = []
@@ -469,7 +467,7 @@ def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm = FakeFVM()
-    coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="pressure_gradient")
+    coupler.setup = _fvm_setup(tmp_path, vpm_bc_mode="pressure_gradient")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     gradient = np.array([[0.2, 0.0, 0.0], [-0.1, 0.3, 0.0]])
     apply_fvm_boundary(coupler, "numericalBoundary", target, gradient)
@@ -494,7 +492,7 @@ def test_coupler_vorticity_mixed_step_sets_directional_trace_and_pressure(tmp_pa
         time = 0.0
         cfl_max = 0.0
         logger = _FakeStepLogger()
-        config = _FakeFVMConfig()
+        setup = _FakeFVMConfig()
 
         def __init__(self):
             self.calls = []
@@ -522,7 +520,7 @@ def test_coupler_vorticity_mixed_step_sets_directional_trace_and_pressure(tmp_pa
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm = FakeFVM()
-    coupler.config = _fvm_setup(tmp_path, vpm_bc_mode="vorticity_mixed")
+    coupler.setup = _fvm_setup(tmp_path, vpm_bc_mode="vorticity_mixed")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     normal_velocity = np.array([-1.0, 0.8])
     tangential_gradient = np.array([[0.0, 0.2, 0.3], [0.0, -0.1, 0.4]])
@@ -561,10 +559,10 @@ def test_coupler_runtime_setters_apply(built_backend):
     fvm.set_time_step(0.025)
     fvm.set_kinematic_viscosity(0.02)
     assert fvm.time_step_size == 0.025
-    assert fvm.config.transport.nu == 0.02
+    assert fvm.setup.transport.nu == 0.02
     assert fvm.n_procs() == 1
     # Coupled runs must not let the FVM adapt its own dt.
-    assert fvm.config.time.adjust_timestep is False
+    assert fvm.setup.time.adjust_timestep is False
 
 
 def test_initialize_rejects_serial_backend_under_mpi(tmp_path, monkeypatch):
@@ -659,9 +657,9 @@ def test_builder_body_fitted_cube(tmp_path):
     # wall-force logging on (as an explicit ForceSampler).
     wf = np.asarray(fvm.get_boundary_face_center_coordinates("cube"))
     assert wf.shape[0] == 6 * 8**2
-    force_sampler = next(s for s in fvm.config.samplers if s.name == "forces_history")
+    force_sampler = next(s for s in fvm.setup.samplers if s.name == "forces_history")
     assert force_sampler.patch_names == ["cube"]
-    wall_cfg = next(b for b in fvm.config.boundaries if b.name == "cube")
+    wall_cfg = next(b for b in fvm.setup.boundaries if b.name == "cube")
     assert wall_cfg.type_velocity == "fixedValue" and wall_cfg.value_velocity == [0.0, 0.0, 0.0]
 
     # One PIMPLE step stays finite and generates wall vorticity.

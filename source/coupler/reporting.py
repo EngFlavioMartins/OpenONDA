@@ -108,24 +108,24 @@ def write_run_metadata(coupler) -> None:
         "generated_utc": datetime.now(UTC).isoformat(),
         "case_dir": str(coupler.case_dir),
         "physics": {
-            "freestream_velocity": coupler.config.freestream_velocity,
+            "freestream_velocity": coupler.setup.freestream_velocity,
             "nu": coupler.nu,
             "rho": coupler.rho,
             "dt": coupler.fvm_time_step_size,
             "t_end": coupler.end_time,
-            "coupler_backup_period": coupler.config.coupler_backup_period,
+            "coupler_backup_period": coupler.setup.coupler_backup_period,
         },
         "fvm_solver": {
-            "bc_patch_name": coupler.config.bc_patch_name,
-            "vpm_bc_mode": coupler.config.vpm_bc_mode,
+            "bc_patch_name": coupler.setup.bc_patch_name,
+            "vpm_bc_mode": coupler.setup.vpm_bc_mode,
             "fvm_domain": _domain_dict(coupler.fvm_box),
         },
         "vpm_solver": {
-            "vpm_particle_spacing": coupler.config.vpm_particle_spacing,
-            "overlap_zone_ramp_width": coupler.config.overlap_zone_ramp_width,
-            "overlap_zone_dead_zone_width": coupler.config.overlap_zone_dead_zone_width,
+            "vpm_particle_spacing": coupler.setup.vpm_particle_spacing,
+            "overlap_zone_ramp_width": coupler.setup.overlap_zone_ramp_width,
+            "overlap_zone_dead_zone_width": coupler.setup.overlap_zone_dead_zone_width,
         },
-        **coupler.config.to_dict(),
+        **coupler.setup.to_dict(),
         "dt_fvm": coupler.fvm_time_step_size,
         "dt_vpm": coupler.vpm_time_step_size,
         "n_fvm_substeps": coupler.fvm_substeps,
@@ -325,10 +325,7 @@ def record_step(
 
     if comm is not None and comm.Get_size() > 1:
         comm.Barrier()
-    if (
-        coupler.config.coupler_backup_period > 0
-        and step % coupler.config.coupler_backup_period == 0
-    ):
+    if coupler.setup.coupler_backup_period > 0 and step % coupler.setup.coupler_backup_period == 0:
         coupler.save_state(coupler.solution_dir / CHECKPOINT_DIRECTORY, coupling_step=step)
 
 

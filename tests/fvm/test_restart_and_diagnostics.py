@@ -143,7 +143,7 @@ def test_checkpoint_round_trips_sampler_config(tmp_path):
     restored = _solver(_config(samplers=samplers), tmp_path / "restored")
     restored.load_state(checkpoint)
 
-    assert restored.config.samplers == original.config.samplers
+    assert restored.setup.samplers == original.setup.samplers
 
 
 def test_checkpoint_rejects_missing_sampler_config(tmp_path):

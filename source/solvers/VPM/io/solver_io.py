@@ -39,8 +39,8 @@ class SolverIO:
         """
         self.solver = solver
 
-        if hasattr(self.solver.config, "backup_directory") and self.solver.config.backup_directory:
-            self.export_dir = self.solver.config.backup_directory
+        if hasattr(self.solver.setup, "backup_directory") and self.solver.setup.backup_directory:
+            self.export_dir = self.solver.setup.backup_directory
         else:
             self.export_dir = "solution"
 
@@ -180,7 +180,7 @@ class SolverIO:
 
         samples_dir = resolve_samples_dir(
             solver.backup_directory,
-            getattr(solver.config, "sample_subdirectory", None),
+            getattr(solver.setup, "sample_subdirectory", None),
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "flow_integrals.csv"
@@ -236,7 +236,7 @@ class SolverIO:
 
     def save_config(self, filename: str) -> None:
         """Save solver configuration to JSON."""
-        config_dict = asdict(self.solver.config)
+        config_dict = asdict(self.solver.setup)
         with open(filename, "w") as f:
             json.dump(config_dict, f, indent=4)
         print(f"Configuration saved to {filename}")
@@ -290,7 +290,7 @@ class SolverIO:
 
         samples_dir = resolve_samples_dir(
             self.export_dir,
-            getattr(self.solver.config, "sample_subdirectory", None),
+            getattr(self.solver.setup, "sample_subdirectory", None),
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / f"{self.vpm_prefix}_forces.csv"

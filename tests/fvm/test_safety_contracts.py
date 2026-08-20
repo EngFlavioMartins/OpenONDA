@@ -26,7 +26,7 @@ def test_turbulence_failure_does_not_switch_to_laminar():
     solver.U = np.zeros((1, 3))
     solver.mesh_data = {}
     solver.geo_data = {}
-    solver.config = FVMSetup(case_name="les")
+    solver.setup = FVMSetup(case_name="les")
     with pytest.raises(RuntimeError, match="LES failed"):
         solver.compute_effective_viscosity()
 

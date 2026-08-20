@@ -91,8 +91,8 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
         "kind": "openonda.coupled_checkpoint",
         "created_utc": datetime.now(UTC).isoformat(),
         "backend": "fvm",
-        "config_sha256": config_digest(coupler.config),
-        "config": coupler.config.to_dict(),
+        "config_sha256": config_digest(coupler.setup),
+        "config": coupler.setup.to_dict(),
         "coupling_step": step,
         "flow_time": float(coupler.vpm.time),
         "fvm_time_step": int(coupler.fvm.step),
@@ -150,8 +150,8 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
             ]
             if error is None and missing:
                 error = f"Incomplete coupled checkpoint; missing: {', '.join(missing)}"
-            elif error is None and manifest.get("config_sha256") != config_digest(coupler.config):
-                changes = config_diff(manifest.get("config"), coupler.config.to_dict())
+            elif error is None and manifest.get("config_sha256") != config_digest(coupler.setup):
+                changes = config_diff(manifest.get("config"), coupler.setup.to_dict())
                 detail = "\n  ".join(changes) if changes else "(checkpoint stored no config)"
                 error = f"Coupled checkpoint configuration differs:\n  {detail}"
     if comm is not None and comm.Get_size() > 1:

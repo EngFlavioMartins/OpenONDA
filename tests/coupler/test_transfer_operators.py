@@ -130,7 +130,7 @@ def test_blending_zone_and_vpm_bc_share_one_target_evaluation():
     coupler._u_bc_prev = None
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
-    coupler.config = SimpleNamespace(vpm_bc_mode="dirichlet")
+    coupler.setup = SimpleNamespace(vpm_bc_mode="dirichlet")
 
     centres, normals, areas = _cube_face_quadrature(nside=3)
     previous, u_bc, *_timings = evaluate_vpm_boundary(coupler, centres, normals, areas)
@@ -187,7 +187,7 @@ def test_pressure_vpm_bc_uses_the_same_body_complete_velocity_as_dirichlet_data(
     coupler.vpm_time_step_size = 0.05
     coupler.rho = 1.0
     coupler.nu = 1.0e-3
-    coupler.config = SimpleNamespace(
+    coupler.setup = SimpleNamespace(
         vpm_bc_mode="pressure_gradient",
         vpm_particle_spacing=0.04,
     )
@@ -268,7 +268,7 @@ def test_vorticity_mixed_transfer_builds_normal_and_tangential_gradient_trace():
     coupler._pressure_gradient_bc_next = None
     coupler.freestream_velocity = offset
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
-    coupler.config = SimpleNamespace(vpm_bc_mode="vorticity_mixed", vpm_particle_spacing=0.04)
+    coupler.setup = SimpleNamespace(vpm_bc_mode="vorticity_mixed", vpm_particle_spacing=0.04)
 
     centres, normals, areas = _cube_face_quadrature(nside=3)
     evaluate_vpm_boundary(coupler, centres, normals, areas)
@@ -308,7 +308,7 @@ def test_post_transfer_resync_refreshes_velocity_and_pressure_snapshots_together
     coupler._is_master = True
     coupler.vpm = _VPM()
     coupler.blending = _BlendingZone()
-    coupler.config = SimpleNamespace(
+    coupler.setup = SimpleNamespace(
         bc_resync_after_transfer=True,
         vpm_bc_mode="pressure_gradient",
     )
@@ -367,7 +367,7 @@ def test_post_transfer_resync_refreshes_both_mixed_trace_fields():
     coupler._is_master = True
     coupler.vpm = _VPM()
     coupler.blending = _BlendingZone()
-    coupler.config = SimpleNamespace(
+    coupler.setup = SimpleNamespace(
         bc_resync_after_transfer=True,
         vpm_bc_mode="vorticity_mixed",
         vpm_particle_spacing=0.04,
@@ -418,7 +418,7 @@ def test_zero_target_evaluation_fails_before_blending_zone_mutation():
     coupler.blending = _BlendingZone()
     coupler._u_bc_prev = None
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
-    coupler.config = SimpleNamespace(vpm_bc_mode="dirichlet")
+    coupler.setup = SimpleNamespace(vpm_bc_mode="dirichlet")
 
     centres, normals, areas = _cube_face_quadrature(nside=2)
     with pytest.raises(RuntimeError, match="identically zero field"):
@@ -538,7 +538,7 @@ def test_vorticity_mixed_subcycling_interpolates_and_reprojects_both_fields(
     coupler.fvm_substeps = 2
     coupler.fvm_time_step_size = 0.05
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
-    coupler.config = SimpleNamespace(vpm_bc_mode="vorticity_mixed")
+    coupler.setup = SimpleNamespace(vpm_bc_mode="vorticity_mixed")
     coupler.blending = _Blending()
     recorded = []
 

@@ -34,7 +34,7 @@ class SamplerExecutor:
     def execute(solver, sampler_entries=None) -> None:
         """Execute all configured samplers and persist their output.
 
-        Reads ``solver.config.samplers`` (list of sampler or
+        Reads ``solver.setup.samplers`` (list of sampler or
         ``(sampler, name_prefix)`` tuples) and, for each one, determines
         the target directory / file name, calls the appropriate ``save_*``
         method on the sampler, and keeps the PVD time-series index up to
@@ -44,7 +44,7 @@ class SamplerExecutor:
         insignificant (< 2 particles or max |Γ| < 1e-8) to avoid crashes
         inside pressure-gradient or SVD routines.
         """
-        sampler_entries = solver.config.samplers if sampler_entries is None else sampler_entries
+        sampler_entries = solver.setup.samplers if sampler_entries is None else sampler_entries
         if sampler_entries is None:
             return
 
@@ -59,7 +59,7 @@ class SamplerExecutor:
 
         samples_dir = resolve_samples_dir(
             solver.backup_directory,
-            getattr(solver.config, "sample_subdirectory", None),
+            getattr(solver.setup, "sample_subdirectory", None),
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
 

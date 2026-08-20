@@ -61,14 +61,14 @@ def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
     try:
         body_stl = None
         case_dir = None
-        if hasattr(solver.config, "fvm_solver") and hasattr(solver.config.fvm_solver, "surface"):
-            body_stl = solver.config.fvm_solver.surface.body_stl
-            if hasattr(solver.config.fvm_solver, "case_dir"):
-                case_dir = Path(solver.config.fvm_solver.case_dir)
-        if not body_stl and hasattr(solver.config, "vpm_solver"):
-            body_stl = solver.config.vpm_solver.body_stl
-        if not body_stl and hasattr(solver.config, "body_stl"):
-            body_stl = solver.config.body_stl
+        if hasattr(solver.setup, "fvm_solver") and hasattr(solver.setup.fvm_solver, "surface"):
+            body_stl = solver.setup.fvm_solver.surface.body_stl
+            if hasattr(solver.setup.fvm_solver, "case_dir"):
+                case_dir = Path(solver.setup.fvm_solver.case_dir)
+        if not body_stl and hasattr(solver.setup, "vpm_solver"):
+            body_stl = solver.setup.vpm_solver.body_stl
+        if not body_stl and hasattr(solver.setup, "body_stl"):
+            body_stl = solver.setup.body_stl
     except Exception:
         body_stl = None
     return body_stl, case_dir
@@ -212,7 +212,7 @@ class SurfaceSampler:
 
     def _resolve_body_stl_path(self, solver) -> Path | None:
         """Resolve body STL from coupler config (absolute path if possible)."""
-        if not hasattr(solver, "config"):
+        if not hasattr(solver, "setup"):
             return None
         body_stl, case_dir = _extract_stl_config_from_solver(solver)
         if not body_stl:
@@ -659,7 +659,7 @@ class LineSampler:
 
     def _resolve_body_stl_path(self, solver) -> Path | None:
         """Resolve body STL from coupler config (absolute path if possible)."""
-        if not hasattr(solver, "config"):
+        if not hasattr(solver, "setup"):
             return None
         body_stl, case_dir = _extract_stl_config_from_solver(solver)
         if not body_stl:

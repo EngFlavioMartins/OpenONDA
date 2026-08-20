@@ -64,7 +64,8 @@ endsolid open
         TriangulatedSurface.from_stl(surface_file)
 
 
-def test_rejects_non_axis_aligned_closed_surface(tmp_path):
+def test_accepts_non_axis_aligned_closed_surface(tmp_path):
+    """A closed watertight non-axis-aligned surface loads on the general path."""
     surface_file = tmp_path / "tetrahedron.stl"
     triangles = np.asarray(
         [
@@ -83,5 +84,7 @@ def test_rejects_non_axis_aligned_closed_surface(tmp_path):
     lines.append("endsolid tetrahedron\n")
     surface_file.write_text("".join(lines))
 
-    with pytest.raises(ValueError, match="axis-aligned bounding-box plane"):
-        TriangulatedSurface.from_stl(surface_file)
+    surface = TriangulatedSurface.from_stl(surface_file)
+    assert surface.kind == "general"
+    assert surface.bounds == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
+    assert surface.triangles.shape == (4, 3, 3)

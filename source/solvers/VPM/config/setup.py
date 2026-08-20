@@ -515,7 +515,7 @@ class VPMSetup:
             return obj
 
         return {
-            "dt": self.time_step_size,
+            "time_step_size": self.time_step_size,
             "time": self.time,
             "step": self.step,
             "time_integration": self.time_integration,
@@ -566,6 +566,8 @@ class VPMSetup:
             Configuration object reconstructed from the dictionary.
         """
         values = dict(data)
+        if "dt" in values and "time_step_size" not in values:
+            values["time_step_size"] = values.pop("dt")
         nested_types = {
             "advection": AdvectionConfig,
             "stretching": StretchingConfig,

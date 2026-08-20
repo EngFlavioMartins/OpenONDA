@@ -331,8 +331,8 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
     mesh, geo = solver.mesh_data, solver.geo_data
     n_elem = mesh["n_elements"]
     n_int = mesh["n_interior_faces"]
-    rho = solver.config.transport.density
-    mu = rho * solver.config.transport.nu
+    rho = solver.setup.transport.density
+    mu = rho * solver.setup.transport.nu
     volumes = geo["element_volumes"][:n_elem]
 
     with contextlib.redirect_stdout(io.StringIO()):
@@ -341,7 +341,7 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
         momentum_before = rho * (volumes[:, None] * solver.U[:n_elem]).sum(axis=0)
         solver.advance()
     momentum_after = rho * (volumes[:, None] * solver.U[:n_elem]).sum(axis=0)
-    dmdt = (momentum_after - momentum_before) / solver.config.time.time_step_size
+    dmdt = (momentum_after - momentum_before) / solver.setup.time.time_step_size
 
     U, p, phi = np.asarray(solver.U), np.asarray(solver.p), np.asarray(solver.phi)
     grad_u = gradients._resolve_gradient_fn(geo)(U, mesh, geo)

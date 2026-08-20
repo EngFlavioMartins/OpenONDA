@@ -42,12 +42,12 @@ class CouplingStepper:
             time=self.time,
             step=self.step,
             logging_frequency=self.logging_frequency,
-            density=getattr(self.config, "density", 1.0),
+            density=getattr(self.setup, "density", 1.0),
         )
         if new_particles is not None:
             n = len(new_particles["points"])
             if n > 0:
-                visc_cfg = getattr(self.config, "viscous", None)
+                visc_cfg = getattr(self.setup, "viscous", None)
                 nu = getattr(visc_cfg, "viscosity", None) if visc_cfg is not None else None
                 if nu is None or nu <= 0:
                     nu = 1e-2
@@ -75,7 +75,7 @@ class CouplingStepper:
         wake_particles = self.vlm_solver.advance_coupled(
             particles=self.particles,
             physics=self.physics,
-            config=self.config,
+            config=self.setup,
             time_step_size=time_step_size,
             step=self.step,
             time=self.time,

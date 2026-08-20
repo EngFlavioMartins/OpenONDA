@@ -37,15 +37,14 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         overlap_zone_dead_zone_width=H,
     )
 
-    vpm = VPMSolver(
-        VPMSetup(
-            time_step_size=VPM_TIME_STEP_SIZE,
-            processing_unit="CPU",
-            max_particles=50_000,
-            vpm_domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-            freestream_velocity=[1.0, 0.0, 0.0],
-        )
+    vpm_setup = VPMSetup(
+        time_step_size=VPM_TIME_STEP_SIZE,
+        processing_unit="CPU",
+        max_particles=50_000,
+        vpm_domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+        freestream_velocity=[1.0, 0.0, 0.0],
     )
+    vpm = VPMSolver(vpm_setup)
 
     def make_fvm():
         config = FVMSetup(
@@ -62,14 +61,22 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             ],
             initial_velocity=setup.freestream_velocity,
         )
-        return FVMSolver(
+        solver = FVMSolver(
             config,
             case_dir=".",
             mesh_data=coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), H),
         )
+        return solver, config
 
-    fvm = make_fvm()
+    fvm, fvm_config = make_fvm()
     coupler = FVMVPMCoupler(fvm, vpm, setup)
+
+    # Solver/coupler owners store their *Setup object as ``self.setup``.
+    assert fvm.setup is fvm_config
+    assert vpm.setup is vpm_setup
+    assert coupler.setup is setup
+    assert not hasattr(coupler, "config")
+
     coupler.run()
 
     # Sub-cycling derived from the two native solver time steps.
@@ -118,7 +125,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             freestream_velocity=[1.0, 0.0, 0.0],
         )
     )
-    restored_fvm = make_fvm()
+    restored_fvm, _ = make_fvm()
     restored = FVMVPMCoupler(restored_fvm, restored_vpm, setup)
     restored.initialize()
     restored_step = restored.load_state(checkpoint)

@@ -354,12 +354,12 @@ class Logging:
             if getattr(system, "stretching_conserve_energy", False):
                 projection += " + energy"
             lines.append(f"    Invariant projection   : {projection}")
-        vel_cfg = getattr(getattr(system, "config", None), "velocity", None)
+        vel_cfg = getattr(getattr(system, "setup", None), "velocity", None)
         if vel_cfg is not None and vel_cfg.method == "TREECODE":
             lines.append(f"    Velocity               : Treecode (Barnes-Hut, θ={vel_cfg.theta})")
         else:
             lines.append("    Velocity               : Direct (O(N²))")
-        axis = getattr(getattr(system, "config", None), "axisymmetric_no_swirl_axis", None)
+        axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
         lines.append(f"  Processing Unit          : {system.processing_unit}")
@@ -407,7 +407,7 @@ class Logging:
         """
         lines = []
         try:
-            visc_cfg = getattr(getattr(system, "config", None), "viscous", None)
+            visc_cfg = getattr(getattr(system, "setup", None), "viscous", None)
             if visc_cfg is None:
                 return lines
 
@@ -490,7 +490,7 @@ class Logging:
                 lines.append(f"    Max                    : {np.max(viscosities_eff):.3e} m²/s")
                 lines.append(f"    Mean                   : {np.mean(viscosities_eff):.3e} m²/s")
         else:
-            visc_cfg = getattr(getattr(system, "config", None), "viscous", None)
+            visc_cfg = getattr(getattr(system, "setup", None), "viscous", None)
             nu = getattr(visc_cfg, "viscosity", None)
             if nu is not None and nu > 0:
                 lines.append(f"  Molecular Viscosity (nu)    : {nu:.3e} m²/s")
@@ -526,7 +526,7 @@ class Logging:
         lines.append("-" * 60)
         lines.append(f"  Snapshot Frequency       : {system.backup_frequency} steps")
         lines.append(f"  Snapshot Prefix          : {prefix}")
-        logging_freq = getattr(system.config, "logging_frequency", 0)
+        logging_freq = getattr(system.setup, "logging_frequency", 0)
         lines.append(f"  Logging Frequency        : {logging_freq} steps")
         timing_freq = getattr(system, "timing_frequency", 0)
         lines.append(f"  Timing Report Frequency  : {timing_freq} steps")
@@ -619,7 +619,7 @@ class Logging:
         lines.append("STABILIZATION / PARTICLE RETENTION")
         lines.append("-" * 60)
 
-        cfg = getattr(system.config, "stabilization", None)
+        cfg = getattr(system.setup, "stabilization", None)
         coefficient = getattr(cfg, "stretching_viscosity_coefficient", 0.0)
         if coefficient > 0.0:
             lines.append("  Stretching viscosity     : Enabled")
@@ -730,7 +730,7 @@ class Logging:
             if getattr(system, "stretching_conserve_energy", False):
                 projection += " + energy"
             lines.append(f"    Invariant projection   : {projection}")
-        axis = getattr(getattr(system, "config", None), "axisymmetric_no_swirl_axis", None)
+        axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
         lines.append(f"  Processing Unit          : {system.processing_unit}")
@@ -1018,7 +1018,7 @@ class Logging:
         import atexit
         import sys
 
-        log_mode = getattr(getattr(solver, "config", None), "log_mode", "tee")
+        log_mode = getattr(getattr(solver, "setup", None), "log_mode", "tee")
         if log_mode == "console":
             solver.log_file_path = None  # type: ignore[attr-defined]
             solver._stdout_original = sys.stdout  # type: ignore[attr-defined]

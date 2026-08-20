@@ -39,7 +39,7 @@ def continue_run(
     output_directory = (
         output_directory.resolve()
         if output_directory is not None
-        else Path(solver.config.backup_directory).resolve()
+        else Path(solver.setup.backup_directory).resolve()
     )
     output_directory.mkdir(parents=True, exist_ok=True)
     if alternate_output:
@@ -63,10 +63,10 @@ def continue_run(
         "start_time_star": solver.time,
         "target_time_star": target_time_star,
         "requested_additional_steps": remaining_steps,
-        "particle_spacing": solver.config.viscous.characteristic_distance,
+        "particle_spacing": solver.setup.viscous.characteristic_distance,
         "time_step": solver.time_step_size,
-        "velocity_method": solver.config.velocity.method,
-        "molecular_diffusion": solver.config.viscous.scheme,
+        "velocity_method": solver.setup.velocity.method,
+        "molecular_diffusion": solver.setup.viscous.scheme,
         "sgs_model": "none",
     }
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

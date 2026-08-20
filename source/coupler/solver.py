@@ -87,7 +87,7 @@ class FVMVPMCoupler:
                 "the master, then FVMVPMCoupler(fvm_solver, vpm_solver, "
                 "coupler_setup)."
             )
-        self.config = coupler_setup
+        self.setup = coupler_setup
         self.case_dir = Path(fvm_solver.case_dir).expanduser().absolute()
 
         self._injected_fvm = fvm_solver
@@ -143,7 +143,7 @@ class FVMVPMCoupler:
     @staticmethod
     def _validate_vpm(vpm, cfg: CouplerSetup, box: np.ndarray, nu: float) -> None:
         """Validate the injected VPM against the coupling discretization."""
-        vsc = vpm.config.viscous
+        vsc = vpm.setup.viscous
         scheme = vsc.scheme.upper()
         regen = vsc.core_radius_ratio
         if (
@@ -170,7 +170,7 @@ class FVMVPMCoupler:
                     mode,
                     scheme.lower(),
                 )
-        dom = vpm.config.vpm_domain_bounds
+        dom = vpm.setup.vpm_domain_bounds
         if dom is not None:
             contains = (
                 dom[0] <= box[0]
@@ -259,7 +259,7 @@ class FVMVPMCoupler:
         """
         assert self.fvm is not None
         fc = np.asarray(
-            self.fvm.get_boundary_face_center_coordinates(self.config.bc_patch_name),
+            self.fvm.get_boundary_face_center_coordinates(self.setup.bc_patch_name),
             dtype=np.float64,
         ).reshape(-1, 3)
         box = None
@@ -268,7 +268,7 @@ class FVMVPMCoupler:
         if self._is_master or not collective:
             if fc.shape[0] == 0:
                 error = (
-                    f"Coupling patch {self.config.bc_patch_name!r} has no faces on the "
+                    f"Coupling patch {self.setup.bc_patch_name!r} has no faces on the "
                     "injected Eulerian solver."
                 )
             else:
@@ -291,13 +291,13 @@ class FVMVPMCoupler:
     def _read_fvm_state(self) -> None:
         """Read fluid properties, time integration, and domain from the FVM."""
         assert self.fvm is not None
-        fvm_cfg = self.fvm.config
+        fvm_cfg = self.fvm.setup
         self.fvm_time_step_size = float(fvm_cfg.time.time_step_size)
         self.end_time = float(fvm_cfg.time.end_time)
         self.nu = float(fvm_cfg.transport.nu)
         self.rho = float(fvm_cfg.transport.density)
         self.fvm_box = self._derive_fvm_box()
-        self.config.validate_transfer_region_box(self.fvm_box)
+        self.setup.validate_transfer_region_box(self.fvm_box)
 
     def initialize(self) -> None:
         """Adopt the injected solvers, derive sub-cycling, and build coupling
@@ -313,7 +313,7 @@ class FVMVPMCoupler:
         """
         if self.transfer is not None:
             return  # already initialized
-        cfg = self.config
+        cfg = self.setup
 
         self.fvm = self._injected_fvm
 
@@ -384,7 +384,7 @@ class FVMVPMCoupler:
             if anchor is not None:
                 assert self.vpm is not None
                 self.vpm.physics.configure_grid_lattice_anchor(
-                    anchor, self.config.vpm_particle_spacing
+                    anchor, self.setup.vpm_particle_spacing
                 )
                 logger.info("[Init] VPM diffusion lattice aligned with the transfer lattice.")
 
@@ -400,9 +400,9 @@ class FVMVPMCoupler:
             self.fvm,
             fvm_box=self.fvm_box,
             freestream_velocity=self.freestream_velocity,
-            particle_spacing=self.config.vpm_particle_spacing,
-            boundary_mode=self.config.vpm_bc_mode,
-            enabled=self.config.pressure_anchor_to_freestream,
+            particle_spacing=self.setup.vpm_particle_spacing,
+            boundary_mode=self.setup.vpm_bc_mode,
+            enabled=self.setup.pressure_anchor_to_freestream,
             is_master=self._is_master,
             comm=_mpi4py_comm,
         )
@@ -478,7 +478,7 @@ class FVMVPMCoupler:
 
         assert self.end_time is not None and self.vpm_time_step_size is not None
         n_steps = self._derive_coupling_step_count(self.end_time, self.vpm_time_step_size)
-        patch = self.config.bc_patch_name
+        patch = self.setup.bc_patch_name
         if self._is_master:
             logger.info("=" * 60)
             logger.info("FVM-VPM COUPLED SOLVER")
@@ -499,7 +499,7 @@ class FVMVPMCoupler:
         if self._is_master:
             assert self.vpm is not None
             with self.vpm_redirector:
-                self.vpm.set_freestream_velocity(self.config.freestream_velocity)
+                self.vpm.set_freestream_velocity(self.setup.freestream_velocity)
             print()
             print("-" * 60)
             print(f"STEP {step}/{self._n_steps}  (t={time_end:.3f}s)")

@@ -48,10 +48,10 @@ def build_manifest(solver) -> dict[str, Any]:
         "distribution_version": metadata.version("OpenONDA"),
         "git_revision": revision,
         "git_dirty": dirty,
-        "config_hash": config_hash(solver.config),
+        "config_hash": config_hash(solver.setup),
         "mesh_hash": mesh_hash(solver.mesh_data),
-        "configuration": asdict(solver.config),
-        "execution": asdict(solver.config.execution),
+        "configuration": asdict(solver.setup),
+        "execution": asdict(solver.setup.execution),
         "mesh_quality": solver.mesh_quality,
         "mesh": {
             "cells": int(solver.mesh_data["n_elements"]),

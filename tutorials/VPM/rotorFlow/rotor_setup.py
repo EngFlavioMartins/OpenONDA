@@ -164,7 +164,7 @@ def enforce_wake_admissibility(solver: VPMSolver, max_particle_strength: float) 
 
 def write_manifest(solver: VPMSolver) -> None:
     """Store the numerical settings beside the sampled results."""
-    cfg = solver.config
+    cfg = solver.setup
     output_dir = resolve_samples_dir(SOLUTION_DIR, CASE_NAME)
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = {

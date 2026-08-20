@@ -517,7 +517,7 @@ class Logging:
     @staticmethod
     def solver_info(solver: Any, initialization_time: float) -> str:
         """Return a comprehensive FVM initialization report."""
-        config = solver.config
+        config = solver.setup
         mesh = solver.mesh_data
         parallel = solver.parallel
         partition = getattr(parallel, "partition", None)
@@ -627,11 +627,11 @@ class Logging:
         self.section(
             "FVM SOLVER STATE",
             [
-                ("Case", str(solver.config.case_name)),
+                ("Case", str(solver.setup.case_name)),
                 ("Time", f"{solver.time:.5f} s"),
                 ("Step", str(solver.step)),
                 ("Local Cells", f"{solver.mesh_data['n_elements']:,}"),
-                ("Algorithm", str(solver.config.pimple.algorithm)),
+                ("Algorithm", str(solver.setup.pimple.algorithm)),
             ],
         )
 

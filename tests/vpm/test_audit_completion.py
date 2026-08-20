@@ -128,7 +128,7 @@ class _Sampler:
 def test_sampler_csv_appends_all_events_to_one_time_aware_file(tmp_path):
     sampler = _Sampler()
     solver = SimpleNamespace(
-        config=SimpleNamespace(samplers=[(sampler, "probe")]),
+        setup=SimpleNamespace(samplers=[(sampler, "probe")]),
         particles=SimpleNamespace(number_of_particles=2),
         particles_circulation=np.ones((2, 3)),
         backup_directory=str(tmp_path),
@@ -164,7 +164,7 @@ def test_sampler_executor_supports_csv_samplers_without_step_keyword(tmp_path):
             Path(filepath).write_text(f"time={time}\n", encoding="utf-8")
 
     solver = SimpleNamespace(
-        config=SimpleNamespace(samplers=[LegacyCSVSampler()]),
+        setup=SimpleNamespace(samplers=[LegacyCSVSampler()]),
         particles=SimpleNamespace(number_of_particles=2),
         particles_circulation=np.ones((2, 3)),
         backup_directory=str(tmp_path),
@@ -192,7 +192,7 @@ def test_sampler_executor_appends_opted_in_csv_time_series(tmp_path):
             raise AssertionError("time-series samplers must use the executor's append path")
 
     solver = SimpleNamespace(
-        config=SimpleNamespace(samplers=[TimeSeriesSampler()]),
+        setup=SimpleNamespace(samplers=[TimeSeriesSampler()]),
         particles=SimpleNamespace(number_of_particles=2),
         particles_circulation=np.ones((2, 3)),
         backup_directory=str(tmp_path),
@@ -235,7 +235,7 @@ def test_surface_sampler_preserves_and_replaces_pvd_steps_after_restart(tmp_path
 def test_sampler_subdirectory_stays_below_the_root_samples_directory(tmp_path):
     sampler = _Sampler()
     solver = SimpleNamespace(
-        config=SimpleNamespace(samplers=[(sampler, "probe")], sample_subdirectory="dipole_cs"),
+        setup=SimpleNamespace(samplers=[(sampler, "probe")], sample_subdirectory="dipole_cs"),
         particles=SimpleNamespace(number_of_particles=2),
         particles_circulation=np.ones((2, 3)),
         backup_directory=str(tmp_path / "solution"),
@@ -272,7 +272,7 @@ def test_flow_integral_export_is_configurable(monkeypatch):
     exports: list[bool] = []
     monkeypatch.setattr(Logging, "flow_diagnostics", lambda _solver: None)
     solver = SimpleNamespace(
-        config=SimpleNamespace(export_flow_integrals=False),
+        setup=SimpleNamespace(export_flow_integrals=False),
         LES=None,
         _export_flow_integrals_csv=lambda: exports.append(True),
         _execute_samplers=lambda: None,
@@ -281,7 +281,7 @@ def test_flow_integral_export_is_configurable(monkeypatch):
     VPMSolver.log_diagnostics(solver)
     assert exports == []
 
-    solver.config.export_flow_integrals = True
+    solver.setup.export_flow_integrals = True
     VPMSolver.log_diagnostics(solver)
     assert exports == [True]
 
@@ -298,7 +298,7 @@ def test_tee_log_stream_writes_to_file_and_console():
 
 def test_log_name_uses_snapshot_prefix(tmp_path):
     solver = SimpleNamespace(
-        config=SimpleNamespace(log_mode="file"),
+        setup=SimpleNamespace(log_mode="file"),
         backup_file_name="wake",
         backup_directory=str(tmp_path),
     )

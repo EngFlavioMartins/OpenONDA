@@ -89,7 +89,7 @@ def save_checkpoint(solver, path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     metadata = {
         "format_version": FORMAT_VERSION,
-        "config_hash": config_hash(solver.config),
+        "config_hash": config_hash(solver.setup),
         "mesh_hash": mesh_hash(solver.mesh_data),
     }
     arrays = {
@@ -170,7 +170,7 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
         expected_mesh = mesh_hash(solver.mesh_data)
         if metadata.get("mesh_hash") != expected_mesh:
             raise ValueError("FVM checkpoint mesh hash does not match the active mesh")
-        expected_config = config_hash(solver.config)
+        expected_config = config_hash(solver.setup)
         if not allow_config_change and metadata.get("config_hash") != expected_config:
             raise ValueError("FVM checkpoint configuration hash does not match the active case")
 

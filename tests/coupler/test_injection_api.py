@@ -33,7 +33,7 @@ class _FakeVPM:
         self._bg = None
         self._override = None
         self._freestream_velocity = np.asarray(freestream_velocity, dtype=float)
-        self.config = SimpleNamespace(
+        self.setup = SimpleNamespace(
             particles_kernel="GAUSSIAN",
             vpm_domain_bounds=vpm_domain_bounds,
             viscous=SimpleNamespace(
@@ -65,7 +65,7 @@ class _FakeFVM:
         self.case_dir = str(Path.cwd())
         self.ibm = None
         self.boundaries = []
-        self.config = SimpleNamespace(
+        self.setup = SimpleNamespace(
             time=SimpleNamespace(time_step_size=0.02, end_time=1.0),
             transport=SimpleNamespace(nu=1e-3, density=1.0),
             boundaries=[],
@@ -217,7 +217,7 @@ def test_coupler_uses_native_case_directory(monkeypatch, tmp_path):
     from source.solvers.FVM import FVMSetup
 
     class _NativeFVM:
-        config = FVMSetup(case_name="native")
+        setup = FVMSetup(case_name="native")
         case_dir = str(tmp_path)
 
     coupler = create_coupler(_NativeFVM(), object(), CouplerSetup())
@@ -247,7 +247,7 @@ def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
 
     c = FVMVPMCoupler(fvm, vpm, setup)
 
-    assert c.config is setup
+    assert c.setup is setup
     assert c._injected_fvm is fvm
     assert c._injected_vpm is vpm
 

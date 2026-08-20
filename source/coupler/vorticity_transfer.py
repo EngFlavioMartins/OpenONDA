@@ -935,7 +935,7 @@ class VorticityTransfer:
     """Transfer resolved FVM vorticity to the overlapping particle lattice."""
 
     def __init__(self, coupler):
-        cfg = coupler.config
+        cfg = coupler.setup
         if coupler.nu is None or coupler.vpm_time_step_size is None or coupler.fvm_box is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM time state")
         self.config = cfg
@@ -955,7 +955,7 @@ class VorticityTransfer:
         self.time_step_size = float(coupler.vpm_time_step_size)
         self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
 
-        if coupler.vpm is not None and coupler.vpm.config.particles_kernel != "GAUSSIAN":
+        if coupler.vpm is not None and coupler.vpm.setup.particles_kernel != "GAUSSIAN":
             raise ValueError("The FVM-VPM transfer requires the GAUSSIAN particle kernel")
 
         self._box: np.ndarray | None = None
@@ -1060,7 +1060,7 @@ class VorticityTransfer:
                 neighbours=4,
             )
 
-        wall_patches = [bc.name for bc in fvm.config.boundaries if bc.mesh_type == "wall"]
+        wall_patches = [bc.name for bc in fvm.setup.boundaries if bc.mesh_type == "wall"]
         if len(wall_patches) == 1:
             wall = wall_patches[0]
             wf = np.asarray(

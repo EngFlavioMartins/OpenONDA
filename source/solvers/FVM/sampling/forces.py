@@ -56,8 +56,8 @@ FORCES_HEADER = [
 
 def _context_transport(context):
     """Return ``(rho, nu_eff)`` for the sampled state."""
-    rho = context.config.transport.density
-    nu_eff = context.config.transport.nu
+    rho = context.setup.transport.density
+    nu_eff = context.setup.transport.nu
     nut = getattr(context, "nut", None)
     if nut is not None:
         nu_eff = nu_eff + nut[: context.mesh_data["n_elements"]]
@@ -235,7 +235,7 @@ class YPlusSampler(Sampler):
         """Compute y+ statistics for the current state (collective)."""
         stats = diagnostics.compute_y_plus(
             context.U,
-            context.config.transport.nu,
+            context.setup.transport.nu,
             context.mesh_data,
             context.geo_data,
             context.boundaries,
@@ -311,19 +311,19 @@ class IBMForceSampler(Sampler):
                 "call FVMSolver.set_immersed_bodies(...) first"
             )
         return {
-            "forces": ibm.body_forces(rho=context.config.transport.density),
+            "forces": ibm.body_forces(rho=context.setup.transport.density),
             "slip": ibm.slip_error(context.U),
         }
 
     def summary(self, context, data: dict) -> dict[str, tuple[float, float]]:
         """Return per-body ``(Cd, Cl)`` pairs for logging."""
-        rho = context.config.transport.density
+        rho = context.setup.transport.density
         q = 0.5 * rho * self.ref_velocity**2 * self.ref_area
         return {name: (float(F[0] / q), float(F[1] / q)) for name, F in data["forces"].items()}
 
     def write_csv(self, context, samples_dir: str, data: dict) -> None:
         """Append one row per body to ``<samples_dir>/<name>.csv``."""
-        rho = context.config.transport.density
+        rho = context.setup.transport.density
         q = 0.5 * rho * self.ref_velocity**2 * self.ref_area
         rows = []
         for name, F in data["forces"].items():

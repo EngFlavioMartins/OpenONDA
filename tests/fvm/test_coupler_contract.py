@@ -149,7 +149,7 @@ def test_scalar_param_setters():
     s, _ = _make_solver()
     s.set_time_step(0.05)
     s.set_kinematic_viscosity(0.02)
-    assert s.time_step_size == 0.05 and s.config.transport.nu == 0.02
+    assert s.time_step_size == 0.05 and s.setup.transport.nu == 0.02
 
 
 def test_registered_fields_build_blending_source():
@@ -229,3 +229,18 @@ def test_blending_source_relaxes_velocity_to_target():
             mom[c]["A"], mom[c]["b"], method="spsolve", equation_type="momentum"
         )
     assert np.max(np.abs(sol - target)) < 1e-2, "strong blending source should pull U to Utarget"
+
+
+def test_fvm_solver_owns_its_setup_object():
+    mesh = structured_box(6, 6, 6)
+    cfg = FVMSetup(
+        case_name="setup-identity",
+        time=TimeConfig(time_step_size=0.1, end_time=1.0, write_interval=999),
+        boundaries=[
+            BoundaryConfig.wall(n) for n in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
+        ],
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        s = FVMSolver(cfg, case_dir="/tmp/openonda-setup-identity", mesh_data=mesh)
+    assert s.setup is cfg
+    assert not hasattr(s, "config")

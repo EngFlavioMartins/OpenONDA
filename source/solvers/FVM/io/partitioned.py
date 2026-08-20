@@ -141,7 +141,7 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
         manifest = {
             "format_version": PARTITIONED_CHECKPOINT_VERSION,
             "generation": generation,
-            "config_hash": config_hash(solver.config),
+            "config_hash": config_hash(solver.setup),
             "mesh_hash": solver.mesh_data["global_mesh_hash"],
             "global_n_cells": partition.global_n_cells,
             "ranks": partition.size,
@@ -182,7 +182,7 @@ def load_partitioned_solver_checkpoint(
         raise ValueError("Partitioned checkpoint communicator size does not match")
     if manifest.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
         raise ValueError("Partitioned checkpoint mesh hash does not match")
-    if not allow_config_change and manifest.get("config_hash") != config_hash(solver.config):
+    if not allow_config_change and manifest.get("config_hash") != config_hash(solver.setup):
         raise ValueError(
             "Partitioned checkpoint configuration hash does not match "
             f"(allow_config_change={allow_config_change})"

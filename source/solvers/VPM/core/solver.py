@@ -74,7 +74,7 @@ class VPMSolver:
         """Validate the setup and initialize scalar solver state."""
         final_config = setup if setup is not None else VPMSetup.dns_simulation()
         final_config._validate_config()
-        self.config = final_config
+        self.setup = final_config
         self.time_step_size = final_config.time_step_size
         self.time = final_config.time
         self.step = final_config.step
@@ -284,8 +284,8 @@ class VPMSolver:
         self.source_strengths = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.source_radii = ti.field(dtype=self.compute_dtype, shape=MAX_SOURCES)
         self.num_sources = 0
-        if hasattr(self.config, "freestream_velocity"):
-            self.particles.set_freestream_velocity(np.array(self.config.freestream_velocity))
+        if hasattr(self.setup, "freestream_velocity"):
+            self.particles.set_freestream_velocity(np.array(self.setup.freestream_velocity))
 
     def _init_turbulence_and_adaptation(self, final_config: VPMSetup) -> None:
         """Initialize LES turbulence, stretching settings, and diagnostics."""
@@ -346,7 +346,7 @@ class VPMSolver:
                 particles=self.particles,
                 physics=self.physics,
                 field_diagnostics=self.field_diagnostics,
-                config=self.config.stabilization,
+                config=self.setup.stabilization,
                 compute_dtype=self.compute_dtype,
                 np_dtype=self.np_dtype,
                 flow_model=self.flow_model,
@@ -394,7 +394,7 @@ class VPMSolver:
         if getattr(self.vlm_solver, "lattice", None) is not None:
             Logging.info(f"VLM solver coupled with {self.vlm_solver.lattice.num_panels} panels")
             self.vlm_solver.check_coupling_stability(
-                self.time_step_size, getattr(self.config, "freestream_velocity", None)
+                self.time_step_size, getattr(self.setup, "freestream_velocity", None)
             )
 
     def _init_optional_solvers(self, final_config) -> None:
@@ -439,8 +439,8 @@ class VPMSolver:
     @classmethod
     def from_config_file(cls, filename: str) -> "VPMSolver":
         """Create a solver from a JSON configuration file."""
-        config = VPMSetup.load_from_file(filename)
-        return cls(setup=config)
+        setup = VPMSetup.load_from_file(filename)
+        return cls(setup=setup)
 
     def save_config(self, filename: str) -> None:
         """Save the current solver configuration to a JSON file."""
@@ -501,7 +501,7 @@ class VPMSolver:
 
         Logging.flow_diagnostics(self)
 
-        if getattr(self.config, "export_flow_integrals", True):
+        if getattr(self.setup, "export_flow_integrals", True):
             self._export_flow_integrals_csv()
 
         if self.LES is not None:
@@ -523,7 +523,7 @@ class VPMSolver:
 
     def execute_final_samplers(self) -> None:
         """Execute the final-only samplers declared by the immutable setup."""
-        SamplerExecutor.execute(self, self.config.final_samplers)
+        SamplerExecutor.execute(self, self.setup.final_samplers)
 
     def _prepare_sampler_context(self, sampler_entry, samples_dir):
         """Delegate to SamplerExecutor."""
@@ -638,7 +638,7 @@ class VPMSolver:
 
     def _update_discretization_health(self) -> None:
         """Refresh particle-resolution and field-quality diagnostics."""
-        if not getattr(self.config, "export_discretization_health", True):
+        if not getattr(self.setup, "export_discretization_health", True):
             return
         if self.particles.number_of_particles == 0:
             self._discretization_health = {}
@@ -665,7 +665,7 @@ class VPMSolver:
 
     def _record_vlm_diagnostics(self) -> None:
         """Delegate to VLMDiagnostics."""
-        sample_subdirectory = getattr(self.config, "sample_subdirectory", None)
+        sample_subdirectory = getattr(self.setup, "sample_subdirectory", None)
         VLMDiagnostics.record_vlm_diagnostics(
             self.vlm_solver,
             self.particles,
@@ -697,7 +697,7 @@ class VPMSolver:
             self.time,
             self.step,
             self.backup_directory,
-            getattr(self.config, "sample_subdirectory", None),
+            getattr(self.setup, "sample_subdirectory", None),
         )
 
     @property
@@ -1111,7 +1111,7 @@ class VPMSolver:
 
             self._pressure_physics = PressurePhysics(
                 particles_kernel=self.particles_kernel,
-                max_particles=int(self.config.max_particles),
+                max_particles=int(self.setup.max_particles),
                 accumulator_dtype=self.accumulator_dtype,
             )
         if treecode_theta is not None:
@@ -1497,8 +1497,8 @@ class VPMSolver:
             if not os.path.exists(config_file):
                 raise FileNotFoundError(f"Configuration file not found: {config_file}")
 
-            config = BackupSystem._load_configuration(config_file)
-            restored_solver = VPMSolver(setup=config)
+            setup = BackupSystem._load_configuration(config_file)
+            restored_solver = VPMSolver(setup=setup)
             BackupSystem._load_numerical_data(restored_solver, hdf5_file)
         except Exception as e:
             raise RuntimeError(f"Restore failed: {e}") from e
@@ -1511,7 +1511,7 @@ class VPMSolver:
         Logging.message(f"Flow time: {restored_solver.time:.6f}")
         Logging.message(f"Time step: {restored_solver.step}")
         Logging.message(f"Particles: {restored_solver.particles.number_of_particles}")
-        Logging.message(f"Backend: {restored_solver.config.processing_unit}")
+        Logging.message(f"Backend: {restored_solver.setup.processing_unit}")
 
         return restored_solver
 

@@ -162,7 +162,7 @@ def test_ring_sampler_writes_dense_diagnostics_beside_other_samples(tmp_path):
     circulation[:, 2] = np.pi * ds * np.cos(theta)
 
     solver = SimpleNamespace(
-        config=SimpleNamespace(
+        setup=SimpleNamespace(
             samplers=(RingDiagnosticsSampler(),),
             sample_subdirectory="DNS_direct",
         ),

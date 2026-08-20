@@ -25,8 +25,23 @@ are updated in the same change.
 | `setup_vpm_solver` | `create_vpm_solver` | – | API |
 | `setup_coupler` | `create_coupler` | – | API |
 | constructor arg `config:` | `setup:` | – | API |
+| `self.config` (FVMSolver, VPMSolver, FVMVPMCoupler) | `self.setup` | – | internal |
 | `build_config()` (tutorials) | `create_fvm_setup()` | – | API |
 | `make_vpm_setup()` (tutorials) | `create_vpm_setup()` | – | API |
+
+`self.config` intentionally stays on classes that are not the three solver/coupler
+owners above: `VorticityTransfer`, `StabilizationContext`/`StabilizationManager`,
+and `PostProcess` (offline replay driver, `source/solvers/FVM/sampling/postprocess.py`)
+each cache their own subsystem-scoped config reference — `VorticityTransfer`
+already has an unrelated `setup()` method, so renaming its attribute would
+collide. `SnapshotContext`, the sampler-facing peer `PostProcess` constructs to
+mimic a live solver, does use `self.setup` — the sampler duck-type contract
+(`source/solvers/FVM/sampling/forces.py`) reads `context.setup`, not `.config`.
+
+Compatibility policy: **no aliases**, confirmed already in effect — neither
+`openonda.fvm`/`openonda.vpm` export a bare `Solver`, nor do `setup_fvm_solver`
+/`setup_vpm_solver`/`setup_coupler` exist anywhere in the public facade.
+`tests/test_public_api_has_no_legacy_aliases.py` guards this.
 
 ## 2. Stepping API
 
@@ -191,11 +206,15 @@ deferred to PR7 so writers and readers move together:
 
 | Key | Where | Paired reader |
 |---|---|---|
-| `"dt"` | FVM checkpoint, partitioned restart, diagnostics JSON, step log, forces CSV | same modules |
+| `"dt"` | FVM checkpoint, partitioned restart, step log, forces CSV | same modules |
 | `"flow_time"`, `"time_step"` | VPM HDF5 `solver` attrs, XDMF, sampler CSV headers | `BackupSystem`, `SamplerExecutor` |
 
-`SolverState.time` / `.step` already accept the legacy `flow_time` / `time_step`
-spellings via `validation_alias`, so pre-rename restart files still load.
+The diagnostics JSONL already writes `time_step_size` (the `StepDiagnostics`
+field was renamed in PR2); `PostProcess._archived_timesteps` accepts both
+`time_step_size` and the legacy `dt` spelling so pre-rename archives still
+load. `SolverState.time` / `.step` already accept the legacy `flow_time` /
+`time_step` spellings via `validation_alias`, so pre-rename restart files still
+load.
 
 ## 13. Tutorials
 

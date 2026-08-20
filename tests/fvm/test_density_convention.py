@@ -40,7 +40,7 @@ def test_kinematic_momentum_operator_is_density_invariant():
         "geo_data": geometry,
         "boundaries": mesh["boundary"],
         "convection_scheme": "central",
-        "dt": 0.1,
+        "time_step_size": 0.1,
         "U_old": velocity.copy(),
     }
 

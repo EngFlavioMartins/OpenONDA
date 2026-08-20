@@ -39,7 +39,7 @@ from ..fields.mixed_velocity_boundary import (
 
 class CouplerInterfaceMixin:
     """Coupler-facing methods.  Expects the host to provide ``mesh_data``,
-    ``geo_data``, ``boundaries``, ``U``, ``p``, ``config``, ``registered_fields``
+    ``geo_data``, ``boundaries``, ``U``, ``p``, ``setup``, ``registered_fields``
     and ``time_step_size`` (all set up by ``FVMSolver.__init__``)."""
 
     parallel: Any
@@ -48,7 +48,7 @@ class CouplerInterfaceMixin:
     boundaries: list[dict[str, Any]]
     U: np.ndarray
     p: np.ndarray
-    config: Any
+    setup: Any
     registered_fields: dict[str, np.ndarray]
     time_step_size: float
     _current_time_step_size: float
@@ -566,7 +566,7 @@ class CouplerInterfaceMixin:
             raise ValueError(f"Time step must be finite and positive; got {time_step_size!r}")
         self.time_step_size = time_step_size
         self._current_time_step_size = time_step_size
-        self.config.time.time_step_size = time_step_size
+        self.setup.time.time_step_size = time_step_size
 
     def set_kinematic_viscosity(self, nu):
         """Override the fluid kinematic viscosity.
@@ -577,7 +577,7 @@ class CouplerInterfaceMixin:
         nu = float(nu)
         if not np.isfinite(nu) or nu <= 0.0:
             raise ValueError(f"Kinematic viscosity must be finite and positive; got {nu!r}")
-        self.config.transport.nu = nu
+        self.setup.transport.nu = nu
 
     # ── setters: velocity boundary conditions ────────────────────────────────
     def set_dirichlet_velocity_boundary_condition_vec(self, u_target, patch_name):

@@ -16,11 +16,11 @@ from .parallel import ParallelContext
 from .state import FieldState
 
 
-def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
+def _load_velocity_field(setup, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
     """Initialise the velocity field from the Python configuration.
 
     Args:
-        config:   FVMSetup (may have ``initial_velocity``).
+        setup:    FVMSetup (may have ``initial_velocity``).
         case_dir: Case root directory.
         n_total:  Total number of elements (interior + boundary ghosts).
         mesh_data: Mesh dictionary.
@@ -29,19 +29,19 @@ def _load_velocity_field(config, case_dir: str, n_total: int, mesh_data: dict) -
         Velocity array ``(n_total, 3)``.
     """
     del case_dir, mesh_data
-    if config.initial_velocity is None:
+    if setup.initial_velocity is None:
         raise ValueError("initial_velocity must be provided in FVMSetup")
-    initial = np.asarray(config.initial_velocity, dtype=np.float64)
+    initial = np.asarray(setup.initial_velocity, dtype=np.float64)
     if initial.shape != (3,) or not np.all(np.isfinite(initial)):
         raise ValueError("initial_velocity must be a finite three-component vector")
     return np.tile(initial, (n_total, 1))
 
 
-def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
+def _load_pressure_field(setup, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
     """Initialise the pressure field from the Python configuration.
 
     Args:
-        config:   FVMSetup (may have ``initial_p``).
+        setup:    FVMSetup (may have ``initial_p``).
         case_dir: Case root directory.
         n_total:  Total number of elements (interior + boundary ghosts).
         mesh_data: Mesh dictionary.
@@ -50,9 +50,9 @@ def _load_pressure_field(config, case_dir: str, n_total: int, mesh_data: dict) -
         Pressure array ``(n_total,)``.
     """
     del case_dir, mesh_data
-    if config.initial_p is None:
+    if setup.initial_p is None:
         raise ValueError("initial_p must be provided in FVMSetup")
-    initial = np.asarray(config.initial_p, dtype=np.float64)
+    initial = np.asarray(setup.initial_p, dtype=np.float64)
     if initial.ndim != 0 or not np.isfinite(initial):
         raise ValueError("initial_p must be a finite scalar")
     return np.full(n_total, float(initial), dtype=np.float64)
@@ -219,17 +219,17 @@ class FVMSolver(CouplerInterfaceMixin):
             case_dir: Root directory for the case. Defaults to current working directory.
             mesh_data: Solver-native mesh dictionary. Required on the root rank.
         """
-        self.config = setup
+        self.setup = setup
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
         # These dictionaries intentionally contain heterogeneous mesh metadata
         # (arrays, counts, patch dictionaries, and parallel objects).
         self.mesh_data: Any
         self.geo_data: Any
         self.auto_write = True
-        self.parallel = ParallelContext.create(self.config.execution)
+        self.parallel = ParallelContext.create(self.setup.execution)
         self.logger = logging.Logging(
             self.case_dir,
-            config=self.config.logging,
+            config=self.setup.logging,
             enabled=self.parallel.is_root,
         )
         from ..io.profiling import PerformanceProfiler
@@ -241,11 +241,11 @@ class FVMSolver(CouplerInterfaceMixin):
             solver=self,
         )
         self.logger.profiler = self.profiler
-        self.operator_backend = self.config.execution.operator_backend
-        if self.config.execution.linear_backend == "petsc":
+        self.operator_backend = self.setup.execution.operator_backend
+        if self.setup.execution.linear_backend == "petsc":
             methods = {
-                "momentum": self.config.linear.momentum_solver or self.config.linear.linear_solver,
-                "pressure": self.config.linear.pressure_solver or self.config.linear.linear_solver,
+                "momentum": self.setup.linear.momentum_solver or self.setup.linear.linear_solver,
+                "pressure": self.setup.linear.pressure_solver or self.setup.linear.linear_solver,
             }
             invalid = {
                 name: value
@@ -269,12 +269,12 @@ class FVMSolver(CouplerInterfaceMixin):
             validate_turbulence,
         )
 
-        validate_solver_params(SimpleNamespace(**self.config.algorithm_params()), self.config.time)
-        validate_turbulence(self.config.turbulence)
-        validate_acceptance_policy(self.config.acceptance)
-        if self.parallel.is_partitioned and self.config.turbulence is not None:
-            turbulence_name = self.config.turbulence.model.lower()
-            if self.config.turbulence.dynamic or turbulence_name in {
+        validate_solver_params(SimpleNamespace(**self.setup.algorithm_params()), self.setup.time)
+        validate_turbulence(self.setup.turbulence)
+        validate_acceptance_policy(self.setup.acceptance)
+        if self.parallel.is_partitioned and self.setup.turbulence is not None:
+            turbulence_name = self.setup.turbulence.model.lower()
+            if self.setup.turbulence.dynamic or turbulence_name in {
                 "dynamicsmagorinsky",
                 "dynamic_smagorinsky",
             }:
@@ -283,21 +283,21 @@ class FVMSolver(CouplerInterfaceMixin):
                     "its Germano average must be reduced over owned cells globally."
                 )
         if (
-            self.config.linear.pressure_nullspace_policy == "petsc"
-            and self.config.execution.linear_backend != "petsc"
+            self.setup.linear.pressure_nullspace_policy == "petsc"
+            and self.setup.execution.linear_backend != "petsc"
         ):
             raise ValueError(
                 "pressure_nullspace_policy='petsc' requires execution.linear_backend='petsc'"
             )
         if (
             self.parallel.is_partitioned
-            and self.config.linear.pressure_nullspace_policy == "reference"
+            and self.setup.linear.pressure_nullspace_policy == "reference"
         ):
             raise ValueError(
                 "petsc_partitioned requires pressure_nullspace_policy='auto' or 'petsc'; "
                 "a rank-local reference row is not a valid global pressure constraint"
             )
-        if self.parallel.is_partitioned and self.config.output.point_interpolation != "none":
+        if self.parallel.is_partitioned and self.setup.output.point_interpolation != "none":
             raise ValueError(
                 "output.point_interpolation='boundary_weighted' is not qualified for "
                 "petsc_partitioned execution: the partitioned writer drops the boundary "
@@ -305,11 +305,11 @@ class FVMSolver(CouplerInterfaceMixin):
                 "faces are not physical boundaries. Run serially to write interpolated "
                 "point data, or use ParaView's Cell Data to Point Data filter instead"
             )
-        if not np.isfinite(self.config.transport.density) or self.config.transport.density <= 0.0:
+        if not np.isfinite(self.setup.transport.density) or self.setup.transport.density <= 0.0:
             raise ValueError("Transport density must be finite and positive")
-        if not np.isfinite(self.config.transport.nu) or self.config.transport.nu <= 0.0:
+        if not np.isfinite(self.setup.transport.nu) or self.setup.transport.nu <= 0.0:
             raise ValueError("Kinematic viscosity must be finite and positive")
-        if self.config.dynamic_mesh.method != "static":
+        if self.setup.dynamic_mesh.method != "static":
             raise NotImplementedError(
                 "Dynamic meshes are not supported by the incompressible solver yet: "
                 "the ALE mesh-flux terms required for conservative motion are not implemented."
@@ -328,17 +328,17 @@ class FVMSolver(CouplerInterfaceMixin):
 
         self._topology = None
         self._geometry = None
-        gs = getattr(self.config.schemes, "gradient_scheme", "gauss")
+        gs = getattr(self.setup.schemes, "gradient_scheme", "gauss")
         logging.Timer.start("Geometry Compute")
         if self.parallel.is_partitioned:
             comm = self.parallel.comm
             assert comm is not None
-            if any(boundary.type_velocity == "cyclic" for boundary in self.config.boundaries):
+            if any(boundary.type_velocity == "cyclic" for boundary in self.setup.boundaries):
                 raise NotImplementedError(
                     "Partitioned cyclic patches require periodic partition adjacency, which is "
                     "not yet implemented"
                 )
-            if self.config.initial_velocity is None or self.config.initial_p is None:
+            if self.setup.initial_velocity is None or self.setup.initial_p is None:
                 raise ValueError("initial_velocity and initial_p must be provided in FVMSetup")
             quality = None
             preparation_error = None
@@ -365,7 +365,7 @@ class FVMSolver(CouplerInterfaceMixin):
                         logger=self.logger,
                     )
                     quality = validate_geometry(global_mesh, global_geo)
-                    enforce_quality_thresholds(quality, self.config.mesh)
+                    enforce_quality_thresholds(quality, self.setup.mesh)
                     from ..io.checkpoint import mesh_hash
 
                     global_hash = mesh_hash(global_mesh)
@@ -411,7 +411,7 @@ class FVMSolver(CouplerInterfaceMixin):
                             global_geo,
                             rank,
                             self.parallel.size,
-                            include_visualization_ghosts=self.config.output.ghost_layers == 1,
+                            include_visualization_ghosts=self.setup.output.ghost_layers == 1,
                         )
                         payload[0]["global_mesh_hash"] = global_hash
                     except Exception as error:
@@ -505,7 +505,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.geo_data.update(compute_lsq_geometry(self.mesh_data, self.geo_data))
 
         self.mesh_quality = validate_geometry(self.mesh_data, self.geo_data)
-        enforce_quality_thresholds(self.mesh_quality, self.config.mesh)
+        enforce_quality_thresholds(self.mesh_quality, self.setup.mesh)
 
         from ..assemble.matrix_assembly import prepare_matrix_assembly
 
@@ -566,18 +566,18 @@ class FVMSolver(CouplerInterfaceMixin):
         self._default_yplus_sampler = None
         from ..sampling.forces import YPlusSampler
 
-        if not any(isinstance(s, YPlusSampler) for s in (self.config.samplers or ())):
+        if not any(isinstance(s, YPlusSampler) for s in (self.setup.samplers or ())):
             self._default_yplus_sampler = YPlusSampler(patch_names=None)
 
     def _setup_boundary_conditions(self):
         """Map user-defined BoundaryConfig entries to internal mesh boundary data.
 
-        Iterates over ``self.config.boundaries`` and updates the
+        Iterates over ``self.setup.boundaries`` and updates the
         corresponding entries in ``self.boundaries`` with the configured
         type and value for U, p, and nut.  Patches not found in the mesh
         trigger a warning.
         """
-        for b_cfg in self.config.boundaries:
+        for b_cfg in self.setup.boundaries:
             found = False
             for b_mesh in self.boundaries:
                 if b_mesh["name"] == b_cfg.name:
@@ -626,8 +626,8 @@ class FVMSolver(CouplerInterfaceMixin):
         n_elements = self.mesh_data["n_elements"]
         n_total = self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"] + n_elements
 
-        self.U = _load_velocity_field(self.config, self.case_dir, n_total, self.mesh_data)
-        self.p = _load_pressure_field(self.config, self.case_dir, n_total, self.mesh_data)
+        self.U = _load_velocity_field(self.setup, self.case_dir, n_total, self.mesh_data)
+        self.p = _load_pressure_field(self.setup, self.case_dir, n_total, self.mesh_data)
         self.U_old = self.U.copy()
         # Second history level for BDF2 (u^{n-1}); ignored by BDF1.
         self.U_old_old = self.U.copy()
@@ -651,7 +651,7 @@ class FVMSolver(CouplerInterfaceMixin):
     def _initialize_algorithm(self):
         """Initialise the numerical solver algorithm.
 
-        Reads the algorithm type from ``self.config.pimple.algorithm``
+        Reads the algorithm type from ``self.setup.pimple.algorithm``
         and instantiates either a :class:`~solve.pimple_solver.PIMPLESolver`
         or :class:`~solve.simple_solver.SIMPLESolver`.
 
@@ -660,12 +660,12 @@ class FVMSolver(CouplerInterfaceMixin):
                         or ``"PISO"``.
         """
         logging.Timer.start("Algorithm Init")
-        params = dict(self.config.algorithm_params())
-        params["_linear_backend"] = self.config.execution.linear_backend
+        params = dict(self.setup.algorithm_params())
+        params["_linear_backend"] = self.setup.execution.linear_backend
         params["_operator_backend"] = self.operator_backend
         params["_parallel_context"] = self.parallel
         params["_logger"] = self.logger
-        algo = self.config.pimple.algorithm.upper()
+        algo = self.setup.pimple.algorithm.upper()
 
         if algo in ["PIMPLE", "PISO"]:
             self.algorithm = pimple_solver.PIMPLESolver(
@@ -747,25 +747,25 @@ class FVMSolver(CouplerInterfaceMixin):
         """Initialise the turbulence / LES model if configured.
 
         Uses :func:`..turbulence.create_model` to instantiate the model
-        specified by ``self.config.turbulence``.  Stores the result in
+        specified by ``self.setup.turbulence``.  Stores the result in
         ``self.turbulence`` and logs the model info.  Sets
         ``self.time`` and ``self.step`` to their initial values.
         """
         self.turbulence = None
         self.nut = None
-        if self.config.turbulence and self.config.turbulence.model.lower() != "none":
+        if self.setup.turbulence and self.setup.turbulence.model.lower() != "none":
             from ..turbulence import create_model
 
-            self.turbulence = create_model(self.config.turbulence, self.mesh_data, self.geo_data)
+            self.turbulence = create_model(self.setup.turbulence, self.mesh_data, self.geo_data)
             if self.turbulence is None:
                 raise RuntimeError(
-                    f"Turbulence model {self.config.turbulence.model!r} returned no model"
+                    f"Turbulence model {self.setup.turbulence.model!r} returned no model"
                 )
 
         # Sync state
-        self.time = self.config.time.start_time
+        self.time = self.setup.time.start_time
         self.step = 0
-        self.time_step_size = self.config.time.time_step_size
+        self.time_step_size = self.setup.time.time_step_size
 
     def compute_effective_viscosity(self):
         """Compute the effective viscosity (molecular + turbulent).
@@ -782,8 +782,8 @@ class FVMSolver(CouplerInterfaceMixin):
             self.parallel.exchange_halo(self.nut[: self.mesh_data["n_elements"]])
             if not np.all(np.isfinite(self.nut)) or np.any(self.nut < 0.0):
                 raise FloatingPointError("Turbulence model returned invalid eddy viscosity")
-            return self.config.transport.nu + self.nut
-        return self.config.transport.nu
+            return self.setup.transport.nu + self.nut
+        return self.setup.transport.nu
 
     def set_immersed_bodies(self, bodies, h: float | None = None) -> "object":
         """Attach immersed bodies (discrete direct-forcing IBM) to the solver.
@@ -806,7 +806,7 @@ class FVMSolver(CouplerInterfaceMixin):
         if not hasattr(self.algorithm, "ibm"):
             raise ValueError(
                 "Immersed boundaries require the PIMPLE/PISO algorithm "
-                f"(configured: {self.config.pimple.algorithm!r})."
+                f"(configured: {self.setup.pimple.algorithm!r})."
             )
         body_list = [bodies] if hasattr(bodies, "U_target") else list(bodies)
         if not body_list:
@@ -821,8 +821,8 @@ class FVMSolver(CouplerInterfaceMixin):
         self.algorithm.ibm = self.ibm
         from ..sampling.forces import IBMForceSampler
 
-        if not any(isinstance(s, IBMForceSampler) for s in (self.config.samplers or ())):
-            self.config.samplers = (*self.config.samplers, IBMForceSampler())
+        if not any(isinstance(s, IBMForceSampler) for s in (self.setup.samplers or ())):
+            self._default_ibm_sampler = IBMForceSampler()
         diag = self.ibm.diagnostics()
         self.logger.info(
             f"Immersed boundary: {diag['n_markers']} markers, h={diag['h']:.4g}, "
@@ -939,7 +939,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.phi,
             self.U_old,
             step_time_step_size,
-            rho=self.config.transport.density,
+            rho=self.setup.transport.density,
             nu=nu_eff,
             U_old_old=u_old_old_arg,
             source_explicit=src_exp,
@@ -1009,7 +1009,7 @@ class FVMSolver(CouplerInterfaceMixin):
         pressure_max = float(self.parallel.global_max(float(np.nanmax(interior_p))))
         local_ke = (
             0.5
-            * self.config.transport.density
+            * self.setup.transport.density
             * float(
                 np.sum(
                     self.geo_data["element_volumes"][:n_owned]
@@ -1023,7 +1023,7 @@ class FVMSolver(CouplerInterfaceMixin):
             n_owned,
         )
         return StepDiagnostics(
-            algorithm=self.config.pimple.algorithm.upper(),
+            algorithm=self.setup.pimple.algorithm.upper(),
             step=self.step + 1,
             time=self.time + step_time_step_size,
             time_step_size=float(step_time_step_size),
@@ -1061,7 +1061,7 @@ class FVMSolver(CouplerInterfaceMixin):
         if diagnostics.turbulence_min is not None and diagnostics.turbulence_min < 0.0:
             raise FloatingPointError("FVM step contains negative turbulent viscosity")
 
-        policy = self.config.acceptance
+        policy = self.setup.acceptance
         velocity_max = max(
             float(np.linalg.norm(diagnostics.velocity_min)),
             float(np.linalg.norm(diagnostics.velocity_max)),
@@ -1103,7 +1103,7 @@ class FVMSolver(CouplerInterfaceMixin):
         from ..fields import diagnostics
 
         # --- CFL-based adaptive dt adjustment (before step) ---
-        cfg_time = self.config.time
+        cfg_time = self.setup.time
         if (
             time_step_size is None
             and cfg_time.adjust_timestep
@@ -1168,7 +1168,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.step += 1
         self.time += self._current_time_step_size
         step_time_step_size = self._current_time_step_size
-        cfg_time = self.config.time
+        cfg_time = self.setup.time
         logging.Timer.log("Field history commit", sink=self.logger)
 
         logging.Timer.start("Diagnostics file")
@@ -1197,7 +1197,7 @@ class FVMSolver(CouplerInterfaceMixin):
             if self.parallel.is_root:
                 self.logger.turbulence_info(
                     self.nut,
-                    self.config.transport.nu,
+                    self.setup.transport.nu,
                     statistics=(nut_minimum, nut_maximum, nut_sum / nut_count),
                 )
         logging.Timer.log("Turbulence statistics", sink=self.logger)
@@ -1283,7 +1283,7 @@ class FVMSolver(CouplerInterfaceMixin):
         if filename is None:
             os.makedirs(sol_dir, exist_ok=True)
             # Use case_name and sequential numbering: case_name_000000.vtu
-            filename = os.path.join(sol_dir, f"{self.config.case_name}_{self.step:06d}.vtu")
+            filename = os.path.join(sol_dir, f"{self.setup.case_name}_{self.step:06d}.vtu")
 
         fields = {
             "U": self.U,
@@ -1304,7 +1304,7 @@ class FVMSolver(CouplerInterfaceMixin):
             stem = Path(filename).stem
             if self.vtk_exporter is None:
                 export_mesh = self.mesh_data.get("_visualization_mesh", self.mesh_data)
-                self.vtk_exporter = VTKExporter(export_mesh, self.config.output)
+                self.vtk_exporter = VTKExporter(export_mesh, self.setup.output)
             collection = write_partition_vtu(
                 Path(filename).parent,
                 stem,
@@ -1312,13 +1312,13 @@ class FVMSolver(CouplerInterfaceMixin):
                 self.parallel.partition,
                 {name: np.asarray(values)[:n_local] for name, values in fields.items()},
                 self.parallel.comm,
-                output=self.config.output,
+                output=self.setup.output,
                 exporter=self.vtk_exporter,
             )
             if self.parallel.is_root:
                 from ..io.vtk_exporter import PVDManager
 
-                pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
+                pvd_file = os.path.join(sol_dir, f"{self.setup.case_name}.pvd")
                 if self.pvd_manager is None:
                     self.pvd_manager = PVDManager(pvd_file)
                 self.pvd_manager.add_step(self.time, str(collection))
@@ -1326,17 +1326,17 @@ class FVMSolver(CouplerInterfaceMixin):
             return
 
         asynchronous = (
-            self.config.output.asynchronous or self.config.execution.output_mode == "threaded"
+            self.setup.output.asynchronous or self.setup.execution.output_mode == "threaded"
         )
         if asynchronous:
             if self._buffered_vtk_writer is None:
                 from ..io.async_output import BufferedVTKWriter
 
-                pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
+                pvd_file = os.path.join(sol_dir, f"{self.setup.case_name}.pvd")
                 self._buffered_vtk_writer = BufferedVTKWriter(
                     self.mesh_data,
                     pvd_file,
-                    self.config.output,
+                    self.setup.output,
                 )
             self._buffered_vtk_writer.submit(filename, self.time, fields)
             action = "queued"
@@ -1344,11 +1344,11 @@ class FVMSolver(CouplerInterfaceMixin):
             if self.vtk_exporter is None:
                 from ..io.vtk_exporter import VTKExporter
 
-                self.vtk_exporter = VTKExporter(self.mesh_data, self.config.output)
+                self.vtk_exporter = VTKExporter(self.mesh_data, self.setup.output)
             if self.pvd_manager is None:
                 from ..io.vtk_exporter import PVDManager
 
-                pvd_file = os.path.join(sol_dir, f"{self.config.case_name}.pvd")
+                pvd_file = os.path.join(sol_dir, f"{self.setup.case_name}.pvd")
                 self.pvd_manager = PVDManager(pvd_file)
             self.vtk_exporter.export(filename, fields)
             self.pvd_manager.add_step(self.time, filename)
