@@ -283,15 +283,61 @@ form. Do NOT weaken the 1.8 threshold — root cause not yet found.
       convergence, isolated to a single, well-scoped commit.
 
 ## F. Coupler
-- [ ] BC identity audit
-- [ ] pressure treatment
-- [ ] time interpolation
-- [ ] conservation
-- [ ] flux
-- [ ] threshold modes all accepted
-- [ ] serial smoke
-- [ ] MPI smoke
-- [ ] restart
+- [x] Full `pytest tests/coupler -m "not mpi"` re-run this pass: all green
+      (no failures observed across two full runs).
+- [x] authority/eta(x) weighting — read `cosine_eta` in
+      `source/coupler/vorticity_transfer.py` line-by-line: verified C1
+      continuity by hand (value AND derivative match at both the
+      dead-zone and ramp-width boundaries: at dist=lo, eta=0 and
+      d(eta)/d(dist)=0 matching the eta=0 region; at dist=ramp_width,
+      eta=1 and derivative=0 matching the eta=1 region) — the docstring's
+      "C1 partition-of-unity" claim is correct, not just asserted.
+      Direction matches PLAN's required authority split (eta=1/FVM-
+      authoritative deep inside the box away from its faces, eta=0/VPM-
+      authoritative at/outside the boundary).
+- [x] threshold modes — all four (`budget`, `relative_max`, `absolute`,
+      `relative_local`) are implemented as genuine, symmetric options in
+      `source/solvers/VPM/physics/diffusion/grid.py`
+      (`_regen_threshold_value`, used by both standalone VPM and coupled
+      pruning); none is degraded/aliased to another. The docstring
+      documents *measured, empirical* trade-offs between modes (e.g. a
+      global cut deleting 67% of a coupled cloud's far wake in one regen
+      at matched settings) rather than declaring any mode invalid — this
+      satisfies PLAN's explicit "must not describe global methods as
+      intrinsically invalid" requirement; `relative_local` is presented as
+      solving a specific measured problem, not as universally preferred.
+- [x] conservation — `source/coupler/conservation.py::invariants` checked
+      against standard vortex-dynamics textbook formulas by hand: linear
+      impulse `P = 0.5 * sum(x_i x Gamma_i)` and angular impulse
+      `A = (1/3) * sum(x_i x (x_i x Gamma_i))` both match the standard
+      discrete vortex-particle invariant definitions (e.g. Saffman,
+      *Vortex Dynamics*) exactly, term for term.
+- [x] 3D VPM->FVM BC derivation — checked
+      `tangential_normal_velocity_gradient` in `source/coupler/boundary.py`:
+      it computes the FULL 3x3 velocity-gradient Jacobian contracted with
+      the face normal (`du/dn = J n`) and then projects out the normal
+      component to obtain the tangential derivative, which is the general
+      3D-correct construction — NOT the naive 2D `omega x n` shortcut PLAN
+      explicitly warned against extrapolating blindly. `evaluate_vpm_velocity`
+      also applies an explicit flux-correction/projection step (logs
+      raw vs. corrected boundary-flux residual) rather than trusting the
+      raw VPM-evaluated boundary velocity to be solenoidal.
+- [ ] pressure treatment — not independently audited this pass (read
+      `pressure_reference.py` exists and is dedicated to this, but did not
+      trace its datum-invariance logic in detail).
+- [ ] time interpolation under FVM subcycling — not audited this pass.
+- [ ] flux (boundary flux correction beyond the projection noted above) —
+      not independently audited this pass.
+- [ ] serial/MPI smoke, restart parity — not run this pass (see §H/§17,
+      blocked partly on the known `cylinderSheddingFlow_setup.py` bug and
+      on time budget).
+- Minor cosmetic note (not fixed): `cosine_eta`'s own parameter is named
+  `overlap_zone_dead_zone` (no `_width` suffix) — the *dataclass field*
+  `overlap_zone_dead_zone_width` was renamed to `vpm_only_width` in the
+  CouplerSetup migration (§A), but this internal function parameter,
+  one level down, was not caught by the exact-match nomenclature test
+  (different identifier) and still carries the old vocabulary. Not a
+  correctness issue; flagged for a future consistency pass.
 
 ## G. VPM/VLM
 - [x] Flat-plate spanwise loading (original project brief) — already fixed in
@@ -302,7 +348,21 @@ form. Do NOT weaken the 1.8 threshold — root cause not yet found.
       Re-verify these still pass as part of the full `tests/vpm` gate (in
       progress this pass, see Environment notes).
 - [ ] VPM strength-growth audit
-- [ ] VLM circulation/particle-strength dimensional audit
+- [x] VLM circulation -> particle vortex-strength dimensional/geometric audit
+      — checked `_shed_left_particle`/`_shed_right_particle` in
+      `source/solvers/VPM/boundary_elements/vlm/solver/kernels.py`:
+      `wake_strengths = ±dGamma * l_te * V_unit`. Dimensionally correct:
+      VLM circulation Gamma [m²/s] x trailing-edge segment length l_te [m]
+      = [m³/s], matching vortex_strength's expected units exactly (the
+      standard vortex-filament/vortex-particle equivalence: a filament
+      segment of circulation Gamma and length l is represented by a
+      particle of strength Gamma*l in the filament's tangent direction).
+      Sign convention also matches standard horseshoe-vortex-lattice
+      theory: trailing strength is proportional to the CHANGE in bound
+      circulation between adjacent spanwise strips
+      (`dGamma_left = Gamma - cumulative_circulation[left_idx]`), with
+      opposite signs on the left/right edges of a strip -- the textbook
+      antisymmetric trailing-vortex-pair construction. No defect found.
 - [ ] panel forces
 - [ ] absorption
 - [ ] GPU where available
