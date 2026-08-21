@@ -6,7 +6,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any, TypeVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -33,11 +33,7 @@ def cached_particle_property(func: F) -> F:
 
 
 class SolverState(BaseModel):
-    """Serializable scalar state for a VPM solver.
-
-    Legacy aliases apply only while reading old serialized state. Runtime code
-    is expected to expose the canonical names directly.
-    """
+    """Serializable scalar state for a VPM solver (canonical names only)."""
 
     model_config = ConfigDict(
         extra="allow",
@@ -49,21 +45,15 @@ class SolverState(BaseModel):
     time: float = Field(
         default=0.0,
         ge=0.0,
-        validation_alias=AliasChoices("time", "flow_time"),
     )
     step: int = Field(
         default=0,
         ge=0,
-        validation_alias=AliasChoices("step", "time_step"),
     )
     advection_scheme: str = "RK3"
     stretching_scheme: str = "RK3"
     compute_device: str = Field(
         default="AUTO",
-        validation_alias=AliasChoices(
-            "compute_device",
-            "processing_unit",
-        ),
     )
     flow_model: str = "DNS"
     viscous_scheme: str = "CS"
@@ -71,63 +61,31 @@ class SolverState(BaseModel):
     stretching_mode: str = "TRANSPOSED"
     particle_kernel: str = Field(
         default="GAUSSIAN",
-        validation_alias=AliasChoices(
-            "particle_kernel",
-            "particles_kernel",
-        ),
     )
     checkpoint_name: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "checkpoint_name",
-            "backup_file_name",
-        ),
     )
     checkpoint_directory: str = Field(
         default="solution",
-        validation_alias=AliasChoices(
-            "checkpoint_directory",
-            "backup_directory",
-        ),
     )
     logging_interval_steps: int = Field(
         default=0,
         ge=0,
-        validation_alias=AliasChoices(
-            "logging_interval_steps",
-            "logging_frequency",
-        ),
     )
     timing_interval_steps: int = Field(
         default=0,
         ge=0,
-        validation_alias=AliasChoices(
-            "timing_interval_steps",
-            "timing_frequency",
-        ),
     )
     checkpoint_interval_steps: int = Field(
         default=0,
         ge=0,
-        validation_alias=AliasChoices(
-            "checkpoint_interval_steps",
-            "backup_frequency",
-        ),
     )
     wall_time: float | None = Field(
         default=0.0,
         ge=0.0,
-        validation_alias=AliasChoices(
-            "wall_time",
-            "simulation_time",
-        ),
     )
     cache_step: int | None = Field(
         default=0,
-        validation_alias=AliasChoices(
-            "cache_step",
-            "cached_step",
-        ),
     )
 
     @field_validator("compute_device")
@@ -182,64 +140,26 @@ class ParticlesState(BaseModel):
         populate_by_name=True,
     )
 
-    position: list[list[float]] = Field(validation_alias=AliasChoices("position", "positions"))
-    velocity: list[list[float]] = Field(validation_alias=AliasChoices("velocity", "velocities"))
-    vortex_strength: list[list[float]] = Field(
-        validation_alias=AliasChoices(
-            "vortex_strength",
-            "strengths",
-            "circulation",
-        )
-    )
-    core_radius: list[float] = Field(
-        validation_alias=AliasChoices(
-            "core_radius",
-            "radii",
-            "radius",
-        )
-    )
-    volume: list[float] = Field(validation_alias=AliasChoices("volume", "volumes"))
-    kinematic_viscosity: list[float] = Field(
-        validation_alias=AliasChoices(
-            "kinematic_viscosity",
-            "viscosities",
-            "viscosity",
-        )
-    )
-    eddy_viscosity: list[float] = Field(
-        validation_alias=AliasChoices(
-            "eddy_viscosity",
-            "viscosities_t",
-            "viscosity_turbulent",
-        )
-    )
+    position: list[list[float]] = Field()
+    velocity: list[list[float]] = Field()
+    vortex_strength: list[list[float]] = Field()
+    core_radius: list[float] = Field()
+    volume: list[float] = Field()
+    kinematic_viscosity: list[float] = Field()
+    eddy_viscosity: list[float] = Field()
     effective_viscosity: list[float] | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "effective_viscosity",
-            "viscosities_effective",
-            "viscosity_effective",
-        ),
     )
-    group_id: list[int] = Field(validation_alias=AliasChoices("group_id", "group_ids"))
+    group_id: list[int] = Field()
     velocity_gradient: list[list[list[float]]] | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "velocity_gradient",
-            "grad_u",
-        ),
     )
     strain_rate: list[list[list[float]]] | None = None
     vorticity: list[list[float]] | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "vorticity",
-            "vorticities",
-        ),
     )
     zone_id: list[int] | None = Field(
         default=None,
-        validation_alias=AliasChoices("zone_id", "zone_ids"),
     )
 
     @field_validator("position", "velocity", "vortex_strength")

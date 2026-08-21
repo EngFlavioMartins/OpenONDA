@@ -577,127 +577,28 @@ class FVMSetup:
 
     @classmethod
     def load(cls, filepath: str) -> FVMSetup:
-        """Load canonical or legacy FVM setup JSON."""
+        """Load a canonical FVM setup JSON file."""
         with open(filepath, encoding="utf-8") as stream:
             data = json.load(stream)
 
         data = dict(data)
-        if "initial_kinematic_pressure" not in data and "initial_p" in data:
-            data["initial_kinematic_pressure"] = data.pop("initial_p")
-        else:
-            data.pop("initial_p", None)
-
         known_top_level = set(cls.__dataclass_fields__)
         unknown = sorted(set(data) - known_top_level)
         if unknown:
             raise ValueError("Unknown top-level FVMSetup field(s): " + ", ".join(unknown))
 
-        def translate(
-            values: dict[str, Any] | None,
-            names: dict[str, str],
-        ) -> dict[str, Any]:
-            result = dict(values or {})
-            for old_name, new_name in names.items():
-                if new_name not in result and old_name in result:
-                    result[new_name] = result.pop(old_name)
-                else:
-                    result.pop(old_name, None)
-            return result
+        time_data = dict(data.get("time") or {})
+        linear_data = dict(data.get("linear") or {})
+        pimple_data = dict(data.get("pimple") or {})
+        transport_data = dict(data.get("transport") or {})
+        logging_data = dict(data.get("logging") or {})
 
-        time_data = translate(
-            data.get("time"),
-            {
-                "write_interval": "output_interval_steps",
-                "write_interval_time": "output_interval_time",
-            },
-        )
-        linear_data = translate(
-            data.get("linear"),
-            {
-                "momentum_tol": "momentum_tolerance",
-                "momentum_rel_tol": "momentum_relative_tolerance",
-                "momentum_final_rel_tol": "momentum_final_relative_tolerance",
-                "momentum_maxiter": "momentum_max_iterations",
-                "pressure_tol": "pressure_tolerance",
-                "pressure_rel_tol": "pressure_relative_tolerance",
-                "pressure_final_rel_tol": "pressure_final_relative_tolerance",
-                "pressure_maxiter": "pressure_max_iterations",
-                "amg_tol": "amg_tolerance",
-                "amg_maxiter": "amg_max_iterations",
-                "amg_reuse_tol": "amg_reuse_tolerance",
-                "ilu_drop_tol": "ilu_drop_tolerance",
-                "ilu_reuse_tol": "ilu_reuse_tolerance",
-            },
-        )
-        pimple_data = translate(
-            data.get("pimple"),
-            {
-                "alpha_u": "velocity_relaxation",
-                "alpha_p": "pressure_relaxation",
-            },
-        )
-        transport_data = translate(
-            data.get("transport"),
-            {"nu": "kinematic_viscosity"},
-        )
-        logging_data = translate(
-            data.get("logging"),
-            {"interval": "interval_steps"},
-        )
-
-        boundary_names = {
-            "type_velocity": "velocity_type",
-            "velocity_value": "velocity_value",
-            "type_p": "pressure_type",
-            "kinematic_pressure_value": "kinematic_pressure_value",
-            "type_phi": "flux_type",
-            "flux_value": "flux_value",
-            "type_nut": "eddy_viscosity_type",
-            "eddy_viscosity_value": "eddy_viscosity_value",
-        }
-        boundaries = [
-            BoundaryConfig(**translate(boundary, boundary_names))
-            for boundary in data.get("boundaries", [])
-        ]
+        boundaries = [BoundaryConfig(**boundary) for boundary in data.get("boundaries", [])]
 
         turbulence_data = data.get("turbulence")
         turbulence = None
         if turbulence_data:
-            turbulence_values = dict(turbulence_data)
-            model = str(turbulence_values.get("model", "None")).lower()
-
-            if "c_k" not in turbulence_values and "Ck" in turbulence_values:
-                turbulence_values["c_k"] = turbulence_values.pop("Ck")
-            else:
-                turbulence_values.pop("Ck", None)
-
-            if "c_e" not in turbulence_values and "Ce" in turbulence_values:
-                turbulence_values["c_e"] = turbulence_values.pop("Ce")
-            else:
-                turbulence_values.pop("Ce", None)
-
-            old_model_coefficient = turbulence_values.pop(
-                "Cs",
-                None,
-            )
-            if old_model_coefficient is not None:
-                if model == "wale":
-                    turbulence_values.setdefault(
-                        "c_w",
-                        old_model_coefficient,
-                    )
-                elif model == "sigma":
-                    turbulence_values.setdefault(
-                        "c_sigma",
-                        old_model_coefficient,
-                    )
-                else:
-                    turbulence_values.setdefault(
-                        "c_s",
-                        old_model_coefficient,
-                    )
-
-            turbulence = TurbulenceConfig(**turbulence_values)
+            turbulence = TurbulenceConfig(**dict(turbulence_data))
 
         from source.solvers.FVM.sampling.base import (
             sampler_from_dict,
