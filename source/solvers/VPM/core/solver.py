@@ -762,13 +762,13 @@ class VPMSolver:
         return self.field_diagnostics.compute_centroid_of_circulation(self.particles)
 
     def compute_forces(
-        self, density: float = 1.225, V_ref_mag: float | None = None
+        self, density: float = 1.225, reference_speed: float | None = None
     ) -> dict[str, np.ndarray | float]:
         """Compute aerodynamic force from the configured VLM model.
 
         Args:
             density: Fluid density [kg/m³].
-            V_ref_mag: Reference speed [m/s]. Uses the background speed when omitted.
+            reference_speed: Reference speed [m/s]. Uses the background speed when omitted.
 
         Returns:
             Force components and the force-evaluation method.
@@ -778,16 +778,16 @@ class VPMSolver:
         method = self.vlm_solver.force.method
 
         if method == "KUTTA_JOUKOWSKI":
-            return self._compute_forces_kutta_joukowski(density, V_ref_mag)
+            return self._compute_forces_kutta_joukowski(density, reference_speed)
         else:
             raise ValueError(f"Unknown force method: {method}")
 
     def _compute_forces_kutta_joukowski(
-        self, density: float, V_ref_mag: float | None
+        self, density: float, reference_speed: float | None
     ) -> dict[str, np.ndarray | float]:
         """Compute forces via the Kutta-Joukowski theorem. Delegates to VLMForceEvaluator."""
         return VLMForceEvaluator.compute_kutta_joukowski(
-            self.vlm_solver, self.freestream_velocity, density, V_ref_mag
+            self.vlm_solver, self.freestream_velocity, density, reference_speed
         )
 
     # Per-particle diagnostics

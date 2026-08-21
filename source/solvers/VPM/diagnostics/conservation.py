@@ -103,7 +103,7 @@ class ConservationTracker:
             try:
                 forces = solver.vlm_solver.compute_forces(
                     density=self.density,
-                    V_ref_mag=np.linalg.norm(solver.freestream_velocity),
+                    reference_speed=float(np.linalg.norm(solver.freestream_velocity)),
                 )
                 state.force_kutta_joukowski = np.array([forces["Fx"], forces["Fy"], forces["Fz"]])
             except Exception:

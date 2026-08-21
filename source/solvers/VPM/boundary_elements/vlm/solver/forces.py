@@ -38,7 +38,7 @@ class VLMForceEvaluator:
         vlm_solver: VLMSolver | None,
         freestream_velocity: np.ndarray,
         density: float,
-        V_ref_mag: float | None,
+        reference_speed: float | None,
     ) -> dict[str, np.ndarray | float | str]:
         """Compute forces using the conventional Kutta-Joukowski theorem.
 
@@ -53,10 +53,18 @@ class VLMForceEvaluator:
                 "Fz": 0.0,
                 "error": "No VLM solver or not solved",
             }
-        if V_ref_mag is None:
-            V_ref_mag = float(np.linalg.norm(freestream_velocity))
+        freestream_speed = float(np.linalg.norm(freestream_velocity))
+        if reference_speed is None:
+            reference_speed = freestream_speed
+        unit_direction = (
+            freestream_velocity / freestream_speed
+            if freestream_speed > 1e-10
+            else np.array([1.0, 0.0, 0.0])
+        )
         try:
-            forces_dict = vlm_solver.compute_forces(density, V_ref_mag)
+            forces_dict = vlm_solver.compute_forces(
+                density, reference_velocity=unit_direction * reference_speed
+            )
             force_vector = np.array([forces_dict["Fx"], forces_dict["Fy"], forces_dict["Fz"]])
             return {
                 "method": "KUTTA_JOUKOWSKI",

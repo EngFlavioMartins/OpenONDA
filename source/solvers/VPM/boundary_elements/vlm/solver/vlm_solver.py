@@ -1019,7 +1019,6 @@ class VLMSolver:
             self.lattice.forces,
             self.lattice.num_panels,
             density,
-            reference_velocity_mag,
             smooth_kj,
         )
 

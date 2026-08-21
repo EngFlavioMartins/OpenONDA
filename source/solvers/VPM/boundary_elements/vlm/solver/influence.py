@@ -358,7 +358,6 @@ def compute_panel_forces_coupled(
     forces: ti.template(),
     num_panels: ti.i32,
     density: float,
-    V_ref_mag: float,
     smooth_kj: ti.i32,
 ):
     """

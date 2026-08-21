@@ -419,7 +419,11 @@ class PanelSolver:
         )
 
     def compute_forces(
-        self, freestream_velocity: np.ndarray, wake_velocity: Any, time_step_size: float, rho: float
+        self,
+        freestream_velocity: np.ndarray,
+        wake_velocity: Any,
+        time_step_size: float,
+        density: float,
     ) -> dict[int, np.ndarray]:
         """
         Compute integrated force vector per body group using Bernoulli or Impulse.
@@ -448,7 +452,7 @@ class PanelSolver:
                 float(v_inf_mag),
                 self.lattice.areas,
                 self.lattice.normals,
-                rho,
+                density,
                 self.panel_forces,
                 n,
             )
@@ -459,7 +463,7 @@ class PanelSolver:
                 self.lattice.vertices,
                 self.lattice.areas,
                 self.lattice.normals,
-                rho,
+                density,
                 self.panel_forces,
                 n,
             )
@@ -484,9 +488,13 @@ class PanelSolver:
         return total_forces
 
     def compute_loads(
-        self, freestream_velocity: np.ndarray, wake_velocity: Any, time_step_size: float, rho: float
+        self,
+        freestream_velocity: np.ndarray,
+        wake_velocity: Any,
+        time_step_size: float,
+        density: float,
     ) -> dict[int, np.ndarray]:
-        return self.compute_forces(freestream_velocity, wake_velocity, time_step_size, rho)
+        return self.compute_forces(freestream_velocity, wake_velocity, time_step_size, density)
 
     def compute_induced_velocity(self, points: np.ndarray) -> np.ndarray:
         self._ensure_initialized()
