@@ -41,8 +41,9 @@ PITCH_PIVOT = ROOT_CHORD / 3.0
 ANGULAR_FREQUENCY = 2.0 * np.pi * HEAVE_FREQUENCY
 
 # Resolution
-TIME_STEP = 0.004
-NUMBER_OF_STEPS = 2200
+END_TIME = 8.8
+TIME_STEP = 0.0025
+NUMBER_OF_STEPS = round(END_TIME / TIME_STEP)
 SAMPLE_INTERVAL_TIME = 0.08  # write a snapshot every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.04  # 25 animation frames per heave cycle
 
@@ -110,7 +111,7 @@ def run() -> None:
             for name, x_position, phase in wings
         ),
         mesh=vpm.VLMMeshSetup.geometric(ratio=3.0, region="end"),
-        viscosity=KINEMATIC_VISCOSITY,
+        kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
         logging_interval_steps=sample_steps,
@@ -132,6 +133,9 @@ def run() -> None:
             compute_device="AUTO",
             turbulence=vpm.TurbulenceConfig.les_smagorinsky(c_s=0.3),
             vlm=vlm_setup,
+            viscous=vpm.ViscousConfig.cs(
+                kinematic_viscosity=KINEMATIC_VISCOSITY,
+            ),
             velocity=vpm.VelocityConfig.treecode(
                 theta=0.35,
                 sort_particle_targets=True,

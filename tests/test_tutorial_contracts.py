@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import ast
+import inspect
 from pathlib import Path
+import runpy
+import sys
 
 import pytest
+
+import openonda.coupler as coupling
+import openonda.fvm as fvm
+import openonda.vpm as vpm
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP_FILES = tuple(
@@ -26,6 +33,7 @@ PUBLIC_NAMESPACES = {
     "openonda.vpm": "vpm",
     "openonda.coupler": "coupling",
 }
+PUBLIC_MODULES = {"coupling": coupling, "fvm": fvm, "vpm": vpm}
 FORBIDDEN_TEXT = (
     "source.solvers",
     "is_master_rank",
@@ -52,6 +60,22 @@ def _tree(path: Path) -> ast.Module:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
+def _public_call_target(node: ast.expr):
+    attributes: list[str] = []
+    while isinstance(node, ast.Attribute):
+        attributes.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name) or node.id not in PUBLIC_MODULES:
+        return None
+
+    target = PUBLIC_MODULES[node.id]
+    for attribute in reversed(attributes):
+        target = getattr(target, attribute, None)
+        if target is None:
+            return None
+    return target
+
+
 @pytest.mark.parametrize("path", SETUP_FILES, ids=lambda path: str(path.relative_to(ROOT)))
 def test_tutorial_uses_public_names_and_has_a_main_guard(path: Path):
     source = path.read_text(encoding="utf-8")
@@ -67,6 +91,19 @@ def test_tutorial_uses_public_names_and_has_a_main_guard(path: Path):
         and node.test.left.id == "__name__"
         for node in tree.body
     ), f"{path} must not launch a simulation merely by being imported"
+
+
+@pytest.mark.parametrize("path", SETUP_FILES, ids=lambda path: str(path.relative_to(ROOT)))
+def test_tutorial_module_imports_without_launching(path: Path, monkeypatch):
+    """Execute top-level setup declarations while leaving the main guard closed."""
+    existing_modules = set(sys.modules)
+    monkeypatch.syspath_prepend(str(path.parent))
+    try:
+        runpy.run_path(str(path), run_name=f"_openonda_tutorial_{path.stem}")
+    finally:
+        for name in set(sys.modules) - existing_modules:
+            if name == "assets" or name.startswith("assets."):
+                sys.modules.pop(name, None)
 
 
 @pytest.mark.parametrize("path", SETUP_FILES, ids=lambda path: str(path.relative_to(ROOT)))
@@ -148,3 +185,58 @@ def test_tutorial_metadata_and_paths_are_canonical(path: Path):
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     }
     assert not string_keys.intersection(FORBIDDEN_METADATA_KEYS)
+
+
+@pytest.mark.parametrize("path", SETUP_FILES, ids=lambda path: str(path.relative_to(ROOT)))
+def test_public_tutorial_call_keywords_match_current_signatures(path: Path):
+    """Catch stale public constructor keywords without launching a simulation."""
+    for node in ast.walk(_tree(path)):
+        if not isinstance(node, ast.Call):
+            continue
+        target = _public_call_target(node.func)
+        if target is None or not callable(target):
+            continue
+        try:
+            signature = inspect.signature(target)
+        except (TypeError, ValueError):
+            continue
+        if any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        ):
+            continue
+        unexpected = sorted(
+            keyword.arg
+            for keyword in node.keywords
+            if keyword.arg is not None and keyword.arg not in signature.parameters
+        )
+        assert not unexpected, (
+            f"{path}:{node.lineno}: {ast.unparse(node.func)} has stale keyword(s) "
+            f"{', '.join(unexpected)}"
+        )
+
+
+@pytest.mark.parametrize("path", SETUP_FILES, ids=lambda path: str(path.relative_to(ROOT)))
+def test_vlm_tutorials_give_vpm_the_same_molecular_viscosity(path: Path):
+    """The VPM owns molecular viscosity in a coupled VLM--VPM setup."""
+    tree = _tree(path)
+    vlm_values = {
+        ast.dump(keyword.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("VLMSetup")
+        for keyword in node.keywords
+        if keyword.arg == "kinematic_viscosity"
+    }
+    if not vlm_values:
+        return
+
+    vpm_values = {
+        ast.dump(keyword.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("ViscousConfig.cs")
+        for keyword in node.keywords
+        if keyword.arg == "kinematic_viscosity"
+    }
+    assert vlm_values & vpm_values, (
+        f"{path}: VLM and VPM must explicitly share the same kinematic_viscosity"
+    )

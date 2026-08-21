@@ -55,6 +55,10 @@ audit completed on 21 August 2026. The final repository audit started from
   `tutorials/coupled_FVM_VPM/cube_flow/cubeFlow_setup.py`: short physical-case
   docstrings with a command, public namespace imports, uppercase constants,
   explicit derived quantities, compact sections, and a minimal entry point.
+- [x] All four VLM--VPM tutorials use the canonical `kinematic_viscosity`
+  keyword and configure the VPM viscous scheme with the same molecular value.
+  Public tutorial calls are checked against their live signatures so stale
+  constructor keywords fail without launching a simulation.
 - [x] The cylinder reference case no longer overwrites its freestream velocity
   tuple with a scalar or references the undefined `U_INF` name; a one-step
   smoke run completed on 50,752 cells with finite output.
@@ -62,6 +66,10 @@ audit completed on 21 August 2026. The final repository audit started from
   error was `1.638436e-04`, energy error `7.037135e-05`, and continuity stayed
   near machine precision.
 - [x] Lamb--Oseen ran one Metal step with 5,040 particles and finite VTK fields.
+- [x] The two-delta-wing VLM--VPM tutorial ran one Metal step with 576 panels;
+  it shed 144 wake particles, advanced finite fields, and wrote case-rooted
+  outputs. Its time step is `0.0025 s`, satisfying the VLM wake-convection
+  criterion while preserving the original `8.8 s` physical duration.
 - [x] The coupled cube ran one Metal VPM step and three FVM substeps with 2,728
   FVM cells, 427 VPM particles, finite outputs, and complete restart artifacts.
 - [x] The isolated native validator passed on Metal for two VPM steps and six
@@ -104,3 +112,6 @@ audit completed on 21 August 2026. The final repository audit started from
 The release handoff requires compile, Ruff, tutorial-contract, focused
 scientific regression, CPU/Metal native validation, Markdown-link, and Git diff
 checks. Hosted GitHub Actions remains the authoritative cross-platform gate.
+The corrected nightly workflow is committed on `development`; GitHub will begin
+running its scheduled trigger after the branch is merged into the default
+`main` branch.

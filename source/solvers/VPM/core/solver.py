@@ -441,9 +441,16 @@ class VPMSolver:
     def _require_consistent_molecular_viscosity(viscous_cfg, vlm_setup) -> None:
         """The VPM owns molecular nu when a VLM is attached; values must agree."""
         scheme = getattr(viscous_cfg, "scheme", "NONE")
-        vpm_nu = (
-            float(getattr(viscous_cfg, "kinematic_viscosity", 0.0)) if scheme != "NONE" else 0.0
-        )
+        if scheme == "NONE":
+            vpm_nu = 0.0
+        else:
+            configured_nu = getattr(viscous_cfg, "kinematic_viscosity", None)
+            if configured_nu is None:
+                raise ValueError(
+                    f"VPM viscous scheme {scheme!r} requires kinematic_viscosity "
+                    "when a VLM setup is attached"
+                )
+            vpm_nu = float(configured_nu)
         vlm_nu = float(vlm_setup.kinematic_viscosity)
         if not np.isclose(vlm_nu, vpm_nu, rtol=0.0, atol=1e-15):
             raise ValueError(
@@ -1308,7 +1315,7 @@ class VPMSolver:
             else:
                 raise ValueError(
                     "viscosity parameter is required.  Either set "
-                    "ViscousConfig.viscosity or pass an explicit array."
+                    "ViscousConfig.kinematic_viscosity or pass an explicit array."
                 )
 
         self.particles.replace_from_numpy(

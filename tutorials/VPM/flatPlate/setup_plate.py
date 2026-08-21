@@ -163,7 +163,7 @@ def run_case(
         surfaces=(vpm.VLMSurfaceSetup(str(surface_file), kinematics=motion),),
         mesh=vpm.VLMMeshSetup.geometric(ratio=4.0, region="end"),
         density=DENSITY,
-        viscosity=KINEMATIC_VISCOSITY,
+        kinematic_viscosity=KINEMATIC_VISCOSITY,
         freestream_velocity=reference_velocity,
         force=vpm.ForceConfig.kutta_joukowski(),
         sigma_factor=PARTICLE_CORE_FACTOR,
@@ -188,6 +188,9 @@ def run_case(
             compute_device="AUTO",
             advection=vpm.AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
+            viscous=vpm.ViscousConfig.cs(
+                kinematic_viscosity=KINEMATIC_VISCOSITY,
+            ),
             freestream_velocity=freestream_velocity,
             velocity=vpm.VelocityConfig.treecode(
                 theta=0.35,

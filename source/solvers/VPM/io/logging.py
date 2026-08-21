@@ -596,7 +596,7 @@ class Logging:
             f"  Precision                : {vlm.dtype}",
             f"  Linear Solver            : {vlm.linear_solver}",
             f"  Density                  : {vlm.density:.3f} kg/m³",
-            f"  Viscosity                : {vlm.viscosity:.3e} m²/s",
+            f"  Kinematic Viscosity      : {vlm.kinematic_viscosity:.3e} m²/s",
             f"  Force Evaluation Method  : {vlm.force.method}",
         ]
         if len(vlm.surfaces) > 0:

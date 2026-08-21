@@ -95,7 +95,7 @@ def run() -> None:
             for position in (np.array(coordinates),)
             for blade_index in range(NUMBER_OF_BLADES)
         ),
-        viscosity=KINEMATIC_VISCOSITY,
+        kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sigma_factor=2.5,
     )
@@ -107,7 +107,9 @@ def run() -> None:
             compute_device="AUTO",
             vlm=vlm_setup,
             stretching=vpm.StretchingConfig.disabled(),
-            viscous=vpm.ViscousConfig.cs(),
+            viscous=vpm.ViscousConfig.cs(
+                kinematic_viscosity=KINEMATIC_VISCOSITY,
+            ),
             velocity=vpm.VelocityConfig.treecode(
                 theta=0.35,
                 sort_particle_targets=True,

@@ -227,7 +227,7 @@ def main() -> int:
             for blade_index, azimuth in enumerate((0.0, 120.0, 240.0))
         ),
         mesh=vpm.VLMMeshSetup.geometric(ratio=3.0),
-        viscosity=KINEMATIC_VISCOSITY,
+        kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
         logging_interval_steps=cadence_steps(sample_interval_time, TIME_STEP),
