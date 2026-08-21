@@ -153,7 +153,9 @@ def plot(figure_format: str) -> None:
     if not band_names:
         quality.semilogy(
             time,
-            np.maximum(100.0 * _values(records, "transfer", "pruned_circulation_fraction"), 1e-8),
+            np.maximum(
+                100.0 * _values(records, "transfer", "pruned_vortex_strength_fraction"), 1e-8
+            ),
             label=r"pruned $\Sigma|\Gamma|$ [%]",
         )
     quality.set(

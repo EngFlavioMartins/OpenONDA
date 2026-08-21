@@ -19,7 +19,7 @@ CORE_RADIUS_RATIO = 1.0
 # M4-prime kernel support half-width in lattice cells.
 _M4P_SUPPORT = 2.0
 
-# Cap on the inverse-mollification amplification |Gamma| / |Gamma_raw|.
+# Cap on the inverse-mollification amplification |alpha| / |alpha_raw|.
 DEFAULT_TRANSFER_AMPLIFICATION_CAP = 2.0
 
 
@@ -311,7 +311,7 @@ def soft_prune(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Non-negative garrote shrinkage of weak lattice strengths.
 
-    ``Gamma * max(0, 1 - (threshold/|Gamma|)^2)``: continuous, and zero below
+    ``alpha * max(0, 1 - (threshold/|alpha|)^2)``: continuous, and zero below
     the threshold. Returns ``(shrunk, removed)``.
     """
     circ = np.asarray(circ, dtype=np.float64).reshape(-1, 3)
@@ -382,10 +382,10 @@ class TransferResult:
     n_free: int = 0  # untouched free-exterior particles
     n_excluded: int = 0  # input particles removed from a physical solid
     n_pruned: int = 0
-    pruned_circulation_l1: float = 0.0
-    pruned_circulation_fraction: float = 0.0
+    pruned_vortex_strength_l1: float = 0.0
+    pruned_vortex_strength_fraction: float = 0.0
     n_population_pruned: int = 0
-    population_pruned_circulation_fraction: float = 0.0
+    population_pruned_vortex_strength_fraction: float = 0.0
     population_pruned_velocity_bound: float = 0.0
     cfl: float = 0.0  # U_max*dt / L_buf  (should stay < ~0.7)
     conservation_drift: dict[str, float] = field(default_factory=dict)
@@ -393,7 +393,7 @@ class TransferResult:
     conservation_applied_correction: dict[str, float] = field(default_factory=dict)
     conservation_corrected_mismatch: dict[str, float] = field(default_factory=dict)
 
-    # Sum|Gamma_sigma|_VPM / Sum|Gamma|_target over the outflow band.
+    # Sum|alpha_sigma|_VPM / Sum|alpha|_target over the outflow band.
     # 1.0 means agreement.
     flux_ratio: float = 0.0
 
@@ -407,11 +407,11 @@ class TransferResult:
     spectral_band_ratio: dict[str, float] = field(default_factory=dict)
     diagnostics_evaluated: bool = True
 
-    # Body-mask audit.  L1 sums of |Gamma| removed from input particles, from
+    # Body-mask audit.  L1 sums of |alpha| removed from input particles, from
     # the VPM remesh support, and from the FVM target.
-    excluded_input_circulation_l1: float = 0.0
-    excluded_remesh_circulation_l1: float = 0.0
-    excluded_target_circulation_l1: float = 0.0
+    excluded_input_vortex_strength_l1: float = 0.0
+    excluded_remesh_vortex_strength_l1: float = 0.0
+    excluded_target_vortex_strength_l1: float = 0.0
 
     @property
     def n_total(self) -> int:
@@ -803,7 +803,7 @@ def continuous_transfer(
         if applied_correction["total_vortex_strength"] > 1.0e-2 * correction_scale:
             logger.warning(
                 "[Transfer] global invariant closure had to move %.3e of vortex strength "
-                "(%.2f%% of Sum|Gamma|); the local prune redistribution is not "
+                "(%.2f%% of Sum|alpha|); the local prune redistribution is not "
                 "absorbing the pruned moments.",
                 applied_correction["total_vortex_strength"],
                 100.0 * applied_correction["total_vortex_strength"] / correction_scale,
@@ -908,10 +908,10 @@ def continuous_transfer(
         n_free=int(free_mask.sum()),
         n_excluded=int(deep_solid.sum()),
         n_pruned=int(pruned.sum()),
-        pruned_circulation_l1=pruned_l1,
-        pruned_circulation_fraction=pruned_l1 / (active_l1 + 1e-30),
+        pruned_vortex_strength_l1=pruned_l1,
+        pruned_vortex_strength_fraction=pruned_l1 / (active_l1 + 1e-30),
         n_population_pruned=population_pruned,
-        population_pruned_circulation_fraction=population_pruned_fraction,
+        population_pruned_vortex_strength_fraction=population_pruned_fraction,
         population_pruned_velocity_bound=population_pruned_velocity_bound,
         cfl=cfl,
         conservation_drift=drift,
@@ -925,9 +925,9 @@ def continuous_transfer(
         transfer_max_amplification=max_amplification,
         spectral_band_ratio=bands,
         diagnostics_evaluated=compute_diagnostics,
-        excluded_input_circulation_l1=excluded_input_l1,
-        excluded_remesh_circulation_l1=excluded_remesh_l1,
-        excluded_target_circulation_l1=excluded_target_l1,
+        excluded_input_vortex_strength_l1=excluded_input_l1,
+        excluded_remesh_vortex_strength_l1=excluded_remesh_l1,
+        excluded_target_vortex_strength_l1=excluded_target_l1,
     )
 
 
@@ -1146,7 +1146,7 @@ class VorticityTransfer:
         logger.info(
             "[Transfer] ready: box x in [%.2f,%.2f]  particle_spacing=%.3f  sigma=%.2fh  ramp=%.3f  "
             "overlap_zone_dead_zone=%.3f  L_buf=%.3f  (CFL max_dt=%.3e s)  "
-            "soft prune |omega|<%.3g 1/s (|Gamma|<%.3g m3/s)  amplification cap=%.2f  "
+            "soft prune |omega|<%.3g 1/s (|alpha|<%.3g m3/s)  amplification cap=%.2f  "
             "boundary prune=%.1fx",
             self._box[0],
             self._box[1],
@@ -1346,17 +1346,17 @@ class VorticityTransfer:
 
         logger.info(
             "[Transfer step=%d] in=%d -> out=%d  free=%d  solid_removed=%d  "
-            "pruned=%d (%.3f%% Sum|Gamma|)  cap_pruned=%d (%.3f%% Sum|Gamma|, "
-            "du_bound=%.3e m/s)  CFL=%.2f  |dGamma|/|Gamma|=%.2e  flux_ratio=%.3f",
+            "pruned=%d (%.3f%% Sum|alpha|)  cap_pruned=%d (%.3f%% Sum|alpha|, "
+            "du_bound=%.3e m/s)  CFL=%.2f  |dAlpha|/|Alpha|=%.2e  flux_ratio=%.3f",
             self.step,
             res.n_remesh_in,
             res.n_remesh_out,
             res.n_free,
             res.n_excluded,
             res.n_pruned,
-            100.0 * res.pruned_circulation_fraction,
+            100.0 * res.pruned_vortex_strength_fraction,
             res.n_population_pruned,
-            100.0 * res.population_pruned_circulation_fraction,
+            100.0 * res.population_pruned_vortex_strength_fraction,
             res.population_pruned_velocity_bound,
             res.cfl,
             res.conservation_drift.get("total_vortex_strength_rel", 0.0),
@@ -1405,15 +1405,15 @@ class VorticityTransfer:
                 res.transfer_in_band_residual,
             )
         if (
-            res.excluded_input_circulation_l1 > 0.0
-            or res.excluded_remesh_circulation_l1 > 0.0
-            or res.excluded_target_circulation_l1 > 0.0
+            res.excluded_input_vortex_strength_l1 > 0.0
+            or res.excluded_remesh_vortex_strength_l1 > 0.0
+            or res.excluded_target_vortex_strength_l1 > 0.0
         ):
             logger.info(
-                "     [Body taper] removed Sum|Gamma|: input=%.3e  remesh=%.3e  target=%.3e",
-                res.excluded_input_circulation_l1,
-                res.excluded_remesh_circulation_l1,
-                res.excluded_target_circulation_l1,
+                "     [Body taper] removed Sum|alpha|: input=%.3e  remesh=%.3e  target=%.3e",
+                res.excluded_input_vortex_strength_l1,
+                res.excluded_remesh_vortex_strength_l1,
+                res.excluded_target_vortex_strength_l1,
             )
         if res.cfl > 0.7:
             logger.warning(

@@ -167,9 +167,9 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "n_free": 0,
             "n_excluded": 0,
             "n_pruned": 0,
-            "pruned_circulation_fraction": 0.0,
+            "pruned_vortex_strength_fraction": 0.0,
             "n_population_pruned": 0,
-            "population_pruned_circulation_fraction": 0.0,
+            "population_pruned_vortex_strength_fraction": 0.0,
             "population_pruned_velocity_bound": 0.0,
             "flux_ratio": None,
             "transfer_in_band_residual": None,
@@ -193,10 +193,10 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "n_free": int(result.n_free),
             "n_excluded": int(result.n_excluded),
             "n_pruned": int(result.n_pruned),
-            "pruned_circulation_fraction": float(result.pruned_circulation_fraction),
+            "pruned_vortex_strength_fraction": float(result.pruned_vortex_strength_fraction),
             "n_population_pruned": int(result.n_population_pruned),
-            "population_pruned_circulation_fraction": float(
-                result.population_pruned_circulation_fraction
+            "population_pruned_vortex_strength_fraction": float(
+                result.population_pruned_vortex_strength_fraction
             ),
             "population_pruned_velocity_bound": float(result.population_pruned_velocity_bound),
             "flux_ratio": float(result.flux_ratio) if result.diagnostics_evaluated else None,

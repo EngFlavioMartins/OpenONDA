@@ -58,7 +58,7 @@ def _check_coupling_history(coupling: list[dict]) -> None:
     if transfer_cfl > 1.0:
         raise SystemExit(f"FAIL: peak transfer CFL is excessive ({transfer_cfl:.3g})")
     cap_loss = max(
-        float(record.get("transfer", {}).get("population_pruned_circulation_fraction", 0.0))
+        float(record.get("transfer", {}).get("population_pruned_vortex_strength_fraction", 0.0))
         for record in coupling
     )
     if cap_loss > 0.02:
