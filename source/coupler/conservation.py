@@ -1,4 +1,4 @@
-"""Circulation and impulse conservation for the FVM-to-VPM transfer."""
+"""Vortex-strength and impulse conservation for the FVM-to-VPM transfer."""
 
 from __future__ import annotations
 

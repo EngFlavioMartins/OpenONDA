@@ -520,7 +520,7 @@ class VPMSetup:
 
     @classmethod
     def load_from_file(cls, filename: str) -> VPMSetup:
-        """Load a setup from canonical or legacy JSON."""
+        """Load a setup from canonical JSON."""
         with open(filename, encoding="utf-8") as stream:
             return cls.from_dict(json.load(stream))
 

@@ -607,7 +607,6 @@ class PanelSolver:
                 )
 
         # 3. Compute VPM-induced velocity at collocation points (if coupled)
-        wake_velocity = wake_velocity
         if particles is not None and physics is not None:
             # NumPy targets follow PhysicsBase's configured TREECODE route.
             # Passing the Taichi field directly bypassed that branch and launched
@@ -665,7 +664,7 @@ class PanelSolver:
             if hasattr(self, "_last_freestream_velocity")
             else np.array([1.0, 0.0, 0.0])
         )
-        wake_velocity = self._last_wake_velocity if hasattr(self, "_last_V_wake") else None
+        wake_velocity = self._last_wake_velocity if hasattr(self, "_last_wake_velocity") else None
 
         self.lattice.save_old_strengths()
         for body in self.lattice.bodies:

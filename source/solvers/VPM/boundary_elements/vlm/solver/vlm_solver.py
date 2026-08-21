@@ -134,8 +134,6 @@ class VLMSolver:
             f"dtype={self.dtype}, solver={self.linear_solver})"
         )
 
-    # freestream_velocity removed: use freestream_velocity directly
-
     def _ensure_lattice_initialized(self) -> None:
         """Ensure lattice is created (lazy initialization after Taichi init).
 
@@ -1507,7 +1505,7 @@ class VLMSolver:
             external_velocity: Total external velocity field at collocation points (N, 3)
             density: Fluid density
             reference_velocity: Reference velocity vector (defaults to auto-computed)
-            logging_frequency: Print forces every N steps (None=use solver default)
+            logging_interval_steps: Print forces every N steps (None=use solver default)
             step: Current time step number
             time: Current simulation time (s) - prevents drift if provided
 

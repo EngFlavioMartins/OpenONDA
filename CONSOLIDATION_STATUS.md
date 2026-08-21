@@ -81,3 +81,23 @@ python -m pytest -q tests/vpm -m "not gpu and not slow"
 python -m pytest -q tests/coupler -m "not mpi and not slow"
 python -m pytest -q tests/fvm -m "(unit or verification) and not slow and not mpi"
 ```
+
+---
+
+## 3. Post-review waves (items 1–13 complete)
+
+Commits (fast-forward, all hooks green): `e79b1d7` consolidation → `74d4bab` CI assertion fix → `e6e8e68` canonical naming/metadata/property ownership → `9b836e6` alias removal → `d90fab1` VLM serialization guard → `eb589df` VLM absorption fixes → `6806e66` descriptive VLM/Panel public API → `1aad28a` audit sweep → `865325c` MPI coupled smoke test.
+
+- Item 3: `FVMSetup.load()` canonical-only; `SolverState`/`ParticlesState` alias-free.
+- Item 4: panel/VLM particle-field fixes; root-caused winding bug in `is_point_in_quad` (collisions never fired); added `tests/vpm/test_vlm_particle_absorption.py`.
+- Item 5: stepper no longer clobbers panel density; exact-ν shedding (0.0 inviscid / configured viscous / hard error otherwise); VLM field renamed `viscosity` → `kinematic_viscosity`.
+- Item 6: `V_inf→freestream_velocity`, `V_external→external_velocity`, `V_wake(_field)→wake_velocity`, `U_ref→reference_velocity`; legacy positional `advance()` convention and silent `**kwargs` removed; stale `logging_frequency` getattr chains fixed (they silently ignored configured intervals).
+- Item 7/8/10: coupler vortex-strength naming; canonical `run_metadata.json` keys (+ archived readers); `max_iterations`, `angular_speed`, `adjust_time_step` renames.
+- Item 9: `VPMSetup.to_dict()` rejects VLM-coupled setups instead of writing `"vlm": null`.
+- Item 11 audit: remaining hits classified — Taichi kernel names, `grad_u` locals, VTK contract keys (`VelocityGradient`), OpenFOAM names (`Cs` etc.), offline archive readers (`grid_independence_cs.py` fallbacks) intentionally left.
+- Item 13: `tests/coupler/test_fvm_vpm_mpi_smoke.py` — real `mpirun -np 2` coupled run via public API (`ComputeConfig.petsc_replicated()`); passes on both ranks locally. Note: coupler init is lazy; substep assertions belong after `run()`.
+- Deferred by design: serialized `pruned_circulation_*` diagnostic JSON keys (on-disk contract).
+
+CI on `development`: only two pre-existing failures (ubuntu FVM-runner env — same command passes locally 388/388; macos-15-intel wheel install). Diagnosis needs authenticated `gh` access.
+
+**Next phase (items 14–20, FVM scientific debugging) is blocked pending user review of this consolidation diff.**
