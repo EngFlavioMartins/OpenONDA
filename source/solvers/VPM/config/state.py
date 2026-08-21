@@ -36,7 +36,7 @@ class SolverState(BaseModel):
     """Serializable scalar state for a VPM solver (canonical names only)."""
 
     model_config = ConfigDict(
-        extra="allow",
+        extra="forbid",
         validate_assignment=True,
         populate_by_name=True,
     )
@@ -135,7 +135,7 @@ class ParticlesState(BaseModel):
     """Serializable VPM particle state with canonical live-field names."""
 
     model_config = ConfigDict(
-        extra="allow",
+        extra="forbid",
         validate_assignment=True,
         populate_by_name=True,
     )
