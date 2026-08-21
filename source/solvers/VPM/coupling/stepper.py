@@ -48,7 +48,9 @@ class CouplingStepper:
             n = len(new_particles["points"])
             if n > 0:
                 visc_cfg = getattr(self.setup, "viscous", None)
-                nu = getattr(visc_cfg, "viscosity", None) if visc_cfg is not None else None
+                nu = (
+                    getattr(visc_cfg, "kinematic_viscosity", None) if visc_cfg is not None else None
+                )
                 if nu is None or nu <= 0:
                     nu = 1e-2
                 viscosity = np.full(n, nu, dtype=self.np_dtype)

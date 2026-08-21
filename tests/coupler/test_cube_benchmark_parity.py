@@ -11,12 +11,12 @@ import sys
 import numpy as np
 import pytest
 
-_CASE = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow/cubeFlow_setup.py"
+_CASE = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow/cubeFlow_setup.py"
 _REFERENCE = (
     Path(__file__).parents[2]
-    / "tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/referenceFlow_setup.py"
+    / "tutorials/coupled_FVM_VPM/cube_flow/referenceFlow/referenceFlow_setup.py"
 )
-_CUBE_ROOT = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cubeFlow"
+_CUBE_ROOT = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow"
 
 
 def _load(name: str, path: Path):
@@ -84,7 +84,7 @@ def reference():
 
 @pytest.fixture(scope="module")
 def vpm(bench):
-    return bench.make_vpm_setup()
+    return bench.VPM_SETUP
 
 
 @pytest.fixture(scope="module")
@@ -132,7 +132,7 @@ def test_coupler_setup_owns_no_solver_physics(bench):
 
 def test_vpm_setup_compatible(bench, vpm):
     assert type(vpm).__name__ == "VPMSetup"
-    assert vpm.viscous.kinematic_viscosity == pytest.approx(bench.NU)
+    assert vpm.viscous.kinematic_viscosity == pytest.approx(bench.KINEMATIC_VISCOSITY)
     assert tuple(vpm.freestream_velocity) == tuple(bench.FREESTREAM_VELOCITY)
     ratio = vpm.time_step_size / bench.FVM_TIME_STEP_SIZE
     assert ratio == pytest.approx(round(ratio))
@@ -144,7 +144,7 @@ def test_vpm_setup_compatible(bench, vpm):
     assert vpm.panel_solver.bc_type == "NEUMANN"
     assert vpm.panel_solver.coupling_scope == "vpm_bc"
     assert vpm.turbulence.flow_model == "LES"
-    recovered_ck = (vpm.turbulence.cs**2 * vpm.turbulence.ce**0.5) ** (2.0 / 3.0)
+    recovered_ck = (vpm.turbulence.c_s**2 * vpm.turbulence.c_e**0.5) ** (2.0 / 3.0)
     assert recovered_ck == pytest.approx(0.094)
 
 
@@ -152,16 +152,16 @@ def test_mesh_domain_uses_case_setting(bench, vpm):
     from source.solvers.FVM.mesh.triangulated_surface import TriangulatedSurface
 
     assert bench.FVM_MESH.domain == bench.FVM_BOX
-    assert bench.FVM_MESH.requested_max_cell_size == pytest.approx(bench.FVM_CELL_SIZE)
-    assert bench.FVM_MESH.max_cell_size <= bench.FVM_CELL_SIZE
-    assert bench.FVM_MESH.surface_cell_size == pytest.approx(0.015625)
+    assert bench.FVM_MESH.requested_max_cell_size == pytest.approx(bench.SURFACE_CELL_SIZE * 4)
+    assert bench.FVM_MESH.max_cell_size <= (bench.SURFACE_CELL_SIZE * 4)
+    assert bench.FVM_MESH.surface_cell_size == pytest.approx(bench.SURFACE_CELL_SIZE)
     assert bench.FVM_MESH.surface_file == str(bench.CUBE_STL.resolve())
     surface = TriangulatedSurface.from_stl(bench.CUBE_STL)
     assert surface.bounds == (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
     assert vpm.panel_solver.max_panels >= len(surface.triangles)
 
 
-def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
+def test_cube_main_is_rank_agnostic(bench, monkeypatch):
     class FakeFVM:
         def write_vtk(self):
             pass
@@ -170,23 +170,43 @@ def test_cube_main_builds_vpm_on_master_only(bench, monkeypatch):
         def run(self):
             pass
 
-    received = []
-    monkeypatch.setattr(bench, "create_fvm_solver", lambda *args, **kwargs: FakeFVM())
-    monkeypatch.setattr(bench.FVMVPMCoupler, "is_master_rank", staticmethod(lambda: False))
+    fake_vpm_solver = object()
+    received = {}
+
     monkeypatch.setattr(
-        bench,
-        "make_vpm_setup",
-        lambda: pytest.fail("worker rank must not construct the GPU VPM setup"),
+        bench.fvm,
+        "create_fvm_solver",
+        lambda *args, **kwargs: FakeFVM(),
     )
+
+    def fake_create_vpm_solver(setup, **kwargs):
+        received["vpm_setup"] = setup
+        received["vpm_kwargs"] = kwargs
+        return fake_vpm_solver
+
     monkeypatch.setattr(
-        bench,
+        bench.vpm,
+        "create_vpm_solver",
+        fake_create_vpm_solver,
+    )
+
+    def fake_create_coupler(fvm_solver, vpm_solver, setup):
+        received["coupled_vpm"] = vpm_solver
+        received["coupler_setup"] = setup
+        return FakeCoupler()
+
+    monkeypatch.setattr(
+        bench.coupling,
         "create_coupler",
-        lambda fvm, vpm, setup: received.append(vpm) or FakeCoupler(),
+        fake_create_coupler,
     )
 
     bench.main()
 
-    assert received == [None]
+    assert received["vpm_setup"] is bench.VPM_SETUP
+    assert received["vpm_kwargs"]["case_dir"] == bench.CASE_DIR
+    assert received["coupled_vpm"] is fake_vpm_solver
+    assert received["coupler_setup"] is bench.COUPLER_SETUP
 
 
 def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_path):
@@ -194,11 +214,11 @@ def test_coupler_adopts_and_validates_hybrid_solver(bench, hybrid_solver, tmp_pa
 
     setup = bench.COUPLER_SETUP
     coupler = FVMVPMCoupler(hybrid_solver, object(), setup)
-    coupler.fvm = hybrid_solver
+    coupler.fvm_solver = hybrid_solver
     coupler._read_fvm_state()
     assert coupler.fvm_time_step_size == pytest.approx(bench.FVM_TIME_STEP_SIZE)
-    assert coupler.end_time == pytest.approx(bench.T_END)
-    assert coupler.kinematic_viscosity == pytest.approx(bench.NU)
+    assert coupler.end_time == pytest.approx(bench.END_TIME)
+    assert coupler.kinematic_viscosity == pytest.approx(bench.KINEMATIC_VISCOSITY)
     assert np.allclose(coupler.fvm_box, bench.FVM_BOX, atol=1e-12)
 
 
@@ -233,7 +253,7 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
     from source.coupler import FVMVPMCoupler
 
     class _FakeViscous:
-        viscosity = 10 * bench.NU
+        kinematic_viscosity = 10 * bench.KINEMATIC_VISCOSITY
         scheme = "CS"
         core_radius_ratio = 1.0
 
@@ -242,13 +262,13 @@ def test_incompatible_vpm_viscosity_raises(bench, tmp_path):
         domain_bounds = None
 
     class _FakeVPM:
-        config = _FakeVPMConfig()
+        setup = _FakeVPMConfig()
         time_step_size = bench.VPM_TIME_STEP_SIZE
         freestream_velocity = bench.FREESTREAM_VELOCITY
 
     with pytest.raises(ValueError, match="viscosity"):
         FVMVPMCoupler._validate_vpm(
-            _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.NU
+            _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.KINEMATIC_VISCOSITY
         )
 
 
@@ -258,61 +278,61 @@ def test_incompatible_vpm_freestream_raises(bench, tmp_path):
     class _FakeVPM:
         freestream_velocity = [0.5, 0.0, 0.0]
         time_step_size = bench.VPM_TIME_STEP_SIZE
-        config = type(
+        setup = type(
             "Config",
             (),
             {
-                "vpm_domain_bounds": None,
+                "domain_bounds": None,
                 "viscous": type(
                     "Viscous",
                     (),
-                    {"scheme": "CS", "viscosity": bench.NU, "core_radius_ratio": 1.0},
+                    {
+                        "scheme": "CS",
+                        "kinematic_viscosity": bench.KINEMATIC_VISCOSITY,
+                        "core_radius_ratio": 1.0,
+                    },
                 )(),
             },
         )()
 
     with pytest.raises(ValueError, match="freestream"):
         FVMVPMCoupler._validate_vpm(
-            _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.NU
+            _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.KINEMATIC_VISCOSITY
         )
 
 
 @pytest.mark.parametrize(
-    ("scheme", "attr", "mode", "rejected"),
+    ("scheme", "attr", "mode"),
     [
-        ("GBD", "gbd_threshold_mode", "relative_max", True),
-        ("GBD", "gbd_threshold_mode", "budget", True),
-        ("GBD", "gbd_threshold_mode", "absolute", True),
-        ("GBD", "gbd_threshold_mode", "relative_local", False),
-        ("DVH", "dvh_threshold_mode", "relative_max", True),
-        ("DVH", "dvh_threshold_mode", "relative_local", False),
+        ("GBD", "gbd_threshold_mode", "relative_max"),
+        ("GBD", "gbd_threshold_mode", "budget"),
+        ("GBD", "gbd_threshold_mode", "absolute"),
+        ("GBD", "gbd_threshold_mode", "relative_local"),
+        ("DVH", "dvh_threshold_mode", "relative_max"),
+        ("DVH", "dvh_threshold_mode", "budget"),
+        ("DVH", "dvh_threshold_mode", "absolute"),
+        ("DVH", "dvh_threshold_mode", "relative_local"),
     ],
 )
-def test_coupling_requires_local_regen_threshold(bench, tmp_path, scheme, attr, mode, rejected):
+def test_coupling_accepts_configured_regen_threshold_mode(bench, scheme, attr, mode):
     from source.coupler import FVMVPMCoupler
 
+    nu = float(bench.FVM_SETUP.transport.kinematic_viscosity)
+
     class _FakeViscous:
-        viscosity = bench.NU
+        kinematic_viscosity = nu
         core_radius_ratio = bench.COUPLER_SETUP.vpm_core_radius_ratio
 
-    class _FakeVPMConfig:
+    class _FakeVPMSetup:
         viscous = _FakeViscous()
         domain_bounds = None
 
     class _FakeVPM:
-        config = _FakeVPMConfig()
+        setup = _FakeVPMSetup()
         time_step_size = bench.VPM_TIME_STEP_SIZE
         freestream_velocity = bench.FREESTREAM_VELOCITY
 
     _FakeViscous.scheme = scheme
     setattr(_FakeViscous, attr, mode)
 
-    if rejected:
-        with pytest.raises(ValueError, match="relative_local"):
-            FVMVPMCoupler._validate_vpm(
-                _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.NU
-            )
-    else:
-        FVMVPMCoupler._validate_vpm(
-            _FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), bench.NU
-        )
+    FVMVPMCoupler._validate_vpm(_FakeVPM(), bench.COUPLER_SETUP, np.asarray(bench.FVM_BOX), nu)

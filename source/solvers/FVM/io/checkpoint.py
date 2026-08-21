@@ -13,7 +13,7 @@ import numpy as np
 
 from .storage import require_free_space
 
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
 
 
 def _update_digest(digest, value) -> None:
@@ -59,123 +59,8 @@ def config_hash(setup) -> str:
     return _hash(_setup_dict(setup))
 
 
-def _legacy_setup_dict(setup) -> dict:
-    """Reconstruct the pre-nomenclature serialized setup for old hashes."""
-    data = _setup_dict(setup)
-
-    def rename(section: dict, mapping: dict[str, str]) -> None:
-        for canonical, legacy in mapping.items():
-            if canonical in section:
-                section[legacy] = section.pop(canonical)
-
-    rename(
-        data.get("time", {}),
-        {
-            "output_interval_steps": "output_interval_steps",
-            "output_interval_time": "output_interval_time",
-        },
-    )
-    rename(
-        data.get("linear", {}),
-        {
-            "momentum_tolerance": "momentum_tolerance",
-            "momentum_relative_tolerance": "momentum_relative_tolerance",
-            "momentum_final_relative_tolerance": "momentum_final_relative_tolerance",
-            "momentum_max_iterations": "momentum_max_iterations",
-            "pressure_tolerance": "pressure_tolerance",
-            "pressure_relative_tolerance": "pressure_relative_tolerance",
-            "pressure_final_relative_tolerance": "pressure_final_relative_tolerance",
-            "pressure_max_iterations": "pressure_max_iterations",
-            "amg_tolerance": "amg_tolerance",
-            "amg_max_iterations": "amg_max_iterations",
-            "amg_reuse_tolerance": "amg_reuse_tolerance",
-            "ilu_drop_tolerance": "ilu_drop_tolerance",
-            "ilu_reuse_tolerance": "ilu_reuse_tolerance",
-        },
-    )
-    rename(
-        data.get("pimple", {}),
-        {
-            "velocity_relaxation": "velocity_relaxation",
-            "pressure_relaxation": "pressure_relaxation",
-        },
-    )
-    rename(
-        data.get("transport", {}),
-        {"kinematic_viscosity": "nu"},
-    )
-    rename(
-        data.get("logging", {}),
-        {"interval_steps": "interval"},
-    )
-
-    boundary_mapping = {
-        "velocity_type": "type_velocity",
-        "velocity_value": "velocity_value",
-        "pressure_type": "type_p",
-        "kinematic_pressure_value": "kinematic_pressure_value",
-        "flux_type": "type_phi",
-        "flux_value": "flux_value",
-        "eddy_viscosity_type": "type_nut",
-        "eddy_viscosity_value": "eddy_viscosity_value",
-    }
-    for boundary in data.get("boundaries", []):
-        rename(boundary, boundary_mapping)
-
-    turbulence = data.get("turbulence")
-    if turbulence:
-        model = str(turbulence.get("model", "None")).lower()
-        if model == "wale":
-            model_coefficient = turbulence.get("c_w", 0.325)
-        elif model == "sigma":
-            model_coefficient = turbulence.get("c_sigma", 1.35)
-        else:
-            model_coefficient = turbulence.get("c_s", 0.17)
-
-        turbulence["Cs"] = model_coefficient
-        turbulence["Ck"] = turbulence.pop("c_k", 0.094)
-        turbulence["Ce"] = turbulence.pop("c_e", 1.048)
-        turbulence.pop("c_s", None)
-        turbulence.pop("c_w", None)
-        turbulence.pop("c_sigma", None)
-
-    if "initial_kinematic_pressure" in data:
-        data["initial_kinematic_pressure"] = data.pop("initial_kinematic_pressure")
-
-    return data
-
-
-def legacy_config_hash(setup) -> str:
-    """Hash the setup using the pre-migration serialized vocabulary."""
-    return _hash(_legacy_setup_dict(setup))
-
-
 def mesh_hash(mesh_data) -> str:
     """Hash canonical mesh topology, coordinates, and stable patch identity."""
-    patches = [
-        {
-            "name": patch["name"],
-            "start_face": patch["start_face"],
-            "n_faces": patch["n_faces"],
-            "type": patch.get("type"),
-        }
-        for patch in mesh_data["boundary"]
-    ]
-    identity = {
-        "points": mesh_data["points"],
-        "faces": mesh_data["faces"],
-        "owners": mesh_data["owners"],
-        "neighbours": mesh_data["neighbours"],
-        "boundary": patches,
-        "n_cells": mesh_data["n_cells"],
-        "n_faces": mesh_data["n_faces"],
-        "n_interior_faces": mesh_data["n_interior_faces"],
-    }
-    return _hash(identity)
-
-
-def legacy_mesh_hash(mesh_data) -> str:
-    """Hash a canonical mesh as the pre-migration mesh dictionary."""
     patches = [
         {
             "name": patch["name"],
@@ -258,114 +143,47 @@ def save_checkpoint(solver, path) -> Path:
     return destination
 
 
-_FIELD_ALIASES = {
-    "velocity": ("velocity", "U"),
-    "kinematic_pressure": ("kinematic_pressure", "p"),
-    "face_flux": ("face_flux", "phi"),
-    "face_flux_old": ("face_flux_old", "phi_old"),
-    "face_flux_older": ("face_flux_older", "phi_old_old"),
-    "velocity_old": ("velocity_old", "U_old"),
-    "velocity_older": ("velocity_older", "U_old_old"),
-    "eddy_viscosity": ("eddy_viscosity", "nut"),
-    "time_step_size": ("time_step_size", "dt"),
-    "current_time_step_size": (
-        "current_time_step_size",
-        "current_dt",
-    ),
-}
-
-
-def _read_alias(archive, canonical: str):
-    aliases = _FIELD_ALIASES.get(canonical, (canonical,))
-    for name in aliases:
-        if name in archive.files:
-            return np.array(archive[name], copy=True)
-    raise KeyError(canonical)
-
-
-def _has_alias(archive, canonical: str) -> bool:
-    return any(name in archive.files for name in _FIELD_ALIASES.get(canonical, (canonical,)))
-
-
-def load_checkpoint(
-    solver,
-    path,
-    *,
-    allow_config_change: bool = False,
-) -> None:
-    """Validate and restore canonical or pre-migration FVM checkpoints."""
+def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
+    """Validate and restore one canonical FVM checkpoint."""
     source = Path(path)
-
+    required = {
+        "metadata",
+        "velocity",
+        "kinematic_pressure",
+        "face_flux",
+        "face_flux_old",
+        "face_flux_older",
+        "velocity_old",
+        "velocity_older",
+        "eddy_viscosity",
+        "time",
+        "step",
+        "n_committed",
+        "time_step_size",
+        "current_time_step_size",
+        "cfl_max",
+        "time_since_last_write",
+        "acceptance_counts",
+    }
     with np.load(source, allow_pickle=False) as archive:
-        if "metadata" not in archive.files:
-            raise ValueError("Incomplete FVM checkpoint; missing: metadata")
-
-        metadata = json.loads(str(archive["metadata"]))
-        version = int(metadata.get("format_version", 1))
-        if version not in (1, 2, FORMAT_VERSION):
-            raise ValueError(
-                f"Unsupported FVM checkpoint version {version!r}; "
-                f"expected 1, 2, or {FORMAT_VERSION}"
-            )
-
-        required = {
-            "velocity",
-            "kinematic_pressure",
-            "face_flux",
-            "velocity_old",
-            "velocity_older",
-            "eddy_viscosity",
-            "time",
-            "step",
-            "n_committed",
-            "time_step_size",
-            "current_time_step_size",
-            "cfl_max",
-            "time_since_last_write",
-            "acceptance_counts",
-        }
-        if version >= 2:
-            required.update(("face_flux_old", "face_flux_older"))
-
-        missing = sorted(
-            name
-            for name in required
-            if (name not in archive.files and not _has_alias(archive, name))
-        )
+        missing = sorted(required - set(archive.files))
         if missing:
             raise ValueError("Incomplete FVM checkpoint; missing: " + ", ".join(missing))
-
-        active_mesh_hash = mesh_hash(solver.mesh_data)
-        saved_mesh_hash = metadata.get("mesh_hash")
-        mesh_matches = saved_mesh_hash == active_mesh_hash
-        if not mesh_matches and version < FORMAT_VERSION:
-            mesh_matches = saved_mesh_hash == legacy_mesh_hash(solver.mesh_data)
-        if not mesh_matches:
+        metadata = json.loads(str(archive["metadata"]))
+        version = int(metadata.get("format_version", -1))
+        if version != FORMAT_VERSION:
+            raise ValueError(
+                f"Unsupported FVM checkpoint version {version!r}; expected {FORMAT_VERSION}"
+            )
+        if metadata.get("mesh_hash") != mesh_hash(solver.mesh_data):
             raise ValueError("FVM checkpoint mesh hash does not match the active mesh")
+        if not allow_config_change and metadata.get("config_hash") != config_hash(solver.setup):
+            raise ValueError("FVM checkpoint configuration hash does not match the active case")
+        state = {
+            name: np.array(archive[name], copy=True) for name in required if name != "metadata"
+        }
 
-        if not allow_config_change:
-            saved_config_hash = metadata.get("config_hash")
-            config_matches = saved_config_hash == config_hash(solver.setup)
-            if not config_matches and version < FORMAT_VERSION:
-                config_matches = saved_config_hash == legacy_config_hash(solver.setup)
-            if not config_matches:
-                raise ValueError("FVM checkpoint configuration hash does not match the active case")
-
-        state = {}
-        for name in required:
-            if name in _FIELD_ALIASES:
-                state[name] = _read_alias(archive, name)
-            else:
-                state[name] = np.array(
-                    archive[name],
-                    copy=True,
-                )
-
-        if version == 1:
-            state["face_flux_old"] = state["face_flux"].copy()
-            state["face_flux_older"] = state["face_flux"].copy()
-
-    field_attributes = {
+    fields = {
         "velocity": "velocity",
         "kinematic_pressure": "kinematic_pressure",
         "face_flux": "face_flux",
@@ -374,7 +192,7 @@ def load_checkpoint(
         "velocity_old": "velocity_old",
         "velocity_older": "velocity_older",
     }
-    for field_name, attribute_name in field_attributes.items():
+    for field_name, attribute_name in fields.items():
         active = np.asarray(getattr(solver, attribute_name))
         values = state[field_name]
         if values.shape != active.shape:
@@ -394,15 +212,17 @@ def load_checkpoint(
     ):
         raise ValueError("Checkpoint eddy viscosity is invalid")
 
-    solver.velocity[:] = state["velocity"]
-    solver.kinematic_pressure[:] = state["kinematic_pressure"]
-    solver.face_flux[:] = state["face_flux"]
-    solver.face_flux_old[:] = state["face_flux_old"]
-    solver.face_flux_older[:] = state["face_flux_older"]
-    solver.velocity_old[:] = state["velocity_old"]
-    solver.velocity_older[:] = state["velocity_older"]
+    for name in (
+        "velocity",
+        "kinematic_pressure",
+        "face_flux",
+        "face_flux_old",
+        "face_flux_older",
+        "velocity_old",
+        "velocity_older",
+    ):
+        getattr(solver, name)[:] = state[name]
     solver.eddy_viscosity = None if not eddy_viscosity.size else eddy_viscosity
-
     solver.time = float(state["time"])
     solver.step = int(state["step"])
     solver._n_committed = int(state["n_committed"])
@@ -410,17 +230,11 @@ def load_checkpoint(
     solver._current_time_step_size = float(state["current_time_step_size"])
     solver.cfl_max = float(state["cfl_max"])
     solver._time_since_last_write = float(state["time_since_last_write"])
-
     acceptance_names = sorted(solver._acceptance_counts)
     if state["acceptance_counts"].shape != (len(acceptance_names),):
         raise ValueError("Checkpoint acceptance-policy state is incompatible")
     solver._acceptance_counts.update(
-        zip(
-            acceptance_names,
-            (int(value) for value in state["acceptance_counts"]),
-            strict=True,
-        )
+        zip(acceptance_names, (int(v) for v in state["acceptance_counts"]), strict=True)
     )
-
     solver._last_residuals = None
     solver.last_diagnostics = None

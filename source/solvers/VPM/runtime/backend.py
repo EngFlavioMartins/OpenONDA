@@ -279,7 +279,7 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
 
     if preferred_backend == "METAL":
         if system != "Darwin":
-            raise ValueError("processing_unit='METAL' is supported only on macOS")
+            raise ValueError("compute_device='METAL' is supported only on macOS")
         if precision == "f64":
             raise ValueError(
                 "precision='f64' is not supported by the Metal backend; use f32 or CPU"
@@ -291,7 +291,7 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
 
     if preferred_backend == "VULKAN":
         if system == "Darwin":
-            raise ValueError("processing_unit='VULKAN' is unavailable on macOS; use AUTO or METAL")
+            raise ValueError("compute_device='VULKAN' is unavailable on macOS; use AUTO or METAL")
         return [(ti.vulkan, "VULKAN")]
 
     if system == "Darwin":

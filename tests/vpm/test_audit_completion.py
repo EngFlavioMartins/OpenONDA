@@ -115,7 +115,7 @@ def test_target_queries_fail_instead_of_reallocating_taichi_fields():
     fields = SimpleNamespace(_target_field_size=16)
 
     PhysicsBase._resize_target_fields(fields, 16)
-    with pytest.raises(ValueError, match="max_targets=16"):
+    with pytest.raises(ValueError, match="max_evaluation_points=16"):
         PhysicsBase._resize_target_fields(fields, 17)
 
 
@@ -141,6 +141,7 @@ def test_sampler_csv_appends_all_events_to_one_time_aware_file(tmp_path):
         setup=SimpleNamespace(samplers=[(sampler, "probe")]),
         particles=SimpleNamespace(n_particles=2),
         particle_vortex_strength=np.ones((2, 3)),
+        case_dir=tmp_path,
         checkpoint_directory=str(tmp_path),
         time=0.1,
         step=1,
@@ -177,6 +178,7 @@ def test_sampler_executor_supports_csv_samplers_without_step_keyword(tmp_path):
         setup=SimpleNamespace(samplers=[LegacyCSVSampler()]),
         particles=SimpleNamespace(n_particles=2),
         particle_vortex_strength=np.ones((2, 3)),
+        case_dir=tmp_path,
         checkpoint_directory=str(tmp_path),
         time=0.3,
         step=3,
@@ -205,6 +207,7 @@ def test_sampler_executor_appends_opted_in_csv_time_series(tmp_path):
         setup=SimpleNamespace(samplers=[TimeSeriesSampler()]),
         particles=SimpleNamespace(n_particles=2),
         particle_vortex_strength=np.ones((2, 3)),
+        case_dir=tmp_path,
         checkpoint_directory=str(tmp_path),
         time=0.1,
         step=1,
@@ -248,6 +251,7 @@ def test_sampler_subdirectory_stays_below_the_root_samples_directory(tmp_path):
         setup=SimpleNamespace(samplers=[(sampler, "probe")], sample_subdirectory="dipole_cs"),
         particles=SimpleNamespace(n_particles=2),
         particle_vortex_strength=np.ones((2, 3)),
+        case_dir=tmp_path,
         checkpoint_directory=str(tmp_path / "solution"),
         time=0.1,
         step=1,
@@ -269,7 +273,7 @@ def test_vlm_diagnostics_use_the_same_sample_subdirectory(tmp_path):
         n_p=10,
         time=0.2,
         step=2,
-        checkpoint_directory=str(tmp_path / "solution"),
+        case_dir=str(tmp_path),
         sample_subdirectory="flat_plate",
     )
 
@@ -310,6 +314,7 @@ def test_log_name_uses_snapshot_prefix(tmp_path):
     solver = SimpleNamespace(
         setup=SimpleNamespace(log_mode="file"),
         checkpoint_name="wake",
+        case_dir=tmp_path,
         checkpoint_directory=str(tmp_path),
     )
 

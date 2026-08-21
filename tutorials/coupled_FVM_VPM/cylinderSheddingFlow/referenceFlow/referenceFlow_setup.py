@@ -217,9 +217,9 @@ FVM_SETUP = fvm.FVMSetup(
         momentum_relative_tolerance=0.1,
         momentum_final_relative_tolerance=0.0,
         momentum_max_iterations=2000,
-        ilu_drop_tol=1e-4,
+        ilu_drop_tolerance=1e-4,
         ilu_fill_factor=10.0,
-        ilu_reuse_tol=0.05,
+        ilu_reuse_tolerance=0.05,
     ),
     pimple=fvm.PimpleControl(
         n_correctors=PIMPLE_N_CORRECTORS,

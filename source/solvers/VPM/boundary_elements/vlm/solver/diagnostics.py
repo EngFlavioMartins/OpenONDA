@@ -56,7 +56,7 @@ class VLMDiagnostics:
         diagnostics_history: dict,
         step: int,
         time: float,
-        checkpoint_directory: str,
+        case_dir: str,
         sample_subdirectory: str | None = None,
     ) -> None:
         """Record VLM force and circulation scalars and (if due) flush to CSV.
@@ -75,9 +75,9 @@ class VLMDiagnostics:
             Current integer step counter.
         time:
             Current simulation time [s].
-        backup_directory:
+        case_dir:
             Solver backup/output root directory (CSV is written under
-            ``<backup_directory>/samples/vlm_forces.csv``).
+            ``<case_dir>/samples/vlm_forces.csv``).
         """
         if vlm_solver is None or not hasattr(vlm_solver, "_last_forces"):
             return
@@ -122,7 +122,7 @@ class VLMDiagnostics:
                     n_p,
                     time,
                     step,
-                    checkpoint_directory,
+                    case_dir,
                     sample_subdirectory,
                 )
         except Exception as exc:
@@ -140,10 +140,10 @@ class VLMDiagnostics:
         n_p: int,
         time: float,
         step: int,
-        checkpoint_directory: str,
+        case_dir: str,
         sample_subdirectory: str | None = None,
     ) -> None:
-        """Append one row to ``<backup_directory>/samples/vlm_forces.csv``.
+        """Append one row to ``<case_dir>/samples/vlm_forces.csv``.
 
         Parameters
         ----------
@@ -161,12 +161,12 @@ class VLMDiagnostics:
             Current simulation time [s].
         step:
             Integer step counter.
-        backup_directory:
-            Output root; CSV is written under ``<backup_directory>/samples/``.
+        case_dir:
+            Output root; CSV is written under ``<case_dir>/samples/``.
         """
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(checkpoint_directory, sample_subdirectory)
+        samples_dir = resolve_samples_dir(case_dir, sample_subdirectory)
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 

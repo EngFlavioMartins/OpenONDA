@@ -23,20 +23,9 @@ import sys
 
 import numpy as np
 
-from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
 import openonda.fvm as fvm
-from openonda.vpm import (
-    AdvectionConfig,
-    LineSampler as VPMLineSampler,
-    StabilizationConfig,
-    StretchingConfig,
-    SurfaceSampler as VPMSurfaceSampler,
-    TurbulenceConfig as VPMTurbulenceConfig,
-    VelocityConfig,
-    ViscousConfig,
-    VPMSetup,
-    create_vpm_solver,
-)
+import openonda.coupler as coupling
+import openonda.vpm as vpm
 
 CASE_DIR = Path(__file__).resolve().parent
 SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
@@ -133,13 +122,13 @@ FVM_SAMPLERS = (
 )
 
 VPM_SAMPLERS = (
-    VPMLineSampler(
+    vpm.LineSampler(
         start=[VPM_DOMAIN[0], 0.0, 0.0],
         end=[VPM_DOMAIN[1], 0.0, 0.0],
         spacing=SPACING,
         file_name="vpm_centerline",
     ),
-    VPMSurfaceSampler(
+    vpm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
         normal=[0.0, 0.0, 1.0],
         bounds=[VPM_DOMAIN[0], VPM_DOMAIN[1], VPM_DOMAIN[2], VPM_DOMAIN[3]],
@@ -199,29 +188,29 @@ FVM_SETUP = fvm.FVMSetup(
     initial_kinematic_pressure=0.0,
 )
 
-VPM_SETUP = VPMSetup(
+VPM_SETUP = vpm.VPMSetup(
     time_step_size=VPM_TIME_STEP_SIZE,
     freestream_velocity=list(FREESTREAM_VELOCITY),
-    viscous=ViscousConfig.cs(viscosity=KINEMATIC_VISCOSITY, characteristic_distance=SPACING),
-    stretching=StretchingConfig.transposed(scheme="RK2"),
-    advection=AdvectionConfig(scheme="RK2"),
-    turbulence=VPMTurbulenceConfig.les_smagorinsky(cs=0.17),
-    velocity=VelocityConfig.treecode(theta=0.3, multipole_order=2),
-    stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
-    particles_kernel="GAUSSIAN",
+    viscous=vpm.ViscousConfig.cs(kinematic_viscosity=KINEMATIC_VISCOSITY, particle_spacing=SPACING),
+    stretching=vpm.StretchingConfig.transposed(scheme="RK2"),
+    advection=vpm.AdvectionConfig(scheme="RK2"),
+    turbulence=vpm.TurbulenceConfig.les_smagorinsky(c_s=0.17),
+    velocity=vpm.VelocityConfig.treecode(theta=0.3, multipole_order=2),
+    stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
+    particle_kernel="GAUSSIAN",
     precision="f32",
-    processing_unit="AUTO",
+    compute_device="AUTO",
     max_particles=MAX_PARTICLES,
-    max_targets=MAX_PARTICLES,
-    vpm_domain_bounds=list(VPM_DOMAIN),
+    max_evaluation_points=MAX_PARTICLES,
+    domain_bounds=list(VPM_DOMAIN),
     log_mode="file",
-    logging_frequency=VPM_LOG_PERIOD,
-    backup_frequency=VPM_LOG_PERIOD,
-    backup_directory=str(CASE_DIR / "solution"),
+    logging_interval_steps=VPM_LOG_PERIOD,
+    checkpoint_interval_steps=VPM_LOG_PERIOD,
+    checkpoint_directory=str(CASE_DIR / "solution"),
     samplers=VPM_SAMPLERS,
 )
 
-COUPLER_SETUP = CouplerSetup(
+COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
     vpm_particle_spacing=SPACING,
     overlap_zone_ramp_width=6 * SPACING,
@@ -229,7 +218,7 @@ COUPLER_SETUP = CouplerSetup(
     transfer_prune_vorticity_min=0.01,
     transfer_max_particles=MAX_PARTICLES,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
-    coupler_backup_period=VPM_LOG_PERIOD,
+    checkpoint_interval_steps=VPM_LOG_PERIOD,
 )
 
 
@@ -286,17 +275,15 @@ def _run_with_overrides(argv: list[str]) -> int:
 def main() -> None:
     print("\n===== SIMULATION =====")
     print(
-        f"  FVM dt={FVM_TIME_STEP_SIZE}s / VPM dt={VPM_TIME_STEP_SIZE}s, spacing={SPACING}, particles<={MAX_PARTICLES}"
+        f"  FVM dt={FVM_TIME_STEP_SIZE}s / VPM dt={VPM_TIME_STEP_SIZE}s, "
+        f"spacing={SPACING}, particles<={MAX_PARTICLES}"
     )
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.set_immersed_bodies(AIRFOIL, particle_spacing=SPACING)
     fvm_solver.write_vtk()
-
-    vpm_solver = create_vpm_solver(VPM_SETUP) if FVMVPMCoupler.is_master_rank() else None
-    coupled_solver = create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
+    vpm_solver = vpm.create_vpm_solver(VPM_SETUP, case_dir=CASE_DIR)
+    coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
     coupled_solver.run()
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
 
 
 if __name__ == "__main__":

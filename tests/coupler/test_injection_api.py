@@ -34,11 +34,11 @@ class _FakeVPM:
         self._override = None
         self._freestream_velocity = np.asarray(freestream_velocity, dtype=float)
         self.setup = SimpleNamespace(
-            particles_kernel="GAUSSIAN",
+            particle_kernel="GAUSSIAN",
             domain_bounds=domain_bounds,
             viscous=SimpleNamespace(
                 scheme="CS",
-                viscosity=1e-3,
+                kinematic_viscosity=1e-3,
                 core_radius_ratio=1.0,
                 dvh_threshold_mode="relative_local",
                 gbd_threshold_mode="relative_local",
@@ -148,8 +148,8 @@ def test_use_injected_flag_and_adoption(monkeypatch, tmp_path):
 
     c.initialize()
     # Solvers adopted, not rebuilt.
-    assert c.fvm is fvm
-    assert c.vpm is vpm
+    assert c.fvm_solver is fvm
+    assert c.vpm_solver is vpm
     # The native FVM configuration owns its sub-step and fluid properties.
     assert c.fvm_time_step_size == pytest.approx(0.02)
     assert c.vpm_time_step_size == pytest.approx(0.1)
@@ -182,15 +182,8 @@ def test_non_master_tolerates_none_vpm(monkeypatch, tmp_path):
     c = FVMVPMCoupler(_FakeFVM(), None, _make_config())
     assert c._is_master is False
     c.initialize()
-    assert c.vpm is None
-    assert c.fvm is not None
-
-
-def test_is_master_rank(monkeypatch):
-    monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "0")
-    assert FVMVPMCoupler.is_master_rank() is True
-    monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "3")
-    assert FVMVPMCoupler.is_master_rank() is False
+    assert c.vpm_solver is None
+    assert c.fvm_solver is not None
 
 
 def test_physics_first_coupler_factory(monkeypatch):
@@ -224,11 +217,26 @@ def test_coupler_uses_native_case_directory(monkeypatch, tmp_path):
     assert coupler.case_dir == tmp_path
 
 
-def test_vpm_factory_hides_distributed_root_ownership(monkeypatch):
+def test_vpm_factory_hides_distributed_root_ownership(
+    monkeypatch,
+    tmp_path,
+):
     from source.solvers.VPM import VPMSetup, create_vpm_solver
+    import source.solvers.VPM.factory as vpm_factory
 
-    monkeypatch.setenv("OMPI_COMM_WORLD_RANK", "2")
-    assert create_vpm_solver(VPMSetup()) is None
+    monkeypatch.setattr(
+        vpm_factory,
+        "_rank_and_size",
+        lambda: (2, 4),
+    )
+    handle = create_vpm_solver(
+        VPMSetup(log_mode="console"),
+        case_dir=tmp_path,
+    )
+
+    assert handle is not None
+    assert handle._openonda_inactive_rank
+    assert handle.case_dir == tmp_path.resolve()
 
 
 def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
@@ -262,9 +270,9 @@ def test_initialize_is_idempotent_and_solve_guard(monkeypatch, tmp_path):
         c.solve()
 
     c.initialize()
-    transfer = c.transfer
+    transfer = c.vorticity_transfer
     c.initialize()  # second call: no-op
-    assert c.transfer is transfer
+    assert c.vorticity_transfer is transfer
 
 
 def test_injected_vpm_domain_must_contain_box(monkeypatch, tmp_path):

@@ -140,7 +140,7 @@ def test_circulation_refit_matches_full_rebuild_exactly():
     refitted = _make_tree(N, theta=0.3)
     refitted.build(pos_field, circ0_field, rad_field, N)
     sorted_before = refitted.sorted_indices.to_numpy()[:N].copy()
-    refitted.refit_circulation(circ1_field, N)
+    refitted.refit_vortex_strength(circ1_field, N)
     refitted.compute_velocity_gradients_gpu()
     gradient_refit = refitted.velocity_gradients.to_numpy()[:N].copy()
 

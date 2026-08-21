@@ -78,7 +78,7 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
         kinematic_viscosity=np.array([nu]),
     )
     solver.advance()
-    sigma_new = float(solver.particles_radii[0])
+    sigma_new = float(solver.particle_core_radius[0])
     expected_sq = _SIGMA**2 + C * nu * time_step_size
     rel_err = abs(sigma_new**2 - expected_sq) / expected_sq
     assert rel_err < 1e-4, (

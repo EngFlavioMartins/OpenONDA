@@ -131,7 +131,7 @@ def test_root_total_circulation_equals_global_sum(N):
     tree = _make_tree(N, theta=0.4)
     tree.build(pos, circ, rad, force=True)
     root = tree._root[None]
-    root_circ = tree.node_total_circ.to_numpy()[root]
+    root_circ = tree.node_total_vortex_strength.to_numpy()[root]
     true_sum = circ.astype(np.float64).sum(axis=0)
     assert tree.node_particle_count.to_numpy()[root] == N
     assert _rel_l2(root_circ, true_sum) < 1e-4
@@ -169,7 +169,7 @@ def test_internal_node_circulation_matches_its_leaf_range():
     pos, circ, rad = _cloud(N, seed=5)
     tree = _make_tree(N, theta=0.4)
     tree.build(pos, circ, rad, force=True)
-    nc = tree.node_total_circ.to_numpy()
+    nc = tree.node_total_vortex_strength.to_numpy()
     start = tree.node_particle_start.to_numpy()
     count = tree.node_particle_count.to_numpy()
     leaf_particles = tree.leaf_particles.to_numpy()
@@ -193,7 +193,7 @@ def test_dipole_moment_matches_particles_about_node_com():
     tree = _make_tree(N, theta=0.4, multipole_order=2)
     tree.build(pos, circ, rad, force=True)
 
-    moment = tree.node_circ_dipole.to_numpy()
+    moment = tree.node_vortex_strength_dipole.to_numpy()
     com = tree.node_com.to_numpy()
     start = tree.node_particle_start.to_numpy()
     count = tree.node_particle_count.to_numpy()

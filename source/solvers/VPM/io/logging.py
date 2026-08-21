@@ -454,8 +454,8 @@ class Logging:
 
         Works whether or not particles are loaded — reads limits directly from
         the ViscousConfig methods (rwm_accuracy_dt, gbd_max_dt,
-        dvh_required_dt) which require only ``characteristic_distance`` and
-        ``viscosity`` to be set on the config.  Skips silently when those fields
+        dvh_required_dt) which require only ``particle_spacing`` and
+        ``kinematic_viscosity`` to be set on the config.  Skips silently when those fields
         are absent.
         """
         lines = []
@@ -523,7 +523,7 @@ class Logging:
             lines.append("  Core moment projection   : circulation + both impulses")
 
         # Configured Δt and stability/accuracy limit — always shown when
-        # characteristic_distance + viscosity are set on the config.
+        # particle_spacing + kinematic_viscosity are set on the config.
         lines.extend(Logging._format_viscous_time_step_size_limits(system))
 
         if hasattr(system, "particles") and len(system.particles) > 0:

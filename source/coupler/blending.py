@@ -48,9 +48,9 @@ def lambda_max_from_scales(
 class BlendingZone:
     def __init__(self, cfg, vpm, fvm, *, coupling_time_step_size: float, fvm_box):
         self.cfg = cfg
-        self.vpm = vpm
-        self.fvm = fvm
-        self.cell_centres = np.asarray(fvm.get_cell_center_coordinates()).reshape(-1, 3)
+        self.vpm_solver = vpm
+        self.fvm_solver = fvm
+        self.cell_centres = np.asarray(fvm.get_cell_centre_coordinates()).reshape(-1, 3)
         u_char = float(np.linalg.norm(cfg.freestream_velocity_vector))
         lambda_max = lambda_max_from_scales(
             u_char, cfg.overlap_zone_ramp_width, coupling_time_step_size
@@ -63,7 +63,7 @@ class BlendingZone:
             lambda_max,
             overlap_zone_dead_zone,
         )
-        self.fvm.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.relaxation))
+        self.fvm_solver.set_cell_scalar_field("lambdaRelax", np.ascontiguousarray(self.relaxation))
         self._previous: np.ndarray | None = None
         self._next: np.ndarray | None = None
         _logger.info(
@@ -119,7 +119,7 @@ class BlendingZone:
         self._push(self._previous + fraction * (self._next - self._previous))
 
     def _push(self, target: np.ndarray) -> None:
-        self.fvm.set_cell_vector_field(
+        self.fvm_solver.set_cell_vector_field(
             "Utarget",
             np.ascontiguousarray(target[:, 0]),
             np.ascontiguousarray(target[:, 1]),

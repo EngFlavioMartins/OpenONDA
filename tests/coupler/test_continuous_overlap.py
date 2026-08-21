@@ -177,6 +177,7 @@ def test_transfer_reuses_native_ibm_solid_geometry():
         transfer_region_box=None,
         transfer_amplification_cap=2.0,
         transfer_boundary_prune_multiplier=1.0,
+        transfer_diagnostic_interval_steps=1,
     )
     body = ImmersedBody.cylinder_z([0.0, 0.0, 0.0], diameter=1.0, h=0.1)
     fvm = SimpleNamespace(
@@ -189,7 +190,7 @@ def test_transfer_reuses_native_ibm_solid_geometry():
         vpm_time_step_size=0.1,
         kinematic_viscosity=0.01,
         fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -0.1, 0.1]),
-        vpm=None,
+        vpm_solver=None,
     )
     transfer = VorticityTransfer(coupler)
     transfer.setup(fvm)
@@ -215,6 +216,7 @@ def test_transfer_uses_separate_transfer_region_box():
         transfer_region_box=(-0.7, 0.7, -0.7, 0.7, -0.7, 0.7),
         transfer_amplification_cap=2.0,
         transfer_boundary_prune_multiplier=1.0,
+        transfer_diagnostic_interval_steps=1,
     )
     fvm = SimpleNamespace(
         ibm=SimpleNamespace(bodies=[]),
@@ -227,7 +229,7 @@ def test_transfer_uses_separate_transfer_region_box():
             vpm_time_step_size=0.1,
             kinematic_viscosity=0.01,
             fvm_box=np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]),
-            vpm=None,
+            vpm_solver=None,
         )
     )
 

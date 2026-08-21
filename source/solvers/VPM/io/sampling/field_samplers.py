@@ -74,22 +74,9 @@ def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
     return body_stl, case_dir
 
 
-def resolve_samples_dir(output_directory, sample_subdirectory: str | None = None) -> Path:
-    """Return the mandatory solver-managed ``samples/`` directory.
-
-    If ``output_directory`` is literally a folder named "solution" (the
-    convention used by coupled FVM/VPM cases, where VPM's backup directory
-    is pointed at FVM's own solution/ folder), samples/ is placed next to
-    it at the case root instead of nested inside it. Otherwise
-    output_directory is already the case's own directory and samples/ is
-    created directly under it — the existing behavior for standalone VPM
-    tutorials, where each case gets its own backup subdirectory.  A relative
-    ``sample_subdirectory`` may separate runs below that fixed root; it cannot
-    relocate the root itself.
-    """
-    path = Path(output_directory)
-    case_root = path.parent if path.name == "solution" else path
-    samples_dir = case_root / "samples"
+def resolve_samples_dir(case_directory, sample_subdirectory: str | None = None) -> Path:
+    """Return the mandatory ``<case>/samples`` directory."""
+    samples_dir = Path(case_directory).resolve() / "samples"
     return samples_dir / sample_subdirectory if sample_subdirectory else samples_dir
 
 

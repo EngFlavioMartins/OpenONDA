@@ -456,7 +456,7 @@ class EvolutionStepper:
                     self.coupled_max_strain_increment / max_strain,
                 )
 
-        spacing = getattr(self._viscous_config, "characteristic_distance", None)
+        spacing = getattr(self._viscous_config, "particle_spacing", None)
         if spacing is not None and spacing > 0.0:
             velocity = self.particles_velocities
             max_speed = float(np.linalg.norm(velocity, axis=1).max()) if len(velocity) else 0.0

@@ -53,7 +53,7 @@ class CouplerSetup:
     """Post-transfer VPM particle population cap; None is unlimited."""
     transfer_amplification_cap: float = 2.0
     """Maximum gain of the bounded local circulation correction; at least one."""
-    transfer_diagnostic_interval: int = 1
+    transfer_diagnostic_interval_steps: int = 1
     """Coupling steps between transfer diagnostics; at least one."""
 
     # ---- VPM BOUNDARY-CONDITION TRACE ON THE FVM ----
@@ -76,7 +76,7 @@ class CouplerSetup:
     """Anchor the mean upstream total-pressure reference to the freestream value."""
 
     # ---- RUN-LEVEL OPERATIONAL ----
-    coupler_backup_period: int = 1
+    checkpoint_interval_steps: int = 1
     """Coupling steps between automatic checkpoints; non-negative (0 disables backups)."""
 
     def __post_init__(self) -> None:
@@ -115,8 +115,8 @@ class CouplerSetup:
         ]
         if invalid:
             raise ValueError(f"Coupling values must be positive: {', '.join(invalid)}")
-        if self.coupler_backup_period < 0:
-            raise ValueError("coupler_backup_period must be non-negative")
+        if self.checkpoint_interval_steps < 0:
+            raise ValueError("checkpoint_interval_steps must be non-negative")
         if self.overlap_zone_dead_zone_width < 0.0 or self.transfer_prune_vorticity_min < 0.0:
             raise ValueError(
                 "overlap_zone_dead_zone_width and transfer_prune_vorticity_min must be non-negative"
@@ -125,7 +125,7 @@ class CouplerSetup:
             raise ValueError("transfer_amplification_cap must be at least one")
         if self.transfer_boundary_prune_multiplier < 1.0:
             raise ValueError("transfer_boundary_prune_multiplier must be at least one")
-        if self.transfer_diagnostic_interval < 1:
+        if self.transfer_diagnostic_interval_steps < 1:
             raise ValueError("transfer_diagnostic_interval must be at least one")
         if self.overlap_zone_ramp_width <= self.overlap_zone_dead_zone_width:
             raise ValueError("overlap_zone_ramp_width must exceed overlap_zone_dead_zone_width")
@@ -160,7 +160,7 @@ class CouplerSetup:
         return {
             "coupler": {
                 "freestream_velocity": self.freestream_velocity,
-                "coupler_backup_period": self.coupler_backup_period,
+                "checkpoint_interval_steps": self.checkpoint_interval_steps,
                 "bc_patch_name": self.bc_patch_name,
                 "vpm_bc_mode": self.vpm_bc_mode,
                 "transfer_region_box": transfer_region_box,
@@ -172,7 +172,7 @@ class CouplerSetup:
                 "transfer_max_particles": self.transfer_max_particles,
                 "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
                 "transfer_amplification_cap": self.transfer_amplification_cap,
-                "transfer_diagnostic_interval": self.transfer_diagnostic_interval,
+                "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
                 "bc_resync_after_transfer": self.bc_resync_after_transfer,
                 "pressure_anchor_to_freestream": self.pressure_anchor_to_freestream,
             }

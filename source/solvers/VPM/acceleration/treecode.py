@@ -10,7 +10,7 @@ while maintaining controllable accuracy via the opening angle θ.
 
 Algorithm:
 1. Build octree from particle positions
-2. Compute multipole moments (total circulation, center of vorticity) bottom-up
+2. Compute multipole moments (total vortex strength, center of vorticity) bottom-up
 3. For each target, traverse tree:
    - If node is "far" (size/distance < θ): use multipole approximation
    - Otherwise: recurse into children or direct-sum leaf particles
@@ -44,7 +44,7 @@ class OctreeNode:
         particles: List of particle indices contained in this node (leaf only)
         children: List of child nodes (interior only, up to 8)
         total_vortex_strength: Sum of circulations Σ Γ_i for multipole
-        center_of_vorticity: Circulation-weighted centroid Σ(x_i |Γ_i|) / Σ|Γ_i|
+        center_of_vorticity: Vortex strength-weighted centroid Σ(x_i |Γ_i|) / Σ|Γ_i|
         avg_radius: Average particle radius in this node (for kernel smoothing)
     """
 
@@ -56,7 +56,7 @@ class OctreeNode:
     # Multipole moments
     total_vortex_strength: np.ndarray = None
     center_of_vorticity: np.ndarray = None
-    avg_radius: float = 0.0
+    average_core_radius: float = 0.0
 
     @property
     def is_leaf(self) -> bool:
@@ -97,8 +97,8 @@ class BarnesHutTreecode:
 
         # Particle data references (set during build)
         self.positions: np.ndarray | None = None
-        self.circulations: np.ndarray | None = None
-        self.radii: np.ndarray | None = None
+        self.vortex_strengths: np.ndarray | None = None
+        self.core_radii: np.ndarray | None = None
 
         # Tree root
         self.root: OctreeNode | None = None
@@ -110,7 +110,9 @@ class BarnesHutTreecode:
         self.max_depth = 0
         self.build_time = 0.0
 
-    def build(self, positions: np.ndarray, circulations: np.ndarray, radii: np.ndarray) -> None:
+    def build(
+        self, positions: np.ndarray, vortex_strengths: np.ndarray, core_radii: np.ndarray
+    ) -> None:
         """
         Build octree from particle data.
 
@@ -122,8 +124,8 @@ class BarnesHutTreecode:
         t_start = time.perf_counter()
 
         self.positions = np.ascontiguousarray(positions, dtype=np.float64)
-        self.circulations = np.ascontiguousarray(circulations, dtype=np.float64)
-        self.radii = np.ascontiguousarray(radii, dtype=np.float64)
+        self.vortex_strengths = np.ascontiguousarray(vortex_strengths, dtype=np.float64)
+        self.core_radii = np.ascontiguousarray(core_radii, dtype=np.float64)
         self.n_particles = len(positions)
 
         # Reset statistics
@@ -215,17 +217,17 @@ class BarnesHutTreecode:
         if not node.particles:
             node.total_vortex_strength = np.zeros(3)
             node.center_of_vorticity = node.center.copy()
-            node.avg_radius = 0.0
+            node.average_core_radius = 0.0
             return
 
-        circs = self.circulations[node.particles]
+        vortex_strengths_local = self.vortex_strengths[node.particles]
         poss = self.positions[node.particles]
-        rads = self.radii[node.particles]
+        core_radii_local = self.core_radii[node.particles]
 
-        node.total_vortex_strength = circs.sum(axis=0)
-        node.avg_radius = rads.mean()
+        node.total_vortex_strength = vortex_strengths_local.sum(axis=0)
+        node.average_core_radius = core_radii_local.mean()
 
-        mags = np.linalg.norm(circs, axis=1, keepdims=True)
+        mags = np.linalg.norm(vortex_strengths_local, axis=1, keepdims=True)
         total_mag = mags.sum()
 
         if total_mag > 1e-15:
@@ -235,24 +237,24 @@ class BarnesHutTreecode:
 
     def _compute_interior_multipoles(self, node: OctreeNode) -> None:
         """Aggregate multipole moments from children for an interior node."""
-        total_circ = np.zeros(3)
+        total_vortex_strength = np.zeros(3)
         weighted_pos = np.zeros(3)
         total_weight = 0.0
         total_radius = 0.0
         n_particles = 0
 
         for child in node.children:
-            total_circ += child.total_vortex_strength
+            total_vortex_strength += child.total_vortex_strength
             mag = np.linalg.norm(child.total_vortex_strength)
             weighted_pos += child.center_of_vorticity * mag
             total_weight += mag
 
             n_child = len(child.particles) if child.is_leaf else 1
-            total_radius += child.avg_radius * n_child
+            total_radius += child.average_core_radius * n_child
             n_particles += n_child
 
-        node.total_vortex_strength = total_circ
-        node.avg_radius = total_radius / max(n_particles, 1)
+        node.total_vortex_strength = total_vortex_strength
+        node.average_core_radius = total_radius / max(n_particles, 1)
 
         if total_weight > 1e-15:
             node.center_of_vorticity = weighted_pos / total_weight
@@ -315,7 +317,7 @@ class BarnesHutTreecode:
         # If node is "far enough", use multipole approximation
         if r_mag > 1e-10 and (2 * node.half_size / r_mag) < self.theta:
             # Use monopole approximation: treat entire node as single vortex
-            sigma = 0.5 * (target_radius + node.avg_radius)
+            sigma = 0.5 * (target_radius + node.average_core_radius)
             r_sigma = r_mag / sigma
             q_val = self._q_kernel(r_sigma)
 
@@ -329,10 +331,10 @@ class BarnesHutTreecode:
                 r_mag_j = np.linalg.norm(r_vec_j)
 
                 if r_mag_j > 1e-12:
-                    sigma = 0.5 * (target_radius + self.radii[j])
+                    sigma = 0.5 * (target_radius + self.core_radii[j])
                     r_sigma = r_mag_j / sigma
                     q_val = self._q_kernel(r_sigma)
-                    vel -= q_val * np.cross(r_vec_j, self.circulations[j]) / (r_mag_j**3)
+                    vel -= q_val * np.cross(r_vec_j, self.vortex_strengths[j]) / (r_mag_j**3)
         else:
             # Interior node: recurse into children
             for child in node.children:
@@ -383,8 +385,8 @@ class BarnesHutTreecode:
 
 def compute_velocities_treecode(
     positions: np.ndarray,
-    circulations: np.ndarray,
-    radii: np.ndarray,
+    vortex_strengths: np.ndarray,
+    core_radii: np.ndarray,
     theta: float = 0.5,
     freestream_velocity: np.ndarray | None = None,
 ) -> np.ndarray:
@@ -402,14 +404,14 @@ def compute_velocities_treecode(
         Velocities [N, 3]
     """
     tree = BarnesHutTreecode(theta=theta)
-    tree.build(positions, circulations, radii)
-    return tree.compute_velocities(positions, radii, freestream_velocity)
+    tree.build(positions, vortex_strengths, core_radii)
+    return tree.compute_velocities(positions, core_radii, freestream_velocity)
 
 
 def benchmark_treecode(
     positions: np.ndarray,
-    circulations: np.ndarray,
-    radii: np.ndarray,
+    vortex_strengths: np.ndarray,
+    core_radii: np.ndarray,
     direct_velocities: np.ndarray | None = None,
     theta_values: list[float] = None,
 ) -> dict:
@@ -437,8 +439,8 @@ def benchmark_treecode(
     for theta in theta_values:
         t_start = time.perf_counter()
         tree = BarnesHutTreecode(theta=theta)
-        tree.build(positions, circulations, radii)
-        v_tree = tree.compute_velocities(positions, radii)
+        tree.build(positions, vortex_strengths, core_radii)
+        v_tree = tree.compute_velocities(positions, core_radii)
         t_elapsed = time.perf_counter() - t_start
 
         if direct_velocities is not None:

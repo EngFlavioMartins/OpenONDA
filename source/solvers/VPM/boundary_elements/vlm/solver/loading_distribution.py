@@ -6,12 +6,12 @@ data already computed by the VLM solver.  No force recomputation is performed;
 this is a pure reduction of existing lattice fields.
 
 Output CSVs:
-  <backup_dir>/samples/vlm_spanwise_<surface>.csv   — one row per spanwise station
-  <backup_dir>/samples/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
+  <case_dir>/samples/vlm_spanwise_<surface>.csv   — one row per spanwise station
+  <case_dir>/samples/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
 
 Call pattern (mirrors VLMDiagnostics):
   VLMLoadingDistribution.record_loading_distributions(
-      vlm_solver, diagnostics_history, time_step, flow_time, backup_directory)
+      vlm_solver, diagnostics_history, time_step, flow_time, case_dir)
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: June 2026

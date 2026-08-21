@@ -109,11 +109,11 @@ def write_run_metadata(coupler) -> None:
         "case_dir": str(coupler.case_dir),
         "physics": {
             "freestream_velocity": coupler.setup.freestream_velocity,
-            "nu": coupler.nu,
-            "rho": coupler.rho,
+            "nu": coupler.kinematic_viscosity,
+            "rho": coupler.density,
             "dt": coupler.fvm_time_step_size,
             "t_end": coupler.end_time,
-            "coupler_backup_period": coupler.setup.coupler_backup_period,
+            "checkpoint_interval_steps": coupler.setup.checkpoint_interval_steps,
         },
         "fvm_solver": {
             "bc_patch_name": coupler.setup.bc_patch_name,
@@ -240,13 +240,14 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
 
     interface = {}
     closure = {}
-    if coupler.transfer is not None:
+    if coupler.vorticity_transfer is not None:
         interface = {
-            str(name): float(value) for name, value in coupler.transfer.last_interface_flow.items()
+            str(name): float(value)
+            for name, value in coupler.vorticity_transfer.last_interface_flow.items()
         }
         closure = {
             str(name): float(value)
-            for name, value in coupler.transfer.last_vortex_line_closure.items()
+            for name, value in coupler.vorticity_transfer.last_vortex_line_closure.items()
         }
     pressure_shift = (
         0.0 if coupler.pressure_reference is None else coupler.pressure_reference.last_shift
@@ -325,7 +326,10 @@ def record_step(
 
     if comm is not None and comm.Get_size() > 1:
         comm.Barrier()
-    if coupler.setup.coupler_backup_period > 0 and step % coupler.setup.coupler_backup_period == 0:
+    if (
+        coupler.setup.checkpoint_interval_steps > 0
+        and step % coupler.setup.checkpoint_interval_steps == 0
+    ):
         coupler.save_state(coupler.solution_dir / CHECKPOINT_DIRECTORY, coupling_step=step)
 
 

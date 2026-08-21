@@ -31,9 +31,10 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
 import openonda.fvm as fvm
 from seed_perturbation import build_seed_velocity
+import openonda.coupler as coupling
+import openonda.vpm as vpm
 
 CASE_DIR = Path(__file__).resolve().parent
 SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
@@ -266,9 +267,9 @@ FVM_SETUP = fvm.FVMSetup(
         momentum_relative_tolerance=0.1,
         momentum_final_relative_tolerance=0.0,
         momentum_max_iterations=2000,
-        ilu_drop_tol=1e-4,
+        ilu_drop_tolerance=1e-4,
         ilu_fill_factor=10.0,
-        ilu_reuse_tol=0.05,
+        ilu_reuse_tolerance=0.05,
     ),
     pimple=fvm.PimpleControl(
         n_correctors=PIMPLE_N_CORRECTORS,
@@ -296,12 +297,12 @@ FVM_SETUP = fvm.FVMSetup(
 # --------------------------------------------------------------------------- #
 # Coupler configuration
 # --------------------------------------------------------------------------- #
-COUPLER_SETUP = CouplerSetup(
+COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
     transfer_region_box=TRANSFER_REGION_BOX,
     bc_resync_after_transfer=True,
     pressure_anchor_to_freestream=False,
-    coupler_backup_period=COUPLER_BACKUP_PERIOD,
+    checkpoint_interval_steps=COUPLER_BACKUP_PERIOD,
     vpm_bc_mode=VPM_BC_MODE,
     vpm_particle_spacing=VPM_PARTICLE_SPACING,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
@@ -311,7 +312,7 @@ COUPLER_SETUP = CouplerSetup(
     transfer_boundary_prune_multiplier=TRANSFER_BOUNDARY_PRUNE_MULTIPLIER,
     transfer_max_particles=PARTICLE_LIMIT,
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
-    transfer_diagnostic_interval=TRANSFER_DIAGNOSTIC_INTERVAL,
+    transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL,
 )
 
 
@@ -333,83 +334,66 @@ def _apply_seed(fvm_solver) -> None:
     print(f"  Applied controlled seed: eps={SEED_AMPLITUDE:.3e}, max|u'|/Uinf={peak / U_INF:.3e}")
 
 
-def make_vpm_setup():
-    """Build the VPM setup on the MPI rank that owns the VPM solver."""
-    from openonda.vpm import (
-        AdvectionConfig,
-        LineSampler,
-        StabilizationConfig,
-        StretchingConfig,
-        SurfaceSampler,
-        TurbulenceConfig,
-        VelocityConfig,
-        ViscousConfig,
-        VPMSetup,
-    )
-
-    # Note: the VPM samplers live in the same ``samples/`` directory as the
-    # FVM samplers, so they carry their own ``vpm_`` prefix in ``file_name``
-    # (the post-processing "_plotutil" adds no extra prefix for the vpm source).
-    samplers = (
-        LineSampler(
-            start=[VPM_DOMAIN[0], 0.0, 0.0],
-            end=[VPM_DOMAIN[1], 0.0, 0.0],
-            spacing=SAMPLE_SPACING,
-            file_name="vpm_centerline",
-        ),
-        SurfaceSampler(
-            point=[0.0, 0.0, 0.0],
-            normal=[0, 0, 1],
-            bounds=MIDSPAN_SLICE_BOUNDS,
-            spacing=SAMPLE_SPACING,
-            file_name="vpm_slice_z0",
-            include_derivatives=False,
-        ),
-        SurfaceSampler(
-            point=[0.0, 0.0, 0.0],
-            normal=[0, 0, 1],
-            bounds=WAKE_SLICE_BOUNDS,
-            spacing=SAMPLE_SPACING,
-            file_name="vpm_wake_slice_z0",
-            include_derivatives=False,
-        ),
-    )
-    # No panel solver: the FVM owns the body (IBM cylinder) entirely, and this
-    # is an injected-VPM wake solver, so the VPM needs no boundary-element
-    # surface.  Omitting it keeps the VPM-BC at the FVM boundary equal to
-    # freestream + wake-particle induction, matching the reference far-field.
-    return VPMSetup(
-        time_step_size=VPM_TIME_STEP_SIZE,
-        freestream_velocity=list(FREESTREAM_VELOCITY),
-        viscous=ViscousConfig.gbd(
-            particle_spacing=VPM_PARTICLE_SPACING,
-            padding=3.0,
-            viscosity=KINEMATIC_VISCOSITY,
-            threshold_mode="absolute",
-            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
-            max_nodes=PARTICLE_LIMIT,
-            cap_abs_fraction=0.95,
-            core_radius_ratio=VPM_CORE_RADIUS_RATIO,
-        ),
-        stretching=StretchingConfig.transposed(scheme=VPM_SCHEME),
-        advection=AdvectionConfig(scheme=VPM_SCHEME),
-        turbulence=TurbulenceConfig.inviscid(),
-        velocity=VelocityConfig.treecode(theta=0.3, multipole_order=2),
-        stabilization=StabilizationConfig.bounded_domain(VPM_DOMAIN),
-        particles_kernel="GAUSSIAN",
-        precision="f32",
-        processing_unit="AUTO",
-        max_particles=PARTICLE_LIMIT,
-        max_targets=PARTICLE_LIMIT,
-        vpm_domain_bounds=list(VPM_DOMAIN),
-        log_mode="file",
-        logging_frequency=VPM_LOG_PERIOD,
-        timing_frequency=VPM_LOG_PERIOD,
-        backup_frequency=int(CHECKPOINT_INTERVAL / VPM_TIME_STEP_SIZE),
-        backup_directory=str(CASE_DIR / "solution"),
-        export_flow_integrals=False,
-        samplers=samplers,
-    )
+VPM_SAMPLERS = (
+    vpm.LineSampler(
+        start=[VPM_DOMAIN[0], 0.0, 0.0],
+        end=[VPM_DOMAIN[1], 0.0, 0.0],
+        spacing=SAMPLE_SPACING,
+        file_name="vpm_centerline",
+    ),
+    vpm.SurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 0, 1],
+        bounds=MIDSPAN_SLICE_BOUNDS,
+        spacing=SAMPLE_SPACING,
+        file_name="vpm_slice_z0",
+        include_derivatives=False,
+    ),
+    vpm.SurfaceSampler(
+        point=[0.0, 0.0, 0.0],
+        normal=[0, 0, 1],
+        bounds=WAKE_SLICE_BOUNDS,
+        spacing=SAMPLE_SPACING,
+        file_name="vpm_wake_slice_z0",
+        include_derivatives=False,
+    ),
+)
+# No panel solver: the FVM owns the body (IBM cylinder) entirely, and this
+# is an injected-VPM wake solver, so the VPM needs no boundary-element
+# surface.  Omitting it keeps the VPM-BC at the FVM boundary equal to
+# freestream + wake-particle induction, matching the reference far-field.
+VPM_SETUP = vpm.VPMSetup(
+    time_step_size=VPM_TIME_STEP_SIZE,
+    freestream_velocity=list(FREESTREAM_VELOCITY),
+    viscous=vpm.ViscousConfig.gbd(
+        particle_spacing=VPM_PARTICLE_SPACING,
+        padding=3.0,
+        kinematic_viscosity=KINEMATIC_VISCOSITY,
+        threshold_mode="absolute",
+        threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
+        max_nodes=PARTICLE_LIMIT,
+        cap_absolute_fraction=0.95,
+        core_radius_ratio=VPM_CORE_RADIUS_RATIO,
+    ),
+    stretching=vpm.StretchingConfig.transposed(scheme=VPM_SCHEME),
+    advection=vpm.AdvectionConfig(scheme=VPM_SCHEME),
+    turbulence=vpm.TurbulenceConfig.inviscid(),
+    velocity=vpm.VelocityConfig.treecode(theta=0.3, multipole_order=2),
+    stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
+    particle_kernel="GAUSSIAN",
+    precision="f32",
+    compute_device="AUTO",
+    max_particles=PARTICLE_LIMIT,
+    max_evaluation_points=PARTICLE_LIMIT,
+    domain_bounds=list(VPM_DOMAIN),
+    log_mode="file",
+    logging_interval_steps=VPM_LOG_PERIOD,
+    timing_interval_steps=VPM_LOG_PERIOD,
+    checkpoint_interval_steps=int(CHECKPOINT_INTERVAL / VPM_TIME_STEP_SIZE),
+    checkpoint_directory=str(CASE_DIR / "solution"),
+    export_flow_integrals=False,
+    samplers=VPM_SAMPLERS,
+)
 
 
 def main() -> None:
@@ -425,26 +409,14 @@ def main() -> None:
     if SEED_AMPLITUDE > 0.0:
         _apply_seed(fvm_solver)
     fvm_solver.write_vtk()
-
-    is_master = FVMVPMCoupler.is_master_rank()
-    vpm_solver = None
-    if is_master:
-        from openonda.vpm import create_vpm_solver
-
-        vpm_solver = create_vpm_solver(make_vpm_setup())
-
-    coupled_solver = create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
+    vpm_solver = vpm.create_vpm_solver(VPM_SETUP, case_dir=CASE_DIR)
+    coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
     max_steps = int(os.environ.get("OPENONDA_MAX_STEPS", "0"))
     if max_steps > 0:
-        # The coupler derives its horizon from the FVM config's end_time during
-        # initialize(), so cap that (the coupling step count follows).
         capped_t = min(END_TIME, max_steps * VPM_TIME_STEP_SIZE)
         FVM_SETUP.time.end_time = float(capped_t)
         print(f"  [probe] capping run to {max_steps} VPM steps (t={capped_t:g})")
     coupled_solver.run()
-    if is_master:
-        print("\n===== DONE =====")
-        print("Simulation completed. Run ./allvalidate.sh for the instability analysis.")
 
 
 if __name__ == "__main__":

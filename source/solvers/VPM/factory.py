@@ -1,14 +1,16 @@
-"""Construction helper for the VPM solver."""
+"""Construction helpers for the VPM solver."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .config.setup import VPMSetup
 
 if TYPE_CHECKING:
-    from .core.solver import VPMSolver
+    pass
 
 _RANK_VARIABLES = (
     "OMPI_COMM_WORLD_RANK",
@@ -17,29 +19,58 @@ _RANK_VARIABLES = (
     "MV2_COMM_WORLD_RANK",
     "SLURM_PROCID",
 )
+_SIZE_VARIABLES = (
+    "OMPI_COMM_WORLD_SIZE",
+    "PMI_SIZE",
+    "PMIX_SIZE",
+    "MV2_COMM_WORLD_SIZE",
+    "SLURM_NTASKS",
+)
 
 
-def _is_root_process() -> bool:
-    """Return whether the current process owns the VPM particle state."""
+def _rank_and_size() -> tuple[int, int]:
+    try:
+        from mpi4py import MPI
+
+        return int(MPI.COMM_WORLD.Get_rank()), int(MPI.COMM_WORLD.Get_size())
+    except ImportError:
+        pass
+    rank, size = 0, 1
     for name in _RANK_VARIABLES:
-        value = os.environ.get(name)
-        if value is not None:
-            return int(value) == 0
-    return True
+        if os.environ.get(name) is not None:
+            rank = int(os.environ[name])
+            break
+    for name in _SIZE_VARIABLES:
+        if os.environ.get(name) is not None:
+            size = int(os.environ[name])
+            break
+    return rank, size
 
 
-def create_vpm_solver(setup: VPMSetup) -> VPMSolver | None:
-    """Construct the VPM solver on the process that owns particle state.
+@dataclass(frozen=True)
+class _InactiveVPMSolver:
+    setup: VPMSetup
+    case_dir: Path
+    _openonda_inactive_rank: bool = True
 
-    Serial runs construct one solver. In distributed FVM-VPM coupling, only the
-    root process owns the VPM/GPU state and other ranks return ``None``.
-    """
-    if not _is_root_process():
-        return None
 
+def _runtime_setup(setup: VPMSetup, case_dir: Path) -> VPMSetup:
+    checkpoint_directory = Path(setup.checkpoint_directory)
+    if not checkpoint_directory.is_absolute():
+        checkpoint_directory = case_dir / checkpoint_directory
+    return replace(setup, checkpoint_directory=str(checkpoint_directory.resolve()))
+
+
+def create_vpm_solver(setup: VPMSetup, *, case_dir: str | Path | None = None):
+    """Construct VPM state without exposing MPI ownership to user code."""
+    resolved_case = Path("." if case_dir is None else case_dir).resolve()
+    runtime_setup = _runtime_setup(setup, resolved_case)
+    rank, size = _rank_and_size()
+    if size > 1 and rank != 0:
+        return _InactiveVPMSolver(runtime_setup, resolved_case)
     from .core.solver import VPMSolver
 
-    return VPMSolver(setup=setup)
+    return VPMSolver(setup=runtime_setup, case_dir=resolved_case)
 
 
 __all__ = ["create_vpm_solver"]

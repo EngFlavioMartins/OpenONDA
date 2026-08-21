@@ -125,9 +125,9 @@ def test_blending_zone_and_vpm_bc_share_one_target_evaluation():
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler._is_master = True
-    coupler.vpm = _VPM()
-    coupler.blending = _BlendingZone()
-    coupler._u_bc_prev = None
+    coupler.vpm_solver = _VPM()
+    coupler.blending_zone = _BlendingZone()
+    coupler._velocity_bc_prev = None
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
     coupler.setup = SimpleNamespace(vpm_bc_mode="dirichlet")
@@ -135,13 +135,13 @@ def test_blending_zone_and_vpm_bc_share_one_target_evaluation():
     centres, normals, areas = _cube_face_quadrature(nside=3)
     previous, u_bc, *_timings = evaluate_vpm_boundary(coupler, centres, normals, areas)
 
-    assert len(coupler.vpm.calls) == 1
+    assert len(coupler.vpm_solver.calls) == 1
     np.testing.assert_array_equal(
-        coupler.vpm.calls[0],
-        np.concatenate((coupler.blending.active_cell_centres, centres), axis=0),
+        coupler.vpm_solver.calls[0],
+        np.concatenate((coupler.blending_zone.active_cell_centres, centres), axis=0),
     )
     np.testing.assert_array_equal(
-        coupler.blending.active_velocity,
+        coupler.blending_zone.active_velocity,
         np.tile([1.0, 0.0, 0.0], (2, 1)),
     )
     np.testing.assert_allclose(previous, u_bc)
@@ -176,16 +176,16 @@ def test_pressure_vpm_bc_uses_the_same_body_complete_velocity_as_dirichlet_data(
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler._is_master = True
-    coupler.vpm = _VPM()
-    coupler.blending = _BlendingZone()
-    coupler._u_bc_prev = None
+    coupler.vpm_solver = _VPM()
+    coupler.blending_zone = _BlendingZone()
+    coupler._velocity_bc_prev = None
     coupler._pressure_gradient_bc_prev = None
     coupler._pressure_gradient_bc_next = None
     coupler._pressure_velocity_snapshot = None
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
     coupler.vpm_time_step_size = 0.05
-    coupler.rho = 1.0
+    coupler.density = 1.0
     coupler.kinematic_viscosity = 1.0e-3
     coupler.setup = SimpleNamespace(
         vpm_bc_mode="pressure_gradient",
@@ -195,7 +195,7 @@ def test_pressure_vpm_bc_uses_the_same_body_complete_velocity_as_dirichlet_data(
     centres, normals, areas = _cube_face_quadrature(nside=3)
     previous, u_bc, *_timings = evaluate_vpm_boundary(coupler, centres, normals, areas)
 
-    assert coupler.vpm.pressure_kwargs["include_body"] is True
+    assert coupler.vpm_solver.pressure_kwargs["include_body"] is True
     expected = np.tile([1.0, 0.0, 0.0], (len(centres), 1))
     np.testing.assert_allclose(previous, expected)
     np.testing.assert_allclose(u_bc, expected)
@@ -257,9 +257,9 @@ def test_vorticity_mixed_transfer_builds_normal_and_tangential_gradient_trace():
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler._is_master = True
-    coupler.vpm = _VPM()
-    coupler.blending = _BlendingZone()
-    coupler._u_bc_prev = None
+    coupler.vpm_solver = _VPM()
+    coupler.blending_zone = _BlendingZone()
+    coupler._velocity_bc_prev = None
     coupler._normal_velocity_bc_prev = None
     coupler._normal_velocity_bc_next = None
     coupler._tangential_gradient_bc_prev = None
@@ -306,23 +306,23 @@ def test_post_transfer_resync_refreshes_velocity_and_pressure_snapshots_together
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler._is_master = True
-    coupler.vpm = _VPM()
-    coupler.blending = _BlendingZone()
+    coupler.vpm_solver = _VPM()
+    coupler.blending_zone = _BlendingZone()
     coupler.setup = SimpleNamespace(
         bc_resync_after_transfer=True,
         vpm_bc_mode="pressure_gradient",
     )
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     centres, normals, areas = _cube_face_quadrature(nside=2)
-    coupler._u_bc_prev = np.zeros_like(centres)
+    coupler._velocity_bc_prev = np.zeros_like(centres)
     coupler._pressure_velocity_snapshot = np.zeros_like(centres)
 
     resynchronize_vpm_boundary(coupler, centres, normals, areas)
 
     expected = _VPM.compute_target_velocities(centres)
-    np.testing.assert_allclose(coupler._u_bc_prev, expected)
+    np.testing.assert_allclose(coupler._velocity_bc_prev, expected)
     np.testing.assert_allclose(coupler._pressure_velocity_snapshot, expected)
-    np.testing.assert_allclose(coupler.blending.endpoint, [[1.0, 0.0, 0.0]])
+    np.testing.assert_allclose(coupler.blending_zone.endpoint, [[1.0, 0.0, 0.0]])
 
 
 def test_post_transfer_resync_refreshes_both_mixed_trace_fields():
@@ -365,8 +365,8 @@ def test_post_transfer_resync_refreshes_both_mixed_trace_fields():
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler._is_master = True
-    coupler.vpm = _VPM()
-    coupler.blending = _BlendingZone()
+    coupler.vpm_solver = _VPM()
+    coupler.blending_zone = _BlendingZone()
     coupler.setup = SimpleNamespace(
         bc_resync_after_transfer=True,
         vpm_bc_mode="vorticity_mixed",
@@ -374,7 +374,7 @@ def test_post_transfer_resync_refreshes_both_mixed_trace_fields():
     )
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     centres, normals, areas = _cube_face_quadrature(nside=2)
-    coupler._u_bc_prev = np.zeros_like(centres)
+    coupler._velocity_bc_prev = np.zeros_like(centres)
     coupler._normal_velocity_bc_prev = np.zeros(len(centres))
     coupler._tangential_gradient_bc_prev = np.zeros_like(centres)
 
@@ -387,7 +387,7 @@ def test_post_transfer_resync_refreshes_both_mixed_trace_fields():
     expected_tangent = tangential_normal_velocity_gradient(
         _VPM.compute_complete_target_velocity_gradients(centres, particle_spacing=0.04), normals
     )
-    np.testing.assert_allclose(coupler._u_bc_prev, expected_velocity)
+    np.testing.assert_allclose(coupler._velocity_bc_prev, expected_velocity)
     np.testing.assert_allclose(coupler._normal_velocity_bc_prev, expected_normal)
     np.testing.assert_allclose(coupler._tangential_gradient_bc_prev, expected_tangent)
 
@@ -414,16 +414,16 @@ def test_zero_target_evaluation_fails_before_blending_zone_mutation():
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler._is_master = True
-    coupler.vpm = _VPM()
-    coupler.blending = _BlendingZone()
-    coupler._u_bc_prev = None
+    coupler.vpm_solver = _VPM()
+    coupler.blending_zone = _BlendingZone()
+    coupler._velocity_bc_prev = None
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.setup = SimpleNamespace(vpm_bc_mode="dirichlet")
 
     centres, normals, areas = _cube_face_quadrature(nside=2)
     with pytest.raises(RuntimeError, match="identically zero field"):
         evaluate_vpm_boundary(coupler, centres, normals, areas)
-    assert not coupler.blending.was_updated
+    assert not coupler.blending_zone.was_updated
 
 
 def test_velocity_trace_recovers_linear_field_curl_exactly():
@@ -495,7 +495,7 @@ def test_vorticity_sign_matches_the_fvm_curl_convention():
     n_boundary = mesh["n_faces"] - mesh["n_interior_faces"]
     velocity = np.zeros((n_cells + n_boundary, 3))
 
-    centres = geometry["element_centroids"][:n_cells]
+    centres = geometry["cell_centroids"][:n_cells]
     velocity[:n_cells, 0] = -centres[:, 1]  # U=(-y, x, 0), curl = +2 z
     velocity[:n_cells, 1] = centres[:, 0]
     for patch in mesh["boundary"]:
@@ -539,7 +539,7 @@ def test_vorticity_mixed_subcycling_interpolates_and_reprojects_both_fields(
     coupler.fvm_time_step_size = 0.05
     coupler.freestream_velocity = np.array([1.0, 0.0, 0.0])
     coupler.setup = SimpleNamespace(vpm_bc_mode="vorticity_mixed")
-    coupler.blending = _Blending()
+    coupler.blending_zone = _Blending()
     recorded = []
 
     def record_step(
@@ -603,7 +603,7 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
     )
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm_substeps = 3
-    coupler.transfer = None
+    coupler.vorticity_transfer = None
     coupler.pressure_reference = None
     coupler._last_transfer_result = result
     coupler._last_vpm_bc_flux_diagnostics = {
@@ -636,7 +636,7 @@ def test_deferred_transfer_diagnostics_are_marked_unmeasured():
     )
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm_substeps = 1
-    coupler.transfer = None
+    coupler.vorticity_transfer = None
     coupler.pressure_reference = None
     coupler._last_transfer_result = result
     coupler._last_vpm_bc_flux_diagnostics = {

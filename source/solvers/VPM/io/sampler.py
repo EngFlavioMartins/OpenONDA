@@ -41,7 +41,7 @@ class SamplerExecutor:
         date.
 
         Sampling is skipped when the particle field is empty or numerically
-        insignificant (< 2 particles or max |Γ| < 1e-8) to avoid crashes
+        insignificant (< 2 particles or max |vortex_strength| < 1e-8) to avoid crashes
         inside pressure-gradient or SVD routines.
         """
         sampler_entries = solver.setup.samplers if sampler_entries is None else sampler_entries
@@ -52,13 +52,15 @@ class SamplerExecutor:
         if n_particles < 2:
             return
 
-        circ = solver.particle_vortex_strength
-        max_circ_mag = np.max(np.linalg.norm(circ, axis=1)) if n_particles > 0 else 0.0
-        if max_circ_mag < 1e-8:
+        vortex_strength = solver.particle_vortex_strength
+        max_vortex_strength_magnitude = (
+            np.max(np.linalg.norm(vortex_strength, axis=1)) if n_particles > 0 else 0.0
+        )
+        if max_vortex_strength_magnitude < 1e-8:
             return
 
         samples_dir = resolve_samples_dir(
-            solver.checkpoint_directory,
+            solver.case_dir,
             getattr(solver.setup, "sample_subdirectory", None),
         )
         samples_dir.mkdir(parents=True, exist_ok=True)

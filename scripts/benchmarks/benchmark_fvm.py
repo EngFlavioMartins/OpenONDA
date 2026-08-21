@@ -24,12 +24,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 from openonda.fvm import (
     BoundaryConfig,
-    ExecutionConfig,
+    ComputeConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
     periodic_square_mesh,
@@ -108,23 +108,23 @@ def _run(
     )
     if selected_solver == "auto":
         selected_solver = "bicgstab"
-    params_schemes = SchemesConfig(convection_scheme="central")
+    params_schemes = DiscretizationConfig(convection_scheme="central")
     params_linear = LinearSolverConfig(
         linear_solver=selected_solver,
         momentum_solver=selected_solver,
         pressure_solver="amg" if selected_solver != "spsolve" else "spsolve",
-        momentum_tol=1e-8,
-        pressure_tol=1e-9,
+        momentum_tolerance=1e-8,
+        pressure_tolerance=1e-9,
     )
     params_pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
     config = FVMSetup(
         case_name=f"benchmark_{n}",
-        execution=ExecutionConfig(operator_backend=operator_backend),
-        time=TimeConfig(time_step_size=0.001, end_time=0.001, write_interval=2),
+        execution=ComputeConfig(operator_backend=operator_backend),
+        time=TimeConfig(time_step_size=0.001, end_time=0.001, output_interval_steps=2),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
-        transport=TransportConfig(density=1.0, nu=0.1),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.1),
         boundaries=[
             BoundaryConfig.cyclic("xmin", "xmax"),
             BoundaryConfig.cyclic("xmax", "xmin"),

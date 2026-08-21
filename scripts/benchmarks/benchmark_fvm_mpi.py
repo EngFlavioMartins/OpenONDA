@@ -18,12 +18,12 @@ import numpy as np
 
 from source.solvers.FVM import (
     BoundaryConfig,
-    ExecutionConfig,
+    ComputeConfig,
+    DiscretizationConfig,
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
-    SchemesConfig,
     TimeConfig,
     TransportConfig,
 )
@@ -51,20 +51,20 @@ def main() -> None:
         raise ValueError("warmup-steps must be >= 0 and measured-steps must be >= 1")
     nx_per_rank = args.cells_per_rank // 64
     mesh = structured_box(nx_per_rank * size, 8, 8) if rank == 0 else None
-    execution = ExecutionConfig.petsc_partitioned()
+    execution = ComputeConfig.petsc_partitioned()
     config = FVMSetup(
         case_name="partitioned-weak-scaling",
         execution=execution,
         time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=10**9),
-        schemes=SchemesConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+        schemes=DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="cg",
-            momentum_tol=1e-8,
-            pressure_tol=1e-8,
+            momentum_tolerance=1e-8,
+            pressure_tolerance=1e-8,
         ),
         pimple=PimpleControl(n_correctors=2),
-        transport=TransportConfig(density=1.0, nu=0.02),
+        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
             BoundaryConfig.outlet("xmax", 0.0),
@@ -77,7 +77,7 @@ def main() -> None:
         # solvers meaningful work; the previous uniform stream was an exact
         # state and mostly measured launcher overhead.
         initial_velocity=[0.0, 0.0, 0.0],
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
     with tempfile.TemporaryDirectory(prefix=f"openonda-mpi-r{rank}-") as case_dir:
         comm.Barrier()

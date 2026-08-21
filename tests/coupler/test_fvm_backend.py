@@ -26,7 +26,7 @@ from source.solvers.FVM.sampling.base import SamplingSchedule
 from source.solvers.FVM.sampling.forces import ForceSampler
 
 CONTRACT_METHODS = [
-    "get_cell_center_coordinates",
+    "get_cell_centre_coordinates",
     "get_cell_volumes",
     "get_velocity_field",
     "get_velocity_field_into",
@@ -34,7 +34,7 @@ CONTRACT_METHODS = [
     "get_velocity_gradient_field_into",
     "get_vorticity_field",
     "get_vorticity_field_into",
-    "get_boundary_face_center_coordinates",
+    "get_boundary_face_centre_coordinates",
     "get_boundary_face_normals",
     "get_boundary_face_areas",
     "n_procs",
@@ -221,7 +221,7 @@ def test_fvm_setup_adopts_solver_values_and_derives_box(tmp_path):
     fvm = _build_backend(tmp_path)
     setup = _fvm_setup(tmp_path)
     coupler = FVMVPMCoupler(fvm, object(), setup)
-    coupler.fvm = fvm
+    coupler.fvm_solver = fvm
     coupler._read_fvm_state()
     assert coupler.fvm_time_step_size == 0.05
     assert coupler.end_time == 0.3
@@ -380,18 +380,18 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
             self.calls.append(("advance",))
 
     coupler = object.__new__(FVMVPMCoupler)
-    coupler.fvm = FakeFVM()
+    coupler.fvm_solver = FakeFVM()
     coupler.setup = _fvm_setup(tmp_path, vpm_bc_mode="characteristic")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     apply_fvm_boundary(coupler, "numericalBoundary", target)
 
-    assert [call[0] for call in coupler.fvm.calls] == [
+    assert [call[0] for call in coupler.fvm_solver.calls] == [
         "velocity",
         "pressure",
         "solve",
         "advance",
     ]
-    np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
+    np.testing.assert_array_equal(coupler.fvm_solver.calls[0][2], target)
 
 
 def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
@@ -426,19 +426,21 @@ def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):
             self.calls.append(("advance",))
 
     coupler = object.__new__(FVMVPMCoupler)
-    coupler.fvm = FakeFVM()
+    coupler.fvm_solver = FakeFVM()
     coupler.setup = _fvm_setup(tmp_path, vpm_bc_mode="directional_outflow")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     apply_fvm_boundary(coupler, "numericalBoundary", target)
 
-    assert [call[0] for call in coupler.fvm.calls] == [
+    assert [call[0] for call in coupler.fvm_solver.calls] == [
         "velocity",
         "pressure",
         "solve",
         "advance",
     ]
-    np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
-    np.testing.assert_array_equal(coupler.fvm.calls[0][3], coupler.setup.freestream_velocity_vector)
+    np.testing.assert_array_equal(coupler.fvm_solver.calls[0][2], target)
+    np.testing.assert_array_equal(
+        coupler.fvm_solver.calls[0][3], coupler.setup.freestream_velocity_vector
+    )
 
 
 def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
@@ -469,20 +471,20 @@ def test_coupler_pressure_gradient_step_sets_velocity_and_pressure(tmp_path):
             self.calls.append(("advance",))
 
     coupler = object.__new__(FVMVPMCoupler)
-    coupler.fvm = FakeFVM()
+    coupler.fvm_solver = FakeFVM()
     coupler.setup = _fvm_setup(tmp_path, vpm_bc_mode="pressure_gradient")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     gradient = np.array([[0.2, 0.0, 0.0], [-0.1, 0.3, 0.0]])
     apply_fvm_boundary(coupler, "numericalBoundary", target, gradient)
 
-    assert [call[0] for call in coupler.fvm.calls] == [
+    assert [call[0] for call in coupler.fvm_solver.calls] == [
         "velocity",
         "pressure",
         "solve",
         "advance",
     ]
-    np.testing.assert_array_equal(coupler.fvm.calls[0][2], target)
-    np.testing.assert_array_equal(coupler.fvm.calls[1][2], gradient)
+    np.testing.assert_array_equal(coupler.fvm_solver.calls[0][2], target)
+    np.testing.assert_array_equal(coupler.fvm_solver.calls[1][2], gradient)
 
 
 def test_coupler_vorticity_mixed_step_sets_directional_trace_and_pressure(tmp_path):
@@ -522,7 +524,7 @@ def test_coupler_vorticity_mixed_step_sets_directional_trace_and_pressure(tmp_pa
             self.calls.append(("advance",))
 
     coupler = object.__new__(FVMVPMCoupler)
-    coupler.fvm = FakeFVM()
+    coupler.fvm_solver = FakeFVM()
     coupler.setup = _fvm_setup(tmp_path, vpm_bc_mode="vorticity_mixed")
     target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
     normal_velocity = np.array([-1.0, 0.8])
@@ -536,14 +538,14 @@ def test_coupler_vorticity_mixed_step_sets_directional_trace_and_pressure(tmp_pa
         tangential_gradient=tangential_gradient,
     )
 
-    assert [call[0] for call in coupler.fvm.calls] == [
+    assert [call[0] for call in coupler.fvm_solver.calls] == [
         "velocity",
         "pressure",
         "solve",
         "advance",
     ]
-    np.testing.assert_array_equal(coupler.fvm.calls[0][2], normal_velocity)
-    np.testing.assert_array_equal(coupler.fvm.calls[0][3], tangential_gradient)
+    np.testing.assert_array_equal(coupler.fvm_solver.calls[0][2], normal_velocity)
+    np.testing.assert_array_equal(coupler.fvm_solver.calls[0][3], tangential_gradient)
 
 
 def test_velocity_gradient_contract_uses_configured_reconstruction(built_backend):

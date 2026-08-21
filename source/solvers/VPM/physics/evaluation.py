@@ -47,7 +47,7 @@ class ParticleFieldEvaluation:
         Initialize particle field physics diagnostics.
 
         Args:
-            particles_kernel: Kernel type ("GAUSSIAN", "WINCKELMANS", "SUPER_GAUSSIAN")
+            particle_kernel: Kernel type ("GAUSSIAN", "WINCKELMANS", "SUPER_GAUSSIAN")
             max_particles: Maximum number of particles for field allocation
             accumulator_dtype: Taichi dtype for accumulation (ti.f32 or ti.f64)
         """

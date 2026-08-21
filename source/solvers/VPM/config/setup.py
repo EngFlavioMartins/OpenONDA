@@ -371,138 +371,55 @@ class VPMSetup:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> VPMSetup:
-        """Reconstruct a setup, translating legacy serialized keys."""
+        """Reconstruct a setup from the canonical serialized schema."""
         values = dict(data)
+        known = {item.name for item in fields(cls)}
+        unknown = sorted(set(values) - known)
+        if unknown:
+            raise ValueError("Unknown VPMSetup field(s): " + ", ".join(unknown))
 
-        legacy_names = {
-            "dt": "time_step_size",
-            "particles_kernel": "particle_kernel",
-            "max_targets": "max_evaluation_points",
-            "processing_unit": "compute_device",
-            "logging_frequency": "logging_interval_steps",
-            "timing_frequency": "timing_interval_steps",
-            "backup_frequency": "checkpoint_interval_steps",
-            "backup_file_name": "checkpoint_name",
-            "backup_directory": "checkpoint_directory",
-            "solution_name": "checkpoint_directory",
-            "vpm_domain_bounds": "domain_bounds",
-        }
-        for old_name, new_name in legacy_names.items():
-            if new_name not in values and old_name in values:
-                values[new_name] = values.pop(old_name)
-            else:
-                values.pop(old_name, None)
-
-        viscous = values.get("viscous")
-        if isinstance(viscous, dict):
-            viscous = dict(viscous)
-            viscous_legacy_names = {
-                "viscosity": "kinematic_viscosity",
-                "characteristic_distance": "particle_spacing",
-                "regen_threshold_window": ("regeneration_threshold_window"),
-                "regen_cap_abs_fraction": ("regeneration_cap_absolute_fraction"),
-                "dvh_rd_ratio": "dvh_support_radius_ratio",
-            }
-            for old_name, new_name in viscous_legacy_names.items():
-                if new_name not in viscous and old_name in viscous:
-                    viscous[new_name] = viscous.pop(old_name)
-                else:
-                    viscous.pop(old_name, None)
-            values["viscous"] = ViscousConfig(**viscous)
-
-        turbulence = values.get("turbulence")
-        if isinstance(turbulence, dict):
-            turbulence = dict(turbulence)
-            if "c_s" not in turbulence and "cs" in turbulence:
-                turbulence["c_s"] = turbulence.pop("cs")
-            else:
-                turbulence.pop("cs", None)
-            if "c_e" not in turbulence and "ce" in turbulence:
-                turbulence["c_e"] = turbulence.pop("ce")
-            else:
-                turbulence.pop("ce", None)
+        if isinstance(values.get("viscous"), dict):
+            values["viscous"] = ViscousConfig(**values["viscous"])
+        if isinstance(values.get("turbulence"), dict):
+            turbulence = dict(values["turbulence"])
             turbulence.pop("flow_model", None)
             values["turbulence"] = TurbulenceConfig(**turbulence)
-
-        nested_types = {
+        for name, config_type in {
             "advection": AdvectionConfig,
             "stretching": StretchingConfig,
             "velocity": VelocityConfig,
-        }
-        for name, config_type in nested_types.items():
+        }.items():
             if isinstance(values.get(name), dict):
                 values[name] = config_type(**values[name])
-
-        values["stabilization"] = cls._stabilization_from_dict(values)
-
-        known_fields = {item.name for item in fields(cls)}
-        return cls(**{key: value for key, value in values.items() if key in known_fields})
+        if isinstance(values.get("stabilization"), dict):
+            values["stabilization"] = cls._stabilization_from_dict(values)
+        return cls(**values)
 
     @staticmethod
-    def _stabilization_from_dict(
-        values: dict[str, Any],
-    ) -> StabilizationConfig:
-        """Rebuild stabilization, including pre-nesting checkpoint layouts."""
-        stabilization = values.pop("stabilization", None)
-
-        if isinstance(stabilization, StabilizationConfig):
-            values.pop("filament_refinement", None)
-            values.pop("divergence_relaxation", None)
-            return stabilization
-
-        section = dict(stabilization) if isinstance(stabilization, dict) else {}
-
-        stabilization_legacy_names = {
-            "pedrizzetti_relaxation_frequency": "pedrizzetti_relaxation_interval_steps",
-            "pedrizzetti_relaxation_conserve_strength": "pedrizzetti_relaxation_preserve_vortex_strength",
-            "regularization_frequency": "regularization_interval_steps",
-            "max_circulation_error": "max_vortex_strength_error",
-            "max_strength_growth": "max_vortex_strength_growth",
-        }
-        for old_name, new_name in stabilization_legacy_names.items():
-            if new_name not in section and old_name in section:
-                section[new_name] = section.pop(old_name)
-            else:
-                section.pop(old_name, None)
-        nested_types = {
-            "filament_refinement": (
-                FilamentRefinementConfig,
-                {
-                    "frequency": "interval_steps",
-                    "max_strength_factor": "max_vortex_strength_factor",
-                },
-            ),
-            "divergence_relaxation": (
-                DivergenceRelaxationConfig,
-                {
-                    "frequency": "interval_steps",
-                    "solver_rtol": "solver_relative_tolerance",
-                    "circulation_reference_scale": "vortex_strength_reference_scale",
-                    "circulation_reference_tolerance": "vortex_strength_reference_tolerance",
-                },
-            ),
-        }
-        for name, (config_type, legacy_names) in nested_types.items():
-            legacy = values.pop(name, None)
-            entry = section.get(name, legacy)
+    def _stabilization_from_dict(values: dict[str, Any]) -> StabilizationConfig:
+        """Rebuild stabilization from the canonical nested schema."""
+        section = values.pop("stabilization", None)
+        if section is None:
+            return StabilizationConfig.disabled()
+        if isinstance(section, StabilizationConfig):
+            return section
+        if not isinstance(section, dict):
+            raise TypeError("stabilization must be a mapping")
+        section = dict(section)
+        for name, config_type in {
+            "filament_refinement": FilamentRefinementConfig,
+            "divergence_relaxation": DivergenceRelaxationConfig,
+        }.items():
+            entry = section.get(name)
             if isinstance(entry, dict):
-                entry = dict(entry)
-                for old_name, new_name in legacy_names.items():
-                    if new_name not in entry and old_name in entry:
-                        entry[new_name] = entry.pop(old_name)
-                    else:
-                        entry.pop(old_name, None)
-                known = {item.name for item in fields(config_type)}
-                section[name] = config_type(
-                    **{key: value for key, value in entry.items() if key in known}
-                )
-            elif isinstance(entry, config_type):
-                section[name] = entry
-            else:
-                section.pop(name, None)
-
+                section[name] = config_type(**entry)
+            elif entry is not None and not isinstance(entry, config_type):
+                raise TypeError(f"{name} must be a mapping")
         known = {item.name for item in fields(StabilizationConfig)}
-        return StabilizationConfig(**{key: value for key, value in section.items() if key in known})
+        unknown = sorted(set(section) - known)
+        if unknown:
+            raise ValueError("Unknown StabilizationConfig field(s): " + ", ".join(unknown))
+        return StabilizationConfig(**section)
 
     @staticmethod
     def viscous_flow_simulation(

@@ -49,8 +49,11 @@ class VPMSolver:
 
     # Initialization
 
-    def __init__(self, setup: VPMSetup | None = None) -> None:
+    def __init__(
+        self, setup: VPMSetup | None = None, *, case_dir: str | Path | None = None
+    ) -> None:
         """Initialize the VPM solver. See VPMSetup for all parameters."""
+        self.case_dir = Path("." if case_dir is None else case_dir).resolve()
         final_setup = self._init_setup(setup)
         self._init_io_and_backend(final_setup, final_setup.debug_mode)
         self._init_particles_and_physics(final_setup)
@@ -187,13 +190,16 @@ class VPMSolver:
         self.logging_interval_steps = final_setup.logging_interval_steps
         self.timing_interval_steps = final_setup.timing_interval_steps
         self.checkpoint_name = final_setup.checkpoint_name
-        self.checkpoint_directory = final_setup.checkpoint_directory
+        configured_checkpoint_directory = Path(final_setup.checkpoint_directory)
+        if not configured_checkpoint_directory.is_absolute():
+            configured_checkpoint_directory = self.case_dir / configured_checkpoint_directory
+        self.checkpoint_directory = str(configured_checkpoint_directory.resolve())
         if getattr(final_setup, "clean", False):
             import shutil as _shutil
 
-            _backup_path = Path(self.checkpoint_directory)
-            if _backup_path.exists():
-                _shutil.rmtree(_backup_path)
+            _checkpoint_path = Path(self.checkpoint_directory)
+            if _checkpoint_path.exists():
+                _shutil.rmtree(_checkpoint_path)
         Path(self.checkpoint_directory).mkdir(parents=True, exist_ok=True)
         return final_setup
 
@@ -507,7 +513,7 @@ class VPMSolver:
         self._execute_samplers()
 
     def _export_flow_integrals_csv(self) -> None:
-        """Append one row of flow integrals to ``<backup_directory>/samples/flow_integrals.csv``.
+        """Append one row of flow integrals to ``<case_dir>/samples/flow_integrals.csv``.
 
         Thin wrapper that delegates the CSV export to the ``SolverIO`` manager
         (which owns all exports).
@@ -563,7 +569,7 @@ class VPMSolver:
         return self._get_particle_field("vortex_strength")
 
     @property
-    def particles_radii(self) -> np.ndarray:
+    def particle_core_radius(self) -> np.ndarray:
         """Particle core radii with shape ``(N,)`` [m]."""
         return self._get_particle_field("core_radius")
 
@@ -643,7 +649,7 @@ class VPMSolver:
         self._discretization_health = discretization_health(
             self.particles_positions,
             self.particle_vortex_strength,
-            self.particles_radii,
+            self.particle_core_radius,
         )
 
     def _record_centroid_history(self) -> None:
@@ -670,7 +676,7 @@ class VPMSolver:
             self._diagnostics_history,
             self.step,
             self.time,
-            self.checkpoint_directory,
+            self.case_dir,
             sample_subdirectory,
         )
         VLMLoadingDistribution.record_loading_distributions(
@@ -678,7 +684,7 @@ class VPMSolver:
             self._diagnostics_history,
             self.step,
             self.time,
-            self.checkpoint_directory,
+            self.case_dir,
             sample_subdirectory,
         )
 
@@ -693,7 +699,7 @@ class VPMSolver:
             n_p,
             self.time,
             self.step,
-            self.checkpoint_directory,
+            self.case_dir,
             getattr(self.setup, "sample_subdirectory", None),
         )
 

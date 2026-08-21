@@ -64,11 +64,11 @@ class PhysicsBase:
         Initialize physics base with kernel type and field allocation.
 
         Args:
-            particles_kernel: Kernel type for particle interactions
+            particle_kernel: Kernel type for particle interactions
                             Options: 'GAUSSIAN', 'SUPER_GAUSSIAN', 'WINCKELMANS'
             max_particles: Maximum number of particles for field allocation
             accumulator_dtype: Data type for accumulation (ti.f32 or ti.f64)
-            max_targets: Fixed capacity for at-point field evaluations
+            max_evaluation_points: Fixed capacity for at-point field evaluations
         """
         self.particle_kernel = particle_kernel.upper()
         self.max_particles = max_particles
@@ -76,7 +76,7 @@ class PhysicsBase:
         self.np_dtype = np.float32 if accumulator_dtype == ti.f32 else np.float64
         self.max_evaluation_points = int(max_evaluation_points)
         if self.max_evaluation_points < 1:
-            raise ValueError("max_targets must be at least 1")
+            raise ValueError("max_evaluation_points must be at least 1")
 
         # Determine compute dtype from accumulator dtype
         compute_dtype = accumulator_dtype
@@ -589,8 +589,8 @@ class PhysicsBase:
         if self._target_field_size >= N:
             return
         raise ValueError(
-            f"Target query requires {N} points but max_targets="
-            f"{self._target_field_size}. Increase VPMSetup.max_targets "
+            f"Target query requires {N} points but max_evaluation_points="
+            f"{self._target_field_size}. Increase VPMSetup.max_evaluation_points "
             "before constructing the solver; runtime Taichi field growth is "
             "disabled because replaced fields retain device memory."
         )

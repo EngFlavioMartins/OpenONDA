@@ -139,9 +139,9 @@ FVM_SETUP = fvm.FVMSetup(
         momentum_relative_tolerance=0.1,
         momentum_final_relative_tolerance=0.0,
         momentum_max_iterations=2000,
-        ilu_drop_tol=1e-4,
+        ilu_drop_tolerance=1e-4,
         ilu_fill_factor=10.0,
-        ilu_reuse_tol=0.05,
+        ilu_reuse_tolerance=0.05,
     ),
     pimple=fvm.PimpleControl(
         n_correctors=2,
@@ -153,12 +153,12 @@ FVM_SETUP = fvm.FVMSetup(
     samplers=SAMPLERS,
     transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
     turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(
-        Ck=SMAGORINSKY_CK,
-        Ce=SMAGORINSKY_CE,
+        c_k=SMAGORINSKY_CK,
+        c_e=SMAGORINSKY_CE,
     ),
     boundaries=[
         fvm.BoundaryConfig.inlet("inlet", list(FREESTREAM_VELOCITY)),
-        fvm.BoundaryConfig.outlet("outlet", p=0.0),
+        fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
         fvm.BoundaryConfig.slip("ymin"),
         fvm.BoundaryConfig.slip("ymax"),
         fvm.BoundaryConfig.slip("zmin"),

@@ -94,7 +94,10 @@ class StabilizationConfig:
             raise ValueError("regularization_energy_dissipation_limit must lie in (0, 1)")
         if not 0.0 < self.regularization_enstrophy_dissipation_limit < 1.0:
             raise ValueError("regularization_enstrophy_dissipation_limit must lie in (0, 1)")
-        if self.regularization_divergence_trigger < 0.0:
+        if (
+            not np.isfinite(self.regularization_divergence_trigger)
+            or self.regularization_divergence_trigger < 0.0
+        ):
             raise ValueError("regularization_divergence_trigger must be non-negative")
         if not 0.0 <= self.regularization_misalignment_trigger <= 180.0:
             raise ValueError("regularization_misalignment_trigger must lie in [0, 180]")
@@ -124,7 +127,10 @@ class StabilizationConfig:
             or self.regularization_capacity_core_radius <= 0.0
         ):
             raise ValueError("regularization_capacity_core_radius must be finite and positive")
-        if self.regularization_projection_trigger < 0.0:
+        if (
+            not np.isfinite(self.regularization_projection_trigger)
+            or self.regularization_projection_trigger < 0.0
+        ):
             raise ValueError("regularization_projection_trigger must be non-negative")
         if not 0.0 < self.regularization_projection_max_correction < 1.0:
             raise ValueError("regularization_projection_max_correction must lie in (0, 1)")

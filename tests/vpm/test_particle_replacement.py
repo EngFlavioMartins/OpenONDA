@@ -79,7 +79,7 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
         np.testing.assert_allclose(solver.particles_positions, position)
         np.testing.assert_allclose(solver.particles_velocities, velocity)
         np.testing.assert_allclose(solver.particle_vortex_strength, circulation)
-        np.testing.assert_allclose(solver.particles_radii, radius)
+        np.testing.assert_allclose(solver.particle_core_radius, radius)
         np.testing.assert_allclose(solver.particles_volumes, volume)
         np.testing.assert_allclose(solver.particles_viscosities, viscosity)
         np.testing.assert_allclose(solver.particles_vorticities, circulation / volume[:, None])

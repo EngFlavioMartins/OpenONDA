@@ -117,7 +117,7 @@ class PressurePhysics(PhysicsBase):
         Initialize pressure physics module.
 
         Args:
-            particles_kernel: Kernel type for particle interactions
+            particle_kernel: Kernel type for particle interactions
             max_particles: Maximum number of particles
             accumulator_dtype: Data type for accumulation
         """

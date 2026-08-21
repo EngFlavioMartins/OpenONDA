@@ -936,11 +936,15 @@ class VorticityTransfer:
 
     def __init__(self, coupler):
         cfg = coupler.setup
-        if coupler.nu is None or coupler.vpm_time_step_size is None or coupler.fvm_box is None:
+        if (
+            coupler.kinematic_viscosity is None
+            or coupler.vpm_time_step_size is None
+            or coupler.fvm_box is None
+        ):
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM time state")
         self.config = cfg
         self.particle_spacing = float(cfg.vpm_particle_spacing)
-        self.nu = float(coupler.nu)
+        self.kinematic_viscosity = float(coupler.kinematic_viscosity)
         self.transfer_prune_threshold_abs = (
             float(cfg.transfer_prune_vorticity_min) * self.particle_spacing**3
         )
@@ -950,12 +954,15 @@ class VorticityTransfer:
         self.core_radius_ratio = float(cfg.vpm_core_radius_ratio)
         self.transfer_amplification_cap = float(cfg.transfer_amplification_cap)
         self.transfer_boundary_prune_multiplier = float(cfg.transfer_boundary_prune_multiplier)
-        self.diagnostic_interval = int(getattr(cfg, "transfer_diagnostic_interval", 1))
+        self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
         self.freestream_speed = float(np.linalg.norm(cfg.freestream_velocity))
         self.time_step_size = float(coupler.vpm_time_step_size)
         self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
 
-        if coupler.vpm is not None and coupler.vpm.setup.particles_kernel != "GAUSSIAN":
+        if (
+            coupler.vpm_solver is not None
+            and coupler.vpm_solver.setup.particle_kernel != "GAUSSIAN"
+        ):
             raise ValueError("The FVM-VPM transfer requires the GAUSSIAN particle kernel")
 
         self._box: np.ndarray | None = None
@@ -1051,7 +1058,7 @@ class VorticityTransfer:
         self._box = np.asarray(transfer_box, dtype=np.float64)
         from scipy.spatial import cKDTree
 
-        self._cell_centers = np.asarray(fvm.get_cell_center_coordinates(), dtype=np.float64)
+        self._cell_centers = np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64)
         if self._cell_centers.shape[0] > 0:
             self._cell_tree = cKDTree(self._cell_centers)
             self._velocity_trace = FVMVelocityInterpolator(
@@ -1064,7 +1071,7 @@ class VorticityTransfer:
         if len(wall_patches) == 1:
             wall = wall_patches[0]
             wf = np.asarray(
-                fvm.get_boundary_face_center_coordinates(wall), dtype=np.float64
+                fvm.get_boundary_face_centre_coordinates(wall), dtype=np.float64
             ).reshape(-1, 3)
             if wf.shape[0] > 0:
                 bounds = np.array(
@@ -1215,7 +1222,7 @@ class VorticityTransfer:
         n = vpm.particles.n_particles
         if n > 0:
             pos = np.asarray(vpm.particles_positions, dtype=np.float64).reshape(-1, 3)
-            circ = np.asarray(vpm.particles_circulation, dtype=np.float64).reshape(-1, 3)
+            circ = np.asarray(vpm.particle_vortex_strength, dtype=np.float64).reshape(-1, 3)
         else:
             pos = np.zeros((0, 3))
             circ = np.zeros((0, 3))
@@ -1325,7 +1332,7 @@ class VorticityTransfer:
             vortex_strength=res.circ.astype(vpm_time_step_size),
             core_radius=res.rad.astype(vpm_time_step_size),
             volume=res.vol.astype(vpm_time_step_size),
-            kinematic_viscosity=np.full(k, self.nu, dtype=vpm_time_step_size),
+            kinematic_viscosity=np.full(k, self.kinematic_viscosity, dtype=vpm_time_step_size),
             eddy_viscosity=np.zeros(k, dtype=vpm_time_step_size),
             zone_id=np.zeros(k, dtype=np.int32),
         )

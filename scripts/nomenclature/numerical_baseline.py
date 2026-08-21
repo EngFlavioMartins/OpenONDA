@@ -95,10 +95,10 @@ def case_fvm_taylor_green():
     cfg = _fvmsetup(
         case_name="baseline-tgv",
         time=_timeconfig(time_step_size=0.005, end_time=0.005 * nsteps, write_interval=10**9),
-        schemes=fvm_api.SchemesConfig(convection_scheme="central", time_scheme="backward"),
+        schemes=fvm_api.DiscretizationConfig(convection_scheme="central", time_scheme="backward"),
         linear=fvm_api.LinearSolverConfig(linear_solver="spsolve"),
         pimple=fvm_api.PimpleControl(n_correctors=2, n_outer_correctors=1),
-        transport=fvm_api.TransportConfig(density=1.0, nu=nu),
+        transport=fvm_api.TransportConfig(density=1.0, kinematic_viscosity=nu),
         boundaries=[
             fvm_api.BoundaryConfig.cyclic("xmin", "xmax"),
             fvm_api.BoundaryConfig.cyclic("xmax", "xmin"),
@@ -141,16 +141,18 @@ def case_fvm_lid_cavity():
     cfg = _fvmsetup(
         case_name="baseline-lid",
         time=_timeconfig(time_step_size=0.01, end_time=0.05, write_interval=10**9),
-        schemes=fvm_api.SchemesConfig(convection_scheme="limitedLinear"),
+        schemes=fvm_api.DiscretizationConfig(convection_scheme="limitedLinear"),
         linear=fvm_api.LinearSolverConfig(linear_solver="spsolve"),
-        pimple=fvm_api.PimpleControl(algorithm="SIMPLE", alpha_u=0.7, alpha_p=0.3),
-        transport=fvm_api.TransportConfig(density=1.0, nu=1.0e-3),
+        pimple=fvm_api.PimpleControl(
+            algorithm="SIMPLE", velocity_relaxation=0.7, pressure_relaxation=0.3
+        ),
+        transport=fvm_api.TransportConfig(density=1.0, kinematic_viscosity=1.0e-3),
         boundaries=[
             fvm_api.BoundaryConfig.wall("xmin"),
             fvm_api.BoundaryConfig.wall("xmax"),
             fvm_api.BoundaryConfig.wall("ymin"),
             fvm_api.BoundaryConfig(
-                "ymax", type_velocity="fixedValue", value_velocity=[1.0, 0.0, 0.0]
+                "ymax", velocity_type="fixedValue", velocity_value=[1.0, 0.0, 0.0]
             ),
             fvm_api.BoundaryConfig.wall("zmin"),
             fvm_api.BoundaryConfig.wall("zmax"),
@@ -177,13 +179,13 @@ def case_vpm_two_particle():
     volume = (4.0 / 3.0) * np.pi * sigma**3
     setup = vpm_api.VPMSetup(
         time_step_size=0.01,
-        processing_unit="CPU",
+        compute_device="CPU",
         max_particles=1000,
-        particles_kernel="GAUSSIAN",
+        particle_kernel="GAUSSIAN",
         stretching=vpm_api.StretchingConfig.disabled(),
         viscous=vpm_api.ViscousConfig(scheme="NONE"),
         advection=vpm_api.AdvectionConfig(scheme="NONE"),
-        max_targets=64,
+        max_evaluation_points=64,
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = _VPM_SOLVER(setup=setup)
@@ -204,7 +206,7 @@ def case_vpm_two_particle():
             "velocity": particles.velocity.to_numpy(),
             "vorticity": particles.vorticity.to_numpy(),
             "radius": particles.radius.to_numpy(),
-            "n_particles": np.int64(particles.number_of_particles),
+            "n_particles": np.int64(particles.n_particles),
             "time": np.float64(solver.time),
             "step": np.int64(solver.step),
         }
@@ -224,9 +226,9 @@ def case_coupled_smoke():
 
     vpm_setup = vpm_api.VPMSetup(
         time_step_size=VPM_DT,
-        processing_unit="CPU",
+        compute_device="CPU",
         max_particles=10000,
-        vpm_domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+        domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
         freestream_velocity=[1.0, 0.0, 0.0],
     )
     with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
@@ -234,13 +236,13 @@ def case_coupled_smoke():
         fvm_cfg = _fvmsetup(
             case_name="baseline-coupled",
             time=_timeconfig(time_step_size=FVM_DT, end_time=2 * VPM_DT),
-            transport=fvm_api.TransportConfig(nu=0.01),
+            transport=fvm_api.TransportConfig(kinematic_viscosity=0.01),
             boundaries=[
                 fvm_api.BoundaryConfig(
                     name="numericalBoundary",
-                    type_velocity="fixedValue",
-                    value_velocity=setup.freestream_velocity,
-                    type_p="fixedFluxPressure",
+                    velocity_type="fixedValue",
+                    velocity_value=setup.freestream_velocity,
+                    pressure_type="fixedFluxPressure",
                 )
             ],
             initial_velocity=setup.freestream_velocity,
@@ -256,7 +258,7 @@ def case_coupled_smoke():
             coupled = coupler_api.setup_coupler(vpm, fvm, setup)
         coupled.run()
         particles = vpm.particles
-        n = int(vpm.particles.number_of_particles)
+        n = int(vpm.particles.n_particles)
         return {
             "U": fvm.U[: fvm.mesh_data["n_elements"]],
             "p": fvm.p[: fvm.mesh_data["n_elements"]],

@@ -99,7 +99,7 @@ def test_cs_core_radius_grows_at_correct_rate(tmp_path):
     for _ in range(_N_STEPS):
         solver.advance()
 
-    sigma_actual = float(solver.particles_radii[0])
+    sigma_actual = float(solver.particle_core_radius[0])
     rel_err = abs(sigma_actual - sigma_expected) / sigma_expected
 
     assert rel_err < 1e-4, (
@@ -135,7 +135,7 @@ def test_cs_vorticity_field_matches_grown_kernel(tmp_path):
     for _ in range(_N_STEPS):
         solver.advance()
 
-    sigma_final = float(solver.particles_radii[0])
+    sigma_final = float(solver.particle_core_radius[0])
 
     # Probe at five radii spanning near- to far-field
     r_values = np.array([0.5, 1.0, 1.5, 2.0, 3.0]) * sigma_final

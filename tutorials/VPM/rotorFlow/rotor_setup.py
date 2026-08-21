@@ -136,8 +136,8 @@ def enforce_wake_admissibility(solver: VPMSolver, max_particle_strength: float) 
     """Stop a divergent wake without altering circulation or core size."""
     fields = {
         "position": solver.particles_positions,
-        "circulation": solver.particles_circulation,
-        "radius": solver.particles_radii,
+        "circulation": solver.particle_vortex_strength,
+        "radius": solver.particle_core_radius,
         "volume": solver.particles_volumes,
     }
     if not len(fields["radius"]):

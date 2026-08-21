@@ -1,7 +1,7 @@
 """Checkpoint/restart I/O for VPM simulations.
 
 New checkpoints use the same canonical names as the live VPM state. The reader
-also accepts the pre-nomenclature HDF5/JSON layout so existing restart files
+also accepts the canonical HDF5/JSON layout so existing restart files
 remain usable.
 """
 
@@ -19,49 +19,7 @@ import numpy as np
 
 from ..config.setup import VPMSetup
 
-_CHECKPOINT_FORMAT_VERSION = "3.1"
-
-_SOLVER_ATTRIBUTE_ALIASES = {
-    "time": ("time", "flow_time"),
-    "step": ("step", "time_step"),
-    "time_step_size": ("time_step_size",),
-    "n_particles": ("n_particles", "number_of_particles"),
-}
-
-_PARTICLE_DATASET_ALIASES = {
-    "position": ("position",),
-    "velocity": ("velocity",),
-    "vortex_strength": ("vortex_strength", "circulation", "strengths"),
-    "core_radius": ("core_radius", "radius", "radii"),
-    "volume": ("volume", "volumes"),
-    "kinematic_viscosity": (
-        "kinematic_viscosity",
-        "viscosity",
-        "viscosities",
-    ),
-    "eddy_viscosity": (
-        "eddy_viscosity",
-        "viscosity_turbulent",
-        "viscosities_t",
-    ),
-    "effective_viscosity": (
-        "effective_viscosity",
-        "viscosity_effective",
-        "viscosities_effective",
-    ),
-    "group_id": ("group_id", "group_ids"),
-    "vorticity": ("vorticity", "vorticities"),
-    "velocity_gradient": ("velocity_gradient", "grad_u"),
-    "strain_rate": ("strain_rate",),
-    "zone_id": ("zone_id", "zone_ids"),
-    "freestream_velocity": ("freestream_velocity",),
-    "filament_reference_vortex_strength": (
-        "filament_reference_vortex_strength",
-        "filament_reference_strength",
-    ),
-    "filament_reference_length": ("filament_reference_length",),
-    "total_enstrophy": ("total_enstrophy",),
-}
+_CHECKPOINT_FORMAT_VERSION = "4.0"
 
 
 def _atomic_write_text(path: str | Path, text: str) -> None:
@@ -91,22 +49,9 @@ def _stabilization(solver: Any):
 
 
 def _read_attribute(group: h5py.Group, canonical_name: str) -> Any:
-    """Read a canonical solver attribute with legacy-name fallback."""
-    for name in _SOLVER_ATTRIBUTE_ALIASES[canonical_name]:
-        if name in group.attrs:
-            return group.attrs[name]
-    aliases = ", ".join(_SOLVER_ATTRIBUTE_ALIASES[canonical_name])
-    raise KeyError(
-        f"Checkpoint is missing solver attribute {canonical_name!r} (accepted names: {aliases})"
-    )
-
-
-def _dataset_name(group: h5py.Group, canonical_name: str) -> str | None:
-    """Return the stored dataset name for a canonical particle field."""
-    for name in _PARTICLE_DATASET_ALIASES[canonical_name]:
-        if name in group:
-            return name
-    return None
+    if canonical_name not in group.attrs:
+        raise KeyError(f"Checkpoint is missing solver attribute {canonical_name!r}")
+    return group.attrs[canonical_name]
 
 
 def _read_dataset(
@@ -115,16 +60,11 @@ def _read_dataset(
     *,
     required: bool = True,
 ):
-    """Read a particle dataset with legacy-name fallback."""
-    stored_name = _dataset_name(group, canonical_name)
-    if stored_name is None:
+    if canonical_name not in group:
         if not required:
             return None
-        aliases = ", ".join(_PARTICLE_DATASET_ALIASES[canonical_name])
-        raise KeyError(
-            f"Checkpoint is missing particle field {canonical_name!r} (accepted names: {aliases})"
-        )
-    return group[stored_name][:]
+        raise KeyError(f"Checkpoint is missing particle field {canonical_name!r}")
+    return group[canonical_name][:]
 
 
 def _reshape_tensor(array: np.ndarray | None) -> np.ndarray | None:
@@ -245,11 +185,11 @@ class CheckpointManager:
         ):
             particles_group.create_dataset(
                 "filament_reference_vortex_strength",
-                data=np.asarray(reference_vortex_strength),
+                data=np.asarray(reference_vortex_strength, dtype=np.float64),
             )
             particles_group.create_dataset(
                 "filament_reference_length",
-                data=np.asarray(reference_lengths),
+                data=np.asarray(reference_lengths, dtype=np.float64),
             )
 
         particles_group.create_dataset(
@@ -520,7 +460,7 @@ class CheckpointManager:
         checkpoint_pattern: str,
         output_file: str | None = None,
     ) -> str:
-        """Create an XDMF temporal collection from canonical or legacy HDF5 files."""
+        """Create an XDMF temporal collection from canonical HDF5 files."""
         hdf5_files = sorted(glob.glob(f"{checkpoint_pattern}.h5"))
         if not hdf5_files:
             raise FileNotFoundError(f"No checkpoint files found matching {checkpoint_pattern}.h5")
@@ -540,12 +480,27 @@ class CheckpointManager:
                 time = float(_read_attribute(solver_group, "time"))
                 step = int(_read_attribute(solver_group, "step"))
                 n_particles = int(_read_attribute(solver_group, "n_particles"))
+                canonical_datasets = (
+                    "position",
+                    "velocity",
+                    "vortex_strength",
+                    "core_radius",
+                    "volume",
+                    "kinematic_viscosity",
+                    "eddy_viscosity",
+                    "effective_viscosity",
+                    "group_id",
+                    "vorticity",
+                    "velocity_gradient",
+                    "strain_rate",
+                    "zone_id",
+                    "freestream_velocity",
+                    "filament_reference_vortex_strength",
+                    "filament_reference_length",
+                    "total_enstrophy",
+                )
                 stored = {
-                    canonical: _dataset_name(
-                        particles_group,
-                        canonical,
-                    )
-                    for canonical in _PARTICLE_DATASET_ALIASES
+                    name: name if name in particles_group else None for name in canonical_datasets
                 }
 
             hdf5_basename = os.path.basename(hdf5_file)
@@ -623,29 +578,23 @@ class CheckpointManager:
     def load_configuration(
         configuration_file: str | Path,
     ) -> VPMSetup:
-        """Load canonical or legacy JSON setup data."""
+        """Load canonical JSON setup data."""
         with open(
             configuration_file,
             encoding="utf-8",
         ) as stream:
             data = json.load(stream)
 
-        setup_data = data.get(
-            "solver_setup",
-            data.get("solver_config"),
-        )
+        setup_data = data.get("solver_setup")
         if setup_data is None:
-            raise ValueError(
-                "Checkpoint configuration contains neither "
-                "'solver_setup' nor legacy 'solver_config'"
-            )
+            raise ValueError("Checkpoint configuration is missing 'solver_setup'")
         return VPMSetup.from_dict(setup_data)
 
     @staticmethod
     def _load_optional_particle_fields(
         particles_group: h5py.Group,
     ) -> dict[str, np.ndarray | None]:
-        """Load optional canonical fields with legacy fallback."""
+        """Load optional canonical particle fields."""
         return {
             "zone_id": _read_dataset(
                 particles_group,
@@ -688,7 +637,7 @@ class CheckpointManager:
         solver,
         hdf5_file: str,
     ) -> None:
-        """Load canonical or legacy HDF5 state without reducing precision."""
+        """Load canonical HDF5 state without reducing precision."""
         with h5py.File(hdf5_file, "r") as file:
             solver_group = file["solver"]
             particles_group = file["particles"]
@@ -822,7 +771,7 @@ class CheckpointManager:
                 )
                 if references is None or lengths is None or len(references) != n_particles:
                     raise ValueError(
-                        "Legacy checkpoint has no filament-lineage "
+                        "Checkpoint has no filament-lineage "
                         "state compatible with this refined cloud"
                     )
 
@@ -842,10 +791,7 @@ class CheckpointManager:
                     "step",
                     "n_particles",
                 ):
-                    if not any(
-                        name in solver_group.attrs
-                        for name in _SOLVER_ATTRIBUTE_ALIASES[canonical_name]
-                    ):
+                    if canonical_name not in solver_group.attrs:
                         return False
 
                 n_particles = int(
@@ -869,7 +815,7 @@ class CheckpointManager:
                     "group_id",
                     "vorticity",
                 )
-                return all(_dataset_name(particles_group, name) is not None for name in required)
+                return all(name in particles_group for name in required)
         except (OSError, KeyError, ValueError):
             return False
 

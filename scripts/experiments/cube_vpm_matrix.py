@@ -173,15 +173,15 @@ def build_fvm(case_dir: Path, t_end: float, cores: int):
         AdaptiveCartesianMesher,
         BoundaryConfig,
         BoxRefinement,
-        ExecutionConfig,
+        ComputeConfig,
+        DiscretizationConfig,
         ForceSampler,
         FVMSetup,
         LinearSolverConfig,
         LineSampler,
-        OutputSetup,
+        OutputConfig,
         PimpleControl,
         SamplingSchedule,
-        SchemesConfig,
         TimeConfig,
         TransportConfig,
     )
@@ -224,8 +224,8 @@ def build_fvm(case_dir: Path, t_end: float, cores: int):
     setup = FVMSetup(
         case_name="matrix",
         cores=cores,
-        execution=ExecutionConfig(operator_backend="numba"),
-        output=OutputSetup(
+        execution=ComputeConfig(operator_backend="numba"),
+        output=OutputConfig(
             format="vtk_xml",
             data_location="cell",
             encoding="appended",
@@ -238,11 +238,11 @@ def build_fvm(case_dir: Path, t_end: float, cores: int):
             time_step_size=FVM_TIME_STEP_SIZE,
             start_time=0.0,
             end_time=t_end,
-            write_interval=10**9,
-            write_interval_time=1.0e9,
+            output_interval_steps=10**9,
+            output_interval_time=1.0e9,
             adjust_timestep=False,
         ),
-        schemes=SchemesConfig(
+        schemes=DiscretizationConfig(
             convection_scheme="linearUpwind",
             gradient_scheme="gauss",
             time_scheme="backward",
@@ -250,40 +250,40 @@ def build_fvm(case_dir: Path, t_end: float, cores: int):
         linear=LinearSolverConfig(
             linear_solver="bicgstab",
             pressure_solver="amg",
-            pressure_tol=1e-6,
-            pressure_rel_tol=0.01,
-            pressure_final_rel_tol=0.0,
-            momentum_tol=1e-6,
-            momentum_rel_tol=0.1,
-            momentum_final_rel_tol=0.0,
-            momentum_maxiter=2000,
-            ilu_drop_tol=1e-4,
+            pressure_tolerance=1e-6,
+            pressure_relative_tolerance=0.01,
+            pressure_final_relative_tolerance=0.0,
+            momentum_tolerance=1e-6,
+            momentum_relative_tolerance=0.1,
+            momentum_final_relative_tolerance=0.0,
+            momentum_max_iterations=2000,
+            ilu_drop_tolerance=1e-4,
             ilu_fill_factor=10.0,
-            ilu_reuse_tol=0.05,
+            ilu_reuse_tolerance=0.05,
         ),
         pimple=PimpleControl(
             n_correctors=2,
             n_outer_correctors=2,
             n_orthogonal_correctors=1,
-            alpha_u=0.7,
-            alpha_p=0.3,
+            velocity_relaxation=0.7,
+            pressure_relaxation=0.3,
         ),
         samplers=samplers,
-        transport=TransportConfig(density=RHO, nu=NU),
+        transport=TransportConfig(density=RHO, kinematic_viscosity=NU),
         turbulence=FVMTurbulenceConfig.equilibrium_smagorinsky(
-            Ck=SMAGORINSKY_CK, Ce=SMAGORINSKY_CE
+            c_k=SMAGORINSKY_CK, c_e=SMAGORINSKY_CE
         ),
         boundaries=[
             BoundaryConfig(
                 name="numericalBoundary",
-                type_velocity="fixedValue",
-                value_velocity=list(FREESTREAM_VELOCITY),
-                type_p="fixedFluxPressure",
+                velocity_type="fixedValue",
+                velocity_value=list(FREESTREAM_VELOCITY),
+                pressure_type="fixedFluxPressure",
             ),
             BoundaryConfig.wall("cube"),
         ],
         initial_velocity=list(INITIAL_VELOCITY),
-        initial_p=0.0,
+        initial_kinematic_pressure=0.0,
     )
     return setup, mesh
 
@@ -333,7 +333,7 @@ def build_vpm(v: Variant, case_dir: Path):
     turbulence = (
         TurbulenceConfig.inviscid()
         if v.turbulence == "off"
-        else TurbulenceConfig.equilibrium_smagorinsky(ck=SMAGORINSKY_CK, ce=SMAGORINSKY_CE)
+        else TurbulenceConfig.equilibrium_smagorinsky(c_k=SMAGORINSKY_CK, c_e=SMAGORINSKY_CE)
     )
 
     panel_solver = None
@@ -392,7 +392,7 @@ def build_coupler(v: Variant):
         transfer_amplification_cap=v.cap,
         bc_resync_after_transfer=v.resync,
         pressure_anchor_to_freestream=True,
-        coupler_backup_period=10**9,
+        checkpoint_interval_steps=10**9,
     )
 
 
@@ -436,29 +436,16 @@ def main() -> None:
     case_dir = args.out / args.variant
     case_dir.mkdir(parents=True, exist_ok=True)
 
-    from openonda.coupler import FVMVPMCoupler, create_coupler
+    from openonda.coupler import create_coupler
     from openonda.fvm import create_fvm_solver
 
     setup, mesh = build_fvm(case_dir, args.t_end, args.cores)
     fvm_solver = create_fvm_solver(setup, case_dir=case_dir, mesh=mesh)
 
-    vpm_solver = None
-    if FVMVPMCoupler.is_master_rank():
-        from openonda.vpm import create_vpm_solver
+    from openonda.vpm import create_vpm_solver
 
-        print(f"[matrix] {args.variant}: {v.label}", flush=True)
-        print(
-            f"[matrix] particle_spacing={v.particle_spacing} N~{v.particles:,d} velocity={v.velocity} viscous={v.viscous} "
-            f"stretch={v.stretching} turb={v.turbulence} prec={v.precision}/{v.device} "
-            f"prune={v.prune} cap={v.cap:g} buffer={v.buffer} panel={v.panel}",
-            flush=True,
-        )
-        vpm_solver = create_vpm_solver(build_vpm(v, case_dir))
-
+    vpm_solver = create_vpm_solver(build_vpm(v, case_dir), case_dir=case_dir)
     create_coupler(fvm_solver, vpm_solver, build_coupler(v)).run()
-
-    if FVMVPMCoupler.is_master_rank():
-        print(f"[matrix] {args.variant} done -> {case_dir / 'samples'}", flush=True)
 
 
 if __name__ == "__main__":

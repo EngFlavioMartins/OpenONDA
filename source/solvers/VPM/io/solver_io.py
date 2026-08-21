@@ -181,7 +181,7 @@ class SolverIO:
         import pandas as pd
 
         samples_dir = resolve_samples_dir(
-            solver.checkpoint_directory,
+            solver.case_dir,
             getattr(solver.setup, "sample_subdirectory", None),
         )
         samples_dir.mkdir(parents=True, exist_ok=True)

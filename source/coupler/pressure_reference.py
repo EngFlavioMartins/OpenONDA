@@ -26,7 +26,7 @@ class PressureReference:
         is_master: bool,
         comm=None,
     ) -> None:
-        self.fvm = fvm
+        self.fvm_solver = fvm
         self.fvm_box = np.asarray(fvm_box, dtype=np.float64)
         self.freestream_velocity = np.asarray(freestream_velocity, dtype=np.float64)
         self.particle_spacing = float(particle_spacing)
@@ -47,7 +47,7 @@ class PressureReference:
             if self.is_master:
                 logger.info("[Init] The downstream pressure boundary fixes the pressure datum.")
             return
-        if not needs_pressure_reference(self.fvm.boundaries):
+        if not needs_pressure_reference(self.fvm_solver.boundaries):
             if self.is_master:
                 logger.info("[Init] A Dirichlet pressure patch fixes the pressure datum.")
             return
@@ -59,9 +59,9 @@ class PressureReference:
         if self.cell_indices is not None:
             return self.cell_indices if self.cell_indices.size else None
 
-        centres = np.asarray(self.fvm.get_cell_center_coordinates(), dtype=np.float64).reshape(
-            -1, 3
-        )
+        centres = np.asarray(
+            self.fvm_solver.get_cell_centre_coordinates(), dtype=np.float64
+        ).reshape(-1, 3)
         if centres.shape[0] == 0:
             self.cell_indices = np.empty(0, dtype=np.int64)
             return None
@@ -91,7 +91,7 @@ class PressureReference:
         """Shift kinematic pressure without changing its gradient."""
         if not self.available:
             return
-        pressure = np.asarray(self.fvm.get_pressure_field(), dtype=np.float64).ravel()
+        pressure = np.asarray(self.fvm_solver.get_pressure_field(), dtype=np.float64).ravel()
         velocity = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
         index = self._selection()
 
@@ -106,7 +106,7 @@ class PressureReference:
             delta = float(self.comm.bcast(delta if self.is_master else None, root=0))
         if not np.isfinite(delta):
             raise FloatingPointError("non-finite pressure datum shift")
-        self.fvm.shift_pressure_field(delta)
+        self.fvm_solver.shift_pressure_field(delta)
         self.last_shift = delta
 
 

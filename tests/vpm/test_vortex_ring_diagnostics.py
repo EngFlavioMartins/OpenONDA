@@ -170,6 +170,7 @@ def test_ring_sampler_writes_dense_diagnostics_beside_other_samples(tmp_path):
         particles_positions=positions,
         particle_vortex_strength=circulation,
         particles_group_ids=np.zeros(len(theta), dtype=np.int32),
+        case_dir=tmp_path,
         checkpoint_directory=str(tmp_path / "solution"),
         time=0.1,
         step=5,

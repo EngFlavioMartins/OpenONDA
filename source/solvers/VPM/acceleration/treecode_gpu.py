@@ -103,8 +103,8 @@ class TaichiTreecode:
         # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
         # -------------------------------------------------------------
         self.positions = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
-        self.circulations = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
-        self.radii = ti.field(dtype=ti.f32, shape=max_particles)
+        self.vortex_strengths = ti.Vector.field(3, dtype=ti.f32, shape=max_particles)
+        self.core_radii = ti.field(dtype=ti.f32, shape=max_particles)
 
         # -------------------------------------------------------------
         # TREE STRUCTURE (binary LBVH)
@@ -114,7 +114,7 @@ class TaichiTreecode:
         self.node_half_size = ti.field(dtype=ti.f32, shape=max_nodes)
 
         # Multipole moments
-        self.node_total_circ = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
+        self.node_total_vortex_strength = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_avg_radius = ti.field(dtype=ti.f32, shape=max_nodes)
         # Higher-order moments are sized by the requested order: at the default
@@ -127,11 +127,15 @@ class TaichiTreecode:
         # First-order source-position moment around node_com:
         #   M[b, a] = sum_j (x_j - node_com)_b * Gamma_{j,a}
         # Used by the opt-in dipole correction when multipole_order == 2.
-        self.node_circ_dipole = ti.Matrix.field(3, 3, dtype=ti.f32, shape=self._dipole_nodes)
+        self.node_vortex_strength_dipole = ti.Matrix.field(
+            3, 3, dtype=ti.f32, shape=self._dipole_nodes
+        )
         # Second-order source-position moment around node_com:
         #   Q[node, k][a, b] = sum_j Gamma_{j,k} * d_a * d_b,   d = x_j - node_com
         # (symmetric in a, b).  Used when multipole_order == 3 (quadrupole).
-        self.node_circ_quad = ti.Matrix.field(3, 3, dtype=ti.f32, shape=(self._quad_nodes, 3))
+        self.node_vortex_strength_quadrupole = ti.Matrix.field(
+            3, 3, dtype=ti.f32, shape=(self._quad_nodes, 3)
+        )
 
         # Binary tree structure (left/right child, -1 = none)
         self.node_left = ti.field(dtype=ti.i32, shape=max_nodes)
@@ -295,7 +299,7 @@ class TaichiTreecode:
     # BUILD — On-GPU LBVH construction
 
     def build(
-        self, positions=None, circulations=None, radii=None, N=None, force: bool = False
+        self, positions=None, vortex_strengths=None, core_radii=None, N=None, force: bool = False
     ) -> None:
         """
         Build LBVH binary tree from particle data.
@@ -337,11 +341,11 @@ class TaichiTreecode:
                     f"Too many particles ({N_val}) for treecode capacity ({self.max_particles})"
                 )
             self.n_particles[None] = N_val
-            self._copy_particle_fields(positions, circulations, radii, N_val)
+            self._copy_particle_fields(positions, vortex_strengths, core_radii, N_val)
         else:
             pos_np = positions
-            strg_np = circulations
-            rad_np = radii
+            strg_np = vortex_strengths
+            rad_np = core_radii
             N_val = len(pos_np)
             if N_val > self.max_particles:
                 raise ValueError(
@@ -367,10 +371,10 @@ class TaichiTreecode:
             self.positions[i] = pos[i]
 
     @ti.kernel
-    def _copy_circulations_field(self, circulations: ti.template(), N: ti.i32):
-        """Overwrite only circulation for a fixed-position topology refit."""
+    def _copy_vortex_strengths_field(self, vortex_strengths: ti.template(), N: ti.i32):
+        """Overwrite only vortex strength for a fixed-position topology refit."""
         for i in range(N):
-            self.circulations[i] = circulations[i]
+            self.vortex_strengths[i] = vortex_strengths[i]
 
     def refit(self, positions, N: int) -> None:
         """Reuse the existing LBVH topology, updating only position multipoles.
@@ -414,24 +418,24 @@ class TaichiTreecode:
             self._combine_level_kernel(N, level)
         self.build_time = time.perf_counter() - t_start
 
-    def refit_circulation(self, circulations, N: int) -> None:
+    def refit_vortex_strength(self, vortex_strengths, N: int) -> None:
         """Refit multipoles after strengths change at fixed positions.
 
         Standalone RK stretching stages keep particle positions and radii
-        fixed while changing only circulation.  Their Morton ordering and
+        fixed while changing only vortex strength.  Their Morton ordering and
         Karras topology are therefore unchanged; rebuilding that topology at
         every stage adds work and has triggered Vulkan device loss in long,
-        memory-heavy coupled runs.  Refresh the circulation field and all
+        memory-heavy coupled runs.  Refresh the vortex strength field and all
         dependent multipoles while retaining the validated topology.
         """
         if getattr(self, "_built_n", None) != N or N <= 1:
             raise RuntimeError(
-                "treecode.refit_circulation requires a prior build() with the same N "
+                "treecode.refit_vortex_strength requires a prior build() with the same N "
                 f"(built N={getattr(self, '_built_n', None)}, requested N={N})"
             )
         t_start = time.perf_counter()
         self.n_particles[None] = N
-        self._copy_circulations_field(circulations, N)
+        self._copy_vortex_strengths_field(vortex_strengths, N)
         self._leaf_multipole_init_kernel(N)
         for level in range(self._combine_levels, -1, -1):
             self._combine_level_kernel(N, level)
@@ -589,10 +593,10 @@ class TaichiTreecode:
         return out
 
     def _upload_numpy_particles(self, pos_np, strg_np, rad_np, N):
-        """Upload NumPy particle arrays to GPU fields."""
+        """Upload arrays through the explicit f32 treecode boundary."""
         self._upload_vector_array(pos_np, self.positions, N)
-        self._upload_vector_array(strg_np, self.circulations, N)
-        self._upload_scalar_array(rad_np, self.radii, N)
+        self._upload_vector_array(strg_np, self.vortex_strengths, N)
+        self._upload_scalar_array(rad_np, self.core_radii, N)
         ti.sync()
 
     @ti.kernel
@@ -602,8 +606,8 @@ class TaichiTreecode:
         """Copy particle data from source Taichi fields to treecode fields."""
         for i in range(N):
             self.positions[i] = pos[i]
-            self.circulations[i] = strg[i]
-            self.radii[i] = rad[i]
+            self.vortex_strengths[i] = strg[i]
+            self.core_radii[i] = rad[i]
 
     # -- GPU Karras tree build (fully parallel, Vulkan-portable) ----------
 
@@ -767,16 +771,16 @@ class TaichiTreecode:
             if N > 0:
                 self.sorted_indices[0] = 0
                 self.leaf_particles[0] = 0
-                self.node_total_circ[0] = self.circulations[0]
+                self.node_total_vortex_strength[0] = self.vortex_strengths[0]
                 self.node_com[0] = self.positions[0]
                 # NB: Python scope — ti.Matrix.zero is Taichi-scope only here.
                 zero33 = np.zeros((3, 3), dtype=np.float32)
-                self.node_circ_dipole[0] = zero33
+                self.node_vortex_strength_dipole[0] = zero33
                 for k in range(3):
-                    self.node_circ_quad[0, k] = zero33
+                    self.node_vortex_strength_quadrupole[0, k] = zero33
                 self.node_center[0] = self.positions[0]
                 self.node_half_size[0] = 0.0
-                self.node_avg_radius[0] = self.radii[0]
+                self.node_avg_radius[0] = self.core_radii[0]
                 self.node_left[0] = -1
                 self.node_right[0] = -1
                 self.node_parent[0] = -1
@@ -899,14 +903,14 @@ class TaichiTreecode:
         """Seed leaf multipoles/AABB directly from particles."""
         for j in range(N):
             p = self.sorted_indices[j]
-            self.node_total_circ[j] = self.circulations[p]
-            self.node_avg_radius[j] = self.radii[p]
+            self.node_total_vortex_strength[j] = self.vortex_strengths[p]
+            self.node_avg_radius[j] = self.core_radii[p]
             self.node_com[j] = self.positions[p]
             if self.multipole_order[None] >= 2:
-                self.node_circ_dipole[j] = ti.Matrix.zero(ti.f32, 3, 3)
+                self.node_vortex_strength_dipole[j] = ti.Matrix.zero(ti.f32, 3, 3)
             if self.multipole_order[None] >= 3:
                 for k in ti.static(range(3)):
-                    self.node_circ_quad[j, k] = ti.Matrix.zero(ti.f32, 3, 3)
+                    self.node_vortex_strength_quadrupole[j, k] = ti.Matrix.zero(ti.f32, 3, 3)
             self.node_center[j] = self.positions[p]
             self.node_half_size[j] = 0.0
             self._node_aabb_min[j] = self.positions[p]
@@ -962,11 +966,17 @@ class TaichiTreecode:
             self.node_particle_start[idx] = first
             self.node_particle_count[idx] = last - first + 1
 
-            total_circ = self.node_total_circ[left] + self.node_total_circ[right]
-            self.node_total_circ[idx] = total_circ
+            total_vortex_strength = (
+                self.node_total_vortex_strength[left] + self.node_total_vortex_strength[right]
+            )
+            self.node_total_vortex_strength[idx] = total_vortex_strength
 
-            mag_l = ti.sqrt(self.node_total_circ[left].dot(self.node_total_circ[left]))
-            mag_r = ti.sqrt(self.node_total_circ[right].dot(self.node_total_circ[right]))
+            mag_l = ti.sqrt(
+                self.node_total_vortex_strength[left].dot(self.node_total_vortex_strength[left])
+            )
+            mag_r = ti.sqrt(
+                self.node_total_vortex_strength[right].dot(self.node_total_vortex_strength[right])
+            )
             total_mag = mag_l + mag_r
             com = ti.Vector([0.0, 0.0, 0.0])
             if total_mag > 1e-15:
@@ -977,49 +987,49 @@ class TaichiTreecode:
 
             d_left = self.node_com[left] - com
             d_right = self.node_com[right] - com
-            gamma_left = self.node_total_circ[left]
-            gamma_right = self.node_total_circ[right]
+            gamma_left = self.node_total_vortex_strength[left]
+            gamma_right = self.node_total_vortex_strength[right]
             if self.multipole_order[None] >= 2:
                 dipole = ti.Matrix.zero(ti.f32, 3, 3)
                 for b in ti.static(range(3)):
                     for a in ti.static(range(3)):
                         dipole[b, a] = (
-                            self.node_circ_dipole[left][b, a]
+                            self.node_vortex_strength_dipole[left][b, a]
                             + d_left[b] * gamma_left[a]
-                            + self.node_circ_dipole[right][b, a]
+                            + self.node_vortex_strength_dipole[right][b, a]
                             + d_right[b] * gamma_right[a]
                         )
-                self.node_circ_dipole[idx] = dipole
+                self.node_vortex_strength_dipole[idx] = dipole
 
             if self.multipole_order[None] >= 3:
                 # Quadrupole shift: Q'_k[a,b] = Q_k[a,b] + s_a D[b,k] + s_b D[a,k]
                 # + Gamma_k s_a s_b, with s the child COM offset and D the
                 # child's own dipole (D[b,k] = sum d_b Gamma_k about child COM).
-                dip_l = self.node_circ_dipole[left]
-                dip_r = self.node_circ_dipole[right]
+                dip_l = self.node_vortex_strength_dipole[left]
+                dip_r = self.node_vortex_strength_dipole[right]
                 for k in ti.static(range(3)):
                     quad = ti.Matrix.zero(ti.f32, 3, 3)
                     for a in ti.static(range(3)):
                         for b in ti.static(range(3)):
                             quad[a, b] = (
-                                self.node_circ_quad[left, k][a, b]
+                                self.node_vortex_strength_quadrupole[left, k][a, b]
                                 + d_left[a] * dip_l[b, k]
                                 + d_left[b] * dip_l[a, k]
                                 + gamma_left[k] * d_left[a] * d_left[b]
-                                + self.node_circ_quad[right, k][a, b]
+                                + self.node_vortex_strength_quadrupole[right, k][a, b]
                                 + d_right[a] * dip_r[b, k]
                                 + d_right[b] * dip_r[a, k]
                                 + gamma_right[k] * d_right[a] * d_right[b]
                             )
-                    self.node_circ_quad[idx, k] = quad
+                    self.node_vortex_strength_quadrupole[idx, k] = quad
 
             count_l = max(self.node_particle_count[left], 1)
             count_r = max(self.node_particle_count[right], 1)
             total_count = count_l + count_r
-            avg_rad = (
+            average_core_radius = (
                 self.node_avg_radius[left] * count_l + self.node_avg_radius[right] * count_r
             ) / total_count
-            self.node_avg_radius[idx] = avg_rad
+            self.node_avg_radius[idx] = average_core_radius
 
             aabb_min = ti.Vector([0.0, 0.0, 0.0])
             aabb_max = ti.Vector([0.0, 0.0, 0.0])
@@ -1126,7 +1136,7 @@ class TaichiTreecode:
     @ti.func
     def _dipole_gamma_dot_r(self, node: ti.i32, r_vec: ti.template()) -> ti.math.vec3:
         """Return sum Gamma_j * dot(r_vec, x_j - node_com)."""
-        moment = self.node_circ_dipole[node]
+        moment = self.node_vortex_strength_dipole[node]
         out = ti.Vector([0.0, 0.0, 0.0])
         for a in ti.static(range(3)):
             for b in ti.static(range(3)):
@@ -1136,7 +1146,7 @@ class TaichiTreecode:
     @ti.func
     def _dipole_gamma_cross_d(self, node: ti.i32) -> ti.math.vec3:
         """Return sum Gamma_j x (x_j - node_com)."""
-        moment = self.node_circ_dipole[node]
+        moment = self.node_vortex_strength_dipole[node]
         return ti.Vector(
             [
                 moment[2, 1] - moment[1, 2],
@@ -1148,7 +1158,7 @@ class TaichiTreecode:
     @ti.func
     def _dipole_cross_columns(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:
         """Matrix whose column b is r_vec x sum_j d_{j,b} Gamma_j."""
-        moment = self.node_circ_dipole[node]
+        moment = self.node_vortex_strength_dipole[node]
         out = ti.Matrix.zero(ti.f32, 3, 3)
         for b in ti.static(range(3)):
             gamma_b = ti.Vector([moment[b, 0], moment[b, 1], moment[b, 2]])
@@ -1165,7 +1175,7 @@ class TaichiTreecode:
             for j in ti.static(range(3)):
                 acc = 0.0
                 for b in ti.static(range(3)):
-                    acc += self.node_circ_quad[node, k][j, b] * r_vec[b]
+                    acc += self.node_vortex_strength_quadrupole[node, k][j, b] * r_vec[b]
                 out[k, j] = acc
         return out
 
@@ -1183,9 +1193,9 @@ class TaichiTreecode:
         out = ti.Vector([0.0, 0.0, 0.0])
         for k in ti.static(range(3)):
             out[k] = (
-                self.node_circ_quad[node, k][0, 0]
-                + self.node_circ_quad[node, k][1, 1]
-                + self.node_circ_quad[node, k][2, 2]
+                self.node_vortex_strength_quadrupole[node, k][0, 0]
+                + self.node_vortex_strength_quadrupole[node, k][1, 1]
+                + self.node_vortex_strength_quadrupole[node, k][2, 2]
             )
         return out
 
@@ -1202,8 +1212,8 @@ class TaichiTreecode:
         r3 = r2 * r_mag
         r5 = r3 * r2
         q_val = self.q_kernel(r_mag / sigma)
-        total_circ = self.node_total_circ[node]
-        vel = -q_val * r_vec.cross(total_circ) / r3
+        total_vortex_strength = self.node_total_vortex_strength[node]
+        vel = -q_val * r_vec.cross(total_vortex_strength) / r3
         if self.multipole_order[None] >= 2:
             zeta_val = self.zeta_kernel(r_mag / sigma) / (sigma * sigma * sigma)
             term1 = q_val / r3
@@ -1239,10 +1249,12 @@ class TaichiTreecode:
         r_sigma = r_mag / sigma
         q_val = self.q_kernel(r_sigma)
         zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
-        total_circ = self.node_total_circ[node]
+        total_vortex_strength = self.node_total_vortex_strength[node]
         term1 = q_val / r3
         term2 = 3.0 * q_val / r5 - zeta_val / r2
-        gradu = term1 * self.skew(total_circ) + term2 * r_vec.cross(total_circ).outer_product(r_vec)
+        gradu = term1 * self.skew(total_vortex_strength) + term2 * r_vec.cross(
+            total_vortex_strength
+        ).outer_product(r_vec)
         if self.multipole_order[None] >= 2:
             zeta_prime_val = self.zeta_prime_kernel(r_sigma)
             t1p_over_r = zeta_val / r2 - 3.0 * q_val / r5
@@ -1290,13 +1302,16 @@ class TaichiTreecode:
                     for i in ti.static(range(3)):
                         X[i, m] = col[i]
                     W[0, m] = (
-                        self.node_circ_quad[node, 2][1, m] - self.node_circ_quad[node, 1][2, m]
+                        self.node_vortex_strength_quadrupole[node, 2][1, m]
+                        - self.node_vortex_strength_quadrupole[node, 1][2, m]
                     )
                     W[1, m] = (
-                        self.node_circ_quad[node, 0][2, m] - self.node_circ_quad[node, 2][0, m]
+                        self.node_vortex_strength_quadrupole[node, 0][2, m]
+                        - self.node_vortex_strength_quadrupole[node, 2][0, m]
                     )
                     W[2, m] = (
-                        self.node_circ_quad[node, 1][0, m] - self.node_circ_quad[node, 0][1, m]
+                        self.node_vortex_strength_quadrupole[node, 1][0, m]
+                        - self.node_vortex_strength_quadrupole[node, 0][1, m]
                     )
                 gradu += 0.5 * (
                     -self.skew(c1)
@@ -1321,9 +1336,9 @@ class TaichiTreecode:
                 r_vec_j = target_pos - self.positions[j]
                 r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
                 if r_mag_j > 1e-10:
-                    sigma = 0.5 * (target_rad + self.radii[j])
+                    sigma = 0.5 * (target_rad + self.core_radii[j])
                     q_val = self.q_kernel(r_mag_j / sigma)
-                    vel -= q_val * r_vec_j.cross(self.circulations[j]) / (r_mag_j**3)
+                    vel -= q_val * r_vec_j.cross(self.vortex_strengths[j]) / (r_mag_j**3)
         return vel
 
     @ti.func
@@ -1336,9 +1351,9 @@ class TaichiTreecode:
             r_vec_j = target_pos - self.positions[j]
             r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
             if r_mag_j > 1e-10:
-                sigma = self.radii[j]
+                sigma = self.core_radii[j]
                 q_val = self.q_kernel(r_mag_j / sigma)
-                vel -= q_val * r_vec_j.cross(self.circulations[j]) / (r_mag_j**3)
+                vel -= q_val * r_vec_j.cross(self.vortex_strengths[j]) / (r_mag_j**3)
         return vel
 
     @ti.func
@@ -1359,16 +1374,16 @@ class TaichiTreecode:
                 r_vec_j = target_pos - self.positions[j]
                 r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
                 if r_mag_j > 1e-10:
-                    sigma = 0.5 * (target_rad + self.radii[j])
+                    sigma = 0.5 * (target_rad + self.core_radii[j])
                     r_sigma = r_mag_j / sigma
                     if r_sigma < max_r_sigma:
                         q_val = self.q_kernel(r_sigma)
                         zeta_val = self.zeta_kernel(r_sigma) / sigma**3
                         term1 = q_val / r_mag_j**3
                         term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
-                        cross_j = r_vec_j.cross(self.circulations[j])
+                        cross_j = r_vec_j.cross(self.vortex_strengths[j])
                         gradu += term1 * self.skew(
-                            self.circulations[j]
+                            self.vortex_strengths[j]
                         ) + term2 * cross_j.outer_product(r_vec_j)
         return gradu
 
@@ -1382,16 +1397,16 @@ class TaichiTreecode:
             r_vec_j = target_pos - self.positions[j]
             r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
             if r_mag_j > 1e-10:
-                sigma = self.radii[j]
+                sigma = self.core_radii[j]
                 r_sigma = r_mag_j / sigma
                 q_val = self.q_kernel(r_sigma)
                 zeta_val = self.zeta_kernel(r_sigma) / sigma**3
                 term1 = q_val / r_mag_j**3
                 term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
-                cross_j = r_vec_j.cross(self.circulations[j])
-                gradu += term1 * self.skew(self.circulations[j]) + term2 * cross_j.outer_product(
-                    r_vec_j
-                )
+                cross_j = r_vec_j.cross(self.vortex_strengths[j])
+                gradu += term1 * self.skew(
+                    self.vortex_strengths[j]
+                ) + term2 * cross_j.outer_product(r_vec_j)
         return gradu
 
     # TRAVERSAL — Binary-tree stack-based
@@ -1425,7 +1440,7 @@ class TaichiTreecode:
     def _traverse_particle_vel(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.math.vec3:
         vel = ti.Vector([0.0, 0.0, 0.0])
         target_pos = self.positions[i]
-        target_rad = self.radii[i]
+        target_rad = self.core_radii[i]
         root = self._root[None]
         self.traversal_stack[i, 0] = root
         stack_ptr = 1
@@ -1452,7 +1467,7 @@ class TaichiTreecode:
     def _traverse_particle_grad(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.Matrix:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         target_pos = self.positions[i]
-        target_rad = self.radii[i]
+        target_rad = self.core_radii[i]
         MAX_R_SIGMA = ti.cast(15.0, ti.f32)
         root = self._root[None]
         self.traversal_stack[i, 0] = root
@@ -1594,7 +1609,7 @@ class TaichiTreecode:
             vel = ti.Vector([0.0, 0.0, 0.0])
             gradu = ti.Matrix.zero(ti.f32, 3, 3)
             target_pos = self.positions[i]
-            target_rad = self.radii[i]
+            target_rad = self.core_radii[i]
             self.traversal_stack[i, 0] = root
             stack_ptr = 1
             while stack_ptr > 0:
@@ -1719,7 +1734,6 @@ class TaichiTreecode:
     def compute_target_velocities_kernel(
         self,
         theta_sq: ti.f32,
-        avg_radius: ti.f32,
         start_target: ti.i32,
         count: ti.i32,
     ):
@@ -1736,7 +1750,6 @@ class TaichiTreecode:
     def compute_target_velocity_gradients_kernel(
         self,
         theta_sq: ti.f32,
-        avg_radius: ti.f32,
         start_target: ti.i32,
         count: ti.i32,
     ):
@@ -1751,7 +1764,6 @@ class TaichiTreecode:
     def compute_target_velocity_and_gradients_kernel(
         self,
         theta_sq: ti.f32,
-        avg_radius: ti.f32,
         start_target: ti.i32,
         count: ti.i32,
     ):
@@ -1808,7 +1820,7 @@ class TaichiTreecode:
         theta_sq = self.theta * self.theta
         for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, M - start)
-            self.compute_target_velocities_kernel(theta_sq, 0.0, start, count)
+            self.compute_target_velocities_kernel(theta_sq, start, count)
             ti.sync()
         return self._download_vector_field(self.target_velocities, M)
 
@@ -1823,7 +1835,7 @@ class TaichiTreecode:
         theta_sq = self.theta * self.theta
         for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, M - start)
-            self.compute_target_velocity_gradients_kernel(theta_sq, 0.0, start, count)
+            self.compute_target_velocity_gradients_kernel(theta_sq, start, count)
             ti.sync()
         return self._download_matrix_field(self.target_velocity_gradients, M)
 
@@ -1850,7 +1862,7 @@ class TaichiTreecode:
         theta_sq = self.theta * self.theta
         for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, M - start)
-            self.compute_target_velocity_and_gradients_kernel(theta_sq, 0.0, start, count)
+            self.compute_target_velocity_and_gradients_kernel(theta_sq, start, count)
             ti.sync()
         return (
             self._download_vector_field(self.target_velocities, M),
@@ -1878,12 +1890,12 @@ class TaichiTreecode:
 
 def compute_velocities_treecode_gpu(
     positions: np.ndarray,
-    circulations: np.ndarray,
-    radii: np.ndarray,
+    vortex_strengths: np.ndarray,
+    core_radii: np.ndarray,
     theta: float = 0.5,
     freestream_velocity: np.ndarray | None = None,
 ) -> np.ndarray:
     N = len(positions)
     tree = TaichiTreecode(max_particles=N, max_nodes=2 * N, theta=theta)
-    tree.build(positions, circulations, radii)
+    tree.build(positions, vortex_strengths, core_radii)
     return tree.compute_velocities(freestream_velocity)

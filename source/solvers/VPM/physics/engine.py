@@ -717,7 +717,7 @@ class _StretchingHandler:
         if self._use_treecode:
             tree = p._get_or_create_treecode(N, self._treecode_theta)
             if reuse_tree and p.reuse_tree_topology:
-                tree.refit_circulation(strg, N)
+                tree.refit_vortex_strength(strg, N)
             else:
                 tree.build(pos, strg, rad, N)
             p._target_tree_key = None

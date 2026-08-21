@@ -402,7 +402,7 @@ class _GridDiffusionMixin:
         _logger.warning(
             "Diffusion grid %dx%dx%d uses %.0f MB, %.0f%% of the %.0f MB device pool; "
             "particles, treecode and staging buffers share what is left. "
-            "Reduce vpm_domain_bounds or coarsen the diffusion particle_spacing if allocation fails.",
+            "Reduce domain_bounds or coarsen the diffusion particle_spacing if allocation fails.",
             nx,
             ny,
             nz,
@@ -432,7 +432,7 @@ class _GridDiffusionMixin:
             nz = min(nz, cap[2])
         elif self._require_fixed_grid_allocation:
             raise RuntimeError(
-                "GPU DVH/GBD requires vpm_domain_bounds so the diffusion grid "
+                "GPU DVH/GBD requires domain_bounds so the diffusion grid "
                 "can be pre-allocated once. Refusing grow-on-demand grid allocation "
                 "because Taichi 1.7.x retains replaced Vulkan fields until ti.reset()."
             )
@@ -446,7 +446,7 @@ class _GridDiffusionMixin:
                 raise RuntimeError(
                     "GPU DVH/GBD grid request exceeds the fixed pre-allocated "
                     f"grid {alloc}: requested {(nx, ny, nz)}. Increase "
-                    "vpm_domain_bounds/padding or use CUDA/CPU for this run."
+                    "domain_bounds/padding or use CUDA/CPU for this run."
                 )
 
             if self._grid_realloc_count >= self._MAX_GRID_REALLOCS:
@@ -590,7 +590,7 @@ class _GridDiffusionMixin:
                     f"({bytes_per_node} B/node)\n"
                     f"  budget         : {budget / (1 << 20):.0f} MB "
                     f"({self._GRID_POOL_SHARE:.0%} of {pool_txt})\n"
-                    "Reduce vpm_domain_bounds, coarsen the diffusion particle_spacing, or use CUDA/CPU."
+                    "Reduce domain_bounds, coarsen the diffusion particle_spacing, or use CUDA/CPU."
                 )
             _logger.info(
                 "DVH: VPM domain grid (%d×%d×%d) = %.0f MB — %s. "

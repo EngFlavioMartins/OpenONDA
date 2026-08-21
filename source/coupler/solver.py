@@ -108,11 +108,11 @@ class FVMVPMCoupler:
         else:
             self.vpm_redirector = OutputRedirector()  # no-op
 
-        self.vpm: VPMSolver | None = None
-        self.fvm: FVMSolver | None = None
-        self.transfer: VorticityTransfer | None = None
-        self.blending = None
-        self._u_bc_prev: np.ndarray | None = None
+        self.vpm_solver: VPMSolver | None = None
+        self.fvm_solver: FVMSolver | None = None
+        self.vorticity_transfer: VorticityTransfer | None = None
+        self.blending_zone = None
+        self._velocity_bc_prev: np.ndarray | None = None
         self._normal_velocity_bc_prev: np.ndarray | None = None
         self._normal_velocity_bc_next: np.ndarray | None = None
         self._tangential_gradient_bc_prev: np.ndarray | None = None
@@ -134,8 +134,8 @@ class FVMVPMCoupler:
         self.fvm_time_step_size: float | None = None
         self.vpm_time_step_size: float | None = None
         self.end_time: float | None = None
-        self.nu: float | None = None
-        self.rho: float | None = None
+        self.kinematic_viscosity: float | None = None
+        self.density: float | None = None
         self.fvm_box: np.ndarray | None = None
         self.fvm_substeps = 1
         self.freestream_velocity = np.array(coupler_setup.freestream_velocity, dtype=np.float64)
@@ -154,22 +154,6 @@ class FVMVPMCoupler:
             raise ValueError(
                 "VPM regen core_radius_ratio must match the coupler vpm_core_radius_ratio"
             )
-        mode_attr = {"DVH": "dvh_threshold_mode", "GBD": "gbd_threshold_mode"}.get(scheme)
-        if mode_attr is not None:
-            mode = getattr(vsc, mode_attr, None)
-            if mode in ("relative_max", "budget", "absolute"):
-                logger.warning(
-                    "[Init] Injected VPM uses %s='%s', which thresholds particle "
-                    "regeneration against a GLOBAL |Gamma| reference. In a coupled run "
-                    "the global maximum is the body's wall vortex sheet, so the far "
-                    "wake is pruned along an iso-|Gamma| surface - real vortical "
-                    "structures are cut into fragments and cannot be passed outward. "
-                    "Use ViscousConfig.%s(threshold_mode='relative_local') so each "
-                    "node is referenced to its own neighbourhood.",
-                    mode_attr,
-                    mode,
-                    scheme.lower(),
-                )
         dom = vpm.setup.domain_bounds
         if dom is not None:
             contains = (
@@ -185,13 +169,13 @@ class FVMVPMCoupler:
                     f"Injected VPM domain {tuple(dom)} does not contain the FVM "
                     f"box {tuple(box)}. The near-body particles the coupler injects "
                     "would be removed by the VPM's out-of-bounds cull every step. "
-                    "Widen vpm_domain_bounds (or the VPM stabilization "
+                    "Widen domain_bounds (or the VPM stabilization "
                     "remove_particles_by_bounds) to enclose fvm_box."
                 )
         vpm_nu = vsc.kinematic_viscosity
         if vpm_nu is not None and abs(float(vpm_nu) - nu) > 1e-12:
             raise ValueError(
-                f"Incompatible kinematic viscosity: VPM viscous.viscosity="
+                f"Incompatible kinematic viscosity: VPM viscous.kinematic_viscosity="
                 f"{float(vpm_nu):g} but the Eulerian solver uses nu={float(nu):g}. "
                 "The two solvers must model the same fluid."
             )
@@ -203,14 +187,6 @@ class FVMVPMCoupler:
                 "The VPM far-field and "
                 "the VPM advection frame must agree."
             )
-
-    @staticmethod
-    def is_master_rank() -> bool:
-        """True on the rank that owns the GPU VPM and all IO (rank 0).
-
-        Lets an injection setup script build the VPM on the master only without
-        hard-coding the ``OMPI_COMM_WORLD_RANK`` lookup."""
-        return _world_rank() == 0
 
     @staticmethod
     def _derive_fvm_substeps(vpm_time_step_size: float, fvm_time_step_size: float) -> int:
@@ -257,9 +233,9 @@ class FVMVPMCoupler:
         min/max of the face centroids reproduce the box bounds to round-off.
         Collective (all ranks) — the face-geometry getter gathers globally.
         """
-        assert self.fvm is not None
+        assert self.fvm_solver is not None
         fc = np.asarray(
-            self.fvm.get_boundary_face_center_coordinates(self.setup.bc_patch_name),
+            self.fvm_solver.get_boundary_face_centre_coordinates(self.setup.bc_patch_name),
             dtype=np.float64,
         ).reshape(-1, 3)
         box = None
@@ -290,12 +266,12 @@ class FVMVPMCoupler:
 
     def _read_fvm_state(self) -> None:
         """Read fluid properties, time integration, and domain from the FVM."""
-        assert self.fvm is not None
-        fvm_cfg = self.fvm.setup
+        assert self.fvm_solver is not None
+        fvm_cfg = self.fvm_solver.setup
         self.fvm_time_step_size = float(fvm_cfg.time.time_step_size)
         self.end_time = float(fvm_cfg.time.end_time)
-        self.nu = float(fvm_cfg.transport.nu)
-        self.rho = float(fvm_cfg.transport.density)
+        self.kinematic_viscosity = float(fvm_cfg.transport.kinematic_viscosity)
+        self.density = float(fvm_cfg.transport.density)
         self.fvm_box = self._derive_fvm_box()
         self.setup.validate_transfer_region_box(self.fvm_box)
 
@@ -311,18 +287,18 @@ class FVMVPMCoupler:
         Idempotent: a second call is a no-op (the coupling components are built
         exactly once), so ``initialize`` then ``run``/``solve`` is safe.
         """
-        if self.transfer is not None:
+        if self.vorticity_transfer is not None:
             return  # already initialized
         cfg = self.setup
 
-        self.fvm = self._injected_fvm
+        self.fvm_solver = self._injected_fvm
 
         world_size = 1
         if _mpi4py_comm is not None:
             world_size = int(_mpi4py_comm.Get_size())
         else:
             world_size = int(os.environ.get("OMPI_COMM_WORLD_SIZE", "1"))
-        if world_size > 1 and int(self.fvm.n_procs()) == 1:
+        if world_size > 1 and int(self.fvm_solver.n_procs()) == 1:
             raise RuntimeError(
                 f"Launched under MPI (world size {world_size}) but the injected "
                 "Eulerian solver is serial (n_procs() == 1). Configure a parallel "
@@ -331,22 +307,24 @@ class FVMVPMCoupler:
 
         self._read_fvm_state()
 
-        self.vpm = self._injected_vpm if self._is_master else None
+        candidate_vpm = self._injected_vpm
+        inactive_rank = bool(getattr(candidate_vpm, "_openonda_inactive_rank", False))
+        self.vpm_solver = candidate_vpm if self._is_master and not inactive_rank else None
         if self._is_master:
-            if self.vpm is None:
+            if self.vpm_solver is None:
                 raise ValueError(
                     "vpm_solver is None on the master rank. "
-                    "Build the VPM on the master (FVMVPMCoupler.is_master_rank())."
+                    "Build the VPM on the master (the Coupler's internal VPM-owner rank)."
                 )
-            assert self.fvm_box is not None and self.nu is not None
-            self._validate_vpm(self.vpm, cfg, self.fvm_box, self.nu)
+            assert self.fvm_box is not None and self.kinematic_viscosity is not None
+            self._validate_vpm(self.vpm_solver, cfg, self.fvm_box, self.kinematic_viscosity)
             logger.info("[Init] Using injected VPM solver.")
 
         assert self.fvm_time_step_size is not None
         vpm_time_step_size = self.fvm_time_step_size
         if self._is_master:
-            assert self.vpm is not None
-            vpm_time_step_size = float(self.vpm.time_step_size)
+            assert self.vpm_solver is not None
+            vpm_time_step_size = float(self.vpm_solver.time_step_size)
         if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
             vpm_time_step_size = float(
                 _mpi4py_comm.bcast(vpm_time_step_size if self._is_master else None, root=0)
@@ -364,40 +342,40 @@ class FVMVPMCoupler:
                 self.fvm_substeps,
             )
 
-        self.transfer = VorticityTransfer(self)
-        self.transfer.setup(self.fvm)
-        if self._is_master and self.transfer._body_bounds is not None:
-            assert self.vpm is not None
-            self.vpm.physics.configure_body_box(self.transfer._body_bounds)
+        self.vorticity_transfer = VorticityTransfer(self)
+        self.vorticity_transfer.setup(self.fvm_solver)
+        if self._is_master and self.vorticity_transfer._body_bounds is not None:
+            assert self.vpm_solver is not None
+            self.vpm_solver.physics.configure_body_box(self.vorticity_transfer._body_bounds)
             logger.info(
                 "[Init] VPM grid diffusion body mask enabled for box %s.",
-                self.transfer._body_bounds.tolist(),
+                self.vorticity_transfer._body_bounds.tolist(),
             )
         if self._is_master:
-            anchor = self.transfer._lattice_anchor
+            anchor = self.vorticity_transfer._lattice_anchor
             if (
                 anchor is None
-                and self.transfer._cell_centers is not None
-                and len(self.transfer._cell_centers) > 0
+                and self.vorticity_transfer._cell_centers is not None
+                and len(self.vorticity_transfer._cell_centers) > 0
             ):
-                anchor = self.transfer._cell_centers[0]
+                anchor = self.vorticity_transfer._cell_centers[0]
             if anchor is not None:
-                assert self.vpm is not None
-                self.vpm.physics.configure_grid_lattice_anchor(
+                assert self.vpm_solver is not None
+                self.vpm_solver.physics.configure_grid_lattice_anchor(
                     anchor, self.setup.vpm_particle_spacing
                 )
                 logger.info("[Init] VPM diffusion lattice aligned with the transfer lattice.")
 
         assert self.fvm_box is not None
-        self.blending = BlendingZone(
+        self.blending_zone = BlendingZone(
             cfg,
-            self.vpm,
-            self.fvm,
+            self.vpm_solver,
+            self.fvm_solver,
             coupling_time_step_size=self.vpm_time_step_size,
             fvm_box=self.fvm_box,
         )
         self.pressure_reference = PressureReference(
-            self.fvm,
+            self.fvm_solver,
             fvm_box=self.fvm_box,
             freestream_velocity=self.freestream_velocity,
             particle_spacing=self.setup.vpm_particle_spacing,
@@ -411,7 +389,7 @@ class FVMVPMCoupler:
         if self._is_master:
             logger.info("[Init] Impulsive start: zero VPM particles.")
             with self.vpm_redirector:
-                print(_vpm_solver_info(self.vpm))
+                print(_vpm_solver_info(self.vpm_solver))
                 sys.stdout.flush()
             write_run_metadata(self)
             print("Initialization complete.\n")
@@ -424,7 +402,7 @@ class FVMVPMCoupler:
         restart_from=None,
     ) -> None:
         """Initialize and run the coupling loop."""
-        if self.transfer is None:
+        if self.vorticity_transfer is None:
             self.initialize()
         if restart_from is not None:
             if start_step:
@@ -468,13 +446,13 @@ class FVMVPMCoupler:
 
     def _prepare_run(self):
         """Validate a run and collect the immutable interface geometry."""
-        if self.transfer is None:
+        if self.vorticity_transfer is None:
             raise RuntimeError(
                 "solve() called before initialize(); call coupler.initialize() "
                 "first, or use coupler.run() which does both."
             )
-        assert self._is_master == (self.vpm is not None)
-        assert self.fvm is not None
+        assert self._is_master == (self.vpm_solver is not None)
+        assert self.fvm_solver is not None
 
         assert self.end_time is not None and self.vpm_time_step_size is not None
         n_steps = self._derive_coupling_step_count(self.end_time, self.vpm_time_step_size)
@@ -485,28 +463,30 @@ class FVMVPMCoupler:
             logger.info("=" * 60)
 
         face_centers = np.asarray(
-            self.fvm.get_boundary_face_center_coordinates(patch), dtype=np.float64
+            self.fvm_solver.get_boundary_face_centre_coordinates(patch), dtype=np.float64
         ).reshape(-1, 3)
         face_normals = np.asarray(
-            self.fvm.get_boundary_face_normals(patch), dtype=np.float64
+            self.fvm_solver.get_boundary_face_normals(patch), dtype=np.float64
         ).reshape(-1, 3)
-        face_areas = np.asarray(self.fvm.get_boundary_face_areas(patch), dtype=np.float64).ravel()
+        face_areas = np.asarray(
+            self.fvm_solver.get_boundary_face_areas(patch), dtype=np.float64
+        ).ravel()
         self._n_steps = n_steps
         return (face_centers, face_normals, face_areas), n_steps
 
     def _advance_vpm(self, step: int, time_end: float) -> float:
         t0 = time.perf_counter()
         if self._is_master:
-            assert self.vpm is not None
+            assert self.vpm_solver is not None
             with self.vpm_redirector:
-                self.vpm.set_freestream_velocity(self.setup.freestream_velocity)
+                self.vpm_solver.set_freestream_velocity(self.setup.freestream_velocity)
             print()
             print("-" * 60)
             print(f"STEP {step}/{self._n_steps}  (t={time_end:.3f}s)")
 
             with self.vpm_redirector:
-                self.vpm.advance()
-            self.vpm.synchronize()
+                self.vpm_solver.advance()
+            self.vpm_solver.synchronize()
         return time.perf_counter() - t0
 
     def _transfer_vorticity_to_vpm(
@@ -521,13 +501,13 @@ class FVMVPMCoupler:
         gradient_global = self._get_velocity_gradient_field_buffer()
         transfer_result = None
         if self._is_master:
-            assert self.vpm is not None
-            assert self.transfer is not None
-            vpm = self.vpm
-            transfer = self.transfer
+            assert self.vpm_solver is not None
+            assert self.vorticity_transfer is not None
+            vpm = self.vpm_solver
+            transfer = self.vorticity_transfer
             n_before = vpm.particles.n_particles
             sum_before = (
-                float(np.sum(np.linalg.norm(np.asarray(vpm.particles_circulation), axis=1)))
+                float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
                 if n_before > 0
                 else 0.0
             )
@@ -538,7 +518,7 @@ class FVMVPMCoupler:
             )
             n_after = vpm.particles.n_particles
             sum_after = (
-                float(np.sum(np.linalg.norm(np.asarray(vpm.particles_circulation), axis=1)))
+                float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
                 if n_after > 0
                 else 0.0
             )
@@ -552,23 +532,23 @@ class FVMVPMCoupler:
         return transfer_result, time.perf_counter() - t_transfer
 
     def _get_velocity_field_buffer(self) -> np.ndarray:
-        assert self.fvm is not None
+        assert self.fvm_solver is not None
         if self._velocity_global_buffer is None:
             self._velocity_global_buffer = np.ascontiguousarray(
-                self.fvm.get_velocity_field(), dtype=np.float64
+                self.fvm_solver.get_velocity_field(), dtype=np.float64
             ).reshape(-1, 3)
         else:
-            self.fvm.get_velocity_field_into(self._velocity_global_buffer)
+            self.fvm_solver.get_velocity_field_into(self._velocity_global_buffer)
         return self._velocity_global_buffer
 
     def _get_velocity_gradient_field_buffer(self) -> np.ndarray:
-        assert self.fvm is not None
+        assert self.fvm_solver is not None
         if self._velocity_gradient_global_buffer is None:
             self._velocity_gradient_global_buffer = np.ascontiguousarray(
-                self.fvm.get_velocity_gradient_field(), dtype=np.float64
+                self.fvm_solver.get_velocity_gradient_field(), dtype=np.float64
             ).reshape(-1, 3, 3)
         else:
-            self.fvm.get_velocity_gradient_field_into(self._velocity_gradient_global_buffer)
+            self.fvm_solver.get_velocity_gradient_field_into(self._velocity_gradient_global_buffer)
         return self._velocity_gradient_global_buffer
 
     def save_state(self, directory, *, coupling_step: int | None = None) -> Path:
