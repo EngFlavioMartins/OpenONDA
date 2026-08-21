@@ -288,7 +288,7 @@ def run_case(
         "time_integration": time_integration,
         "velocity_method": velocity_method,
         "treecode_theta": treecode_theta if velocity_method == "TREECODE" else None,
-        "processing_unit": compute_device,
+        "compute_device": compute_device,
         "ring_radius": RING_RADIUS,
         "core_radius": CORE_RADIUS,
         "ring_circulation": RING_STRENGTH,
@@ -399,7 +399,7 @@ def main() -> int:
     )
     parser.add_argument("--treecode-theta", type=float, default=0.3)
     parser.add_argument(
-        "--processing-unit",
+        "--compute-device",
         choices=("AUTO", "CPU", "METAL", "VULKAN", "CUDA"),
         default="AUTO",
     )
