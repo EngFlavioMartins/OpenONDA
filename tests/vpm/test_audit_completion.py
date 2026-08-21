@@ -343,6 +343,11 @@ def test_conservation_tracker_compares_dimensionally_equal_vector_strengths(tmp_
     assert state.energy_dissipation_rate == pytest.approx(-1.0)
     assert state.vortex_strength_error == pytest.approx(0.0)
 
+    solver.total_vortex_strength = np.array([0.0, -6.0, 0.0])
+    nonclosing_state = tracker.record_state(solver)
+    np.testing.assert_allclose(nonclosing_state.total_vortex_strength, [0.0, 2.0, 0.0])
+    assert nonclosing_state.vortex_strength_error == pytest.approx(25.0)
+
     output = tracker.export_csv(tmp_path)
     assert output == tmp_path / "samples" / "vpm_conservation.csv"
     with output.open(newline="", encoding="utf-8") as stream:

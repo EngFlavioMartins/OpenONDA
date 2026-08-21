@@ -84,7 +84,6 @@ class ConservationTracker:
     def __init__(self, density: float = 1.225):
         self.density = density
         self.history: list[ConservationState] = []
-        self._initial_vortex_strength: float | None = None
 
     def record_state(self, solver: "VPMSolver") -> ConservationState:
         """Record conservation quantities at the current time step."""
@@ -114,14 +113,13 @@ class ConservationTracker:
         state.total_vortex_strength = state.bound_vortex_strength + state.wake_vortex_strength
         state.impulse_total = state.impulse_wake
 
-        if self._initial_vortex_strength is None:
-            self._initial_vortex_strength = np.linalg.norm(state.total_vortex_strength)
-
-        if self._initial_vortex_strength > 1e-10:
+        closure_scale = max(
+            np.linalg.norm(state.bound_vortex_strength),
+            np.linalg.norm(state.wake_vortex_strength),
+        )
+        if closure_scale > np.finfo(float).tiny:
             state.vortex_strength_error = (
-                100.0
-                * abs(np.linalg.norm(state.total_vortex_strength) - self._initial_vortex_strength)
-                / self._initial_vortex_strength
+                100.0 * np.linalg.norm(state.total_vortex_strength) / closure_scale
             )
 
         self.history.append(state)
@@ -187,6 +185,7 @@ class ConservationTracker:
             return
 
         final = self.history[-1]
+        initial = self.history[0]
 
         print("\n" + "=" * 70)
         print("CONSERVATION DIAGNOSTICS SUMMARY")
@@ -195,7 +194,7 @@ class ConservationTracker:
         print(f"Time steps recorded: {len(self.history)}")
 
         print("\n--- Bound/Wake Vortex-Strength Closure ---")
-        print(f"Initial total strength: {self._initial_vortex_strength:.6e} m^3/s")
+        print(f"Initial total strength: {np.linalg.norm(initial.total_vortex_strength):.6e} m^3/s")
         print(f"Final total strength:   {np.linalg.norm(final.total_vortex_strength):.6e} m^3/s")
         print(f"Closure error:          {final.vortex_strength_error:.3f}%")
 
