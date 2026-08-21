@@ -88,9 +88,9 @@ The stable public modules are:
 
 ```python
 from openonda import __version__
-from openonda.fvm import FVMSetup, Solver as FVMSolver, setup_fvm_solver
-from openonda.vpm import VPMSetup, Solver as VPMSolver, setup_vpm_solver
-from openonda.coupler import CouplerSetup, FVMVPMCoupler, setup_coupler
+from openonda.fvm import FVMSetup, FVMSolver, create_fvm_solver
+from openonda.vpm import VPMSetup, VPMSolver, create_vpm_solver
+from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
 ```
 
 Runnable cases live under `tutorials/FVM`, `tutorials/VPM`, and
@@ -98,7 +98,7 @@ Runnable cases live under `tutorials/FVM`, `tutorials/VPM`, and
 mesher:
 
 ```bash
-cd tutorials/coupled_FVM_VPM/cubeFlow
+cd tutorials/coupled_FVM_VPM/cube_flow
 ./allrun.sh
 ```
 
@@ -107,7 +107,7 @@ Standalone FVM, standalone VPM, and all three coupled installed-package smoke
 cases can be exercised from isolated copies with:
 
 ```bash
-scripts/validate_native_tutorials.sh
+python scripts/validate_native_tutorials.py
 ```
 
 ### CPU and GPU execution
@@ -115,8 +115,8 @@ scripts/validate_native_tutorials.sh
 VPM selects a compatible Taichi backend automatically. To choose one explicitly:
 
 ```bash
-OPENONDA_PROCESSING_UNIT=CPU ./allrun.sh
-OPENONDA_PROCESSING_UNIT=GPU_VULKAN ./allrun.sh   # Linux with a Vulkan driver
+OPENONDA_COMPUTE_DEVICE=CPU ./allrun.sh
+OPENONDA_COMPUTE_DEVICE=GPU_VULKAN ./allrun.sh   # Linux with a Vulkan driver
 ```
 
 Taichi includes its runtime; a separate Vulkan SDK is not required. The helper

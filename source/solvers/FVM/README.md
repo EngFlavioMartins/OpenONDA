@@ -12,53 +12,44 @@ evolution; it is applied when reporting dimensional pressure and viscous forces.
 ## Public API
 
 ```python
-from source.solvers.FVM import (
-    BoundaryConfig,
-    FVMSetup,
-    LinearSolverConfig,
-    LogConfig,
-    OutputSetup,
-    PimpleControl,
-    SchemesConfig,
-    TimeConfig,
-    TransportConfig,
-    setup_fvm_solver,
-)
+import openonda.fvm as fvm
 
-setup = FVMSetup(
+setup = fvm.FVMSetup(
     case_name="cube",
     cores=1,
-    output=OutputSetup(
+    output=fvm.OutputConfig(
         compression="lz4",
         asynchronous=True,
         ghost_layers=1,
     ),
-    logging=LogConfig(mode="simple", interval=1),
-    time=TimeConfig.transient(dt=1e-3, duration=1.0),
-    schemes=SchemesConfig(
+    logging=fvm.LoggingConfig(mode="simple", interval_steps=1),
+    time=fvm.TimeConfig.transient(time_step_size=1e-3, duration=1.0),
+    schemes=fvm.DiscretizationConfig(
         convection_scheme="limitedLinear",
         gradient_scheme="lsq",
     ),
-    linear=LinearSolverConfig(
+    linear=fvm.LinearSolverConfig(
         momentum_solver="bicgstab",
         pressure_solver="amg",
     ),
-    pimple=PimpleControl(n_correctors=2, n_outer_correctors=2),
-    transport=TransportConfig(density=1.0, nu=1.5e-5),
+    pimple=fvm.PimpleControl(n_correctors=2, n_outer_correctors=2),
+    transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=1.5e-5),
     boundaries=[
-        BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
-        BoundaryConfig.outlet("outlet", 0.0),
+        fvm.BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
+        fvm.BoundaryConfig.outlet("outlet", 0.0),
     ],
+    initial_velocity=[1.0, 0.0, 0.0],
+    initial_kinematic_pressure=0.0,
 )
 # ``mesh`` may also be a mesh dictionary or a callable returning one.
-solver = setup_fvm_solver(setup, case_dir="path/to/case", mesh="mesh.msh")
-solver.evolve()
-solver.save_state("solution/restart.npz")
-solver.write_run_manifest()
+with fvm.create_fvm_solver(setup, case_dir="path/to/case", mesh="mesh.msh") as solver:
+    while solver.time < setup.time.end_time:
+        solver.advance()
 ```
 
 Configuration is provided entirely through `FVMSetup`. Initial velocity and
-pressure values must be supplied through `FVMSetup.initial_U` and `initial_p`.
+pressure values are supplied through `FVMSetup.initial_velocity` and
+`FVMSetup.initial_kinematic_pressure`.
 Nonzero `relTol` values are supported, and separate final-stage values may
 override the relative tolerances for the final momentum and pressure solves.
 
@@ -84,7 +75,7 @@ force/wake evidence. One-rank FVM–VPM restart and conservation are verified,
 but broader coupled cases remain experimental.
 
 `FVMSetup(cores=N, ...)` is the public parallel interface.
-`setup_fvm_solver(...)` internally selects owned-plus-halo PIMPLE, owned PETSc
+`create_fvm_solver(...)` internally selects owned-plus-halo PIMPLE, owned PETSc
 rows, rank-local fields, and VTU/PVTU output when `N > 1`. Visualization is
 written as cell-centred, appended-binary VTK XML with LZ4 compression. Parallel
 pieces include one marked overlap layer by default, so ParaView's
