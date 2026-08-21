@@ -14,7 +14,7 @@ import numpy as np
 
 
 def LambOseenVPM(
-    viscosity: float,
+    kinematic_viscosity: float,
     avg_particle_radius: float,
     positions: np.ndarray,
     volumes: np.ndarray,
@@ -22,13 +22,13 @@ def LambOseenVPM(
     vortex_strength: float = np.pi,
     vortex_time: float = 1.0,
     disturb_amp: float = 0.0,
-    max_diturb_modes: int = 12,
+    max_disturb_modes: int = 12,
     anti_diffuse_flag: bool = False,
 ):
     """Initialize Lamb-Oseen vortex field on particles.
 
     Parameters:
-        viscosity: Kinematic viscosity [m²/s]
+        kinematic_viscosity: Kinematic kinematic_viscosity [m²/s]
         avg_particle_radius: Average particle core radius [m]
         positions: Particle positions (N, 3)
         volumes: Particle volumes (N,)
@@ -36,7 +36,7 @@ def LambOseenVPM(
         vortex_strength: Total circulation [m²/s]
         vortex_time: Vortex age [s] (for viscous diffusion)
         disturb_amp: Perturbation amplitude
-        max_diturb_modes: Number of perturbation modes
+        max_disturb_modes: Number of perturbation modes
         anti_diffuse_flag: Compensate for particle core diffusion
 
     Returns:
@@ -48,30 +48,32 @@ def LambOseenVPM(
     vorticities = np.zeros_like(positions)
     velocities = np.zeros_like(positions)
 
-    # Handle inviscid case (viscosity=0)
-    if viscosity <= 0.0:
+    # Handle inviscid case (kinematic_viscosity=0)
+    if kinematic_viscosity <= 0.0:
         # Use particle radius as core size for inviscid vortex
         a_sq = avg_particle_radius**2
     else:
         # Adjust vortex_time for anti-diffusion
         # Gaussian particles use exp(-r^2/sigma^2), so their blob variance adds
         # an effective age shift sigma^2/(4*nu) to the represented Lamb-Oseen core.
-        t_shift = (avg_particle_radius**2 / (4.0 * viscosity)) if anti_diffuse_flag else 0.0
+        t_shift = (
+            (avg_particle_radius**2 / (4.0 * kinematic_viscosity)) if anti_diffuse_flag else 0.0
+        )
         if t_shift > vortex_time:
             raise ValueError(
                 "Invalid parameters: vortex_time too small for anti-diffusion correction."
             )
         vortex_time_eff = vortex_time - t_shift
         # Compute core size squared from vortex_time
-        a_sq = 4.0 * viscosity * vortex_time_eff
+        a_sq = 4.0 * kinematic_viscosity * vortex_time_eff
 
     # Add perturbation to the vortex center
     z_vals = positions[:, 2]
-    phases = 2 * np.pi * np.random.rand(max_diturb_modes)
+    phases = 2 * np.pi * np.random.rand(max_disturb_modes)
     disturb = np.zeros_like(z_vals)
-    for n in range(1, max_diturb_modes + 1):
+    for n in range(1, max_disturb_modes + 1):
         disturb += np.cos(n * z_vals + phases[n - 1])
-    disturb /= np.sqrt(max_diturb_modes)
+    disturb /= np.sqrt(max_disturb_modes)
 
     perturbed_x = vortex_center[0] + disturb_amp * disturb
     perturbed_y = vortex_center[1] + disturb_amp * disturb
@@ -88,7 +90,7 @@ def LambOseenVPM(
             velocities[i, 0] = -u_theta * dy[i] / r[i]
             velocities[i, 1] = u_theta * dx[i] / r[i]
 
-    viscosities = np.full(num_particles, max(viscosity, 0.0))
+    viscosities = np.full(num_particles, max(kinematic_viscosity, 0.0))
     strengths = vorticities * volumes[:, None]
 
     return velocities, viscosities, strengths
@@ -123,7 +125,7 @@ def vortex_ring_centerline(
 
 
 def VortexRingVPM(
-    viscosity: float,
+    kinematic_viscosity: float,
     ring_center: np.ndarray,
     ring_strength: float,
     ring_radius: float,
@@ -173,13 +175,15 @@ def VortexRingVPM(
     if diffusivity_constant <= 0.0:
         raise ValueError("diffusivity_constant must be positive")
     t_shift = (
-        avg_particle_radius**2 / (viscosity * diffusivity_constant) if anti_diffuse_flag else 0.0
+        avg_particle_radius**2 / (kinematic_viscosity * diffusivity_constant)
+        if anti_diffuse_flag
+        else 0.0
     )
 
-    t0 = ring_thickness**2 / (4 * viscosity)
+    t0 = ring_thickness**2 / (4 * kinematic_viscosity)
     if t_shift > t0:
         raise ValueError("Invalid parameters: actual_core_radius would be imaginary")
-    actual_ring_thickness_sq = 4 * viscosity * (t0 - t_shift)
+    actual_ring_thickness_sq = 4 * kinematic_viscosity * (t0 - t_shift)
 
     X = positions[:, 0] - ring_center[0]
     Y = positions[:, 1] - ring_center[1]
@@ -209,7 +213,7 @@ def VortexRingVPM(
     vorticities[:, 2] = omega_mag * np.cos(theta) + omega_radial * np.sin(theta)
 
     velocities = np.zeros_like(positions)
-    viscosities = np.full(num_particles, viscosity)
+    viscosities = np.full(num_particles, kinematic_viscosity)
     if volumes is None:
         volumes = np.full(num_particles, 1.0)
     strengths = vorticities * volumes[:, None]
@@ -232,7 +236,7 @@ def VortexRingVPM(
 
 
 def DoubletFlowVPM(
-    viscosity: float,
+    kinematic_viscosity: float,
     center: np.ndarray,
     direction: np.ndarray,
     kappa: float,
@@ -275,7 +279,7 @@ def DoubletFlowVPM(
         vorticities[i, 1] = factor * (r2 * dy - 3 * y * dot)
         vorticities[i, 2] = factor * (r2 * dz - 3 * z * dot)
 
-    viscosities = np.full(num_particles, viscosity)
+    viscosities = np.full(num_particles, kinematic_viscosity)
     if volumes is None:
         volumes = np.full(num_particles, 1.0)
     strengths = vorticities * volumes[:, None]
@@ -287,7 +291,7 @@ def DoubletFlowVPM(
 
 
 def TaylorGreenVortexVPM(
-    viscosity: float,
+    kinematic_viscosity: float,
     box_size: float,
     avg_particle_radius: float,
     positions: np.ndarray,
@@ -301,7 +305,7 @@ def TaylorGreenVortexVPM(
     test case for studying turbulence transition and energy cascade.
 
     Args:
-        viscosity: Kinematic viscosity [m²/s]
+        kinematic_viscosity: Kinematic kinematic_viscosity [m²/s]
         box_size: Periodic box size (domain is [0, box_size]³) [m]
         avg_particle_radius: Particle core size [m]
         positions: Particle positions [m]
@@ -329,7 +333,7 @@ def TaylorGreenVortexVPM(
     z = positions[:, 2] * scale
 
     # Time-dependent decay factor for viscous effects
-    decay_factor = np.exp(-2.0 * viscosity * time * scale**2) if time > 0 else 1.0
+    decay_factor = np.exp(-2.0 * kinematic_viscosity * time * scale**2) if time > 0 else 1.0
 
     # Taylor-Green vortex velocity field
     velocities[:, 0] = decay_factor * np.sin(x) * np.cos(y) * np.cos(z)  # u
@@ -341,8 +345,8 @@ def TaylorGreenVortexVPM(
     vorticities[:, 1] = -decay_factor * np.sin(x) * np.cos(y) * np.sin(z) * scale  # ωy
     vorticities[:, 2] = 2.0 * decay_factor * np.sin(x) * np.sin(y) * np.cos(z) * scale  # ωz
 
-    # Set uniform viscosity
-    viscosities = np.full(num_particles, viscosity)
+    # Set uniform kinematic_viscosity
+    viscosities = np.full(num_particles, kinematic_viscosity)
 
     # Convert vorticity to strength (Γ = ω * volume)
     if volumes is None:
@@ -356,7 +360,7 @@ def TaylorGreenVortexVPM(
 
 
 def IsotropicTurbulenceVPM(
-    viscosity: float,
+    kinematic_viscosity: float,
     box_size: float,
     energy_spectrum_peak: float,
     turbulent_intensity: float,
@@ -373,7 +377,7 @@ def IsotropicTurbulenceVPM(
     and statistical properties suitable for homogeneous isotropic turbulence studies.
 
     Args:
-        viscosity: Kinematic viscosity [m²/s]
+        kinematic_viscosity: Kinematic kinematic_viscosity [m²/s]
         box_size: Periodic box size (domain is [0, box_size]³) [m]
         energy_spectrum_peak: Wavenumber of energy spectrum peak [1/m]
         turbulent_intensity: RMS velocity fluctuation magnitude [m/s]
@@ -477,8 +481,8 @@ def IsotropicTurbulenceVPM(
                     )
                 )
 
-    # Set uniform viscosity
-    viscosities = np.full(num_particles, viscosity)
+    # Set uniform kinematic_viscosity
+    viscosities = np.full(num_particles, kinematic_viscosity)
 
     # Convert vorticity to strength
     if volumes is None:

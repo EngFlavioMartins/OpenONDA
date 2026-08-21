@@ -109,7 +109,7 @@ def run(
     radius.fill(particle_radius)
     viscosity = RING_CIRCULATION / REYNOLDS_NUMBER
     velocity, particle_viscosity, circulation = VortexRingVPM(
-        viscosity=viscosity,
+        kinematic_viscosity=viscosity,
         ring_center=[0.0, 0.0, 0.0],
         ring_radius=RING_RADIUS,
         ring_strength=RING_CIRCULATION,
@@ -168,7 +168,7 @@ def run(
         circulation=circulation,
         radius=radius,
         volume=volume,
-        viscosity=particle_viscosity,
+        kinematic_viscosity=particle_viscosity,
         group_id=0,
         zone_id=orbit_id,
     )

@@ -75,7 +75,7 @@ def make_case(spacing: float, tail_fraction: float) -> dict[str, object]:
     )
     radius.fill(particle_radius)
     _, _, circulation = VortexRingVPM(
-        viscosity=VISCOSITY,
+        kinematic_viscosity=VISCOSITY,
         ring_center=[0.0, 0.0, 0.0],
         ring_radius=RADIUS,
         ring_strength=CIRCULATION,

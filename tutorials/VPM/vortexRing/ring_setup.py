@@ -185,7 +185,7 @@ def run_case(
         )
     else:
         velocity, particle_viscosity, circulation = VortexRingVPM(
-            viscosity=viscosity,
+            kinematic_viscosity=viscosity,
             ring_center=[0, 0, 0],
             ring_radius=RING_RADIUS,
             ring_strength=RING_STRENGTH,
@@ -269,10 +269,10 @@ def run_case(
     solver.add_vortex_particles(
         position=positions,
         velocity=velocity,
-        circulation=circulation,
-        radius=radii,
+        vortex_strength=circulation,
+        core_radius=radii,
         volume=volumes,
-        viscosity=particle_viscosity,
+        kinematic_viscosity=particle_viscosity,
         group_id=0,
     )
     if particle_distribution == "hexagonal":

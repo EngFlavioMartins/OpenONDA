@@ -254,7 +254,7 @@ def run_case(
         zip(circulations, y_positions, strict=True)
     ):
         velocity, _, particle_circulation = LambOseenVPM(
-            viscosity=viscosity,
+            kinematic_viscosity=viscosity,
             avg_particle_radius=float(radii.mean()),
             positions=positions,
             volumes=volumes,
@@ -278,6 +278,7 @@ def run_case(
             retained_circulation,
             radii[keep],
             volumes[keep],
+            kinematic_viscosity=np.full(int(np.count_nonzero(keep)), viscosity),
             group_id=group_ids,
         )
 

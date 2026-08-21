@@ -77,7 +77,7 @@ def test_perturbed_ring_seeding_preserves_zero_vector_circulation():
         max_modes=12,
     )
     _, _, strengths = VortexRingVPM(
-        viscosity=viscosity,
+        kinematic_viscosity=viscosity,
         ring_center=np.zeros(3),
         ring_strength=np.pi,
         ring_radius=1.0,

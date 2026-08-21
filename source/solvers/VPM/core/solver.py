@@ -424,9 +424,11 @@ class VPMSolver:
         if final_setup.vlm is None:
             self.vlm_solver = None
         else:
+            self._require_consistent_molecular_viscosity(final_setup.viscous, final_setup.vlm)
             from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
             self.vlm_solver = VLMSolver(final_setup.vlm)
+
         if self.vlm_solver is not None:
             self._vpm_velocity_at_vlm = None
             self._vlm_velocity_at_vpm = None
@@ -434,6 +436,23 @@ class VPMSolver:
                 self._setup_vlm_solver()
             except Exception as e:
                 Logging.warning(f"Failed to initialize VLM solver: {e}")
+
+    @staticmethod
+    def _require_consistent_molecular_viscosity(viscous_cfg, vlm_setup) -> None:
+        """The VPM owns molecular nu when a VLM is attached; values must agree."""
+        scheme = getattr(viscous_cfg, "scheme", "NONE")
+        vpm_nu = (
+            float(getattr(viscous_cfg, "kinematic_viscosity", 0.0)) if scheme != "NONE" else 0.0
+        )
+        vlm_nu = float(vlm_setup.kinematic_viscosity)
+        if not np.isclose(vlm_nu, vpm_nu, rtol=0.0, atol=1e-15):
+            raise ValueError(
+                "Molecular kinematic_viscosity mismatch: the VPM viscous "
+                f"scheme {scheme!r} uses {vpm_nu!r} m^2/s while the "
+                f"attached VLM setup uses {vlm_nu!r} m^2/s. The VPM owns the "
+                "molecular viscosity in a coupled VLM+VPM run; configure both "
+                "to the same value."
+            )
 
     def export_diagnostics_csv(self, filename: str) -> None:
         """Export diagnostics history to CSV for offline analysis."""

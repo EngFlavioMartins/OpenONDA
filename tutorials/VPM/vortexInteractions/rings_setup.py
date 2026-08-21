@@ -199,7 +199,7 @@ def ring_particles(
     )
     radius.fill(PARTICLE_RADIUS)
     _, viscosity, strength = VortexRingVPM(
-        viscosity=KINEMATIC_VISCOSITY,
+        kinematic_viscosity=KINEMATIC_VISCOSITY,
         ring_center=center,
         ring_strength=circulation,
         ring_radius=RING_RADIUS,
@@ -235,10 +235,10 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
         solver.add_vortex_particles(
             position=position,
             velocity=np.zeros_like(position),
-            circulation=strength,
-            radius=radius,
+            vortex_strength=strength,
+            core_radius=radius,
             volume=volume,
-            viscosity=viscosity,
+            kinematic_viscosity=viscosity,
             group_id=np.full(len(position), group, dtype=np.int32),
         )
 

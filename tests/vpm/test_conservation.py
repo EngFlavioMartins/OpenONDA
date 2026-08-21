@@ -55,7 +55,7 @@ def _load_lamb_oseen(solver, bounds, h):
     """Populate *solver* with a Lamb-Oseen vortex and return the circulations."""
     positions, volumes, radii = ParticleDistributor.hexagonal_distribution(bounds, h)
     velocities, viscosities, circulations = LambOseenVPM(
-        viscosity=_NU,
+        kinematic_viscosity=_NU,
         avg_particle_radius=float(radii.mean()),
         positions=positions,
         volumes=volumes,

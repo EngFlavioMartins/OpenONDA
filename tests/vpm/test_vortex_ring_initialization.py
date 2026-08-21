@@ -7,7 +7,7 @@ from source.solvers.VPM.initial_conditions import VortexRingVPM
 
 def _vorticity(points: np.ndarray) -> np.ndarray:
     _, _, strengths = VortexRingVPM(
-        viscosity=1.0e-3,
+        kinematic_viscosity=1.0e-3,
         ring_center=np.zeros(3),
         ring_strength=np.pi,
         ring_radius=1.0,
