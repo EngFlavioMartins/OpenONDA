@@ -151,10 +151,18 @@ def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
         if family and case_family != family:
             continue
         if (case_dir / "run_manifest.json").exists() or (
-            case_dir / "samples" / "flow_integrals.csv"
+            _samples_dir(case_dir) / "flow_integrals.csv"
         ).exists():
             cases.append(case_dir)
     return sorted(cases, key=lambda path: intended[path.name])
+
+
+def _samples_dir(case_dir: str | Path) -> Path:
+    """Return the canonical per-case sample directory, with legacy fallback."""
+    case = Path(case_dir)
+    canonical = case.parent.parent / "samples" / case.name
+    legacy = case / "samples"
+    return canonical if canonical.exists() or not legacy.exists() else legacy
 
 
 def _trim_to_last_monotone_segment(df: pd.DataFrame, time_column: str) -> pd.DataFrame:
@@ -172,7 +180,7 @@ def _trim_to_last_monotone_segment(df: pd.DataFrame, time_column: str) -> pd.Dat
 
 def read_integrals(case_dir) -> pd.DataFrame | None:
     """Return the complete built-in VPM flow-integral sample history."""
-    path = Path(case_dir) / "samples" / "flow_integrals.csv"
+    path = _samples_dir(case_dir) / "flow_integrals.csv"
     if not path.is_file():
         return None
     diagnostics = pd.read_csv(path).replace([np.inf, -np.inf], np.nan)
@@ -200,7 +208,7 @@ def read_metric(case_dir, column: str, truncate_blowup: bool = True):
 
 def read_ring_diagnostics(case_dir) -> pd.DataFrame | None:
     """Return the built-in grouped vortex-ring sampler history."""
-    path = Path(case_dir) / "samples" / "ring_diagnostics.csv"
+    path = _samples_dir(case_dir) / "ring_diagnostics.csv"
     if not path.is_file():
         return None
     diagnostics = pd.read_csv(path).replace([np.inf, -np.inf], np.nan)

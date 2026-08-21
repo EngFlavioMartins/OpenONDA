@@ -143,7 +143,7 @@ def resolve_runtime_physics(
     else:
         velocity_peak_radius0 = a0_over_b0 * b0
         ac0 = velocity_peak_radius0 / BETA_RMAX
-    nu = float(metadata.get("viscosity", fallback_nu))
+    nu = float(metadata.get("kinematic_viscosity", metadata.get("viscosity", fallback_nu)))
     if nu <= 0.0:
         nu = fallback_nu
     column_length = 2.0 * float(metadata.get("column_half_length", COLUMN_LENGTH / 2.0))

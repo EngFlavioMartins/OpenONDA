@@ -52,8 +52,8 @@ NUM_STEPS = 1140
 END_TIME = NUM_STEPS * TIME_STEP
 # Integral histories resolve the energy budget; particle snapshots resolve the
 # ring motion for visualization. Their cadences are intentionally independent.
-DIAGNOSTIC_FREQUENCY = 5
-SNAPSHOT_FREQUENCY = 10
+DIAGNOSTIC_INTERVAL_STEPS = 5
+CHECKPOINT_INTERVAL_STEPS = 10
 
 # The two fixed-particle baselines stop when vortex-line alignment or the
 # reconstructed divergence says the cloud is no longer resolved.  Peak
@@ -71,7 +71,7 @@ RING_SEEDS = (7, 19)
 # the more violent head-on collision needs the stronger coarse-LES filter.
 LES_COEFFICIENT = {"leapfrog": 0.16, "collide": 0.32}
 STABILIZATION_COEFFICIENT = 0.5
-REGULARIZATION_FREQUENCY = 20
+REGULARIZATION_INTERVAL_STEPS = 20
 REGULARIZATION_START_STEP = 380
 REGULARIZATION_SPACING = 0.084
 REGULARIZATION_CAPACITY_SPACING = 0.13
@@ -118,7 +118,7 @@ def stabilization(family: str, variant: str) -> StabilizationConfig:
     if variant == "les_stabilized":
         return StabilizationConfig.conservative_filter(
             coefficient=STABILIZATION_COEFFICIENT,
-            interval_steps=REGULARIZATION_FREQUENCY,
+            interval_steps=REGULARIZATION_INTERVAL_STEPS,
             start_step=REGULARIZATION_START_STEP,
             grid_spacing=REGULARIZATION_SPACING,
             max_particles=STABILIZED_MAX_PARTICLES,
@@ -171,8 +171,9 @@ def solver_setup(case_name: str, output_dir: Path) -> VPMSetup:
         ),
         checkpoint_directory=str(output_dir),
         checkpoint_name=case_name,
-        checkpoint_interval_steps=SNAPSHOT_FREQUENCY,
-        logging_interval_steps=DIAGNOSTIC_FREQUENCY,
+        sample_subdirectory=case_name,
+        checkpoint_interval_steps=CHECKPOINT_INTERVAL_STEPS,
+        logging_interval_steps=DIAGNOSTIC_INTERVAL_STEPS,
         timing_interval_steps=200,
         export_flow_integrals=True,
         samplers=(RingDiagnosticsSampler(),),
@@ -226,7 +227,7 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
     print("\n---- " + case_name + " ----")
     print(f"  family={family}, model={variant}, steps={num_steps}")
 
-    solver = VPMSolver(setup=solver_setup(case_name, output_dir))
+    solver = VPMSolver(setup=solver_setup(case_name, output_dir), case_dir=CASE_DIR)
     centers, circulations = ring_geometry(family)
     for group, (center, circulation, seed) in enumerate(
         zip(centers, circulations, RING_SEEDS, strict=True)
@@ -249,8 +250,8 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
         "model": variant,
         "requested_steps": num_steps,
         "requested_end_time": num_steps * TIME_STEP,
-        "diagnostic_frequency": DIAGNOSTIC_FREQUENCY,
-        "snapshot_frequency": SNAPSHOT_FREQUENCY,
+        "diagnostic_interval_steps": DIAGNOSTIC_INTERVAL_STEPS,
+        "checkpoint_interval_steps": CHECKPOINT_INTERVAL_STEPS,
         "baseline_misalignment_limit_deg": BASELINE_MISALIGNMENT_LIMIT,
         "baseline_divergence_limit": BASELINE_DIVERGENCE_LIMIT,
         "particle_spacing": PARTICLE_SPACING,
@@ -263,8 +264,8 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
         "stabilization_coefficient": (
             STABILIZATION_COEFFICIENT if variant == "les_stabilized" else 0.0
         ),
-        "regularization_frequency": (
-            REGULARIZATION_FREQUENCY if variant == "les_stabilized" else 0
+        "regularization_interval_steps": (
+            REGULARIZATION_INTERVAL_STEPS if variant == "les_stabilized" else 0
         ),
         "regularization_grid_spacing": (
             REGULARIZATION_SPACING if variant == "les_stabilized" else None
@@ -304,7 +305,7 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
     resolution_lost = False
     for _ in range(num_steps):
         solver.advance()
-        if variant == "les_stabilized" or solver.step % DIAGNOSTIC_FREQUENCY:
+        if variant == "les_stabilized" or solver.step % DIAGNOSTIC_INTERVAL_STEPS:
             continue
         health = solver._discretization_health
         misalignment = float(health["strength_misalignment_deg"])
@@ -320,7 +321,7 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
             flush=True,
         )
         break
-    if not resolution_lost and solver.step % DIAGNOSTIC_FREQUENCY:
+    if not resolution_lost and solver.step % DIAGNOSTIC_INTERVAL_STEPS:
         solver.record_diagnostics(refresh_fields=True)
     solver.save_state(str(output_dir / f"vpm_{case_name}_final"))
 

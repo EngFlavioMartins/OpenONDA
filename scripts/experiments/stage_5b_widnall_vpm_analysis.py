@@ -62,9 +62,13 @@ def read_modes(run_directory: Path, prefix: str) -> tuple[np.ndarray, np.ndarray
     for path in files:
         with h5py.File(path, "r") as handle:
             position = np.asarray(handle["particles/position"], dtype=np.float64)
-            strength = np.asarray(handle["particles/circulation"], dtype=np.float64)
+            particles = handle["particles"]
+            strength_key = "vortex_strength" if "vortex_strength" in particles else "circulation"
+            strength = np.asarray(particles[strength_key], dtype=np.float64)
             group = np.asarray(handle["particles/group_id"], dtype=np.int32)
-            time = float(handle["solver"].attrs["flow_time"])
+            attrs = handle["solver"].attrs
+            time_key = "time" if "time" in attrs else "flow_time"
+            time = float(attrs[time_key])
         selected = group == np.unique(group)[0]
         rows = sampler._sample_group(position[selected], strength[selected])
         if len(rows) != sampler.maximum_mode:

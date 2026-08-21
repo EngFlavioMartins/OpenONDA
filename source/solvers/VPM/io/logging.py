@@ -415,7 +415,7 @@ class Logging:
         axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
-        lines.append(f"  Processing Unit          : {system.compute_device}")
+        lines.append(f"  Compute Device           : {system.compute_device}")
         lines.append(f"  Time Step Size           : {system.time_step_size:.3e} s")
         lines.append(f"  Current Time Step        : {system.step}")
         lines.append(f"  Simulation Time          : {system.time:.3e} s")
@@ -786,7 +786,7 @@ class Logging:
         axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             lines.append(f"    Symmetry               : Axisymmetric no-swirl about {axis}-axis")
-        lines.append(f"  Processing Unit          : {system.compute_device}")
+        lines.append(f"  Compute Device           : {system.compute_device}")
         lines.append(f"  Particle Kernel          : {system.particle_kernel}")
         lines.append(f"  Viscous Scheme           : {system.viscous_scheme}")
         lines.append(f"  Cutoff Radius Factor     : {DEFAULT_CUTOFF_RADIUS_FACTOR}")

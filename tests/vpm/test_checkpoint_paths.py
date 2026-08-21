@@ -11,11 +11,13 @@ under cwd instead of the case directory.
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 
 import numpy as np
 
 from source.solvers.VPM import VPMSetup, VPMSolver
 from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.VPM.io.solver_io import SolverIO
 
 _SIGMA = 0.2
 
@@ -75,3 +77,30 @@ def test_checkpoint_directory_matches_solver_resolved_path(tmp_path, monkeypatch
 
     assert os.path.isabs(solver.checkpoint_directory)
     assert solver.io.export_dir == solver.checkpoint_directory
+
+
+def test_panel_force_csv_is_rooted_in_case_samples(tmp_path):
+    case_dir = tmp_path / "case"
+    checkpoint_directory = case_dir / "solution"
+
+    class PanelSolver:
+        lattice = SimpleNamespace(num_panels=1)
+        density = 1.0
+        freestream_velocity = np.array([1.0, 0.0, 0.0])
+
+        @staticmethod
+        def compute_forces_coefficients(**_kwargs):
+            return {"CL": 0.2, "CD": 0.1, "Fx": 0.1, "Fy": 0.0, "Fz": 0.2}
+
+    solver = SimpleNamespace(
+        case_dir=case_dir,
+        checkpoint_directory=str(checkpoint_directory),
+        checkpoint_interval_steps=0,
+        checkpoint_name="",
+        setup=SimpleNamespace(sample_subdirectory=None),
+        panel_solver=PanelSolver(),
+    )
+    SolverIO(solver)._export_panel_loads(0.1)
+
+    assert (case_dir / "samples" / "vpm_forces.csv").is_file()
+    assert not (checkpoint_directory / "samples").exists()

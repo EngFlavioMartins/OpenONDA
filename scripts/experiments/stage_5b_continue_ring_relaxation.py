@@ -14,20 +14,20 @@ from source.solvers.VPM import VPMSolver
 
 def continue_run(
     *,
-    backup: Path,
+    checkpoint: Path,
     target_time_star: float,
     extension_label: str,
     time_step: float | None = None,
     output_directory: Path | None = None,
 ) -> None:
-    backup = backup.resolve()
+    checkpoint = checkpoint.resolve()
     # The public restart API expects the checkpoint basename, while users and
     # manifests naturally point at the HDF5 file itself.
-    if backup.suffix == ".h5":
-        backup = backup.with_suffix("")
-    solver = VPMSolver.continue_from_checkpoint(str(backup))
+    if checkpoint.suffix == ".h5":
+        checkpoint = checkpoint.with_suffix("")
+    solver = VPMSolver.continue_from_checkpoint(str(checkpoint))
     if solver is None:
-        raise RuntimeError(f"could not restore {backup}")
+        raise RuntimeError(f"could not restore {checkpoint}")
     if target_time_star <= solver.time:
         raise ValueError("target time must be later than the restart state")
     if time_step is not None:
@@ -59,12 +59,12 @@ def continue_run(
     manifest = {
         "status": "running",
         "claim_scope": "continuation of unperturbed axisymmetric relaxation only",
-        "restart": str(backup.with_suffix(".h5")),
+        "restart": str(checkpoint.with_suffix(".h5")),
         "start_time_star": solver.time,
         "target_time_star": target_time_star,
         "requested_additional_steps": remaining_steps,
         "particle_spacing": solver.setup.viscous.particle_spacing,
-        "time_step": solver.time_step_size,
+        "time_step_size": solver.time_step_size,
         "velocity_method": solver.setup.velocity.method,
         "molecular_diffusion": solver.setup.viscous.scheme,
         "sgs_model": "none",
@@ -119,17 +119,17 @@ def continue_run(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backup", type=Path, required=True)
+    parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--target-time-star", type=float, required=True)
     parser.add_argument("--extension-label", required=True)
-    parser.add_argument("--time-step", type=float)
+    parser.add_argument("--time-step-size", type=float)
     parser.add_argument("--output-directory", type=Path)
     args = parser.parse_args()
     continue_run(
-        backup=args.backup,
+        checkpoint=args.checkpoint,
         target_time_star=args.target_time_star,
         extension_label=args.extension_label,
-        time_step=args.time_step,
+        time_step=args.time_step_size,
         output_directory=args.output_directory,
     )
 

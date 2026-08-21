@@ -32,7 +32,6 @@ from openonda.vpm import (
     VLMSetup,
     VPMSetup,
 )
-from source.solvers.VPM.io.sampling import resolve_samples_dir
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 SOLUTION_DIR = TUTORIAL_DIR / "solution"
@@ -54,9 +53,9 @@ TREECODE_THETA = 0.20
 TIME_STEP = 0.006
 NUMBER_OF_STEPS = 2400
 RAMP_ROTATIONS = 1.0
-GUARD_FREQUENCY = 20
+GUARD_INTERVAL_STEPS = 20
 MAX_PARTICLE_STRENGTH = 10.0
-SAMPLE_PERIOD = 0.12  # write a snapshot every this many seconds
+SAMPLE_INTERVAL_TIME = 0.12  # write a snapshot every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.03  # about 26 animation frames per rotor revolution
 
 
@@ -78,7 +77,7 @@ def cadence_steps(period: float, time_step: float) -> int:
 
 
 def build_solver_config(
-    sample_period: float,
+    sample_interval_time: float,
     checkpoint_interval_time: float,
     *,
     vlm_setup: VLMSetup | None = None,
@@ -127,32 +126,32 @@ def build_solver_config(
         checkpoint_directory=str(SOLUTION_DIR),
         sample_subdirectory=CASE_NAME,
         checkpoint_interval_steps=cadence_steps(checkpoint_interval_time, TIME_STEP),
-        logging_interval_steps=cadence_steps(sample_period, TIME_STEP),
+        logging_interval_steps=cadence_steps(sample_interval_time, TIME_STEP),
         export_flow_integrals=True,
     )
 
 
 def enforce_wake_admissibility(solver: VPMSolver, max_particle_strength: float) -> None:
-    """Stop a divergent wake without altering circulation or core size."""
+    """Stop a divergent wake without altering vortex strength or core radius."""
     fields = {
         "position": solver.particles_positions,
-        "circulation": solver.particle_vortex_strength,
-        "radius": solver.particle_core_radius,
+        "vortex_strength": solver.particle_vortex_strength,
+        "core_radius": solver.particle_core_radius,
         "volume": solver.particles_volumes,
     }
-    if not len(fields["radius"]):
+    if not len(fields["core_radius"]):
         return
 
     failures = [name for name, values in fields.items() if not np.isfinite(values).all()]
-    if np.any(fields["radius"] <= 0.0):
-        failures.append("non-positive radius")
+    if np.any(fields["core_radius"] <= 0.0):
+        failures.append("non-positive core radius")
     if np.any(fields["volume"] <= 0.0):
         failures.append("non-positive volume")
 
-    strength = np.linalg.norm(fields["circulation"], axis=1)
+    strength = np.linalg.norm(fields["vortex_strength"], axis=1)
     maximum = float(strength.max())
     if not np.isfinite(maximum) or maximum > max_particle_strength:
-        failures.append(f"max|Gamma|={maximum:.4g} > {max_particle_strength:.4g}")
+        failures.append(f"max|vortex_strength|={maximum:.4g} > {max_particle_strength:.4g}")
     if failures:
         raise RuntimeError(
             "Rotor wake admissibility failed at "
@@ -165,18 +164,18 @@ def enforce_wake_admissibility(solver: VPMSolver, max_particle_strength: float) 
 def write_manifest(solver: VPMSolver) -> None:
     """Store the numerical settings beside the sampled results."""
     cfg = solver.setup
-    output_dir = resolve_samples_dir(SOLUTION_DIR, CASE_NAME)
+    output_dir = TUTORIAL_DIR / "samples" / CASE_NAME
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "case": "rotorFlow",
-        "dt": TIME_STEP,
-        "num_steps": NUMBER_OF_STEPS,
-        "sample_interval": cfg.logging_interval_steps * TIME_STEP,
-        "raw_checkpoint_interval": cfg.checkpoint_interval_steps * TIME_STEP,
+        "time_step_size": TIME_STEP,
+        "n_steps": NUMBER_OF_STEPS,
+        "sampling_interval_time": cfg.logging_interval_steps * TIME_STEP,
+        "checkpoint_interval_time": cfg.checkpoint_interval_steps * TIME_STEP,
         "treecode_theta": cfg.velocity.theta,
         "kernel": cfg.particle_kernel,
-        "molecular_viscosity": cfg.viscous.viscosity,
-        "wake_characteristic_distance": cfg.viscous.particle_spacing,
+        "kinematic_viscosity": cfg.viscous.kinematic_viscosity,
+        "wake_particle_spacing": cfg.viscous.particle_spacing,
         "coupled_max_strain_increment": cfg.coupled_max_strain_increment,
         "coupled_max_advection_fraction": cfg.coupled_max_advection_fraction,
         "coupled_max_substeps": cfg.coupled_max_substeps,
@@ -189,7 +188,7 @@ def write_manifest(solver: VPMSolver) -> None:
 def main() -> int:
     from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
 
-    sample_period = SAMPLE_PERIOD
+    sample_interval_time = SAMPLE_INTERVAL_TIME
     checkpoint_interval_time = CHECKPOINT_INTERVAL_TIME
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
@@ -245,7 +244,7 @@ def main() -> int:
         viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
-        logging_interval_steps=cadence_steps(sample_period, TIME_STEP),
+        logging_interval_steps=cadence_steps(sample_interval_time, TIME_STEP),
     )
 
     # Downstream planes at 1.5R, 3R, and 4.5R.
@@ -263,12 +262,12 @@ def main() -> int:
     ]
 
     solver_config = build_solver_config(
-        sample_period,
+        sample_interval_time,
         checkpoint_interval_time,
         vlm_setup=vlm_setup,
         samplers=plane_samplers,
     )
-    vpm = VPMSolver(setup=solver_config)
+    vpm = VPMSolver(setup=solver_config, case_dir=TUTORIAL_DIR)
     write_manifest(vpm)
     vpm.info()
 
@@ -276,7 +275,7 @@ def main() -> int:
     try:
         for step in range(NUMBER_OF_STEPS):
             vpm.advance()
-            if (step + 1) % GUARD_FREQUENCY == 0:
+            if (step + 1) % GUARD_INTERVAL_STEPS == 0:
                 enforce_wake_admissibility(vpm, MAX_PARTICLE_STRENGTH)
     except RuntimeError:
         vpm.save_state(str(SOLUTION_DIR / "rejected_state"))

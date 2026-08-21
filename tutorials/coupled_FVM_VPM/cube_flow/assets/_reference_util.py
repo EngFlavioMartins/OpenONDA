@@ -50,7 +50,9 @@ def _particle_times() -> list[tuple[float, Path]]:
     snapshots = []
     for path in sorted((ROOT / "solution").glob("vpm_*.h5")):
         with h5py.File(path, "r") as handle:
-            snapshots.append((float(handle["solver"].attrs["flow_time"]), path))
+            attrs = handle["solver"].attrs
+            time_key = "time" if "time" in attrs else "flow_time"
+            snapshots.append((float(attrs[time_key]), path))
     return snapshots
 
 

@@ -163,9 +163,8 @@ def test_no_legacy_names_defined_on_public_surface(relative_path):
     if not path.exists():
         pytest.skip(f"{relative_path} not present in this tree")
     hits = _forbidden_hits(path)
-    assert not hits, (
-        f"{relative_path} defines forbidden legacy identifier(s): "
-        + ", ".join(f"{name!r} (line {lineno})" for name, lineno in hits)
+    assert not hits, f"{relative_path} defines forbidden legacy identifier(s): " + ", ".join(
+        f"{name!r} (line {lineno})" for name, lineno in hits
     )
 
 

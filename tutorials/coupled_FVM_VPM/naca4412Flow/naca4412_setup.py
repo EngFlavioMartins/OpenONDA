@@ -48,10 +48,10 @@ VPM_DOMAIN = (-2.5, 10.0, -2.0, 2.0, -4.0, 4.0)
 MAX_PARTICLES = int(os.environ.get("OPENONDA_MAX_PARTICLES", "100000" if SMOKE else "1500000"))
 VPM_CORE_RADIUS_RATIO = 1.5
 IBM_MARKER_RATIO = float(os.environ.get("OPENONDA_IBM_MARKER_RATIO", "2.5"))
-WRITE_INTERVAL = VPM_TIME_STEP_SIZE if SMOKE else 0.8
-SAMPLE_INTERVAL = min(WRITE_INTERVAL, END_TIME)
-FVM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / FVM_TIME_STEP_SIZE)))
-VPM_LOG_PERIOD = max(1, int(round(SAMPLE_INTERVAL / VPM_TIME_STEP_SIZE)))
+WRITE_INTERVAL_TIME = VPM_TIME_STEP_SIZE if SMOKE else 0.8
+SAMPLE_INTERVAL_TIME = min(WRITE_INTERVAL_TIME, END_TIME)
+FVM_LOGGING_INTERVAL_STEPS = max(1, int(round(SAMPLE_INTERVAL_TIME / FVM_TIME_STEP_SIZE)))
+VPM_LOGGING_INTERVAL_STEPS = max(1, int(round(SAMPLE_INTERVAL_TIME / VPM_TIME_STEP_SIZE)))
 
 
 def naca4_vertices(code: str, n_chord: int = 161) -> np.ndarray:
@@ -92,7 +92,7 @@ FVM_MESH = fvm.coupling_box_mesh(FVM_BOX, SPACING, patch_name="numericalBoundary
 AIRFOIL = fvm.ImmersedBody.extruded_polygon_z(
     AIRFOIL_VERTICES,
     z_bounds=[-0.5 * SPAN, 0.5 * SPAN],
-    particle_spacing=SPACING,
+    h=SPACING,
     alpha=IBM_MARKER_RATIO,
     name="airfoil",
     caps=True,
@@ -102,14 +102,14 @@ FVM_SAMPLERS = (
     fvm.IBMForceSampler(
         ref_velocity=float(np.linalg.norm(FREESTREAM_VELOCITY)),
         ref_area=CHORD * SPAN,
-        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
+        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SPACING,
         file_name="fvm_centerline",
-        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
+        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
     ),
     fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -117,7 +117,7 @@ FVM_SAMPLERS = (
         bounds=[FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]],
         spacing=SPACING,
         file_name="fvm_slice_z0",
-        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOG_PERIOD),
+        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
     ),
 )
 
@@ -151,7 +151,7 @@ FVM_SETUP = fvm.FVMSetup(
         time_step_size=FVM_TIME_STEP_SIZE,
         end_time=END_TIME,
         output_interval_steps=10**9,
-        output_interval_time=WRITE_INTERVAL,
+        output_interval_time=WRITE_INTERVAL_TIME,
     ),
     schemes=fvm.DiscretizationConfig(
         convection_scheme="limitedLinear",
@@ -175,7 +175,7 @@ FVM_SETUP = fvm.FVMSetup(
     ),
     samplers=FVM_SAMPLERS,
     transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-    turbulence=fvm.TurbulenceConfig.smagorinsky(Cs=0.17),
+    turbulence=fvm.TurbulenceConfig.smagorinsky(c_s=0.17),
     boundaries=[
         fvm.BoundaryConfig(
             name="numericalBoundary",
@@ -204,8 +204,8 @@ VPM_SETUP = vpm.VPMSetup(
     max_evaluation_points=MAX_PARTICLES,
     domain_bounds=list(VPM_DOMAIN),
     log_mode="file",
-    logging_interval_steps=VPM_LOG_PERIOD,
-    checkpoint_interval_steps=VPM_LOG_PERIOD,
+    logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
+    checkpoint_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
     checkpoint_directory=str(CASE_DIR / "solution"),
     samplers=VPM_SAMPLERS,
 )
@@ -218,7 +218,7 @@ COUPLER_SETUP = coupling.CouplerSetup(
     transfer_vorticity_cutoff=0.01,
     transfer_max_particles=MAX_PARTICLES,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
-    checkpoint_interval_steps=VPM_LOG_PERIOD,
+    checkpoint_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
 )
 
 
@@ -279,7 +279,7 @@ def main() -> None:
         f"spacing={SPACING}, particles<={MAX_PARTICLES}"
     )
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
-    fvm_solver.set_immersed_bodies(AIRFOIL, particle_spacing=SPACING)
+    fvm_solver.set_immersed_bodies(AIRFOIL, h=SPACING)
     fvm_solver.write_vtk()
     vpm_solver = vpm.create_vpm_solver(VPM_SETUP, case_dir=CASE_DIR)
     coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)

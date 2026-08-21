@@ -1157,7 +1157,7 @@ class AdaptiveCartesianMesher:
         return mesh_data
 
     def __call__(self) -> dict:
-        """Allow the mesher itself to be passed to ``setup_fvm_solver``."""
+        """Allow the mesher itself to be passed to ``create_fvm_solver``."""
         return self.build()
 
 

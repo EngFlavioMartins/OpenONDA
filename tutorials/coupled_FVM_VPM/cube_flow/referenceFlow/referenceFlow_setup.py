@@ -40,14 +40,14 @@ SAMPLE_SPACING = 0.04
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
 
-SAMPLE_INTERVAL = 0.05  # forces, line probes
-FACE_INTERVAL = FVM_TIME_STEP_SIZE
-SLICE_INTERVAL = 0.10  # full-domain field slices
-VOLUME_INTERVAL = 1.00  # complete .pvtu volume archive
+SAMPLE_INTERVAL_TIME = 0.05  # forces, line probes
+FACE_INTERVAL_TIME = FVM_TIME_STEP_SIZE
+SLICE_INTERVAL_TIME = 0.10  # full-domain field slices
+VOLUME_INTERVAL_TIME = 1.00  # complete .pvtu volume archive
 
-SAMPLE_SCHEDULE = fvm.SamplingSchedule(every_time=SAMPLE_INTERVAL)
-SLICE_SCHEDULE = fvm.SamplingSchedule(every_time=SLICE_INTERVAL)
-FACE_SCHEDULE = fvm.SamplingSchedule(every_time=FACE_INTERVAL)
+SAMPLE_SCHEDULE = fvm.SamplingSchedule(every_time=SAMPLE_INTERVAL_TIME)
+SLICE_SCHEDULE = fvm.SamplingSchedule(every_time=SLICE_INTERVAL_TIME)
+FACE_SCHEDULE = fvm.SamplingSchedule(every_time=FACE_INTERVAL_TIME)
 
 SAMPLERS = (
     fvm.ForceSampler(
@@ -120,7 +120,7 @@ FVM_SETUP = fvm.FVMSetup(
         start_time=0.0,
         end_time=END_TIME,
         output_interval_steps=10**9,
-        output_interval_time=VOLUME_INTERVAL,
+        output_interval_time=VOLUME_INTERVAL_TIME,
         adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(

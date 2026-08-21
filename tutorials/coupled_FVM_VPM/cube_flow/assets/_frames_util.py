@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
-from source.solvers.VPM.config.backend import initialize_taichi_backend
+from source.solvers.VPM.runtime.backend import initialize_taichi_backend
 
 initialize_taichi_backend("CPU", precision="f32")
 
@@ -53,8 +53,8 @@ def vpm_velocity(particles, pts):
 
     targets = np.asarray(pts, np.float32)
     position = np.asarray(particles["position"], np.float32)
-    circulation = np.asarray(particles["circulation"], np.float32)
-    radius = np.asarray(particles["radius"], np.float32)
+    circulation = np.asarray(particles["vortex_strength"], np.float32)
+    radius = np.asarray(particles["core_radius"], np.float32)
     if not len(position):
         return np.tile([FREESTREAM_SPEED, 0.0, 0.0], (len(targets), 1))
     capacity = max(len(position), len(targets))
@@ -78,8 +78,8 @@ def vpm_vorticity(particles, pts):
     pos = np.asarray(particles["position"], np.float64)
     if pos.shape[0] == 0:
         return np.zeros((len(pts), 3))
-    circ = np.asarray(particles["circulation"], np.float64)
-    rad = np.asarray(particles["radius"], np.float64)
+    circ = np.asarray(particles["vortex_strength"], np.float64)
+    rad = np.asarray(particles["core_radius"], np.float64)
     zs = np.asarray(pts)[:, 2]
     slab = np.abs(pos[:, 2] - zs.mean()) < 5.0 * rad.max() + 0.1
     return _gaussian_vorticity(

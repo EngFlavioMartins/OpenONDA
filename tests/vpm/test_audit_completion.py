@@ -48,12 +48,12 @@ def test_solver_setup_is_immutable_after_construction():
 
 
 @pytest.mark.parametrize("name", ["results/run", "run.h5", "vpm_run"])
-def test_backup_name_is_a_safe_infix(name):
+def test_checkpoint_name_is_a_safe_infix(name):
     with pytest.raises(ValueError, match="filename-safe infix"):
         VPMSetup(checkpoint_name=name)
 
 
-class _BackupParticles:
+class _CheckpointParticles:
     n_particles = 1
 
     def __getattr__(self, name):
@@ -82,7 +82,7 @@ def test_vpm_snapshot_and_checkpoint_names_are_unambiguous(tmp_path):
         time=0.123456789012345,
         step=7,
         time_step_size=0.05,
-        particles=_BackupParticles(),
+        particles=_CheckpointParticles(),
         freestream_velocity=np.zeros(3),
         np_dtype=np.float32,
         precision="f32",

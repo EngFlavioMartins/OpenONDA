@@ -52,7 +52,7 @@ PARTICLE_SPACING = 0.035
 TIME_STEP = 0.02
 NUMBER_OF_STEPS = 600
 DOMAIN_BOUNDS = (-0.15, 0.15, -1.5, 1.5, -1.5, 1.5)
-SAMPLE_PERIOD = 0.1  # write a snapshot every this many seconds
+SAMPLE_INTERVAL_TIME = 0.1  # write a snapshot every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.5  # keep an animation frame every this many seconds
 WIDNALL_MODES = 24
 DEFAULT_WIDNALL_AMPLITUDE = 0.05
@@ -257,14 +257,15 @@ def run_case(
                 )
             ),
             viscous=ViscousConfig.cs(),
-            logging_interval_steps=cadence_steps(SAMPLE_PERIOD, time_step),
+            logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME, time_step),
             checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME, time_step),
             checkpoint_name=label,
             checkpoint_directory=str(output_directory),
             sample_subdirectory=sample_subdirectory,
             samplers=(RingDiagnosticsSampler(), mode_sampler),
             max_particles=100_000,
-        )
+        ),
+        case_dir=output_directory.parent if sample_subdirectory else output_directory,
     )
     solver.add_vortex_particles(
         position=positions,
@@ -326,7 +327,7 @@ def run_case(
         if np.abs(solver.particles.vortex_strength_cpu()).max() > 50 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times its initial value"
             break
-        if solver.step % cadence_steps(SAMPLE_PERIOD, time_step):
+        if solver.step % cadence_steps(SAMPLE_INTERVAL_TIME, time_step):
             continue
         health = solver._discretization_health
         divergence = float(health["vorticity_divergence_error"])

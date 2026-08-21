@@ -191,7 +191,7 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
     )
     assert (
         configs["leapfrog_les_stabilized"].stabilization.regularization_interval_steps
-        == namespace["REGULARIZATION_FREQUENCY"]
+        == namespace["REGULARIZATION_INTERVAL_STEPS"]
     )
     assert configs[
         "leapfrog_les_stabilized"
@@ -266,7 +266,7 @@ def test_rotor_flow_cli_defaults_to_physics_preserving_policy():
     assert namespace["COUPLED_MAX_STRAIN_INCREMENT"] == pytest.approx(0.08)
     assert namespace["COUPLED_MAX_ADVECTION_FRACTION"] == pytest.approx(0.25)
     assert namespace["COUPLED_MAX_SUBSTEPS"] == 128
-    assert namespace["GUARD_FREQUENCY"] == 20
+    assert namespace["GUARD_INTERVAL_STEPS"] == 20
 
 
 def test_rotor_flow_uses_scalable_coupled_stabilization():

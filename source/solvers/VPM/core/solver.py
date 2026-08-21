@@ -1230,9 +1230,10 @@ class VPMSolver:
     ) -> None:
         """Append vortex particles to the active cloud.
 
-        ``position``, ``velocity``, and ``circulation`` have shape ``(N, 3)``;
-        ``radius`` and ``volume`` have shape ``(N,)``. Molecular viscosity may be
-        omitted when it is defined by the viscous configuration.
+        ``position``, ``velocity``, and ``vortex_strength`` have shape
+        ``(N, 3)``; ``core_radius`` and ``volume`` have shape ``(N,)``.
+        Molecular viscosity may be omitted when it is defined by the viscous
+        configuration.
         """
         if kinematic_viscosity is None:
             nu = getattr(self._viscous_config, "kinematic_viscosity", None)
@@ -1241,8 +1242,8 @@ class VPMSolver:
                 kinematic_viscosity = np.full(N, nu, dtype=self.np_dtype)
             else:
                 raise ValueError(
-                    "viscosity parameter is required.  Either set "
-                    "ViscousConfig.viscosity or pass an explicit array."
+                    "kinematic_viscosity is required. Either configure "
+                    "ViscousConfig.kinematic_viscosity or pass an explicit array."
                 )
 
         start = self.particles.n_particles

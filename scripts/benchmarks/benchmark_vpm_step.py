@@ -57,10 +57,10 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
     solver.add_vortex_particles(
         position=rng.random((n, 3)).astype(np.float32),
         velocity=np.zeros((n, 3), np.float32),
-        circulation=(rng.normal(size=(n, 3)) * 1e-3).astype(np.float32),
-        radius=np.full(n, 1.5 * h, np.float32),
+        vortex_strength=(rng.normal(size=(n, 3)) * 1e-3).astype(np.float32),
+        core_radius=np.full(n, 1.5 * h, np.float32),
         volume=np.full(n, h**3, np.float32),
-        viscosity=np.full(n, 1e-3, np.float32),
+        kinematic_viscosity=np.full(n, 1e-3, np.float32),
     )
     return solver
 

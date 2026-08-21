@@ -20,7 +20,7 @@ and coupling check is available as:
 OPENONDA_SMOKE=1 ./allrun.sh
 ```
 
-`OPENONDA_PROCESSING_UNIT=CPU` explicitly selects the CPU when no supported
+`OPENONDA_COMPUTE_DEVICE=CPU` explicitly selects the CPU when no supported
 GPU is available. Generated fields are written below `solution/`, sampling
 histories below `samples/`, and plots below `figures/`.
 

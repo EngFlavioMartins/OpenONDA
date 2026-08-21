@@ -70,9 +70,13 @@ def mode_history(
     final_path = run_directory / f"vpm_{manifest['output_label']}_final.h5"
     if final_path.is_file():
         with h5py.File(final_path, "r") as handle:
-            final_time = float(handle["solver"].attrs["flow_time"]) * CIRCULATION
+            attrs = handle["solver"].attrs
+            time_key = "time" if "time" in attrs else "flow_time"
+            final_time = float(attrs[time_key]) * CIRCULATION
             position = np.asarray(handle["particles/position"], dtype=np.float64)
-            circulation = np.asarray(handle["particles/circulation"], dtype=np.float64)
+            particles = handle["particles"]
+            strength_key = "vortex_strength" if "vortex_strength" in particles else "circulation"
+            vortex_strength = np.asarray(particles[strength_key], dtype=np.float64)
         if final_time > time[-1] + 1.0e-12:
             sampler = RingModeDiagnosticsSampler(
                 maximum_mode=max(40, int(modes.max())),
@@ -80,7 +84,7 @@ def mode_history(
                 reference_radius=1.0,
                 transverse_origin=(0.0, 0.0),
             )
-            rows = np.asarray(sampler._sample_group(position, circulation), dtype=float)
+            rows = np.asarray(sampler._sample_group(position, vortex_strength), dtype=float)
             selected_rows = rows[modes - 1]
             final_coefficients = np.concatenate(
                 (

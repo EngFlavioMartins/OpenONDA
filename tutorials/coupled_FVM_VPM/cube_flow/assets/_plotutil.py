@@ -84,10 +84,23 @@ def load_vpm_particles(path: Path) -> dict[str, np.ndarray]:
     import h5py
 
     with h5py.File(path, "r") as handle:
-        count = int(handle["solver"].attrs["number_of_particles"])
+        attrs = handle["solver"].attrs
+        count_key = "n_particles" if "n_particles" in attrs else "number_of_particles"
+        count = int(attrs[count_key])
+        if count == 0:
+            return {
+                "position": np.empty((0, 3)),
+                "vortex_strength": np.empty((0, 3)),
+                "core_radius": np.empty(0),
+            }
+
+        particles = handle["particles"]
+        strength_key = "vortex_strength" if "vortex_strength" in particles else "circulation"
+        radius_key = "core_radius" if "core_radius" in particles else "radius"
         return {
-            name: np.asarray(handle[f"particles/{name}"][:count])
-            for name in ("position", "circulation", "radius")
+            "position": np.asarray(particles["position"][:count]),
+            "vortex_strength": np.asarray(particles[strength_key][:count]),
+            "core_radius": np.asarray(particles[radius_key][:count]),
         }
 
 

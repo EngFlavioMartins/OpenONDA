@@ -398,7 +398,7 @@ def initialize_taichi_backend(
         raise ValueError(f"precision must be 'f32' or 'f64', got '{precision}'")
 
     _VALID_ENV_KEYS = {"AUTO", "CPU", "METAL", "VULKAN", "CUDA"}
-    env_unit = os.environ.get("OPENONDA_PROCESSING_UNIT", "").strip().upper()
+    env_unit = os.environ.get("OPENONDA_COMPUTE_DEVICE", "").strip().upper()
     if preferred_backend == "AUTO" and env_unit in _VALID_ENV_KEYS:
         preferred_backend = env_unit
 

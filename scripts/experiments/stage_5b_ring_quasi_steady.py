@@ -44,9 +44,9 @@ QUANTILE_BINS = 32
 RUN_DIRECTORY = ROOT / (
     "tutorials/VPM/vortexRing/solution/relaxed_reference_tail002_cs_h012_dt002_tstar02"
 )
-BACKUP_PREFIX = "vpm_relaxed_reference_tail002_cs_h012_dt002_tstar02"
-FINAL_BACKUP = RUN_DIRECTORY / f"{BACKUP_PREFIX}_final"
-INITIAL_H5 = RUN_DIRECTORY / f"{BACKUP_PREFIX}_000000.h5"
+CHECKPOINT_PREFIX = "vpm_relaxed_reference_tail002_cs_h012_dt002_tstar02"
+FINAL_CHECKPOINT = RUN_DIRECTORY / f"{CHECKPOINT_PREFIX}_final"
+INITIAL_H5 = RUN_DIRECTORY / f"{CHECKPOINT_PREFIX}_000000.h5"
 
 INK = "#20252a"
 BLUE = "#286f9b"
@@ -432,9 +432,9 @@ def plot_results(
 
 def main() -> None:
     controls = manufactured_controls(GRID_SIZES[-1])
-    solver = VPMSolver.continue_from_checkpoint(str(FINAL_BACKUP))
+    solver = VPMSolver.continue_from_checkpoint(str(FINAL_CHECKPOINT))
     if solver is None:
-        raise RuntimeError(f"could not restore {FINAL_BACKUP}")
+        raise RuntimeError(f"could not restore {FINAL_CHECKPOINT}")
 
     final_samples: dict[int, dict[str, object]] = {}
     for size in GRID_SIZES:
@@ -463,7 +463,7 @@ def main() -> None:
         ),
         "raw_states": {
             "initial": str(INITIAL_H5.relative_to(ROOT)),
-            "final": f"{FINAL_BACKUP.relative_to(ROOT)}.h5",
+            "final": f"{FINAL_CHECKPOINT.relative_to(ROOT)}.h5",
         },
         "translation_speed": {
             "measured_over_tstar_0_to_0p2": MEASURED_SPEED,

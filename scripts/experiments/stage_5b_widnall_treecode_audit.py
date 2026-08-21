@@ -73,10 +73,10 @@ def transposed_rate(gradient: np.ndarray, circulation: np.ndarray) -> np.ndarray
     return np.einsum("nij,ni->nj", gradient, circulation)
 
 
-def audit_backup(backup: Path, theta_values: list[float]) -> dict[str, object]:
-    solver = VPMSolver.continue_from_checkpoint(str(backup))
+def audit_checkpoint(checkpoint: Path, theta_values: list[float]) -> dict[str, object]:
+    solver = VPMSolver.continue_from_checkpoint(str(checkpoint))
     if solver is None:
-        raise RuntimeError(f"could not restore {backup}")
+        raise RuntimeError(f"could not restore {checkpoint}")
     particles = solver.particles
     position = particles.position_cpu(use_cache=False).astype(np.float64)
     circulation = particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
@@ -115,9 +115,9 @@ def audit_backup(backup: Path, theta_values: list[float]) -> dict[str, object]:
             }
         )
     result = {
-        "backup": str(backup),
+        "checkpoint": str(checkpoint),
         "flow_time": float(solver.time),
-        "time_step": int(solver.step),
+        "step": int(solver.step),
         "particles": len(particles),
         "direct_seconds": direct_seconds,
         "theta_results": rows,
@@ -166,12 +166,12 @@ def plot(results: list[dict[str, object]], output: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backup", type=Path, action="append", required=True)
+    parser.add_argument("--checkpoint", type=Path, action="append", required=True)
     parser.add_argument("--theta", type=float, nargs="+", default=[0.3, 0.2, 0.15, 0.1])
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--figure", type=Path, required=True)
     args = parser.parse_args()
-    results = [audit_backup(path, args.theta) for path in args.backup]
+    results = [audit_checkpoint(path, args.theta) for path in args.checkpoint]
     payload = {"status": "AUDIT", "results": results}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

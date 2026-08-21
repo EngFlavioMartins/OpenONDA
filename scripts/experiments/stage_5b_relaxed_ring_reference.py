@@ -71,13 +71,18 @@ def run(
     velocity_method: str,
     compute_device: str,
     tail_fraction: float,
-    backup_period: float,
+    checkpoint_interval_time: float,
     axisymmetric: bool,
     conserve_inviscid_invariants: bool,
     core_radius_ratio: float,
 ) -> None:
-    if spacing <= 0.0 or time_step <= 0.0 or final_time_star <= 0.0 or backup_period <= 0.0:
-        raise ValueError("spacing, time step, final time, and backup period must be positive")
+    if (
+        spacing <= 0.0
+        or time_step <= 0.0
+        or final_time_star <= 0.0
+        or checkpoint_interval_time <= 0.0
+    ):
+        raise ValueError("spacing, time step, final time, and checkpoint interval must be positive")
     if not 0.0 < tail_fraction < 1.0:
         raise ValueError("tail fraction must lie strictly between zero and one")
     if core_radius_ratio <= 0.0:
@@ -108,7 +113,7 @@ def run(
         orbit_id = None
     radius.fill(particle_radius)
     viscosity = RING_CIRCULATION / REYNOLDS_NUMBER
-    velocity, particle_viscosity, circulation = VortexRingVPM(
+    velocity, particle_viscosity, vortex_strength = VortexRingVPM(
         kinematic_viscosity=viscosity,
         ring_center=[0.0, 0.0, 0.0],
         ring_radius=RING_RADIUS,
@@ -154,7 +159,7 @@ def run(
             ),
             viscous=viscous_config(viscous_scheme, spacing, viscosity, core_radius_ratio),
             logging_interval_steps=cadence(0.25, time_step),
-            checkpoint_interval_steps=cadence(backup_period, time_step),
+            checkpoint_interval_steps=cadence(checkpoint_interval_time, time_step),
             checkpoint_name=label,
             checkpoint_directory=str(output_directory),
             sample_subdirectory=None,
@@ -165,8 +170,8 @@ def run(
     solver.add_vortex_particles(
         position=position,
         velocity=velocity,
-        circulation=circulation,
-        radius=radius,
+        vortex_strength=vortex_strength,
+        core_radius=radius,
         volume=volume,
         kinematic_viscosity=particle_viscosity,
         group_id=0,
@@ -189,10 +194,10 @@ def run(
         "particle_radius": particle_radius,
         "core_radius_ratio": core_radius_ratio if viscous_scheme == "GBD" else None,
         "initial_particles": len(position),
-        "time_step": time_step,
+        "time_step_size": time_step,
         "requested_final_time_star": final_time_star,
         "requested_steps": requested_steps,
-        "backup_period_time_star": backup_period,
+        "checkpoint_interval_time_star": checkpoint_interval_time,
         "time_integration": "COUPLED_RK3",
         "axisymmetric_no_swirl_axis": "x" if axisymmetric else None,
         "conserve_inviscid_moments_and_energy": conserve_inviscid_invariants,
@@ -201,7 +206,7 @@ def run(
         "treecode_theta": 0.1 if velocity_method == "TREECODE" else None,
         "molecular_diffusion": viscous_scheme,
         "sgs_model": "none",
-        "processing_unit": compute_device,
+        "compute_device": compute_device,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
@@ -213,7 +218,7 @@ def run(
         if np.abs(solver.particles.vortex_strength_cpu()).max() > 50.0 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times its initial value"
             break
-        if solver.time_step % cadence(0.25, time_step):
+        if solver.step % cadence(0.25, time_step):
             continue
         health = solver._discretization_health
         if float(health["vorticity_divergence_error"]) > 0.12:
@@ -229,7 +234,7 @@ def run(
     solver.save_state(str(output_directory / f"vpm_{label}_final"))
     manifest.update(
         status="resolution_lost" if termination_reason else "completed",
-        completed_steps=solver.time_step,
+        completed_steps=solver.step,
         completed_time_star=solver.time,
         final_particles=len(solver.particles),
     )
@@ -243,17 +248,17 @@ def main() -> None:
     parser.add_argument("--output-directory", type=Path, required=True)
     parser.add_argument("--label", required=True)
     parser.add_argument("--spacing", type=float, required=True)
-    parser.add_argument("--time-step", type=float, required=True)
+    parser.add_argument("--time-step-size", type=float, required=True)
     parser.add_argument("--final-time-star", type=float, required=True)
     parser.add_argument("--tail-fraction", type=float, default=DEFAULT_TAIL_FRACTION)
-    parser.add_argument("--backup-period", type=float, default=1.0)
+    parser.add_argument("--checkpoint-interval-time", type=float, default=1.0)
     parser.add_argument("--axisymmetric", action="store_true")
     parser.add_argument("--conserve-inviscid-invariants", action="store_true")
     parser.add_argument("--viscous-scheme", choices=("CS", "GBD"), default="GBD")
-    parser.add_argument("--regen-radius-ratio", type=float, default=2.5)
+    parser.add_argument("--core-radius-ratio", type=float, default=2.5)
     parser.add_argument("--velocity-method", choices=("DIRECT", "TREECODE"), default="DIRECT")
     parser.add_argument(
-        "--processing-unit",
+        "--compute-device",
         choices=("AUTO", "CPU", "METAL", "VULKAN", "CUDA"),
         default="CPU",
     )
@@ -262,13 +267,13 @@ def main() -> None:
         output_directory=args.output_directory,
         label=args.label,
         spacing=args.spacing,
-        time_step=args.time_step,
+        time_step=args.time_step_size,
         final_time_star=args.final_time_star,
         viscous_scheme=args.viscous_scheme,
         velocity_method=args.velocity_method,
         compute_device=args.compute_device,
         tail_fraction=args.tail_fraction,
-        backup_period=args.backup_period,
+        checkpoint_interval_time=args.checkpoint_interval_time,
         axisymmetric=args.axisymmetric,
         conserve_inviscid_invariants=args.conserve_inviscid_invariants,
         core_radius_ratio=args.core_radius_ratio,

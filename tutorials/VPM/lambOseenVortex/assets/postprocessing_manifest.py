@@ -73,7 +73,7 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
                 "last_field_time": field_time,
                 "integral_rows": integral_rows,
                 "last_integral_time": integral_time,
-                "target_time": metadata.get("total_time"),
+                "end_time": metadata.get("end_time", metadata.get("total_time")),
                 "core_radius_definition": metadata.get(
                     "core_radius_definition", "legacy_velocity_peak_radius"
                 )
@@ -93,7 +93,7 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
                     else None
                 ),
                 "maximum_sampled_particle_count": maximum_particles,
-                "time_step": metadata.get("time_step"),
+                "time_step_size": metadata.get("time_step_size", metadata.get("time_step")),
                 "advection_scheme": metadata.get("advection_scheme"),
                 "treecode_theta": metadata.get("treecode_theta"),
                 "treecode_multipole_order": metadata.get("treecode_multipole_order"),

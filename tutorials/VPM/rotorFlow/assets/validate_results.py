@@ -164,8 +164,11 @@ def main() -> int:
         )
     if files:
         with h5py.File(files[-1], "r") as h5:
-            alpha = h5["particles/circulation"][:]
-            radius = h5["particles/radius"][:]
+            particles = h5["particles"]
+            strength_key = "vortex_strength" if "vortex_strength" in particles else "circulation"
+            radius_key = "core_radius" if "core_radius" in particles else "radius"
+            alpha = particles[strength_key][:]
+            radius = particles[radius_key][:]
         max_strength = float(np.linalg.norm(alpha, axis=1).max())
         print(
             f"Final particles={len(alpha)}, max|alpha|={max_strength:.4g}, "

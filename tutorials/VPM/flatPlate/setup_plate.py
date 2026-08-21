@@ -42,10 +42,8 @@ from openonda.vpm import (
     VLMSetup,
     VPMSetup,
 )
-from source.solvers.VPM.io.sampling import resolve_samples_dir
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
-SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
 # ---- Plate and flow ------------------------------------------------------
 CHORD = 1.0
@@ -57,18 +55,18 @@ DENSITY = 1.0
 KINEMATIC_VISCOSITY = 1.0e-2
 
 # ---- Time and wake resolution ---------------------------------------------
-TIME_STEP = 0.0125
+TIME_STEP_SIZE = 0.0125
 RAMP_LENGTH = 0.6
 FINAL_TRAVEL = 24.0
 SMAGORINSKY_COEFFICIENT = 0.30
 PARTICLE_CORE_FACTOR = 2.5
-SAMPLE_PERIOD = 0.0625  # write a snapshot every this many seconds
+SAMPLE_INTERVAL_TIME = 0.0625  # write a snapshot every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.05  # one animation frame per half-chord of travel
 
 
 def cadence_steps(period: float) -> int:
     """Convert a physical output period to solver steps."""
-    return max(1, round(period / TIME_STEP))
+    return max(1, round(period / TIME_STEP_SIZE))
 
 
 def time_parameters(kinematics: str) -> tuple[int, float]:
@@ -76,10 +74,10 @@ def time_parameters(kinematics: str) -> tuple[int, float]:
     if kinematics == "ramp":
         ramp_time = 2.0 * RAMP_LENGTH * CHORD / FREESTREAM_SPEED
         cruise_time = (FINAL_TRAVEL - RAMP_LENGTH) * CHORD / FREESTREAM_SPEED
-        return round((ramp_time + cruise_time) / TIME_STEP), ramp_time
+        return round((ramp_time + cruise_time) / TIME_STEP_SIZE), ramp_time
 
     final_time = FINAL_TRAVEL * CHORD / FREESTREAM_SPEED
-    return round(final_time / TIME_STEP), 0.0
+    return round(final_time / TIME_STEP_SIZE), 0.0
 
 
 def plate_kinematics(
@@ -130,7 +128,7 @@ def crossflow_samplers(name: str) -> tuple[SurfaceSampler, ...]:
             point=[position, 0.0, 0.0],
             normal=[1, 0, 0],
             bounds=[-6.0, 6.0, -0.5, 5.0],
-            spacing=max(FREESTREAM_SPEED * TIME_STEP, 0.05),
+            spacing=max(FREESTREAM_SPEED * TIME_STEP_SIZE, 0.05),
             file_name=f"{name}_crossflow_x{position:g}",
         )
         for position in (5.0, 15.0, 25.0)
@@ -173,7 +171,7 @@ def run_case(
         if frame == "wind"
         else (FREESTREAM_SPEED, 0.0, 0.0)
     )
-    sample_steps = cadence_steps(SAMPLE_PERIOD)
+    sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
     vlm_setup = VLMSetup(
         surfaces=(VLMSurfaceSetup(str(surface_file), kinematics=motion),),
         mesh=VLMMeshSetup.geometric(ratio=4.0, region="end"),
@@ -186,7 +184,7 @@ def run_case(
         logging_interval_steps=sample_steps,
     )
     final_samplers = crossflow_samplers(name) if sample_planes else ()
-    samples_dir = resolve_samples_dir(SOLUTION_DIR, name)
+    samples_dir = TUTORIAL_DIR / "samples" / name
     samples_dir.mkdir(parents=True, exist_ok=True)
 
     for stale_name in (
@@ -199,7 +197,7 @@ def run_case(
     solver = VPMSolver(
         setup=VPMSetup.les_simulation(
             cs=SMAGORINSKY_COEFFICIENT,
-            time_step_size=TIME_STEP,
+            time_step_size=TIME_STEP_SIZE,
             compute_device="AUTO",
             advection=AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
@@ -212,11 +210,12 @@ def run_case(
             logging_interval_steps=sample_steps,
             checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME),
             checkpoint_name=name,
-            checkpoint_directory=str(SOLUTION_DIR),
+            checkpoint_directory="solution",
             sample_subdirectory=name,
             max_particles=120_000,
             final_samplers=final_samplers,
-        )
+        ),
+        case_dir=TUTORIAL_DIR,
     )
 
     for _ in range(number_of_steps):

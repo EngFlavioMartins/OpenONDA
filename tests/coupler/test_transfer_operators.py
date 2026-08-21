@@ -268,7 +268,9 @@ def test_vorticity_mixed_transfer_builds_normal_and_tangential_gradient_trace():
     coupler._pressure_gradient_bc_next = None
     coupler.freestream_velocity = offset
     coupler.fvm_box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
-    coupler.setup = SimpleNamespace(boundary_condition_mode="vorticity_mixed", vpm_particle_spacing=0.04)
+    coupler.setup = SimpleNamespace(
+        boundary_condition_mode="vorticity_mixed", vpm_particle_spacing=0.04
+    )
 
     centres, normals, areas = _cube_face_quadrature(nside=3)
     evaluate_vpm_boundary(coupler, centres, normals, areas)

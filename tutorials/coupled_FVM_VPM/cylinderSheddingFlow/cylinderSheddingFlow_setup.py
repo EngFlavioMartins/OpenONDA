@@ -46,8 +46,8 @@ DIAMETER = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
 REYNOLDS = 150.0
-FREESTREAM_VELOCITY = float(np.linalg.norm(FREESTREAM_VELOCITY))
-KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS
+U_INF = float(np.linalg.norm(FREESTREAM_VELOCITY))
+KINEMATIC_VISCOSITY = U_INF * DIAMETER / REYNOLDS
 
 INITIAL_VELOCITY = FREESTREAM_VELOCITY
 # Production horizon: 100 convective units leaves a robust (~30 s) saturated
@@ -116,7 +116,7 @@ if FVM_CORES > 1:
 else:
     FVM_EXECUTION = fvm.ComputeConfig(operator_backend="numba")
 
-FVM_VOLUME_INTERVAL = 2.0
+FVM_VOLUME_INTERVAL_TIME = 2.0
 
 # --------------------------------------------------------------------------- #
 # VPM domain and resolution
@@ -132,26 +132,26 @@ PARTICLE_LIMIT = 200_000 if SMOKE else 1_000_000
 # GBD molecular diffusion with an absolute physical-vorticity floor scaled by
 # h^3, as in cube_flow.  alpha = nu*dt/h^2 = (1/150)*0.10/0.125^2 ~ 0.043 < 1/6.
 GBD_VORTICITY_FLOOR = 0.01
-TRANSFER_PRUNE_VORTICITY_MIN = 0.01
+TRANSFER_VORTICITY_CUTOFF = 0.01
 TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
 
 # --------------------------------------------------------------------------- #
 # Coupling
 # --------------------------------------------------------------------------- #
-VPM_BC_MODE = "vorticity_mixed"
+BOUNDARY_CONDITION_MODE = "vorticity_mixed"
 TRANSFER_AMPLIFICATION_CAP = 1.8
-OVERLAP_ZONE_RAMP_WIDTH = 6.0 * VPM_PARTICLE_SPACING
-TRANSFER_DIAGNOSTIC_INTERVAL = 12
+AUTHORITY_RAMP_WIDTH = 6.0 * VPM_PARTICLE_SPACING
+TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 12
 COUPLER_CHECKPOINT_INTERVAL_STEPS = 20
 
 # --------------------------------------------------------------------------- #
 # Output and diagnostics cadence
 # --------------------------------------------------------------------------- #
-FORCE_INTERVAL = 0.05
-LINE_INTERVAL = 0.5
-SLICE_INTERVAL = 1.0
-CHECKPOINT_INTERVAL = 1.0
-VPM_LOG_PERIOD = 12
+FORCE_INTERVAL_TIME = 0.05
+LINE_INTERVAL_TIME = 0.5
+SLICE_INTERVAL_TIME = 1.0
+VPM_CHECKPOINT_INTERVAL_TIME = 1.0
+VPM_LOGGING_INTERVAL_STEPS = 12
 SAMPLE_SPACING = VPM_PARTICLE_SPACING
 PROBE_X = 1.5  # x/D of the primary instability observable q(t) = u_y/U_inf
 TRANSVERSE_HALF = 1.5
@@ -192,31 +192,31 @@ FVM_MESH = fvm.AdaptiveCartesianMesher(
 # --------------------------------------------------------------------------- #
 FVM_SAMPLERS = (
     fvm.IBMForceSampler(
-        ref_velocity=FREESTREAM_VELOCITY,
+        ref_velocity=U_INF,
         ref_area=DIAMETER * CYLINDER_LENGTH,
         file_name="fvm_ibm_forces_history",
-        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[PROBE_X, 0.0, 0.0],
         end=[PROBE_X, 0.0, 0.0],
         n_points=1,
         file_name="fvm_midspan_probe",
-        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[PROBE_X, -TRANSVERSE_HALF, 0.0],
         end=[PROBE_X, TRANSVERSE_HALF, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_transverse_line",
-        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[PROBE_X, 0.0, -SPAN_HALF],
         end=[PROBE_X, 0.0, SPAN_HALF],
         spacing=SAMPLE_SPACING,
         file_name="fvm_spanwise_line",
-        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL_TIME),
     ),
     fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -224,7 +224,7 @@ FVM_SAMPLERS = (
         bounds=MIDSPAN_SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
-        schedule=fvm.SamplingSchedule(every_time=SLICE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=SLICE_INTERVAL_TIME),
     ),
 )
 
@@ -249,7 +249,7 @@ FVM_SETUP = fvm.FVMSetup(
         start_time=0.0,
         end_time=END_TIME,
         output_interval_steps=10**9,
-        output_interval_time=FVM_VOLUME_INTERVAL,
+        output_interval_time=FVM_VOLUME_INTERVAL_TIME,
         adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(
@@ -303,16 +303,16 @@ COUPLER_SETUP = coupling.CouplerSetup(
     bc_resync_after_transfer=True,
     pressure_anchor_to_freestream=False,
     checkpoint_interval_steps=COUPLER_CHECKPOINT_INTERVAL_STEPS,
-    boundary_condition_mode=VPM_BC_MODE,
+    boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     vpm_particle_spacing=VPM_PARTICLE_SPACING,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
-    authority_ramp_width=OVERLAP_ZONE_RAMP_WIDTH,
+    authority_ramp_width=AUTHORITY_RAMP_WIDTH,
     vpm_only_width=0.0,
-    transfer_vorticity_cutoff=TRANSFER_PRUNE_VORTICITY_MIN,
+    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
     transfer_boundary_prune_multiplier=TRANSFER_BOUNDARY_PRUNE_MULTIPLIER,
     transfer_max_particles=PARTICLE_LIMIT,
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
-    transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL,
+    transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 
 
@@ -326,7 +326,7 @@ def _apply_seed(fvm_solver) -> None:
         centroids,
         base_velocity=INITIAL_VELOCITY,
         epsilon=SEED_AMPLITUDE,
-        u_inf=FREESTREAM_VELOCITY,
+        u_inf=U_INF,
         diameter=DIAMETER,
     )
     fvm_solver.set_initial_velocity(velocity)
@@ -387,9 +387,9 @@ VPM_SETUP = vpm.VPMSetup(
     max_evaluation_points=PARTICLE_LIMIT,
     domain_bounds=list(VPM_DOMAIN),
     log_mode="file",
-    logging_interval_steps=VPM_LOG_PERIOD,
-    timing_interval_steps=VPM_LOG_PERIOD,
-    checkpoint_interval_steps=int(CHECKPOINT_INTERVAL / VPM_TIME_STEP_SIZE),
+    logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
+    timing_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
+    checkpoint_interval_steps=int(VPM_CHECKPOINT_INTERVAL_TIME / VPM_TIME_STEP_SIZE),
     checkpoint_directory=str(CASE_DIR / "solution"),
     export_flow_integrals=False,
     samplers=VPM_SAMPLERS,

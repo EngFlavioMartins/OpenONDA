@@ -510,7 +510,7 @@ def main() -> None:
     parser.add_argument("--reference-n", type=int, default=48)
     parser.add_argument("--les-n", type=int, default=24)
     parser.add_argument("--viscosity", type=float, default=0.01)
-    parser.add_argument("--dt", type=float, default=0.02)
+    parser.add_argument("--time-step-size", dest="time_step_size", type=float, default=0.02)
     parser.add_argument("--end-time", type=float, default=2.0)
     parser.add_argument("--save-interval", type=float, default=0.1)
     parser.add_argument("--forcing-rms", type=float, default=0.25)

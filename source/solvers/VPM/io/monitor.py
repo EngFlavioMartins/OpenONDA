@@ -41,12 +41,12 @@ class SimulationMonitor:
 
         Args:
             solver: Reference to the parent VPM solver
-            output_dir: Directory for output files (default: "solution/samples")
+            output_dir: Directory for output files (default: ``<case_dir>/samples``)
         """
         self.solver = solver
 
         if output_dir is None:
-            self.output_dir = os.path.join("solution", "samples")
+            self.output_dir = os.path.join(str(solver.case_dir), "samples")
         else:
             self.output_dir = output_dir
 

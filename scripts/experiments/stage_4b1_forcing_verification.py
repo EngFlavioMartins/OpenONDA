@@ -433,7 +433,7 @@ def main() -> None:
     parser.add_argument("--les-n", type=int, default=16)
     parser.add_argument("--reference-n", type=int, default=32)
     parser.add_argument("--end-time", type=float, default=0.4)
-    parser.add_argument("--anchor-dt", type=float, default=0.02)
+    parser.add_argument("--anchor-time-step-size", type=float, default=0.02)
     parser.add_argument("--correlation-time", type=float, default=0.2)
     parser.add_argument("--forcing-rms", type=float, default=0.15)
     parser.add_argument("--viscosity", type=float, default=0.02)
@@ -485,7 +485,7 @@ def main() -> None:
             "les_n": args.les_n,
             "reference_n": args.reference_n,
             "end_time": args.end_time,
-            "anchor_dt": args.anchor_time_step_size,
+            "anchor_time_step_size": args.anchor_time_step_size,
             "correlation_time": args.correlation_time,
             "forcing_rms": args.forcing_rms,
             "viscosity": args.viscosity,

@@ -9,6 +9,7 @@ import numpy as np
 
 from _reference_util import sample_vtu
 from _frames_util import vpm_velocity
+from _plotutil import load_vpm_particles
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 TIME = 3.0
@@ -26,14 +27,11 @@ def _particles(solution: Path, time: float) -> dict:
     snapshots = []
     for path in solution.glob("vpm_*.h5"):
         with h5py.File(path, "r") as handle:
-            snapshots.append((float(handle["solver"].attrs["flow_time"]), path))
+            attrs = handle["solver"].attrs
+            time_key = "time" if "time" in attrs else "flow_time"
+            snapshots.append((float(attrs[time_key]), path))
     path = min(snapshots, key=lambda item: abs(item[0] - time))[1]
-    with h5py.File(path, "r") as handle:
-        count = int(handle["solver"].attrs["number_of_particles"])
-        return {
-            name: np.asarray(handle[f"particles/{name}"][:count])
-            for name in ("position", "circulation", "radius")
-        }
+    return load_vpm_particles(path)
 
 
 def _hybrid_velocity(vtu: Path, particles: dict, points: np.ndarray, box: dict):

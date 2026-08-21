@@ -12,6 +12,7 @@ import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution"
+SAMPLES_DIR = CASE_DIR / "samples"
 FAMILIES = ("leapfrog", "collide")
 VARIANTS = ("dns", "les", "les_stabilized")
 EXPECTED_CASES = tuple(f"{family}_{variant}" for family in FAMILIES for variant in VARIANTS)
@@ -48,7 +49,7 @@ def relative_vector_drift(values: np.ndarray, scale: float) -> float:
 
 def stability_indicators(case_name: str, through_time: float) -> dict[str, float]:
     """Return peak instability measures over a common physical-time window."""
-    csv_path = SOLUTION_DIR / case_name / "samples" / "flow_integrals.csv"
+    csv_path = SAMPLES_DIR / case_name / "flow_integrals.csv"
     with csv_path.open(newline="") as stream:
         rows = list(csv.DictReader(stream))
     time = column(rows, "time")
@@ -65,7 +66,7 @@ def stability_indicators(case_name: str, through_time: float) -> dict[str, float
 
 def initial_state(case_name: str) -> np.ndarray:
     """Return the shared particle-state diagnostics before model evolution begins."""
-    csv_path = SOLUTION_DIR / case_name / "samples" / "flow_integrals.csv"
+    csv_path = SAMPLES_DIR / case_name / "flow_integrals.csv"
     with csv_path.open(newline="") as stream:
         row = next(csv.DictReader(stream))
     names = (
@@ -92,8 +93,8 @@ def initial_state(case_name: str) -> np.ndarray:
 def inspect_case(case_name: str) -> dict[str, float]:
     case_dir = SOLUTION_DIR / case_name
     manifest_path = case_dir / "run_manifest.json"
-    csv_path = case_dir / "samples" / "flow_integrals.csv"
-    ring_csv_path = case_dir / "samples" / "ring_diagnostics.csv"
+    csv_path = SAMPLES_DIR / case_name / "flow_integrals.csv"
+    ring_csv_path = SAMPLES_DIR / case_name / "ring_diagnostics.csv"
     if not all(path.is_file() for path in (manifest_path, csv_path, ring_csv_path)):
         raise ValueError("run manifest or built-in diagnostic CSV is missing")
 

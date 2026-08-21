@@ -430,7 +430,7 @@ def main() -> None:
     parser.add_argument("--dns-n", type=int, default=48)
     parser.add_argument("--les-n", type=int, default=24)
     parser.add_argument("--viscosity", type=float, default=1.0 / 200.0)
-    parser.add_argument("--dt", type=float, default=0.01)
+    parser.add_argument("--time-step-size", dest="time_step_size", type=float, default=0.01)
     parser.add_argument("--end-time", type=float, default=0.5)
     parser.add_argument("--save-interval", type=float, default=0.05)
     parser.add_argument("--output", type=Path, required=True)

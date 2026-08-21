@@ -77,7 +77,7 @@ def test_explicit_metal_rejects_f64(monkeypatch):
 
 
 def test_explicit_backend_is_not_replaced_by_environment(monkeypatch):
-    monkeypatch.setenv("OPENONDA_PROCESSING_UNIT", "CPU")
+    monkeypatch.setenv("OPENONDA_COMPUTE_DEVICE", "CPU")
     monkeypatch.setattr(
         backend.ti.lang.impl,
         "get_runtime",

@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,8 @@ import numpy as np
 import openonda.fvm as fvm
 import openonda.coupler as coupling
 import openonda.vpm as vpm
+
+SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 
 # Physical problem
 CUBE_SIDE = 1.0
@@ -33,40 +36,40 @@ INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
-FVM_CORES = 4
+FVM_CORES = 1 if SMOKE else 4
 TRANSFER_REGION_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 PIMPLE_CORRECTORS = 2
 
 FVM_WAKE_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
-SURFACE_CELL_SIZE = 0.015625
+SURFACE_CELL_SIZE = 0.125 if SMOKE else 0.015625
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
 VPM_PARTICLE_SPACING = SURFACE_CELL_SIZE * 2
-PARTICLE_LIMIT = 1500000
+PARTICLE_LIMIT = 100_000 if SMOKE else 1_500_000
 VPM_CORE_RADIUS_RATIO = 1.05
-TRANSFER_PRUNE_VORTICITY_MIN = 0.05
+TRANSFER_VORTICITY_CUTOFF = 0.05
 TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
 GBD_VORTICITY_FLOOR = 0.05
-OVERLAP_ZONE_RAMP_WIDTH = SURFACE_CELL_SIZE * 4
+AUTHORITY_RAMP_WIDTH = SURFACE_CELL_SIZE * 4
 
 # Coupling
-VPM_BC_MODE = "vorticity_mixed"
+BOUNDARY_CONDITION_MODE = "vorticity_mixed"
 TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Output and diagnostics
 FVM_TIME_STEP_SIZE = 0.01
-FORCE_INTERVAL = 0.05
-DIAGNOSTIC_INTERVAL = 0.60
-CHECKPOINT_INTERVAL = 1.0
-FVM_VOLUME_INTERVAL = 1.0
-VPM_LOG_PERIOD = 20
+FORCE_INTERVAL_TIME = 0.03 if SMOKE else 0.05
+DIAGNOSTIC_INTERVAL_TIME = 0.03 if SMOKE else 0.60
+VPM_CHECKPOINT_INTERVAL_TIME = 0.03 if SMOKE else 1.0
+FVM_VOLUME_INTERVAL_TIME = 0.03 if SMOKE else 1.0
+VPM_LOGGING_INTERVAL_STEPS = 1 if SMOKE else 20
 VPM_TIME_STEP_SIZE = 0.03
-END_TIME = 20
-COUPLER_CHECKPOINT_INTERVAL_STEPS = 20
+END_TIME = VPM_TIME_STEP_SIZE if SMOKE else 20.0
+COUPLER_CHECKPOINT_INTERVAL_STEPS = 1 if SMOKE else 20
 SAMPLE_SPACING = SURFACE_CELL_SIZE * 2
-TRANSFER_DIAGNOSTIC_INTERVAL = 12
+TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 1 if SMOKE else 12
 
 # Case files and derived sampling data
 CASE_DIR = Path(__file__).resolve().parent
@@ -93,21 +96,21 @@ FVM_SAMPLERS = (
         ref_area=CUBE_SIDE**2,
         ref_length=CUBE_SIDE,
         moment_centre=[0.0, 0.0, 0.0],
-        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_centerline",
-        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
         end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_offaxis_y075",
-        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL_TIME),
     ),
     fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -115,7 +118,7 @@ FVM_SAMPLERS = (
         bounds=SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
-        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL_TIME),
         body_bounds=FVM_MESH.surface_bounds,
     ),
 )
@@ -138,7 +141,7 @@ FVM_SETUP = fvm.FVMSetup(
         start_time=0.0,
         end_time=END_TIME,
         output_interval_steps=10**9,
-        output_interval_time=FVM_VOLUME_INTERVAL,
+        output_interval_time=FVM_VOLUME_INTERVAL_TIME,
         adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(
@@ -192,16 +195,16 @@ COUPLER_SETUP = coupling.CouplerSetup(
     bc_resync_after_transfer=True,
     pressure_anchor_to_freestream=False,
     checkpoint_interval_steps=COUPLER_CHECKPOINT_INTERVAL_STEPS,
-    boundary_condition_mode=VPM_BC_MODE,
+    boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     vpm_particle_spacing=VPM_PARTICLE_SPACING,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
-    authority_ramp_width=OVERLAP_ZONE_RAMP_WIDTH,
+    authority_ramp_width=AUTHORITY_RAMP_WIDTH,
     vpm_only_width=0.0,
-    transfer_vorticity_cutoff=TRANSFER_PRUNE_VORTICITY_MIN,
+    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
     transfer_boundary_prune_multiplier=TRANSFER_BOUNDARY_PRUNE_MULTIPLIER,
     transfer_max_particles=PARTICLE_LIMIT,
     transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
-    transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL,
+    transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 
 
@@ -272,9 +275,9 @@ VPM_SETUP = vpm.VPMSetup(
     max_evaluation_points=PARTICLE_LIMIT,
     domain_bounds=list(VPM_DOMAIN),
     log_mode="file",
-    logging_interval_steps=VPM_LOG_PERIOD,
-    timing_interval_steps=VPM_LOG_PERIOD,
-    checkpoint_interval_steps=int(CHECKPOINT_INTERVAL / VPM_TIME_STEP_SIZE),
+    logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
+    timing_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
+    checkpoint_interval_steps=int(VPM_CHECKPOINT_INTERVAL_TIME / VPM_TIME_STEP_SIZE),
     checkpoint_directory=str(CASE_DIR / "solution"),
     export_flow_integrals=False,
     samplers=VPM_SAMPLERS,

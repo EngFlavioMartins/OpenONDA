@@ -122,24 +122,30 @@ def state_paths(run: RunSpec) -> tuple[Path, Path]:
 
 def load_state(path: Path) -> dict[str, np.ndarray | float | int]:
     with h5py.File(path, "r") as handle:
+        particles = handle["particles"]
+        attrs = handle["solver"].attrs
+        strength_key = "vortex_strength" if "vortex_strength" in particles else "circulation"
+        radius_key = "core_radius" if "core_radius" in particles else "radius"
+        time_key = "time" if "time" in attrs else "flow_time"
+        count_key = "n_particles" if "n_particles" in attrs else "number_of_particles"
         return {
-            "position": np.asarray(handle["particles/position"], dtype=np.float64),
-            "circulation": np.asarray(handle["particles/circulation"], dtype=np.float64),
-            "radius": np.asarray(handle["particles/radius"], dtype=np.float64),
-            "group_id": np.asarray(handle["particles/group_id"], dtype=np.int32),
-            "time": float(handle["solver"].attrs["flow_time"]),
-            "particles": int(handle["solver"].attrs["number_of_particles"]),
+            "position": np.asarray(particles["position"], dtype=np.float64),
+            "vortex_strength": np.asarray(particles[strength_key], dtype=np.float64),
+            "core_radius": np.asarray(particles[radius_key], dtype=np.float64),
+            "group_id": np.asarray(particles["group_id"], dtype=np.int32),
+            "time": float(attrs[time_key]),
+            "particles": int(attrs[count_key]),
         }
 
 
 def archer_moments(state: dict[str, np.ndarray | float | int]) -> dict[str, float]:
     position = np.asarray(state["position"])
-    circulation = np.asarray(state["circulation"])
-    radius = np.asarray(state["radius"])
+    vortex_strength = np.asarray(state["vortex_strength"])
+    core_radius = np.asarray(state["core_radius"])
     cylindrical_radius = np.hypot(position[:, 1], position[:, 2])
     theta = np.arctan2(position[:, 2], position[:, 1])
     tangent = np.column_stack((np.zeros_like(theta), -np.sin(theta), np.cos(theta)))
-    alpha_theta = np.einsum("ij,ij->i", circulation, tangent)
+    alpha_theta = np.einsum("ij,ij->i", vortex_strength, tangent)
     orientation = np.sign(alpha_theta.sum()) or 1.0
     weight = orientation * alpha_theta / np.maximum(cylindrical_radius, np.finfo(float).eps)
     total_weight = float(weight.sum())
@@ -148,14 +154,14 @@ def archer_moments(state: dict[str, np.ndarray | float | int]) -> dict[str, floa
     # The anti-diffused initializer and Core Spreading use additive squared
     # Gaussian widths.  The particle-centre moment therefore receives the
     # circulation-weighted blob-width contribution below.
-    blob_width_sq = float(np.sum(weight * radius**2) / total_weight)
+    blob_width_sq = float(np.sum(weight * core_radius**2) / total_weight)
     core_radius_sq = max(
         2.0 * (second_radius - ring_radius**2) + blob_width_sq,
         0.0,
     )
     axial_centroid = float(np.sum(weight * position[:, 0]) / total_weight)
     tube_circulation = total_weight / (2.0 * np.pi)
-    impulse = 0.5 * np.sum(np.cross(position, circulation), axis=0)
+    impulse = 0.5 * np.sum(np.cross(position, vortex_strength), axis=0)
     return {
         "axial_centroid": axial_centroid,
         "ring_radius_theta": ring_radius,
@@ -177,7 +183,7 @@ def modal_metrics(state: dict[str, np.ndarray | float | int]) -> dict[str, float
     rows = np.asarray(
         sampler._sample_group(
             np.asarray(state["position"]),
-            np.asarray(state["circulation"]),
+            np.asarray(state["vortex_strength"]),
         ),
         dtype=float,
     )

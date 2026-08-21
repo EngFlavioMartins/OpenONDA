@@ -175,7 +175,7 @@ class SolverIO:
         print(f"[INFO] Diagnostics exported to {filename}")
 
     def export_flow_integrals_csv(self, solver: "VPMSolver") -> None:
-        """Append one row of flow integrals to ``<checkpoint_directory>/samples/flow_integrals.csv``.
+        """Append one row of flow integrals to ``<case_dir>/samples/flow_integrals.csv``.
 
         Args:
             solver: Parent solver instance with evaluated flow integrals and
@@ -297,7 +297,7 @@ class SolverIO:
         import pandas as pd
 
         samples_dir = resolve_samples_dir(
-            self.export_dir,
+            self.solver.case_dir,
             getattr(self.solver.setup, "sample_subdirectory", None),
         )
         samples_dir.mkdir(parents=True, exist_ok=True)

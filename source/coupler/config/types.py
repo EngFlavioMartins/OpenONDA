@@ -98,10 +98,14 @@ class CouplerSetup:
 
         if self.transfer_region_bounds is not None:
             transfer_region_bounds = np.asarray(self.transfer_region_bounds, dtype=np.float64)
-            if transfer_region_bounds.shape != (6,) or not np.all(np.isfinite(transfer_region_bounds)):
+            if transfer_region_bounds.shape != (6,) or not np.all(
+                np.isfinite(transfer_region_bounds)
+            ):
                 raise ValueError("transfer_region_bounds must contain six finite bounds")
             if np.any(transfer_region_bounds[1::2] <= transfer_region_bounds[::2]):
-                raise ValueError("Each transfer_region_bounds upper bound must exceed its lower bound")
+                raise ValueError(
+                    "Each transfer_region_bounds upper bound must exceed its lower bound"
+                )
 
         positive = {
             "vpm_particle_spacing": self.vpm_particle_spacing,
@@ -118,9 +122,7 @@ class CouplerSetup:
         if self.checkpoint_interval_steps < 0:
             raise ValueError("checkpoint_interval_steps must be non-negative")
         if self.vpm_only_width < 0.0 or self.transfer_vorticity_cutoff < 0.0:
-            raise ValueError(
-                "vpm_only_width and transfer_vorticity_cutoff must be non-negative"
-            )
+            raise ValueError("vpm_only_width and transfer_vorticity_cutoff must be non-negative")
         if self.transfer_amplification_cap < 1.0:
             raise ValueError("transfer_amplification_cap must be at least one")
         if self.transfer_boundary_prune_multiplier < 1.0:

@@ -473,8 +473,8 @@ def test_allrun_uses_one_runner_for_every_viscous_method():
     script = Path("tutorials/VPM/lambOseenVortex/allrun.sh").read_text(encoding="utf-8")
 
     assert script.count("python -u lambossen_setup.py") == 12
-    assert script.count("--viscous_scheme") == 12
-    assert script.count("--case_name") == 12
+    assert script.count("--viscous-scheme") == 12
+    assert script.count("--case-name") == 12
     assert "run_rwm_ensemble" not in script
     assert "RWM_REALIZATIONS" not in script
     assert "grid_independence_cs" not in script

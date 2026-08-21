@@ -14,7 +14,7 @@ import os
 
 
 def append_loads_to_csv(
-    checkpoint_name: str, time: float, loads: dict, directory: str = "solution"
+    checkpoint_name: str, time: float, loads: dict, directory: str = "."
 ) -> None:
     """Append aerodynamic loads to CSV file.
 
@@ -22,9 +22,9 @@ def append_loads_to_csv(
         checkpoint_name: Base name for output file (used to derive CSV name)
         flow_time: Current simulation time
         loads: Dictionary containing force, moment, thrust, torque, power, Cp values
-        directory: Destination directory for CSV file
+        directory: Case directory; the CSV is written below its ``samples`` directory
     """
-    # Ensure solution directory exists
+    # Keep diagnostics separate from restart/visualization state.
     out_dir = os.path.join(directory, "samples")
     os.makedirs(out_dir, exist_ok=True)
 

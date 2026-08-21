@@ -10,8 +10,8 @@ sampled z=L/4 velocity/vorticity fields and flow integrals are written under
 ``samples``.
 
 Example:
-    python lambossen_setup.py --gamma1 +1 --gamma2 -1 --viscous_scheme CS \
-        --case_name dipole_cs
+    python lambossen_setup.py --gamma1 +1 --gamma2 -1 --viscous-scheme CS \
+        --case-name dipole_cs
 """
 
 from __future__ import annotations
@@ -32,10 +32,8 @@ from openonda.vpm import (
     ViscousConfig,
     VPMSetup,
 )
-from source.solvers.VPM.io.sampling import resolve_samples_dir
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
-SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
 # ---- Physics (Lamb--Oseen benchmark) ------------------------------------
 RE_GAMMA = 530.0  # vortex Reynolds number Gamma / nu
@@ -52,8 +50,8 @@ PARTICLE_RADIUS = 1.50 * SPACING
 FIELD_SPACING = 0.15 * CORE_RADIUS
 TIME_STEP = 0.291 / 9.0
 TOTAL_TIME = 103.0 * 0.291
-SAMPLE_PERIOD = 2.0 * 0.291
-MERGING_SAMPLE_PERIOD = 0.291
+SAMPLE_INTERVAL_TIME = 2.0 * 0.291
+MERGING_SAMPLE_INTERVAL_TIME = 0.291
 CHECKPOINT_INTERVAL_TIME = 10.0 * 0.291
 TREECODE_THETA = 0.30
 TREECODE_MULTIPOLE_ORDER = 3
@@ -146,22 +144,39 @@ def run_case(
     scheme: str,
     circulations: tuple[float, ...],
     case_name: str,
+    *,
+    spacing_ratio: float = SPACING / CORE_RADIUS,
+    column_spacing_ratio: float | None = None,
+    field_spacing_ratio: float = FIELD_SPACING / CORE_RADIUS,
+    end_time: float = TOTAL_TIME,
+    time_step_size: float = TIME_STEP,
+    sample_plane_fraction: float = 0.25,
+    case_dir: Path = TUTORIAL_DIR,
+    compute_device: str = "AUTO",
 ) -> None:
     """Run one benchmark case."""
+    spacing = spacing_ratio * CORE_RADIUS
+    column_spacing = (
+        COLUMN_SPACING if column_spacing_ratio is None else column_spacing_ratio * CORE_RADIUS
+    )
+    particle_radius = 1.5 * spacing
+    field_spacing = field_spacing_ratio * CORE_RADIUS
     gamma = abs(circulations[0])
     viscosity = gamma / RE_GAMMA
-    sample_period = MERGING_SAMPLE_PERIOD if physics == "merging" else SAMPLE_PERIOD
-    viscous = viscous_config(scheme, viscosity, SPACING)
-    number_of_steps = round(TOTAL_TIME / TIME_STEP)
-    sample_steps = round(sample_period / TIME_STEP)
-    checkpoint_interval_steps = round(CHECKPOINT_INTERVAL_TIME / TIME_STEP)
+    sample_interval_time = (
+        MERGING_SAMPLE_INTERVAL_TIME if physics == "merging" else SAMPLE_INTERVAL_TIME
+    )
+    viscous = viscous_config(scheme, viscosity, spacing)
+    number_of_steps = round(end_time / time_step_size)
+    sample_steps = round(sample_interval_time / time_step_size)
+    checkpoint_interval_steps = round(CHECKPOINT_INTERVAL_TIME / time_step_size)
 
     y_positions = (0.0,) if physics == "vortex" else (SEPARATION / 2, -SEPARATION / 2)
     initial_half_width = max(abs(y) for y in y_positions) + 7.0 * CORE_RADIUS
     column_half_length = COLUMN_LENGTH / 2.0
 
     # GPU DVH/GBD must pre-allocate its diffusion grid once for the whole domain
-    final_core_radius = BETA_RMAX * np.sqrt(GAUSSIAN_CORE_RADIUS**2 + 4.0 * viscosity * TOTAL_TIME)
+    final_core_radius = BETA_RMAX * np.sqrt(GAUSSIAN_CORE_RADIUS**2 + 4.0 * viscosity * end_time)
     padding = 0.0 if physics == "vortex" else 4.0 * final_core_radius
     lateral_half_width = (
         initial_half_width if physics == "vortex" else max(abs(y) for y in y_positions) + padding
@@ -186,16 +201,17 @@ def run_case(
         column_half_length,
     ]
     positions, volumes, radii = column_distribution(
-        initial_bounds, SPACING, PARTICLE_RADIUS, COLUMN_SPACING
+        initial_bounds, spacing, particle_radius, column_spacing
     )
 
-    solution_dir = SOLUTION_DIR
+    case_dir = Path(case_dir).resolve()
+    solution_dir = case_dir / "solution"
 
     field_sampler = SurfaceSampler(
-        point=[0, 0, 0.25 * COLUMN_LENGTH],
+        point=[0, 0, sample_plane_fraction * COLUMN_LENGTH],
         normal=[0, 0, 1],
         bounds=domain_bounds[:4],
-        spacing=FIELD_SPACING,
+        spacing=field_spacing,
         file_name=f"{case_name}_zq",
     )
     scheduled_samplers = [field_sampler]
@@ -203,7 +219,7 @@ def run_case(
 
     solver = VPMSolver(
         setup=VPMSetup.viscous_flow_simulation(
-            time_step_size=TIME_STEP,
+            time_step_size=time_step_size,
             viscous=viscous,
             advection=AdvectionConfig(scheme=ADVECTION_SCHEME),
             velocity=VelocityConfig.treecode(
@@ -219,29 +235,36 @@ def run_case(
             samplers=scheduled_samplers,
             final_samplers=final_samplers,
             domain_bounds=domain_bounds,
-            compute_device="AUTO",
+            compute_device=compute_device,
             random_seed=42,
-        )
+        ),
+        case_dir=case_dir,
     )
 
     # Only values needed by the plotting scripts are recorded.
-    samples_dir = resolve_samples_dir(solution_dir, case_name)
+    samples_dir = case_dir / "samples" / case_name
     samples_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
         "case": physics,
         "scheme": scheme,
         "circulations": circulations,
-        "viscosity": viscosity,
+        "kinematic_viscosity": viscosity,
         "core_radius": GAUSSIAN_CORE_RADIUS,
         "core_radius_definition": "gaussian_1_over_e_vorticity_radius",
         "velocity_peak_radius": CORE_RADIUS,
         "separation": SEPARATION,
         "column_half_length": column_half_length,
-        "total_time": TOTAL_TIME,
-        "time_step": TIME_STEP,
-        "in_plane_spacing": SPACING,
-        "field_spacing": FIELD_SPACING,
-        "sample_plane_z": 0.25 * COLUMN_LENGTH,
+        "end_time": end_time,
+        "time_step_size": time_step_size,
+        "in_plane_spacing": spacing,
+        "field_spacing": field_spacing,
+        "sample_plane_fraction": sample_plane_fraction,
+        "sample_plane_z": sample_plane_fraction * COLUMN_LENGTH,
+        "requested_compute_device": compute_device,
+        "advection_scheme": ADVECTION_SCHEME,
+        "treecode_theta": TREECODE_THETA,
+        "treecode_multipole_order": TREECODE_MULTIPOLE_ORDER,
+        "circulation_normalization": "per_vortex_after_strength_cutoff",
         "status": "running",
         "completed": False,
     }
@@ -282,6 +305,9 @@ def run_case(
             group_id=group_ids,
         )
 
+    metadata["initial_particle_count"] = len(solver.particles)
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
     try:
         solver.execute_final_samplers()  # Record the exact t=0 state.
         for _ in range(number_of_steps):
@@ -298,6 +324,7 @@ def run_case(
     metadata["status"] = "complete"
     metadata["completed"] = True
     metadata["final_time"] = number_of_steps * solver.time_step_size
+    metadata["resolved_compute_device"] = solver.compute_device
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     print(f"  {case_name} finished")
 
@@ -305,9 +332,21 @@ def run_case(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gamma1", type=float, required=True)
-    parser.add_argument("--gamma2", type=float, required=True)
-    parser.add_argument("--viscous_scheme", choices=VISCOUS_SCHEMES, required=True)
-    parser.add_argument("--case_name", required=True)
+    parser.add_argument("--gamma2", type=float, default=0.0)
+    parser.add_argument("--viscous-scheme", choices=VISCOUS_SCHEMES, required=True)
+    parser.add_argument("--case-name", required=True)
+    parser.add_argument("--spacing-ratio", type=float, default=SPACING / CORE_RADIUS)
+    parser.add_argument("--column-spacing-ratio", type=float)
+    parser.add_argument("--field-spacing-ratio", type=float, default=FIELD_SPACING / CORE_RADIUS)
+    parser.add_argument("--end-time", type=float, default=TOTAL_TIME)
+    parser.add_argument("--time-step-size", type=float, default=TIME_STEP)
+    parser.add_argument("--sample-plane-fraction", type=float, default=0.25)
+    parser.add_argument("--case-dir", type=Path, default=TUTORIAL_DIR)
+    parser.add_argument(
+        "--compute-device",
+        choices=("AUTO", "CPU", "VULKAN", "CUDA", "METAL"),
+        default="AUTO",
+    )
     return parser.parse_args()
 
 
@@ -319,7 +358,20 @@ def main() -> int:
         physics, circulations = "dipole", (args.gamma1, args.gamma2)
     else:
         physics, circulations = "merging", (args.gamma1, args.gamma2)
-    run_case(physics, args.viscous_scheme.lower(), circulations, args.case_name)
+    run_case(
+        physics,
+        args.viscous_scheme.lower(),
+        circulations,
+        args.case_name,
+        spacing_ratio=args.spacing_ratio,
+        column_spacing_ratio=args.column_spacing_ratio,
+        field_spacing_ratio=args.field_spacing_ratio,
+        end_time=args.end_time,
+        time_step_size=args.time_step_size,
+        sample_plane_fraction=args.sample_plane_fraction,
+        case_dir=args.case_dir,
+        compute_device=args.compute_device,
+    )
     return 0
 
 

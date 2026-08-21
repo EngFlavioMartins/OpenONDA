@@ -52,7 +52,7 @@ TIME_STEP = np.deg2rad(DEGREES_PER_STEP) / ANGULAR_VELOCITY
 STEPS_PER_REVOLUTION = round(360.0 / DEGREES_PER_STEP)
 NUMBER_OF_REVOLUTIONS = 6
 NUMBER_OF_STEPS = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION
-SAMPLE_PERIOD = 0.0375  # write a snapshot every this many seconds
+SAMPLE_INTERVAL_TIME = 0.0375  # write a snapshot every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.0125  # 24 animation frames per rotor revolution
 
 
@@ -112,7 +112,7 @@ def run() -> None:
         sigma_factor=2.5,
     )
 
-    sample_steps = cadence_steps(SAMPLE_PERIOD)
+    sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
     solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=TIME_STEP,
@@ -145,7 +145,8 @@ def run() -> None:
                     file_name="sampled_zplane",
                 ),
             ),
-        )
+        ),
+        case_dir=TUTORIAL_DIR,
     )
 
     for _ in range(NUMBER_OF_STEPS):

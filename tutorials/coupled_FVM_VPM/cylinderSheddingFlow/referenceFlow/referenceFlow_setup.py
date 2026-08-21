@@ -98,14 +98,14 @@ if FVM_CORES > 1:
 else:
     FVM_EXECUTION = fvm.ComputeConfig(operator_backend="numba")
 
-FVM_VOLUME_INTERVAL = 2.0
+FVM_VOLUME_INTERVAL_TIME = 2.0
 
 # --------------------------------------------------------------------------- #
 # Output and diagnostics cadence (identical schedules to the hybrid case)
 # --------------------------------------------------------------------------- #
-FORCE_INTERVAL = 0.05
-LINE_INTERVAL = 0.5
-SLICE_INTERVAL = 1.0
+FORCE_INTERVAL_TIME = 0.05
+LINE_INTERVAL_TIME = 0.5
+SLICE_INTERVAL_TIME = 1.0
 SAMPLE_SPACING = 0.25 if SMOKE else 0.0625
 PROBE_X = 1.5
 TRANSVERSE_HALF = 1.5
@@ -145,28 +145,28 @@ FVM_SAMPLERS = (
     fvm.IBMForceSampler(
         ref_velocity=FREESTREAM_VELOCITY,
         ref_area=DIAMETER * CYLINDER_LENGTH,
-        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[PROBE_X, 0.0, 0.0],
         end=[PROBE_X, 0.0, 0.0],
         n_points=1,
         file_name="midspan_probe",
-        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[PROBE_X, -TRANSVERSE_HALF, 0.0],
         end=[PROBE_X, TRANSVERSE_HALF, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="transverse_line",
-        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[PROBE_X, 0.0, -SPAN_HALF],
         end=[PROBE_X, 0.0, SPAN_HALF],
         spacing=SAMPLE_SPACING,
         file_name="spanwise_line",
-        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=LINE_INTERVAL_TIME),
     ),
     fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -174,7 +174,7 @@ FVM_SAMPLERS = (
         bounds=MIDSPAN_SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="slice_z0",
-        schedule=fvm.SamplingSchedule(every_time=SLICE_INTERVAL),
+        schedule=fvm.SamplingSchedule(every_time=SLICE_INTERVAL_TIME),
     ),
 )
 
@@ -199,7 +199,7 @@ FVM_SETUP = fvm.FVMSetup(
         start_time=0.0,
         end_time=END_TIME,
         output_interval_steps=10**9,
-        output_interval_time=FVM_VOLUME_INTERVAL,
+        output_interval_time=FVM_VOLUME_INTERVAL_TIME,
         adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(

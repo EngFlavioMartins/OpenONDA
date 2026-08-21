@@ -1113,11 +1113,11 @@ class Particles:
         Args:
             position: Particle positions [N, 3] in meters
             velocity: Particle velocities [N, 3] in m/s
-            circulation: Particle circulation (α = ω·V) [N, 3] in m²/s
-            radius: Particle core radii [N] in meters
+            vortex_strength: Particle strength (α = ω·V) [N, 3] in m³/s
+            core_radius: Particle core radii [N] in meters
             volume: Particle volumes [N] in m³
-            viscosity: Molecular kinematic viscosity [N] in m²/s
-            viscosity_turbulent: Turbulent viscosity [N] in m²/s (optional)
+            kinematic_viscosity: Molecular kinematic viscosity [N] in m²/s
+            eddy_viscosity: Turbulent viscosity [N] in m²/s (optional)
             group_id: Particle group identifiers [N] (optional)
             zone_id: Spatial zone identifiers [N] (optional)
             velocity_gradient: Velocity gradient tensors [N, 3, 3] (optional)
@@ -1155,9 +1155,9 @@ class Particles:
 
         N = position.shape[0]
         if position.shape[1] != 3 or velocity.shape[1] != 3 or vortex_strength.shape[1] != 3:
-            raise ValueError("Position, velocity, and circulation must have shape (N x 3).")
+            raise ValueError("position, velocity, and vortex_strength must have shape (N, 3)")
         if not (core_radius.shape[0] == N):
-            raise ValueError("Radius must match the number of positions.")
+            raise ValueError("core_radius must match the number of positions")
 
         # Ensure all arrays are contiguous and have the correct shape
         if eddy_viscosity is None:

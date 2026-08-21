@@ -78,15 +78,24 @@ def completed_metadata(
         metadata.get("scheme") == "cs",
         metadata.get("core_radius_definition") == "gaussian_1_over_e_vorticity_radius",
         metadata.get("circulation_normalization") == "per_vortex_after_strength_cutoff",
-        metadata.get("requested_processing_unit", metadata.get("processing_unit"))
+        metadata.get(
+            "requested_compute_device",
+            metadata.get("requested_processing_unit", metadata.get("processing_unit")),
+        )
         == args.compute_device,
         metadata.get("advection_scheme") == "RK3",
-        np.isclose(float(metadata.get("time_step", np.nan)), args.time_step),
+        np.isclose(
+            float(metadata.get("time_step_size", metadata.get("time_step", np.nan))),
+            args.time_step_size,
+        ),
         np.isclose(float(metadata.get("treecode_theta", np.nan)), 0.30),
         int(metadata.get("treecode_multipole_order", -1)) == 3,
         np.isclose(float(metadata.get("in_plane_spacing", np.nan)) / a0, spacing_ratio),
         np.isclose(float(metadata.get("field_spacing", np.nan)) / a0, args.field_spacing_ratio),
-        np.isclose(float(metadata.get("total_time", np.nan)), args.total_time),
+        np.isclose(
+            float(metadata.get("end_time", metadata.get("total_time", np.nan))),
+            args.end_time,
+        ),
         np.isclose(
             float(metadata.get("sample_plane_fraction", np.nan)), args.sample_plane_fraction
         ),
@@ -111,21 +120,27 @@ def run_level(root: Path, spacing_ratio: float, args: argparse.Namespace) -> dic
         str(SETUP),
         "--gamma1",
         "+1",
-        "--schemes",
-        "cs",
+        "--gamma2",
+        "0",
+        "--viscous-scheme",
+        "CS",
+        "--case-name",
+        "vortex_cs",
         "--spacing-ratio",
+        str(spacing_ratio),
+        "--column-spacing-ratio",
         str(spacing_ratio),
         "--field-spacing-ratio",
         str(args.field_spacing_ratio),
-        "--total-time",
-        str(args.total_time),
-        "--time-step",
-        str(args.time_step),
+        "--end-time",
+        str(args.end_time),
+        "--time-step-size",
+        str(args.time_step_size),
         "--sample-plane-fraction",
         str(args.sample_plane_fraction),
-        "--output-root",
+        "--case-dir",
         str(root),
-        "--processing-unit",
+        "--compute-device",
         args.compute_device,
     ]
     print(f"  [grid] run {level_name(spacing_ratio)} (CS only)")
@@ -142,7 +157,7 @@ def analyze_level(root: Path, spacing_ratio: float, metadata: dict) -> dict[str,
         raise RuntimeError(f"No final CS profile found below {root}")
     x, velocity, vorticity, time = profile
     gamma = abs(float(metadata.get("circulations", [1.0])[0]))
-    nu = float(metadata["viscosity"])
+    nu = float(metadata.get("kinematic_viscosity", metadata.get("viscosity", np.nan)))
     gaussian_a0 = float(metadata["core_radius"])
     velocity_peak_a0 = float(metadata["velocity_peak_radius"])
     t0 = gaussian_a0**2 / (4.0 * nu)
@@ -159,8 +174,9 @@ def analyze_level(root: Path, spacing_ratio: float, metadata: dict) -> dict[str,
         "final_time": float(time),
         "initial_particles": int(metadata.get("initial_particle_count", -1)),
         "wall_time_seconds": float(metadata.get("wall_time_seconds", np.nan)),
-        "resolved_processing_unit": metadata.get(
-            "resolved_processing_unit", metadata.get("processing_unit")
+        "resolved_compute_device": metadata.get(
+            "resolved_compute_device",
+            metadata.get("resolved_processing_unit", metadata.get("processing_unit")),
         ),
         "velocity_l2": relative_l2(velocity[window], exact_velocity[window]),
         "vorticity_l2": relative_l2(vorticity[window], exact_vorticity[window]),
@@ -263,18 +279,14 @@ def write_results(
         field: bool(metrics["successive_difference_decreases"])
         for field, metrics in self_metrics.items()
     }
-    resolved_backends = sorted(
-        {
-            str(row["resolved_processing_unit"])
-            for row in rows
-            if row.get("resolved_processing_unit")
-        }
+    resolved_compute_devices = sorted(
+        {str(row["resolved_compute_device"]) for row in rows if row.get("resolved_compute_device")}
     )
-    consistent_processing_backend = len(resolved_backends) == 1
+    consistent_compute_device = len(resolved_compute_devices) == 1
     complete_three_grid_study = len(rows) == 3 and len(self_metrics) == len(SELF_FIELDS)
     numerical_grid_independent = bool(
         complete_three_grid_study
-        and consistent_processing_backend
+        and consistent_compute_device
         and all(self_differences_decrease.values())
         and all(
             float(metrics["medium_to_fine_relative_difference"]) <= SELF_CONVERGENCE_TOLERANCE
@@ -292,9 +304,9 @@ def write_results(
         "sampling_strategy": "fixed field grid at every level",
         "sample_plane_fraction": rows[0]["sample_plane_fraction"],
         "column_length_over_a0": rows[0]["column_length_over_a0"],
-        "processing_unit": compute_device,
-        "resolved_processing_units": resolved_backends,
-        "consistent_processing_backend": consistent_processing_backend,
+        "compute_device": compute_device,
+        "resolved_compute_devices": resolved_compute_devices,
+        "consistent_compute_device": consistent_compute_device,
         "complete_three_grid_study": complete_three_grid_study,
         "observed_exact_solution_error_orders": orders,
         "exact_solution_errors_decrease_under_refinement": exact_errors_decrease,
@@ -328,10 +340,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--levels", nargs=3, type=float, default=DEFAULT_LEVELS)
     parser.add_argument("--field-spacing-ratio", type=float, default=0.15)
-    parser.add_argument("--total-time", type=float, default=TOTAL_TIME)
-    parser.add_argument("--time-step", type=float, default=TIME_STEP)
+    parser.add_argument("--end-time", type=float, default=TOTAL_TIME)
+    parser.add_argument("--time-step-size", type=float, default=TIME_STEP)
     parser.add_argument(
-        "--processing-unit",
+        "--compute-device",
         choices=("AUTO", "CPU", "VULKAN", "CUDA", "METAL"),
         default="AUTO",
     )

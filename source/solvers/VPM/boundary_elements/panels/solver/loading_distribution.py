@@ -8,7 +8,7 @@ Instead, this module exports the full per-panel dataset (position, normal,
 doublet strength, Cp, panel force) for external post-processing.
 
 Output CSVs:
-  <checkpoint_dir>/samples/panel_distribution_<surface>.csv
+  <case_dir>/samples/panel_distribution_<surface>.csv
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: June 2026
@@ -32,7 +32,7 @@ class PanelLoadingDistribution:
         diagnostics_history: dict,
         step: int,
         time: float,
-        checkpoint_directory: str,
+        case_dir: str,
     ) -> None:
         if panel_solver is None or panel_solver.lattice is None:
             return
@@ -61,7 +61,7 @@ class PanelLoadingDistribution:
                 else np.zeros((n, 3))
             )
 
-            samples_dir = resolve_samples_dir(checkpoint_directory)
+            samples_dir = resolve_samples_dir(case_dir)
             samples_dir.mkdir(parents=True, exist_ok=True)
             csv_path = samples_dir / f"panel_distribution_step{step:06d}.csv"
 

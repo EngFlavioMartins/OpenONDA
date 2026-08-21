@@ -40,7 +40,7 @@ class VLMLoadingDistribution:
         diagnostics_history: dict,
         step: int,
         time: float,
-        checkpoint_directory: str,
+        case_dir: str,
         sample_subdirectory: str | None = None,
     ) -> None:
         """Iterate surfaces flagged sample_surface_forces and export distributions.
@@ -72,7 +72,7 @@ class VLMLoadingDistribution:
                     dists,
                     time,
                     step,
-                    checkpoint_directory,
+                    case_dir,
                     sample_subdirectory,
                 )
             except Exception as exc:
@@ -417,13 +417,13 @@ class VLMLoadingDistribution:
         dists: dict[str, Any],
         time: float,
         step: int,
-        checkpoint_directory: str,
+        case_dir: str,
         sample_subdirectory: str | None = None,
     ) -> None:
         """Append one time-step's distributions to the per-surface CSVs."""
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(checkpoint_directory, sample_subdirectory)
+        samples_dir = resolve_samples_dir(case_dir, sample_subdirectory)
         samples_dir.mkdir(parents=True, exist_ok=True)
 
         safe_name = surface_name.replace("/", "_").replace(" ", "_")
