@@ -2,8 +2,9 @@
 
 OpenONDA supports Python 3.11–3.13 on Linux x86-64 and Apple Silicon macOS.
 Intel macOS is supported on Python 3.11: that combination uses Taichi 1.7.1
-and Gmsh earlier than 4.13, the last compatible binary wheels. Windows is not
-currently a supported platform.
+and Gmsh earlier than 4.13, plus Numba earlier than 0.63, so every compiled
+dependency is available as an Intel binary wheel. Windows is not currently a
+supported platform.
 
 ## Install with pip
 

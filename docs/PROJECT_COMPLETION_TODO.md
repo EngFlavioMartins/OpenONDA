@@ -87,7 +87,8 @@ remote `development` baseline supplied with the audit was `18e7c27`.
   solve verifier passes with `--require-site-packages`; `pip check` reports no
   broken requirements.
 - [x] Linux, Apple Silicon, and Intel macOS package coverage is represented in
-  CI; Python support is documented as 3.11-3.13 with the Intel dependency pins.
+  CI; Python support is documented as 3.11-3.13 with Intel pins for Taichi,
+  Gmsh, and the last wheel-backed Numba/llvmlite line.
 - [x] Nightly runs full FVM, two/four-rank PETSc, coupled two-rank MPI, canonical
   install, and isolated installed-API tutorial validation without masked test
   failures.
@@ -100,5 +101,5 @@ remote `development` baseline supplied with the audit was `18e7c27`.
   environment. Native VLM/panel tests are green.
 - Taichi cache-lock and sandbox OpenMPI socket warnings are environmental. MPI
   passed when launched with the active environment's explicit Python executable.
-- Workflow YAML was parsed locally; hosted GitHub Actions execution remains an
-  external CI event.
+- Hosted GitHub Actions remains the authoritative cross-platform gate; local
+  validation covers the native platform plus cross-platform wheel resolution.
