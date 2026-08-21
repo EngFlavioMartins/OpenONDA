@@ -1,22 +1,8 @@
-"""Controlled vortex-shedding instability experiment at Re = 150 (hybrid FVM–VPM).
+"""Laminar cylinder shedding at Re = 150 with hybrid FVM–VPM coupling.
 
-This is a validation experiment, not a benchmark.  The hypothesis under test is
-that the coupled FVM–VPM calculation and an FVM-only reference share the same
-linear growth rate and saturated shedding frequency, but that the coupling
-injects a larger initial antisymmetric disturbance.  The consequence would be
-that the hybrid reaches nonlinear saturation earlier, producing an apparent
-phase lag at equal physical times.
-
-The FVM mesh is generated directly as solver-native data by OpenONDA's adaptive
-Cartesian mesher; the cylinder is an infinite immersed boundary passing through
-the FVM slab (``ImmersedBody.extruded_cylinder_z(..., caps=False)``).  No external
-solver case is used.  The SGS model is disabled in both solvers (laminar Re=150
-validation).
-
-The single validation-only control is ``OPENONDA_SEED_AMPLITUDE`` (default 0).
-When nonzero, the same analytic, divergence-free streamfunction perturbation is
-added to the initial FVM velocity field of both this case and the reference
-before time integration (see ``seed_perturbation.py``).
+The infinite immersed cylinder is spanwise invariant. An optional divergence-
+free seed lets this case and the FVM reference compare instability growth and
+saturated shedding frequency from identical initial disturbances.
 
 Usage:
     python cylinderSheddingFlow_setup.py
@@ -32,16 +18,14 @@ from pathlib import Path
 import numpy as np
 
 import openonda.fvm as fvm
-from seed_perturbation import build_seed_velocity
 import openonda.coupler as coupling
 import openonda.vpm as vpm
+from seed_perturbation import build_seed_velocity
 
 CASE_DIR = Path(__file__).resolve().parent
 SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 
-# --------------------------------------------------------------------------- #
-# Physical problem (laminar, primary Karman instability only)
-# --------------------------------------------------------------------------- #
+# Physical problem
 DIAMETER = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
@@ -50,25 +34,11 @@ U_INF = float(np.linalg.norm(FREESTREAM_VELOCITY))
 KINEMATIC_VISCOSITY = U_INF * DIAMETER / REYNOLDS
 
 INITIAL_VELOCITY = FREESTREAM_VELOCITY
-# Production horizon: 100 convective units leaves a robust (~30 s) saturated
-# window for the unseeded reference, whose slow growth (A0 ~ 1e-5) pushes its
-# onset past t~65.  A short 80-unit run leaves too little post-onset record for
-# a reliable Welch/FFT saturated frequency.
+# The unseeded reference needs 100 convective units to reach a saturated window.
 END_TIME = 1.0 if SMOKE else 100.0
 
-# --------------------------------------------------------------------------- #
 # FVM domain, mesh, and numerics
-# --------------------------------------------------------------------------- #
-# RAM-safe production sizing (the machine cannot host the original 0.03125 D
-# body box spanning the full z extent): body 16 cells/D, wake 8 cells/D,
-# background 4 cells/D => ~157k FVM cells here.  The reference shares these
-# spacings, so every comparative metric (sigma, St, A0, onset shift) stays
-# consistent.  The 2x refinement ratio also improves the momentum-solver
-# conditioning.
-# Execution is serial by default: on this 17 GB machine the PETSc-replicated
-# path (FVM_CORES>1) holds a full copy of the mesh + ILU factors on every
-# rank and exhausts RAM even at ~366k cells (measured swap-thrash at 4 ranks).
-# OPENONDA_FVM_CORES can override for machines with more RAM; smoke forces 1.
+# Body, wake, and background resolutions are 16, 8, and 4 cells per diameter.
 FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1"))
 if SMOKE:
     FVM_CORES = 1
@@ -79,25 +49,16 @@ FVM_CELL_SIZE = 0.5 if SMOKE else 0.25
 FVM_WAKE_CELL_SIZE = 0.25 if SMOKE else 0.125
 FVM_BODY_CELL_SIZE = 0.125 if SMOKE else 0.0625
 
-# Infinite cylinder passing through the FVM slab (caps=False).  A spanwise-
-# invariant cylinder is the clean model for the von-Karman instability: it
-# produces 2-D shedding at every z (no tip/end contamination of the z=0 probe)
-# and, unlike a capped body, keeps the IBM marker cloud well-conditioned (the
-# cap-rim markers of a capped cylinder sit closer than h to the lateral
-# surface, which makes the Pinelli quadrature singular).
+# The uncapped cylinder removes tip effects from the Karman instability.
 CYLINDER_Z_BOUNDS = (FVM_BOX[4], FVM_BOX[5])
 
-# Force coefficients are normalised per unit span (the force acts over the
-# cylinder span that is meshed in this case).
+# Force coefficients are normalized per unit span.
 CYLINDER_LENGTH = FVM_BOX[5] - FVM_BOX[4]
 
-# Body and wake refinement boxes (task prescription; each box is snapped to the
-# finest Cartesian lattice by the mesher).  The body box encloses the cylinder
-# surface plus a thin buffer; the wake box resolves the initial shedding region.
+# The body and wake boxes resolve the boundary layer and initial shedding region.
 BODY_BOX = (-0.65, 0.65, -0.65, 0.65, FVM_BOX[4], FVM_BOX[5])
 WAKE_BOX = (-0.75, 3.0, -1.25, 1.25, -5.5, 5.5)
 
-# FVM time integration / discretisation (cube_flow numerics, laminar).
 # Backward 2nd-order; CFL ~ 0.32 in the body region, 0.16 wake, 0.08 far field.
 FVM_TIME_STEP_SIZE = 0.02
 PIMPLE_N_CORRECTORS = 2
@@ -118,35 +79,27 @@ else:
 
 FVM_VOLUME_INTERVAL_TIME = 2.0
 
-# --------------------------------------------------------------------------- #
 # VPM domain and resolution
-# --------------------------------------------------------------------------- #
 VPM_DOMAIN = (-5.0, 15.0, -5.0, 5.0, -8.0, 8.0)
-# Coarsened with the FVM wake (8 cells/D) to keep particle memory bounded.
 VPM_PARTICLE_SPACING = 0.25 if SMOKE else 0.125
 VPM_CORE_RADIUS_RATIO = 1.0
 VPM_TIME_STEP_SIZE = 0.10
 VPM_SCHEME = "RK2"
 PARTICLE_LIMIT = 200_000 if SMOKE else 1_000_000
 
-# GBD molecular diffusion with an absolute physical-vorticity floor scaled by
-# h^3, as in cube_flow.  alpha = nu*dt/h^2 = (1/150)*0.10/0.125^2 ~ 0.043 < 1/6.
+# GBD diffusion has alpha = nu*dt/h^2 ~ 0.043, below the 1/6 stability limit.
 GBD_VORTICITY_FLOOR = 0.01
 TRANSFER_VORTICITY_CUTOFF = 0.01
 TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
 
-# --------------------------------------------------------------------------- #
 # Coupling
-# --------------------------------------------------------------------------- #
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
 TRANSFER_AMPLIFICATION_CAP = 1.8
 AUTHORITY_RAMP_WIDTH = 6.0 * VPM_PARTICLE_SPACING
 TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 12
 COUPLER_CHECKPOINT_INTERVAL_STEPS = 20
 
-# --------------------------------------------------------------------------- #
 # Output and diagnostics cadence
-# --------------------------------------------------------------------------- #
 FORCE_INTERVAL_TIME = 0.05
 LINE_INTERVAL_TIME = 0.5
 SLICE_INTERVAL_TIME = 1.0
@@ -159,12 +112,10 @@ SPAN_HALF = 5.5
 WAKE_SLICE_BOUNDS = (0.0, 8.0, -2.5, 2.5)
 MIDSPAN_SLICE_BOUNDS = (FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3])
 
-# Validation-only controlled seed (shared with the reference).
+# Optional controlled seed shared with the reference.
 SEED_AMPLITUDE = float((os.environ.get("OPENONDA_SEED_AMPLITUDE") or "0").strip())
 
-# --------------------------------------------------------------------------- #
-# Immersed-boundary cylinder (infinite, spans the FVM slab)
-# --------------------------------------------------------------------------- #
+# Case objects
 CYLINDER = fvm.ImmersedBody.extruded_cylinder_z(
     centre=[0.0, 0.0, 0.0],
     diameter=DIAMETER,
@@ -174,9 +125,6 @@ CYLINDER = fvm.ImmersedBody.extruded_cylinder_z(
     caps=False,
 )
 
-# --------------------------------------------------------------------------- #
-# FVM mesh
-# --------------------------------------------------------------------------- #
 FVM_MESH = fvm.AdaptiveCartesianMesher(
     domain=FVM_BOX,
     max_cell_size=FVM_CELL_SIZE,
@@ -187,9 +135,6 @@ FVM_MESH = fvm.AdaptiveCartesianMesher(
     merge_outer_patch="numericalBoundary",
 )
 
-# --------------------------------------------------------------------------- #
-# Samplers
-# --------------------------------------------------------------------------- #
 FVM_SAMPLERS = (
     fvm.IBMForceSampler(
         ref_velocity=U_INF,
@@ -228,9 +173,6 @@ FVM_SAMPLERS = (
     ),
 )
 
-# --------------------------------------------------------------------------- #
-# FVM solver configuration
-# --------------------------------------------------------------------------- #
 FVM_SETUP = fvm.FVMSetup(
     case_name="cylinderSheddingFlow",
     cores=FVM_CORES,
@@ -294,9 +236,6 @@ FVM_SETUP = fvm.FVMSetup(
     initial_kinematic_pressure=0.0,
 )
 
-# --------------------------------------------------------------------------- #
-# Coupler configuration
-# --------------------------------------------------------------------------- #
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
     transfer_region_bounds=TRANSFER_REGION_BOX,

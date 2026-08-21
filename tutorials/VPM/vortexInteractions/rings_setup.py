@@ -20,19 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.vpm import (
-    AdvectionConfig,
-    ParticleDistributor,
-    RingDiagnosticsSampler,
-    VPMSolver,
-    StabilizationConfig,
-    StretchingConfig,
-    TurbulenceConfig,
-    VelocityConfig,
-    ViscousConfig,
-    VortexRingVPM,
-    VPMSetup,
-)
+import openonda.vpm as vpm
 
 CASE_DIR = Path(__file__).resolve().parent
 
@@ -108,15 +96,15 @@ def ring_geometry(family: str) -> tuple[tuple[float, float], tuple[float, float]
     return (-2.5, 2.5), (RING_CIRCULATION, -RING_CIRCULATION)
 
 
-def turbulence(family: str, variant: str) -> TurbulenceConfig:
+def turbulence(family: str, variant: str) -> vpm.TurbulenceConfig:
     if variant == "dns":
-        return TurbulenceConfig.dns()
-    return TurbulenceConfig.les_smagorinsky(c_s=LES_COEFFICIENT[family])
+        return vpm.TurbulenceConfig.dns()
+    return vpm.TurbulenceConfig.les_smagorinsky(c_s=LES_COEFFICIENT[family])
 
 
-def stabilization(family: str, variant: str) -> StabilizationConfig:
+def stabilization(family: str, variant: str) -> vpm.StabilizationConfig:
     if variant == "les_stabilized":
-        return StabilizationConfig.conservative_filter(
+        return vpm.StabilizationConfig.conservative_filter(
             coefficient=STABILIZATION_COEFFICIENT,
             interval_steps=REGULARIZATION_INTERVAL_STEPS,
             start_step=REGULARIZATION_START_STEP,
@@ -136,25 +124,25 @@ def stabilization(family: str, variant: str) -> StabilizationConfig:
             projection_trigger=REGULARIZATION_PROJECTION_TRIGGER,
             projection_max_correction=REGULARIZATION_PROJECTION_LIMIT[family],
         )
-    return StabilizationConfig.disabled()
+    return vpm.StabilizationConfig.disabled()
 
 
-def viscous_diffusion() -> ViscousConfig:
-    return ViscousConfig.cs(
+def viscous_diffusion() -> vpm.ViscousConfig:
+    return vpm.ViscousConfig.cs(
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         particle_spacing=PARTICLE_SPACING,
     )
 
 
-def solver_setup(case_name: str, output_dir: Path) -> VPMSetup:
+def solver_setup(case_name: str, output_dir: Path) -> vpm.VPMSetup:
     family, variant = CASES[case_name]
-    return VPMSetup(
+    return vpm.VPMSetup(
         time_step_size=TIME_STEP,
         time_integration="COUPLED",
         coupled_max_strain_increment=0.15,
         coupled_max_advection_fraction=0.5,
-        advection=AdvectionConfig(scheme="RK2"),
-        stretching=StretchingConfig.transposed(
+        advection=vpm.AdvectionConfig(scheme="RK2"),
+        stretching=vpm.StretchingConfig.transposed(
             scheme="RK2",
             conserve_moments=True,
             conserve_energy=True,
@@ -162,7 +150,7 @@ def solver_setup(case_name: str, output_dir: Path) -> VPMSetup:
         viscous=viscous_diffusion(),
         turbulence=turbulence(family, variant),
         stabilization=stabilization(family, variant),
-        velocity=VelocityConfig.direct(),
+        velocity=vpm.VelocityConfig.direct(),
         particle_kernel="GAUSSIAN",
         precision="f64",
         compute_device="CPU",
@@ -176,7 +164,7 @@ def solver_setup(case_name: str, output_dir: Path) -> VPMSetup:
         logging_interval_steps=DIAGNOSTIC_INTERVAL_STEPS,
         timing_interval_steps=200,
         export_flow_integrals=True,
-        samplers=(RingDiagnosticsSampler(),),
+        samplers=(vpm.RingDiagnosticsSampler(),),
         log_mode="file",
     )
 
@@ -189,7 +177,7 @@ def ring_particles(
     represented_core = np.sqrt(CORE_RADIUS**2 - PARTICLE_RADIUS**2)
     tube_radius = represented_core * np.sqrt(-np.log(TAIL_FRACTION))
     center = np.array([center_x, 0.0, 0.0])
-    position, volume, radius = ParticleDistributor.toroidal_distribution(
+    position, volume, radius = vpm.ParticleDistributor.toroidal_distribution(
         RING_RADIUS,
         tube_radius,
         PARTICLE_SPACING,
@@ -199,7 +187,7 @@ def ring_particles(
         max_modes=WIDNALL_MODES,
     )
     radius.fill(PARTICLE_RADIUS)
-    _, viscosity, strength = VortexRingVPM(
+    _, viscosity, strength = vpm.VortexRingVPM(
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         ring_center=center,
         ring_strength=circulation,
@@ -227,7 +215,7 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
     print("\n---- " + case_name + " ----")
     print(f"  family={family}, model={variant}, steps={num_steps}")
 
-    solver = VPMSolver(setup=solver_setup(case_name, output_dir), case_dir=CASE_DIR)
+    solver = vpm.VPMSolver(setup=solver_setup(case_name, output_dir), case_dir=CASE_DIR)
     centers, circulations = ring_geometry(family)
     for group, (center, circulation, seed) in enumerate(
         zip(centers, circulations, RING_SEEDS, strict=True)

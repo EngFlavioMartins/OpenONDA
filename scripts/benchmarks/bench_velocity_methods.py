@@ -12,6 +12,7 @@ you actually run, **not** from preference.
 This is intentionally standalone (no full Solver) so it boots anywhere. Run it on
 your real backend, e.g.::
 
+    python scripts/benchmarks/bench_velocity_methods.py --arch metal  --n 5000 49000 200000
     python scripts/benchmarks/bench_velocity_methods.py --arch vulkan --n 5000 49000 200000
     python scripts/benchmarks/bench_velocity_methods.py --arch cuda   --n 5000 49000 200000
 
@@ -100,7 +101,13 @@ def run(arch_str, sizes, theta, repeats):
     # arch probe, which can hang on some Vulkan setups.
     from source.solvers.VPM.runtime.backend import initialize_taichi_backend
 
-    backend = {"cpu": "CPU", "cuda": "CUDA", "vulkan": "GPU_VULKAN", "gpu": "GPU"}[arch_str]
+    backend = {
+        "auto": "AUTO",
+        "cpu": "CPU",
+        "metal": "METAL",
+        "cuda": "CUDA",
+        "vulkan": "VULKAN",
+    }[arch_str]
     chosen = initialize_taichi_backend(preferred_backend=backend, debug_mode=False, precision="f32")
     print(f"[backend] requested={backend} → using {chosen}")
     from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
@@ -168,7 +175,11 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--arch", default="cpu", choices=["cpu", "cuda", "vulkan", "gpu"])
+    ap.add_argument(
+        "--arch",
+        default="cpu",
+        choices=["auto", "cpu", "metal", "cuda", "vulkan"],
+    )
     ap.add_argument(
         "--n",
         type=int,

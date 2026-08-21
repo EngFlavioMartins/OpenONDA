@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Laminar backward-facing-step flow (FVM, PIMPLE).
+"""Laminar backward-facing-step flow at Re_h = 100 (FVM, PIMPLE).
 
-A channel with a vertical step expands from height h to height 2h at x/h = 0.
-The flow separates at the step corner and reattaches some distance downstream;
-at Re_h = U_bulk h / nu = 100 the classical reattachment length is around
-x_reatt/h ~ 4-5 (Armaly et al. 1983; Schlichting, Boundary-Layer Theory).
-The mesh contains the solid upstream block and the step, so the whole
-expansion is resolved body-fitted (this is not a scalar step-profile case).
+The body-fitted expansion targets a reattachment length x/h of about 4--5.
+
+Usage:
+    python step_profile_setup.py --Re 100 --end-time 12
 """
 
 from __future__ import annotations

@@ -153,10 +153,9 @@ vpm*.json
 !tutorials/**/*.sh
 tests/**/referenceFlow/**
 
-# Processed sampler output is part of each reproducible tutorial. Any samples/
-# directory outside an ignored solution/ tree is therefore versioned by default.
-!**/samples/
-!**/samples/**
+# Sampler output and parameter-study trees are generated case data.
+**/samples/
+**/grid_study/
 
 # Restart/checkpoint formats never belong in Git, even if accidentally written
 # below samples/. The pre-commit size gate provides an additional safeguard.
@@ -164,11 +163,6 @@ tests/**/referenceFlow/**
 **/samples/**/*.hdf5
 **/samples/**/*.xdmf
 **/samples/**/*.npz
-
-# Full reference-flow volume slices are generated data. Keep the compact CSV
-# histories in Git and leave local slices untouched when they are untracked.
-tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/samples/*.vts
-tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/samples/*.pvd
 
 # direnv
 .envrc

@@ -2,9 +2,9 @@
 
 **Audit state:** complete for the tested formulations
 
-**Last updated:** 17 August 2026
+**Last updated:** 21 August 2026
 
-**Intended reader:** an independent researcher or AI reviewer
+**Intended reader:** researchers evaluating the VPM turbulence closures
 
 ## Decision first
 
@@ -20,10 +20,13 @@ The present answer is **no, not with either closure tested here**:
    accounts for the other $99.56\%$. DIAD therefore solves the wrong dominant
    closure problem in the current architecture.
 2. A filter-consistent Mansfield eddy-diffusivity model was then tested as a
-   fallback. Its fixed coefficient improved enstrophy in one posterior test,
-   but overdamped kinetic energy and the energy spectrum. Its primary dynamic
-   coefficient was negative and became zero under the required non-negative
-   clipping. It also failed the stated acceptance gates.
+   fallback. A defect in the first dynamic-coefficient implementation was
+   corrected: the coefficient is positive, but under-transfers by a factor of
+   about eleven because the test filter spans almost half the periodic box.
+   The fixed coefficient improved enstrophy in one posterior test but overdamped
+   kinetic energy and the energy spectrum. The posterior reference was at a
+   different Reynolds number, so this is a failed validation, not a general
+   falsification of the Mansfield model.
 
 These are useful negative results, not a validated VPM--LES. No tested closure
 should be merged into production. OpenONDA may still use VPM for adequately
@@ -126,7 +129,7 @@ stopped development of that model.
 | Composite filter | Is the particle/grid/filter operator monotone, non-amplifying, and acceptably isotropic? | **PASS** |
 | Offline DIAD bridge | Does the full numerical torque approach the same modeled operator as resolution increases? | **PASS** |
 | Exact composite SGS audit | Does DIAD represent the dominant SGS term created by the actual total filter? | **FAIL** |
-| Mansfield a-priori audit | Can a particle-filter eddy-diffusivity closure reproduce the missing transfer? | **FAIL** for the dynamic primary model |
+| Mansfield a-priori audit | Can a particle-filter eddy-diffusivity closure reproduce the missing transfer? | **FAIL**: corrected dynamic model under-transfers at this resolution |
 | Mansfield posterior audit | Does the best fixed fallback improve objective flow statistics over one turnover? | **FAIL** |
 
 Earlier scalar, two-basis, and mixed Germano/Lilly functional fits were stopped
@@ -216,18 +219,32 @@ Gaussian under the stated skewness assumption $-0.4$.
 
 The fixed adjusted model obtained correlation $0.5181$, transfer ratio
 $0.6916$, and shell-transfer error $0.3470$. This was good enough only to
-justify a short posterior screen. The primary dynamic procedure gave
+justify a short posterior screen.
 
-$$
-C_{r,\mathrm{raw}}^2=-0.006673,
-$$
+The first dynamic procedure omitted the test filter from two Leonard terms and
+used the opposite sign from the repository's SGS convention. It produced the
+spurious result $C_{r,\mathrm{raw}}^2=-0.006673$. After correcting the exact
+Leonard identity, the same field gives:
 
-using a test-filter ratio of two and global spatial averaging. Enforcing the
-model's non-negative diffusivity clipped the coefficient to zero, so the
-dynamic model supplied no SGS transfer. The current OpenONDA closure is not a
-Mansfield implementation: it uses $\Delta=h$ and
-$\nu_t\nabla^2\boldsymbol\omega$, whereas Mansfield uses the particle-filter
-width and the curl--curl operator above.
+| Quantity | Corrected dynamic result |
+|---|---:|
+| $C_{r,\mathrm{raw}}^2$ | $+0.002396$ |
+| $C_r$ | $0.048949$ |
+| Correlation | $0.518056$ |
+| Transfer ratio | $0.088676$ |
+| Shell error | $0.915036$ |
+| Relative divergence | $4.86\times10^{-15}$ |
+
+The corrected operator is admissible and mean-dissipative, but still fails the
+transfer gates. The base and test filters span $0.243$ and $0.486$ of the box,
+so this $32^3$ case has no credible self-similar range for a Germano estimate.
+The failure is insufficient scale separation, not a negative coefficient.
+
+The current OpenONDA Smagorinsky closure is not a Mansfield implementation: it
+uses $\Delta=h$ with spatially varying effective diffusion, whereas Mansfield
+uses the particle-filter width and the curl--curl operator above. The audit
+also found that the current variable-coefficient operator is not solenoidal;
+production VPM-LES therefore remains unvalidated.
 
 ![Particle-filter functional-model audit](figures/vpm_les/stage_8a_particle_functional_gate.png)
 
@@ -272,9 +289,11 @@ Established:
 - the auxiliary-filter DIAD implementation is numerically convergent;
 - particle smoothing dominates the SGS transfer at the tested operating point;
 - the tested DIAD closure cannot recover that dominant term;
-- the dynamic Mansfield coefficient is inadmissible under the tested model's
-  non-negative eddy-diffusivity constraint;
+- the corrected dynamic Mansfield coefficient is admissible but the tested
+  resolution has insufficient scale separation for a credible Germano estimate;
 - fixed Mansfield is too dissipative in the bounded posterior test;
+- the current variable-coefficient OpenONDA closure is not solenoidal and must
+  not be described as a validated VPM--LES model;
 - the posterior reference, forcing relation, resolution check, and energy
   budgets are internally consistent.
 
@@ -288,8 +307,11 @@ Not established:
 - engineering-flow accuracy, Reynolds-number robustness, or production
   stability.
 
-The negative decision is consequently narrow but strong: **do not continue
-tuning or production-testing these two formulations in this architecture.**
+The production decision is consequently narrow but strong: **do not merge or
+advertise either tested route as a validated VPM--LES closure.** DIAD is rejected
+for the tested particle architecture. Mansfield remains research-only until an
+a-priori and posterior study uses comparable Reynolds numbers and enough scale
+separation for its dynamic procedure.
 
 Alvarez and Ning's stable meshless LES is not a drop-in counterexample. Their
 primary paper reports that the anisotropic SGS model and a reformulated VPM
@@ -304,40 +326,31 @@ items below are primary sources, executable experiments, figures, or raw data.
 
 | Purpose | Evidence |
 |---|---|
-| Primary Mansfield formulation | [mansfield1998.pdf](mansfield1998.pdf) |
-| Reformulated VPM comparison | [alvarez_ning_2024_stable_vpm_les.pdf](alvarez_ning_2024_stable_vpm_les.pdf) |
+| Primary Mansfield formulation | [mansfield1998.pdf](references/mansfield1998.pdf) |
+| Reformulated VPM comparison | [alvarez_ning_2024_stable_vpm_les.pdf](references/alvarez_ning_2024_stable_vpm_les.pdf) |
 | AGARD source field | [dns/agard_hom02/CB128_9.bin](dns/agard_hom02/CB128_9.bin) and [AGARD-AR-345.pdf](dns/agard_hom02/AGARD-AR-345.pdf) |
 | Composite-filter gate | [stage_6a_composite_filter_gate.py](../scripts/experiments/stage_6a_composite_filter_gate.py), [results](../scripts/experiments/stage_6a_composite_filter_results.json) |
 | Offline torque gate | [stage_6b_full_offline_torque_gate.py](../scripts/experiments/stage_6b_full_offline_torque_gate.py), [results](../scripts/experiments/stage_6b_full_offline_torque_results.json) |
 | Exact SGS decomposition | [stage_7a_composite_sgs_audit.py](../scripts/experiments/stage_7a_composite_sgs_audit.py), [results](../scripts/experiments/stage_7a_composite_sgs_results.json) |
 | Mansfield a-priori gate | [stage_8a_particle_functional_gate.py](../scripts/experiments/stage_8a_particle_functional_gate.py), [results](../scripts/experiments/stage_8a_particle_functional_results.json) |
 | Posterior gate | [stage_8b_particle_functional_posterior.py](../scripts/experiments/stage_8b_particle_functional_posterior.py), [results](../scripts/experiments/stage_8b_particle_functional_results.json) |
-| Stationary reference | [stage_4b3_seed20260817](../artifacts/vpm_les/stage_4b3_seed20260817/) contains 13 checkpoints, per-checkpoint hashes, and restart verification; total size $124$ MB |
-| Posterior final state | [stage_8b_particle_functional_final.npz](../artifacts/vpm_les/stage_8b_particle_functional_final.npz), [SHA-256](../artifacts/vpm_les/stage_8b_particle_functional_final.sha256) |
+| Stationary reference | Generated by [stage_4b3_stationary_pair.py](../scripts/experiments/stage_4b3_stationary_pair.py); the raw checkpoints are intentionally not versioned |
+| Posterior final state | Generated by [stage_8b_particle_functional_posterior.py](../scripts/experiments/stage_8b_particle_functional_posterior.py); the raw state is intentionally not versioned |
 
-Posterior final-state SHA-256:
+The large stationary checkpoints and posterior state are generated evidence,
+not source. Their final recorded SHA-256 was
+`da585f76b6b2829bb90b6cbdd1d17930fadf17bc7fb590efa3d00d3313d4e680`.
+The compact result JSON and figures needed to audit the reported numbers remain
+versioned. No closure from these experiments was accepted into production code.
 
-    da585f76b6b2829bb90b6cbdd1d17930fadf17bc7fb590efa3d00d3313d4e680
+## 7. Remaining research boundary
 
-No closure from these experiments was accepted into production code.
-
-## 7. Questions for the independent auditor
-
-The reviewer should answer these explicitly:
-
-1. Are the total-filter stress and its particle/auxiliary decomposition derived
-   with the correct products, signs, and filter order?
-2. Does the measured $99.56\%$ particle-transfer share justify rejecting the
-   auxiliary-filter DIAD route at $\sigma/h=2.5$?
-3. Is the energy-equivalent particle-filter width used in the Mansfield test
-   consistent with the Gaussian and M4' transfer symbols?
-4. Is clipping $C_r^2<0$ to zero the correct admissible treatment for a purely
-   dissipative Mansfield model, or should the failure be described differently?
-5. Do the a-priori and one-turnover results support rejecting these specific
-   closures, while avoiding the stronger claim that all VPM--LES is impossible?
-6. Is the recommended scope boundary sound: VPM for adequately resolved
-   coherent wakes, qualified finite-volume LES for turbulent regions, and no
-   production VPM--LES claim?
+- Re-test the Mansfield procedure at a nominal $64^3$ or $96^3$ resolution with
+  localized or Lagrangian averaging.
+- Compare true and modeled SGS power on posterior data at the same Reynolds
+  number used for a-priori calibration.
+- Treat a reformulated VPM, such as the Alvarez--Ning route, as a new research
+  programme rather than an incremental closure change.
 
 ## Final status
 
@@ -346,10 +359,10 @@ $$
 $$
 
 $$
-\boxed{\text{DIAD and the tested Mansfield fallback are closed research branches.}}
+\boxed{\text{DIAD is rejected here; Mansfield remains unvalidated and research-only.}}
 $$
 
-The next scientifically defensible action is independent audit. If that audit
-agrees, archive this closure campaign and continue the hybrid-solver thesis
-without a VPM--LES claim. Reopening meshless LES should require a new proposal
-that targets the particle-filter stress or reformulates the VPM itself.
+OpenONDA should continue using VPM for adequately resolved coherent wakes and
+its qualified finite-volume LES solver in turbulent regions, without a
+production VPM--LES claim. Any meshless LES continuation must address the
+particle-filter stress and the non-solenoidal production operator explicitly.

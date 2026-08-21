@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
-"""Von Karman vortex street behind a square cylinder (body-fitted FVM).
+"""Von Karman vortex street behind a square cylinder at Re = 100 (FVM).
 
-A square-section cylinder (an extruded cube, side D) sits in a uniform stream
-at Re = U D / nu. Above Re ~ 50 the wake becomes globally unstable and sheds a
-periodic von Karman street whose frequency and mean drag are classical
-validation data:
+The quasi-two-dimensional body-fitted case targets St = 0.140--0.150 and
+mean Cd = 1.45--1.58 at 5% blockage.
 
-  Re = 100, blockage 5%:
-    Strouhal St = f D / U  ->  0.140-0.150
-    mean drag  Cd          ->  1.45-1.58
-  (Okajima, J. Fluid Mech. 123, 1982; Sohankar et al., Int. J. Numer. Meth.
-   Fluids 26, 1998; Sen, Mittal & Biswas, Int. J. Numer. Meth. Fluids 67, 2011)
-
-The case is quasi-two-dimensional (one cell thick) on a rectilinear mesh built
-in memory (assets/mesh_square.py). Cd(t) and Cl(t) are logged to
-samples/forces_history.csv; ``allplot.sh`` extracts the Strouhal number from
-the lift signal and compares it with the bands above.
+Usage:
+    python cube_flow_setup.py --Re 100 --end-time 120
 """
 
 from __future__ import annotations

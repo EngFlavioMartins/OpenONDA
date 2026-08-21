@@ -88,9 +88,9 @@ The stable public modules are:
 
 ```python
 from openonda import __version__
-from openonda.fvm import FVMSetup, FVMSolver, create_fvm_solver
-from openonda.vpm import VPMSetup, VPMSolver, create_vpm_solver
-from openonda.coupler import CouplerSetup, FVMVPMCoupler, create_coupler
+import openonda.fvm as fvm
+import openonda.vpm as vpm
+import openonda.coupler as coupling
 ```
 
 Runnable cases live under `tutorials/FVM`, `tutorials/VPM`, and
@@ -103,11 +103,12 @@ cd tutorials/coupled_FVM_VPM/cube_flow
 ```
 
 The cylinder-shedding and NACA 4412 workflows are in the same directory tree.
-Standalone FVM, standalone VPM, and all three coupled installed-package smoke
-cases can be exercised from isolated copies with:
+The installed public API, coupled subcycling, output layout, checkpoint names,
+and restart parity can be exercised in an isolated temporary case with:
 
 ```bash
 python scripts/validate_native_tutorials.py
+python scripts/validate_native_tutorials.py --compute-device METAL  # Apple Silicon
 ```
 
 ### CPU and GPU execution
@@ -116,12 +117,13 @@ VPM selects a compatible Taichi backend automatically. To choose one explicitly:
 
 ```bash
 OPENONDA_COMPUTE_DEVICE=CPU ./allrun.sh
-OPENONDA_COMPUTE_DEVICE=GPU_VULKAN ./allrun.sh   # Linux with a Vulkan driver
+OPENONDA_COMPUTE_DEVICE=METAL ./allrun.sh    # Apple Silicon
+OPENONDA_COMPUTE_DEVICE=VULKAN ./allrun.sh   # Linux with a Vulkan driver
+OPENONDA_COMPUTE_DEVICE=CUDA ./allrun.sh     # Linux with NVIDIA CUDA
 ```
 
-Taichi includes its runtime; a separate Vulkan SDK is not required. The helper
-`scripts/install/install_vulkan_sdk.sh` only diagnoses whether a working Vulkan
-driver is visible.
+`AUTO` selects Metal on macOS and a compatible GPU backend on Linux. Taichi
+includes its runtime; a separate Vulkan SDK is not required.
 
 ## Develop and test
 
@@ -142,7 +144,7 @@ for the result-data policy.
 
 ```bibtex
 @software{openonda_zenodo,
-  title  = {{OpenONDA}: Operator for Numerical Design and Fluidynamics},
+  title  = {{OpenONDA}: Operator for Numerical Design and Aerodynamics},
   author = {Martins, Flavio A. C.},
   year   = {2025},
   doi    = {10.5281/zenodo.15111460},

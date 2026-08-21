@@ -21,6 +21,11 @@ COUPLED_SETUPS = tuple(
     for path in SETUP_FILES
     if "coupled_FVM_VPM" in path.parts and "referenceFlow" not in path.parts
 )
+PUBLIC_NAMESPACES = {
+    "openonda.fvm": "fvm",
+    "openonda.vpm": "vpm",
+    "openonda.coupler": "coupling",
+}
 FORBIDDEN_TEXT = (
     "source.solvers",
     "is_master_rank",
@@ -53,6 +58,8 @@ def test_tutorial_uses_public_names_and_has_a_main_guard(path: Path):
     assert not any(token.lower() in source.lower() for token in FORBIDDEN_TEXT)
 
     tree = _tree(path)
+    docstring = ast.get_docstring(tree) or ""
+    assert "Usage:" in docstring or "Example:" in docstring
     assert any(
         isinstance(node, ast.If)
         and isinstance(node.test, ast.Compare)
@@ -60,6 +67,31 @@ def test_tutorial_uses_public_names_and_has_a_main_guard(path: Path):
         and node.test.left.id == "__name__"
         for node in tree.body
     ), f"{path} must not launch a simulation merely by being imported"
+
+
+@pytest.mark.parametrize("path", SETUP_FILES, ids=lambda path: str(path.relative_to(ROOT)))
+def test_tutorial_imports_solver_modules_as_namespaces(path: Path):
+    tree = _tree(path)
+    imports = {
+        alias.name: alias.asname
+        for node in tree.body
+        if isinstance(node, ast.Import)
+        for alias in node.names
+        if alias.name in PUBLIC_NAMESPACES
+    }
+    direct_imports = {
+        node.module for node in tree.body if isinstance(node, ast.ImportFrom)
+    }.intersection(PUBLIC_NAMESPACES)
+
+    if path.parts[-3] == "FVM" or "referenceFlow" in path.parts:
+        expected = {"openonda.fvm": "fvm"}
+    elif path.parts[-3] == "VPM":
+        expected = {"openonda.vpm": "vpm"}
+    else:
+        expected = PUBLIC_NAMESPACES
+
+    assert not direct_imports
+    assert imports.items() >= expected.items()
 
 
 @pytest.mark.parametrize("path", COUPLED_SETUPS, ids=lambda path: path.parent.name)

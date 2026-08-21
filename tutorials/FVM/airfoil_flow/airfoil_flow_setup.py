@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Laminar flow past a NACA 0012 airfoil (body-fitted FVM mesh).
+"""Laminar flow past a NACA 0012 airfoil on a body-fitted FVM mesh.
 
-A quasi-two-dimensional airfoil in a uniform stream. The force history and
-the final surface-pressure distribution are written under ``solution``;
-``allplot.sh`` turns them into figures. At zero angle of attack the mean lift
-and the upper/lower pressure asymmetry should both be zero, which makes a
-nice symmetry check on a coarse tutorial mesh.
+At zero angle of attack, lift and upper/lower pressure asymmetry should vanish.
+
+Usage:
+    python airfoil_flow_setup.py --Re 1000 --angle 0 --end-time 25
 """
 
 from __future__ import annotations

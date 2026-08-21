@@ -17,18 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from assets.generate_surface import create_delta_wing, save_surface
-from openonda.vpm import (
-    ManeuverVLM,
-    VPMSolver,
-    StabilizationConfig,
-    SurfaceSampler,
-    TurbulenceConfig,
-    VelocityConfig,
-    VLMMeshSetup,
-    VLMSurfaceSetup,
-    VLMSetup,
-    VPMSetup,
-)
+import openonda.vpm as vpm
 
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
@@ -104,12 +93,12 @@ def run() -> None:
         ("front_wing", WING_SEPARATION, 0.0),
         ("rear_wing", 0.0, np.pi),
     )
-    vlm_setup = VLMSetup(
+    vlm_setup = vpm.VLMSetup(
         surfaces=tuple(
-            VLMSurfaceSetup(
+            vpm.VLMSurfaceSetup(
                 str(surface_file),
                 name=name,
-                kinematics=ManeuverVLM(
+                kinematics=vpm.ManeuverVLM(
                     velocity_fn=heave_velocity(phase),
                     angular_velocity_fn=pitch_velocity(phase),
                     rotation_center=[x_position + PITCH_PIVOT, 0.0, 0.0],
@@ -120,7 +109,7 @@ def run() -> None:
             )
             for name, x_position, phase in wings
         ),
-        mesh=VLMMeshSetup.geometric(ratio=3.0, region="end"),
+        mesh=vpm.VLMMeshSetup.geometric(ratio=3.0, region="end"),
         viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
@@ -128,7 +117,7 @@ def run() -> None:
     )
 
     samplers = tuple(
-        SurfaceSampler(
+        vpm.SurfaceSampler(
             point=[-distance * HALF_SPAN, 0.0, 0.0],
             normal=[1, 0, 0],
             bounds=[-1.5, 1.5, -1.0, 1.0],
@@ -137,19 +126,19 @@ def run() -> None:
         )
         for distance in (1, 5, 10)
     )
-    solver = VPMSolver(
-        setup=VPMSetup(
+    solver = vpm.VPMSolver(
+        setup=vpm.VPMSetup(
             time_step_size=TIME_STEP,
             compute_device="AUTO",
-            turbulence=TurbulenceConfig.les_smagorinsky(c_s=0.3),
+            turbulence=vpm.TurbulenceConfig.les_smagorinsky(c_s=0.3),
             vlm=vlm_setup,
-            velocity=VelocityConfig.treecode(
+            velocity=vpm.VelocityConfig.treecode(
                 theta=0.35,
                 sort_particle_targets=True,
                 traversal_block_dim=128,
             ),
             freestream_velocity=[-FREESTREAM_VELOCITY, 0, 0],
-            stabilization=StabilizationConfig(
+            stabilization=vpm.StabilizationConfig(
                 remove_particles_by_bounds=[
                     -8.0,
                     WING_SEPARATION + 1.0,

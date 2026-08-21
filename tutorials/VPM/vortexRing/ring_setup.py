@@ -25,18 +25,7 @@ import numpy as np
 
 from assets.ring_diagnostics import RingDiagnosticsSampler, RingModeDiagnosticsSampler
 from assets.ring_initialization import initialize_single_mode_toroidal_ring
-from openonda.vpm import (
-    AdvectionConfig,
-    ParticleDistributor,
-    VPMSolver,
-    StabilizationConfig,
-    StretchingConfig,
-    TurbulenceConfig,
-    VelocityConfig,
-    ViscousConfig,
-    VortexRingVPM,
-    VPMSetup,
-)
+import openonda.vpm as vpm
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 SOLUTION_DIR = TUTORIAL_DIR / "solution"
@@ -66,12 +55,12 @@ def cadence_steps(period: float, time_step: float = TIME_STEP) -> int:
     return max(1, round(period / time_step))
 
 
-def stretching_setup(name: str) -> StretchingConfig:
+def stretching_setup(name: str) -> vpm.StretchingConfig:
     """Build the selected vortex-stretching formulation."""
     return {
-        "direct": StretchingConfig.direct,
-        "transposed": StretchingConfig.transposed,
-        "mixed": StretchingConfig.mixed,
+        "direct": vpm.StretchingConfig.direct,
+        "transposed": vpm.StretchingConfig.transposed,
+        "mixed": vpm.StretchingConfig.mixed,
     }[name](scheme="RK3")
 
 
@@ -137,7 +126,7 @@ def run_case(
 
     viscosity = RING_STRENGTH / REYNOLDS_NUMBER
     if particle_distribution == "hexagonal":
-        positions, volumes, radii = ParticleDistributor.hexagonal_distribution(
+        positions, volumes, radii = vpm.ParticleDistributor.hexagonal_distribution(
             DOMAIN_BOUNDS,
             PARTICLE_SPACING,
         )
@@ -147,7 +136,7 @@ def run_case(
         if represented_core_sq <= 0.0:
             raise ValueError("particle radius must be smaller than the physical core radius")
         tube_radius = np.sqrt(represented_core_sq) * np.sqrt(-np.log(TOROIDAL_TAIL_FRACTION))
-        positions, volumes, radii = ParticleDistributor.toroidal_distribution(
+        positions, volumes, radii = vpm.ParticleDistributor.toroidal_distribution(
             RING_RADIUS,
             tube_radius,
             PARTICLE_SPACING,
@@ -184,7 +173,7 @@ def run_case(
             seed=42,
         )
     else:
-        velocity, particle_viscosity, circulation = VortexRingVPM(
+        velocity, particle_viscosity, circulation = vpm.VortexRingVPM(
             kinematic_viscosity=viscosity,
             ring_center=[0, 0, 0],
             ring_radius=RING_RADIUS,
@@ -234,29 +223,29 @@ def run_case(
             f"unseeded_noise={initial_unseeded_to_seeded_rms:.3%}"
         )
 
-    solver = VPMSolver(
-        setup=VPMSetup(
+    solver = vpm.VPMSolver(
+        setup=vpm.VPMSetup(
             time_step_size=time_step,
             compute_device=compute_device,
             time_integration=time_integration,
-            advection=AdvectionConfig(scheme="RK3"),
+            advection=vpm.AdvectionConfig(scheme="RK3"),
             turbulence=(
-                TurbulenceConfig.dns()
+                vpm.TurbulenceConfig.dns()
                 if mode == "dns"
-                else TurbulenceConfig.les_smagorinsky(c_s=0.20)
+                else vpm.TurbulenceConfig.les_smagorinsky(c_s=0.20)
             ),
             stretching=stretching_setup(stretching),
-            stabilization=StabilizationConfig.disabled(),
+            stabilization=vpm.StabilizationConfig.disabled(),
             velocity=(
-                VelocityConfig.direct()
+                vpm.VelocityConfig.direct()
                 if velocity_method == "DIRECT"
-                else VelocityConfig.treecode(
+                else vpm.VelocityConfig.treecode(
                     theta=treecode_theta,
                     sort_particle_targets=True,
                     traversal_block_dim=128,
                 )
             ),
-            viscous=ViscousConfig.cs(),
+            viscous=vpm.ViscousConfig.cs(),
             logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME, time_step),
             checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME, time_step),
             checkpoint_name=label,

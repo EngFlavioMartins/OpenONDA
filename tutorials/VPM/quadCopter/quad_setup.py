@@ -17,19 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from assets.generate_blade import create_rotor_blade, save_blade
-from openonda.vpm import (
-    RotatingVLM,
-    VPMSolver,
-    StabilizationConfig,
-    StretchingConfig,
-    SurfaceSampler,
-    TurbulenceConfig,
-    VelocityConfig,
-    ViscousConfig,
-    VLMSurfaceSetup,
-    VLMSetup,
-    VPMSetup,
-)
+import openonda.vpm as vpm
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 SOLUTION_DIR = TUTORIAL_DIR / "solution"
@@ -89,12 +77,12 @@ def run() -> None:
         ("rotor_2", [-ARM_LENGTH, -ARM_LENGTH, 0.0], 1.0),
         ("rotor_3", [ARM_LENGTH, -ARM_LENGTH, 0.0], -1.0),
     )
-    vlm_setup = VLMSetup(
+    vlm_setup = vpm.VLMSetup(
         surfaces=tuple(
-            VLMSurfaceSetup(
+            vpm.VLMSurfaceSetup(
                 str(counterclockwise_file if direction > 0 else clockwise_file),
                 name=f"{name}_blade_{blade_index}",
-                kinematics=RotatingVLM(
+                kinematics=vpm.RotatingVLM(
                     omega=ANGULAR_VELOCITY * direction,
                     axis=[0.0, 0.0, 1.0],
                     center=position,
@@ -113,22 +101,22 @@ def run() -> None:
     )
 
     sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
-    solver = VPMSolver(
-        setup=VPMSetup(
+    solver = vpm.VPMSolver(
+        setup=vpm.VPMSetup(
             time_step_size=TIME_STEP,
             compute_device="AUTO",
             vlm=vlm_setup,
-            stretching=StretchingConfig.disabled(),
-            viscous=ViscousConfig.cs(),
-            velocity=VelocityConfig.treecode(
+            stretching=vpm.StretchingConfig.disabled(),
+            viscous=vpm.ViscousConfig.cs(),
+            velocity=vpm.VelocityConfig.treecode(
                 theta=0.35,
                 sort_particle_targets=True,
                 traversal_block_dim=128,
             ),
-            turbulence=TurbulenceConfig.dns(),
+            turbulence=vpm.TurbulenceConfig.dns(),
             particle_kernel="WINCKELMANS",
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],
-            stabilization=StabilizationConfig(
+            stabilization=vpm.StabilizationConfig(
                 remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
             ),
             logging_interval_steps=sample_steps,
@@ -137,7 +125,7 @@ def run() -> None:
             checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,
             samplers=(
-                SurfaceSampler(
+                vpm.SurfaceSampler(
                     point=[0.0, 0.0, -1.2],
                     normal=[0.0, 0.0, 1.0],
                     bounds=[-0.4, 0.4, -0.4, 0.4],

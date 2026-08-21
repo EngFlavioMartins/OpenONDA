@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
-"""Laminar flat-plate boundary layer, compared with the Blasius solution (FVM).
+"""Laminar flat-plate boundary layer at Re_L = 10,000 (FVM).
 
-A uniform stream (U = 1) meets a no-slip plate of length L = 1 whose leading
-edge is at x = 0. Upstream of the plate the bottom boundary is a frictionless
-slip plane, so the boundary layer starts growing exactly at the leading edge.
-At Re_L = U L / nu = 1e4 the layer stays laminar over the whole plate and the
-classical Blasius similarity solution applies:
+Velocity profiles and skin friction are compared with the Blasius solution.
 
-    u / U     = f'(eta)      with  eta = y * sqrt(U / (nu x))
-    Cf(x)     = 0.664 / sqrt(Re_x)
-    delta99   = 5.0 x / sqrt(Re_x)
-
-Once the flow reaches steady state the script samples wall-normal velocity
-profiles at x/L = 0.25, 0.5, 0.75 (solution/profiles.csv) and the skin
-friction along the plate (solution/cf.csv); ``allplot.sh`` compares both
-against the Blasius solution.
+Usage:
+    python boundary_layer_setup.py --Re 1e4 --end-time 8
 """
 
 from __future__ import annotations

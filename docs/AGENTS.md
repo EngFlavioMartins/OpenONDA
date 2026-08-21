@@ -81,7 +81,7 @@ appeared). The corrective conventions are:
   body/wind-frame static equivalence the tutorial relies on.
 
 Tutorial runnability notes (all applied):
-- `setup_plate.py` uses `processing_unit="AUTO"` (the previous hard-coded
+- `setup_plate.py` uses `compute_device="AUTO"` (the previous hard-coded
   `VULKAN` is not available on macOS; AUTO selects METAL there, VULKAN on
   Linux/Windows).
 - Every `assets/plot_*.py` (incl. `plot_flat_plate_kelvin.py`) degrades

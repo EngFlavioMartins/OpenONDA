@@ -1,20 +1,10 @@
-"""Fully meshed FVM reference for the Re = 150 cylinder shedding experiment.
+"""FVM reference for the laminar Re = 150 cylinder-shedding experiment.
 
-The reference is a pure FVM calculation over the same immersed-boundary
-infinite cylinder (same geometry, Re, dt, local mesh spacings, schemes, IBM
-forcing and force normalisation) as the coupled hybrid in the parent directory,
-but on a larger, conventional six-patch domain.  Its only purpose is to supply
-the unperturbed Karman-instability baseline: same linear growth rate, same
-saturated frequency, and (crucially) a much smaller initial antisymmetric
-disturbance than the hybrid, so that the coupled onset shift can be measured.
+The geometry, local resolution, numerics, and optional divergence-free seed
+match the coupled case in the parent directory.
 
-When ``OPENONDA_SEED_AMPLITUDE`` is set, exactly the same analytic,
-divergence-free streamfunction perturbation as the hybrid case is added to the
-initial FVM velocity field (see ``seed_perturbation.py`` in the parent
-directory).
-
-The mesh is generated as solver-native data by the adaptive Cartesian mesher;
-no external solver case is involved.  Laminar: SGS is disabled.
+Usage:
+    python referenceFlow_setup.py
 """
 
 from __future__ import annotations
@@ -33,45 +23,28 @@ from seed_perturbation import build_seed_velocity  # noqa: E402
 
 SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 
-# --------------------------------------------------------------------------- #
-# Physical problem (must match the hybrid case exactly)
-# --------------------------------------------------------------------------- #
+# Physical problem
 DIAMETER = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
 REYNOLDS = 150.0
-FREESTREAM_VELOCITY = float(np.linalg.norm(FREESTREAM_VELOCITY))
-KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS
+FREESTREAM_SPEED = float(np.linalg.norm(FREESTREAM_VELOCITY))
+KINEMATIC_VISCOSITY = FREESTREAM_SPEED * DIAMETER / REYNOLDS
 
 INITIAL_VELOCITY = FREESTREAM_VELOCITY
-# Mirrors the hybrid: 100 convective units so the slow-growing unseeded
-# reference has a robust saturated window for frequency estimation.
+# The unseeded reference needs 100 convective units to reach a saturated window.
 END_TIME = 1.0 if SMOKE else 100.0
 
-# --------------------------------------------------------------------------- #
-# FVM domain, mesh, and numerics (mirror the hybrid; larger, six-patch domain)
-# --------------------------------------------------------------------------- #
-# RAM-safe production sizing (the machine cannot host the original 0.03125 D
-# body box spanning the full z extent): body 16 cells/D, wake 8 cells/D,
-# background 4 cells/D => ~366k cells for the reference.  Both cases share
-# these spacings, so every comparative metric (sigma, St, A0, onset shift)
-# stays consistent.  The 2x refinement ratio also improves the momentum-solver
-# conditioning.
-# Execution is serial by default: on this 17 GB machine the PETSc-replicated
-# path (FVM_CORES>1) holds a full copy of the mesh + ILU factors on every
-# rank and exhausts RAM even at ~366k cells (measured swap-thrash at 4 ranks).
-# OPENONDA_FVM_CORES can override for machines with more RAM; smoke forces 1.
+# FVM domain, mesh, and numerics
+# Body, wake, and background resolutions match the coupled case.
 FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", "1"))
 if SMOKE:
     FVM_CORES = 1
 FVM_DOMAIN = (-5.0, 12.0, -6.0, 6.0, -8.0, 8.0)
 
-# Infinite cylinder passing through the FVM domain (caps=False), mirroring the
-# hybrid.  Keeps the flow spanwise-invariant at the z=0 probe and avoids the
-# ill-conditioned cap-rim marker cloud of a capped body.
+# The uncapped cylinder removes tip effects from the Karman instability.
 CYLINDER_Z_BOUNDS = (FVM_DOMAIN[4], FVM_DOMAIN[5])
-# Force coefficients are normalised per unit span (the force acts over the
-# cylinder span that is meshed in this case).
+# Force coefficients are normalized per unit span.
 CYLINDER_LENGTH = FVM_DOMAIN[5] - FVM_DOMAIN[4]
 
 FVM_CELL_SIZE = 0.5 if SMOKE else 0.25
@@ -100,9 +73,7 @@ else:
 
 FVM_VOLUME_INTERVAL_TIME = 2.0
 
-# --------------------------------------------------------------------------- #
-# Output and diagnostics cadence (identical schedules to the hybrid case)
-# --------------------------------------------------------------------------- #
+# Output and diagnostics cadence
 FORCE_INTERVAL_TIME = 0.05
 LINE_INTERVAL_TIME = 0.5
 SLICE_INTERVAL_TIME = 1.0
@@ -114,9 +85,7 @@ MIDSPAN_SLICE_BOUNDS = (FVM_DOMAIN[0], FVM_DOMAIN[1], FVM_DOMAIN[2], FVM_DOMAIN[
 
 SEED_AMPLITUDE = float((os.environ.get("OPENONDA_SEED_AMPLITUDE") or "0").strip())
 
-# --------------------------------------------------------------------------- #
-# Immersed-boundary cylinder (identical to the hybrid case)
-# --------------------------------------------------------------------------- #
+# Case objects
 CYLINDER = fvm.ImmersedBody.extruded_cylinder_z(
     centre=[0.0, 0.0, 0.0],
     diameter=DIAMETER,
@@ -126,9 +95,6 @@ CYLINDER = fvm.ImmersedBody.extruded_cylinder_z(
     caps=False,
 )
 
-# --------------------------------------------------------------------------- #
-# FVM mesh (conventional inlet/outlet/slip patches; no STL)
-# --------------------------------------------------------------------------- #
 FVM_MESH = fvm.AdaptiveCartesianMesher(
     domain=FVM_DOMAIN,
     max_cell_size=FVM_CELL_SIZE,
@@ -138,12 +104,9 @@ FVM_MESH = fvm.AdaptiveCartesianMesher(
     ),
 )
 
-# --------------------------------------------------------------------------- #
-# Samplers (unprefixed names: this is the reference)
-# --------------------------------------------------------------------------- #
 FVM_SAMPLERS = (
     fvm.IBMForceSampler(
-        ref_velocity=FREESTREAM_VELOCITY,
+        ref_velocity=FREESTREAM_SPEED,
         ref_area=DIAMETER * CYLINDER_LENGTH,
         schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL_TIME),
     ),
@@ -178,9 +141,6 @@ FVM_SAMPLERS = (
     ),
 )
 
-# --------------------------------------------------------------------------- #
-# FVM solver configuration (mirror the hybrid; laminar, PIMPLE)
-# --------------------------------------------------------------------------- #
 FVM_SETUP = fvm.FVMSetup(
     case_name="referenceFlow",
     cores=FVM_CORES,
@@ -255,12 +215,15 @@ def _apply_seed(fvm_solver) -> None:
         centroids,
         base_velocity=INITIAL_VELOCITY,
         epsilon=SEED_AMPLITUDE,
-        u_inf=FREESTREAM_VELOCITY,
+        u_inf=FREESTREAM_SPEED,
         diameter=DIAMETER,
     )
     fvm_solver.set_initial_velocity(velocity)
     peak = float(np.linalg.norm(velocity - np.asarray(INITIAL_VELOCITY), axis=1).max())
-    print(f"  Applied controlled seed: eps={SEED_AMPLITUDE:.3e}, max|u'|/Uinf={peak / U_INF:.3e}")
+    print(
+        f"  Applied controlled seed: eps={SEED_AMPLITUDE:.3e}, "
+        f"max|u'|/Uinf={peak / FREESTREAM_SPEED:.3e}"
+    )
 
 
 def main() -> None:

@@ -17,21 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.vpm import (
-    AdvectionConfig,
-    ManeuverVLM,
-    VPMSolver,
-    StabilizationConfig,
-    StretchingConfig,
-    SurfaceSampler,
-    TurbulenceConfig,
-    VelocityConfig,
-    ViscousConfig,
-    VLMMeshSetup,
-    VLMSurfaceSetup,
-    VLMSetup,
-    VPMSetup,
-)
+import openonda.vpm as vpm
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 SOLUTION_DIR = TUTORIAL_DIR / "solution"
@@ -80,28 +66,28 @@ def build_solver_config(
     sample_interval_time: float,
     checkpoint_interval_time: float,
     *,
-    vlm_setup: VLMSetup | None = None,
-    samplers: tuple[SurfaceSampler, ...] | list[SurfaceSampler] = (),
-) -> VPMSetup:
+    vlm_setup: vpm.VLMSetup | None = None,
+    samplers: tuple[vpm.SurfaceSampler, ...] | list[vpm.SurfaceSampler] = (),
+) -> vpm.VPMSetup:
     """Build the rotor VPM configuration."""
     wake_spacing = nominal_wake_spacing(TIME_STEP)
-    return VPMSetup(
+    return vpm.VPMSetup(
         time_step_size=TIME_STEP,
         compute_device="AUTO",
         time_integration="COUPLED",
         coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
         coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
         coupled_max_substeps=COUPLED_MAX_SUBSTEPS,
-        advection=AdvectionConfig(scheme="RK2"),
+        advection=vpm.AdvectionConfig(scheme="RK2"),
         vlm=vlm_setup,
         freestream_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
-        turbulence=TurbulenceConfig.les_smagorinsky(),
-        stretching=StretchingConfig.transposed(
+        turbulence=vpm.TurbulenceConfig.les_smagorinsky(),
+        stretching=vpm.StretchingConfig.transposed(
             scheme="RK2",
             use_treecode=True,
             treecode_theta=TREECODE_THETA,
         ),
-        stabilization=StabilizationConfig.bounded_domain(
+        stabilization=vpm.StabilizationConfig.bounded_domain(
             bounds=[
                 -2.0 * ROTOR_RADIUS,
                 20.0 * ROTOR_RADIUS,
@@ -111,11 +97,11 @@ def build_solver_config(
                 2.0 * ROTOR_RADIUS,
             ]
         ),
-        viscous=ViscousConfig.cs(
+        viscous=vpm.ViscousConfig.cs(
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             particle_spacing=wake_spacing,
         ),
-        velocity=VelocityConfig.treecode(
+        velocity=vpm.VelocityConfig.treecode(
             theta=TREECODE_THETA,
             sort_particle_targets=True,
             traversal_block_dim=128,
@@ -131,7 +117,7 @@ def build_solver_config(
     )
 
 
-def enforce_wake_admissibility(solver: VPMSolver, max_particle_strength: float) -> None:
+def enforce_wake_admissibility(solver: vpm.VPMSolver, max_particle_strength: float) -> None:
     """Stop a divergent wake without altering vortex strength or core radius."""
     fields = {
         "position": solver.particles_positions,
@@ -161,7 +147,7 @@ def enforce_wake_admissibility(solver: VPMSolver, max_particle_strength: float) 
         )
 
 
-def write_manifest(solver: VPMSolver) -> None:
+def write_manifest(solver: vpm.VPMSolver) -> None:
     """Store the numerical settings beside the sampled results."""
     cfg = solver.setup
     output_dir = TUTORIAL_DIR / "samples" / CASE_NAME
@@ -225,14 +211,14 @@ def main() -> int:
             factor = 1.0
         return np.array([-ANGULAR_VELOCITY * factor, 0.0, 0.0])
 
-    rotation_kinematics = ManeuverVLM(
+    rotation_kinematics = vpm.ManeuverVLM(
         angular_velocity_fn=rotor_angular_velocity,
         rotation_center=np.zeros(3),
     )
 
-    vlm_setup = VLMSetup(
+    vlm_setup = vpm.VLMSetup(
         surfaces=tuple(
-            VLMSurfaceSetup(
+            vpm.VLMSurfaceSetup(
                 str(blade_file),
                 name=f"blade_{blade_index}",
                 kinematics=rotation_kinematics,
@@ -240,7 +226,7 @@ def main() -> int:
             )
             for blade_index, azimuth in enumerate((0.0, 120.0, 240.0))
         ),
-        mesh=VLMMeshSetup.geometric(ratio=3.0),
+        mesh=vpm.VLMMeshSetup.geometric(ratio=3.0),
         viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
@@ -251,7 +237,7 @@ def main() -> int:
     off_wake = ROTOR_RADIUS * 1.2
     sample_spacing = ROTOR_RADIUS / 36
     plane_samplers = [
-        SurfaceSampler(
+        vpm.SurfaceSampler(
             point=[x_loc, 0.0, 0.0],
             normal=[1, 0, 0],
             bounds=[-off_wake, off_wake, -off_wake, off_wake],
@@ -267,7 +253,7 @@ def main() -> int:
         vlm_setup=vlm_setup,
         samplers=plane_samplers,
     )
-    vpm = VPMSolver(setup=solver_config, case_dir=TUTORIAL_DIR)
+    vpm = vpm.VPMSolver(setup=solver_config, case_dir=TUTORIAL_DIR)
     write_manifest(vpm)
     vpm.info()
 

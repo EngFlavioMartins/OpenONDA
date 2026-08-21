@@ -17,7 +17,7 @@ import sys
 import tempfile
 
 
-def _worker(case_dir: Path) -> None:
+def _worker(case_dir: Path, compute_device: str) -> None:
     import numpy as np
 
     import openonda.coupler as coupling
@@ -75,7 +75,7 @@ def _worker(case_dir: Path) -> None:
     def make_vpm():
         setup = vpm.VPMSetup(
             time_step_size=vpm_dt,
-            compute_device="CPU",
+            compute_device=compute_device,
             max_particles=50_000,
             domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
             freestream_velocity=freestream,
@@ -147,18 +147,31 @@ def _worker(case_dir: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--compute-device",
+        choices=("AUTO", "CPU", "METAL", "VULKAN", "CUDA"),
+        default="CPU",
+        help="Taichi backend for the VPM half of the validation (default: CPU)",
+    )
     args = parser.parse_args(argv)
     if args.worker is not None:
-        _worker(args.worker.resolve())
+        _worker(args.worker.resolve(), args.compute_device)
         return 0
 
     script = Path(__file__).resolve()
     with tempfile.TemporaryDirectory(prefix="openonda-native-tutorial-") as temporary:
         case_dir = Path(temporary).resolve()
         environment = os.environ.copy()
-        environment["OPENONDA_COMPUTE_DEVICE"] = "CPU"
+        environment["OPENONDA_COMPUTE_DEVICE"] = args.compute_device
         result = subprocess.run(
-            [sys.executable, str(script), "--worker", str(case_dir)],
+            [
+                sys.executable,
+                str(script),
+                "--worker",
+                str(case_dir),
+                "--compute-device",
+                args.compute_device,
+            ],
             cwd=case_dir,
             env=environment,
             text=True,
@@ -169,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return result.returncode
-    print("Native installed-API FVM--VPM tutorial validation passed")
+    print(f"Native installed-API FVM--VPM tutorial validation passed ({args.compute_device})")
     return 0
 
 

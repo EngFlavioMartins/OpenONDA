@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-"""Flow past a circular cylinder via the Immersed Boundary Method (FVM).
+"""Flow past a circular cylinder with the direct-forcing IBM (FVM).
 
-Validation case for the discrete direct-forcing IBM (Pinelli et al. 2010, as
-implemented for finite-volume PISO solvers by Constant et al.; see
-docs/literature/Constant2016.pdf). The cylinder is represented by Lagrangian
-markers on a Cartesian mesh, so no body-fitted grid is needed.
+At Re = 30 the case targets Cd = 1.74--1.80 and L/D = 1.55--1.70.
 
-Quality monitors (written under ``solution``, plotted by ``allplot.sh``):
-  * Re = 30 (steady):        Cd -> 1.74-1.80, recirculation length
-                             L/D -> 1.55-1.70   (Constant et al., Table 2)
-  * Re = 100 (unsteady):     mean Cd -> 1.35-1.38, Strouhal -> 0.164-0.165
-                             (Constant et al., Table 3)
-  * marker no-slip error (IBM-specific quality signal), logged every step.
+Usage:
+    python cylinder_ibm_setup.py --Re 30 --end-time 60
 """
 
 from __future__ import annotations

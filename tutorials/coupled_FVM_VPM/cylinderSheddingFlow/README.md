@@ -23,7 +23,7 @@ is the deterministic, divergence-free initial perturbation in
 | directory        | contents |
 |------------------|----------|
 | `.`              | coupled hybrid FVM–VPM (`cylinderSheddingFlow_setup.py`) |
-| `referenceFlow/` | fully meshed FVM reference, same IBM cylinder and numerics on a six-patch domain |
+| `referenceFlow/` | FVM-only reference, same IBM cylinder and numerics on a six-patch domain |
 | `assets/`        | integrity gate, instability analysis, and figure scripts |
 | `seed_perturbation.py` | the shared analytic streamfunction perturbation |
 
@@ -32,16 +32,13 @@ domain), D = 1, Re = 150, U∞ = 1, ρ = 1, ν = 1/150, laminar (SGS disabled in
 solvers).  Local resolution: body 0.0625 D (16 cells/D), wake 0.125 D, background
 0.25 D — both cases share these spacings, so every comparative metric stays
 consistent.  FVM dt = 0.02 (backward 2nd-order, CFL ≈ 0.32 in the body region),
-VPM dt = 0.10, VPM particle spacing 0.125 D with a 1M particle cap, T_END = 100
+VPM dt = 0.10, VPM particle spacing 0.125 D with a 1M particle cap, end time = 100
 D/U∞ (a long horizon so the slow-growing unseeded reference, whose onset sits
 near t ≈ 65, still has a robust ~30-unit saturated window for the frequency
-estimate).  The mesh and execution are sized for the available RAM: at this
-resolution the reference is ~366k cells and the hybrid FVM slab ~157k cells.
-Both cases run serial by default (scipy linear solves): on this 17 GB machine
-the PETSc-replicated path (FVM_CORES > 1) holds a full copy of the mesh plus
-ILU factors on every rank and exhausts RAM even at ~366k cells.  The hybrid's
-VPM still uses the GPU-accelerated Taichi backend.  Users with more RAM can
-override with `OPENONDA_FVM_CORES` (1 serial, >1 PETSc-replicated).
+estimate). Both cases run serial by default to keep memory use predictable;
+`OPENONDA_FVM_CORES` selects the PETSc-replicated FVM path on larger machines.
+The VPM backend remains independently selectable through
+`OPENONDA_COMPUTE_DEVICE`.
 
 ## Run the full validation
 

@@ -22,16 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.vpm import (
-    AdvectionConfig,
-    LambOseenVPM,
-    ParticleDistributor,
-    VPMSolver,
-    SurfaceSampler,
-    VelocityConfig,
-    ViscousConfig,
-    VPMSetup,
-)
+import openonda.vpm as vpm
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 
@@ -65,20 +56,20 @@ CORE_RADIUS_RATIO = 1.50
 VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
 
 
-def viscous_config(scheme: str, viscosity: float, spacing: float) -> ViscousConfig:
+def viscous_config(scheme: str, viscosity: float, spacing: float) -> vpm.ViscousConfig:
     """Build one viscous model using the same spatial resolution for every case."""
     if scheme == "cs":
-        return ViscousConfig.cs(
+        return vpm.ViscousConfig.cs(
             kinematic_viscosity=viscosity,
             particle_spacing=spacing,
         )
     if scheme == "rwm":
-        return ViscousConfig.rwm(
+        return vpm.ViscousConfig.rwm(
             kinematic_viscosity=viscosity,
             particle_spacing=spacing,
         )
     if scheme == "dvh":
-        return ViscousConfig.dvh(
+        return vpm.ViscousConfig.dvh(
             particle_spacing=spacing,
             padding=DVH_PADDING,
             kinematic_viscosity=viscosity,
@@ -89,7 +80,7 @@ def viscous_config(scheme: str, viscosity: float, spacing: float) -> ViscousConf
             cap_absolute_fraction=0.99,
             core_radius_ratio=CORE_RADIUS_RATIO,
         )
-    return ViscousConfig.gbd(
+    return vpm.ViscousConfig.gbd(
         particle_spacing=spacing,
         kinematic_viscosity=viscosity,
         max_nodes=GBD_MAX_NODES,
@@ -122,7 +113,7 @@ def column_distribution(
 ):
     """Extrude a triangular in-plane lattice through the finite vortex column."""
     plane_bounds = [*bounds[:4], 0.0, 0.0]
-    plane_positions, areas, _ = ParticleDistributor.hexagonal_distribution(
+    plane_positions, areas, _ = vpm.ParticleDistributor.hexagonal_distribution(
         plane_bounds,
         spacing,
     )
@@ -207,7 +198,7 @@ def run_case(
     case_dir = Path(case_dir).resolve()
     solution_dir = case_dir / "solution"
 
-    field_sampler = SurfaceSampler(
+    field_sampler = vpm.SurfaceSampler(
         point=[0, 0, sample_plane_fraction * COLUMN_LENGTH],
         normal=[0, 0, 1],
         bounds=domain_bounds[:4],
@@ -217,12 +208,12 @@ def run_case(
     scheduled_samplers = [field_sampler]
     final_samplers = [field_sampler]
 
-    solver = VPMSolver(
-        setup=VPMSetup.viscous_flow_simulation(
+    solver = vpm.VPMSolver(
+        setup=vpm.VPMSetup.viscous_flow_simulation(
             time_step_size=time_step_size,
             viscous=viscous,
-            advection=AdvectionConfig(scheme=ADVECTION_SCHEME),
-            velocity=VelocityConfig.treecode(
+            advection=vpm.AdvectionConfig(scheme=ADVECTION_SCHEME),
+            velocity=vpm.VelocityConfig.treecode(
                 theta=TREECODE_THETA,
                 multipole_order=TREECODE_MULTIPOLE_ORDER,
                 sort_particle_targets=True,
@@ -276,7 +267,7 @@ def run_case(
     for group_id, (circulation, y_position) in enumerate(
         zip(circulations, y_positions, strict=True)
     ):
-        velocity, _, particle_vortex_strength = LambOseenVPM(
+        velocity, _, particle_vortex_strength = vpm.LambOseenVPM(
             kinematic_viscosity=viscosity,
             avg_particle_radius=float(radii.mean()),
             positions=positions,

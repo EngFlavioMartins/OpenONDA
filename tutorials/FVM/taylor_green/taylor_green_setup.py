@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""Periodic two-dimensional Taylor–Green vortex, validated against the
-analytic decay (FVM, PIMPLE).
+"""Periodic Taylor–Green vortex with analytic viscous decay (FVM, PIMPLE).
 
-The classic Taylor–Green vortex u = (sin x cos y, -cos x sin y) decays
-exactly as exp(-2 nu t). Because the solution is known, the numerical decay
-of kinetic energy, enstrophy, and the velocity field itself can be compared
-with the analytic values step by step (solution/history.csv). This is a
-periodic, single-time-step-invariant case; the default run uses the central
-convection scheme.
+The velocity decays as exp(-2 nu t), providing exact energy and error checks.
+
+Usage:
+    python taylor_green_setup.py --n 24 --end-time 0.05
 """
 
 from __future__ import annotations

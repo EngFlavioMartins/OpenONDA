@@ -28,20 +28,7 @@ import numpy as np
 import pandas as pd
 
 from assets.generate_surface import create_flat_plate, save_surface
-from openonda.vpm import (
-    AdvectionConfig,
-    ForceConfig,
-    SmoothRampVLM,
-    VPMSolver,
-    StaticVLM,
-    SurfaceSampler,
-    TranslatingVLM,
-    VelocityConfig,
-    VLMMeshSetup,
-    VLMSurfaceSetup,
-    VLMSetup,
-    VPMSetup,
-)
+import openonda.vpm as vpm
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 
@@ -89,7 +76,7 @@ def plate_kinematics(
     """Build the motion and background flow for a body- or wind-frame case."""
     if kinematics == "ramp":
         return (
-            SmoothRampVLM(
+            vpm.SmoothRampVLM(
                 U_final=[-FREESTREAM_SPEED, 0.0, 0.0],
                 acceleration_time=ramp_time,
             ),
@@ -97,13 +84,13 @@ def plate_kinematics(
         )
     if frame == "body":
         return (
-            TranslatingVLM(velocity=np.array([-FREESTREAM_SPEED, 0.0, 0.0])),
+            vpm.TranslatingVLM(velocity=np.array([-FREESTREAM_SPEED, 0.0, 0.0])),
             [0.0, 0.0, 0.0],
         )
 
     angle = math.radians(angle_of_attack)
     return (
-        StaticVLM(),
+        vpm.StaticVLM(),
         [FREESTREAM_SPEED * math.cos(angle), 0.0, FREESTREAM_SPEED * math.sin(angle)],
     )
 
@@ -121,10 +108,10 @@ def distance_travelled(times: np.ndarray, kinematics: str, ramp_time: float) -> 
     return np.where(times < ramp_time, ramp_distance, cruise_distance) / CHORD
 
 
-def crossflow_samplers(name: str) -> tuple[SurfaceSampler, ...]:
+def crossflow_samplers(name: str) -> tuple[vpm.SurfaceSampler, ...]:
     """Return the three final wake planes used by the Kelvin figure."""
     return tuple(
-        SurfaceSampler(
+        vpm.SurfaceSampler(
             point=[position, 0.0, 0.0],
             normal=[1, 0, 0],
             bounds=[-6.0, 6.0, -0.5, 5.0],
@@ -172,13 +159,13 @@ def run_case(
         else (FREESTREAM_SPEED, 0.0, 0.0)
     )
     sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
-    vlm_setup = VLMSetup(
-        surfaces=(VLMSurfaceSetup(str(surface_file), kinematics=motion),),
-        mesh=VLMMeshSetup.geometric(ratio=4.0, region="end"),
+    vlm_setup = vpm.VLMSetup(
+        surfaces=(vpm.VLMSurfaceSetup(str(surface_file), kinematics=motion),),
+        mesh=vpm.VLMMeshSetup.geometric(ratio=4.0, region="end"),
         density=DENSITY,
         viscosity=KINEMATIC_VISCOSITY,
         freestream_velocity=reference_velocity,
-        force=ForceConfig.kutta_joukowski(),
+        force=vpm.ForceConfig.kutta_joukowski(),
         sigma_factor=PARTICLE_CORE_FACTOR,
         sample_surface_forces=True,
         logging_interval_steps=sample_steps,
@@ -194,15 +181,15 @@ def run_case(
     ):
         (samples_dir / stale_name).unlink(missing_ok=True)
 
-    solver = VPMSolver(
-        setup=VPMSetup.les_simulation(
+    solver = vpm.VPMSolver(
+        setup=vpm.VPMSetup.les_simulation(
             cs=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP_SIZE,
             compute_device="AUTO",
-            advection=AdvectionConfig(scheme="RK3"),
+            advection=vpm.AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
             freestream_velocity=freestream_velocity,
-            velocity=VelocityConfig.treecode(
+            velocity=vpm.VelocityConfig.treecode(
                 theta=0.35,
                 sort_particle_targets=True,
                 traversal_block_dim=128,

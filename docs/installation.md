@@ -48,6 +48,27 @@ an editable development installation; pass `--no-editable` for a fixed copy in
 PETSc, mpi4py, and petsc4py should come from the same Conda channel so their MPI
 implementations agree.
 
+## Select a VPM compute device
+
+VPM uses Taichi and defaults to `AUTO`, which selects Metal on macOS and a
+compatible GPU backend on Linux. Select a backend explicitly when needed:
+
+```bash
+OPENONDA_COMPUTE_DEVICE=METAL python tutorials/VPM/vortexRing/ring_setup.py \
+  --variant DNS_transposed --number-of-steps 1
+OPENONDA_COMPUTE_DEVICE=VULKAN ./tutorials/VPM/deltaWing/allrun.sh
+OPENONDA_COMPUTE_DEVICE=CUDA ./tutorials/VPM/deltaWing/allrun.sh
+OPENONDA_COMPUTE_DEVICE=CPU ./tutorials/VPM/deltaWing/allrun.sh
+```
+
+Metal supports the normal `f32` VPM path. Use the CPU backend for `f64`, which
+Metal does not support. To verify the installed coupled API and restart path on
+Apple Silicon, run:
+
+```bash
+python scripts/validate_native_tutorials.py --compute-device METAL
+```
+
 ## Offline installation
 
 On a machine with network access and the same operating system, architecture,
@@ -79,5 +100,9 @@ build its wheel with `python -m build --wheel`, place that wheel in
   library is missing. On Debian/Ubuntu, install `libglu1-mesa`.
 - On Intel macOS, use Python 3.11. Newer Python versions do not have a
   compatible Taichi wheel.
+- On Apple Silicon, `METAL` is the native GPU backend. A failure inside a
+  restricted container or sandbox does not establish that Metal is absent;
+  repeat the probe from a normal terminal where Taichi can access its cache and
+  the GPU device.
 - GPU execution is optional. Set `OPENONDA_COMPUTE_DEVICE=CPU` to use the
   portable Taichi CPU backend while diagnosing driver problems.
