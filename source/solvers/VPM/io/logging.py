@@ -292,7 +292,7 @@ class Logging:
             ("Number of Particles", f"{int(n_particles):d}" if n_particles is not None else "n/a"),
             (
                 "Total Circulation (\u03a3|\u0393|)",
-                f"{system.total_strength_magnitude:.3e} m\u00b3/s",
+                f"{system.total_vortex_strength_magnitude:.3e} m\u00b3/s",
             ),
             (
                 "Total Circulation (\u03a3\u0393)",
