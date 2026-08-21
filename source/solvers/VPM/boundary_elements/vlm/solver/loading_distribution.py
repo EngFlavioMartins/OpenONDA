@@ -45,14 +45,14 @@ class VLMLoadingDistribution:
     ) -> None:
         """Iterate surfaces flagged sample_surface_forces and export distributions.
 
-        Gated on vlm_solver.logging_frequency.  Wrapped in try/except so a
+        Gated on vlm_solver.logging_interval_steps.  Wrapped in try/except so a
         failure never aborts the simulation.
         """
         if vlm_solver is None or not hasattr(vlm_solver, "_surface_sampling"):
             return
         if not vlm_solver._surface_sampling:
             return
-        freq = max(1, int(getattr(vlm_solver, "logging_frequency", 1)))
+        freq = max(1, int(getattr(vlm_solver, "logging_interval_steps", 1)))
         if step % freq != 0:
             return
 

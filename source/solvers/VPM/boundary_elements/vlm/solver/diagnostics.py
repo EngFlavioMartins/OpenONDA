@@ -111,7 +111,7 @@ class VLMDiagnostics:
             diagnostics_history["vlm_lesp_max"].append(lesp_max)
             diagnostics_history["vlm_n_particles"].append(float(n_p))
 
-            freq = max(1, int(getattr(vlm_solver, "logging_frequency", 1)))
+            freq = max(1, int(getattr(vlm_solver, "logging_interval_steps", 1)))
             if step % freq == 0:
                 VLMDiagnostics.export_forces_csv(
                     vlm_solver,

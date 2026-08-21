@@ -79,7 +79,7 @@ class VLMSetup:
     dtype: Literal["f32", "f64"] = "f32"
     linear_solver: Literal["SCIPY", "BICGSTAB_GPU", "CG_GPU"] | None = None
     circulation_relaxation: float = 1.0
-    viscosity: float = 1.0
+    kinematic_viscosity: float = 1.0
     density: float = 1.0
     sigma_factor: float = 2.5
     freestream_velocity: tuple[float, float, float] | None = None
@@ -95,14 +95,14 @@ class VLMSetup:
             raise ValueError("VLM max_panels must be positive when provided")
         if not 0 < self.circulation_relaxation <= 1:
             raise ValueError("circulation_relaxation must be in (0, 1]")
-        if self.viscosity < 0:
-            raise ValueError("VLM viscosity must be non-negative")
+        if self.kinematic_viscosity < 0:
+            raise ValueError("VLM kinematic_viscosity must be non-negative")
         if self.density <= 0:
             raise ValueError("VLM density must be positive")
         if self.sigma_factor <= 0:
             raise ValueError("VLM sigma_factor must be positive")
         if self.logging_interval_steps < 1:
-            raise ValueError("VLM logging_frequency must be positive")
+            raise ValueError("VLM logging_interval_steps must be positive")
         if self.freestream_velocity is not None:
             if len(self.freestream_velocity) != 3:
                 raise ValueError("freestream_velocity must contain three coordinates")

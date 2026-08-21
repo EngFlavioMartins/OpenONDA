@@ -52,7 +52,7 @@ class PanelDiagnostics:
                 diagnostics_history.setdefault(f"panel_F_group{gid}_y", []).append(float(fvec[1]))
                 diagnostics_history.setdefault(f"panel_F_group{gid}_z", []).append(float(fvec[2]))
 
-            freq = max(1, int(getattr(panel_solver, "logging_frequency", 1)))
+            freq = max(1, int(getattr(panel_solver, "logging_interval_steps", 1)))
             if step % freq == 0:
                 PanelDiagnostics.export_forces_csv(
                     panel_solver, last_forces, time, step, checkpoint_directory

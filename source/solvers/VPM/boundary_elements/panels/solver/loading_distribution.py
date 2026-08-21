@@ -36,7 +36,7 @@ class PanelLoadingDistribution:
     ) -> None:
         if panel_solver is None or panel_solver.lattice is None:
             return
-        freq = max(1, int(getattr(panel_solver, "logging_frequency", 1)))
+        freq = max(1, int(getattr(panel_solver, "logging_interval_steps", 1)))
         if step % freq != 0:
             return
 

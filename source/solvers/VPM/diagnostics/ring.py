@@ -33,7 +33,7 @@ class RingDiagnosticsSampler:
     """Write one compact diagnostic row per particle group and sample time.
 
     The sampler is executed through :class:`SamplerExecutor`, so its cadence is
-    the solver's ``logging_frequency`` and its output lives below the
+    the solver's ``logging_interval_steps`` and its output lives below the
     solver-managed ``samples/`` directory. Particle groups are interpreted as
     individual rings.
     """

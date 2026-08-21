@@ -89,7 +89,7 @@ class VLMSolver:
         )
         self.logging_interval_steps = setup.logging_interval_steps
         self.density = setup.density
-        self.viscosity = setup.viscosity
+        self.kinematic_viscosity = setup.kinematic_viscosity
         self.sigma_factor = setup.sigma_factor
         self.alpha_rad = 0.0
         self.beta_rad = 0.0
@@ -2168,7 +2168,7 @@ class VLMSolver:
                     self.lattice.wake_radii,
                     self.lattice.wake_volumes,
                     self.lattice.wake_group_ids,
-                    kinematic_viscosity=self.viscosity,
+                    kinematic_viscosity=self.kinematic_viscosity,
                 )
 
         # --------------------------------------------------------------

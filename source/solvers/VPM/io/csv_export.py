@@ -19,7 +19,7 @@ def append_loads_to_csv(
     """Append aerodynamic loads to CSV file.
 
     Args:
-        backup_file_name: Base name for output file (used to derive CSV name)
+        checkpoint_name: Base name for output file (used to derive CSV name)
         flow_time: Current simulation time
         loads: Dictionary containing force, moment, thrust, torque, power, Cp values
         directory: Destination directory for CSV file
