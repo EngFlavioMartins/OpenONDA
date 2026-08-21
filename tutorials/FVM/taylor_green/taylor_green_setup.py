@@ -55,8 +55,10 @@ def relative_l2(numerical: np.ndarray, analytic: np.ndarray, volumes: np.ndarray
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--n", type=int, default=24, help="cells along each periodic direction")
-    parser.add_argument("--nu", type=float, default=0.1, help="kinematic viscosity [m^2/s]")
-    parser.add_argument("--dt", type=float, default=0.005, help="time-step size [s]")
+    parser.add_argument(
+        "--kinematic-viscosity", type=float, default=0.1, help="kinematic viscosity [m^2/s]"
+    )
+    parser.add_argument("--time-step-size", type=float, default=0.005, help="time-step size [s]")
     parser.add_argument("--end-time", type=float, default=0.05, help="simulation end time [s]")
     parser.add_argument("--scheme", choices=("central", "upwind"), default="central")
     return parser.parse_args()
@@ -111,8 +113,8 @@ def main() -> None:
     solution_dir = CASE_DIR / "solution"
     solution_dir.mkdir(parents=True, exist_ok=True)
     fvm_solver = fvm.FVMSolver(fvm_setup, case_dir=str(CASE_DIR), mesh_data=mesh)
-    centres = fvm_solver.geo_data["element_centroids"]
-    volumes = fvm_solver.geo_data["element_volumes"]
+    centres = fvm_solver.geo_data["cell_centroids"]
+    volumes = fvm_solver.geo_data["cell_volumes"]
     fvm_solver.set_initial_velocity(exact_velocity(centres, 0.0, args.kinematic_viscosity))
     fvm_solver.write_vtk()
     initial_energy = fvm.compute_kinetic_energy(fvm_solver.velocity, fvm_solver.geo_data)

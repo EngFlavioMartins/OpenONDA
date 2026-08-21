@@ -82,7 +82,7 @@ def create_fvm_setup(reynolds: float, end_time: float, u_vec: list[float]) -> fv
         turbulence=None,
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", u_vec),
-            fvm.BoundaryConfig.outlet("outlet", p=0.0),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.freestream("walls", u_vec),
             fvm.BoundaryConfig.wall("airfoil"),
             fvm.BoundaryConfig.empty("frontAndBack"),

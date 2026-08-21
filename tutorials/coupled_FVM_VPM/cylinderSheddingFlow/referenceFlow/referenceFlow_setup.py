@@ -234,7 +234,7 @@ FVM_SETUP = fvm.FVMSetup(
     turbulence=fvm.TurbulenceConfig.none(),
     boundaries=[
         fvm.BoundaryConfig.inlet("inlet", list(FREESTREAM_VELOCITY)),
-        fvm.BoundaryConfig.outlet("outlet", p=0.0),
+        fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
         fvm.BoundaryConfig.slip("ymin"),
         fvm.BoundaryConfig.slip("ymax"),
         fvm.BoundaryConfig.slip("zmin"),
@@ -248,7 +248,7 @@ FVM_SETUP = fvm.FVMSetup(
 def _apply_seed(fvm_solver) -> None:
     """Impose the same controlled, divergence-free perturbation as the hybrid."""
     n_cells = fvm_solver.mesh_data["n_cells"]
-    centroids = np.asarray(fvm_solver.geo_data["element_centroids"][:n_cells], dtype=np.float64)
+    centroids = np.asarray(fvm_solver.geo_data["cell_centroids"][:n_cells], dtype=np.float64)
     if centroids.shape[0] != n_cells:
         raise RuntimeError("Seed requires the full cell-centroid array on every rank")
     velocity = build_seed_velocity(

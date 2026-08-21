@@ -83,7 +83,7 @@ def create_fvm_setup(
         turbulence=None,  # laminar validation case
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
-            fvm.BoundaryConfig.outlet("outlet", p=0.0),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.freestream("bottom", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             fvm.BoundaryConfig.freestream("top", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             fvm.BoundaryConfig.empty("front"),

@@ -59,7 +59,7 @@ def inlet_velocity(mesh_data, geo_data):
 
 def initial_velocity(geo_data, n_cells):
     """Divergence-compatible profile on each side of the expansion."""
-    centres = geo_data["element_centroids"][:n_cells]
+    centres = geo_data["cell_centroids"][:n_cells]
     x, y = centres[:, 0], centres[:, 1]
     values = np.zeros((n_cells, 3))
 
@@ -76,7 +76,7 @@ def initial_velocity(geo_data, n_cells):
 def reattachment_location(fvm_solver):
     """Estimate x/h where the first downstream cell row turns to positive u."""
     n_cells = fvm_solver.mesh_data["n_cells"]
-    centres = fvm_solver.geo_data["element_centroids"][:n_cells]
+    centres = fvm_solver.geo_data["cell_centroids"][:n_cells]
     downstream = centres[:, 0] > 0.0
     y0 = np.min(centres[downstream, 1])
     near_wall = downstream & np.isclose(centres[:, 1], y0, atol=1e-10)
@@ -100,7 +100,7 @@ def write_solution_tables(fvm_solver, solution_dir, history):
     """Write the cell fields and the reattachment/health history."""
     os.makedirs(solution_dir, exist_ok=True)
     n_cells = fvm_solver.mesh_data["n_cells"]
-    centres = fvm_solver.geo_data["element_centroids"][:n_cells]
+    centres = fvm_solver.geo_data["cell_centroids"][:n_cells]
 
     fields_path = os.path.join(solution_dir, "fields.csv")
     with open(fields_path, "w", newline="") as stream:
@@ -164,7 +164,7 @@ def create_fvm_setup(
         turbulence=None,
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", inlet_values.tolist()),
-            fvm.BoundaryConfig.outlet("outlet", p=0.0),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.wall("walls"),
             fvm.BoundaryConfig.empty("front"),
             fvm.BoundaryConfig.empty("back"),

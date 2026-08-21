@@ -92,7 +92,7 @@ def create_fvm_setup(reynolds: float, end_time: float, depth: float) -> fvm.FVMS
         turbulence=None,  # laminar validation case
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
-            fvm.BoundaryConfig.outlet("outlet", p=0.0),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             # Slip lateral boundaries: 20 D apart (5% blockage), no wall BL.
             fvm.BoundaryConfig(
                 name="bottom",

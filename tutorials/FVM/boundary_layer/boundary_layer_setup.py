@@ -95,7 +95,7 @@ def create_fvm_setup(reynolds: float, end_time: float, kinematic_viscosity: floa
         turbulence=None,  # laminar for Re_x <= 1e4 << 5e5
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
-            fvm.BoundaryConfig.outlet("outlet", p=0.0),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig(name="floor", velocity_type="slip", pressure_type="zeroGradient"),
             fvm.BoundaryConfig.wall("plate"),
             fvm.BoundaryConfig(name="top", velocity_type="slip", pressure_type="zeroGradient"),
@@ -110,7 +110,7 @@ def create_fvm_setup(reynolds: float, end_time: float, kinematic_viscosity: floa
 def write_profiles(fvm_solver, sol_dir: str, kinematic_viscosity: float) -> None:
     """Sample u(y) at the stations and Cf(x) along the plate into CSV files."""
     n = fvm_solver.mesh_data["n_cells"]
-    centroids = fvm_solver.geo_data["element_centroids"][:n]
+    centroids = fvm_solver.geo_data["cell_centroids"][:n]
     u = fvm_solver.velocity[:n]
     xc, yc = centroids[:, 0], centroids[:, 1]
 

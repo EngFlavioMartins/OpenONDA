@@ -143,7 +143,7 @@ def _run(
         solver.auto_write = False
 
         start = time.perf_counter()
-        solver.set_initial_velocity(_velocity(solver.geo_data["element_centroids"]))
+        solver.set_initial_velocity(_velocity(solver.geo_data["cell_centroids"]))
         field_initialization = time.perf_counter() - start
 
         step_samples = []
