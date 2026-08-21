@@ -38,7 +38,7 @@ def test_rung0_uniform_flow_transfer_creates_no_particles():
         vortex_strength_at_node=lambda q: vortex_strength_from_velocity_trace(
             q, h, lambda p: np.tile([1.0, 0.0, 0.0], (len(np.atleast_2d(p)), 1))
         ),
-        overlap_zone_ramp_width=4 * h,
+        authority_ramp_width=4 * h,
         transfer_buffer_length=2 * h,
         transfer_prune_threshold_abs=1e-18,
         freestream_velocity=[1.0, 0.0, 0.0],

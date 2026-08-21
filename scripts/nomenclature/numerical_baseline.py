@@ -219,8 +219,8 @@ def case_coupled_smoke():
     setup = coupler_api.CouplerSetup(
         freestream_velocity=[1.0, 0.0, 0.0],
         vpm_particle_spacing=H,
-        overlap_zone_ramp_width=2 * H,
-        overlap_zone_dead_zone_width=H,
+        authority_ramp_width=2 * H,
+        vpm_only_width=H,
     )
     from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
 

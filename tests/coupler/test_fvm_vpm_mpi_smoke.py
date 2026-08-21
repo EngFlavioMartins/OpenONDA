@@ -43,8 +43,8 @@ def test_coupled_fvm_vpm_two_steps_mpi(tmp_path, monkeypatch):
     setup = CouplerSetup(
         freestream_velocity=[1.0, 0.0, 0.0],
         vpm_particle_spacing=h,
-        overlap_zone_ramp_width=2 * h,
-        overlap_zone_dead_zone_width=h,
+        authority_ramp_width=2 * h,
+        vpm_only_width=h,
     )
 
     vpm_setup = VPMSetup(

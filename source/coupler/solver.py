@@ -235,7 +235,7 @@ class FVMVPMCoupler:
         """
         assert self.fvm_solver is not None
         fc = np.asarray(
-            self.fvm_solver.get_boundary_face_centre_coordinates(self.setup.bc_patch_name),
+            self.fvm_solver.get_boundary_face_centre_coordinates(self.setup.coupling_patch),
             dtype=np.float64,
         ).reshape(-1, 3)
         box = None
@@ -244,7 +244,7 @@ class FVMVPMCoupler:
         if self._is_master or not collective:
             if fc.shape[0] == 0:
                 error = (
-                    f"Coupling patch {self.setup.bc_patch_name!r} has no faces on the "
+                    f"Coupling patch {self.setup.coupling_patch!r} has no faces on the "
                     "injected Eulerian solver."
                 )
             else:
@@ -379,7 +379,7 @@ class FVMVPMCoupler:
             fvm_box=self.fvm_box,
             freestream_velocity=self.freestream_velocity,
             particle_spacing=self.setup.vpm_particle_spacing,
-            boundary_mode=self.setup.vpm_bc_mode,
+            boundary_mode=self.setup.boundary_condition_mode,
             enabled=self.setup.pressure_anchor_to_freestream,
             is_master=self._is_master,
             comm=_mpi4py_comm,
@@ -456,7 +456,7 @@ class FVMVPMCoupler:
 
         assert self.end_time is not None and self.vpm_time_step_size is not None
         n_steps = self._derive_coupling_step_count(self.end_time, self.vpm_time_step_size)
-        patch = self.setup.bc_patch_name
+        patch = self.setup.coupling_patch
         if self._is_master:
             logger.info("=" * 60)
             logger.info("FVM-VPM COUPLED SOLVER")

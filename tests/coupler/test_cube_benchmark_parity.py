@@ -127,7 +127,7 @@ def test_coupler_setup_owns_no_solver_physics(bench):
         "wall_patch_name",
     ):
         assert not hasattr(setup, name)
-    assert setup.overlap_zone_dead_zone_width == 0.0
+    assert setup.vpm_only_width == 0.0
 
 
 def test_vpm_setup_compatible(bench, vpm):

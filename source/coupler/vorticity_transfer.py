@@ -105,12 +105,12 @@ def _outflow_band_mask(
 def cosine_eta(
     grid_pos: np.ndarray,
     box: np.ndarray,
-    overlap_zone_ramp_width: float,
+    authority_ramp_width: float,
     overlap_zone_dead_zone: float,
 ) -> np.ndarray:
     """C1 partition-of-unity FVM-authority weight in [0, 1].
 
-    One at ``dist >= overlap_zone_ramp_width``, zero at ``dist <= overlap_zone_dead_zone`` and outside
+    One at ``dist >= authority_ramp_width``, zero at ``dist <= overlap_zone_dead_zone`` and outside
     the box, cosine ramp between.
     """
     pos = np.asarray(grid_pos, dtype=np.float64)
@@ -126,14 +126,14 @@ def cosine_eta(
         ]
     )
     eta = np.zeros(len(pos), dtype=np.float64)
-    if overlap_zone_ramp_width <= 0.0:
+    if authority_ramp_width <= 0.0:
         eta[dist > 0.0] = 1.0
         return eta
 
-    eta[dist >= overlap_zone_ramp_width] = 1.0
+    eta[dist >= authority_ramp_width] = 1.0
     lo = max(overlap_zone_dead_zone, 0.0)
-    width = max(overlap_zone_ramp_width - lo, 1e-30)
-    ramp = (dist > lo) & (dist < overlap_zone_ramp_width)
+    width = max(authority_ramp_width - lo, 1e-30)
+    ramp = (dist > lo) & (dist < authority_ramp_width)
     if ramp.any():
         eta[ramp] = 0.5 * (1.0 - np.cos(np.pi * (dist[ramp] - lo) / width))
     return eta
@@ -478,7 +478,7 @@ def build_transfer_lattice(
     mesh_weight_at_node=None,
     fluid_weight_at_node=None,
     interior_at_node=None,
-    overlap_zone_ramp_width: float,
+    authority_ramp_width: float,
     overlap_zone_dead_zone: float,
     freestream_velocity=None,
 ) -> TransferLattice:
@@ -521,7 +521,7 @@ def build_transfer_lattice(
         node_mesh=node_mesh,
         node_fluid=node_fluid,
         interior_nodes=interior,
-        authority=cosine_eta(positions, box_array, overlap_zone_ramp_width, overlap_zone_dead_zone)
+        authority=cosine_eta(positions, box_array, authority_ramp_width, overlap_zone_dead_zone)
         * node_mesh,
         outflow_band=_outflow_band_mask(
             positions,
@@ -545,7 +545,7 @@ def continuous_transfer(
     mesh_weight_at_node=None,
     fluid_weight_at_node=None,
     interior_at_node=None,
-    overlap_zone_ramp_width: float | None = None,
+    authority_ramp_width: float | None = None,
     overlap_zone_dead_zone: float = 0.0,
     transfer_buffer_length: float = 0.0,
     transfer_prune_threshold_abs: float = 0.0,
@@ -579,7 +579,7 @@ def continuous_transfer(
         Smooth solid taper: one in the fluid, zero inside a body.
     interior_at_node : callable ``positions -> bool (M,)`` or None
         Exact solid test, a placement guard only.
-    overlap_zone_ramp_width, overlap_zone_dead_zone : float
+    authority_ramp_width, overlap_zone_dead_zone : float
         Width of the eta ramp and of the eta = 0 band at each face.
     transfer_buffer_length : float
         Outward extension of the remesh lattice beyond the box.
@@ -606,8 +606,8 @@ def continuous_transfer(
     circ = np.asarray(circ, dtype=np.float64).reshape(-1, 3)
     n = len(pos)
 
-    if overlap_zone_ramp_width is None:
-        overlap_zone_ramp_width = max(2.0 * overlap_zone_dead_zone, 4.0 * particle_spacing)
+    if authority_ramp_width is None:
+        authority_ramp_width = max(2.0 * overlap_zone_dead_zone, 4.0 * particle_spacing)
 
     lo = np.array([box[0], box[2], box[4]], dtype=np.float64)
     hi = np.array([box[1], box[3], box[5]], dtype=np.float64)
@@ -713,7 +713,7 @@ def continuous_transfer(
     eta = (
         lattice.authority
         if lattice is not None
-        else cosine_eta(grid_pos, box, overlap_zone_ramp_width, overlap_zone_dead_zone) * node_mesh
+        else cosine_eta(grid_pos, box, authority_ramp_width, overlap_zone_dead_zone) * node_mesh
     )
 
     # Apply one bounded local inverse-mollification correction to the blended field.
@@ -946,11 +946,11 @@ class VorticityTransfer:
         self.particle_spacing = float(cfg.vpm_particle_spacing)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
         self.transfer_prune_threshold_abs = (
-            float(cfg.transfer_prune_vorticity_min) * self.particle_spacing**3
+            float(cfg.transfer_vorticity_cutoff) * self.particle_spacing**3
         )
 
-        self.overlap_zone_ramp_width = float(cfg.overlap_zone_ramp_width)
-        self.overlap_zone_dead_zone = float(cfg.overlap_zone_dead_zone_width)
+        self.authority_ramp_width = float(cfg.authority_ramp_width)
+        self.overlap_zone_dead_zone = float(cfg.vpm_only_width)
         self.core_radius_ratio = float(cfg.vpm_core_radius_ratio)
         self.transfer_amplification_cap = float(cfg.transfer_amplification_cap)
         self.transfer_boundary_prune_multiplier = float(cfg.transfer_boundary_prune_multiplier)
@@ -1054,7 +1054,7 @@ class VorticityTransfer:
         return report
 
     def setup(self, fvm):
-        transfer_box = self.config.transfer_region_box or self._fvm_box
+        transfer_box = self.config.transfer_region_bounds or self._fvm_box
         self._box = np.asarray(transfer_box, dtype=np.float64)
         from scipy.spatial import cKDTree
 
@@ -1136,7 +1136,7 @@ class VorticityTransfer:
             mesh_weight_at_node=mesh_weight_at_node,
             fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
             interior_at_node=interior_at_node if has_solid else None,
-            overlap_zone_ramp_width=self.overlap_zone_ramp_width,
+            authority_ramp_width=self.authority_ramp_width,
             overlap_zone_dead_zone=self.overlap_zone_dead_zone,
             freestream_velocity=np.asarray(self.config.freestream_velocity, dtype=np.float64),
         )
@@ -1152,11 +1152,11 @@ class VorticityTransfer:
             self._box[1],
             self.particle_spacing,
             self.core_radius_ratio,
-            self.overlap_zone_ramp_width,
+            self.authority_ramp_width,
             self.overlap_zone_dead_zone,
             l_buf,
             max_stable_time_step_size(self.freestream_speed, l_buf, self.particle_spacing),
-            self.config.transfer_prune_vorticity_min,
+            self.config.transfer_vorticity_cutoff,
             self.transfer_prune_threshold_abs,
             self.transfer_amplification_cap,
             self.transfer_boundary_prune_multiplier,
@@ -1309,7 +1309,7 @@ class VorticityTransfer:
             freestream_velocity=np.asarray(self.config.freestream_velocity, dtype=np.float64),
             fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
             interior_at_node=interior_at_node if has_solid else None,
-            overlap_zone_ramp_width=self.overlap_zone_ramp_width,
+            authority_ramp_width=self.authority_ramp_width,
             overlap_zone_dead_zone=self.overlap_zone_dead_zone,
             transfer_buffer_length=self.transfer_buffer_length,
             transfer_prune_threshold_abs=self.transfer_prune_threshold_abs,

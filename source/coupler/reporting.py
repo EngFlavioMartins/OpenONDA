@@ -116,14 +116,14 @@ def write_run_metadata(coupler) -> None:
             "checkpoint_interval_steps": coupler.setup.checkpoint_interval_steps,
         },
         "fvm_solver": {
-            "bc_patch_name": coupler.setup.bc_patch_name,
-            "vpm_bc_mode": coupler.setup.vpm_bc_mode,
+            "coupling_patch": coupler.setup.coupling_patch,
+            "boundary_condition_mode": coupler.setup.boundary_condition_mode,
             "fvm_domain": _domain_dict(coupler.fvm_box),
         },
         "vpm_solver": {
             "vpm_particle_spacing": coupler.setup.vpm_particle_spacing,
-            "overlap_zone_ramp_width": coupler.setup.overlap_zone_ramp_width,
-            "overlap_zone_dead_zone_width": coupler.setup.overlap_zone_dead_zone_width,
+            "authority_ramp_width": coupler.setup.authority_ramp_width,
+            "vpm_only_width": coupler.setup.vpm_only_width,
         },
         **coupler.setup.to_dict(),
         "vpm_time_step_size": coupler.vpm_time_step_size,

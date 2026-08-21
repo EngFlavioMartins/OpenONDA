@@ -128,8 +128,8 @@ def _make_config(**over):
     base = {
         "freestream_velocity": [1.0, 0.0, 0.0],
         "vpm_particle_spacing": 0.05,
-        "overlap_zone_ramp_width": 0.3,
-        "overlap_zone_dead_zone_width": 0.2,
+        "authority_ramp_width": 0.3,
+        "vpm_only_width": 0.2,
         "pressure_anchor_to_freestream": False,
     }
     base.update(over)
@@ -246,8 +246,8 @@ def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
     setup = CouplerSetup(
         freestream_velocity=[1.0, 0.0, 0.0],
         vpm_particle_spacing=0.05,
-        overlap_zone_ramp_width=0.3,
-        overlap_zone_dead_zone_width=0.2,
+        authority_ramp_width=0.3,
+        vpm_only_width=0.2,
         pressure_anchor_to_freestream=False,
     )
     vpm = _FakeVPM(time_step_size=0.1)

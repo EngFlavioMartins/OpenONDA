@@ -31,20 +31,20 @@ class CouplerSetup:
     the VPM regeneration radius ratio and be at least one."""
 
     # ---- OVERLAP ZONE (FVM/VPM authority profile) ----
-    overlap_zone_ramp_width: float = 0.30
+    authority_ramp_width: float = 0.30
     """Width (m) of the C1 ramp over which FVM authority rises from zero to one
     inside the overlap zone; also scales the blending relaxation. Must exceed
-    ``overlap_zone_dead_zone_width``."""
-    overlap_zone_dead_zone_width: float = 0.15
+    ``vpm_only_width``."""
+    vpm_only_width: float = 0.15
     """Width (m) of the band just inside the overlap-zone faces where FVM
     authority is exactly zero; must be non-negative."""
 
     # ---- VORTICITY TRANSFER (FVM -> VPM) ----
-    transfer_region_box: tuple[float, float, float, float, float, float] | None = None
+    transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
     """(xmin, xmax, ymin, ymax, zmin, zmax) region over which FVM vorticity is
     transferred to VPM particles; must lie inside the FVM domain; None uses the
     full FVM domain."""
-    transfer_prune_vorticity_min: float = 0.005
+    transfer_vorticity_cutoff: float = 0.005
     """Minimum |vorticity| (1/s) kept after pruning; must be non-negative."""
     transfer_boundary_prune_multiplier: float = 1.0
     """Smooth multiplier on the prune threshold where FVM authority vanishes at
@@ -57,9 +57,9 @@ class CouplerSetup:
     """Coupling steps between transfer diagnostics; at least one."""
 
     # ---- VPM BOUNDARY-CONDITION TRACE ON THE FVM ----
-    bc_patch_name: str = "numericalBoundary"
+    coupling_patch: str = "numericalBoundary"
     """Name of the FVM patch on which the VPM boundary condition is imposed."""
-    vpm_bc_mode: Literal[
+    boundary_condition_mode: Literal[
         "dirichlet",
         "characteristic",
         "directional_outflow",
@@ -84,7 +84,7 @@ class CouplerSetup:
         if freestream_velocity.shape != (3,) or not np.all(np.isfinite(freestream_velocity)):
             raise ValueError("freestream_velocity must be a finite three-component vector")
 
-        if self.vpm_bc_mode not in {
+        if self.boundary_condition_mode not in {
             "dirichlet",
             "characteristic",
             "directional_outflow",
@@ -92,20 +92,20 @@ class CouplerSetup:
             "vorticity_mixed",
         }:
             raise ValueError(
-                "vpm_bc_mode must be 'dirichlet', 'characteristic', "
+                "boundary_condition_mode must be 'dirichlet', 'characteristic', "
                 "'directional_outflow', 'pressure_gradient', or 'vorticity_mixed'"
             )
 
-        if self.transfer_region_box is not None:
-            transfer_region_box = np.asarray(self.transfer_region_box, dtype=np.float64)
-            if transfer_region_box.shape != (6,) or not np.all(np.isfinite(transfer_region_box)):
-                raise ValueError("transfer_region_box must contain six finite bounds")
-            if np.any(transfer_region_box[1::2] <= transfer_region_box[::2]):
-                raise ValueError("Each transfer_region_box upper bound must exceed its lower bound")
+        if self.transfer_region_bounds is not None:
+            transfer_region_bounds = np.asarray(self.transfer_region_bounds, dtype=np.float64)
+            if transfer_region_bounds.shape != (6,) or not np.all(np.isfinite(transfer_region_bounds)):
+                raise ValueError("transfer_region_bounds must contain six finite bounds")
+            if np.any(transfer_region_bounds[1::2] <= transfer_region_bounds[::2]):
+                raise ValueError("Each transfer_region_bounds upper bound must exceed its lower bound")
 
         positive = {
             "vpm_particle_spacing": self.vpm_particle_spacing,
-            "overlap_zone_ramp_width": self.overlap_zone_ramp_width,
+            "authority_ramp_width": self.authority_ramp_width,
             "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
             "transfer_amplification_cap": self.transfer_amplification_cap,
             "transfer_boundary_prune_multiplier": self.transfer_boundary_prune_multiplier,
@@ -117,9 +117,9 @@ class CouplerSetup:
             raise ValueError(f"Coupling values must be positive: {', '.join(invalid)}")
         if self.checkpoint_interval_steps < 0:
             raise ValueError("checkpoint_interval_steps must be non-negative")
-        if self.overlap_zone_dead_zone_width < 0.0 or self.transfer_prune_vorticity_min < 0.0:
+        if self.vpm_only_width < 0.0 or self.transfer_vorticity_cutoff < 0.0:
             raise ValueError(
-                "overlap_zone_dead_zone_width and transfer_prune_vorticity_min must be non-negative"
+                "vpm_only_width and transfer_vorticity_cutoff must be non-negative"
             )
         if self.transfer_amplification_cap < 1.0:
             raise ValueError("transfer_amplification_cap must be at least one")
@@ -127,8 +127,8 @@ class CouplerSetup:
             raise ValueError("transfer_boundary_prune_multiplier must be at least one")
         if self.transfer_diagnostic_interval_steps < 1:
             raise ValueError("transfer_diagnostic_interval must be at least one")
-        if self.overlap_zone_ramp_width <= self.overlap_zone_dead_zone_width:
-            raise ValueError("overlap_zone_ramp_width must exceed overlap_zone_dead_zone_width")
+        if self.authority_ramp_width <= self.vpm_only_width:
+            raise ValueError("authority_ramp_width must exceed vpm_only_width")
         if self.vpm_core_radius_ratio < 1.0:
             raise ValueError("vpm_core_radius_ratio must be at least one")
         if self.transfer_max_particles is not None and self.transfer_max_particles < 1:
@@ -140,20 +140,20 @@ class CouplerSetup:
 
     def validate_transfer_region_box(self, fvm_box) -> None:
         """Require the vorticity-transfer region to lie inside the FVM domain."""
-        if self.transfer_region_box is None:
+        if self.transfer_region_bounds is None:
             return
         outer = np.asarray(fvm_box, dtype=np.float64)
-        inner = np.asarray(self.transfer_region_box, dtype=np.float64)
+        inner = np.asarray(self.transfer_region_bounds, dtype=np.float64)
         if np.any(inner[::2] < outer[::2]) or np.any(inner[1::2] > outer[1::2]):
-            raise ValueError("transfer_region_box must be contained within the FVM domain")
+            raise ValueError("transfer_region_bounds must be contained within the FVM domain")
 
     def to_dict(self) -> dict:
-        transfer_region_box = None
-        if self.transfer_region_box is not None:
-            transfer_region_box = dict(
+        transfer_region_bounds = None
+        if self.transfer_region_bounds is not None:
+            transfer_region_bounds = dict(
                 zip(
                     ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
-                    self.transfer_region_box,
+                    self.transfer_region_bounds,
                     strict=True,
                 )
             )
@@ -161,13 +161,13 @@ class CouplerSetup:
             "coupler": {
                 "freestream_velocity": self.freestream_velocity,
                 "checkpoint_interval_steps": self.checkpoint_interval_steps,
-                "bc_patch_name": self.bc_patch_name,
-                "vpm_bc_mode": self.vpm_bc_mode,
-                "transfer_region_box": transfer_region_box,
+                "coupling_patch": self.coupling_patch,
+                "boundary_condition_mode": self.boundary_condition_mode,
+                "transfer_region_bounds": transfer_region_bounds,
                 "vpm_particle_spacing": self.vpm_particle_spacing,
-                "overlap_zone_ramp_width": self.overlap_zone_ramp_width,
-                "overlap_zone_dead_zone_width": self.overlap_zone_dead_zone_width,
-                "transfer_prune_vorticity_min": self.transfer_prune_vorticity_min,
+                "authority_ramp_width": self.authority_ramp_width,
+                "vpm_only_width": self.vpm_only_width,
+                "transfer_vorticity_cutoff": self.transfer_vorticity_cutoff,
                 "transfer_boundary_prune_multiplier": self.transfer_boundary_prune_multiplier,
                 "transfer_max_particles": self.transfer_max_particles,
                 "vpm_core_radius_ratio": self.vpm_core_radius_ratio,

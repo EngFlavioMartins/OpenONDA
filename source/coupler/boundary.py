@@ -175,7 +175,7 @@ def evaluate_vpm_boundary(
         assert coupler.vpm_solver is not None
         blend_cell_centres = coupler.blending_zone.active_cell_centres
         n_blend_cells = len(blend_cell_centres)
-        if coupler.setup.vpm_bc_mode == "vorticity_mixed":
+        if coupler.setup.boundary_condition_mode == "vorticity_mixed":
             # The blending field needs velocity only, whereas the boundary
             # faces need both velocity and du/dn.  Keeping these target sets
             # separate avoids gradients over every blending cell while the
@@ -233,7 +233,7 @@ def evaluate_vpm_boundary(
 
     t_vpm_bc = time.perf_counter()
     if coupler._is_master:
-        if coupler.setup.vpm_bc_mode == "pressure_gradient":
+        if coupler.setup.boundary_condition_mode == "pressure_gradient":
             assert coupler.vpm_solver is not None
             assert coupler.density is not None
             assert coupler.kinematic_viscosity is not None
@@ -294,7 +294,7 @@ def evaluate_vpm_boundary(
         )
         if coupler._velocity_bc_prev is None:
             coupler._velocity_bc_prev = u_bc_next.copy()
-        if coupler.setup.vpm_bc_mode == "vorticity_mixed":
+        if coupler.setup.boundary_condition_mode == "vorticity_mixed":
             assert tangential_normal_gradient is not None
             normal_next = project_normal_velocity(
                 np.einsum("ij,ij->i", u_bc_next, face_normals), face_areas
@@ -310,11 +310,11 @@ def evaluate_vpm_boundary(
         u_bc_next = np.zeros_like(face_centers)
         if coupler._velocity_bc_prev is None:
             coupler._velocity_bc_prev = np.zeros_like(face_centers)
-        if coupler.setup.vpm_bc_mode == "pressure_gradient":
+        if coupler.setup.boundary_condition_mode == "pressure_gradient":
             coupler._pressure_gradient_bc_next = np.zeros_like(face_centers)
             if coupler._pressure_gradient_bc_prev is None:
                 coupler._pressure_gradient_bc_prev = np.zeros_like(face_centers)
-        elif coupler.setup.vpm_bc_mode == "vorticity_mixed":
+        elif coupler.setup.boundary_condition_mode == "vorticity_mixed":
             coupler._normal_velocity_bc_next = np.zeros(len(face_centers), dtype=np.float64)
             coupler._tangential_gradient_bc_next = np.zeros_like(face_centers)
             if coupler._normal_velocity_bc_prev is None:
@@ -342,7 +342,7 @@ def advance_fvm(
     t_fvm = time.perf_counter()
     advance_fvm_substeps(
         coupler,
-        coupler.setup.bc_patch_name,
+        coupler.setup.coupling_patch,
         face_centers,
         face_normals,
         face_areas,
@@ -388,7 +388,7 @@ def resynchronize_vpm_boundary(
     blend_cell_centres = coupler.blending_zone.active_cell_centres
     n_blend_cells = len(blend_cell_centres)
     tangential_normal_gradient: np.ndarray | None = None
-    if coupler.setup.vpm_bc_mode == "vorticity_mixed":
+    if coupler.setup.boundary_condition_mode == "vorticity_mixed":
         blend_velocity = np.asarray(
             coupler.vpm_solver.compute_target_velocities(
                 blend_cell_centres,
@@ -422,7 +422,7 @@ def resynchronize_vpm_boundary(
 
     coupler.blending_zone.update_endpoint(corrected[:n_blend_cells])
     corrected_boundary = corrected[n_blend_cells:]
-    if coupler.setup.vpm_bc_mode == "vorticity_mixed":
+    if coupler.setup.boundary_condition_mode == "vorticity_mixed":
         corrected_boundary = project_solenoidal_velocity(
             corrected_boundary, face_normals, face_areas
         )
@@ -434,13 +434,13 @@ def resynchronize_vpm_boundary(
         else 0.0
     )
     coupler._velocity_bc_prev = corrected_boundary
-    if coupler.setup.vpm_bc_mode == "pressure_gradient":
+    if coupler.setup.boundary_condition_mode == "pressure_gradient":
         # The FVM-to-VPM transfer replaces the particle representation at
         # fixed physical time. Refresh the Eulerian pressure history so
         # that the next backward difference does not interpret that
         # representation jump as a physical temporal acceleration.
         coupler._pressure_velocity_snapshot = corrected_boundary.copy()
-    elif coupler.setup.vpm_bc_mode == "vorticity_mixed":
+    elif coupler.setup.boundary_condition_mode == "vorticity_mixed":
         assert tangential_normal_gradient is not None
         coupler._normal_velocity_bc_prev = project_normal_velocity(
             np.einsum("ij,ij->i", corrected_boundary, face_normals), face_areas
@@ -460,7 +460,7 @@ def apply_fvm_boundary(
     """Apply the configured VPM boundary condition trace and advance one FVM step."""
     assert coupler.fvm_solver is not None
     freestream_velocity_mag = float(np.linalg.norm(coupler.setup.freestream_velocity)) + 1e-30
-    boundary_mode = coupler.setup.vpm_bc_mode
+    boundary_mode = coupler.setup.boundary_condition_mode
     u_target = np.ascontiguousarray(u_target, dtype=np.float64)
     if boundary_mode == "vorticity_mixed":
         if normal_velocity is None or tangential_gradient is None:
@@ -571,7 +571,7 @@ def advance_fvm_substeps(
             ) * pressure_gradient_prev + alpha * pressure_gradient_next
         normal_velocity = None
         tangential_gradient = None
-        if coupler.setup.vpm_bc_mode == "vorticity_mixed":
+        if coupler.setup.boundary_condition_mode == "vorticity_mixed":
             if (
                 normal_velocity_prev is None
                 or normal_velocity_next is None

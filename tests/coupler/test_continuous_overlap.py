@@ -26,7 +26,7 @@ def _zero_target(points):
 
 def test_cosine_authority_partition():
     points = np.array([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0], [0.5, 0.0, 0.0]])
-    eta = cosine_eta(points, BOX, overlap_zone_ramp_width=0.3, overlap_zone_dead_zone=0.05)
+    eta = cosine_eta(points, BOX, authority_ramp_width=0.3, overlap_zone_dead_zone=0.05)
     np.testing.assert_allclose(eta[[0, 2]], [1.0, 0.0])
     assert 0.0 < eta[1] < 1.0
 
@@ -47,7 +47,7 @@ def test_static_transfer_lattice_preserves_the_dynamic_transfer():
         H,
         transfer_buffer_length=0.0,
         mesh_weight_at_node=mesh_weight,
-        overlap_zone_ramp_width=0.3,
+        authority_ramp_width=0.3,
         overlap_zone_dead_zone=0.05,
         freestream_velocity=[1.0, 0.0, 0.0],
     )
@@ -59,7 +59,7 @@ def test_static_transfer_lattice_preserves_the_dynamic_transfer():
         H,
         vortex_strength_at_node=target,
         mesh_weight_at_node=mesh_weight,
-        overlap_zone_ramp_width=0.3,
+        authority_ramp_width=0.3,
         overlap_zone_dead_zone=0.05,
         transfer_prune_threshold_abs=1.0e-12,
     )
@@ -69,7 +69,7 @@ def test_static_transfer_lattice_preserves_the_dynamic_transfer():
         BOX,
         H,
         vortex_strength_at_node=target,
-        overlap_zone_ramp_width=0.3,
+        authority_ramp_width=0.3,
         overlap_zone_dead_zone=0.05,
         transfer_prune_threshold_abs=1.0e-12,
         lattice=lattice,
@@ -155,7 +155,7 @@ def test_aligned_transfer_excludes_solid():
         ),
         fluid_weight_at_node=fluid_weight,
         interior_at_node=solid,
-        overlap_zone_ramp_width=0.3,
+        authority_ramp_width=0.3,
         overlap_zone_dead_zone=0.05,
         transfer_prune_threshold_abs=1.0e-12,
         lattice_anchor=np.array([-0.375, -0.375, -0.375]),
@@ -169,12 +169,12 @@ def test_aligned_transfer_excludes_solid():
 def test_transfer_reuses_native_ibm_solid_geometry():
     config = SimpleNamespace(
         vpm_particle_spacing=0.1,
-        overlap_zone_ramp_width=0.3,
-        overlap_zone_dead_zone_width=0.1,
+        authority_ramp_width=0.3,
+        vpm_only_width=0.1,
         vpm_core_radius_ratio=1.0,
         freestream_velocity=[1.0, 0.0, 0.0],
-        transfer_prune_vorticity_min=0.01,
-        transfer_region_box=None,
+        transfer_vorticity_cutoff=0.01,
+        transfer_region_bounds=None,
         transfer_amplification_cap=2.0,
         transfer_boundary_prune_multiplier=1.0,
         transfer_diagnostic_interval_steps=1,
@@ -208,12 +208,12 @@ def test_transfer_reuses_native_ibm_solid_geometry():
 def test_transfer_uses_separate_transfer_region_box():
     config = SimpleNamespace(
         vpm_particle_spacing=0.1,
-        overlap_zone_ramp_width=0.3,
-        overlap_zone_dead_zone_width=0.1,
+        authority_ramp_width=0.3,
+        vpm_only_width=0.1,
         vpm_core_radius_ratio=1.0,
         freestream_velocity=[1.0, 0.0, 0.0],
-        transfer_prune_vorticity_min=0.01,
-        transfer_region_box=(-0.7, 0.7, -0.7, 0.7, -0.7, 0.7),
+        transfer_vorticity_cutoff=0.01,
+        transfer_region_bounds=(-0.7, 0.7, -0.7, 0.7, -0.7, 0.7),
         transfer_amplification_cap=2.0,
         transfer_boundary_prune_multiplier=1.0,
         transfer_diagnostic_interval_steps=1,
@@ -235,7 +235,7 @@ def test_transfer_uses_separate_transfer_region_box():
 
     transfer.setup(fvm)
 
-    np.testing.assert_array_equal(transfer._box, config.transfer_region_box)
+    np.testing.assert_array_equal(transfer._box, config.transfer_region_bounds)
 
 
 def test_free_wake_is_retained():

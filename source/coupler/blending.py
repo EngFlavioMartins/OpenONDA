@@ -13,7 +13,7 @@ BLEND_STRENGTH = 4.0
 def build_lambda(
     cell_centres: np.ndarray,
     fvm_box: tuple[float, float, float, float, float, float],
-    overlap_zone_ramp_width: float,
+    authority_ramp_width: float,
     lambda_max: float,
     overlap_zone_dead_zone: float = 0.0,
 ) -> np.ndarray:
@@ -23,10 +23,10 @@ def build_lambda(
     hi = np.asarray(fvm_box)[[1, 3, 5]]
     distance = np.minimum(points - lo, hi - points).min(axis=1)
     overlap_zone_dead_zone = max(overlap_zone_dead_zone, 0.0)
-    width = max(overlap_zone_ramp_width - overlap_zone_dead_zone, 1.0e-30)
+    width = max(authority_ramp_width - overlap_zone_dead_zone, 1.0e-30)
     relaxation = np.zeros(len(points))
     relaxation[distance <= overlap_zone_dead_zone] = lambda_max
-    active = (distance > overlap_zone_dead_zone) & (distance < overlap_zone_ramp_width)
+    active = (distance > overlap_zone_dead_zone) & (distance < authority_ramp_width)
     phase = (distance[active] - overlap_zone_dead_zone) / width
     relaxation[active] = 0.5 * lambda_max * (1.0 + np.cos(np.pi * phase))
     return relaxation
@@ -34,12 +34,12 @@ def build_lambda(
 
 def lambda_max_from_scales(
     u_char: float,
-    overlap_zone_ramp_width: float,
+    authority_ramp_width: float,
     time_step_size: float,
 ) -> float:
     return float(
         min(
-            BLEND_STRENGTH * u_char / max(overlap_zone_ramp_width, 1.0e-12),
+            BLEND_STRENGTH * u_char / max(authority_ramp_width, 1.0e-12),
             1.0 / max(time_step_size, 1.0e-12),
         )
     )
@@ -53,13 +53,13 @@ class BlendingZone:
         self.cell_centres = np.asarray(fvm.get_cell_centre_coordinates()).reshape(-1, 3)
         u_char = float(np.linalg.norm(cfg.freestream_velocity_vector))
         lambda_max = lambda_max_from_scales(
-            u_char, cfg.overlap_zone_ramp_width, coupling_time_step_size
+            u_char, cfg.authority_ramp_width, coupling_time_step_size
         )
-        overlap_zone_dead_zone = float(cfg.overlap_zone_dead_zone_width)
+        overlap_zone_dead_zone = float(cfg.vpm_only_width)
         self.relaxation = build_lambda(
             self.cell_centres,
             fvm_box,
-            cfg.overlap_zone_ramp_width,
+            cfg.authority_ramp_width,
             lambda_max,
             overlap_zone_dead_zone,
         )

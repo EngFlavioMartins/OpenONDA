@@ -116,7 +116,7 @@ VARIANTS: dict[str, Variant] = {
     ),
     "B6_prune": replace(_BARE, prune=True, label="boundary particle pruning"),
     "B7_cap": replace(_BARE, cap=PROD_CAP, label="transfer amplification cap"),
-    # overlap_zone_ramp_width must be positive, so the blending zone is bracketed
+    # authority_ramp_width must be positive, so the blending zone is bracketed
     # rather than switched off: one FVM cell against production against double.
     "B8_thinbuf": replace(_BARE, buffer=0.0625, label="blending buffer 1 FVM cell"),
     "B8b_thickbuf": replace(_BARE, buffer=0.48, label="blending buffer doubled"),
@@ -380,12 +380,12 @@ def build_coupler(v: Variant):
 
     return CouplerSetup(
         freestream_velocity=list(FREESTREAM_VELOCITY),
-        transfer_region_box=TRANSFER_REGION_BOX,
-        vpm_bc_mode="dirichlet",
+        transfer_region_bounds=TRANSFER_REGION_BOX,
+        boundary_condition_mode="dirichlet",
         vpm_particle_spacing=v.particle_spacing,
-        overlap_zone_ramp_width=v.buffer,
-        overlap_zone_dead_zone_width=0.0,
-        transfer_prune_vorticity_min=PROD_PRUNE_MIN if v.prune else 0.0,
+        authority_ramp_width=v.buffer,
+        vpm_only_width=0.0,
+        transfer_vorticity_cutoff=PROD_PRUNE_MIN if v.prune else 0.0,
         transfer_boundary_prune_multiplier=PROD_PRUNE_MULT if v.prune else 1.0,
         transfer_max_particles=max(200_000, 8 * v.particles),
         vpm_core_radius_ratio=1.0,
