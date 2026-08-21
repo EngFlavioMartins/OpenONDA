@@ -198,6 +198,17 @@ class IBMForcing:
         # State from the last compute_force call (for force logging).
         self.last_F = np.zeros((ns, 3))
         self.last_slip = 0.0
+        self._solid_cell_masks = [
+            (
+                body.contains(centroids, include_boundary=False)
+                if body.has_solid_geometry
+                else np.zeros(n_cells, dtype=bool)
+            )
+            for body in self.bodies
+        ]
+        self._fictitious_fluid_momentum_rate = {
+            body.name: np.zeros(3, dtype=np.float64) for body in self.bodies
+        }
 
     # ------------------------------------------------------------------ #
     # Operators
@@ -262,21 +273,66 @@ class IBMForcing:
         u_marker = self.interpolate(velocity)
         return float(np.linalg.norm(self.U_target - u_marker, axis=1).max())
 
-    def body_forces(self, rho: float = 1.0) -> dict:
-        """Hydrodynamic force on each body from the last forcing evaluation.
+    def update_fictitious_fluid_momentum_rate(
+        self,
+        velocity: np.ndarray,
+        velocity_old: np.ndarray,
+        time_step_size: float,
+    ) -> None:
+        r"""Update the interior-fluid term used by the hydrodynamic force.
 
-        The force the fluid exerts on the body is minus the momentum injected
-        by the forcing: ``F_body = −ρ Σ_s F_s ε_s w_s`` (identical to
-        ``−ρ Σ_j f_j V_j``).  For 2D meshes this is the force on the full
-        extruded depth.
+        A volume-filled direct-forcing method accelerates numerical fluid on
+        both sides of the immersed surface.  The reaction to the forcing must
+        therefore be corrected by the momentum rate of the fictitious fluid
+        inside the solid:
+
+        ``F_body = -rho * integral(f_ibm dV) + rho * d/dt integral(Vb, U dV)``.
+
+        Bodies without exact solid geometry retain the uncorrected transfer
+        force because their interior is undefined.
+        """
+        if not np.isfinite(time_step_size) or time_step_size <= 0.0:
+            raise ValueError("IBM force correction requires a finite positive time step")
+        volumes = np.asarray(self.geo_data["cell_volumes"], dtype=np.float64)
+        delta_velocity = (
+            np.asarray(velocity)[: len(volumes)] - np.asarray(velocity_old)[: len(volumes)]
+        )
+        for body, mask in zip(self.bodies, self._solid_cell_masks, strict=True):
+            if np.any(mask):
+                self._fictitious_fluid_momentum_rate[body.name] = np.sum(
+                    delta_velocity[mask] * volumes[mask, np.newaxis], axis=0
+                ) / float(time_step_size)
+            else:
+                self._fictitious_fluid_momentum_rate[body.name].fill(0.0)
+
+    def forcing_reaction_forces(self, rho: float = 1.0) -> dict:
+        """Return the raw reaction to the distributed IBM forcing.
+
+        This quantity includes momentum spent accelerating the fictitious
+        fluid inside a volume-filled immersed body.  Use :meth:`body_forces`
+        for the corrected hydrodynamic load.
         """
         out = {}
         scale = self.eps * self._row_sums
         for body, sl in zip(self.bodies, self._body_slices, strict=True):
-            f = -rho * np.sum(self.last_F[sl] * scale[sl, np.newaxis], axis=0)
+            force = -rho * np.sum(self.last_F[sl] * scale[sl, np.newaxis], axis=0)
             if self.empty_axis is not None:
-                f = f * self._depth
-            out[body.name] = f
+                force = force * self._depth
+            out[body.name] = force
+        return out
+
+    def body_forces(self, rho: float = 1.0) -> dict:
+        """Hydrodynamic force on each body from the last forcing evaluation.
+
+        The force the fluid exerts on the body is minus the momentum injected
+        by the forcing plus the momentum rate of the fictitious fluid inside
+        the solid.  Before a solver time step is completed (or for marker-only
+        bodies without solid geometry), the latter is zero.  For 2D meshes
+        this is the force on the full extruded depth.
+        """
+        out = self.forcing_reaction_forces(rho=rho)
+        for body in self.bodies:
+            out[body.name] = out[body.name] + rho * self._fictitious_fluid_momentum_rate[body.name]
         return out
 
     # ------------------------------------------------------------------ #

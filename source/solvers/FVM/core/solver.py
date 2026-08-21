@@ -53,10 +53,10 @@ def _load_kinematic_pressure_field(
     """
     del case_dir, mesh_data
     if setup.initial_kinematic_pressure is None:
-        raise ValueError("initial_p must be provided in FVMSetup")
+        raise ValueError("initial_kinematic_pressure must be provided in FVMSetup")
     initial = np.asarray(setup.initial_kinematic_pressure, dtype=np.float64)
     if initial.ndim != 0 or not np.isfinite(initial):
-        raise ValueError("initial_p must be a finite scalar")
+        raise ValueError("initial_kinematic_pressure must be a finite scalar")
     return np.full(n_total, float(initial), dtype=np.float64)
 
 
@@ -344,7 +344,9 @@ class FVMSolver(CouplerInterfaceMixin):
                     "not yet implemented"
                 )
             if self.setup.initial_velocity is None or self.setup.initial_kinematic_pressure is None:
-                raise ValueError("initial_velocity and initial_p must be provided in FVMSetup")
+                raise ValueError(
+                    "initial_velocity and initial_kinematic_pressure must be provided in FVMSetup"
+                )
             quality = None
             preparation_error = None
             global_mesh = None
@@ -964,6 +966,14 @@ class FVMSolver(CouplerInterfaceMixin):
         self.state = FieldState(self.velocity, self.kinematic_pressure, self.face_flux)
         self._last_residuals = residuals
         self.logger.convergence_info(residuals)
+
+        ibm = getattr(self, "ibm", None)
+        if ibm is not None:
+            ibm.update_fictitious_fluid_momentum_rate(
+                self.velocity,
+                self.velocity_old,
+                step_time_step_size,
+            )
 
         # Continuity (incompressibility) diagnostic: a divergence-free solution
         # has ~0 net flux per cell.  Surfacing this makes loss of mass
