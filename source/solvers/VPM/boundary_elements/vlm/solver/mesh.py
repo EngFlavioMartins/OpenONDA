@@ -838,19 +838,19 @@ def _update_trailing_local_kernel(
         vortex_points[i, ti.i32(3)] = V3 + d_far * trailing_infty
 
 
-def update_trailing_edge_directions(lattice, V_inf: np.ndarray):
+def update_trailing_edge_directions(lattice, freestream_velocity: np.ndarray):
     """
     Update trailing edge direction vectors based on freestream.
 
     Args:
         lattice: VLMLattice object
-        V_inf: Freestream velocity vector (3,)
+        freestream_velocity: Freestream velocity vector (3,)
     """
-    V_inf_mag = np.linalg.norm(V_inf)
-    if V_inf_mag < VLM_SMALL_VELOCITY:
+    freestream_velocity_mag = np.linalg.norm(freestream_velocity)
+    if freestream_velocity_mag < VLM_SMALL_VELOCITY:
         return
 
-    trail_dir = V_inf / V_inf_mag
+    trail_dir = freestream_velocity / freestream_velocity_mag
 
     # Use Taichi kernel for performance
     _update_trailing_uniform_kernel(
@@ -865,8 +865,8 @@ def update_trailing_edge_directions(lattice, V_inf: np.ndarray):
     )
 
 
-def _prepare_trailing_temp(lattice, V_inf: np.ndarray):
-    """Allocate/reuse Taichi temp field and upload V_inf for trailing direction update."""
+def _prepare_trailing_temp(lattice, freestream_velocity: np.ndarray):
+    """Allocate/reuse Taichi temp field and upload freestream_velocity for trailing direction update."""
     if not hasattr(lattice, "_trailing_temp") or lattice._trailing_temp is None:
         lattice._trailing_temp = ti.Vector.field(
             3, dtype=lattice.external_velocity.dtype, shape=lattice.external_velocity.shape[0]
@@ -891,12 +891,14 @@ def _prepare_trailing_temp(lattice, V_inf: np.ndarray):
     ):
         lattice._trailing_temp_np = np.zeros((temp_field.shape[0], 3), dtype=dtype_np)
     V_full = lattice._trailing_temp_np
-    V_full[: lattice.num_panels] = V_inf
+    V_full[: lattice.num_panels] = freestream_velocity
     temp_field.from_numpy(V_full)
     return temp_field
 
 
-def update_trailing_directions_local(lattice, V_inf: np.ndarray, trailing_infty: float = 10000.0):
+def update_trailing_directions_local(
+    lattice, freestream_velocity: np.ndarray, trailing_infty: float = 10000.0
+):
     """
     Update trailing edge direction vectors based on local velocity field.
 
@@ -905,22 +907,22 @@ def update_trailing_directions_local(lattice, V_inf: np.ndarray, trailing_infty:
 
     Args:
         lattice: VLMLattice object
-        V_inf: Velocity field (N, 3) where N = num_panels,
+        freestream_velocity: Velocity field (N, 3) where N = num_panels,
                representing local transport velocity at each panel.
-               Typically V_external - V_kinematic.
+               Typically external_velocity - V_kinematic.
         trailing_infty: Distance to far trailing points
     """
     # Check input shape
-    is_field = V_inf.ndim == 2 and V_inf.shape[0] >= lattice.num_panels
-    is_vector = V_inf.ndim == 1 and V_inf.shape[0] == 3
+    is_field = freestream_velocity.ndim == 2 and freestream_velocity.shape[0] >= lattice.num_panels
+    is_vector = freestream_velocity.ndim == 1 and freestream_velocity.shape[0] == 3
 
     if is_vector:
         # Uniform velocity - use simpler kernel
-        V_inf_mag = np.linalg.norm(V_inf)
-        if V_inf_mag < VLM_SMALL_VELOCITY:
+        freestream_velocity_mag = np.linalg.norm(freestream_velocity)
+        if freestream_velocity_mag < VLM_SMALL_VELOCITY:
             trail_dir = np.array([1.0, 0.0, 0.0])
         else:
-            trail_dir = V_inf / V_inf_mag
+            trail_dir = freestream_velocity / freestream_velocity_mag
 
         _update_trailing_uniform_kernel(
             lattice.trailing_dirs,
@@ -933,7 +935,7 @@ def update_trailing_directions_local(lattice, V_inf: np.ndarray, trailing_infty:
             trailing_infty,
         )
     elif is_field:
-        temp_field = _prepare_trailing_temp(lattice, V_inf)
+        temp_field = _prepare_trailing_temp(lattice, freestream_velocity)
         _update_trailing_local_kernel(
             lattice.trailing_dirs,
             lattice.vortex_points,
@@ -944,7 +946,9 @@ def update_trailing_directions_local(lattice, V_inf: np.ndarray, trailing_infty:
             VLM_SMALL_VELOCITY,
         )
     else:
-        raise ValueError(f"V_inf must be (3,) vector or (N, 3) field, got shape {V_inf.shape}")
+        raise ValueError(
+            f"freestream_velocity must be (3,) vector or (N, 3) field, got shape {freestream_velocity.shape}"
+        )
 
 
 def _geometric_spacing_single_end(n: int, ratio: float, refine_start: bool) -> np.ndarray:

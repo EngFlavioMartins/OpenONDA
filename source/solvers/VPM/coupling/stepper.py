@@ -37,7 +37,7 @@ class CouplingStepper:
         new_particles = self.panel_solver.advance(
             particles=self.particles,
             physics=self.physics,
-            V_inf=self.freestream_velocity,
+            freestream_velocity=self.freestream_velocity,
             time_step_size=self.time_step_size,
             time=self.time,
             step=self.step,

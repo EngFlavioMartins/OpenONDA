@@ -658,8 +658,10 @@ class VLMLattice:
         # must NOT be used to estimate V∞ — use kinematic_velocity instead.
         kin_np = self.kinematic_velocity.to_numpy()[:N]
         kin_mag = np.linalg.norm(kin_np, axis=1)
-        V_inf_mag = float(np.median(kin_mag[kin_mag > 1e-8])) if kin_mag.max() > 1e-8 else 1.0
-        denom = V_inf_mag * panel_chord
+        freestream_velocity_mag = (
+            float(np.median(kin_mag[kin_mag > 1e-8])) if kin_mag.max() > 1e-8 else 1.0
+        )
+        denom = freestream_velocity_mag * panel_chord
         delta_cp = np.where(denom > 1e-15, 2.0 * gamma_np / denom, 0.0)
         dcp_vtk = numpy_support.numpy_to_vtk(delta_cp)
         dcp_vtk.SetName("DeltaCp")

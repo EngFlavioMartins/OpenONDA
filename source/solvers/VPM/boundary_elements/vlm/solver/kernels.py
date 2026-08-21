@@ -106,9 +106,9 @@ def update_geometry_rotating_kernel(
 
 @ti.func
 def compute_shedding_velocity(
-    X: ti.types.vector(3, float), V_inf: ti.types.vector(3, float)
+    X: ti.types.vector(3, float), freestream_velocity: ti.types.vector(3, float)
 ) -> ti.types.vector(3, float):
-    return V_inf
+    return freestream_velocity
 
 
 @ti.func
@@ -263,7 +263,7 @@ def shed_wake_particles_kernel(
     Convection modes:
     - Global (use_local_velocity=0): All particles use V_convection (forward flight)
     - Local  (use_local_velocity=1): Each TE panel uses a physically-derived
-      convection velocity = V_external - V_kinematic (flow velocity in the lab
+      convection velocity = external_velocity - V_kinematic (flow velocity in the lab
       frame at the trailing edge). This includes the VPM-induced downwash,
       preventing particles from being placed in the rotor disk plane.
       If external velocity is small (first few steps), a normal-direction

@@ -67,19 +67,23 @@ def _flat_plate_aircraft(uid="plate", n_chord=4, n_span=12, span=4.0, chord=0.5,
     return aircraft
 
 
-def _solve_static(vlm, u_ref):
+def _solve_static(vlm, reference_velocity):
     """One uncoupled steady solve + postprocess (computes panel forces)."""
     n_p = vlm.lattice.num_panels
-    v_ext = np.tile(np.asarray(u_ref, dtype=float), (n_p, 1))
-    vlm.solve(V_external=v_ext, time_step_size=None, coupled=False)
+    v_ext = np.tile(np.asarray(reference_velocity, dtype=float), (n_p, 1))
+    vlm.solve(external_velocity=v_ext, time_step_size=None, coupled=False)
     vlm.compute_postprocess(
-        v_ext, np.asarray(u_ref, dtype=float), DENSITY, time_step_size=None, coupled=False
+        v_ext,
+        np.asarray(reference_velocity, dtype=float),
+        DENSITY,
+        time_step_size=None,
+        coupled=False,
     )
 
 
-def _extract(vlm, name, u_ref):
+def _extract(vlm, name, reference_velocity):
     return VLMLoadingDistribution.extract_distributions(
-        vlm, name, np.asarray(u_ref, dtype=float), DENSITY
+        vlm, name, np.asarray(reference_velocity, dtype=float), DENSITY
     )
 
 
@@ -183,10 +187,10 @@ def test_rotated_surface_span_axis():
     )
     vlm.generate_mesh()
     a = np.deg2rad(ALPHA_DEG)
-    u_ref = np.array([np.cos(a), -np.sin(a), 0.0])
-    _solve_static(vlm, u_ref)
+    reference_velocity = np.array([np.cos(a), -np.sin(a), 0.0])
+    _solve_static(vlm, reference_velocity)
 
-    sp = _extract(vlm, "fin", u_ref)["spanwise"]
+    sp = _extract(vlm, "fin", reference_velocity)["spanwise"]
 
     assert len(sp) == 12
     # station width must be the true strip width, not the y-shadow (~0)
@@ -296,7 +300,7 @@ def test_standalone_far_wake_lies_in_wing_plane_tip_taper():
     coupled path is the validated reference, so they must agree at the tip.
     """
     a = math.radians(8.0)
-    u_ref = 10.0 * np.array([math.cos(a), 0.0, math.sin(a)])
+    reference_velocity = 10.0 * np.array([math.cos(a), 0.0, math.sin(a)])
 
     wing = Wing(uid="main_wing", symmetry=2)
     wing.add_segment(
@@ -327,7 +331,11 @@ def test_standalone_far_wake_lies_in_wing_plane_tip_taper():
         )
         vlm.generate_mesh()
         n_p = vlm.lattice.num_panels
-        vlm.solve(V_external=np.tile(u_ref, (n_p, 1)), time_step_size=0.0125, coupled=coupled)
+        vlm.solve(
+            external_velocity=np.tile(reference_velocity, (n_p, 1)),
+            time_step_size=0.0125,
+            coupled=coupled,
+        )
         get[coupled] = _outer_station_tip_to_root_ratio(vlm)
 
     _, coupled_lo = get[True]

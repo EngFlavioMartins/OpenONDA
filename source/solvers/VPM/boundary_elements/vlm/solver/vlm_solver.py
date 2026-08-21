@@ -134,7 +134,7 @@ class VLMSolver:
             f"dtype={self.dtype}, solver={self.linear_solver})"
         )
 
-    # V_inf removed: use freestream_velocity directly
+    # freestream_velocity removed: use freestream_velocity directly
 
     def _ensure_lattice_initialized(self) -> None:
         """Ensure lattice is created (lazy initialization after Taichi init).
@@ -610,7 +610,7 @@ class VLMSolver:
 
         Args:
            V_transport: Velocity vector/field for wake transport (N, 3) or (3,)
-                        Ideally this is V_external - V_skinematic at trailing edge.
+                        Ideally this is external_velocity - V_skinematic at trailing edge.
         """
         if not self._mesh_generated:
             self.generate_mesh()
@@ -837,7 +837,7 @@ class VLMSolver:
 
     def solve(
         self,
-        V_external: np.ndarray | None = None,
+        external_velocity: np.ndarray | None = None,
         time_step_size: float | None = None,
         save_old: bool = True,
         coupled: bool = False,
@@ -846,7 +846,7 @@ class VLMSolver:
         Solve VLM system for circulation.
 
         Args:
-            V_external: Total external velocity field at collocation points (N x 3).
+            external_velocity: Total external velocity field at collocation points (N x 3).
                        If None, assumes data is already in lattice.external_velocity (GPU-resident).
             time_step_size: Time step size (optional, used for wake shedding updates if needed)
             save_old: If True (default), saves current circulation to circulation_old
@@ -860,15 +860,15 @@ class VLMSolver:
         if not self._mesh_generated:
             self.generate_mesh()
         n_panels = self.lattice.num_panels
-        if V_external is not None:
-            if V_external.ndim == 1 and V_external.shape[0] == 3:
-                V_external = np.tile(V_external, (n_panels, 1))
-            if V_external.shape[0] != n_panels:
+        if external_velocity is not None:
+            if external_velocity.ndim == 1 and external_velocity.shape[0] == 3:
+                external_velocity = np.tile(external_velocity, (n_panels, 1))
+            if external_velocity.shape[0] != n_panels:
                 raise ValueError(
-                    f"V_external shape {V_external.shape} does not match panels {n_panels}"
+                    f"external_velocity shape {external_velocity.shape} does not match panels {n_panels}"
                 )
-            self.lattice.set_external_velocity(V_external)
-            V_ext_np = V_external
+            self.lattice.set_external_velocity(external_velocity)
+            V_ext_np = external_velocity
         else:
             V_ext_np = self.lattice.external_velocity.to_numpy()[:n_panels]
         if self.lattice.has_kinematic_velocity():
@@ -878,11 +878,11 @@ class VLMSolver:
         _t1 = time.time()
         self.update_trailing_directions(V_rel)
         _t2 = time.time()
-        # Near-wake offset: one convection length downstream (U_ref * dt).
+        # Near-wake offset: one convection length downstream (reference_velocity * dt).
         # Closes the gap between the TE and the first free wake particle so the
         # bound solve "sees" its own implicit near-wake panel (canonical UVLM-VPM).
         if coupled and time_step_size is not None:
-            _uref = getattr(self, "_last_U_ref", None)
+            _uref = getattr(self, "_last_reference_velocity", None)
             _wo = (_uref * time_step_size) if _uref is not None else np.zeros(3)
         else:
             _wo = np.zeros(3)
@@ -901,8 +901,8 @@ class VLMSolver:
             wake_offset=_wake_offset,
         )
         _t3 = time.time()
-        if V_external is not None:
-            self.lattice.set_external_velocity(V_external)
+        if external_velocity is not None:
+            self.lattice.set_external_velocity(external_velocity)
         compute_RHS_coupled(
             self.lattice.collocation,
             self.lattice.normals,
@@ -935,8 +935,8 @@ class VLMSolver:
 
     def compute_postprocess(
         self,
-        V_external_np: np.ndarray,
-        U_ref: np.ndarray,
+        external_velocity_np: np.ndarray,
+        reference_velocity: np.ndarray,
         density: float,
         time_step_size: float | None = None,
         coupled: bool = False,
@@ -945,18 +945,18 @@ class VLMSolver:
         Compute derived quantities (velocities, pressures, forces).
 
         Args:
-           V_external_np: External velocity (N, 3).
-           U_ref: Reference velocity vector [ux, uy, uz] (m/s).
+           external_velocity_np: External velocity (N, 3).
+           reference_velocity: Reference velocity vector [ux, uy, uz] (m/s).
            density: Fluid density
            time_step_size: Time step size
            coupled: Whether in coupled mode (bound only AIC)
         """
         # Ensure external velocity is set (idempotent if same array)
-        self.lattice.set_external_velocity(V_external_np)
+        self.lattice.set_external_velocity(external_velocity_np)
 
-        U_ref_mag = np.linalg.norm(U_ref)
-        if U_ref_mag < 1e-10:
-            U_ref_mag = 1.0
+        reference_velocity_mag = np.linalg.norm(reference_velocity)
+        if reference_velocity_mag < 1e-10:
+            reference_velocity_mag = 1.0
 
         # 0. Keep cumulative circulation current for wake diagnostics.
         self._compute_cumulative_circulation_cpu()
@@ -976,7 +976,7 @@ class VLMSolver:
             self.lattice.velocity,
             self.lattice.pressure_coefficient,
             self.lattice.num_panels,
-            float(U_ref_mag**2),
+            float(reference_velocity_mag**2),
         )
 
         # 3. Compute panel forces
@@ -1021,14 +1021,14 @@ class VLMSolver:
             self.lattice.forces,
             self.lattice.num_panels,
             density,
-            U_ref_mag,
+            reference_velocity_mag,
             smooth_kj,
         )
 
-    def _resolve_uref(self, U_ref: np.ndarray | None, n_panels: int) -> np.ndarray:
+    def _resolve_uref(self, reference_velocity: np.ndarray | None, n_panels: int) -> np.ndarray:
         """Return a valid reference velocity, auto-computed if not provided."""
-        if U_ref is not None:
-            return np.asarray(U_ref, dtype=float)
+        if reference_velocity is not None:
+            return np.asarray(reference_velocity, dtype=float)
         if (
             self.freestream_velocity is not None
             and np.linalg.norm(self.freestream_velocity) > 1e-10
@@ -1046,11 +1046,11 @@ class VLMSolver:
         return U_resolved
 
     def _decompose_wind_axes(
-        self, F_total: np.ndarray, U_ref_mag: float, U_ref: np.ndarray
+        self, F_total: np.ndarray, reference_velocity_mag: float, reference_velocity: np.ndarray
     ) -> tuple[float, float, float]:
         """Decompose total force into lift, drag, side-force in wind axes."""
-        if U_ref_mag > 1e-10:
-            V_hat = U_ref / U_ref_mag
+        if reference_velocity_mag > 1e-10:
+            V_hat = reference_velocity / reference_velocity_mag
             z_hat = np.array([0.0, 0.0, 1.0])
             L_hat = z_hat - np.dot(z_hat, V_hat) * V_hat
             L_hat_norm = np.linalg.norm(L_hat)
@@ -1098,7 +1098,7 @@ class VLMSolver:
         M_c4: tuple[float, float, float],
         r_ref: np.ndarray,
         density: float,
-        U_ref_mag: float,
+        reference_velocity_mag: float,
         S_ref: float | None,
         c_ref: float | None,
         b_ref: float | None,
@@ -1106,7 +1106,7 @@ class VLMSolver:
         """Build normalised coefficient dict from raw forces/moments."""
         Mx, My, Mz = M
         Mx_c4, My_c4, Mz_c4 = M_c4
-        q = 0.5 * density * U_ref_mag**2
+        q = 0.5 * density * reference_velocity_mag**2
         if S_ref is None:
             S_ref = float(self.aircraft.refs.get("area", 1.0))
         if b_ref is None:
@@ -1158,7 +1158,7 @@ class VLMSolver:
     def compute_forces(
         self,
         density: float,
-        U_ref: np.ndarray | None = None,
+        reference_velocity: np.ndarray | None = None,
         S_ref: float | None = None,
         c_ref: float | None = None,
         b_ref: float | None = None,
@@ -1167,11 +1167,11 @@ class VLMSolver:
         Compute integrated aerodynamic forces and moments.
 
         CL, CD, CC are normalized by the dynamic pressure and reference area:
-        CL = L / (0.5 * rho * S_ref * U_ref²)
+        CL = L / (0.5 * rho * S_ref * reference_velocity²)
 
         Args:
            density: Fluid density (kg/m³)
-           U_ref: Reference velocity vector [ux, uy, uz] (for coefficients and L/D axes).
+           reference_velocity: Reference velocity vector [ux, uy, uz] (for coefficients and L/D axes).
                   If None, auto-computed from freestream_velocity or kinematics.
            S_ref: Reference area (m²). If None, uses aircraft defaults.
            c_ref: Reference chord (m). If None, uses aircraft defaults.
@@ -1185,12 +1185,25 @@ class VLMSolver:
         forces_np = self.lattice.get_forces()
         F_total = np.sum(forces_np, axis=0)
         Fx, Fy, Fz = F_total
-        U_ref = self._resolve_uref(U_ref, self.lattice.num_panels)
-        U_ref_mag = np.linalg.norm(U_ref)
-        L, D, C = self._decompose_wind_axes(F_total, U_ref_mag, U_ref)
+        reference_velocity = self._resolve_uref(reference_velocity, self.lattice.num_panels)
+        reference_velocity_mag = np.linalg.norm(reference_velocity)
+        L, D, C = self._decompose_wind_axes(F_total, reference_velocity_mag, reference_velocity)
         M, M_c4, r_ref = self._compute_force_moments(forces_np, c_ref)
         return self._build_force_coefficients(
-            L, D, C, Fx, Fy, Fz, M, M_c4, r_ref, density, U_ref_mag, S_ref, c_ref, b_ref
+            L,
+            D,
+            C,
+            Fx,
+            Fy,
+            Fz,
+            M,
+            M_c4,
+            r_ref,
+            density,
+            reference_velocity_mag,
+            S_ref,
+            c_ref,
+            b_ref,
         )
 
     def compute_total_circulation(self) -> np.ndarray:
@@ -1258,7 +1271,7 @@ class VLMSolver:
     def compute_per_surface_forces(
         self,
         density: float,
-        U_ref: np.ndarray | None = None,
+        reference_velocity: np.ndarray | None = None,
         S_ref: float | None = None,
         c_ref: float | None = None,
         b_ref: float | None = None,
@@ -1267,11 +1280,11 @@ class VLMSolver:
         Compute forces for each individual surface.
 
         All coefficients are normalized by dynamic pressure and reference area:
-        CL = L / (0.5 * rho * S_ref * U_ref²)
+        CL = L / (0.5 * rho * S_ref * reference_velocity²)
 
         Args:
             density: Fluid density (kg/m³)
-            U_ref: Reference velocity vector [ux, uy, uz]
+            reference_velocity: Reference velocity vector [ux, uy, uz]
             S_ref: Reference area (m²). If None, uses aircraft defaults.
             c_ref: Reference chord (m). If None, uses aircraft defaults.
             b_ref: Reference span (m). If None, uses aircraft defaults.
@@ -1282,12 +1295,16 @@ class VLMSolver:
         if not self._solved:
             return {}
         forces_np = self.lattice.get_forces()
-        U_ref = self._resolve_uref(U_ref, self.lattice.num_panels)
-        U_ref_mag = np.linalg.norm(U_ref)
+        reference_velocity = self._resolve_uref(reference_velocity, self.lattice.num_panels)
+        reference_velocity_mag = np.linalg.norm(reference_velocity)
         wing_panel_ranges = self._build_wing_panel_ranges()
-        q = 0.5 * density * U_ref_mag**2
+        q = 0.5 * density * reference_velocity_mag**2
         norm_f = q * S_ref if S_ref is not None else q * float(self.aircraft.refs.get("area", 1.0))
-        V_hat = U_ref / U_ref_mag if U_ref_mag > 1e-10 else np.array([1.0, 0.0, 0.0])
+        V_hat = (
+            reference_velocity / reference_velocity_mag
+            if reference_velocity_mag > 1e-10
+            else np.array([1.0, 0.0, 0.0])
+        )
         return {
             name: self._compute_one_surface_forces(
                 name, forces_np, wing_panel_ranges, V_hat, norm_f
@@ -1383,7 +1400,9 @@ class VLMSolver:
 
         return n_hits
 
-    def log_forces_table(self, density: float, U_ref: np.ndarray | None = None) -> dict[str, float]:
+    def log_forces_table(
+        self, density: float, reference_velocity: np.ndarray | None = None
+    ) -> dict[str, float]:
         """
         Log VLM forces in a formatted table matching VPM diagnostics style.
 
@@ -1391,7 +1410,7 @@ class VLMSolver:
 
         Args:
             density: Fluid density (kg/m^3)
-            U_ref: Reference velocity vector
+            reference_velocity: Reference velocity vector
         """
         print("\n" + "-" * 60)
         print("VLM AERODYNAMIC FORCES")
@@ -1403,10 +1422,10 @@ class VLMSolver:
         print()
 
         # Get total forces
-        total_forces = self.compute_forces(density, U_ref)
+        total_forces = self.compute_forces(density, reference_velocity)
 
         # Get per-surface forces
-        surface_forces = self.compute_per_surface_forces(density, U_ref)
+        surface_forces = self.compute_per_surface_forces(density, reference_velocity)
 
         if len(surface_forces) > 1:
             # Print table header for per-surface
@@ -1473,9 +1492,9 @@ class VLMSolver:
     def advance(
         self,
         time_step_size: float,
-        V_external: np.ndarray,
+        external_velocity: np.ndarray,
         density: float = 1.0,
-        U_ref: np.ndarray | None = None,
+        reference_velocity: np.ndarray | None = None,
         logging_interval_steps: int | None = None,
         step: int = 0,
         time: float | None = None,
@@ -1485,9 +1504,9 @@ class VLMSolver:
 
         Args:
             time_step_size: Time step size (s)
-            V_external: Total external velocity field at collocation points (N, 3)
+            external_velocity: Total external velocity field at collocation points (N, 3)
             density: Fluid density
-            U_ref: Reference velocity vector (defaults to auto-computed)
+            reference_velocity: Reference velocity vector (defaults to auto-computed)
             logging_frequency: Print forces every N steps (None=use solver default)
             step: Current time step number
             time: Current simulation time (s) - prevents drift if provided
@@ -1503,24 +1522,26 @@ class VLMSolver:
         self.advance_time(time_step_size, current_time=time)
 
         # 2. Solve VLM system
-        self.solve(V_external, time_step_size)
+        self.solve(external_velocity, time_step_size)
 
         # Determine reference values if not provided
-        if U_ref is None:
+        if reference_velocity is None:
             V_kinematic = self._get_active_kinematic_velocity()
-            V_bg = np.mean(V_external, axis=0) if len(V_external) > 0 else np.zeros(3)
-            U_ref = V_bg - V_kinematic
-            if np.linalg.norm(U_ref) < 1e-10:
-                U_ref = np.array([1.0, 0.0, 0.0])
+            V_bg = np.mean(external_velocity, axis=0) if len(external_velocity) > 0 else np.zeros(3)
+            reference_velocity = V_bg - V_kinematic
+            if np.linalg.norm(reference_velocity) < 1e-10:
+                reference_velocity = np.array([1.0, 0.0, 0.0])
 
-        np.linalg.norm(U_ref)
+        np.linalg.norm(reference_velocity)
 
         # Compute postprocess (velocities, forces) to enable logging
-        self.compute_postprocess(V_external, U_ref, density, time_step_size=time_step_size)
+        self.compute_postprocess(
+            external_velocity, reference_velocity, density, time_step_size=time_step_size
+        )
 
         # Automatically compute and cache forces
-        self._last_forces = self.compute_forces(density, U_ref)
-        self._last_U_ref = U_ref
+        self._last_forces = self.compute_forces(density, reference_velocity)
+        self._last_reference_velocity = reference_velocity
 
         # 3. Log forces if requested
         log_freq = (
@@ -1530,11 +1551,11 @@ class VLMSolver:
         )
         if log_freq > 0 and step % log_freq == 0:
             try:
-                self.log_forces_table(density, U_ref)
+                self.log_forces_table(density, reference_velocity)
             except Exception as e:
                 print(f"   (Warning) Could not compute VLM forces: {e}")
 
-        return self._compute_wake_particles(time_step_size, U_ref)
+        return self._compute_wake_particles(time_step_size, reference_velocity)
 
     def _compute_kinematic_offset(self, time_step_size: float) -> np.ndarray:
         """Compute kinematic position offset for wake particles."""
@@ -1548,7 +1569,7 @@ class VLMSolver:
         self,
         V_mag,
         time_step_size,
-        V_inf,
+        freestream_velocity,
         V_particle_vel,
         pos_offset,
         all_positions,
@@ -1584,7 +1605,7 @@ class VLMSolver:
 
         return add_particles_bulk
 
-    def _get_te_geometry(self, te_indices, corners, trailing_dirs, U_ref: np.ndarray):
+    def _get_te_geometry(self, te_indices, corners, trailing_dirs, reference_velocity: np.ndarray):
         """Extract and process trailing edge geometry."""
         Ap = corners[te_indices, 3]  # Left TE
         Bp = corners[te_indices, 2]  # Right TE
@@ -1592,8 +1613,8 @@ class VLMSolver:
         infDA = trailing_dirs[te_indices, 0]
         infDB = trailing_dirs[te_indices, 1]
 
-        V_mag = np.linalg.norm(U_ref)
-        V_dir = U_ref / V_mag if V_mag > 1e-10 else np.array([1.0, 0.0, 0.0])
+        V_mag = np.linalg.norm(reference_velocity)
+        V_dir = reference_velocity / V_mag if V_mag > 1e-10 else np.array([1.0, 0.0, 0.0])
 
         # Normalize directions with safe division
         normA = np.linalg.norm(infDA, axis=1, keepdims=True)
@@ -1690,7 +1711,7 @@ class VLMSolver:
         gamma,
         corners,
         trailing_dirs,
-        U_ref: np.ndarray,
+        reference_velocity: np.ndarray,
         add_particles,
         nc,
         ns,
@@ -1708,7 +1729,7 @@ class VLMSolver:
 
         # Extract geometry
         Ap, Bp, infDA, infDB, span_len = self._get_te_geometry(
-            te_indices, corners, trailing_dirs, U_ref
+            te_indices, corners, trailing_dirs, reference_velocity
         )
 
         # Compute circulation
@@ -1722,7 +1743,7 @@ class VLMSolver:
     def _compute_wake_particles(
         self,
         time_step_size: float,
-        U_ref: np.ndarray,
+        reference_velocity: np.ndarray,
         V_particle_vel: np.ndarray = None,
         reset_buffer: bool = True,
     ) -> dict[str, np.ndarray] | None:
@@ -1738,7 +1759,7 @@ class VLMSolver:
 
         Args:
             time_step_size: Time step size (s)
-            U_ref: Reference velocity vector (m/s)
+            reference_velocity: Reference velocity vector (m/s)
             V_particle_vel: Global initial convection velocity (m/s)
             reset_buffer: If True (default), resets the wake buffer count to zero
                          before shedding. Set to False if LEV particles were
@@ -1749,10 +1770,10 @@ class VLMSolver:
         if n_panels == 0:
             return None
 
-        V_mag = np.linalg.norm(U_ref)
-        V_dir = U_ref / V_mag if V_mag > 1e-10 else np.array([1.0, 0.0, 0.0])
+        V_mag = np.linalg.norm(reference_velocity)
+        V_dir = reference_velocity / V_mag if V_mag > 1e-10 else np.array([1.0, 0.0, 0.0])
 
-        # In hover mode (no freestream), U_ref_mag comes from tip speed.
+        # In hover mode (no freestream), reference_velocity_mag comes from tip speed.
         # The shedding kernel needs it for sigma/l_te sizing.
         # Use per-panel kinematic velocity magnitude instead of a single global value.
         if V_mag < 1e-10:
@@ -1780,7 +1801,7 @@ class VLMSolver:
 
         if use_local_convection:
             # Per-panel convection: pass external_velocity and normals so the kernel
-            # can compute V_conv = V_external - V_kinematic (includes downwash)
+            # can compute V_conv = external_velocity - V_kinematic (includes downwash)
             V_conv_ref = V_dir * V_mag
             shed_wake_particles_kernel(
                 self.lattice.num_panels,
@@ -2059,7 +2080,7 @@ class VLMSolver:
         Operation ordering — shed AFTER solve:
 
           1. Advance kinematics (move geometry)
-          2. Compute U_ref for shedding / normalization
+          2. Compute reference_velocity for shedding / normalization
           3. Compute VPM-induced velocity at collocation
              (includes particles from previous steps, advected downstream)
           4. Solve VLM (coupled AIC — bound horseshoe + near-wake panel)
@@ -2087,8 +2108,8 @@ class VLMSolver:
         # --------------------------------------------------------------
         # 2. Determine reference / convection velocities early
         # --------------------------------------------------------------
-        U_ref = self._resolve_coupling_uref(config)
-        self._last_U_ref = U_ref
+        reference_velocity = self._resolve_coupling_uref(config)
+        self._last_reference_velocity = reference_velocity
         include_fs = self._determine_include_freestream(config)
 
         # Convection velocity for particle initial velocity (use previous
@@ -2114,14 +2135,14 @@ class VLMSolver:
         # --------------------------------------------------------------
         # 4. Solve VLM system (coupled AIC — bound horseshoe + near-wake)
         # --------------------------------------------------------------
-        self.solve(V_external=None, time_step_size=time_step_size, coupled=True)
+        self.solve(external_velocity=None, time_step_size=time_step_size, coupled=True)
 
         # --------------------------------------------------------------
         # 5. Shed the TE near-wake row from the clean post-solve cumulative Γ.
         # --------------------------------------------------------------
         self.lattice.reset_wake_buffer()
         result = self._compute_wake_particles(
-            time_step_size, U_ref, V_particle_vel=V_shed, reset_buffer=False
+            time_step_size, reference_velocity, V_particle_vel=V_shed, reset_buffer=False
         )
 
         # --------------------------------------------------------------
@@ -2129,9 +2150,9 @@ class VLMSolver:
         # --------------------------------------------------------------
         V_ext_np = self.lattice.external_velocity.to_numpy()[:n_panels]
         self.compute_postprocess(
-            V_ext_np, U_ref, self.density, time_step_size=time_step_size, coupled=True
+            V_ext_np, reference_velocity, self.density, time_step_size=time_step_size, coupled=True
         )
-        self._last_forces = self.compute_forces(self.density, self._last_U_ref)
+        self._last_forces = self.compute_forces(self.density, self._last_reference_velocity)
 
         # --------------------------------------------------------------
         # 7. Transfer the shed wake particles to the free VPM wake.

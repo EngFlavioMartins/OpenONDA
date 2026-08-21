@@ -52,7 +52,7 @@ class ForceConfig:
     **1. Bernoulli (default):**
        Integrates surface pressure from the unsteady Bernoulli equation:
 
-           Cp = 1 - (V_surface / V_inf)² - (2 / V_inf²) ∂φ/∂t
+           Cp = 1 - (V_surface / freestream_velocity)² - (2 / freestream_velocity²) ∂φ/∂t
 
        Pros:
        - Accurate for inviscid, irrotational flow
@@ -126,7 +126,7 @@ class PanelSolver:
         self._current_time = 0.0
         self._solved = False
         self._last_forces: dict[str, float] = {}
-        self._last_U_ref: np.ndarray | None = None
+        self._last_reference_velocity: np.ndarray | None = None
 
         # Lazy initialization state
         self.lattice: PanelLattice | None = None
@@ -304,15 +304,15 @@ class PanelSolver:
         self._zero_wake.fill(0.0)
         return self._zero_wake
 
-    def solve(self, V_inf: np.ndarray, V_wake_field: Any, time: float) -> None:
+    def solve(self, freestream_velocity: np.ndarray, wake_velocity: Any, time: float) -> None:
         self._ensure_initialized()
         n = self.lattice.num_panels
         self.initialize()
 
-        if V_wake_field is None:
-            V_wake_field = self._resolve_wake_field()
+        if wake_velocity is None:
+            wake_velocity = self._resolve_wake_field()
 
-        ti_v_inf = ti.Vector(V_inf.tolist())
+        ti_v_inf = ti.Vector(freestream_velocity.tolist())
 
         if self.bc_type == "DIRICHLET":
             compute_RHS_dirichlet_with_sources(
@@ -320,7 +320,7 @@ class PanelSolver:
                 self.lattice.centers,
                 self.lattice.normals,
                 ti_v_inf,
-                V_wake_field,
+                wake_velocity,
                 self.rhs,
                 n,
             )
@@ -329,7 +329,7 @@ class PanelSolver:
                 self.lattice.centers,
                 self.lattice.normals,
                 ti_v_inf,
-                V_wake_field,
+                wake_velocity,
                 self.rhs,
                 n,
             )
@@ -383,25 +383,27 @@ class PanelSolver:
             self.lattice, body_range, rotation_matrix, angular_velocity, rotation_center
         )
 
-    def _update_surface_velocities(self, V_inf: np.ndarray, V_wake_field: Any = None) -> None:
+    def _update_surface_velocities(
+        self, freestream_velocity: np.ndarray, wake_velocity: Any = None
+    ) -> None:
         """Fill ``self.V_surface`` from the source-doublet representation.
 
         Single evaluation point for both force and post-processing paths, so the
         two cannot disagree.  Under DIRICHLET the source strengths are the known
-        ``-n·V_inf`` that cancels the freestream normal component; under NEUMANN
+        ``-n·freestream_velocity`` that cancels the freestream normal component; under NEUMANN
         they are the solved unknowns and the doublet field is unused.
         """
         n = self.lattice.num_panels
         if n == 0:
             return
-        if V_wake_field is None:
-            V_wake_field = self._resolve_wake_field()
+        if wake_velocity is None:
+            wake_velocity = self._resolve_wake_field()
 
         if self.bc_type == "DIRICHLET":
             normals_np = self.lattice.normals.to_numpy()[:n]
             ti_dtype = np.float32 if self.float_dtype == "f32" else np.float64
             source_full = np.zeros(self.lattice.max_panels, dtype=ti_dtype)
-            source_full[:n] = (-np.dot(normals_np, V_inf)).astype(ti_dtype)
+            source_full[:n] = (-np.dot(normals_np, freestream_velocity)).astype(ti_dtype)
             self.lattice.source_strengths.from_numpy(source_full)
 
         compute_surface_velocities_with_sources(
@@ -410,14 +412,14 @@ class PanelSolver:
             self.lattice.normals,
             self.lattice.strengths,
             self.lattice.source_strengths,
-            ti.Vector(np.asarray(V_inf, dtype=float).tolist()),
-            V_wake_field,
+            ti.Vector(np.asarray(freestream_velocity, dtype=float).tolist()),
+            wake_velocity,
             self.V_surface,
             n,
         )
 
     def compute_forces(
-        self, V_inf: np.ndarray, V_wake_field: Any, time_step_size: float, rho: float
+        self, freestream_velocity: np.ndarray, wake_velocity: Any, time_step_size: float, rho: float
     ) -> dict[int, np.ndarray]:
         """
         Compute integrated force vector per body group using Bernoulli or Impulse.
@@ -426,18 +428,18 @@ class PanelSolver:
         if n == 0:
             return {}
 
-        v_inf_mag = np.linalg.norm(V_inf)
+        v_inf_mag = np.linalg.norm(freestream_velocity)
         if v_inf_mag < 1e-10:
             v_inf_mag = 1.0
 
-        if V_wake_field is None:
-            V_wake_field = self._resolve_wake_field()
+        if wake_velocity is None:
+            wake_velocity = self._resolve_wake_field()
 
         # Surface velocity comes from the shared source-doublet evaluation.  The
         # doublet-only kernel used here previously omitted the source panels
         # entirely, which under NEUMANN — where the solve fills source_strengths
         # and leaves strengths at zero — dropped the whole body contribution.
-        self._update_surface_velocities(V_inf, V_wake_field)
+        self._update_surface_velocities(freestream_velocity, wake_velocity)
 
         if self.force_config.method == "BERNOULLI":
             compute_pressure_bernoulli(self.V_surface, float(v_inf_mag), self.lattice.Cp, n)
@@ -482,9 +484,9 @@ class PanelSolver:
         return total_forces
 
     def compute_loads(
-        self, V_inf: np.ndarray, V_wake_field: Any, time_step_size: float, rho: float
+        self, freestream_velocity: np.ndarray, wake_velocity: Any, time_step_size: float, rho: float
     ) -> dict[int, np.ndarray]:
-        return self.compute_forces(V_inf, V_wake_field, time_step_size, rho)
+        return self.compute_forces(freestream_velocity, wake_velocity, time_step_size, rho)
 
     def compute_induced_velocity(self, points: np.ndarray) -> np.ndarray:
         self._ensure_initialized()
@@ -542,48 +544,47 @@ class PanelSolver:
 
     def advance(
         self,
-        V_inf: np.ndarray | None = None,
-        V_wake_field: Any = None,
-        t: float | None = None,
-        time_step_size: float | None = None,
         particles: Any = None,
         physics: Any = None,
         config: Any = None,
+        freestream_velocity: np.ndarray | None = None,
+        wake_velocity: Any = None,
+        time_step_size: float | None = None,
         time: float | None = None,
         step: int | None = None,
         logging_interval_steps: int | None = None,
-        density: float | None = None,
-        **kwargs,
     ) -> dict[str, np.ndarray] | None:
         """
         Advance panel simulation by one time step.
 
-        Supports two calling conventions:
+        Args:
+            particles: Live VPM particle container (coupled mode).
+            physics: VPM physics/evaluation backend used for induced velocity.
+            config: VPM setup providing the freestream velocity when not given.
+            freestream_velocity: Freestream velocity vector; defaults to the
+                configured solver value.
+            wake_velocity: Prescribed wake-induced velocity (standalone mode).
+            time_step_size: Time step size for this advance.
+            time: Current physical time.
+            step: Current step index.
+            logging_interval_steps: Steps between force log reports.
 
-        1. Legacy (positional): advance(V_inf, V_wake_field, t, dt)
-        2. VPM-coupled (keyword): advance(particles=..., physics=..., V_inf=..., dt=..., time=..., ...)
-
-        Returns newly shed wake particles to be added to VPM system.
+        Returns newly shed wake particles to be added to the VPM system.
         """
-        # Resolve arguments from either calling convention
-        if V_inf is None and config is not None:
-            V_inf = np.array(getattr(config, "freestream_velocity", [1.0, 0.0, 0.0]))
-        if V_inf is None:
-            V_inf = (
+        if freestream_velocity is None and config is not None:
+            freestream_velocity = np.array(getattr(config, "freestream_velocity", [1.0, 0.0, 0.0]))
+        if freestream_velocity is None:
+            freestream_velocity = (
                 self.freestream_velocity
                 if self.freestream_velocity is not None
                 else np.array([1.0, 0.0, 0.0])
             )
         if time_step_size is None:
             time_step_size = 0.01
-        if t is None and time is not None:
-            t = time
-        if t is None:
-            t = self._current_time
+        if time is None:
+            time = self._current_time
         if step is not None:
             self.step = step
-        if density is not None:
-            self.density = density
         if logging_interval_steps is not None:
             self.logging_interval_steps = logging_interval_steps
 
@@ -599,11 +600,14 @@ class PanelSolver:
                 kinematics = getattr(body, "motion", None)
             if kinematics is not None:
                 kinematics.update(
-                    self, t, time_step_size, (body.start_idx, body.start_idx + body.count)
+                    self,
+                    time,
+                    time_step_size,
+                    (body.start_idx, body.start_idx + body.count),
                 )
 
         # 3. Compute VPM-induced velocity at collocation points (if coupled)
-        V_wake = V_wake_field
+        wake_velocity = wake_velocity
         if particles is not None and physics is not None:
             # NumPy targets follow PhysicsBase's configured TREECODE route.
             # Passing the Taichi field directly bypassed that branch and launched
@@ -618,10 +622,10 @@ class PanelSolver:
             lattice_velocity = self.lattice.velocities.to_numpy()
             lattice_velocity[:n_panels] = np.asarray(induced, dtype=lattice_velocity.dtype)
             self.lattice.velocities.from_numpy(lattice_velocity)
-            V_wake = self.lattice.velocities
+            wake_velocity = self.lattice.velocities
 
         # 4. Solve potential flow
-        self.solve(V_inf, V_wake, t)
+        self.solve(freestream_velocity, wake_velocity, time)
 
         # cubeFlow's vpm_bc-only panel supplies the irrotational boundary
         # correction, while the FVM owns force/Cp reporting.  Avoid a second
@@ -629,24 +633,24 @@ class PanelSolver:
         # particle dynamics or post-processing.
         if self.coupling_scope != "vpm_bc":
             self.compute_postprocess(
-                V_inf,
-                V_inf,
+                freestream_velocity,
+                freestream_velocity,
                 self.density,
                 time_step_size=time_step_size,
                 coupled=(particles is not None),
             )
-            self.compute_loads(V_inf, V_wake, time_step_size, self.density)
+            self.compute_loads(freestream_velocity, wake_velocity, time_step_size, self.density)
             log_freq = self.logging_interval_steps
             if log_freq > 0 and self.step % log_freq == 0:
                 try:
-                    self.log_forces_table(self.density, V_inf)
+                    self.log_forces_table(self.density, freestream_velocity)
                 except Exception as e:
                     print(f"   (Warning) Could not compute panel forces: {e}")
 
-        self.results["times"].append(float(t))
-        self._current_time = float(t)
-        self._last_V_inf = V_inf
-        self._last_V_wake = V_wake
+        self.results["times"].append(float(time))
+        self._current_time = float(time)
+        self._last_freestream_velocity = freestream_velocity
+        self._last_wake_velocity = wake_velocity
 
         self.step += 1
         return None
@@ -656,8 +660,12 @@ class PanelSolver:
         self.ensure_mesh_generated()
         self._current_time = float(current_time)
 
-        V_inf = self._last_V_inf if hasattr(self, "_last_V_inf") else np.array([1.0, 0.0, 0.0])
-        V_wake = self._last_V_wake if hasattr(self, "_last_V_wake") else None
+        freestream_velocity = (
+            self._last_freestream_velocity
+            if hasattr(self, "_last_freestream_velocity")
+            else np.array([1.0, 0.0, 0.0])
+        )
+        wake_velocity = self._last_wake_velocity if hasattr(self, "_last_V_wake") else None
 
         self.lattice.save_old_strengths()
         for body in self.lattice.bodies:
@@ -669,7 +677,7 @@ class PanelSolver:
                     time_step_size,
                     (body.start_idx, body.start_idx + body.count),
                 )
-        self.solve(V_inf, V_wake, current_time)
+        self.solve(freestream_velocity, wake_velocity, current_time)
 
     def compute_induced_velocity_direct(self, particles) -> None:
         """
@@ -829,8 +837,8 @@ class PanelSolver:
 
     def compute_postprocess(
         self,
-        V_external_np: np.ndarray,
-        U_ref: np.ndarray,
+        external_velocity_np: np.ndarray,
+        reference_velocity: np.ndarray,
         density: float,
         time_step_size: float | None = None,
         coupled: bool = False,
@@ -839,8 +847,8 @@ class PanelSolver:
         Compute derived quantities (velocities, pressures, forces) after solve.
 
         Args:
-            V_external_np: External velocity (N, 3) or (3,)
-            U_ref: Reference velocity vector [ux, uy, uz] (m/s)
+            external_velocity_np: External velocity (N, 3) or (3,)
+            reference_velocity: Reference velocity vector [ux, uy, uz] (m/s)
             density: Fluid density
             time_step_size: Time step size
             coupled: Whether in coupled mode (unused for panel method)
@@ -849,25 +857,27 @@ class PanelSolver:
             return
 
         n = self.lattice.num_panels
-        U_ref_mag = np.linalg.norm(U_ref)
-        if U_ref_mag < 1e-10:
-            U_ref_mag = 1.0
+        reference_velocity_mag = np.linalg.norm(reference_velocity)
+        if reference_velocity_mag < 1e-10:
+            reference_velocity_mag = 1.0
 
-        # Resolve V_inf
-        if V_external_np.ndim == 1 and V_external_np.shape[0] == 3:
-            V_inf = V_external_np
+        # Resolve freestream_velocity
+        if external_velocity_np.ndim == 1 and external_velocity_np.shape[0] == 3:
+            freestream_velocity = external_velocity_np
         else:
-            V_inf = np.mean(V_external_np, axis=0)
+            freestream_velocity = np.mean(external_velocity_np, axis=0)
 
-        self._update_surface_velocities(V_inf)
+        self._update_surface_velocities(freestream_velocity)
 
         # Compute pressure coefficients
-        compute_pressure_bernoulli(self.V_surface, float(U_ref_mag), self.lattice.Cp, n)
+        compute_pressure_bernoulli(
+            self.V_surface, float(reference_velocity_mag), self.lattice.Cp, n
+        )
 
         # Compute forces
         compute_forces_bernoulli(
             self.V_surface,
-            float(U_ref_mag),
+            float(reference_velocity_mag),
             self.lattice.areas,
             self.lattice.normals,
             density,
@@ -878,7 +888,7 @@ class PanelSolver:
     def compute_forces_coefficients(
         self,
         density: float,
-        U_ref: np.ndarray | None = None,
+        reference_velocity: np.ndarray | None = None,
         S_ref: float | None = None,
         c_ref: float | None = None,
         b_ref: float | None = None,
@@ -891,7 +901,7 @@ class PanelSolver:
 
         Args:
             density: Fluid density (kg/m³)
-            U_ref: Reference velocity vector [ux, uy, uz] (for coefficients and L/D axes).
+            reference_velocity: Reference velocity vector [ux, uy, uz] (for coefficients and L/D axes).
                    If None, uses self.freestream_velocity or auto-computed.
             S_ref: Reference area (m²). If None, uses sum of panel areas.
             c_ref: Reference chord (m). If None, uses sqrt(S_ref).
@@ -907,15 +917,15 @@ class PanelSolver:
             raise RuntimeError("Must solve system before computing forces")
 
         # Resolve reference values
-        if U_ref is None:
-            U_ref = (
+        if reference_velocity is None:
+            reference_velocity = (
                 self.freestream_velocity
                 if self.freestream_velocity is not None
                 else np.array([1.0, 0.0, 0.0])
             )
-        U_ref_mag = np.linalg.norm(U_ref)
-        if U_ref_mag < 1e-10:
-            U_ref_mag = 1.0
+        reference_velocity_mag = np.linalg.norm(reference_velocity)
+        if reference_velocity_mag < 1e-10:
+            reference_velocity_mag = 1.0
 
         n = self.lattice.num_panels
         forces_np = self.panel_forces.to_numpy()[:n]
@@ -923,7 +933,7 @@ class PanelSolver:
         Fx, Fy, Fz = F_total
 
         # Decompose into lift, drag, side-force
-        V_hat = U_ref / U_ref_mag
+        V_hat = reference_velocity / reference_velocity_mag
         z_hat = np.array([0.0, 0.0, 1.0])
         L_hat = z_hat - np.dot(z_hat, V_hat) * V_hat
         L_hat_norm = np.linalg.norm(L_hat)
@@ -950,7 +960,7 @@ class PanelSolver:
             b_ref = float(np.sqrt(S_ref))
 
         # Non-dimensionalize
-        q = 0.5 * density * U_ref_mag**2
+        q = 0.5 * density * reference_velocity_mag**2
         norm_f = q * S_ref
         norm_m = q * S_ref * c_ref
         norm_l = q * S_ref * b_ref
@@ -996,10 +1006,12 @@ class PanelSolver:
         }
 
         self._last_forces = result
-        self._last_U_ref = U_ref
+        self._last_reference_velocity = reference_velocity
         return result
 
-    def log_forces_table(self, density: float, U_ref: np.ndarray | None = None) -> dict[str, float]:
+    def log_forces_table(
+        self, density: float, reference_velocity: np.ndarray | None = None
+    ) -> dict[str, float]:
         """
         Log panel forces in a formatted table matching VLM diagnostics style.
 
@@ -1007,7 +1019,7 @@ class PanelSolver:
 
         Args:
             density: Fluid density (kg/m^3)
-            U_ref: Reference velocity vector
+            reference_velocity: Reference velocity vector
 
         Returns:
             Dictionary of force coefficients
@@ -1023,7 +1035,7 @@ class PanelSolver:
         print()
 
         # Get total forces
-        total_forces = self.compute_forces_coefficients(density, U_ref)
+        total_forces = self.compute_forces_coefficients(density, reference_velocity)
 
         # Print totals
         L = total_forces.get("L", 0.0)
@@ -1060,7 +1072,7 @@ class PanelSolver:
     def compute_per_surface_forces(
         self,
         density: float,
-        U_ref: np.ndarray | None = None,
+        reference_velocity: np.ndarray | None = None,
         S_ref: float | None = None,
         c_ref: float | None = None,
         b_ref: float | None = None,
@@ -1070,7 +1082,7 @@ class PanelSolver:
 
         Args:
             density: Fluid density (kg/m³)
-            U_ref: Reference velocity vector [ux, uy, uz]
+            reference_velocity: Reference velocity vector [ux, uy, uz]
             S_ref: Reference area (m²). If None, uses sum of panel areas.
             c_ref: Reference chord (m). If None, uses sqrt(S_ref).
             b_ref: Reference span (m). If None, uses sqrt(S_ref).
@@ -1085,15 +1097,15 @@ class PanelSolver:
             return {}
 
         # Resolve reference values
-        if U_ref is None:
-            U_ref = (
+        if reference_velocity is None:
+            reference_velocity = (
                 self.freestream_velocity
                 if self.freestream_velocity is not None
                 else np.array([1.0, 0.0, 0.0])
             )
-        U_ref_mag = np.linalg.norm(U_ref)
-        if U_ref_mag < 1e-10:
-            U_ref_mag = 1.0
+        reference_velocity_mag = np.linalg.norm(reference_velocity)
+        if reference_velocity_mag < 1e-10:
+            reference_velocity_mag = 1.0
 
         n = self.lattice.num_panels
         forces_np = self.panel_forces.to_numpy()[:n]
@@ -1106,9 +1118,13 @@ class PanelSolver:
         if b_ref is None:
             b_ref = float(np.sqrt(S_ref))
 
-        q = 0.5 * density * U_ref_mag**2
+        q = 0.5 * density * reference_velocity_mag**2
         norm_f = q * S_ref
-        V_hat = U_ref / U_ref_mag if U_ref_mag > 1e-10 else np.array([1.0, 0.0, 0.0])
+        V_hat = (
+            reference_velocity / reference_velocity_mag
+            if reference_velocity_mag > 1e-10
+            else np.array([1.0, 0.0, 0.0])
+        )
 
         result = {}
         for body in self.lattice.bodies:

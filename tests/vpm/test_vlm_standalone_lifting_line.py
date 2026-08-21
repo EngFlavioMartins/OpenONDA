@@ -131,7 +131,7 @@ def _solve_standalone(aircraft, mesh: str = "geom") -> VLMSolver:
     )
     vlm.generate_mesh()
     n_p = vlm.lattice.num_panels
-    vlm.solve(V_external=np.tile(REF_VELOCITY, (n_p, 1)), time_step_size=None, coupled=False)
+    vlm.solve(external_velocity=np.tile(REF_VELOCITY, (n_p, 1)), time_step_size=None, coupled=False)
     return vlm
 
 
@@ -292,9 +292,13 @@ def test_loading_symmetry():
 def _coupled_outer_ratio(vlm, time_step_size) -> float:
     """Outer-station Γ / root Γ for one coupled solve at the given dt."""
     n_p = vlm.lattice.num_panels
-    vlm._last_U_ref = REF_VELOCITY  # wake_offset = U_ref * dt needs the cached ref
+    vlm._last_reference_velocity = (
+        REF_VELOCITY  # wake_offset = reference_velocity * time_step_size needs the cached ref
+    )
     vlm.solve(
-        V_external=np.tile(REF_VELOCITY, (n_p, 1)), time_step_size=time_step_size, coupled=True
+        external_velocity=np.tile(REF_VELOCITY, (n_p, 1)),
+        time_step_size=time_step_size,
+        coupled=True,
     )
     n = vlm.lattice.num_panels
     gamma = np.abs(vlm.lattice.circulation.to_numpy()[:n])
@@ -315,7 +319,7 @@ def test_coupled_tip_taper_depends_on_mesh_resolution_not_dt():
     artifact, NOT a dt=None / wake_offset defect.
 
     For a fixed mesh the coupled outer/root Γ ratio is essentially flat across
-    dt (wake_offset = U_ref·dt only shifts it a few percent), while changing the
+    dt (wake_offset = reference_velocity·time_step_size only shifts it a few percent), while changing the
     mesh resolution — uniform coarse vs the tutorial's tip-refined geometric
     mesh — moves it by tens of percent.  In particular the geometric tip mesh
     at the same NS must produce a strictly lower (more tapered) outer ratio than

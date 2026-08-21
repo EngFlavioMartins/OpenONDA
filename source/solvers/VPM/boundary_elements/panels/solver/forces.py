@@ -26,14 +26,14 @@ class PanelForceEvaluator:
     @staticmethod
     def compute_bernoulli(
         V_surface: np.ndarray,
-        V_inf_mag: float,
+        freestream_velocity_mag: float,
         areas: np.ndarray,
         normals: np.ndarray,
         density: float,
     ) -> np.ndarray:
-        q_inf = 0.5 * density * V_inf_mag * V_inf_mag
+        q_inf = 0.5 * density * freestream_velocity_mag * freestream_velocity_mag
         V_sq = np.sum(V_surface**2, axis=1)
-        cp = 1.0 - V_sq / (V_inf_mag * V_inf_mag + 1e-30)
+        cp = 1.0 - V_sq / (freestream_velocity_mag * freestream_velocity_mag + 1e-30)
         forces = q_inf * cp[:, None] * areas[:, None] * normals
         return forces
 

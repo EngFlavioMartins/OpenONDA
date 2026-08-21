@@ -287,7 +287,7 @@ class SolverIO:
         # Compute forces using the cached panel_forces field
         forces = panel_solver.compute_forces_coefficients(
             density=panel_solver.density,
-            U_ref=panel_solver.freestream_velocity,
+            reference_velocity=panel_solver.freestream_velocity,
         )
 
         import pandas as pd

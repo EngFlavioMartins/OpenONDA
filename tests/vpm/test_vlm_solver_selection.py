@@ -97,11 +97,11 @@ class TestAdaptiveSolverSelection:
         V_ext = np.tile([1.0, 0.0, 0.0], (n_panels, 1))
 
         # Compile Taichi kernels before timing steady-state execution.
-        vlm.solve(V_external=V_ext)
+        vlm.solve(external_velocity=V_ext)
         ti.sync()
 
         t0 = time.perf_counter()
-        gamma = vlm.solve(V_external=V_ext)
+        gamma = vlm.solve(external_velocity=V_ext)
         ti.sync()
         time_step_size = time.perf_counter() - t0
 

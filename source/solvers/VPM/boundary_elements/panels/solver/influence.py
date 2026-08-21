@@ -60,20 +60,20 @@ def build_AIC_matrix_dirichlet(
 def compute_RHS(
     centers: ti.template(),
     normals: ti.template(),
-    V_inf: ti.types.vector(3, TI_FLOAT),
-    V_wake: ti.template(),
+    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    wake_velocity: ti.template(),
     rhs: ti.template(),
     n: int,
 ):
     """
     Compute RHS for the boundary condition (zero normal velocity).
-    rhs[i] = - (V_inf + V_wake) · n_i
+    rhs[i] = - (freestream_velocity + wake_velocity) · n_i
 
     Note: This is the Neumann BC formulation. For a consistent panel method
     with the potential AIC matrix, use compute_RHS_dirichlet instead.
     """
     for i in range(n):
-        v_total = V_inf + V_wake[i]
+        v_total = freestream_velocity + wake_velocity[i]
         rhs[i] = -v_total.dot(normals[i])
 
 
@@ -82,28 +82,28 @@ def compute_RHS_neumann_with_sources(
     vertices: ti.template(),
     centers: ti.template(),
     normals: ti.template(),
-    V_inf: ti.types.vector(3, TI_FLOAT),
-    V_wake: ti.template(),
+    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    wake_velocity: ti.template(),
     rhs: ti.template(),
     n: int,
 ):
     """
     Compute RHS for Neumann BC with source-doublet formulation (Hess-Smith).
-    rhs[i] = - (V_inf + V_wake) · n_i - Σ_j (V_source_j · n_i) * σ_j
+    rhs[i] = - (freestream_velocity + wake_velocity) · n_i - Σ_j (V_source_j · n_i) * σ_j
 
     where:
-        σ_j = -V_inf · n_j (source strength)
+        σ_j = -freestream_velocity · n_j (source strength)
         V_source_j = velocity induced by unit source at panel j
     """
     for i in range(n):
         # Freestream normal velocity
-        v_total = V_inf + V_wake[i]
+        v_total = freestream_velocity + wake_velocity[i]
         rhs[i] = -v_total.dot(normals[i])
 
         # Source contribution: sum over all panels
         for j in range(n):
             # Source strength for panel j
-            sigma_j = -V_inf.dot(normals[j])
+            sigma_j = -freestream_velocity.dot(normals[j])
 
             # Compute source velocity at point i due to unit source at panel j
             v0, v1, v2 = vertices[j, 0], vertices[j, 1], vertices[j, 2]
@@ -116,14 +116,14 @@ def compute_RHS_neumann_with_sources(
 @ti.kernel
 def compute_RHS_dirichlet(
     centers: ti.template(),
-    V_inf: ti.types.vector(3, TI_FLOAT),
-    V_wake: ti.template(),
+    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    wake_velocity: ti.template(),
     rhs: ti.template(),
     n: int,
 ):
     """
     Compute RHS for the Dirichlet boundary condition (Morino formulation).
-    rhs[i] = - (V_inf + V_wake[i]) · centers[i]
+    rhs[i] = - (freestream_velocity + wake_velocity[i]) · centers[i]
 
     For the doublet panel method with potential AIC matrix, the Dirichlet BC
     enforces zero total potential on the surface:
@@ -132,7 +132,7 @@ def compute_RHS_dirichlet(
     This is the standard Morino formulation for non-lifting closed bodies.
     """
     for i in range(n):
-        v_total = V_inf + V_wake[i]
+        v_total = freestream_velocity + wake_velocity[i]
         rhs[i] = -v_total.dot(centers[i])
 
 
@@ -141,8 +141,8 @@ def compute_RHS_dirichlet_with_sources(
     vertices: ti.template(),
     centers: ti.template(),
     normals: ti.template(),
-    V_inf: ti.types.vector(3, TI_FLOAT),
-    V_wake: ti.template(),
+    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    wake_velocity: ti.template(),
     rhs: ti.template(),
     n: int,
 ):
@@ -162,7 +162,7 @@ def compute_RHS_dirichlet_with_sources(
     """
     for i in range(n):
         # Freestream potential at collocation point
-        v_total = V_inf + V_wake[i]
+        v_total = freestream_velocity + wake_velocity[i]
         phi_inf = -v_total.dot(centers[i])
 
         # Pure doublet formulation (no source contributions)
@@ -174,14 +174,14 @@ def compute_surface_velocities(
     vertices: ti.template(),
     centers: ti.template(),
     strengths: ti.template(),
-    V_inf: ti.types.vector(3, TI_FLOAT),
-    V_wake: ti.template(),
+    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    wake_velocity: ti.template(),
     V_surface: ti.template(),
     n: int,
 ):
     """
     Compute total velocity at collocation points.
-    V_total = V_inf + V_wake + V_induced_by_panels
+    V_total = freestream_velocity + wake_velocity + V_induced_by_panels
     Note: Self-induction (i==j) is skipped.
     """
     for i in range(n):
@@ -193,7 +193,7 @@ def compute_surface_velocities(
                 v0, v1, v2 = vertices[j, 0], vertices[j, 1], vertices[j, 2]
                 v_induced += strengths[j] * compute_vortex_ring_velocity(p_target, v0, v1, v2)
 
-        V_surface[i] = V_inf + V_wake[i] + v_induced
+        V_surface[i] = freestream_velocity + wake_velocity[i] + v_induced
 
 
 @ti.kernel
@@ -203,14 +203,14 @@ def compute_surface_velocities_with_sources(
     normals: ti.template(),
     strengths: ti.template(),
     source_strengths: ti.template(),
-    V_inf: ti.types.vector(3, TI_FLOAT),
-    V_wake: ti.template(),
+    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    wake_velocity: ti.template(),
     V_surface: ti.template(),
     n: int,
 ):
     """
     Compute total velocity at collocation points including exact source contribution.
-    V_total = V_inf + V_wake + V_doublet + V_source
+    V_total = freestream_velocity + wake_velocity + V_doublet + V_source
 
     For a source-doublet panel method (Hess-Smith / Morino):
         - Source strength: σ_j = -V_∞ · n_j (known from freestream)
@@ -239,25 +239,25 @@ def compute_surface_velocities_with_sources(
                 p_target, v0, v1, v2, normal_j
             )
 
-        V_surface[i] = V_inf + V_wake[i] + v_doublet + v_source
+        V_surface[i] = freestream_velocity + wake_velocity[i] + v_doublet + v_source
 
 
 @ti.kernel
 def compute_pressure_bernoulli(
-    V_surface: ti.template(), V_inf_mag: TI_FLOAT, Cp: ti.template(), n: int
+    V_surface: ti.template(), freestream_velocity_mag: TI_FLOAT, Cp: ti.template(), n: int
 ):
     """
-    Compute pressure coefficient using Bernoulli: Cp = 1 - (V/V_inf)^2.
+    Compute pressure coefficient using Bernoulli: Cp = 1 - (V/freestream_velocity)^2.
     """
     for i in range(n):
         v_mag_sq = V_surface[i].norm_sqr()
-        Cp[i] = 1.0 - v_mag_sq / (V_inf_mag * V_inf_mag + PANEL_EPSILON)
+        Cp[i] = 1.0 - v_mag_sq / (freestream_velocity_mag * freestream_velocity_mag + PANEL_EPSILON)
 
 
 @ti.kernel
 def compute_forces_bernoulli(
     V_surface: ti.template(),
-    V_inf_mag: TI_FLOAT,
+    freestream_velocity_mag: TI_FLOAT,
     areas: ti.template(),
     normals: ti.template(),
     rho: TI_FLOAT,
@@ -265,11 +265,11 @@ def compute_forces_bernoulli(
     n: int,
 ):
     """
-    Compute forces using Bernoulli: F = 0.5 * rho * (V_inf^2 - V^2) * Area * n.
+    Compute forces using Bernoulli: F = 0.5 * rho * (freestream_velocity^2 - V^2) * Area * n.
     """
     for i in range(n):
         v_mag_sq = V_surface[i].norm_sqr()
-        p_diff = 0.5 * rho * (V_inf_mag * V_inf_mag - v_mag_sq)
+        p_diff = 0.5 * rho * (freestream_velocity_mag * freestream_velocity_mag - v_mag_sq)
         forces[i] = p_diff * areas[i] * normals[i]
 
 

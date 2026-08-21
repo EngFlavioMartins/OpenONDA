@@ -56,7 +56,7 @@ class VLMLoadingDistribution:
         if step % freq != 0:
             return
 
-        U_ref = getattr(vlm_solver, "_last_U_ref", None)
+        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
         density = getattr(vlm_solver, "density", 1.0)
 
         for surface_name, enabled in vlm_solver._surface_sampling.items():
@@ -64,7 +64,7 @@ class VLMLoadingDistribution:
                 continue
             try:
                 dists = VLMLoadingDistribution.extract_distributions(
-                    vlm_solver, surface_name, U_ref, density
+                    vlm_solver, surface_name, reference_velocity, density
                 )
                 VLMLoadingDistribution.export_distribution_csv(
                     vlm_solver,
@@ -169,7 +169,7 @@ class VLMLoadingDistribution:
     def extract_distributions(
         vlm_solver,
         surface_name: str,
-        U_ref: np.ndarray | None,
+        reference_velocity: np.ndarray | None,
         density: float,
     ) -> dict[str, Any]:
         """Extract spanwise and chordwise loading from existing per-panel arrays.
@@ -200,19 +200,21 @@ class VLMLoadingDistribution:
             : vlm_solver.lattice.num_panels
         ]  # (N,4,3)
 
-        # V∞ — prefer explicit U_ref over the kinematic_velocity heuristic to
+        # V∞ — prefer explicit reference_velocity over the kinematic_velocity heuristic to
         # handle the static wind-frame case where kinematic_velocity is ~0.
-        if U_ref is not None:
-            V_inf_mag = float(np.linalg.norm(U_ref))
+        if reference_velocity is not None:
+            freestream_velocity_mag = float(np.linalg.norm(reference_velocity))
         else:
             kin_mag = np.linalg.norm(kin_np, axis=1)
-            V_inf_mag = float(np.median(kin_mag[kin_mag > 1e-8])) if kin_mag.max() > 1e-8 else 1.0
-        V_inf_mag = max(V_inf_mag, 1e-10)
-        q_inf = 0.5 * density * V_inf_mag**2
+            freestream_velocity_mag = (
+                float(np.median(kin_mag[kin_mag > 1e-8])) if kin_mag.max() > 1e-8 else 1.0
+            )
+        freestream_velocity_mag = max(freestream_velocity_mag, 1e-10)
+        q_inf = 0.5 * density * freestream_velocity_mag**2
 
-        # Lift direction in wind axes (perpendicular to U_ref in the vertical plane)
-        if U_ref is not None and np.linalg.norm(U_ref) > 1e-10:
-            V_hat = np.asarray(U_ref) / np.linalg.norm(U_ref)
+        # Lift direction in wind axes (perpendicular to reference_velocity in the vertical plane)
+        if reference_velocity is not None and np.linalg.norm(reference_velocity) > 1e-10:
+            V_hat = np.asarray(reference_velocity) / np.linalg.norm(reference_velocity)
         else:
             V_hat = np.array([1.0, 0.0, 0.0])
         z_hat = np.array([0.0, 0.0, 1.0])
@@ -345,7 +347,7 @@ class VLMLoadingDistribution:
                     else:
                         x_over_c = np.zeros(nc)
 
-                    denom_cp = V_inf_mag * pc_j
+                    denom_cp = freestream_velocity_mag * pc_j
                     delta_cp = np.where(denom_cp > 1e-15, 2.0 * G_j / denom_cp, 0.0)
 
                     for i in range(nc):

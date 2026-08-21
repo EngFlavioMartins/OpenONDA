@@ -118,14 +118,14 @@ def compute_RHS(
     normals: ti.template(),
     rhs: ti.template(),
     num_panels: ti.i32,
-    V_inf_x: float,
-    V_inf_y: float,
-    V_inf_z: float,
+    freestream_velocity_x: float,
+    freestream_velocity_y: float,
+    freestream_velocity_z: float,
 ):
     """
     Compute right-hand side of VLM system.
 
-    RHS[i] = -normal_i · V_inf
+    RHS[i] = -normal_i · freestream_velocity
 
     This enforces the boundary condition that total normal velocity
     (freestream + induced) must be zero at each collocation point.
@@ -135,20 +135,22 @@ def compute_RHS(
         normals: Panel normals (N x 3)
         rhs: Output RHS vector (N,)
         num_panels: Number of panels
-        V_inf_x, V_inf_y, V_inf_z: Freestream velocity components
+        freestream_velocity_x, freestream_velocity_y, freestream_velocity_z: Freestream velocity components
     """
-    V_inf = ti.Vector([V_inf_x, V_inf_y, V_inf_z])
+    freestream_velocity = ti.Vector(
+        [freestream_velocity_x, freestream_velocity_y, freestream_velocity_z]
+    )
 
     for i in range(num_panels):
-        # Negative because we move V_inf term to RHS
-        rhs[i] = -normals[i].dot(V_inf)
+        # Negative because we move freestream_velocity term to RHS
+        rhs[i] = -normals[i].dot(freestream_velocity)
 
 
 @ti.kernel
 def compute_RHS_coupled(
     collocation: ti.template(),
     normals: ti.template(),
-    V_external: ti.template(),
+    external_velocity: ti.template(),
     V_kinematic: ti.template(),
     rhs: ti.template(),
     num_panels: ti.i32,
@@ -156,15 +158,15 @@ def compute_RHS_coupled(
     """
     Compute RHS with generic external velocity field and surface motion.
 
-    RHS[i] = -normal[i] · (V_external[i] - V_kinematic[i])
+    RHS[i] = -normal[i] · (external_velocity[i] - V_kinematic[i])
 
-    Boundary condition: (V_external + V_induced - V_kinematic) · n = 0
-    Therefore: V_induced · n = - (V_external - V_kinematic) · n
+    Boundary condition: (external_velocity + V_induced - V_kinematic) · n = 0
+    Therefore: V_induced · n = - (external_velocity - V_kinematic) · n
 
     Args:
         collocation: Collocation points (N x 3)
         normals: Panel normals (N x 3)
-        V_external: Total external velocity (background + particles) at collocation (N x 3)
+        external_velocity: Total external velocity (background + particles) at collocation (N x 3)
         V_kinematic: Surface velocity at collocation (N x 3)
         rhs: Output RHS vector (N,)
         num_panels: Number of panels
@@ -174,7 +176,7 @@ def compute_RHS_coupled(
         V_kin = ti.Vector(
             [V_kinematic[i, ti.i32(0)], V_kinematic[i, ti.i32(1)], V_kinematic[i, ti.i32(2)]]
         )
-        V_rel_inflow = V_external[i] - V_kin
+        V_rel_inflow = external_velocity[i] - V_kin
         rhs[i] = -normals[i].dot(V_rel_inflow)
 
 
@@ -185,12 +187,12 @@ def compute_induced_velocities(
     vortex_points: ti.template(),
     gamma: ti.template(),
     velocity: ti.template(),
-    V_external: ti.template(),
+    external_velocity: ti.template(),
 ):
     """
     Compute total velocity including external field.
 
-    V_total = V_external + V_induced
+    V_total = external_velocity + V_induced
 
     Args:
         num_panels: Number of panels
@@ -198,7 +200,7 @@ def compute_induced_velocities(
         vortex_points: Horseshoe vertices (N x 4 x 3)
         gamma: Circulation distribution (N,)
         velocity: Output velocity field (N x 3)
-        V_external: External velocity field (N x 3)
+        external_velocity: External velocity field (N x 3)
     """
     for i in range(num_panels):
         vel_induced = ti.Vector([0.0, 0.0, 0.0])
@@ -214,7 +216,7 @@ def compute_induced_velocities(
             )
 
         # Total velocity
-        velocity[i] = V_external[i] + vel_induced
+        velocity[i] = external_velocity[i] + vel_induced
 
 
 @ti.func
@@ -284,7 +286,7 @@ def compute_induced_velocities_at_bound(
     te_index: ti.template(),
     gamma: ti.template(),
     velocity: ti.template(),
-    V_external: ti.template(),
+    external_velocity: ti.template(),
     coupled_mode: ti.i32,
 ):
     """
@@ -303,7 +305,7 @@ def compute_induced_velocities_at_bound(
         vortex_points: Horseshoe vertices (N x 4 x 3)
         gamma: Circulation distribution (N,)
         velocity: Output velocity field (N x 3)
-        V_external: External velocity field at bound midpoints (N x 3)
+        external_velocity: External velocity field at bound midpoints (N x 3)
         coupled_mode: If 1, use bound-only induction consistent with UVLM
     """
     for i in range(num_panels):
@@ -316,29 +318,32 @@ def compute_induced_velocities_at_bound(
             )
 
         # Total velocity = External + Induced
-        velocity[i] = V_external[i] + vel_induced
+        velocity[i] = external_velocity[i] + vel_induced
 
 
 @ti.kernel
 def compute_pressure_coefficients(
-    velocity: ti.template(), Cp: ti.template(), num_panels: ti.i32, V_inf_mag_sq: float
+    velocity: ti.template(),
+    Cp: ti.template(),
+    num_panels: ti.i32,
+    freestream_velocity_mag_sq: float,
 ):
     """
     Compute pressure coefficient at each panel.
 
-    Cp = 1 - (|V|/|V_inf|)²
+    Cp = 1 - (|V|/|freestream_velocity|)²
 
     Args:
         velocity: Velocity at collocation points (N x 3)
         Cp: Output pressure coefficient (N,)
         num_panels: Number of panels
-        V_inf_mag_sq: Magnitude squared of freestream velocity
+        freestream_velocity_mag_sq: Magnitude squared of freestream velocity
     """
     for i in range(num_panels):
         v_mag_sq = velocity[i].dot(velocity[i])
 
-        if V_inf_mag_sq > VLM_SMALL_VELOCITY * VLM_SMALL_VELOCITY:
-            Cp[i] = 1.0 - v_mag_sq / V_inf_mag_sq
+        if freestream_velocity_mag_sq > VLM_SMALL_VELOCITY * VLM_SMALL_VELOCITY:
+            Cp[i] = 1.0 - v_mag_sq / freestream_velocity_mag_sq
         else:
             Cp[i] = 0.0
 
