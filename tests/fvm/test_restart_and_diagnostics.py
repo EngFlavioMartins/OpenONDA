@@ -237,7 +237,7 @@ def test_scipy_linear_result_discloses_solver_health():
 def test_steady_simple_does_not_confuse_linear_and_nonlinear_convergence(monkeypatch):
     solver = SIMPLESolver.__new__(SIMPLESolver)
     solver.params = {
-        "max_iter": 2,
+        "max_iterations": 2,
         "tolerance": 1e-3,
         "velocity_relaxation": 0.7,
         "pressure_relaxation": 0.3,
