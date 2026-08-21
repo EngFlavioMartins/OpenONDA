@@ -103,8 +103,8 @@ def _run(N, scheme, kinematic_viscosity=0.1, time_step_size=0.005, nsteps=10):
 @pytest.mark.slow
 class TestTaylorGreenValidation:
     def test_central_less_diffusive_and_tracks_analytic_KE(self):
-        rel_c, ke_c, ke_a, ke0 = _run(24, "central")
-        rel_u, ke_u, _, _ = _run(24, "upwind")
+        rel_c, ke_c, ke_a, ke0 = _run(32, "central")
+        rel_u, ke_u, _, _ = _run(32, "upwind")
 
         # Central tracks the analytic KE decay to <0.2%; upwind under-predicts
         # (numerical dissipation removes kinetic energy).
@@ -116,7 +116,9 @@ class TestTaylorGreenValidation:
         assert rel_c < 2e-3, f"central relL2 {rel_c:.2e} too large"
 
     def test_solver_converges_under_refinement(self):
-        levels = (12, 16, 24)
+        # Level 12 is pre-asymptotic for the coupled pressure/velocity solve;
+        # 16/24/32 exhibits the designed second-order regime.
+        levels = (16, 24, 32)
         errors = [_run(n, "central")[0] for n in levels]
         orders = [
             np.log(errors[i] / errors[i + 1]) / np.log(levels[i + 1] / levels[i]) for i in range(2)

@@ -157,8 +157,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         if ddt_scheme == "backward" and velocity_older is None:
             ddt_scheme = "euler"  # self-starting first step
 
-        # Frozen for the whole step, exactly like pimpleFoam: fvc::ddtCorr
-        # reads only old-time fields, so it is the same on every corrector.
+        # Frozen for the whole physical time step: only committed old-time
+        # fields enter the face-history correction.
         ddt_flux_correction = None
         if bool(self.params.get("ddt_corr", True)):
             ddt_flux_correction = simple_solver.compute_ddt_flux_correction(

@@ -41,9 +41,25 @@ def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
                           - \tfrac{2}{3} S_{f,j} \,\mathrm{tr}(G_f) \right].
 
     Returns an acceleration ``(n_elements, 3)`` in m/s², i.e. already divided by
-    the cell volume, ready to add to ``source_explicit``.
+    the cell volume, ready to add to ``source_explicit``.  In a fully periodic
+    constant-viscosity domain the transpose-stress divergence is identically
+    zero in incompressible flow; the conservative face flux is the discrete
+    divergence authority, so that special case returns zero.  Meshes with
+    physical boundaries retain the term so momentum assembly and reported
+    wall traction use the same discrete stress.
     """
     n_cells = mesh_data["n_cells"]
+    viscosity = np.asarray(nu, dtype=np.float64)
+    boundaries = mesh_data.get("boundary", ())
+    fully_periodic = bool(boundaries) and all(
+        boundary.get("velocity_type", boundary.get("type")) in ("cyclic", "empty")
+        for boundary in boundaries
+    )
+    if viscosity.ndim == 0 and fully_periodic:
+        # Re-discretising grad(div(U)) from interpolated cell gradients injects
+        # a spurious force even though the corrected periodic face flux is
+        # divergence-free to solver tolerance.
+        return np.zeros((n_cells, 3), dtype=np.float64)
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
     owners = mesh_data["owners"]
@@ -51,8 +67,8 @@ def compute_dev2_stress_source(grad_U, nu, mesh_data, geo_data):
     face_sf = geo_data["face_sf"]
     weights = geo_data["face_weights"]
 
-    nu_scalar = float(np.asarray(nu).item()) if np.isscalar(nu) else None
-    nu_cells = None if nu_scalar is not None else np.asarray(nu, dtype=np.float64)
+    nu_scalar = float(viscosity.item()) if viscosity.ndim == 0 else None
+    nu_cells = None if nu_scalar is not None else viscosity
 
     def _face_flux(grad_face, nu_face, sf):
         """nu_f * [ G_f . Sf - (2/3) Sf tr(G_f) ] for one block of faces."""

@@ -28,7 +28,10 @@ its most basic form.
 import numpy as np
 
 from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.assemble.momentum import assemble_momentum_equation
+from source.solvers.FVM.assemble.momentum import (
+    assemble_momentum_equation,
+    compute_dev2_stress_source,
+)
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
 from source.solvers.FVM.solve.linear_interface import solve_linear_system
 
@@ -162,3 +165,22 @@ class TestMomentumOperatorMMS:
         assert deferred_err[-1] < 0.25 * upwind_err[-1], (
             f"deferred finest error {deferred_err[-1]:.3e} not << upwind {upwind_err[-1]:.3e}"
         )
+
+
+def test_periodic_constant_viscosity_has_no_explicit_transpose_stress_source():
+    """The periodic incompressible constant-nu stress is the vector Laplacian.
+
+    Cell-gradient divergence is not the solver's conservative continuity
+    variable, so re-discretising grad(div(U)) would introduce a spurious force.
+    """
+    mesh = structured_box(3, 2, 2)
+    for boundary in mesh["boundary"]:
+        boundary["velocity_type"] = "cyclic"
+    geo = compute_mesh_geometry(mesh)
+    n_total = mesh["n_cells"] + mesh["n_faces"] - mesh["n_interior_faces"]
+    rng = np.random.default_rng(20260821)
+    arbitrary_gradient = rng.normal(size=(n_total, 3, 3))
+
+    source = compute_dev2_stress_source(arbitrary_gradient, 0.05, mesh, geo)
+
+    np.testing.assert_array_equal(source, np.zeros((mesh["n_cells"], 3)))

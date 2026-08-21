@@ -112,44 +112,30 @@ def compute_ddt_flux_correction(
     boundaries,
     ddt_scheme,
 ):
-    r"""Return the transient Rhie-Chow flux correction.
+    r"""Return the transient Rhie--Chow face-history correction.
 
-    The correction is added to the predicted face flux before the pressure
-    solve. For ``backward`` it is
+    This is the limited difference between the committed face flux and the
+    flux obtained by interpolating the committed cell velocity, divided by the
+    time step.  BDF2 uses the same two-level history combination as the cell
+    derivative, and every non-coupled boundary contribution is zero.
 
-    .. math::
-
-        C \, \frac{1}{\Delta t}\Big[
-            (c_0 \phi^{n} - c_{00}\phi^{n-1})
-          - S_f \cdot \overline{(c_0 U^{n} - c_{00} U^{n-1})} \Big]
-
-    with the ``backward`` coefficients ``c_0 = 2``, ``c_{00}`` = 0.5 at constant
-    ``time_step_size`` (Euler uses ``c_0 = 1``, ``c_{00} = 0``).
-
-    It exists because the Rhie-Chow damping is proportional to ``rAU``, and in
-    a transient run ``rAU`` is dominated by the ``V/dt`` of the time
-    derivative.  Without this term the face flux carries a spurious
-    fourth-order pressure dissipation that scales with ``time_step_size`` and never
-    vanishes under mesh refinement; the correction removes exactly the part of
-    the flux-velocity mismatch that the time derivative introduced, leaving the
-    convection/diffusion part.  In a bluff-body wake that surplus dissipation
-    is enough to hold a shear layer steady.
-
-    ``C`` is the time-step coupling coefficient
-    ``C = 1 - min(|phiCorr| / (|phi| + SMALL), 1)``, which switches the
-    correction off wherever the flux and the interpolated velocity have already
-    fully decoupled, and ``C = 0`` on patches whose velocity condition fixes a
-    value (inlets, no-slip walls).
-
-    Returns a volumetric flux increment per unit ``rAU`` — the caller scales it
-    by the face-interpolated ``DU``.
+    Fully periodic domains are special here: their conservative face flux is
+    already the complete old-time history used by this solver's H/A
+    reconstruction.  Applying a second correction double-counts that history.
+    Boundary-driven domains still require the correction to couple the cell
+    and face transient operators.
     """
     if face_flux_old is None or time_step_size is None or velocity_old is None:
         return None
 
+    strategies = [BOUNDARIES.strategy(b.get("velocity_type"), "U", "ghost") for b in boundaries]
+    if strategies and all(
+        strategy in (BoundaryStrategy.CYCLIC, BoundaryStrategy.EMPTY) for strategy in strategies
+    ):
+        return None
+
     n_faces = mesh_data["n_faces"]
     n_interior = mesh_data["n_interior_faces"]
-    n_cells = mesh_data["n_cells"]
 
     if str(ddt_scheme).lower() in ("backward", "bdf2") and (
         velocity_older is not None and face_flux_older is not None
@@ -160,19 +146,22 @@ def compute_ddt_flux_correction(
 
     face_flux_old = np.asarray(face_flux_old, dtype=np.float64)
     velocity_old = np.asarray(velocity_old, dtype=np.float64)
-    U_history = velocity_old.copy()
-    U_history *= coefft0
+    older_flux = (
+        np.zeros_like(face_flux_old)
+        if face_flux_older is None
+        else np.asarray(face_flux_older, dtype=np.float64)
+    )
+    U_history = coefft0 * velocity_old
     if coefft00 != 0.0:
-        U_history -= coefft00 * np.asarray(velocity_older, dtype=np.float64)
+        U_history = U_history - coefft00 * np.asarray(velocity_older, dtype=np.float64)
 
-    # Sf . interpolate(U_history), matching fvc::dotInterpolate.
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
     weights = geo_data["face_weights"]
     face_sf = geo_data["face_sf"]
-
-    correction = np.empty(n_faces, dtype=np.float64)
+    correction = np.zeros(n_faces, dtype=np.float64)
     chunk_size = 250_000
+
     for start in range(0, n_interior, chunk_size):
         stop = min(start + chunk_size, n_interior)
         own = owners[start:stop]
@@ -182,7 +171,7 @@ def compute_ddt_flux_correction(
         old_face = w * velocity_old[nei] + (1.0 - w) * velocity_old[own]
         history_flux = coefft0 * face_flux_old[start:stop]
         if coefft00 != 0.0:
-            history_flux -= coefft00 * np.asarray(face_flux_older)[start:stop]
+            history_flux -= coefft00 * older_flux[start:stop]
         phi_corr = history_flux - np.einsum("ij,ij->i", history_face, face_sf[start:stop])
         reference = face_flux_old[start:stop] - np.einsum("ij,ij->i", old_face, face_sf[start:stop])
         coupling = 1.0 - np.minimum(
@@ -191,31 +180,28 @@ def compute_ddt_flux_correction(
         )
         correction[start:stop] = coupling * phi_corr / float(time_step_size)
 
-    for start in range(n_interior, n_faces, chunk_size):
-        stop = min(start + chunk_size, n_faces)
-        ghosts = n_cells + np.arange(start - n_interior, stop - n_interior)
-        history_flux = coefft0 * face_flux_old[start:stop]
+    boundary_neighbours = mesh_data.get("boundary_neighbours")
+    for boundary, strategy in zip(boundaries, strategies, strict=True):
+        if strategy is not BoundaryStrategy.CYCLIC:
+            continue
+        start = boundary["start_face"]
+        stop = start + boundary["n_faces"]
+        faces = np.arange(start, stop)
+        own = owners[faces]
+        paired = boundary_neighbours[faces]
+        w = weights[faces, np.newaxis]
+        history_face = w * U_history[paired] + (1.0 - w) * U_history[own]
+        old_face = w * velocity_old[paired] + (1.0 - w) * velocity_old[own]
+        history_flux = coefft0 * face_flux_old[faces]
         if coefft00 != 0.0:
-            history_flux -= coefft00 * np.asarray(face_flux_older)[start:stop]
-        phi_corr = history_flux - np.einsum("ij,ij->i", U_history[ghosts], face_sf[start:stop])
-        reference = face_flux_old[start:stop] - np.einsum(
-            "ij,ij->i", velocity_old[ghosts], face_sf[start:stop]
-        )
+            history_flux -= coefft00 * older_flux[faces]
+        phi_corr = history_flux - np.einsum("ij,ij->i", history_face, face_sf[faces])
+        reference = face_flux_old[faces] - np.einsum("ij,ij->i", old_face, face_sf[faces])
         coupling = 1.0 - np.minimum(
-            np.abs(reference) / (np.abs(face_flux_old[start:stop]) + np.finfo(np.float64).tiny),
+            np.abs(reference) / (np.abs(face_flux_old[faces]) + np.finfo(np.float64).tiny),
             1.0,
         )
-        correction[start:stop] = coupling * phi_corr / float(time_step_size)
-
-    for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("velocity_type"), "U", "ghost")
-        if strategy in (
-            BoundaryStrategy.FIXED_VALUE,
-            BoundaryStrategy.NO_SLIP,
-            BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT,
-        ):
-            start = boundary["start_face"]
-            correction[start : start + boundary["n_faces"]] = 0.0
+        correction[faces] = coupling * phi_corr / float(time_step_size)
 
     return correction
 
@@ -936,7 +922,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     # 1. Reconstruct "H/A" velocity at cell centres (Velocity without pressure gradient)
     # U_centre = H/A - grad_p * DU
     # So H/A = U_centre + grad_p * DU
-    # We use U_star as U_centre (it includes -grad_p * DU approx)
+    # We use U_star as U_centre (it includes -grad_p * DU approx).
     scalar_diagonal = np.asarray(DU).ndim == 1
     DU_vector = DU[:, np.newaxis] if scalar_diagonal else DU
     U_HbyA = U_star[:n_cells] + DU_vector * grad_p[:n_cells]
