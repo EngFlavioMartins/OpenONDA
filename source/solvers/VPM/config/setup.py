@@ -318,6 +318,14 @@ class VPMSetup:
 
     def to_dict(self) -> dict[str, Any]:
         """Return the serializable setup using canonical field names."""
+        if self.vlm is not None:
+            raise ValueError(
+                "VPMSetup.to_dict() cannot serialize an attached VLMSetup: VLM "
+                "surfaces and kinematics are live Python objects, so a serialized "
+                "copy would silently discard the coupling configuration. Construct "
+                "the coupled solver programmatically instead of round-tripping it "
+                "through a file."
+            )
 
         def as_serializable(value: Any) -> Any:
             if hasattr(value, "__dataclass_fields__"):
