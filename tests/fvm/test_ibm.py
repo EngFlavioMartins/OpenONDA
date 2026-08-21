@@ -226,7 +226,15 @@ def test_cylinder_step_integration():
         ),
         schemes=DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
-        pimple=PimpleControl(n_correctors=2, n_outer_correctors=1),
+        # n_outer_correctors=1 does not converge the pressure-velocity coupling
+        # for this impulsively-started bluff-body/IBM case: slip error and drag
+        # sign are still evolving step-to-step at 1 outer corrector (CFL grows
+        # past 1.4 by step 10 and Fx is negative). 8 outer correctors converges
+        # both (slip 0.090->0.002, Fx -2.55->+0.24); see
+        # docs/PROJECT_COMPLETION_TODO.md §E for the corrector sweep evidence.
+        # This is a numerical-convergence fix, not a calibration of IBM
+        # physics/coefficients against the expected result.
+        pimple=PimpleControl(n_correctors=2, n_outer_correctors=8),
         transport=TransportConfig(density=1.0, kinematic_viscosity=0.025),  # Re = 40 on D=1
         boundaries=[
             BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
@@ -332,7 +340,11 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     def config(with_square):
         schemes = DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss")
         linear = LinearSolverConfig(linear_solver="spsolve")
-        pimple = PimpleControl(n_correctors=2, n_outer_correctors=1)
+        # See the n_outer_correctors note in test_cylinder_step_integration:
+        # the same non-convergence pattern makes the body-fitted reference's
+        # own transient unreliable at 1 outer corrector (up to ~50x too-large,
+        # sign-flipping forces in the first ~20 steps); 8 converges it.
+        pimple = PimpleControl(n_correctors=2, n_outer_correctors=8)
         samplers = []
         if with_square:
             from source.solvers.FVM.sampling.base import SamplingSchedule
