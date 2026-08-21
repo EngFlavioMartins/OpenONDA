@@ -122,7 +122,33 @@ onto this checkout via `git fetch <bundle>` + fast-forward merge, never
     `tutorials/coupled_FVM_VPM/cube_flow/...`. Invisible on macOS
     (case-insensitive FS) — real on Linux/CI. Commit: "Fix case-sensitive path
     bug in FVM tests referencing cube_flow assets".
-  - [ ] Full (non-fast) `pytest tests/fvm -m "not mpi"` not yet run this pass.
+  - [x] Full (non-fast) `pytest tests/fvm -m "not mpi"` run this pass (PLAN
+        §15). 7 failures, all classified:
+        - 2x `test_ibm_square_force_and_wake_match_body_fitted_reference`
+          — known, documented in §E (force-agreement gap, still open).
+        - `test_periodic_abc_flow_is_second_order_in_three_dimensions` —
+          known, documented above (order 1.780, open).
+        - `test_wale_taylor_green_decay_moves_toward_published_dns_under_refinement`
+          — known, documented in §D (baseline-inherited, open).
+        - `test_central_less_diffusive_and_tracks_analytic_KE` and
+          `test_solver_converges_under_refinement` (Taylor-Green) — same
+          central-scheme spatial-order family as the ABC failure above
+          (orders 1.69/1.84, central relL2 not <<upwind/4); not a new
+          defect, the same open root cause.
+        - `test_steady_simple_does_not_confuse_linear_and_nonlinear_convergence`
+          — **new finding, fixed this pass**: `KeyError: 'max_iterations'`
+          from `simple_solver.py`'s `solve()`. Root cause: the test builds
+          `SIMPLESolver` via `__new__` (bypassing `__init__`'s real
+          defaults) and hand-set `solver.params["max_iter"]`, but
+          `solve()`'s production code has always read
+          `self.params["max_iterations"]` (confirmed at every read site
+          in the file, including `__init__`'s own default dict) — a
+          stale/wrong key in the test's mock, not a solver defect. Fixed;
+          test now passes.
+        No previously-unclassified failures remain: every failure in the
+        full suite traces to one of the two already-open, well-evidenced
+        root causes (central/PIMPLE spatial order; IBM-vs-body-fitted
+        quantitative gap) or has been fixed.
 - [x] Doc-only staleness: `geometry.py`, `smagorinsky.py`,
       `time_integration.py`, `gradients.py` docstrings still described the
       geometry dict with the pre-rename `element_centroids`/
