@@ -86,9 +86,9 @@ def run_constants() -> dict:
     phys = meta.get("physics", {})
     freestream_velocity = np.asarray(phys.get("freestream_velocity", [1.0, 0.0, 0.0]), dtype=float)
     kinematic_viscosity = float(
-        phys.get("nu", float(np.linalg.norm(freestream_velocity)) / REYNOLDS)
+        phys.get("kinematic_viscosity", float(np.linalg.norm(freestream_velocity)) / REYNOLDS)
     )
-    t_end = float(phys.get("t_end", np.nan))
+    t_end = float(phys.get("end_time", np.nan))
     return {
         "freestream_speed": float(np.linalg.norm(freestream_velocity)) or 1.0,
         "freestream_velocity": freestream_velocity,

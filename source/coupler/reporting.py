@@ -109,10 +109,10 @@ def write_run_metadata(coupler) -> None:
         "case_dir": str(coupler.case_dir),
         "physics": {
             "freestream_velocity": coupler.setup.freestream_velocity,
-            "nu": coupler.kinematic_viscosity,
-            "rho": coupler.density,
-            "dt": coupler.fvm_time_step_size,
-            "t_end": coupler.end_time,
+            "kinematic_viscosity": coupler.kinematic_viscosity,
+            "density": coupler.density,
+            "fvm_time_step_size": coupler.fvm_time_step_size,
+            "end_time": coupler.end_time,
             "checkpoint_interval_steps": coupler.setup.checkpoint_interval_steps,
         },
         "fvm_solver": {
@@ -126,9 +126,8 @@ def write_run_metadata(coupler) -> None:
             "overlap_zone_dead_zone_width": coupler.setup.overlap_zone_dead_zone_width,
         },
         **coupler.setup.to_dict(),
-        "dt_fvm": coupler.fvm_time_step_size,
-        "dt_vpm": coupler.vpm_time_step_size,
-        "n_fvm_substeps": coupler.fvm_substeps,
+        "vpm_time_step_size": coupler.vpm_time_step_size,
+        "fvm_substeps": coupler.fvm_substeps,
     }
     (coupler.solution_dir / "run_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
@@ -142,7 +141,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         result = coupler._last_transfer_result
 
     zero_invariants = {
-        "circulation": 0.0,
+        "total_vortex_strength": 0.0,
         "linear_impulse": 0.0,
         "angular_impulse": 0.0,
     }

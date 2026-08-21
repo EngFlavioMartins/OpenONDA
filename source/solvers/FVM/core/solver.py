@@ -1125,7 +1125,7 @@ class FVMSolver(CouplerInterfaceMixin):
         cfg_time = self.setup.time
         if (
             time_step_size is None
-            and cfg_time.adjust_timestep
+            and cfg_time.adjust_time_step
             and self.cfl_max > 0
             and self.step > 1
         ):
@@ -1149,7 +1149,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.solve_pimple(step_time_step_size)
 
         # Compute CFL after step (for next step's dt adjustment)
-        if cfg_time.adjust_timestep:
+        if cfg_time.adjust_time_step:
             Co_field = diagnostics.compute_courant_number(
                 self.velocity, self.face_flux, step_time_step_size, self.mesh_data, self.geo_data
             )
@@ -1159,7 +1159,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.cfl_max = float(self.parallel.global_max(float(np.max(Co_field[:n_owned]))))
         self.logger.courant_info(
             self.cfl_max,
-            cfg_time.max_cfl if cfg_time.adjust_timestep else None,
+            cfg_time.max_cfl if cfg_time.adjust_time_step else None,
         )
 
         self.advance_time()

@@ -95,7 +95,7 @@ def main() -> None:
     force_path = CASE_DIR / "samples" / "forces_history.csv"
     if not metadata_path.is_file():
         raise SystemExit("FAIL: coupled run metadata was not written")
-    expected_end = float(json.loads(metadata_path.read_text())["physics"]["t_end"])
+    expected_end = float(json.loads(metadata_path.read_text())["physics"]["end_time"])
 
     if not force_path.is_file():
         raise SystemExit("FAIL: cube force history was not written")

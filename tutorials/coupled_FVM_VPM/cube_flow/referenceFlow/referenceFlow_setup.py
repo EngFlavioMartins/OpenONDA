@@ -121,7 +121,7 @@ FVM_SETUP = fvm.FVMSetup(
         end_time=END_TIME,
         output_interval_steps=10**9,
         output_interval_time=VOLUME_INTERVAL,
-        adjust_timestep=False,
+        adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(
         # Match the coupled reference-flow discretisation exactly.

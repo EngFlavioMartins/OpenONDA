@@ -71,7 +71,7 @@ def create_fvm_setup(
             end_time=end_time,
             output_interval_steps=10**9,
             output_interval_time=OUTPUT_INTERVAL_TIME,
-            adjust_timestep=True,
+            adjust_time_step=True,
             max_cfl=MAX_CFL,
             max_time_step_size=max_time_step,
             min_time_step_size=MIN_TIME_STEP_SIZE,

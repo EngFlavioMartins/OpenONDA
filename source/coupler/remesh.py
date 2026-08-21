@@ -18,7 +18,7 @@ def m4p(q: np.ndarray | float) -> np.ndarray:
     Key properties:
     - M4'(0) = 1  — interpolating at the origin
     - M4'(n) = 0  — zero at all non-zero integers (no cross-node leakage)
-    - Σ_n M4'(x−n) = 1  — partition of unity (circulation conservation)
+    - Σ_n M4'(x−n) = 1  — partition of unity (vortex-strength conservation)
     - Σ_n (x−n) M4'(x−n) = 0  — 1st moment (linear impulse conservation)
 
     Parameters
@@ -100,7 +100,7 @@ def _scatter_m4p(
 
 def remesh_to_grid(
     pos: np.ndarray,
-    circ: np.ndarray,
+    vortex_strength: np.ndarray,
     origin: np.ndarray,
     particle_spacing: float,
     shape: tuple[int, int, int],
@@ -108,14 +108,14 @@ def remesh_to_grid(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Tensor-product M4' P2M scatter onto a regular lattice.
 
-    Each particle scatters its circulation onto the surrounding 4×4×4 = 64
+    Each particle scatters its vortex strength onto the surrounding 4×4×4 = 64
     grid nodes using the M4' kernel.  Because M4' satisfies partition of unity
-    the total circulation is *exactly* conserved.
+    the total vortex strength is *exactly* conserved.
 
     Parameters
     ----------
     pos    : (N, 3) particle positions
-    circ   : (N, 3) particle circulations Γ_i
+    vortex_strength : (N, 3) particle strengths α_i
     origin : (3,)   position of grid node [0, 0, 0]
     particle_spacing      : scalar uniform grid spacing
     shape  : (Nx, Ny, Nz) grid dimensions (number of nodes per axis)
@@ -123,7 +123,7 @@ def remesh_to_grid(
     Returns
     -------
     grid_pos  : (Nx*Ny*Nz, 3)  node positions
-    grid_circ : (Nx*Ny*Nz, 3)  accumulated circulations Σ W_ip Γ_p
+    grid_vortex_strength : (Nx*Ny*Nz, 3)  accumulated Σ W_ip α_p
     """
     grid_pos = (
         grid_positions(np.asarray(origin, dtype=float), particle_spacing, shape)
@@ -139,7 +139,7 @@ def remesh_to_grid(
         return grid_pos, np.zeros((len(grid_pos), 3))
 
     rel = (np.asarray(pos, dtype=float) - np.asarray(origin, dtype=float)) / float(particle_spacing)
-    circ_f = np.asarray(circ, dtype=float)
+    circ_f = np.asarray(vortex_strength, dtype=float)
 
     nearest = np.rint(rel).astype(np.int64)
     aligned = np.max(np.abs(rel - nearest), axis=1) <= 1.0e-5

@@ -506,7 +506,7 @@ def apply_fvm_boundary(
 
     cfg_time = coupler.fvm_solver.setup.time
     coupler.fvm_solver.logger.courant_info(
-        coupler.fvm_solver.cfl_max, cfg_time.max_cfl if cfg_time.adjust_timestep else None
+        coupler.fvm_solver.cfl_max, cfg_time.max_cfl if cfg_time.adjust_time_step else None
     )
 
     coupler.fvm_solver.advance_time()

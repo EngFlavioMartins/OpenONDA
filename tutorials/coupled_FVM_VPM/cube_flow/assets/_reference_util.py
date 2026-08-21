@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _coupling_time_step_size() -> float:
     metadata = ROOT / "solution" / "run_metadata.json"
     if metadata.exists():
-        return float(json.loads(metadata.read_text())["dt_vpm"])
+        return float(json.loads(metadata.read_text())["vpm_time_step_size"])
     return 0.05
 
 

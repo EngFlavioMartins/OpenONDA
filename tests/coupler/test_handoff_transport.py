@@ -48,7 +48,7 @@ def _cycle(pos, circ, target_fn, time_step_size, mesh_weight=None):
         circ,
         BOX,
         H,
-        circulation_at_node=target_fn,
+        vortex_strength_at_node=target_fn,
         mesh_weight_at_node=mesh_weight,
         freestream_velocity=U_INF,
         overlap_zone_ramp_width=4 * H,
@@ -64,7 +64,7 @@ def _cycle(pos, circ, target_fn, time_step_size, mesh_weight=None):
 
 
 def _seed_from_field(field_fn):
-    """Build an on-lattice particle set from an analytic circulation field."""
+    """Build an on-lattice particle set from an analytic strength field."""
     n = 41
     axis = (np.arange(n) - (n - 1) / 2.0) * H
     grid = np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1).reshape(-1, 3)
@@ -101,8 +101,8 @@ def test_fvm_authority_zone_does_not_accumulate_error():
 
 
 @pytest.mark.verification
-def test_lagrangian_zone_conserves_circulation_and_impulse_exactly():
-    """Remesh-only transport must not leak circulation or linear impulse."""
+def test_lagrangian_zone_conserves_strength_and_impulse_exactly():
+    """Remesh-only transport must not leak vortex strength or linear impulse."""
     radius, core, gamma = 0.2, 5.0 * H, 1.0
     time_step_size = 0.02
     pos, circ = _seed_from_field(

@@ -44,14 +44,14 @@ def max_stable_time_step_size(
     return float(max(l_buf - _M4P_SUPPORT * particle_spacing, 0.0) / (safety * u))
 
 
-def circulation_from_velocity_trace(
+def vortex_strength_from_velocity_trace(
     positions: np.ndarray,
     particle_spacing: float,
     velocity_at,
 ) -> np.ndarray:
     """Integrate ``n x u`` over each cubic particle control volume."""
     pos = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
-    circulation = np.zeros_like(pos)
+    vortex_strength = np.zeros_like(pos)
     offset = np.zeros(3, dtype=np.float64)
     for axis in range(3):
         offset.fill(0.0)
@@ -61,8 +61,8 @@ def circulation_from_velocity_trace(
         )
         normal = np.zeros(3, dtype=np.float64)
         normal[axis] = 1.0
-        circulation += particle_spacing**2 * np.cross(normal, delta_u)
-    return circulation
+        vortex_strength += particle_spacing**2 * np.cross(normal, delta_u)
+    return vortex_strength
 
 
 def smoothstep(x: np.ndarray | float, lo: float, hi: float) -> np.ndarray:
@@ -208,14 +208,14 @@ def _spectral_band_masks(
     return masks
 
 
-def _gaussian_mollified_circulation(
+def _gaussian_mollified_vortex_strength(
     circ_grid: np.ndarray,
     shape: tuple[int, int, int],
     particle_spacing: float,
     *,
     sigma: float,
 ) -> np.ndarray:
-    """Return circulation represented by Gaussian particles on their lattice."""
+    """Return vortex strength represented by Gaussian particles on their lattice."""
     from scipy.ndimage import gaussian_filter
 
     # s = sigma/sqrt(2) in cells. gaussian_filter normalises to sum(w) = 1,
@@ -263,13 +263,13 @@ def bounded_local_transfer(
         if output_weight.shape != (len(particle_strength),):
             raise ValueError("output_weight does not share the transfer lattice shape")
 
-    particle_field = _gaussian_mollified_circulation(
+    particle_field = _gaussian_mollified_vortex_strength(
         particle_strength, shape, particle_spacing, sigma=sigma
     ).reshape(-1, 3)
     physical_target = particle_field + authority[:, None] * (fvm_target - particle_field)
 
     strength = particle_strength + authority[:, None] * (fvm_target - particle_strength)
-    represented = _gaussian_mollified_circulation(
+    represented = _gaussian_mollified_vortex_strength(
         strength, shape, particle_spacing, sigma=sigma
     ).reshape(-1, 3)
     residual = physical_target - represented
@@ -291,7 +291,7 @@ def bounded_local_transfer(
         # Keep the representation produced by the correction pass.  The caller
         # uses it for the pre-prune audit; recomputing the same three Gaussian
         # filters there used to be an exact duplicate of this final convolution.
-        represented = _gaussian_mollified_circulation(
+        represented = _gaussian_mollified_vortex_strength(
             strength, shape, particle_spacing, sigma=sigma
         ).reshape(-1, 3)
         residual_post = float(np.linalg.norm(physical_target - represented)) / denominator
@@ -335,7 +335,7 @@ def redistribute_locally(
 ) -> np.ndarray:
     """Push ``removed`` onto surviving face neighbours.
 
-    Equal weights sum to one with zero first moment, so circulation and
+    Equal weights sum to one with zero first moment, so strength and
     impulse are conserved locally.
     """
     removed = np.asarray(removed, dtype=np.float64).reshape(*shape, 3)
@@ -540,7 +540,7 @@ def continuous_transfer(
     box: np.ndarray | list[float],
     particle_spacing: float,
     *,
-    circulation_at_node,
+    vortex_strength_at_node,
     freestream_velocity=None,
     mesh_weight_at_node=None,
     fluid_weight_at_node=None,
@@ -564,13 +564,13 @@ def continuous_transfer(
     Parameters
     ----------
     pos, circ : ndarray (N, 3)
-        Current particle positions and circulations.
+        Current particle positions and strengths.
     box : (6,) ``[x0, x1, y0, y1, z0, z1]``
         Hand-off bounds; the interface is the box surface.
     particle_spacing : float
         Lattice spacing, equal to the VPM particle spacing.
-    circulation_at_node : callable
-        FVM circulation from the weighted velocity trace.
+    vortex_strength_at_node : callable
+        FVM vortex strength from the weighted velocity trace.
     freestream_velocity : ndarray (3,) or None
         Freestream, used to orient the outflow diagnostic.
     mesh_weight_at_node : callable ``grid_pos -> (M,) in [0, 1]`` or None
@@ -703,7 +703,7 @@ def continuous_transfer(
         )
 
     # Taper the FVM vorticity before the local transfer.
-    target_raw = np.asarray(circulation_at_node(grid_pos), dtype=np.float64).reshape(-1, 3)
+    target_raw = np.asarray(vortex_strength_at_node(grid_pos), dtype=np.float64).reshape(-1, 3)
     excluded_target_l1 = float(
         np.linalg.norm(target_raw * (1.0 - node_fluid)[:, None], axis=1).sum()
     )
@@ -748,7 +748,7 @@ def continuous_transfer(
         ) / (float(np.linalg.norm(reference * comparison_weight[:, None])) + 1e-30)
         out_of_band = transfer_pre
 
-    # Prune weak circulation with local moment redistribution.
+    # Prune weak vortex strength with local moment redistribution.
     target_inv = invariants(grid_pos, grid_blended)
     magnitude_before = np.linalg.norm(grid_blended, axis=1)
     local_threshold = float(transfer_prune_threshold_abs) * (
@@ -779,7 +779,7 @@ def continuous_transfer(
     def _invariant_norms(left: dict[str, np.ndarray], right: dict[str, np.ndarray]):
         return {
             name: float(np.linalg.norm(left[name] - right[name]))
-            for name in ("circulation", "linear_impulse", "angular_impulse")
+            for name in ("total_vortex_strength", "linear_impulse", "angular_impulse")
         }
 
     raw_mismatch = _invariant_norms(target_inv, pre_correction)
@@ -794,19 +794,19 @@ def continuous_transfer(
         post_correction = invariants(new_pos, new_circ)
         applied_correction = _invariant_norms(pre_correction, post_correction)
         corrected_mismatch = _invariant_norms(target_inv, post_correction)
-        ref = float(np.linalg.norm(target_inv["circulation"])) + 1e-30
+        ref = float(np.linalg.norm(target_inv["total_vortex_strength"])) + 1e-30
         correction_scale = active_l1 + 1e-30
         drift = {
             **corrected_mismatch,
-            "circulation_rel": float(corrected_mismatch["circulation"] / ref),
+            "total_vortex_strength_rel": float(corrected_mismatch["total_vortex_strength"] / ref),
         }
-        if applied_correction["circulation"] > 1.0e-2 * correction_scale:
+        if applied_correction["total_vortex_strength"] > 1.0e-2 * correction_scale:
             logger.warning(
-                "[Transfer] global invariant closure had to move %.3e of circulation "
+                "[Transfer] global invariant closure had to move %.3e of vortex strength "
                 "(%.2f%% of Sum|Gamma|); the local prune redistribution is not "
                 "absorbing the pruned moments.",
-                applied_correction["circulation"],
-                100.0 * applied_correction["circulation"] / correction_scale,
+                applied_correction["total_vortex_strength"],
+                100.0 * applied_correction["total_vortex_strength"] / correction_scale,
             )
 
     in_band_residual = 0.0
@@ -815,7 +815,7 @@ def continuous_transfer(
     if compute_diagnostics:
         final_strength = np.zeros_like(grid_blended)
         final_strength[keep] = new_circ
-        mollified = _gaussian_mollified_circulation(
+        mollified = _gaussian_mollified_vortex_strength(
             final_strength, shape, particle_spacing, sigma=sigma
         ).reshape(-1, 3)
         in_band_residual = float(
@@ -1297,15 +1297,15 @@ class VorticityTransfer:
                 )
             return sampled
 
-        def circulation_at_node(grid_pos):
-            return circulation_from_velocity_trace(grid_pos, particle_spacing, velocity_at)
+        def vortex_strength_at_node(grid_pos):
+            return vortex_strength_from_velocity_trace(grid_pos, particle_spacing, velocity_at)
 
         res = continuous_transfer(
             pos,
             circ,
             self._box,
             particle_spacing,
-            circulation_at_node=circulation_at_node,
+            vortex_strength_at_node=vortex_strength_at_node,
             freestream_velocity=np.asarray(self.config.freestream_velocity, dtype=np.float64),
             fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
             interior_at_node=interior_at_node if has_solid else None,
@@ -1359,7 +1359,7 @@ class VorticityTransfer:
             100.0 * res.population_pruned_circulation_fraction,
             res.population_pruned_velocity_bound,
             res.cfl,
-            res.conservation_drift.get("circulation_rel", 0.0),
+            res.conservation_drift.get("total_vortex_strength_rel", 0.0),
             res.flux_ratio,
         )
         if res.diagnostics_evaluated:

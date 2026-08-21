@@ -240,7 +240,7 @@ def build_fvm(case_dir: Path, t_end: float, cores: int):
             end_time=t_end,
             output_interval_steps=10**9,
             output_interval_time=1.0e9,
-            adjust_timestep=False,
+            adjust_time_step=False,
         ),
         schemes=DiscretizationConfig(
             convection_scheme="linearUpwind",

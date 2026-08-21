@@ -51,7 +51,7 @@ class TestConfigFactories:
         assert tc.end_time == 20.0
 
     def test_time_config_steady(self):
-        tc = TimeConfig.steady(max_iter=1000)
+        tc = TimeConfig.steady(max_iterations=1000)
         assert tc.time_step_size == 1  # default dt for steady
         assert tc.end_time == 1000
         assert tc.start_time == 0

@@ -80,7 +80,7 @@ class _FakeStepLogger:
 
 
 class _FakeFVMTimeConfig:
-    adjust_timestep = False
+    adjust_time_step = False
     max_cfl = None
 
 
@@ -567,7 +567,7 @@ def test_coupler_runtime_setters_apply(built_backend):
     assert fvm.setup.transport.kinematic_viscosity == 0.02
     assert fvm.n_procs() == 1
     # Coupled runs must not let the FVM adapt its own dt.
-    assert fvm.setup.time.adjust_timestep is False
+    assert fvm.setup.time.adjust_time_step is False
 
 
 def test_initialize_rejects_serial_backend_under_mpi(tmp_path, monkeypatch):

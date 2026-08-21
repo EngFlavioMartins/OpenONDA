@@ -51,7 +51,7 @@ def main() -> None:
     if not metadata_path.is_file():
         raise SystemExit("FAIL: coupled run metadata was not written")
     metadata = json.loads(metadata_path.read_text())
-    expected_end = float(metadata["physics"]["t_end"])
+    expected_end = float(metadata["physics"]["end_time"])
 
     with force_path.open(newline="") as stream:
         rows = list(csv.DictReader(stream))

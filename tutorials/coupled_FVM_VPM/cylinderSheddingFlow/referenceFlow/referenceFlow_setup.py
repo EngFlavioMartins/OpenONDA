@@ -200,7 +200,7 @@ FVM_SETUP = fvm.FVMSetup(
         end_time=END_TIME,
         output_interval_steps=10**9,
         output_interval_time=FVM_VOLUME_INTERVAL,
-        adjust_timestep=False,
+        adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(
         convection_scheme="linearUpwind",

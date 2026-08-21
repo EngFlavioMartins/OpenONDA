@@ -137,7 +137,7 @@ def validate_solver_params(solver, time=None) -> None:
     if (
         time is not None
         and time_scheme in {"backward", "bdf2"}
-        and bool(getattr(time, "adjust_timestep", False))
+        and bool(getattr(time, "adjust_time_step", False))
     ):
         errors.append(
             "  adaptive time stepping with BDF2 is unsupported until "
@@ -152,7 +152,7 @@ def validate_solver_params(solver, time=None) -> None:
             )
         if not isinstance(time.output_interval_steps, int) or time.output_interval_steps < 1:
             errors.append(f"  write_interval={time.write_interval!r} must be an integer >= 1")
-        if bool(time.adjust_timestep):
+        if bool(time.adjust_time_step):
             if not 0.0 < float(time.min_time_step_size) <= float(time.max_time_step_size):
                 errors.append("  adaptive time-step bounds must satisfy 0 < min_dt <= max_dt")
             if not float(time.max_cfl) > 0.0:

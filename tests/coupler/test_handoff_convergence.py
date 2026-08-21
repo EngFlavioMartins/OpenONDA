@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 
 from source.coupler.vorticity_transfer import (
-    circulation_from_velocity_trace,
     continuous_transfer,
+    vortex_strength_from_velocity_trace,
 )
 
 
@@ -21,7 +21,7 @@ def test_rung0_uniform_flow_produces_no_vorticity():
     """A uniform stream must hand off nothing. Catches sign and trace errors."""
     h = 0.1
     points, _ = _lattice(16, h)
-    circulation = circulation_from_velocity_trace(
+    circulation = vortex_strength_from_velocity_trace(
         points, h, lambda q: np.tile([1.3, -0.4, 0.7], (len(np.atleast_2d(q)), 1))
     )
     assert np.abs(circulation).max() < 1e-15
@@ -35,7 +35,7 @@ def test_rung0_uniform_flow_transfer_creates_no_particles():
         np.zeros((0, 3)),
         box,
         h,
-        circulation_at_node=lambda q: circulation_from_velocity_trace(
+        vortex_strength_at_node=lambda q: vortex_strength_from_velocity_trace(
             q, h, lambda p: np.tile([1.0, 0.0, 0.0], (len(np.atleast_2d(p)), 1))
         ),
         overlap_zone_ramp_width=4 * h,
@@ -52,7 +52,7 @@ def test_rung0_solid_body_rotation_is_reproduced_exactly():
     h = 0.05
     points, _ = _lattice(12, h)
     omega = np.array([0.3, -0.2, 1.1])
-    circulation = circulation_from_velocity_trace(
+    circulation = vortex_strength_from_velocity_trace(
         points, h, lambda q: 0.5 * np.cross(omega, np.asarray(q).reshape(-1, 3))
     )
     np.testing.assert_allclose(circulation, np.tile(omega * h**3, (len(points), 1)), atol=1e-16)

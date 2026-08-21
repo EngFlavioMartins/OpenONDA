@@ -133,7 +133,7 @@ class TimeConfig:
     end_time: float = 1.0
     output_interval_steps: int = 10
     output_interval_time: float | None = None
-    adjust_timestep: bool = False
+    adjust_time_step: bool = False
     max_cfl: float = 1.0
     max_time_step_size: float = 0.1
     min_time_step_size: float = 1e-4
@@ -141,14 +141,14 @@ class TimeConfig:
 
     @staticmethod
     def steady(
-        max_iter: int = 1000,
+        max_iterations: int = 1000,
         output_interval_steps: int = 100,
     ) -> TimeConfig:
         """Return a steady SIMPLE time configuration."""
         return TimeConfig(
             time_step_size=1.0,
             start_time=0.0,
-            end_time=float(max_iter),
+            end_time=float(max_iterations),
             output_interval_steps=output_interval_steps,
         )
 
@@ -257,7 +257,7 @@ class PimpleControl:
     min_outer_correctors: int = 1
     outer_residual_tolerance: float | None = None
     outer_continuity_tolerance: float | None = None
-    max_iter: int = 20
+    max_iterations: int = 20
     tolerance: float = 1e-6
     velocity_relaxation: float = 1.0
     pressure_relaxation: float = 1.0
@@ -295,7 +295,7 @@ class MeshMotionConfig:
 
     method: Literal["static", "rigidMotion"] = "static"
     velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
-    omega: float = 0.0
+    angular_speed: float = 0.0
     axis: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
     origin: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
@@ -307,7 +307,7 @@ class MeshMotionConfig:
     @staticmethod
     def rigid(
         velocity: list[float] | None = None,
-        omega: float = 0.0,
+        angular_speed: float = 0.0,
         axis: list[float] | None = None,
         origin: list[float] | None = None,
     ) -> MeshMotionConfig:
@@ -315,7 +315,7 @@ class MeshMotionConfig:
         return MeshMotionConfig(
             method="rigidMotion",
             velocity=[0.0, 0.0, 0.0] if velocity is None else velocity,
-            omega=omega,
+            angular_speed=angular_speed,
             axis=[0.0, 0.0, 1.0] if axis is None else axis,
             origin=[0.0, 0.0, 0.0] if origin is None else origin,
         )

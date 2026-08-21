@@ -57,7 +57,7 @@ def test_static_transfer_lattice_preserves_the_dynamic_transfer():
         np.zeros((0, 3)),
         BOX,
         H,
-        circulation_at_node=target,
+        vortex_strength_at_node=target,
         mesh_weight_at_node=mesh_weight,
         overlap_zone_ramp_width=0.3,
         overlap_zone_dead_zone=0.05,
@@ -68,7 +68,7 @@ def test_static_transfer_lattice_preserves_the_dynamic_transfer():
         np.zeros((0, 3)),
         BOX,
         H,
-        circulation_at_node=target,
+        vortex_strength_at_node=target,
         overlap_zone_ramp_width=0.3,
         overlap_zone_dead_zone=0.05,
         transfer_prune_threshold_abs=1.0e-12,
@@ -87,7 +87,7 @@ def test_transfer_diagnostics_can_be_deferred_without_changing_particles():
         np.zeros((0, 3)),
         BOX,
         H,
-        circulation_at_node=target,
+        vortex_strength_at_node=target,
         transfer_prune_threshold_abs=1.0e-12,
     )
     deferred = continuous_transfer(
@@ -95,7 +95,7 @@ def test_transfer_diagnostics_can_be_deferred_without_changing_particles():
         np.zeros((0, 3)),
         BOX,
         H,
-        circulation_at_node=target,
+        vortex_strength_at_node=target,
         transfer_prune_threshold_abs=1.0e-12,
         compute_diagnostics=False,
     )
@@ -108,20 +108,20 @@ def test_transfer_diagnostics_can_be_deferred_without_changing_particles():
 
 def test_deferred_transfer_skips_final_gaussian_representation(monkeypatch):
     target = lambda points: np.tile([0.0, 0.0, 1.0e-3], (len(points), 1))  # noqa: E731
-    gaussian = transfer_module._gaussian_mollified_circulation
+    gaussian = transfer_module._gaussian_mollified_vortex_strength
     calls = []
 
     def record_gaussian(*args, **kwargs):
         calls.append(1)
         return gaussian(*args, **kwargs)
 
-    monkeypatch.setattr(transfer_module, "_gaussian_mollified_circulation", record_gaussian)
+    monkeypatch.setattr(transfer_module, "_gaussian_mollified_vortex_strength", record_gaussian)
     continuous_transfer(
         np.zeros((0, 3)),
         np.zeros((0, 3)),
         BOX,
         H,
-        circulation_at_node=target,
+        vortex_strength_at_node=target,
         transfer_prune_threshold_abs=1.0e-12,
         compute_diagnostics=False,
     )
@@ -149,7 +149,7 @@ def test_aligned_transfer_excludes_solid():
         np.zeros((0, 3)),
         BOX,
         H,
-        circulation_at_node=target,
+        vortex_strength_at_node=target,
         mesh_weight_at_node=lambda points: (
             1.0 - smoothstep(np.max(np.abs(np.asarray(points)), axis=1), 0.6, 0.8)
         ),
@@ -246,7 +246,7 @@ def test_free_wake_is_retained():
         circ,
         BOX,
         H,
-        circulation_at_node=_zero_target,
+        vortex_strength_at_node=_zero_target,
         transfer_buffer_length=0.1,
         transfer_prune_threshold_abs=1.0e-12,
     )
@@ -283,7 +283,7 @@ def test_hard_clip_would_be_discontinuous():
     assert np.max(np.abs(np.diff(clipped))) > 0.9 * threshold
 
 
-def test_local_redistribution_conserves_circulation_and_impulse_locally():
+def test_local_redistribution_conserves_strength_and_impulse_locally():
     shape = (7, 7, 7)
     rng = np.random.default_rng(2)
     field = rng.normal(size=(*shape, 3)) * 1e-3
@@ -295,7 +295,7 @@ def test_local_redistribution_conserves_circulation_and_impulse_locally():
 
     out = redistribute_locally(removed, shrunk.reshape(-1, 3), shape).reshape(*shape, 3)
 
-    # Total circulation preserved.
+    # Total vortex_strength preserved.
     np.testing.assert_allclose(
         out.reshape(-1, 3).sum(axis=0), field.reshape(-1, 3).sum(axis=0), atol=1e-15
     )
@@ -348,7 +348,7 @@ def test_smoothstep_is_c1_and_bounded():
     assert np.max(np.abs(np.diff(derivative))) < 1e-2
 
 
-def test_population_cap_preserves_integral_circulation():
+def test_population_cap_preserves_integral_strength():
     rng = np.random.default_rng(3)
     pos = rng.uniform([1.0, -0.5, -0.5], [2.0, 0.5, 0.5], (8, 3))
     circ = rng.normal(size=(8, 3)) * 0.05
@@ -357,7 +357,7 @@ def test_population_cap_preserves_integral_circulation():
         circ,
         BOX,
         H,
-        circulation_at_node=_zero_target,
+        vortex_strength_at_node=_zero_target,
         max_output_particles=4,
         transfer_prune_threshold_abs=1.0e-12,
     )

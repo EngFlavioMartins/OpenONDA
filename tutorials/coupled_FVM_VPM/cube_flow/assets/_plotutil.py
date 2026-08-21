@@ -114,7 +114,7 @@ def run_constants() -> dict:
         "freestream_speed": float(np.linalg.norm(freestream_velocity)) or 1.0,
         "freestream_velocity": freestream_velocity,
         "D": 1.0,  # cube side length (CUBE_SIDE in cube_flow_setup.py)
-        "nu": float(phys.get("nu", 1e-3)),
+        "kinematic_viscosity": float(phys.get("kinematic_viscosity", 1e-3)),
         "box": box
         or {
             "xmin": -1.5,

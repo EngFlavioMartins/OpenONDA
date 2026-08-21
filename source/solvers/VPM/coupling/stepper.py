@@ -42,18 +42,24 @@ class CouplingStepper:
             time=self.time,
             step=self.step,
             logging_interval_steps=self.logging_interval_steps,
-            density=getattr(self.setup, "density", 1.0),
         )
         if new_particles is not None:
             n = len(new_particles["points"])
             if n > 0:
                 visc_cfg = getattr(self.setup, "viscous", None)
-                nu = (
-                    getattr(visc_cfg, "kinematic_viscosity", None) if visc_cfg is not None else None
-                )
-                if nu is None or nu <= 0:
-                    nu = 1e-2
-                viscosity = np.full(n, nu, dtype=self.np_dtype)
+                if visc_cfg is None or visc_cfg.scheme == "NONE":
+                    nu_shed = 0.0
+                else:
+                    configured_nu = visc_cfg.kinematic_viscosity
+                    if configured_nu is None:
+                        raise ValueError(
+                            "ViscousConfig scheme "
+                            f"{visc_cfg.scheme!r} requires kinematic_viscosity so shed "
+                            "wake particles receive the molecular value; no fallback "
+                            "is applied"
+                        )
+                    nu_shed = float(configured_nu)
+                viscosity = np.full(n, nu_shed, dtype=self.np_dtype)
 
                 pos = new_particles["points"].astype(self.np_dtype)
                 strength = new_particles["strengths"].astype(self.np_dtype)

@@ -50,7 +50,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             "n_orthogonal_correctors": 0,
             "velocity_relaxation": 1.0,
             "pressure_relaxation": 1.0,
-            "max_iter": 20,
+            "max_iterations": 20,
             "momentum_tolerance": 1e-4,
             "convection_scheme": "deferred",
             "ibm_second_solve": True,

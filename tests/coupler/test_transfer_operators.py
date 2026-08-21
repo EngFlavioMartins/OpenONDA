@@ -20,8 +20,8 @@ from source.coupler.boundary import (
 from source.coupler.reporting import compute_diagnostics
 from source.coupler.solver import FVMVPMCoupler
 from source.coupler.vorticity_transfer import (
-    circulation_from_velocity_trace,
     continuous_transfer,
+    vortex_strength_from_velocity_trace,
 )
 from source.solvers.FVM.fields.diagnostics import compute_vorticity
 from source.solvers.FVM.mesh.cartesian import structured_box
@@ -441,7 +441,7 @@ def test_velocity_trace_recovers_linear_field_curl_exactly():
     def velocity(points):
         return np.asarray(points) @ gradient + np.array([0.4, -0.2, 0.1])
 
-    circulation = circulation_from_velocity_trace(positions, h, velocity)
+    circulation = vortex_strength_from_velocity_trace(positions, h, velocity)
     curl = np.array(
         [
             gradient[1, 2] - gradient[2, 1],
@@ -463,11 +463,11 @@ def test_velocity_trace_uses_the_no_slip_body_face():
         result[fluid, 1] = points[fluid, 0] - 0.5
         return result
 
-    circulation = circulation_from_velocity_trace(position, h, velocity)
+    circulation = vortex_strength_from_velocity_trace(position, h, velocity)
     np.testing.assert_allclose(circulation, [[0.0, 0.0, h**3]])
 
 
-def test_direct_circulation_target_bypasses_cell_remeshing():
+def test_direct_strength_target_bypasses_cell_remeshing():
     box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
     h = 0.1
     target = np.array([0.0, 0.0, 2.0 * h**3])
@@ -476,7 +476,7 @@ def test_direct_circulation_target_bypasses_cell_remeshing():
         np.zeros((0, 3)),
         box,
         h,
-        circulation_at_node=lambda points: np.tile(target, (len(points), 1)),
+        vortex_strength_at_node=lambda points: np.tile(target, (len(points), 1)),
         mesh_weight_at_node=lambda points: np.ones(len(points)),
         overlap_zone_ramp_width=h,
         transfer_buffer_length=h,
@@ -597,7 +597,7 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
         circulation,
         box,
         h,
-        circulation_at_node=lambda points: np.zeros((len(points), 3)),
+        vortex_strength_at_node=lambda points: np.zeros((len(points), 3)),
         transfer_buffer_length=0.1,
         transfer_prune_threshold_abs=5.0e-4,
     )
@@ -617,7 +617,7 @@ def test_correction_diagnostics_expose_raw_applied_and_corrected_mismatch():
     for section in ("conservation", "vpm_bc_flux", "transfer"):
         assert section in diagnostics
     for values in diagnostics["conservation"].values():
-        assert set(values) == {"circulation", "linear_impulse", "angular_impulse"}
+        assert set(values) == {"total_vortex_strength", "linear_impulse", "angular_impulse"}
         assert np.isfinite(list(values.values())).all()
     assert np.isfinite(list(diagnostics["vpm_bc_flux"].values())).all()
     assert np.isfinite(list(diagnostics["transfer"].values())).all()
@@ -631,7 +631,7 @@ def test_deferred_transfer_diagnostics_are_marked_unmeasured():
         np.zeros((0, 3)),
         np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5]),
         0.1,
-        circulation_at_node=lambda points: np.zeros((len(points), 3)),
+        vortex_strength_at_node=lambda points: np.zeros((len(points), 3)),
         compute_diagnostics=False,
     )
     coupler = object.__new__(FVMVPMCoupler)

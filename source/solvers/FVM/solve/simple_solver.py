@@ -1637,7 +1637,7 @@ class SIMPLESolver:
     corrector loop that alternates between a momentum solve and a
     pressure-correction Poisson solve.
 
-    The algorithm iterates until ``max_iter`` is reached or the residuals
+    The algorithm iterates until ``max_iterations`` is reached or the residuals
     fall below ``tolerance``.  Under-relaxation is applied through
     ``velocity_relaxation`` (velocity) and ``pressure_relaxation`` (pressure).
 
@@ -1667,7 +1667,7 @@ class SIMPLESolver:
             geo_data: Geometric quantities dictionary.
             boundaries: List of boundary condition dictionaries.
             params: Optional dict of solver parameters overriding defaults.
-                Supported keys: ``velocity_relaxation``, ``pressure_relaxation``, ``max_iter``,
+                Supported keys: ``velocity_relaxation``, ``pressure_relaxation``, ``max_iterations``,
                 ``tolerance``, ``convection_scheme``, ``linear_solver``.
         """
         self.mesh_data = mesh_data
@@ -1678,7 +1678,7 @@ class SIMPLESolver:
         self.params: dict[str, Any] = {
             "velocity_relaxation": 0.7,
             "pressure_relaxation": 0.3,
-            "max_iter": 100,
+            "max_iterations": 100,
             "tolerance": 1e-6,
             "convection_scheme": "deferred",
             "linear_solver": "spsolve",
@@ -1884,7 +1884,7 @@ class SIMPLESolver:
     def solve(self, U_init, p_init, rho=1.0, nu=0.01):
         """Solve a steady incompressible flow using the SIMPLE algorithm.
 
-        Iterates over ``max_iter`` SIMPLE steps, computing the momentum
+        Iterates over ``max_iterations`` SIMPLE steps, computing the momentum
         predictor, pressure correction, and velocity/pressure update at
         each iteration.  Convergence is declared when both the pressure
         and velocity residuals fall below ``tolerance``.
@@ -1908,7 +1908,7 @@ class SIMPLESolver:
             logger.section(
                 "SIMPLE SOLVER",
                 [
-                    ("Maximum iterations", str(self.params["max_iter"])),
+                    ("Maximum iterations", str(self.params["max_iterations"])),
                     ("Tolerance", f"{self.params['tolerance']:.3e}"),
                     (
                         "Under-relaxation",
@@ -1922,7 +1922,7 @@ class SIMPLESolver:
 
         face_flux = convection.compute_volumetric_face_flux(velocity, self.mesh_data, self.geo_data)
 
-        for iteration in range(int(self.params["max_iter"])):
+        for iteration in range(int(self.params["max_iterations"])):
             velocity, p, face_flux, residuals = self.step(velocity, p, face_flux, rho=rho, nu=nu)
 
             residual_p = self.last_res_p
@@ -1956,5 +1956,5 @@ class SIMPLESolver:
                 return velocity, p, face_flux, True
 
         if logger is not None:
-            logger.warning(f"SIMPLE did not converge in {self.params['max_iter']} iterations")
+            logger.warning(f"SIMPLE did not converge in {self.params['max_iterations']} iterations")
         return velocity, p, face_flux, False
