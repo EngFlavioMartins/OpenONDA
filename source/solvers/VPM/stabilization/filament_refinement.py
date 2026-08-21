@@ -1,11 +1,11 @@
 """Conservative refinement of stretched vortex-line elements.
 
-The particle circulation vector is a material line element in a three-
+The particle vortex-strength vector is a material line element in a three-
 dimensional vortex method.  A particle whose strength has grown too large is
 therefore refined along its own circulation direction:
 
 * two children receive half the parent circulation and volume;
-* their positions are displaced symmetrically along the circulation vector;
+* their positions are displaced symmetrically along the vortex-strength vector;
 * their Gaussian core radius and material properties are unchanged.
 
 For a displacement parallel to ``Gamma`` this construction preserves total

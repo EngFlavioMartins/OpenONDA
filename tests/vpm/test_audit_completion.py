@@ -14,8 +14,11 @@ import numpy as np
 import pytest
 
 from source.solvers.VPM.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
+from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from source.solvers.VPM.config.types import VPMSetup
 from source.solvers.VPM.core.solver import VPMSolver
+from source.solvers.VPM.diagnostics.conservation import ConservationTracker
+from source.solvers.VPM.diagnostics.offline import FlowIntegrals, OfflineFlowDiagnostics
 from source.solvers.VPM.io.checkpoint import CheckpointManager
 from source.solvers.VPM.io.logging import Logging, _TeeLogStream
 from source.solvers.VPM.io.sampler import SamplerExecutor
@@ -267,8 +270,8 @@ def test_vlm_diagnostics_use_the_same_sample_subdirectory(tmp_path):
     VLMDiagnostics.export_forces_csv(
         vlm_solver=None,
         forces={"CL": 0.5},
-        gamma_bound=1.0,
-        gamma_wake=-1.0,
+        bound_vortex_strength=1.0,
+        wake_vortex_strength=-1.0,
         lesp_max=0.0,
         n_p=10,
         time=0.2,
@@ -280,6 +283,135 @@ def test_vlm_diagnostics_use_the_same_sample_subdirectory(tmp_path):
     output = tmp_path / "samples" / "flat_plate" / "vlm_forces.csv"
     assert output.is_file()
     assert not (tmp_path / "solution" / "samples").exists()
+    with output.open(newline="", encoding="utf-8") as stream:
+        columns = next(csv.reader(stream))
+    assert "bound_vortex_strength_y" in columns
+    assert "wake_vortex_strength_y" in columns
+    assert not any(name.startswith("gamma_") for name in columns)
+
+
+class _ArrayField:
+    def __init__(self, values):
+        self.values = np.asarray(values)
+
+    def to_numpy(self):
+        return self.values.copy()
+
+
+def test_vlm_bound_vector_strength_includes_oriented_leg_length():
+    vortex_points = np.zeros((2, 4, 3))
+    vortex_points[0, 2] = [0.0, 1.0, 0.0]
+    vortex_points[1, 2] = [0.0, 2.0, 0.0]
+    solver = SimpleNamespace(
+        _solved=True,
+        lattice=SimpleNamespace(
+            num_panels=2,
+            circulation=_ArrayField([2.0, 3.0]),
+            vortex_points=_ArrayField(vortex_points),
+        ),
+    )
+
+    result = VLMSolver.compute_total_bound_vortex_strength(solver)
+
+    np.testing.assert_allclose(result, [0.0, 8.0, 0.0])
+    assert not hasattr(VLMSolver, "compute_total_circulation")
+
+
+def test_conservation_tracker_compares_dimensionally_equal_vector_strengths(tmp_path):
+    vlm_solver = SimpleNamespace(
+        _solved=True,
+        compute_total_bound_vortex_strength=lambda: np.array([0.0, 8.0, 0.0]),
+        compute_forces=lambda **_kwargs: {"Fx": 1.0, "Fy": 2.0, "Fz": 3.0},
+    )
+    solver = SimpleNamespace(
+        time=0.25,
+        total_vortex_strength=np.array([0.0, -8.0, 0.0]),
+        total_linear_impulse=np.array([1.0, 2.0, 3.0]),
+        total_kinetic_energy=4.0,
+        kinetic_energy_dissipation_rate=-0.5,
+        particles=SimpleNamespace(n_particles=12),
+        vlm_solver=vlm_solver,
+        freestream_velocity=np.array([1.0, 0.0, 0.0]),
+    )
+    tracker = ConservationTracker(density=2.0)
+
+    state = tracker.record_state(solver)
+
+    np.testing.assert_allclose(state.total_vortex_strength, 0.0)
+    np.testing.assert_allclose(state.impulse_wake, [2.0, 4.0, 6.0])
+    assert state.kinetic_energy == pytest.approx(8.0)
+    assert state.energy_dissipation_rate == pytest.approx(-1.0)
+    assert state.vortex_strength_error == pytest.approx(0.0)
+
+    output = tracker.export_csv(tmp_path)
+    assert output == tmp_path / "samples" / "vpm_conservation.csv"
+    with output.open(newline="", encoding="utf-8") as stream:
+        columns = next(csv.reader(stream))
+    assert columns[1:5] == [
+        "bound_vortex_strength_mag",
+        "wake_vortex_strength_mag",
+        "total_vortex_strength_mag",
+        "vortex_strength_error_pct",
+    ]
+    tracker.print_summary()
+
+
+def test_offline_flow_integral_output_uses_vortex_strength_contract(tmp_path):
+    diagnostics = OfflineFlowDiagnostics.__new__(OfflineFlowDiagnostics)
+    diagnostics.xdmf_path = tmp_path / "vpm_temporal.xdmf"
+    diagnostics.base_dir = tmp_path
+    diagnostics.results = [
+        FlowIntegrals(
+            time=0.0,
+            kinetic_energy=1.0,
+            helicity=2.0,
+            enstrophy=3.0,
+            vorticity_dissipation_rate=4.0,
+            vortex_strength_magnitude=5.0,
+            total_vortex_strength=np.array([1.0, 2.0, 3.0]),
+            linear_impulse=np.array([4.0, 5.0, 6.0]),
+            angular_impulse=np.array([7.0, 8.0, 9.0]),
+            n_particles=2,
+        )
+    ]
+
+    output = diagnostics.save()
+    contents = output.read_text(encoding="utf-8")
+
+    assert "vortex_strength_magnitude" in contents
+    assert "Total circulation magnitude" not in contents
+
+
+def test_offline_flow_integral_reader_uses_canonical_result_key(
+    tmp_path,
+    minimal_solver_config,
+):
+    VPMSolver(setup=VPMSetup(**minimal_solver_config))
+    diagnostics = OfflineFlowDiagnostics.__new__(OfflineFlowDiagnostics)
+    diagnostics._load_particle_data = lambda _path: {
+        "time": 0.5,
+        "n_particles": 1,
+        "position": np.zeros((1, 3)),
+        "vortex_strength": np.array([[1.0, 2.0, 3.0]]),
+        "core_radius": np.ones(1),
+        "effective_viscosity": np.zeros(1),
+    }
+    diagnostics.evaluator = SimpleNamespace(
+        compute_flow_integrals=lambda _particles, _time: {
+            "kinetic_energy": 1.0,
+            "helicity": 2.0,
+            "enstrophy": 3.0,
+            "vorticity_dissipation_rate": 4.0,
+            "vortex_strength_magnitude": 5.0,
+            "vortex_strength": np.array([1.0, 2.0, 3.0]),
+            "linear_impulse": np.array([4.0, 5.0, 6.0]),
+            "angular_impulse": np.array([7.0, 8.0, 9.0]),
+        }
+    )
+
+    result = diagnostics._compute_single_timestep(tmp_path / "vpm_000001.h5")
+
+    np.testing.assert_allclose(result.total_vortex_strength, [1.0, 2.0, 3.0])
 
 
 def test_flow_integral_export_is_configurable(monkeypatch):

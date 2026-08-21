@@ -572,7 +572,7 @@ class EvolutionStepper:
         correction_relative = float(
             np.linalg.norm(correction) / max(np.linalg.norm(circulation), np.finfo(float).tiny)
         )
-        self.update_particle_circulations(
+        self.update_particle_vortex_strength(
             np.ones(len(circulation), dtype=bool),
             correction.astype(self.np_dtype),
         )
@@ -662,7 +662,7 @@ class EvolutionStepper:
         self.solver.core_spreading_correction_relative = float(
             np.linalg.norm(correction) / max(np.linalg.norm(circulation), np.finfo(float).tiny)
         )
-        self.update_particle_circulations(
+        self.update_particle_vortex_strength(
             np.ones(len(circulation), dtype=bool),
             correction.astype(self.np_dtype),
         )

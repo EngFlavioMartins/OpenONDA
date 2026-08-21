@@ -60,12 +60,12 @@ angular-impulse correction assumes.
 - **[WL1993]** as above — the three discrete stretching forms.
 - **[Pedrizzetti1992]** Pedrizzetti, G. (1992). Insight into singular vortex
   flows. *Fluid Dyn. Res.* 10, 101–115.
-  Relaxation of Γ toward the local vorticity direction; the misalignment
+  Relaxation of particle α toward the local vorticity direction; the misalignment
   diagnostic measures exactly the quantity this addresses.
   → `diagnostics/resolution.py:strength_misalignment_deg`,
   `stabilization/operators.py:apply_pedrizzetti_relaxation`
 
-Only the TRANSPOSED form conserves total circulation ΣΓ exactly — proved in
+Only the TRANSPOSED form conserves total particle vortex strength Σα exactly — proved in
 `tests/vpm/test_conservation_structure.py`.
 
 ## Viscous diffusion
@@ -155,9 +155,9 @@ Only the TRANSPOSED form conserves total circulation ΣΓ exactly — proved in
   → `stabilization/divergence_relaxation.py`
 
 - **[Pedrizzetti1992]** as above — the local alternative to that projection:
-  rotate Γ_p toward ω(x_p) by a fixed fraction each step.  It is not a
+  rotate α_p toward ω(x_p) by a fixed fraction each step. It is not a
   projection onto a conserved subspace, so the rotation's transfer of
-  circulation and impulse is reported rather than gated.
+  vortex strength and impulse is reported rather than gated.
   → `config/types.py:StabilizationConfig.pedrizzetti_relaxation`,
   `stabilization/manager.py:StabilizationManager.apply_relaxation`
 

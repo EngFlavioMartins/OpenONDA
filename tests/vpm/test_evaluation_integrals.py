@@ -98,7 +98,7 @@ def test_empty_system_zero_integrals(kernel_name, backend, solver_for_backend):
     assert solver.total_helicity == 0.0
     assert np.allclose(solver.total_linear_impulse, 0.0)
     assert np.allclose(solver.total_angular_impulse, 0.0)
-    assert np.allclose(solver.total_strength, 0.0)
+    assert np.allclose(solver.total_vortex_strength, 0.0)
 
 
 def test_angular_impulse_core_correction_is_per_particle(backend, solver_for_backend):
@@ -157,9 +157,10 @@ def test_strength_linear_scaling(kernel_name, backend, solver_for_backend):
     solver1._update_all_flow_integrals()
     solver2.advance()
     solver2._update_all_flow_integrals()
-    assert np.allclose(solver2.total_strength, 2.0 * solver1.total_strength), (
-        f"{kernel_name}/{backend}: strength not linear in Γ"
-    )
+    assert np.allclose(
+        solver2.total_vortex_strength,
+        2.0 * solver1.total_vortex_strength,
+    ), f"{kernel_name}/{backend}: strength not linear in Γ"
 
 
 @pytest.mark.parametrize(

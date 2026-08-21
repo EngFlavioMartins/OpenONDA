@@ -50,14 +50,14 @@ def load_budget(samples_dir: Path, name: str):
         print(f"  [MISSING] {csv}")
         return None
     df = pd.read_csv(csv)
-    required = {"time", "gamma_bound_y", "gamma_wake_y"}
+    required = {"time", "bound_vortex_strength_y", "wake_vortex_strength_y"}
     missing = required.difference(df.columns)
     if missing:
-        print(f"  [MISSING] {csv} lacks corrected circulation columns: {sorted(missing)}")
+        print(f"  [MISSING] {csv} lacks vector-strength columns: {sorted(missing)}")
         return None
     t = df["time"].to_numpy(float)
-    bound = df["gamma_bound_y"].to_numpy(float)
-    wake = df["gamma_wake_y"].to_numpy(float)
+    bound = df["bound_vortex_strength_y"].to_numpy(float)
+    wake = df["wake_vortex_strength_y"].to_numpy(float)
     valid = np.isfinite(t) & np.isfinite(bound) & np.isfinite(wake)
     return t[valid], bound[valid], wake[valid]
 

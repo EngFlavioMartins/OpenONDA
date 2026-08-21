@@ -83,7 +83,7 @@ class Particles:
     Attributes:
         position (ti.Vector.field): Taichi field of particle positions, shape (N, 3).
         velocity (ti.Vector.field): Taichi field of particle velocities, shape (N, 3).
-        circulation (ti.Vector.field): Taichi field of particle circulation (α = ω·V), shape (N, 3).
+        vortex_strength (ti.Vector.field): Particle alpha = omega*V [m³/s], shape (N, 3).
         radius (ti.field): Taichi field of particle core radii, shape (N,).
         volume (ti.field): Taichi field of particle volumes, shape (N,).
         viscosity (ti.field): Taichi field of molecular viscosities, shape (N,).
@@ -446,7 +446,7 @@ class Particles:
 
     @ti.kernel
     def _accumulate_subset_moments(self, indices: ti.types.ndarray(), n_idx: ti.i32):  # type: ignore
-        """Sum circulation ΣΓ and linear impulse 0.5·Σ(r×Γ) over a subset of indices (device-side)."""
+        """Sum vortex strength Σalpha and impulse 0.5*Σ(r×alpha) for selected particles."""
         self._subset_vortex_strength[None] = ti.Vector.zero(self._taichi_dtype, 3)
         self._subset_impulse[None] = ti.Vector.zero(self._taichi_dtype, 3)
         for m in range(n_idx):
@@ -458,7 +458,7 @@ class Particles:
 
     def subset_moments(self, indices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
-        Compute (ΣΓ, 0.5·Σ r×Γ) over a subset of particles entirely on device.
+        Compute (Σalpha, 0.5*Σ r×alpha) for selected particles entirely on device.
 
         Only the index list is uploaded and two 3-vectors are downloaded, avoiding
         a full download of every particle's position and circulation.
@@ -480,13 +480,13 @@ class Particles:
 
     @ti.kernel
     def _accumulate_prefix_vortex_strength(self, n: ti.i32):  # type: ignore
-        """Sum ΣΓ over the first n live particles (device-side)."""
+        """Sum Σalpha over the first n live particles on the device."""
         self._subset_vortex_strength[None] = ti.Vector.zero(self._taichi_dtype, 3)
         for i in range(n):
             self._subset_vortex_strength[None] += self.vortex_strength[i]
 
     def total_vortex_strength(self) -> np.ndarray:
-        """Sum ΣΓ over all live particles on device, returning a shape-(3,) array."""
+        """Sum Σalpha over all live particles, returning a shape-(3,) array."""
         n = self.n_particles
         if n == 0:
             return np.zeros(3, dtype=self._np_float_dtype)

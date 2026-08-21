@@ -139,7 +139,7 @@ def plot_circulation(
     )
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(r"$\sum |\Gamma|$ [m$^2$/s]")
-    ax.set_title("Delta wing: wake circulation magnitude history")
+    ax.set_title("Delta wing: wake vortex-strength magnitude history")
     out = figures_dir / "delta_wing_circulation_history.png"
     figures_dir.mkdir(parents=True, exist_ok=True)
     _theme.save_fig(fig, out, figure_format=figure_format)

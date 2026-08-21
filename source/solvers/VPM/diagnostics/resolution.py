@@ -20,14 +20,14 @@ Three quantities, all cheap and all with an unambiguous "good" direction:
 
 ``vorticity_divergence_error``
     ||div w|| / ||grad w||, the |w|-weighted mean over particles.  The exact
-    vorticity field is solenoidal; the discrete one, w_h = sum Gamma_j zeta_s,
+    vorticity field is solenoidal; the discrete one, w_h = sum alpha_j zeta_s,
     is not, and vortex stretching amplifies precisely its divergent part.  This
     is the standard signature of the classical 3-D vortex-method instability
     (Cottet & Koumoutsakos 2000, Sec. 5.3; Pedrizzetti 1992).
 
 ``strength_misalignment_deg``
-    Angle between Gamma_p and w(x_p).  In the continuum they are parallel; the
-    DIRECT and TRANSPOSED stretching forms differ by exactly Gamma x w, so this
+    Angle between alpha_p and w(x_p). In the continuum they are parallel; the
+    DIRECT and TRANSPOSED stretching forms differ by exactly alpha x w, so this
     angle simultaneously measures how far the particle field is from being a
     vorticity field and how much the choice of stretching form can matter.
 
@@ -56,16 +56,16 @@ _MAX_PROBES = 512
 
 def _vorticity_gradient_metrics(
     positions: np.ndarray,
-    circulations: np.ndarray,
+    vortex_strengths: np.ndarray,
     radii: np.ndarray,
     tree: cKDTree,
     probes: np.ndarray,
 ) -> tuple[float, np.ndarray]:
     """|w|-weighted mean of |div w| / ||grad w||_F over particles.
 
-    For w_h(x) = sum_j Gamma_j zeta(|x-x_j|/s_j)/s_j^3 with a Gaussian zeta,
+    For w_h(x) = sum_j alpha_j zeta(|x-x_j|/s_j)/s_j^3 with a Gaussian zeta,
 
-        d(w_b)/d(x_a) = sum_j Gamma_jb * (-2 (x-x_j)_a / s_j^2) * zeta_j / s_j^3
+        d(w_b)/d(x_a) = sum_j alpha_jb * (-2 (x-x_j)_a / s_j^2) * zeta_j / s_j^3
 
     so the divergence is the trace and the Frobenius norm bounds it.  The ratio
     is scale-free: 0 for a perfectly solenoidal discrete field, O(1) once the
@@ -82,9 +82,9 @@ def _vorticity_gradient_metrics(
         d = positions[i] - positions[j]
         s = radii[j]
         z = inv_pi15 * np.exp(-np.einsum("ka,ka->k", d, d) / s**2) / s**3
-        vorticity[sample_index] = z @ circulations[j]
+        vorticity[sample_index] = z @ vortex_strengths[j]
         # jac[a, b] = d(w_b)/d(x_a)
-        jac = np.einsum("k,ka,kb->ab", -2.0 * z / s**2, d, circulations[j])
+        jac = np.einsum("k,ka,kb->ab", -2.0 * z / s**2, d, vortex_strengths[j])
         divergence[sample_index] = np.trace(jac)
         frobenius[sample_index] = np.sqrt(np.einsum("ab,ab->", jac, jac))
 
@@ -98,7 +98,7 @@ def _vorticity_gradient_metrics(
 
 def discretization_health(
     positions: np.ndarray,
-    circulations: np.ndarray,
+    vortex_strengths: np.ndarray,
     radii: np.ndarray,
     vorticities: np.ndarray | None = None,
 ) -> dict[str, float]:
@@ -106,7 +106,7 @@ def discretization_health(
 
     Args:
         positions: (N, 3) particle positions.
-        circulations: (N, 3) particle circulations Gamma_p [m^3/s].
+        vortex_strengths: (N, 3) particle vortex strengths alpha_p [m³/s].
         radii: (N,) particle core radii sigma_p [m].
         vorticities: optional (N, 3) w(x_p) already evaluated by the solver.
             When omitted, the same compact Gaussian-neighbour sum used for the
@@ -128,7 +128,7 @@ def discretization_health(
     if n < _NEIGHBOURS + 1:
         return empty
 
-    circulations = np.ascontiguousarray(circulations, dtype=np.float64)
+    vortex_strengths = np.ascontiguousarray(vortex_strengths, dtype=np.float64)
     radii = np.ascontiguousarray(radii, dtype=np.float64)
     if not np.isfinite(positions).all() or not np.isfinite(radii).all() or radii.max() <= 0.0:
         return empty
@@ -151,7 +151,7 @@ def discretization_health(
     metrics["overlap_ratio"] = float(overlap.mean())
     metrics["overlap_ratio_max"] = float(overlap.max())
     divergence_error, reconstructed_vorticity = _vorticity_gradient_metrics(
-        positions, circulations, radii, tree, probes
+        positions, vortex_strengths, radii, tree, probes
     )
     metrics["vorticity_divergence_error"] = divergence_error
 
@@ -160,15 +160,15 @@ def discretization_health(
     else:
         vorticities = np.ascontiguousarray(vorticities, dtype=np.float64)
         sampled_vorticity = vorticities[probes]
-    sampled_circulation = circulations[probes]
-    weight = np.linalg.norm(sampled_circulation, axis=1)
+    sampled_vortex_strength = vortex_strengths[probes]
+    weight = np.linalg.norm(sampled_vortex_strength, axis=1)
     norm = weight * np.linalg.norm(sampled_vorticity, axis=1)
     usable = norm > np.finfo(float).tiny
     if usable.any() and weight[usable].sum() > 0.0:
         cosine = (
             np.einsum(
                 "ka,ka->k",
-                sampled_circulation[usable],
+                sampled_vortex_strength[usable],
                 sampled_vorticity[usable],
             )
             / norm[usable]

@@ -39,7 +39,12 @@ SCANNED_FILES = [
     "source/solvers/VPM/config/velocity.py",
     "source/solvers/VPM/config/viscous.py",
     "source/solvers/VPM/core/solver.py",
+    "source/solvers/VPM/diagnostics/conservation.py",
+    "source/solvers/VPM/diagnostics/offline.py",
+    "source/solvers/VPM/diagnostics/resolution.py",
     "source/solvers/VPM/boundary_elements/vlm/config.py",
+    "source/solvers/VPM/boundary_elements/vlm/solver/diagnostics.py",
+    "source/solvers/VPM/boundary_elements/vlm/solver/vlm_solver.py",
     "source/coupler/config/types.py",
     "source/coupler/solver.py",
     "source/coupler/boundary.py",
@@ -98,6 +103,19 @@ FORBIDDEN_EXACT = {
     "continue_from_backup",
     "DEFAULT_BACKUP_FILENAME",
     "BackupSystem",
+    # Particle alpha_p [L^3/T] must not be exposed as scalar VLM circulation
+    # Gamma [L^2/T].
+    "particles_strengths",
+    "total_strength",
+    "update_particle_circulations",
+    "centroid_of_circulation",
+    "centroids_of_circulation",
+    "compute_total_circulation",
+    "circulation_bound",
+    "circulation_wake",
+    "circulation_total",
+    "gamma_bound",
+    "gamma_wake",
 }
 
 # `self.<attr> = ...` targets that must never appear: these are *stored
@@ -125,7 +143,7 @@ def _iter_definitions(tree: ast.AST):
     for node in ast.walk(tree):
         if isinstance(node, ast.arg):
             yield node.arg, node.lineno
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             yield node.name, node.lineno
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             yield node.target.id, node.lineno

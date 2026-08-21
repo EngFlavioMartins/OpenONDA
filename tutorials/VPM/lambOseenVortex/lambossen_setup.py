@@ -99,16 +99,16 @@ def viscous_config(scheme: str, viscosity: float, spacing: float) -> ViscousConf
 
 
 def normalize_retained_circulation(
-    particle_circulation: np.ndarray,
+    particle_vortex_strength: np.ndarray,
     keep: np.ndarray,
     requested_circulation_per_length: float,
     column_length: float,
 ) -> tuple[np.ndarray, float, float]:
     """Preserve the requested circulation after truncating weak particles."""
-    retained = particle_circulation[keep].copy()
+    retained = particle_vortex_strength[keep].copy()
     raw_per_length = float(retained[:, 2].sum() / column_length)
     if abs(raw_per_length) <= np.finfo(float).tiny:
-        raise ValueError("retained particle circulation is zero")
+        raise ValueError("retained particle vortex strength is zero")
     scale = requested_circulation_per_length / raw_per_length
     retained *= scale
     return retained, raw_per_length, scale
@@ -276,31 +276,31 @@ def run_case(
     for group_id, (circulation, y_position) in enumerate(
         zip(circulations, y_positions, strict=True)
     ):
-        velocity, _, particle_circulation = LambOseenVPM(
+        velocity, _, particle_vortex_strength = LambOseenVPM(
             kinematic_viscosity=viscosity,
             avg_particle_radius=float(radii.mean()),
             positions=positions,
             volumes=volumes,
             vortex_center=np.array([0.0, y_position, 0.0]),
-            vortex_strength=circulation,
+            circulation=circulation,
             vortex_time=vortex_age,
             anti_diffuse_flag=True,
         )
-        strength = np.linalg.norm(particle_circulation, axis=1)
+        strength = np.linalg.norm(particle_vortex_strength, axis=1)
         keep = strength >= 0.01 * strength.max()
-        retained_circulation, _, _ = normalize_retained_circulation(
-            particle_circulation,
+        retained_vortex_strength, _, _ = normalize_retained_circulation(
+            particle_vortex_strength,
             keep,
             circulation,
             COLUMN_LENGTH,
         )
         group_ids = np.full(np.count_nonzero(keep), group_id, dtype=np.int32)
         solver.add_vortex_particles(
-            positions[keep],
-            velocity[keep],
-            retained_circulation,
-            radii[keep],
-            volumes[keep],
+            position=positions[keep],
+            velocity=velocity[keep],
+            vortex_strength=retained_vortex_strength,
+            core_radius=radii[keep],
+            volume=volumes[keep],
             kinematic_viscosity=np.full(int(np.count_nonzero(keep)), viscosity),
             group_id=group_ids,
         )

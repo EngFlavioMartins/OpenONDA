@@ -319,8 +319,8 @@ class TaichiTreecode:
 
         Args:
             positions:  Taichi vec3 field *or* NumPy array [N,3] of positions.
-            circulations: Taichi vec3 field *or* NumPy array [N,3].
-            radii:  Taichi scalar field *or* NumPy array [N].
+            vortex_strengths: Taichi vec3 field or NumPy array [N, 3] [m³/s].
+            core_radii: Taichi scalar field or NumPy array [N] [m].
             N:  Number of active particles (required for field API).
             force:  Accepted for API compatibility; the tree is always rebuilt.
         """
@@ -1201,7 +1201,7 @@ class TaichiTreecode:
 
     @ti.func
     def _quad_A_vector(self, P: ti.template()) -> ti.math.vec3:
-        """A_i = eps_ijk P[k, j] = sum_p (r . d_p) (d_p x Gamma_p)_i."""
+        """A_i = eps_ijk P[k, j] = sum_p (r . d_p) (d_p x alpha_p)_i."""
         return ti.Vector([P[2, 1] - P[1, 2], P[0, 2] - P[2, 0], P[1, 0] - P[0, 1]])
 
     @ti.func

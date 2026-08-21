@@ -9,7 +9,7 @@ conservative-but-wrong one.  This one shows the resolution instead:
 * particle overlap ``h/sigma`` — quadrature converges only while blobs overlap;
 * ``||div w|| / ||grad w||`` — the exact vorticity field is solenoidal, the
   discrete one is not, and stretching amplifies precisely its divergent part;
-* the angle between ``Gamma_p`` and ``w(x_p)`` — parallel in the continuum.
+* the angle between ``alpha_p`` and ``w(x_p)`` — parallel in the continuum.
 
 Shaded bands mark the acceptance limits enforced by ``assets/check_run.py``.
 
@@ -95,7 +95,7 @@ def main() -> None:
     ax_divergence.axhspan(MAX_DIVERGENCE_ERROR, 10.0, **reference_fill_style("strong"))
 
     ax_angle.set_yscale("log")
-    ax_angle.set_ylabel(r"$\angle(\Gamma_p,\ \omega(x_p))$  [deg]")
+    ax_angle.set_ylabel(r"$\angle(\alpha_p,\ \omega(x_p))$  [deg]")
     ax_angle.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
     ax_angle.axhspan(MAX_MISALIGNMENT_DEG, 180.0, **reference_fill_style("strong"))
 

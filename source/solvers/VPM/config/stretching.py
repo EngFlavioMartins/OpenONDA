@@ -132,7 +132,7 @@ class StretchingConfig:
         conserve_moments: bool = False,
         conserve_energy: bool = False,
     ):
-        """Direct scheme: dΓ/dt = (Γ·∇)u
+        """Direct scheme: dalpha/dt = (alpha*grad)u.
 
         Options for `scheme`:
           - 'EULER': forward Euler (1st order)
@@ -160,7 +160,7 @@ class StretchingConfig:
         conserve_moments: bool = False,
         conserve_energy: bool = False,
     ):
-        """Transposed scheme: dΓ/dt = (Γ·∇')u - conserves ΣΓ
+        """Transposed scheme: dalpha/dt = grad(u)^T alpha; conserves Σalpha.
 
         Options for `scheme`:
           - 'EULER': forward Euler (1st order)

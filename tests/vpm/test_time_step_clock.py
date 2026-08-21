@@ -132,8 +132,8 @@ def test_centroids_ignore_inactive_particle_capacity(tmp_path):
     solver.particles.vortex_strength[1] = [np.nan, np.nan, np.nan]
     solver.particles.group_id[1] = 0
 
-    np.testing.assert_allclose(solver.centroid_of_circulation, [0.0, 0.0, 0.0])
-    np.testing.assert_allclose(solver.centroids_of_circulation[0], [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(solver.centroid_of_vortex_strength, [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(solver.centroids_of_vortex_strength[0], [0.0, 0.0, 0.0])
 
 
 @pytest.mark.parametrize(

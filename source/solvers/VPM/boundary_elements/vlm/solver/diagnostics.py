@@ -1,5 +1,5 @@
 """
-VLM diagnostics module — recording and CSV export of VLM force/circulation history.
+VLM diagnostics module — recording and CSV export of force/vector-strength history.
 
 Owns all logic for:
   - Appending per-step VLM scalars to the solver diagnostics history dict.
@@ -52,14 +52,14 @@ class VLMDiagnostics:
     def record_vlm_diagnostics(
         vlm_solver,
         particles,
-        particles_strengths: np.ndarray,
+        particle_vortex_strength: np.ndarray,
         diagnostics_history: dict,
         step: int,
         time: float,
         case_dir: str,
         sample_subdirectory: str | None = None,
     ) -> None:
-        """Record VLM force and circulation scalars and (if due) flush to CSV.
+        """Record VLM force and vector-strength scalars and, when due, flush to CSV.
 
         Parameters
         ----------
@@ -67,8 +67,8 @@ class VLMDiagnostics:
             Active ``VLMSolver`` instance.
         particles:
             Current ``Particles`` container (for particle count).
-        particles_strengths:
-            Circulation array (N, 3) for the current particle set.
+        particle_vortex_strength:
+            Vortex-strength array (N, 3) for the current particles [m³/s].
         diagnostics_history:
             Solver's ``_diagnostics_history`` dict (mutated in-place).
         step:
@@ -87,27 +87,27 @@ class VLMDiagnostics:
             is_tenp = vlm_solver.lattice.is_TE_panel.to_numpy()[:n_panels]
             gamma_cum = vlm_solver.lattice.cumulative_circulation.to_numpy()[:n_panels]
 
-            # VPM particle ``circulation`` stores vector vortex strength
-            # alpha = integral(omega dV), with units m^3/s.  A plain sum of
+            # VPM particles store vector vortex strength
+            # alpha = integral(omega dV), with units m^3/s.  A plain sum with
             # scalar VLM circulation is both dimensionally incompatible and
             # cancels between mirrored halves.  Convert the TE bound vortices
             # to the same vector-strength measure using their oriented legs.
             vortex_points = vlm_solver.lattice.vortex_points.to_numpy()[:n_panels]
             te_mask = is_tenp == 1
             bound_legs = vortex_points[te_mask, 2] - vortex_points[te_mask, 1]
-            gamma_bound_vec = np.sum(gamma_cum[te_mask, None] * bound_legs, axis=0)
-            gamma_bound_y = float(gamma_bound_vec[1])
+            bound_vortex_strength = np.sum(gamma_cum[te_mask, None] * bound_legs, axis=0)
+            bound_vortex_strength_y = float(bound_vortex_strength[1])
 
             n_p = particles.n_particles
-            gamma_wake_y = float(particles_strengths[:, 1].sum()) if n_p > 0 else 0.0
+            wake_vortex_strength_y = float(particle_vortex_strength[:, 1].sum()) if n_p > 0 else 0.0
 
             lespnp = vlm_solver.lattice.lesp.to_numpy()[:n_panels]
             lesp_max = float(np.max(lespnp)) if n_panels > 0 else 0.0
 
             diagnostics_history["vlm_CL"].append(float(forces["CL"]))
             diagnostics_history["vlm_CD"].append(float(forces["CD"]))
-            diagnostics_history["vlm_bound_circulation_y"].append(gamma_bound_y)
-            diagnostics_history["vlm_wake_circulation_y"].append(gamma_wake_y)
+            diagnostics_history["vlm_bound_vortex_strength_y"].append(bound_vortex_strength_y)
+            diagnostics_history["vlm_wake_vortex_strength_y"].append(wake_vortex_strength_y)
             diagnostics_history["vlm_lesp_max"].append(lesp_max)
             diagnostics_history["vlm_n_particles"].append(float(n_p))
 
@@ -116,8 +116,8 @@ class VLMDiagnostics:
                 VLMDiagnostics.export_forces_csv(
                     vlm_solver,
                     forces,
-                    gamma_bound_y,
-                    gamma_wake_y,
+                    bound_vortex_strength_y,
+                    wake_vortex_strength_y,
                     lesp_max,
                     n_p,
                     time,
@@ -134,8 +134,8 @@ class VLMDiagnostics:
     def export_forces_csv(
         vlm_solver,
         forces: dict,
-        gamma_bound: float,
-        gamma_wake: float,
+        bound_vortex_strength: float,
+        wake_vortex_strength: float,
         lesp_max: float,
         n_p: int,
         time: float,
@@ -151,8 +151,8 @@ class VLMDiagnostics:
             Active ``VLMSolver`` instance.
         forces:
             Force dict returned by ``vlm_solver.compute_forces()``.
-        gamma_bound, gamma_wake:
-            Pre-computed bound / wake y-circulation scalars.
+        bound_vortex_strength, wake_vortex_strength:
+            Pre-computed bound and wake y-components of vector strength [m³/s].
         lesp_max:
             Maximum Leading Edge Suction Parameter for this step.
         n_p:
@@ -192,8 +192,8 @@ class VLMDiagnostics:
             "Cl_c4": forces.get("Cl_c4", 0.0),
             "Cm_c4": forces.get("Cm_c4", 0.0),
             "Cn_c4": forces.get("Cn_c4", 0.0),
-            "gamma_bound_y": gamma_bound,
-            "gamma_wake_y": gamma_wake,
+            "bound_vortex_strength_y": bound_vortex_strength,
+            "wake_vortex_strength_y": wake_vortex_strength,
             "lesp_max": lesp_max,
             "n_particles": n_p,
         }

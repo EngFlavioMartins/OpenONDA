@@ -59,7 +59,7 @@ def _load_lamb_oseen(solver, bounds, h):
         avg_particle_radius=float(radii.mean()),
         positions=positions,
         volumes=volumes,
-        vortex_strength=_GAMMA,
+        circulation=_GAMMA,
         vortex_time=_T0,
     )
     solver.add_vortex_particles(
@@ -125,9 +125,9 @@ def test_transposed_stretching_conserves_total_circulation(tmp_path):
         kinematic_viscosity=viscosities,
     )
 
-    gamma_before = solver.particles_strengths.sum(axis=0)
+    gamma_before = solver.particle_vortex_strength.sum(axis=0)
     solver.advance()
-    gamma_after = solver.particles_strengths.sum(axis=0)
+    gamma_after = solver.particle_vortex_strength.sum(axis=0)
 
     # Relative error per component; skip near-zero components to avoid division by ~0.
     scale = np.maximum(np.abs(gamma_before), 1e-12)
@@ -168,12 +168,12 @@ def test_cs_diffusion_conserves_total_circulation(tmp_path):
     solver = VPMSolver(setup=config)
     _load_lamb_oseen(solver, bounds, _H)
 
-    gamma_z_initial = solver.particles_strengths[:, 2].sum()
+    gamma_z_initial = solver.particle_vortex_strength[:, 2].sum()
 
     for _ in range(20):
         solver.advance()
 
-    gamma_z_final = solver.particles_strengths[:, 2].sum()
+    gamma_z_final = solver.particle_vortex_strength[:, 2].sum()
     rel_err = abs(gamma_z_final - gamma_z_initial) / abs(gamma_z_initial)
 
     assert rel_err < 1e-6, (

@@ -2,17 +2,19 @@
 Conservation Diagnostics for VLM-VPM Coupling.
 ==============================================
 
-This module implements circulation and integral-invariant tracking for hybrid
-VLM-VPM simulations.
+This module implements vector-strength and integral-invariant tracking for
+hybrid VLM-VPM simulations.
 
-Key concept: circulation conservation (Kelvin's theorem)
---------------------------------------------------------
-For inviscid flow, total circulation is conserved:
+Key concept: bound/wake vortex-strength closure
+------------------------------------------------
+For a discretized inviscid vortex system, the oriented bound and wake
+filament strengths close:
 
-    d(Gamma_total) / dt = 0
+    d(alpha_total) / dt = 0
 
-where Gamma_total = Gamma_bound + Gamma_wake. At shedding, circulation must
-transfer exactly between the VLM bound system and the VPM wake.
+where alpha = Gamma dl has units L^3/T. At shedding, scalar VLM circulation
+Gamma [L^2/T] is converted to the VPM vector strength alpha_p [L^3/T] by the
+oriented filament length; the two quantities are never added directly.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: February 2026
@@ -36,23 +38,23 @@ class ConservationState:
     time: float
     """Physical time [s]."""
 
-    circulation_bound: np.ndarray = field(default_factory=lambda: np.zeros(3))
-    """Bound circulation vector from VLM [m^2/s]."""
+    bound_vortex_strength: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    """Oriented bound-vortex strength sum from VLM panels [m³/s]."""
 
-    circulation_wake: np.ndarray = field(default_factory=lambda: np.zeros(3))
-    """Wake circulation vector from VPM particles [m^2/s]."""
+    wake_vortex_strength: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    """Wake particle vortex-strength sum [m³/s]."""
 
-    circulation_total: np.ndarray = field(default_factory=lambda: np.zeros(3))
-    """Total circulation (bound + wake) [m^2/s]."""
+    total_vortex_strength: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    """Bound plus wake vector strength [m³/s]."""
 
     vortex_strength_error: float = 0.0
-    """Relative error in circulation conservation [%]."""
+    """Relative drift in bound/wake vector-strength closure [%]."""
 
     impulse_wake: np.ndarray = field(default_factory=lambda: np.zeros(3))
-    """Wake linear impulse from VPM [kg m^2/s]."""
+    """Wake linear impulse [kg m/s]."""
 
     impulse_total: np.ndarray = field(default_factory=lambda: np.zeros(3))
-    """Tracked total linear impulse [kg m^2/s]."""
+    """Tracked total linear impulse [kg m/s]."""
 
     force_kutta_joukowski: np.ndarray = field(default_factory=lambda: np.zeros(3))
     """Force from Kutta-Joukowski on panels [N]."""
@@ -72,8 +74,8 @@ class ConservationState:
     n_particles_removed: int = 0
     """Number of particles removed."""
 
-    vortex_strength_removed: float = 0.0
-    """Magnitude of circulation lost to particle removal [m^2/s]."""
+    vortex_strength_removed: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    """Vector strength removed with discarded particles [m³/s]."""
 
 
 class ConservationTracker:
@@ -82,16 +84,16 @@ class ConservationTracker:
     def __init__(self, density: float = 1.225):
         self.density = density
         self.history: list[ConservationState] = []
-        self._initial_circulation: float | None = None
+        self._initial_vortex_strength: float | None = None
 
     def record_state(self, solver: "VPMSolver") -> ConservationState:
         """Record conservation quantities at the current time step."""
         state = ConservationState(time=solver.time)
 
-        state.circulation_wake = solver.total_strength
+        state.wake_vortex_strength = solver.total_vortex_strength
         state.impulse_wake = solver.total_linear_impulse * self.density
-        state.kinetic_energy = solver.total_kinetic_energy
-        state.energy_dissipation_rate = solver.kinetic_energy_dissipation_rate
+        state.kinetic_energy = solver.total_kinetic_energy * self.density
+        state.energy_dissipation_rate = solver.kinetic_energy_dissipation_rate * self.density
         state.n_particles_total = solver.particles.n_particles
 
         if hasattr(solver, "_particles_removed_this_step"):
@@ -99,7 +101,7 @@ class ConservationTracker:
             state.vortex_strength_removed = solver._vortex_strength_removed_this_step
 
         if solver.vlm_solver is not None and solver.vlm_solver._solved:
-            state.circulation_bound = solver.vlm_solver.compute_total_circulation()
+            state.bound_vortex_strength = solver.vlm_solver.compute_total_bound_vortex_strength()
             try:
                 forces = solver.vlm_solver.compute_forces(
                     density=self.density,
@@ -109,39 +111,44 @@ class ConservationTracker:
             except Exception:
                 pass
 
-        state.circulation_total = state.circulation_bound + state.circulation_wake
+        state.total_vortex_strength = state.bound_vortex_strength + state.wake_vortex_strength
         state.impulse_total = state.impulse_wake
 
-        if self._initial_circulation is None:
-            self._initial_circulation = np.linalg.norm(state.circulation_total)
+        if self._initial_vortex_strength is None:
+            self._initial_vortex_strength = np.linalg.norm(state.total_vortex_strength)
 
-        if self._initial_circulation > 1e-10:
+        if self._initial_vortex_strength > 1e-10:
             state.vortex_strength_error = (
                 100.0
-                * abs(np.linalg.norm(state.circulation_total) - self._initial_circulation)
-                / self._initial_circulation
+                * abs(np.linalg.norm(state.total_vortex_strength) - self._initial_vortex_strength)
+                / self._initial_vortex_strength
             )
 
         self.history.append(state)
         return state
 
-    def export_csv(self, filename: str = "solution/conservation.csv") -> None:
-        """Export conservation history to a CSV file."""
+    def export_csv(
+        self,
+        case_dir: str | Path,
+        file_name: str = "vpm_conservation.csv",
+    ) -> Path | None:
+        """Export history to ``<case_dir>/samples/<file_name>``."""
         if len(self.history) == 0:
             print("[WARNING] No conservation data to export")
-            return
+            return None
 
-        Path(filename).parent.mkdir(parents=True, exist_ok=True)
+        filename = Path(case_dir) / "samples" / file_name
+        filename.parent.mkdir(parents=True, exist_ok=True)
 
         with open(filename, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(
                 [
                     "time",
-                    "circulation_bound_mag",
-                    "circulation_wake_mag",
-                    "circulation_total_mag",
-                    "circulation_error_pct",
+                    "bound_vortex_strength_mag",
+                    "wake_vortex_strength_mag",
+                    "total_vortex_strength_mag",
+                    "vortex_strength_error_pct",
                     "impulse_wake_x",
                     "impulse_wake_y",
                     "impulse_wake_z",
@@ -158,9 +165,9 @@ class ConservationTracker:
                 writer.writerow(
                     [
                         state.time,
-                        np.linalg.norm(state.circulation_bound),
-                        np.linalg.norm(state.circulation_wake),
-                        np.linalg.norm(state.circulation_total),
+                        np.linalg.norm(state.bound_vortex_strength),
+                        np.linalg.norm(state.wake_vortex_strength),
+                        np.linalg.norm(state.total_vortex_strength),
                         state.vortex_strength_error,
                         *state.impulse_wake,
                         *state.force_kutta_joukowski,
@@ -171,6 +178,7 @@ class ConservationTracker:
                 )
 
         print(f"[INFO] Conservation diagnostics exported to: {filename}")
+        return filename
 
     def print_summary(self) -> None:
         """Print a short conservation-quality summary."""
@@ -186,10 +194,10 @@ class ConservationTracker:
         print(f"\nSimulation time: {final.time:.4f} s")
         print(f"Time steps recorded: {len(self.history)}")
 
-        print("\n--- Circulation Conservation (Kelvin's Theorem) ---")
-        print(f"Initial total circulation: {self._initial_circulation:.6e} m^2/s")
-        print(f"Final total circulation:   {np.linalg.norm(final.circulation_total):.6e} m^2/s")
-        print(f"Conservation error:        {final.circulation_error:.3f}%")
+        print("\n--- Bound/Wake Vortex-Strength Closure ---")
+        print(f"Initial total strength: {self._initial_vortex_strength:.6e} m^3/s")
+        print(f"Final total strength:   {np.linalg.norm(final.total_vortex_strength):.6e} m^3/s")
+        print(f"Closure error:          {final.vortex_strength_error:.3f}%")
 
         if final.vortex_strength_error < 0.1:
             status = "EXCELLENT"

@@ -43,7 +43,7 @@ class OctreeNode:
         half_size: Half the node width (node spans center ± half_size)
         particles: List of particle indices contained in this node (leaf only)
         children: List of child nodes (interior only, up to 8)
-        total_vortex_strength: Sum of circulations Σ Γ_i for multipole
+        total_vortex_strength: Sum of particle vortex strengths Σ alpha_i for multipole
         center_of_vorticity: Vortex strength-weighted centroid Σ(x_i |Γ_i|) / Σ|Γ_i|
         avg_radius: Average particle radius in this node (for kernel smoothing)
     """
@@ -79,7 +79,7 @@ class BarnesHutTreecode:
 
     Example:
         >>> tree = BarnesHutTreecode(theta=0.5)
-        >>> tree.build(positions, circulations, radii)
+        >>> tree.build(positions, vortex_strengths, core_radii)
         >>> velocities = tree.compute_velocities(positions, radii, freestream_velocity)
 
     Parameters:
@@ -118,8 +118,8 @@ class BarnesHutTreecode:
 
         Args:
             positions: Particle positions [N, 3]
-            circulations: Particle circulations [N, 3]
-            radii: Particle core radii [N]
+            vortex_strengths: Particle vortex strengths [N, 3] [m³/s]
+            core_radii: Particle core radii [N] [m]
         """
         t_start = time.perf_counter()
 
@@ -395,8 +395,8 @@ def compute_velocities_treecode(
 
     Args:
         positions: Particle positions [N, 3]
-        circulations: Particle circulations [N, 3]
-        radii: Particle core radii [N]
+        vortex_strengths: Particle vortex strengths [N, 3] [m³/s]
+        core_radii: Particle core radii [N] [m]
         theta: Opening angle (default 0.5)
         freestream_velocity: Freestream velocity [3] (optional)
 
@@ -420,8 +420,8 @@ def benchmark_treecode(
 
     Args:
         positions: Particle positions [N, 3]
-        circulations: Particle circulations [N, 3]
-        radii: Particle core radii [N]
+        vortex_strengths: Particle vortex strengths [N, 3] [m³/s]
+        core_radii: Particle core radii [N] [m]
         direct_velocities: Reference velocities from direct sum (optional)
         theta_values: List of θ values to test
 

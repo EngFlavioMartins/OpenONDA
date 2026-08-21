@@ -339,8 +339,8 @@ class VPMSolver:
             "observed_time_step_size": [],
             "vlm_CL": [],
             "vlm_CD": [],
-            "vlm_bound_circulation_y": [],
-            "vlm_wake_circulation_y": [],
+            "vlm_bound_vortex_strength_y": [],
+            "vlm_wake_vortex_strength_y": [],
             "vlm_lesp_max": [],
             "vlm_n_particles": [],
         }
@@ -583,11 +583,6 @@ class VPMSolver:
         return self._get_particle_field("velocity")
 
     @property
-    def particles_strengths(self) -> np.ndarray:
-        """Particle circulation vectors with shape ``(N, 3)`` [m²/s]."""
-        return self._get_particle_field("vortex_strength")
-
-    @property
     def particle_core_radius(self) -> np.ndarray:
         """Particle core radii with shape ``(N,)`` [m]."""
         return self._get_particle_field("core_radius")
@@ -644,7 +639,7 @@ class VPMSolver:
 
     @property
     def particle_vortex_strength(self) -> np.ndarray:
-        """Alias for :attr:`particles_strengths`."""
+        """Particle vortex-strength vectors with shape ``(N, 3)`` [m³/s]."""
         return self._get_particle_field("vortex_strength")
 
     # Flow diagnostics
@@ -672,7 +667,7 @@ class VPMSolver:
         )
 
     def _record_centroid_history(self) -> None:
-        """Compute and record the circulation-weighted centroid to diagnostics history."""
+        """Record the vortex-strength-magnitude-weighted particle centroid."""
         ParticleFieldEvaluation.record_centroid_history(
             self._diagnostics_history,
             self.particles_positions,
@@ -691,7 +686,7 @@ class VPMSolver:
         VLMDiagnostics.record_vlm_diagnostics(
             self.vlm_solver,
             self.particles,
-            self.particles_strengths,
+            self.particle_vortex_strength,
             self._diagnostics_history,
             self.step,
             self.time,
@@ -707,13 +702,20 @@ class VPMSolver:
             sample_subdirectory,
         )
 
-    def _export_vlm_forces_to_csv(self, forces, gamma_bound, gamma_wake, lesp_max, n_p):
+    def _export_vlm_forces_to_csv(
+        self,
+        forces,
+        bound_vortex_strength,
+        wake_vortex_strength,
+        lesp_max,
+        n_p,
+    ):
         """Delegate to VLMDiagnostics."""
         VLMDiagnostics.export_forces_csv(
             self.vlm_solver,
             forces,
-            gamma_bound,
-            gamma_wake,
+            bound_vortex_strength,
+            wake_vortex_strength,
             lesp_max,
             n_p,
             self.time,
@@ -748,13 +750,13 @@ class VPMSolver:
         return self._flow_integrals.get("kinetic_energy_dissipation_rate", 0.0)
 
     @property
-    def total_strength(self) -> np.ndarray:
-        """Total particle circulation vector."""
+    def total_vortex_strength(self) -> np.ndarray:
+        """Total particle vortex-strength vector [m³/s]."""
         return self._flow_integrals.get("vortex_strength", np.array([0.0, 0.0, 0.0]))
 
     @property
     def total_vortex_strength_magnitude(self) -> float:
-        """Magnitude of the total particle circulation."""
+        """Magnitude of the total particle vortex-strength vector [m³/s]."""
         return self._flow_integrals.get("vortex_strength_magnitude", 0.0)
 
     @property
@@ -771,14 +773,14 @@ class VPMSolver:
         return self._flow_integrals.get("angular_impulse", np.array([0.0, 0.0, 0.0]))
 
     @property
-    def centroids_of_circulation(self) -> dict[int, np.ndarray]:
-        """Circulation-weighted centroid for each particle group."""
-        return self.field_diagnostics.compute_centroids_of_circulation(self.particles)
+    def centroids_of_vortex_strength(self) -> dict[int, np.ndarray]:
+        """Vortex-strength-magnitude-weighted centroid for each particle group."""
+        return self.field_diagnostics.compute_centroids_of_vortex_strength(self.particles)
 
     @property
-    def centroid_of_circulation(self) -> np.ndarray:
-        """Global circulation-weighted centroid."""
-        return self.field_diagnostics.compute_centroid_of_circulation(self.particles)
+    def centroid_of_vortex_strength(self) -> np.ndarray:
+        """Global vortex-strength-magnitude-weighted particle centroid."""
+        return self.field_diagnostics.compute_centroid_of_vortex_strength(self.particles)
 
     def compute_forces(
         self, density: float = 1.225, reference_speed: float | None = None
@@ -1326,12 +1328,12 @@ class VPMSolver:
         magnitude = np.linalg.norm(np.asarray(vortex_strength, dtype=np.float64), axis=1)
         self.stabilization.on_replacement(magnitude, volume)
 
-    def update_particle_circulations(
+    def update_particle_vortex_strength(
         self,
         mask: np.ndarray,
         vortex_strength_increment: np.ndarray,
     ) -> None:
-        """Apply an in-place circulation delta to a masked subset of particles."""
+        """Apply an in-place vortex-strength delta to a masked particle subset."""
         self.particles.update_vortex_strength_masked(mask, vortex_strength_increment)
 
     def _print_timestep_validation_summary(self, results: dict) -> None:

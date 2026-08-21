@@ -338,7 +338,7 @@ class StabilizationManager:
     def apply_relaxation(self) -> None:
         """Rotate the scheduled fraction of the Gamma-omega misalignment away.
 
-        The particle field is a vorticity field only while ``Gamma_p`` stays
+        The particle field is a vorticity field only while ``alpha_p`` stays
         parallel to the vorticity it induces, and the divergence of the
         discrete field grows exactly where it does not.  The rotation carries
         vector circulation with it, so the master reports that transfer instead

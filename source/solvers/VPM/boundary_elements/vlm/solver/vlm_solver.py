@@ -1203,15 +1203,15 @@ class VLMSolver:
             b_ref,
         )
 
-    def compute_total_circulation(self) -> np.ndarray:
+    def compute_total_bound_vortex_strength(self) -> np.ndarray:
         """
-        Compute total bound circulation vector from VLM panels.
+        Compute total oriented bound-vortex strength from VLM panels.
 
         This is the circulation contribution from the bound vortex elements.
         Each horseshoe vortex contributes Γ * l where l is the bound leg vector.
 
         Returns:
-            np.ndarray: Total circulation vector [Γx, Γy, Γz] [m²/s]
+            np.ndarray: Sum of ``Γ * bound_leg`` vectors [m³/s].
 
         """
         if not self._solved:
@@ -1226,10 +1226,9 @@ class VLMSolver:
         # give the chordwise vector, which is not the bound leg.)
         l_vec = vortex_pts[:, 2] - vortex_pts[:, 1]
 
-        # Total circulation: sum(Γ_i * l_i)
-        circulation_total = np.sum(gamma[:, np.newaxis] * l_vec, axis=0)
+        total_vortex_strength = np.sum(gamma[:, np.newaxis] * l_vec, axis=0)
 
-        return circulation_total
+        return total_vortex_strength
 
     def _compute_one_surface_forces(
         self,

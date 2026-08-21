@@ -50,8 +50,8 @@ def main() -> int:
     kelvin_csv = root / "exp_static_aoa08" / "exp_static_aoa08.csv"
     if kelvin_csv.exists():
         df = pd.read_csv(kelvin_csv)
-        residual = df.gamma_bound_y + df.gamma_wake_y
-        scale = max(float(np.max(np.abs(df.gamma_bound_y))), 1e-15)
+        residual = df.bound_vortex_strength_y + df.wake_vortex_strength_y
+        scale = max(float(np.max(np.abs(df.bound_vortex_strength_y))), 1e-15)
         closure = float(np.max(np.abs(residual)) / scale)
         print(f"Kelvin bound/wake closure: {closure:.3e}")
         if closure > 1e-4:

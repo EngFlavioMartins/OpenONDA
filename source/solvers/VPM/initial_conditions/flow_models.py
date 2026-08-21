@@ -19,7 +19,7 @@ def LambOseenVPM(
     positions: np.ndarray,
     volumes: np.ndarray,
     vortex_center: np.ndarray = np.array([0.0, 0.0, 0.0]),
-    vortex_strength: float = np.pi,
+    circulation: float = np.pi,
     vortex_time: float = 1.0,
     disturb_amp: float = 0.0,
     max_disturb_modes: int = 12,
@@ -28,12 +28,12 @@ def LambOseenVPM(
     """Initialize Lamb-Oseen vortex field on particles.
 
     Parameters:
-        kinematic_viscosity: Kinematic kinematic_viscosity [m²/s]
+        kinematic_viscosity: Kinematic viscosity [m²/s]
         avg_particle_radius: Average particle core radius [m]
         positions: Particle positions (N, 3)
         volumes: Particle volumes (N,)
         vortex_center: Vortex center position [m]
-        vortex_strength: Total circulation [m²/s]
+        circulation: Total line-integral circulation [m²/s]
         vortex_time: Vortex age [s] (for viscous diffusion)
         disturb_amp: Perturbation amplitude
         max_disturb_modes: Number of perturbation modes
@@ -42,7 +42,7 @@ def LambOseenVPM(
     Returns:
         velocities: (N, 3) ndarray
         viscosities: (N,) ndarray
-        strengths: (N, 3) ndarray
+        vortex_strengths: Particle alpha vectors, shape (N, 3) [m³/s]
     """
     num_particles = len(positions)
     vorticities = np.zeros_like(positions)
@@ -84,16 +84,16 @@ def LambOseenVPM(
 
     for i in range(num_particles):
         exp_term = np.exp(-(r[i] ** 2) / a_sq)
-        vorticities[i, 2] = (vortex_strength / (np.pi * a_sq)) * exp_term
+        vorticities[i, 2] = (circulation / (np.pi * a_sq)) * exp_term
         if r[i] > 1e-12:
-            u_theta = (vortex_strength / (2 * np.pi * r[i])) * (1.0 - exp_term)
+            u_theta = (circulation / (2 * np.pi * r[i])) * (1.0 - exp_term)
             velocities[i, 0] = -u_theta * dy[i] / r[i]
             velocities[i, 1] = u_theta * dx[i] / r[i]
 
     viscosities = np.full(num_particles, max(kinematic_viscosity, 0.0))
-    strengths = vorticities * volumes[:, None]
+    vortex_strengths = vorticities * volumes[:, None]
 
-    return velocities, viscosities, strengths
+    return velocities, viscosities, vortex_strengths
 
 
 # =========================================================

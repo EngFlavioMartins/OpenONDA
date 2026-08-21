@@ -215,7 +215,7 @@ class ParticleFieldEvaluation:
                     - (2/9) C Σ σ_i² Γ_i
 
             The correction must remain inside the sum when core radii vary.
-            Replacing it by a mean radius times ``ΣΓ`` is only equivalent for
+            Replacing it by a mean radius times ``Σalpha`` is only equivalent for
             uniform cores and gives a false angular-impulse drift as soon as
             core spreading changes individual radii.
             """
@@ -243,11 +243,11 @@ class ParticleFieldEvaluation:
                 str_i = strengths[i]
                 pos_i = positions[i]
 
-                # Total strength magnitude: Σ|Γ| (sum of magnitudes, NOT |ΣΓ|)
+                # Total strength magnitude: Σ|alpha| (sum of magnitudes, not |Σalpha|)
                 str_mag = str_i.norm()
                 ti.atomic_add(results[None].str_mag, str_mag)
 
-                # Total strength vector: ΣΓ (atomic for thread safety)
+                # Total vortex-strength vector: Σalpha (atomic for thread safety)
                 ti.atomic_add(results[None].gamma_x, str_i[ti.static(0)])
                 ti.atomic_add(results[None].gamma_y, str_i[ti.static(1)])
                 ti.atomic_add(results[None].gamma_z, str_i[ti.static(2)])
@@ -581,7 +581,7 @@ class ParticleFieldEvaluation:
         self.compute_global_centroid_kernel = compute_global_centroid_kernel
 
     def _define_centroid_kernels(self, kernel_functions):
-        """Define kernels for computing centroids of circulation."""
+        """Define kernels for vortex-strength-magnitude-weighted centroids."""
         self._define_group_centroid_kernel()
         self._define_global_centroid_kernel()
 
@@ -591,34 +591,36 @@ class ParticleFieldEvaluation:
     def record_centroid_history(
         diagnostics_history: dict,
         positions: np.ndarray,
-        circulation: np.ndarray,
+        vortex_strength: np.ndarray,
     ) -> None:
-        """Compute and append the circulation-weighted centroid to the diagnostics history.
+        """Append the vortex-strength-magnitude-weighted particle centroid.
 
         Args:
             diagnostics_history: Solver's ``_diagnostics_history`` dict (mutated in-place).
             positions: Particle positions array of shape (N, 3).
-            circulation: Particle circulation array of shape (N, 3).
+            vortex_strength: Particle vortex-strength array of shape (N, 3) [m³/s].
         """
         if "centroid" not in diagnostics_history:
             return
         try:
-            if positions.size == 0 or circulation.size == 0:
+            if positions.size == 0 or vortex_strength.size == 0:
                 centroid = np.array([0.0, 0.0, 0.0])
             else:
-                circ_mag = np.linalg.norm(circulation, axis=1)
-                total_mag = circ_mag.sum()
-                if total_mag > 0:
-                    centroid = (positions * circ_mag[:, np.newaxis]).sum(axis=0) / total_mag
+                strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
+                total_magnitude = strength_magnitude.sum()
+                if total_magnitude > 0:
+                    centroid = (positions * strength_magnitude[:, np.newaxis]).sum(
+                        axis=0
+                    ) / total_magnitude
                 else:
                     centroid = np.array([0.0, 0.0, 0.0])
             diagnostics_history["centroid"].append(tuple(centroid.tolist()))
         except Exception as exc:
-            print(f"(Warning) Failed to compute circulation centroid: {exc}")
+            print(f"(Warning) Failed to compute vortex-strength centroid: {exc}")
 
-    def compute_centroid_of_circulation(self, particles) -> np.ndarray:
+    def compute_centroid_of_vortex_strength(self, particles) -> np.ndarray:
         """
-        Compute the centroid of circulation for the entire particle set.
+        Compute the vortex-strength-magnitude-weighted particle centroid.
 
         Returns:
             np.ndarray: Centroid position [x, y, z], or zeros if no particles.
@@ -846,7 +848,7 @@ class ParticleFieldEvaluation:
         """Write the kernel-reconstructed vorticity ω_h into a Taichi Vector field.
 
         Args:
-            particles: Particles object with position, circulation, radius.
+            particles: Particle container with position, vortex strength, and core radius.
             out_field: ti.Vector.field(3, ...) to receive ω_h values (written in-place).
         """
         N = particles.n_particles
@@ -856,9 +858,9 @@ class ParticleFieldEvaluation:
             particles.position, particles.vortex_strength, particles.core_radius, out_field, N
         )
 
-    def compute_centroids_of_circulation(self, particles) -> dict[int, np.ndarray]:
+    def compute_centroids_of_vortex_strength(self, particles) -> dict[int, np.ndarray]:
         """
-        Compute centroids of circulation for each particle group.
+        Compute vortex-strength-magnitude-weighted centroids by particle group.
 
         Args:
             particles: Particles object

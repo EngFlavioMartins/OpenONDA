@@ -1091,7 +1091,7 @@ class _GridDiffusionMixin:
         the transverse second-moment growth produced by diffusion.
 
         A weighted minimum-norm solve applies the nine constraints to the
-        surviving circulation vectors.  Coordinates and moments are scaled by
+        surviving vortex-strength vectors. Coordinates and moments are scaled by
         the survivor-cloud length to keep the small dense solve well-conditioned.
         """
         Gk = grid_np[ix, iy, iz].astype(np.float64)  # (Mk, 3) survivor circ
@@ -1261,7 +1261,7 @@ class _GridDiffusionMixin:
 
         Algorithm
         ---------
-        1. M4' scatter: particle circulation → grid  (GPU Taichi kernel).
+        1. M4' scatter: particle vortex strength → grid (GPU Taichi kernel).
         2. Explicit Laplacian: forward-Euler nu∇²ω    (GPU Taichi kernel).
            When ``nu_eff`` (per-particle ν+ν_t) is given, the Laplacian uses a
            per-node coefficient α_node = ν_eff·dt/particle_spacing² (Bug A) instead of the
@@ -1618,7 +1618,7 @@ class _GridDiffusionMixin:
         Parameters
         ----------
         pos_np : (N, 3) float array   Particle positions.
-        circ_np : (N, 3) float array  Particle circulations [m²/s = vol × ω].
+        circ_np : (N, 3) float array  Particle vortex strengths [m³/s = volume × omega].
         grid_min_np : (3,) float      Grid origin (minimum corner position).
         particle_spacing : float                     Grid spacing [m].
         nu : float                    Kinematic viscosity [m²/s].

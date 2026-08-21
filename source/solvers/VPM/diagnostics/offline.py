@@ -1,6 +1,6 @@
 """
 Offline post-processing diagnostics: flow integrals (energy, enstrophy,
-circulation, impulse) computed from saved particle states.
+vortex strength, impulse) computed from saved particle states.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -47,7 +47,7 @@ class FlowIntegrals:
     enstrophy: float
     vorticity_dissipation_rate: float
     vortex_strength_magnitude: float
-    total_strength: np.ndarray  # (3,)
+    total_vortex_strength: np.ndarray  # (3,) [m³/s]
     linear_impulse: np.ndarray  # (3,)
     angular_impulse: np.ndarray  # (3,)
     n_particles: int
@@ -226,7 +226,7 @@ class OfflineFlowDiagnostics:
                 enstrophy=0.0,
                 vorticity_dissipation_rate=0.0,
                 vortex_strength_magnitude=0.0,
-                total_strength=np.zeros(3),
+                total_vortex_strength=np.zeros(3),
                 linear_impulse=np.zeros(3),
                 angular_impulse=np.zeros(3),
                 n_particles=0,
@@ -262,7 +262,7 @@ class OfflineFlowDiagnostics:
             enstrophy=results_dict["enstrophy"],
             vorticity_dissipation_rate=results_dict["vorticity_dissipation_rate"],
             vortex_strength_magnitude=results_dict["vortex_strength_magnitude"],
-            total_strength=results_dict["strength"],
+            total_vortex_strength=results_dict["vortex_strength"],
             linear_impulse=results_dict["linear_impulse"],
             angular_impulse=results_dict["angular_impulse"],
             n_particles=n,
@@ -367,7 +367,7 @@ class OfflineFlowDiagnostics:
             f.write("#   kinetic_energy  - Total kinetic energy [m²/s²]\n")
             f.write("#   enstrophy       - Total enstrophy [1/s²]\n")
             f.write("#   helicity        - Total helicity [m³/s²]\n")
-            f.write("#   strength_mag    - Total circulation magnitude [m²/s]\n")
+            f.write("#   vortex_strength_magnitude - Sum of particle |alpha| [m³/s]\n")
             f.write("#   dE_dt           - Energy dissipation rate [m²/s³]\n")
             f.write("#   impulse_x/y/z   - Linear impulse components [m³/s]\n")
             f.write("#\n")
@@ -375,7 +375,7 @@ class OfflineFlowDiagnostics:
             # Column header
             f.write(
                 f"{'time':>12} {'n_particles':>12} {'kinetic_energy':>16} {'enstrophy':>16} "
-                f"{'helicity':>16} {'strength_mag':>16} {'dE_dt':>16} "
+                f"{'helicity':>16} {'vortex_strength_magnitude':>26} {'dE_dt':>16} "
                 f"{'impulse_x':>14} {'impulse_y':>14} {'impulse_z':>14}\n"
             )
 
@@ -383,7 +383,8 @@ class OfflineFlowDiagnostics:
             for i, r in enumerate(self.results):
                 f.write(
                     f"{r.time:12.6f} {r.n_particles:12d} {r.kinetic_energy:16.8e} "
-                    f"{r.enstrophy:16.8e} {r.helicity:16.8e} {r.strength_magnitude:16.8e} "
+                    f"{r.enstrophy:16.8e} {r.helicity:16.8e} "
+                    f"{r.vortex_strength_magnitude:26.8e} "
                     f"{dE_dt[i]:16.8e} {r.linear_impulse[0]:14.6e} "
                     f"{r.linear_impulse[1]:14.6e} {r.linear_impulse[2]:14.6e}\n"
                 )

@@ -166,7 +166,7 @@ class StabilizationOperators:
         The vorticity is taken as the curl of ``particles.velocity_gradient``,
         so this must be called while that gradient still describes the state
         being relaxed.  Each strength moves along the short arc between
-        ``Gamma_p`` and ``omega(x_p)``, which bounds the correction by the
+        ``alpha_p`` and ``omega(x_p)``, which bounds the correction by the
         misalignment itself; with ``conserve_strength`` the rotation is exact
         and no particle strength is created or destroyed.
 

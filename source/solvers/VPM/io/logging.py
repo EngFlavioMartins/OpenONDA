@@ -291,12 +291,12 @@ class Logging:
         int_items = [
             ("Number of Particles", f"{int(n_particles):d}" if n_particles is not None else "n/a"),
             (
-                "Total Circulation (\u03a3|\u0393|)",
+                "Total Vortex Strength (\u03a3|\u03b1|)",
                 f"{system.total_vortex_strength_magnitude:.3e} m\u00b3/s",
             ),
             (
-                "Total Circulation (\u03a3\u0393)",
-                f"({system.total_strength[0]:.3e}, {system.total_strength[1]:.3e}, {system.total_strength[2]:.3e}) m\u00b3/s",
+                "Total Vortex Strength (\u03a3\u03b1)",
+                f"({system.total_vortex_strength[0]:.3e}, {system.total_vortex_strength[1]:.3e}, {system.total_vortex_strength[2]:.3e}) m\u00b3/s",
             ),
             (
                 # High precision: linear impulse is a conserved invariant, so a
@@ -331,8 +331,8 @@ class Logging:
 
         # Vortex Geometry
         try:
-            center = getattr(system, "centroid_of_circulation", None)
-            centroids = system.centroids_of_circulation
+            center = getattr(system, "centroid_of_vortex_strength", None)
+            centroids = system.centroids_of_vortex_strength
             geo_items = []
             if center is not None:
                 geo_items.append(
@@ -822,7 +822,7 @@ class Logging:
         lines.append(f"  Current Time Step        : {system.step}")
         lines.append(f"  Simulation Time          : {system.time:.2E} s")
         lines.append(f"  Wall-clock Time          : {system.wall_time:.2E} s")
-        lines.append(f"  Total Strength           : {total_strength:.2E} m³/s")
+        lines.append(f"  Total Vortex Strength    : {total_strength:.2E} m³/s")
 
         # I/O and monitoring
         name = (system.checkpoint_name or "").strip()

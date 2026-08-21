@@ -53,6 +53,9 @@ remote `development` baseline supplied with the audit was `18e7c27`.
   `OPENONDA_COMPUTE_DEVICE=CPU python -m pytest -q tests/vpm -m "not gpu and not slow"`.
 - [x] VLM loading, panel loads, particle absorption, checkpoint paths, and output
   placement have focused regression coverage.
+- [x] Scalar VLM circulation `Gamma` `[m^2/s]` remains distinct from particle
+  vortex strength `alpha = omega*V` `[m^3/s]`; bound/wake diagnostics convert
+  `Gamma` with the oriented vortex-leg length before comparing vector strengths.
 - [x] Coupler threshold modes, interpolation, conservation, flux projection,
   pressure datum invariance, restart, and slow serial smoke tests pass. The
   closed-body pressure test is invariant to a `+17` datum shift.
