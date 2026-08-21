@@ -80,7 +80,7 @@ def test_cube_comparison_sampler_accepts_raw_cell_vtu(tmp_path):
     velocity = np.tile([1.0, -0.25, 0.5], (mesh["n_cells"], 1))
     VTKExporter(mesh).export(str(target), {"U": velocity, "p": np.ones(mesh["n_cells"])})
 
-    assets = Path("tutorials/coupled_fvm_vpm/cube_flow/assets").resolve()
+    assets = Path("tutorials/coupled_FVM_VPM/cube_flow/assets").resolve()
     sys.path.insert(0, str(assets))
     try:
         reference_util = importlib.import_module("_reference_util")
