@@ -792,17 +792,13 @@ class PanelSolver:
         # Extract kept particles
         new_position = positions[keep_mask]
         new_velocity = particles.velocity.to_numpy()[:n_particles][keep_mask]
-        new_circulation = particles.circulation.to_numpy()[:n_particles][keep_mask]
+        new_vortex_strength = particles.vortex_strength.to_numpy()[:n_particles][keep_mask]
         new_vorticity = particles.vorticity.to_numpy()[:n_particles][keep_mask]
-        new_radius = particles.radius.to_numpy()[:n_particles][keep_mask]
+        new_core_radius = particles.core_radius.to_numpy()[:n_particles][keep_mask]
         new_volume = particles.volume.to_numpy()[:n_particles][keep_mask]
         new_viscosity = particles.kinematic_viscosity.to_numpy()[:n_particles][keep_mask]
-        new_viscosity_turbulent = particles.kinematic_viscosity_turbulent.to_numpy()[:n_particles][
-            keep_mask
-        ]
-        new_viscosity_effective = particles.kinematic_viscosity_effective.to_numpy()[:n_particles][
-            keep_mask
-        ]
+        new_eddy_viscosity = particles.eddy_viscosity.to_numpy()[:n_particles][keep_mask]
+        new_effective_viscosity = particles.effective_viscosity.to_numpy()[:n_particles][keep_mask]
         new_group_id = particles.group_id.to_numpy()[:n_particles][keep_mask]
         new_velocity_gradient = particles.velocity_gradient.to_numpy()[:n_particles][keep_mask]
         new_strain_rate = particles.strain_rate.to_numpy()[:n_particles][keep_mask]
@@ -810,16 +806,14 @@ class PanelSolver:
         # Write back to particles
         particles._copy_to_taichi_vectors(new_position, particles.position, 0, n_keep)
         particles._copy_to_taichi_vectors(new_velocity, particles.velocity, 0, n_keep)
-        particles._copy_to_taichi_vectors(new_circulation, particles.circulation, 0, n_keep)
+        particles._copy_to_taichi_vectors(new_vortex_strength, particles.vortex_strength, 0, n_keep)
         particles._copy_to_taichi_vectors(new_vorticity, particles.vorticity, 0, n_keep)
-        particles._copy_to_taichi_scalars(new_radius, particles.radius, 0, n_keep)
+        particles._copy_to_taichi_scalars(new_core_radius, particles.core_radius, 0, n_keep)
         particles._copy_to_taichi_scalars(new_volume, particles.volume, 0, n_keep)
         particles._copy_to_taichi_scalars(new_viscosity, particles.kinematic_viscosity, 0, n_keep)
+        particles._copy_to_taichi_scalars(new_eddy_viscosity, particles.eddy_viscosity, 0, n_keep)
         particles._copy_to_taichi_scalars(
-            new_viscosity_turbulent, particles.kinematic_viscosity_turbulent, 0, n_keep
-        )
-        particles._copy_to_taichi_scalars(
-            new_viscosity_effective, particles.kinematic_viscosity_effective, 0, n_keep
+            new_effective_viscosity, particles.effective_viscosity, 0, n_keep
         )
         particles._copy_to_taichi_scalars(new_group_id, particles.group_id, 0, n_keep)
         particles._copy_to_taichi_matrices(

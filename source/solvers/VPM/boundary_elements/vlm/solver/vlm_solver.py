@@ -1350,18 +1350,16 @@ class VLMSolver:
             if n_keep == 0:
                 particles.n_particles = 0
                 particles.sync_device_counter()
-                particles._cached_step = -1
+                particles._cache_step = -1
                 return n_hits
 
             new_position = particles.position.to_numpy()[:n_particles][keep_mask]
             new_velocity = particles.velocity.to_numpy()[:n_particles][keep_mask]
-            new_circulation = particles.circulation.to_numpy()[:n_particles][keep_mask]
-            new_radius = particles.radius.to_numpy()[:n_particles][keep_mask]
+            new_vortex_strength = particles.vortex_strength.to_numpy()[:n_particles][keep_mask]
+            new_core_radius = particles.core_radius.to_numpy()[:n_particles][keep_mask]
             new_volume = particles.volume.to_numpy()[:n_particles][keep_mask]
             new_viscosity = particles.kinematic_viscosity.to_numpy()[:n_particles][keep_mask]
-            new_viscosity_turbulent = particles.kinematic_viscosity_turbulent.to_numpy()[
-                :n_particles
-            ][keep_mask]
+            new_eddy_viscosity = particles.eddy_viscosity.to_numpy()[:n_particles][keep_mask]
             new_group_id = particles.group_id.to_numpy()[:n_particles][keep_mask]
             new_zone_id = particles.zone_id.to_numpy()[:n_particles][keep_mask]
             new_velocity_gradient = particles.velocity_gradient.to_numpy()[:n_particles][keep_mask]
@@ -1370,11 +1368,11 @@ class VLMSolver:
             particles.replace_from_numpy(
                 position=new_position,
                 velocity=new_velocity,
-                vortex_strength=new_circulation,
-                core_radius=new_radius,
+                vortex_strength=new_vortex_strength,
+                core_radius=new_core_radius,
                 volume=new_volume,
                 kinematic_viscosity=new_viscosity,
-                eddy_viscosity=new_viscosity_turbulent,
+                eddy_viscosity=new_eddy_viscosity,
                 group_id=new_group_id,
                 zone_id=new_zone_id,
                 velocity_gradient=new_velocity_gradient,

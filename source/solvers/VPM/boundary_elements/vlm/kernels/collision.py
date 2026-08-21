@@ -46,13 +46,17 @@ def is_point_in_quad(
     dp = p - d
 
     # Cross products dotted with normal (to check "sidedness")
-    # If p is inside, all cross products should align with normal
+    # An interior point gives same-sign results for every edge.  The sign
+    # itself depends on the panel winding relative to the stored normal, so
+    # accept either consistent orientation instead of assuming CCW.
     c1 = ab.cross(ap).dot(normal)
     c2 = bc.cross(bp).dot(normal)
     c3 = cd.cross(cp).dot(normal)
     c4 = da.cross(dp).dot(normal)
 
-    return c1 >= 0.0 and c2 >= 0.0 and c3 >= 0.0 and c4 >= 0.0
+    all_nonneg = c1 >= 0.0 and c2 >= 0.0 and c3 >= 0.0 and c4 >= 0.0
+    all_nonpos = c1 <= 0.0 and c2 <= 0.0 and c3 <= 0.0 and c4 <= 0.0
+    return all_nonneg or all_nonpos
 
 
 @ti.kernel
