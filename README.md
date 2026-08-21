@@ -138,7 +138,9 @@ pyrefly check
 
 See [docs/contributing.md](docs/contributing.md) for the architecture and code
 quality requirements, and [docs/data_management.md](docs/data_management.md)
-for the result-data policy.
+for the result-data policy. Tutorial `samples/` output is versioned so forces,
+probes, surfaces, and post-processing fields remain available across devices;
+full solver state under `solution/` remains local.
 
 ## Citation
 

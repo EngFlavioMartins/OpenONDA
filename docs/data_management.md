@@ -4,19 +4,24 @@ Tutorial and solver output belongs below the selected case directory:
 
 ```text
 <case_dir>/
-├── solution/   solver state, logs, checkpoints, and field archives
-└── samples/    forces, probes, lines, surfaces, and diagnostics
+├── solution/   local solver state, logs, checkpoints, and field archives
+└── samples/    versioned forces, probes, lines, surfaces, and diagnostics
 ```
 
-Generated `solution/`, `samples/`, `runs/`, `grid_study/`, build, cache, and
-environment directories are not source and must not be committed. Keep compact
-reference tables or summary JSON only when a test or durable validation record
-uses them. Figures may be committed when documentation links to them and their
-generation command is recorded.
+Every tutorial `samples/` tree is committed so post-processing data remains
+available after cloning on another device. This includes CSV/JSON diagnostics,
+PVD collections, and sampled VTK fields from ordinary cases and grid studies.
+Review regenerated samples before committing so accidental or incomplete runs
+do not replace a qualified dataset.
 
-Large restart states and raw simulation series should live in a release asset,
-data repository, or archival service with a checksum and provenance note. Do
-not use Git as an output store. Before committing, inspect:
+Generated `solution/`, `runs/`, build, cache, and environment directories remain
+local and must not be committed. Compact reference tables, summary JSON, and
+figures may also be committed when a test or durable validation record uses
+them and their generation command is recorded.
+
+Large restart states and raw solver-state series should live in a release asset,
+data repository, or archival service with a checksum and provenance note. Keep
+them out of `samples/`. Before committing, inspect:
 
 ```bash
 git status --short
@@ -24,5 +29,6 @@ git diff --check
 find . -type d -name __pycache__ -prune
 ```
 
-The tutorial cleanup scripts remove only generated case output. Do not point
-them at a parent directory or a directory containing irreplaceable data.
+The tutorial cleanup scripts remove local solver output and may regenerate
+versioned samples. Inspect `git diff` afterward; do not point cleanup commands
+at a parent directory or a directory containing irreplaceable data.

@@ -153,9 +153,10 @@ vpm*.json
 !tutorials/**/*.sh
 tests/**/referenceFlow/**
 
-# Sampler output and parameter-study trees are generated case data.
-**/samples/
-**/grid_study/
+# Processed sampler output is durable cross-device post-processing data.
+# Version every samples/ tree, including samples produced by grid studies.
+!**/samples/
+!**/samples/**
 
 # Restart/checkpoint formats never belong in Git, even if accidentally written
 # below samples/. The pre-commit size gate provides an additional safeguard.

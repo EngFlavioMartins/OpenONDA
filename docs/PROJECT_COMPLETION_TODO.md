@@ -78,9 +78,9 @@ audit completed on 21 August 2026. The final repository audit started from
 
 ## Data and repository hygiene
 
-- [x] Generated tutorial `solution/`, `samples/`, and `grid_study/` trees are
-  ignored instead of versioned; compact scientific result JSON and figures stay
-  tracked where they are durable evidence.
+- [x] Generated tutorial `solution/` trees remain local, while all 822 qualified
+  sample files are versioned for cross-device post-processing, including sample
+  output nested under grid studies.
 - [x] Obsolete backend probes, legacy installers, one-off repair scripts,
   duplicate asset generators, task diaries, historical logo drafts, and stale
   VPM--LES intermediate experiments were removed.

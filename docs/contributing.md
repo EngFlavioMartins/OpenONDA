@@ -39,5 +39,6 @@ and MPI.
 ## Pull requests
 
 Explain the physical or numerical cause, the correction, and the commands that
-verify it. Keep generated simulations, caches, build products, and local
-environment files out of commits; see [data_management.md](data_management.md).
+verify it. Keep solver state, caches, build products, and local environment files
+out of commits. Commit qualified tutorial `samples/` output for cross-device
+post-processing; see [data_management.md](data_management.md).

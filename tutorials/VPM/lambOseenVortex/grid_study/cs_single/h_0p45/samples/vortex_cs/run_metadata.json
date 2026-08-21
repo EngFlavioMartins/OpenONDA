@@ -1,0 +1,46 @@
+{
+  "case": "vortex",
+  "scheme": "cs",
+  "circulations": [
+    1.0
+  ],
+  "viscosity": 0.0018867924528301887,
+  "core_radius": 0.125,
+  "core_radius_definition": "gaussian_1_over_e_vorticity_radius",
+  "velocity_peak_radius": 0.14,
+  "separation": 1.0,
+  "column_half_length": 3.125,
+  "total_time": 30.0,
+  "time_step": 0.05,
+  "in_plane_spacing": 0.05625,
+  "column_spacing": 0.1,
+  "particle_radius": 0.084375,
+  "particle_replicas": 1,
+  "diffusion_grid_spacing": 0.05625,
+  "field_spacing": 0.01875,
+  "sample_plane_z": 1.5625,
+  "sample_plane_fraction": 0.25,
+  "processing_unit": "CPU",
+  "random_seed": 42,
+  "strength_cutoff_relative": 0.01,
+  "circulation_normalization": "per_vortex_after_strength_cutoff",
+  "sample_interval": 0.5,
+  "raw_backup_interval": 2.5,
+  "status": "complete",
+  "completed": true,
+  "initial_particle_count": 2961,
+  "raw_retained_circulation_per_length": [
+    0.9921794303211183
+  ],
+  "raw_retained_circulation_fraction": [
+    0.9921794303211183
+  ],
+  "circulation_normalization_factors": [
+    1.007882213075462
+  ],
+  "retained_circulation_per_length": [
+    1.0
+  ],
+  "wall_time_seconds": 57.64558508293703,
+  "final_time": 30.0
+}
