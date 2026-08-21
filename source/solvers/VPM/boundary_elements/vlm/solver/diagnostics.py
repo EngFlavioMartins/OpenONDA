@@ -76,7 +76,7 @@ class VLMDiagnostics:
         time:
             Current simulation time [s].
         case_dir:
-            Solver backup/output root directory (CSV is written under
+            Solver checkpoint/output root directory (CSV is written under
             ``<case_dir>/samples/vlm_forces.csv``).
         """
         if vlm_solver is None or not hasattr(vlm_solver, "_last_forces"):

@@ -56,7 +56,7 @@ ANGULAR_FREQUENCY = 2.0 * np.pi * HEAVE_FREQUENCY
 TIME_STEP = 0.004
 NUMBER_OF_STEPS = 2200
 SAMPLE_PERIOD = 0.08  # write a snapshot every this many seconds
-BACKUP_PERIOD = 0.04  # 25 animation frames per heave cycle
+CHECKPOINT_INTERVAL_TIME = 0.04  # 25 animation frames per heave cycle
 
 
 def cadence_steps(period: float) -> int:
@@ -87,7 +87,7 @@ def pitch_velocity(phase: float):
 
 def run() -> None:
     sample_steps = cadence_steps(SAMPLE_PERIOD)
-    backup_steps = cadence_steps(BACKUP_PERIOD)
+    checkpoint_interval_steps = cadence_steps(CHECKPOINT_INTERVAL_TIME)
     surface_file = TUTORIAL_DIR / "delta_wing_surface.json"
     save_surface(
         create_delta_wing(
@@ -161,7 +161,7 @@ def run() -> None:
                 ]
             ),
             logging_interval_steps=sample_steps,
-            checkpoint_interval_steps=backup_steps,
+            checkpoint_interval_steps=checkpoint_interval_steps,
             checkpoint_name=CASE_NAME,
             checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,

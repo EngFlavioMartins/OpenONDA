@@ -27,7 +27,7 @@ def main() -> int:
     for name, speed_tol in (("DNS_transposed", 0.10), ("LES_transposed", 0.12)):
         files = sorted(glob.glob(str(SOLUTION_DIR / f"vpm_{name}_*.h5")))
         if len(files) != expected_files:
-            failures.append(f"{name}: {len(files)} backups, expected {expected_files}")
+            failures.append(f"{name}: {len(files)} checkpoints, expected {expected_files}")
             continue
         raw = load_ring_data(files)
         entries = raw.get(0, [])

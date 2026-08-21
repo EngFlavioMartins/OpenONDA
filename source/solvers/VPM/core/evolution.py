@@ -5,7 +5,7 @@ gradient preparation, advection, stretching, coupled inviscid integration,
 viscous diffusion, operator splitting, and the stabilization phases that
 happen inside a step.  :class:`~source.solvers.VPM.core.solver.VPMSolver` is the
 facade that composes subsystems; it delegates its step to the stepper and
-keeps the diagnostics, backup, and IO bookkeeping around the step.
+keeps the diagnostics, checkpointing, and IO bookkeeping around the step.
 
 The stepper holds a back-reference to the solver (``self.solver``) and
 delegates attribute *reads* to it through :meth:`__getattr__`, so the solver
@@ -180,7 +180,7 @@ class EvolutionStepper:
             self.stabilization.run_phase("post_step", profiler=self.profiler)
             self._debug_validate_particle_geometry("particle retention")
 
-            with self.profiler.section("Backup / IO"):
+            with self.profiler.section("Checkpoint / IO"):
                 self._write_checkpoint()
 
         # The evolution kernels mutate particle source fields directly on the

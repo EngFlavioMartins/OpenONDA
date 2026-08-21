@@ -27,7 +27,7 @@ class SamplerExecutor:
 
     All methods are static — no per-instance state is held here.  The
     solver passes itself in and this class reads what it needs (particles,
-    config, time counters, backup directory) without tight coupling.
+    config, time counters, checkpoint directory) without tight coupling.
     """
 
     @staticmethod

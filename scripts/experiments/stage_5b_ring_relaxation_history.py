@@ -199,7 +199,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
     projection_ratios = projection_correction_history(run_directory, times)
 
     final_base = run_directory / f"vpm_{label}_final"
-    solver = VPMSolver.continue_from_backup(str(final_base))
+    solver = VPMSolver.continue_from_checkpoint(str(final_base))
     if solver is None:
         raise RuntimeError(f"could not restore {final_base}")
 

@@ -1444,10 +1444,10 @@ class VPMSolver:
     def save_state(self, filename: str = "solution/solver_state") -> None:
         """Save a restartable numerical state and its configuration."""
 
-        if backup_dir := os.path.dirname(filename):
-            os.makedirs(backup_dir, exist_ok=True)
+        if checkpoint_dir := os.path.dirname(filename):
+            os.makedirs(checkpoint_dir, exist_ok=True)
 
-        self._refresh_backup_particle_fields()
+        self._refresh_checkpoint_particle_fields()
         CheckpointManager.write_checkpoint(self, filename, append_step=False, verbose=False)
 
         config_file = f"{filename}.config.json"
@@ -1460,7 +1460,7 @@ class VPMSolver:
 
     def save_numerical_state(self, filename: str) -> None:
         """Save numerical state for a caller that already owns configuration."""
-        self._refresh_backup_particle_fields()
+        self._refresh_checkpoint_particle_fields()
         CheckpointManager.write_checkpoint(self, filename, append_step=False, verbose=False)
 
     def load_numerical_state(self, filename: str) -> None:
@@ -1468,22 +1468,22 @@ class VPMSolver:
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
         CheckpointManager.load_numerical_state(self, path)
 
-    def write_checkpoint(self, checkpoint_name: str = "backup") -> None:
-        """Back up the solver state to a specified file."""
-        self._refresh_backup_particle_fields()
+    def write_checkpoint(self, checkpoint_name: str = "checkpoint") -> None:
+        """Write the solver state to a specified checkpoint file."""
+        self._refresh_checkpoint_particle_fields()
         CheckpointManager.write_checkpoint(self, checkpoint_name, verbose=True)
 
     def _write_checkpoint(self) -> None:
-        """Write a scheduled solver backup when one is due."""
+        """Write a scheduled solver checkpoint when one is due."""
         if not self.io.should_checkpoint():
             return
 
-        self._refresh_backup_particle_fields()
+        self._refresh_checkpoint_particle_fields()
 
         self.io.write_checkpoint()
 
-    def _refresh_backup_particle_fields(self) -> None:
-        """Refresh particle fields that are expected to be available in backups."""
+    def _refresh_checkpoint_particle_fields(self) -> None:
+        """Refresh particle fields that are expected to be available in checkpoints."""
         N = self.particles.n_particles
         if N > 50_000:
             return
@@ -1501,13 +1501,13 @@ class VPMSolver:
             self.stepper._update_velocity_gradients()
 
     @staticmethod
-    def continue_from_backup(checkpoint_name: str | None = None) -> "VPMSolver | None":
-        """Restore a solver from an HDF5 backup and its saved configuration."""
+    def continue_from_checkpoint(checkpoint_name: str | None = None) -> "VPMSolver | None":
+        """Restore a solver from an HDF5 checkpoint and its saved configuration."""
         if not CheckpointManager.validate_checkpoint(checkpoint_name):
-            raise ValueError(f"Backup validation failed for: {checkpoint_name}")
+            raise ValueError(f"Checkpoint validation failed for: {checkpoint_name}")
 
         Logging.message(f"\n{'-' * 60}")
-        Logging.info("Resuming simulation from backup:")
+        Logging.info("Resuming simulation from checkpoint:")
         Logging.message(f"       Base filename: {checkpoint_name}")
         Logging.message(f"{'-' * 60}\n")
 

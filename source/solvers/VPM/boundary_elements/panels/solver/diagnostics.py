@@ -68,8 +68,8 @@ class PanelDiagnostics:
         step: int,
         checkpoint_directory: str,
     ) -> None:
-        backup_dir = Path(checkpoint_directory)
-        samples_dir = backup_dir / "samples"
+        checkpoint_dir = Path(checkpoint_directory)
+        samples_dir = checkpoint_dir / "samples"
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "panel_forces.csv"
 

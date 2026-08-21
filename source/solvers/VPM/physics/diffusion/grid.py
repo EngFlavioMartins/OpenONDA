@@ -1293,8 +1293,9 @@ class _GridDiffusionMixin:
 
         # -- LES: per-particle ν_t to carry through regen  -------------
         # The scattered ν_t is inherited by regenerated particles so that ν_t
-        # survives the rebuild and reaches backup (LES recomputes it next step
-        # anyway, but carrying it keeps the backed-up field faithful).
+        # survives the rebuild and reaches the checkpoint (LES recomputes it
+        # next step anyway, but carrying it keeps the checkpointed field
+        # faithful).
         nu_t_np = particles.eddy_viscosity_cpu()
 
         # -- Grid setup --------------------------------------------------------

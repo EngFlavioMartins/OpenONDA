@@ -142,7 +142,7 @@ VPM_BC_MODE = "vorticity_mixed"
 TRANSFER_AMPLIFICATION_CAP = 1.8
 OVERLAP_ZONE_RAMP_WIDTH = 6.0 * VPM_PARTICLE_SPACING
 TRANSFER_DIAGNOSTIC_INTERVAL = 12
-COUPLER_BACKUP_PERIOD = 20
+COUPLER_CHECKPOINT_INTERVAL_STEPS = 20
 
 # --------------------------------------------------------------------------- #
 # Output and diagnostics cadence
@@ -302,7 +302,7 @@ COUPLER_SETUP = coupling.CouplerSetup(
     transfer_region_box=TRANSFER_REGION_BOX,
     bc_resync_after_transfer=True,
     pressure_anchor_to_freestream=False,
-    checkpoint_interval_steps=COUPLER_BACKUP_PERIOD,
+    checkpoint_interval_steps=COUPLER_CHECKPOINT_INTERVAL_STEPS,
     vpm_bc_mode=VPM_BC_MODE,
     vpm_particle_spacing=VPM_PARTICLE_SPACING,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,

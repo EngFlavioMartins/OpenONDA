@@ -53,7 +53,7 @@ TIME_STEP = 0.02
 NUMBER_OF_STEPS = 600
 DOMAIN_BOUNDS = (-0.15, 0.15, -1.5, 1.5, -1.5, 1.5)
 SAMPLE_PERIOD = 0.1  # write a snapshot every this many seconds
-BACKUP_PERIOD = 0.5  # keep an animation frame every this many seconds
+CHECKPOINT_INTERVAL_TIME = 0.5  # keep an animation frame every this many seconds
 WIDNALL_MODES = 24
 DEFAULT_WIDNALL_AMPLITUDE = 0.05
 TOROIDAL_TAIL_FRACTION = 0.05
@@ -258,7 +258,7 @@ def run_case(
             ),
             viscous=ViscousConfig.cs(),
             logging_interval_steps=cadence_steps(SAMPLE_PERIOD, time_step),
-            checkpoint_interval_steps=cadence_steps(BACKUP_PERIOD, time_step),
+            checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME, time_step),
             checkpoint_name=label,
             checkpoint_directory=str(output_directory),
             sample_subdirectory=sample_subdirectory,
@@ -319,7 +319,7 @@ def run_case(
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     solver.record_diagnostics(refresh_fields=True)
-    solver.backup_solution(str(output_directory / f"vpm_{label}"))
+    solver.save_state(str(output_directory / f"vpm_{label}"))
     termination_reason = None
     for _ in range(number_of_steps):
         solver.advance()

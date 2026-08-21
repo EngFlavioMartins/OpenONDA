@@ -43,7 +43,7 @@ MODE_CSV_COLUMNS = (
 
 
 class RingDiagnosticsSampler:
-    """Sample ring motion and circulation without writing a particle backup."""
+    """Sample ring motion and circulation without writing a particle checkpoint."""
 
     file_name = "ring_diagnostics"
 

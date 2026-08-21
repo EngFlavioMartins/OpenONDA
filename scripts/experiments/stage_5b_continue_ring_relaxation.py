@@ -25,7 +25,7 @@ def continue_run(
     # manifests naturally point at the HDF5 file itself.
     if backup.suffix == ".h5":
         backup = backup.with_suffix("")
-    solver = VPMSolver.continue_from_backup(str(backup))
+    solver = VPMSolver.continue_from_checkpoint(str(backup))
     if solver is None:
         raise RuntimeError(f"could not restore {backup}")
     if target_time_star <= solver.time:

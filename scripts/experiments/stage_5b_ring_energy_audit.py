@@ -117,7 +117,7 @@ def plot(rows: list[dict[str, float]], output: Path) -> None:
 
 
 def main() -> None:
-    solver = VPMSolver.continue_from_backup(str(BASE_CONFIG))
+    solver = VPMSolver.continue_from_checkpoint(str(BASE_CONFIG))
     if solver is None:
         raise RuntimeError(f"could not restore {BASE_CONFIG}")
     start = integral_state(solver, START)

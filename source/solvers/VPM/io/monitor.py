@@ -25,7 +25,7 @@ class SimulationMonitor:
     Responsibilities:
     - Logging aerodynamic loads to CSV files
     - VLM-specific load logging
-    - Triggering periodic backups
+    - Triggering periodic checkpoints
     - Flow diagnostics output
 
     Example:

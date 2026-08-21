@@ -1794,7 +1794,7 @@ class Particles:
         if field_name in {"position", "vortex_strength", "core_radius"}:
             self.touch_state()
 
-    # ---- Backup methods ----
+    # ---- Checkpoint methods ----
 
     def _create_xdmf_file(self, xmf_filename, h5_filename, step, num_particles, precision_bytes=4):
         """Create XDMF metadata file for ParaView compatibility with HDF5 data."""

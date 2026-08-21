@@ -12,7 +12,7 @@ from typing import Any, Literal
 from ..boundary_elements.vlm.config import VLMSetup
 from .advection import AdvectionConfig
 from .constants import (
-    DEFAULT_BACKUP_FILENAME,
+    DEFAULT_CHECKPOINT_NAME,
     DEFAULT_CUTOFF_RADIUS_FACTOR,
     DEFAULT_TIME_STEP,
     MAX_PARTICLES,
@@ -80,7 +80,7 @@ class VPMSetup:
     logging_interval_steps: int = 0
     timing_interval_steps: int = 0
     checkpoint_interval_steps: int = 0
-    checkpoint_name: str = DEFAULT_BACKUP_FILENAME
+    checkpoint_name: str = DEFAULT_CHECKPOINT_NAME
     checkpoint_directory: str = "solution"
     sample_subdirectory: str | None = None
     clean: bool = False

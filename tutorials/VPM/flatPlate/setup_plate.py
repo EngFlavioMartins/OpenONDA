@@ -63,7 +63,7 @@ FINAL_TRAVEL = 24.0
 SMAGORINSKY_COEFFICIENT = 0.30
 PARTICLE_CORE_FACTOR = 2.5
 SAMPLE_PERIOD = 0.0625  # write a snapshot every this many seconds
-BACKUP_PERIOD = 0.05  # one animation frame per half-chord of travel
+CHECKPOINT_INTERVAL_TIME = 0.05  # one animation frame per half-chord of travel
 
 
 def cadence_steps(period: float) -> int:
@@ -210,7 +210,7 @@ def run_case(
                 traversal_block_dim=128,
             ),
             logging_interval_steps=sample_steps,
-            checkpoint_interval_steps=cadence_steps(BACKUP_PERIOD),
+            checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME),
             checkpoint_name=name,
             checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=name,

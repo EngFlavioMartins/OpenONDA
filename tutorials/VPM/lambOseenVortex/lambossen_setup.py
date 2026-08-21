@@ -54,7 +54,7 @@ TIME_STEP = 0.291 / 9.0
 TOTAL_TIME = 103.0 * 0.291
 SAMPLE_PERIOD = 2.0 * 0.291
 MERGING_SAMPLE_PERIOD = 0.291
-BACKUP_PERIOD = 10.0 * 0.291
+CHECKPOINT_INTERVAL_TIME = 10.0 * 0.291
 TREECODE_THETA = 0.30
 TREECODE_MULTIPOLE_ORDER = 3
 ADVECTION_SCHEME = "RK3"
@@ -154,7 +154,7 @@ def run_case(
     viscous = viscous_config(scheme, viscosity, SPACING)
     number_of_steps = round(TOTAL_TIME / TIME_STEP)
     sample_steps = round(sample_period / TIME_STEP)
-    backup_steps = round(BACKUP_PERIOD / TIME_STEP)
+    checkpoint_interval_steps = round(CHECKPOINT_INTERVAL_TIME / TIME_STEP)
 
     y_positions = (0.0,) if physics == "vortex" else (SEPARATION / 2, -SEPARATION / 2)
     initial_half_width = max(abs(y) for y in y_positions) + 7.0 * CORE_RADIUS
@@ -212,7 +212,7 @@ def run_case(
                 sort_particle_targets=True,
             ),
             logging_interval_steps=sample_steps,
-            checkpoint_interval_steps=backup_steps,
+            checkpoint_interval_steps=checkpoint_interval_steps,
             checkpoint_name=case_name,
             checkpoint_directory=str(solution_dir),
             sample_subdirectory=case_name,

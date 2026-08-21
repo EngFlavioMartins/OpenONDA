@@ -36,7 +36,11 @@ class SolverIO:
         """
         self.solver = solver
 
-        self.export_dir = self.solver.setup.checkpoint_directory or "solution"
+        # solver.checkpoint_directory is already resolved against case_dir
+        # (see VPMSolver.__init__); solver.setup.checkpoint_directory is the
+        # raw, possibly-relative user value and must not be used directly,
+        # or checkpoints land under the caller's cwd instead of the case dir.
+        self.export_dir = self.solver.checkpoint_directory or "solution"
 
         self._vlm_pvd_entries = []  # Track VLM time-series entries
         self._xdmf_series_entries = []  # Track VPM particle time-series entries
@@ -67,13 +71,13 @@ class SolverIO:
 
     def should_checkpoint(self, step: int | None = None) -> bool:
         """
-        Check if backup should be performed at given timestep.
+        Check if a checkpoint should be written at the given timestep.
 
         Args:
             step: Step index to check (default: current solver step)
 
         Returns:
-            True if backup should be performed
+            True if a checkpoint should be written
         """
         ts = step if step is not None else self.step
         return self.checkpoint_interval_steps > 0 and (
@@ -82,9 +86,9 @@ class SolverIO:
 
     def write_checkpoint(self, verbose: bool = True):
         """
-        Perform complete backup: HDF5 state + VTK visualization + CSV loads.
+        Write a complete checkpoint: HDF5 state + VTK visualization + CSV loads.
 
-        This consolidates all backup logic from the solver into a single call.
+        This consolidates all checkpoint logic from the solver into a single call.
         """
         if not self.should_checkpoint():
             return
@@ -92,7 +96,7 @@ class SolverIO:
         # Ensure export directory exists
         os.makedirs(self.export_dir, exist_ok=True)
 
-        # 1. HDF5 Backup (for restart)
+        # 1. HDF5 checkpoint (for restart)
         checkpoint_path = os.path.join(self.export_dir, self.vpm_prefix)
         CheckpointManager.write_checkpoint(self.solver, checkpoint_path, verbose=verbose)
 

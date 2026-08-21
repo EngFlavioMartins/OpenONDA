@@ -53,7 +53,7 @@ STEPS_PER_REVOLUTION = round(360.0 / DEGREES_PER_STEP)
 NUMBER_OF_REVOLUTIONS = 6
 NUMBER_OF_STEPS = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION
 SAMPLE_PERIOD = 0.0375  # write a snapshot every this many seconds
-BACKUP_PERIOD = 0.0125  # 24 animation frames per rotor revolution
+CHECKPOINT_INTERVAL_TIME = 0.0125  # 24 animation frames per rotor revolution
 
 
 def cadence_steps(period: float) -> int:
@@ -132,7 +132,7 @@ def run() -> None:
                 remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
             ),
             logging_interval_steps=sample_steps,
-            checkpoint_interval_steps=cadence_steps(BACKUP_PERIOD),
+            checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME),
             checkpoint_name=CASE_NAME,
             checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,

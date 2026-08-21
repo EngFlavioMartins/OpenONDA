@@ -432,7 +432,7 @@ def plot_results(
 
 def main() -> None:
     controls = manufactured_controls(GRID_SIZES[-1])
-    solver = VPMSolver.continue_from_backup(str(FINAL_BACKUP))
+    solver = VPMSolver.continue_from_checkpoint(str(FINAL_BACKUP))
     if solver is None:
         raise RuntimeError(f"could not restore {FINAL_BACKUP}")
 

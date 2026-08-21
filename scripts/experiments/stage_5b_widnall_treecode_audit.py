@@ -74,7 +74,7 @@ def transposed_rate(gradient: np.ndarray, circulation: np.ndarray) -> np.ndarray
 
 
 def audit_backup(backup: Path, theta_values: list[float]) -> dict[str, object]:
-    solver = VPMSolver.continue_from_backup(str(backup))
+    solver = VPMSolver.continue_from_checkpoint(str(backup))
     if solver is None:
         raise RuntimeError(f"could not restore {backup}")
     particles = solver.particles

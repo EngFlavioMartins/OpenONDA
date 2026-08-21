@@ -206,7 +206,7 @@ def run(
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     solver.record_diagnostics(refresh_fields=True)
-    solver.backup_solution(str(output_directory / f"vpm_{label}"))
+    solver.save_state(str(output_directory / f"vpm_{label}"))
     termination_reason = None
     for _ in range(requested_steps):
         solver.advance()

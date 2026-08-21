@@ -62,7 +62,7 @@ def _sample_step_column(data: pd.DataFrame) -> str:
 
 
 def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
-    """Return (t_star, strength_norm) from H5 backups.
+    """Return (t_star, strength_norm) from H5 checkpoints.
 
     Computes Σ|alpha_i| at each snapshot and normalises by the initial value.
     For a vortex ring this is a length-integrated strength measure, not the
@@ -218,7 +218,7 @@ def _ring_props_from_h5(path) -> dict | None:
 
 
 def load_ring_data(h5_files: list) -> dict:
-    """Read all H5 backups; stop at blow-up. Returns {ring_id: [dict, ...]}."""
+    """Read all H5 checkpoints; stop at blow-up. Returns {ring_id: [dict, ...]}."""
     data: dict = {}
     for path in h5_files:
         res = _ring_props_from_h5(path)

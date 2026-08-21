@@ -99,7 +99,7 @@ def read_flow_time(csv_path: Path) -> float | None:
 def read_run_metadata(samples_dir: Path, prefix: str = "vortex") -> dict:
     """Load the physical constants stored with the sampled results.
 
-    Plotting must not depend on a dense particle backup: those files are sparse
+    Plotting must not depend on a dense particle checkpoint: those files are sparse
     restart checkpoints, while ``samples/<case>/run_metadata.json`` is written
     alongside the data used by each figure.
     """

@@ -8,7 +8,7 @@ Instead, this module exports the full per-panel dataset (position, normal,
 doublet strength, Cp, panel force) for external post-processing.
 
 Output CSVs:
-  <backup_dir>/samples/panel_distribution_<surface>.csv
+  <checkpoint_dir>/samples/panel_distribution_<surface>.csv
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: June 2026

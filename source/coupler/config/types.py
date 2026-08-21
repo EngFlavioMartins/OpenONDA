@@ -77,7 +77,7 @@ class CouplerSetup:
 
     # ---- RUN-LEVEL OPERATIONAL ----
     checkpoint_interval_steps: int = 1
-    """Coupling steps between automatic checkpoints; non-negative (0 disables backups)."""
+    """Coupling steps between automatic checkpoints; non-negative (0 disables checkpoints)."""
 
     def __post_init__(self) -> None:
         freestream_velocity = np.asarray(self.freestream_velocity, dtype=np.float64)

@@ -57,7 +57,7 @@ RAMP_ROTATIONS = 1.0
 GUARD_FREQUENCY = 20
 MAX_PARTICLE_STRENGTH = 10.0
 SAMPLE_PERIOD = 0.12  # write a snapshot every this many seconds
-BACKUP_PERIOD = 0.03  # about 26 animation frames per rotor revolution
+CHECKPOINT_INTERVAL_TIME = 0.03  # about 26 animation frames per rotor revolution
 
 
 def nominal_wake_spacing(time_step: float) -> float:
@@ -79,7 +79,7 @@ def cadence_steps(period: float, time_step: float) -> int:
 
 def build_solver_config(
     sample_period: float,
-    backup_period: float,
+    checkpoint_interval_time: float,
     *,
     vlm_setup: VLMSetup | None = None,
     samplers: tuple[SurfaceSampler, ...] | list[SurfaceSampler] = (),
@@ -126,7 +126,7 @@ def build_solver_config(
         checkpoint_name=CASE_NAME,
         checkpoint_directory=str(SOLUTION_DIR),
         sample_subdirectory=CASE_NAME,
-        checkpoint_interval_steps=cadence_steps(backup_period, TIME_STEP),
+        checkpoint_interval_steps=cadence_steps(checkpoint_interval_time, TIME_STEP),
         logging_interval_steps=cadence_steps(sample_period, TIME_STEP),
         export_flow_integrals=True,
     )
@@ -172,7 +172,7 @@ def write_manifest(solver: VPMSolver) -> None:
         "dt": TIME_STEP,
         "num_steps": NUMBER_OF_STEPS,
         "sample_interval": cfg.logging_interval_steps * TIME_STEP,
-        "raw_backup_interval": cfg.checkpoint_interval_steps * TIME_STEP,
+        "raw_checkpoint_interval": cfg.checkpoint_interval_steps * TIME_STEP,
         "treecode_theta": cfg.velocity.theta,
         "kernel": cfg.particle_kernel,
         "molecular_viscosity": cfg.viscous.viscosity,
@@ -190,7 +190,7 @@ def main() -> int:
     from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
 
     sample_period = SAMPLE_PERIOD
-    backup_period = BACKUP_PERIOD
+    checkpoint_interval_time = CHECKPOINT_INTERVAL_TIME
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
 
@@ -264,7 +264,7 @@ def main() -> int:
 
     solver_config = build_solver_config(
         sample_period,
-        backup_period,
+        checkpoint_interval_time,
         vlm_setup=vlm_setup,
         samplers=plane_samplers,
     )

@@ -300,7 +300,7 @@ def run_case(case_name: str, *, num_steps: int = NUM_STEPS) -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
     solver.record_diagnostics(refresh_fields=True)
-    solver.backup_solution(str(output_dir / f"vpm_{case_name}"))
+    solver.save_state(str(output_dir / f"vpm_{case_name}"))
     resolution_lost = False
     for _ in range(num_steps):
         solver.advance()
