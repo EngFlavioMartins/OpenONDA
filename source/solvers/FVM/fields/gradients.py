@@ -77,7 +77,7 @@ def _correct_boundary_gradient(grad_phi, face_flux, mesh_data, geo_data):
         else:
             raise KeyError(
                 "Boundary-gradient correction requires face_cf_vector or both "
-                "face_centroids and element_centroids"
+                "face_centroids and cell_centroids"
             )
         normal_distance = np.sum(normals * owner_to_face, axis=1)
         delta_coeffs = 1.0 / np.where(np.abs(normal_distance) < 1e-300, 1e-300, normal_distance)

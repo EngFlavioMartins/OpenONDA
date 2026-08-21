@@ -56,7 +56,7 @@ def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
     Args:
         mesh_data: Mesh dictionary.
         geo_data:  Geometry dictionary (needs ``face_centroids``,
-                   ``element_centroids``).
+                   ``cell_centroids``).
 
     Returns:
         Mesh thickness (float); ``1.0`` if no empty patch found.
@@ -122,7 +122,7 @@ class Smagorinsky:
 
     Args:
         mesh_data: Mesh dictionary.
-        geo_data:  Geometry dictionary (needs ``element_volumes``).
+        geo_data:  Geometry dictionary (needs ``cell_volumes``).
         Cs:        Smagorinsky coefficient (default 0.17).
     """
 
@@ -217,7 +217,7 @@ class EquilibriumSmagorinsky:
     mesh_data:
         Native finite-volume mesh dictionary.
     geo_data:
-        Geometry dictionary containing at least ``element_volumes`` and the
+        Geometry dictionary containing at least ``cell_volumes`` and the
         selected gradient reconstruction data.
     Ck:
         SGS kinetic-energy coefficient. Default ``0.094``.

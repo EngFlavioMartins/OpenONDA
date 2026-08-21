@@ -25,7 +25,7 @@ def assemble_transient_term_euler_implicit(face_flux_old, time_step_size, rho, g
             ``(n_cells,)``.
         time_step_size: Positive time-step size [s].
         rho: Positive density [kg/m³], scalar or shape ``(n_cells,)``.
-        geo_data: Geometry dictionary containing ``element_volumes`` [m³].
+        geo_data: Geometry dictionary containing ``cell_volumes`` [m³].
 
     Returns:
         dict: Transient term contribution

@@ -112,8 +112,8 @@ def compute_geometry(
             - face_centroids
             - face_sf
             - face_areas
-            - element_centroids
-            - element_volumes
+            - cell_centroids
+            - cell_volumes
             - face_weights
             - face_cf_vector
             - wall_dist
