@@ -180,9 +180,50 @@ coupling); (c) check convective skew-symmetry / kinetic-energy-conserving
 form. Do NOT weaken the 1.8 threshold — root cause not yet found.
 
 ## D. LES
-- [ ] WALE tensor unit tests
-- [ ] TGV decay timing
-- [ ] SGS budget
+- [x] WALE tensor unit tests — new `tests/fvm/test_wale_formulation.py` (6
+      tests), exercising the SGS operator directly (no mesh/PIMPLE),
+      certifying it against Nicoud & Ducros (1999) and hand-derived closed
+      forms: canonical simple shear → nu_t = 0 exactly (g nilpotent);
+      solid-body rotation → matches a hand-derived closed form
+      `(2/3)^0.25 * omega` (NOT zero — an assumption I initially wrote into
+      the test based on rotation-handling folklore turned out to be wrong
+      once actually derived; fixed the test rather than the code, since the
+      derivation confirmed the *code* was right); non-negative for 200
+      random gradient tensors; invariant under rigid rotation of the
+      gradient tensor (Q g Qᵀ); Cw validated eagerly at construction.
+      Line-by-line formulation audit against literature, all confirmed
+      correct: velocity-gradient/transpose convention, S_ij, g² as a matrix
+      product (not elementwise), traceless-symmetric Sd_ij, numerator power
+      3/2, denominator powers 5/2 + 5/4, filter width Δ = V^(1/3),
+      nu_eff = nu + nu_t (correct additive sign), face interpolation of nu
+      (standard mesh-weighted linear interpolation in
+      `assemble/diffusion.py`), dimensional consistency (nu_t carries
+      length²/time as required). No code changes needed — the formula
+      itself is not the defect.
+- [x] TGV decay timing — re-measured: `pytest
+      tests/fvm/test_validation_les_decay.py` still fails, peak dissipation
+      at t=1.28 (want 4<t<10, DNS reference 8.86), reproducing the
+      historical symptom exactly. **Root-cause isolation (new finding this
+      pass):** re-ran the identical 12³ Re=1600 TGV case with the LES model
+      disabled entirely (molecular viscosity only, zero eddy viscosity) —
+      peak still occurs at t=1.12, almost as early as with WALE (t=1.28).
+      WALE's own contribution: peak moves 1.12→1.28 and final energy drops
+      further (0.055 vs 0.076, of 0.125 initial) — a real but *secondary*
+      effect on top of a dominant baseline defect. Max WALE eddy viscosity
+      on this case is 2.25e-2, ~36× the molecular viscosity (1/1600), so
+      WALE is not inert here — it just isn't the main cause of the timing
+      error. This directly corroborates the still-open §C ABC/TGV
+      spatial-order investigation as the same root cause (excess numerical
+      dissipation in the nonlinear convective/pressure-coupling path of
+      the baseline central/PIMPLE scheme), now via a second, independent
+      test (unforced energy decay, not spatial refinement order). Per
+      PLAN.md, Cw was NOT tuned to force the DNS peak into range.
+      **Still open**: the underlying baseline defect itself is unfixed;
+      WALE cannot be honestly certified as passing test_validation_les_decay.py
+      until it is.
+- [ ] SGS budget — not independently audited this pass (energy-decay
+      curves were inspected for the isolation experiment above, but no
+      dedicated per-term SGS dissipation budget check was built).
 - Note: `docs/vpm-les-followup-2026-08-17.md` documents a *prior*, separate
   LES investigation (Mansfield dynamic-coefficient Germano-identity bug in
   `scripts/experiments/`, already fixed there) — that is VPM-LES SGS-model
