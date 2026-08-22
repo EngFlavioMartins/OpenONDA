@@ -268,6 +268,36 @@ def _run_gbd(d, pos, circ, force_full_domain: bool):
     }
 
 
+def test_zero_time_gbd_performs_regeneration_without_diffusion(diffusion):
+    """An external mutation may be globally remeshed before physical evolution."""
+    from source.solvers.VPM.particles.container import Particles
+
+    pos, circ = _cloud(n=80)
+    particles = Particles(max_particles=4096)
+    particles.add_vortex_particles(
+        position=pos,
+        velocity=np.zeros((len(pos), 3), np.float32),
+        vortex_strength=circ,
+        core_radius=np.full(len(pos), 1.5 * H, np.float32),
+        volume=np.full(len(pos), H**3, np.float32),
+        kinematic_viscosity=np.full(len(pos), 1.0e-3, np.float32),
+    )
+
+    regenerated = diffusion.gbd_diffusion(
+        particles,
+        time_step_size=0.0,
+        particle_spacing=H,
+        nu=1.0e-3,
+        domain_padding=3.0,
+        regen_threshold=1.0e-8,
+        regen_threshold_mode="absolute",
+    )
+
+    assert regenerated is not None
+    assert len(regenerated["position"]) > 0
+    assert np.isfinite(regenerated["vortex_strength"]).all()
+
+
 @pytest.mark.verification
 def test_active_box_gbd_matches_full_domain_gbd(diffusion):
     """The active-box workspace must not change the diffusion result.

@@ -135,91 +135,45 @@ def write_run_metadata(coupler) -> None:
 
 
 def compute_diagnostics(coupler, transfer_result=None) -> dict:
-    """Return finite transfer, boundary-flux, and conservation diagnostics."""
+    """Return finite transfer and boundary-flux diagnostics."""
     result = transfer_result
     if result is None:
         result = coupler._last_transfer_result
 
-    zero_invariants = {
-        "total_vortex_strength": 0.0,
-        "linear_impulse": 0.0,
-        "angular_impulse": 0.0,
-    }
-
-    def finite_invariants(values) -> dict[str, float]:
-        output = dict(zero_invariants)
-        if values:
-            output.update({name: float(value) for name, value in values.items()})
-        if not all(np.isfinite(value) for value in output.values()):
-            raise FloatingPointError("non-finite conservation diagnostic")
-        return output
-
     if result is None:
-        conservation = {
-            name: dict(zero_invariants)
-            for name in ("raw_mismatch", "applied_correction", "corrected_mismatch")
-        }
         transfer = {
             "diagnostics_evaluated": False,
-            "cfl": 0.0,
-            "n_remesh_in": 0,
-            "n_remesh_out": 0,
-            "n_free": 0,
-            "n_excluded": 0,
-            "n_pruned": 0,
-            "pruned_vortex_strength_fraction": 0.0,
-            "n_population_pruned": 0,
-            "population_pruned_vortex_strength_fraction": 0.0,
-            "population_pruned_velocity_bound": 0.0,
-            "flux_ratio": None,
-            "transfer_in_band_residual": None,
-            "transfer_pre_prune_residual": None,
-            "transfer_out_of_band_fraction": None,
-            "transfer_max_amplification": None,
+            "n_existing": 0,
+            "n_updated": 0,
+            "n_added": 0,
+            "n_support": 0,
+            "correction_vortex_strength_l1": 0.0,
+            "correction_vortex_strength_net_x": 0.0,
+            "correction_vortex_strength_net_y": 0.0,
+            "correction_vortex_strength_net_z": 0.0,
+            "divergence_correction_l2": None,
+            "divergence_correction_linf": None,
         }
-        spectrum = None
         particle_count = 0
     else:
-        conservation = {
-            "raw_mismatch": finite_invariants(result.conservation_raw_mismatch),
-            "applied_correction": finite_invariants(result.conservation_applied_correction),
-            "corrected_mismatch": finite_invariants(result.conservation_corrected_mismatch),
-        }
+        correction_net = np.asarray(result.correction_vortex_strength_net, dtype=np.float64)
         transfer = {
             "diagnostics_evaluated": bool(result.diagnostics_evaluated),
-            "cfl": float(result.cfl),
-            "n_remesh_in": int(result.n_remesh_in),
-            "n_remesh_out": int(result.n_remesh_out),
-            "n_free": int(result.n_free),
-            "n_excluded": int(result.n_excluded),
-            "n_pruned": int(result.n_pruned),
-            "pruned_vortex_strength_fraction": float(result.pruned_vortex_strength_fraction),
-            "n_population_pruned": int(result.n_population_pruned),
-            "population_pruned_vortex_strength_fraction": float(
-                result.population_pruned_vortex_strength_fraction
+            "n_existing": int(result.n_existing),
+            "n_updated": int(result.n_updated),
+            "n_added": int(result.n_added),
+            "n_support": int(result.n_support),
+            "correction_vortex_strength_l1": float(result.correction_vortex_strength_l1),
+            "correction_vortex_strength_net_x": float(correction_net[0]),
+            "correction_vortex_strength_net_y": float(correction_net[1]),
+            "correction_vortex_strength_net_z": float(correction_net[2]),
+            "divergence_correction_l2": (
+                float(result.divergence_correction_l2) if result.diagnostics_evaluated else None
             ),
-            "population_pruned_velocity_bound": float(result.population_pruned_velocity_bound),
-            "flux_ratio": float(result.flux_ratio) if result.diagnostics_evaluated else None,
-            "transfer_in_band_residual": (
-                float(result.transfer_in_band_residual) if result.diagnostics_evaluated else None
-            ),
-            "transfer_pre_prune_residual": (
-                float(result.transfer_pre_prune_residual) if result.diagnostics_evaluated else None
-            ),
-            "transfer_out_of_band_fraction": (
-                float(result.transfer_out_of_band_fraction)
-                if result.diagnostics_evaluated
-                else None
-            ),
-            "transfer_max_amplification": (
-                float(result.transfer_max_amplification) if result.diagnostics_evaluated else None
+            "divergence_correction_linf": (
+                float(result.divergence_correction_linf) if result.diagnostics_evaluated else None
             ),
         }
-        spectrum = (
-            {str(name): float(value) for name, value in result.spectral_band_ratio.items()}
-            if result.diagnostics_evaluated
-            else None
-        )
         particle_count = result.n_total
     if not all(
         np.isfinite(value)
@@ -227,12 +181,15 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         if value is not None and not isinstance(value, bool)
     ):
         raise FloatingPointError("non-finite transfer diagnostic")
-    if spectrum is not None and not all(np.isfinite(value) for value in spectrum.values()):
-        raise FloatingPointError("non-finite spectral transfer diagnostic")
-
     boundary_flux = {
         name: float(coupler._last_vpm_bc_flux_diagnostics[name])
-        for name in ("raw_mismatch", "applied_correction", "corrected_mismatch")
+        for name in (
+            "raw_mismatch",
+            "raw_relative",
+            "acceptance_limit",
+            "applied_correction",
+            "corrected_mismatch",
+        )
     }
     if not all(np.isfinite(value) for value in boundary_flux.values()):
         raise FloatingPointError("non-finite VPM boundary-flux diagnostic")
@@ -252,10 +209,8 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         0.0 if coupler.pressure_reference is None else coupler.pressure_reference.last_shift
     )
     return {
-        "conservation": conservation,
         "vpm_bc_flux": boundary_flux,
         "transfer": transfer,
-        "spectral_band_ratio": spectrum,
         "interface_normal_velocity": interface,
         "vortex_line_closure": closure,
         "pressure_datum_shift": float(pressure_shift),
@@ -268,19 +223,18 @@ def record_step(
     coupler,
     step: int,
     time_end: float,
-    timing: tuple[float, float, float, float, float],
+    timing: tuple[float, float, float, float],
     transfer_result,
     *,
     logger: logging.Logger,
     comm=None,
 ) -> None:
     """Persist diagnostics and synchronize a completed coupling step."""
-    t_vpm, t_blending, t_vpm_bc, t_fvm, t_transfer = timing
+    t_vpm, t_vpm_bc, t_fvm, t_transfer = timing
     diagnostics = compute_diagnostics(coupler, transfer_result)
     timing_data = {
         "vpm": float(t_vpm),
         "vpm_bc": float(t_vpm_bc),
-        "blending": float(t_blending),
         "fvm": float(t_fvm),
         "transfer": float(t_transfer),
         "total": float(sum(timing)),
@@ -304,12 +258,10 @@ def record_step(
             float(stats.get("sum_after", 0.0)),
         )
         logger.info(
-            "[Timing step=%d] VPM=%.3fs vpm_bc=%.3fs blending=%.3fs "
-            "FVM=%.3fs transfer=%.3fs total=%.3fs",
+            "[Timing step=%d] VPM=%.3fs vpm_bc=%.3fs FVM=%.3fs transfer=%.3fs total=%.3fs",
             step,
             timing_data["vpm"],
             timing_data["vpm_bc"],
-            timing_data["blending"],
             timing_data["fvm"],
             timing_data["transfer"],
             timing_data["total"],
@@ -318,7 +270,7 @@ def record_step(
         print(f"[Step {step:4d}] t={time_end:.3f}s | Particles: {int(stats.get('n_after', 0))}")
         print(
             f"     Timing: VPM={t_vpm:.2f}s | BC={t_vpm_bc:.2f}s | "
-            f"Blending={t_blending:.2f}s | FVM={t_fvm:.2f}s | Transfer={t_transfer:.2f}s"
+            f"FVM={t_fvm:.2f}s | Transfer={t_transfer:.2f}s"
         )
         sys.stdout.flush()
         flush_log(logger)

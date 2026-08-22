@@ -542,10 +542,6 @@ class FVMSolver(CouplerInterfaceMixin):
         self._time_since_last_write = 0.0
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
-        # Blending-zone relaxation acts on the resolved scales only (see _blending_source).
-        # Set False to recover the plain S = λ(Utarget − U).
-        self.blending_scale_selective = True
-        self._blending_filter = None  # lazy CellBoxFilter, built on first blending-zone solve
         self._n_committed = 0  # number of committed time steps (BDF2 startup gate)
         self._current_time_step_size = self.time_step_size
         self._last_residuals = None
@@ -848,71 +844,6 @@ class FVMSolver(CouplerInterfaceMixin):
         )
         return self.ibm
 
-    def _blending_source(self):
-        """Build the (Su, Sp) volumetric momentum source S = λ(Utarget − Ḡ) from
-        registered coupling fields, or (None, None) if not set.
-
-        ``lambdaRelax`` (volScalarField) and ``Utarget`` (volVectorField) are
-        pushed by the coupler (source/coupler/core/helpers/fvm_blending_zone.py).
-        Sp = λ goes on the momentum diagonal (fvm::Sp) and Su on the RHS, so the
-        cell velocity relaxes toward the VPM target in the blending zone while the
-        FVM core (λ = 0) is untouched.
-
-        SCALE-SELECTIVE.  ``Utarget`` is the Biot–Savart velocity of Gaussian
-        blobs of core σ on a lattice of spacing h ≈ σ, so it carries no
-        information below ~2σ.  Relaxing the full velocity toward it therefore
-        destroys FVM structure the target could never have represented — measured
-        on the coupled cubeFlow case, the blending zone erased 95% of any FVM–VPM
-        disagreement per transit and the vorticity reaching the coupling face fell
-        to 0.51 of its value in the FVM core.  Relaxing only the resolved part,
-
-            S = λ(Utarget − G∗U) = λ(Utarget + (U − G∗U)) − λ·U
-
-        leaves the sub-filter fluctuation (U − G∗U) untouched while still pulling
-        the resolved field onto the VPM BC.  Sp is unchanged, so the implicit
-        diagonal and its dominance are unchanged; the added explicit term is the
-        high-pass part of the current iterate, which is small next to U — a
-        deferred correction, not a new stiff term.
-
-        Set ``blending_scale_selective = False`` on the solver to recover the plain
-        S = λ(Utarget − U) (the A/B control).
-        """
-        lam = self.registered_fields.get("lambdaRelax")
-        ut = self.registered_fields.get("Utarget")
-        if lam is None and ut is None:
-            return None, None
-        if lam is None or ut is None:
-            raise RuntimeError(
-                "Incomplete blending source: lambdaRelax and Utarget must be registered together"
-            )
-        n = self.mesh_data["n_cells"]
-        lam = np.asarray(lam, dtype=np.float64)[:n]
-        ut = np.asarray(ut, dtype=np.float64)[:n]
-
-        if not getattr(self, "blending_scale_selective", True):
-            return lam[:, np.newaxis] * ut, lam
-
-        # One pass only: its width follows the LOCAL cell size, which near a
-        # coupling face is already >= 2σ on a graded mesh, and it needs no halo
-        # exchange because owned rows read only their own one-ring (ghost U is
-        # refreshed by the previous solve).  A second pass would widen the filter
-        # but requires self.parallel.exchange_halo() on the intermediate.
-        # centre_weight="neighbour_sum": the residual (U − G∗U) is what this term
-        # preserves, and the plain box filter has a NEGATIVE grid-scale response
-        # (−5/7 on a hex interior), which would make that residual larger than U
-        # and flip the source's sign — anti-damping the very modes it is meant to
-        # leave untouched.  The neighbour-sum centre weight gives gain 1 at DC and
-        # exactly 0 at the grid scale, so the retained fraction stays in [0, 1].
-        if getattr(self, "_blending_filter", None) is None:
-            from ..fields.filters import CellBoxFilter
-
-            self._blending_filter = CellBoxFilter(
-                self.mesh_data, self.geo_data, centre_weight="neighbour_sum"
-            )
-        u = np.asarray(self.velocity, dtype=np.float64)[:n]
-        u_high = u - self._blending_filter(u)
-        return lam[:, np.newaxis] * (ut + u_high), lam
-
     def solve_pimple(self, time_step_size: float | None = None):
         """Solve the pressure–velocity system at the current time level WITHOUT
         advancing the clock (coupler-facing method).
@@ -944,10 +875,6 @@ class FVMSolver(CouplerInterfaceMixin):
         )
         # BDF2 needs u^{n-1}; available only once at least one step is committed.
         u_old_old_arg = self.velocity_older if self._n_committed >= 1 else None
-        logging.Timer.start("Blending source")
-        src_exp, src_imp = self._blending_source()
-        logging.Timer.log("Blending source", sink=self.logger)
-
         self.velocity, self.kinematic_pressure, self.face_flux, residuals = self.algorithm.step(
             self.velocity,
             self.kinematic_pressure,
@@ -957,8 +884,8 @@ class FVMSolver(CouplerInterfaceMixin):
             rho=self.setup.transport.density,
             nu=nu_eff,
             velocity_older=u_old_old_arg,
-            source_explicit=src_exp,
-            source_implicit=src_imp,
+            source_explicit=None,
+            source_implicit=None,
             face_flux_old=self.face_flux_old,
             face_flux_older=self.face_flux_older if self._n_committed >= 1 else None,
         )

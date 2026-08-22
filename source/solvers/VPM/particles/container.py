@@ -1704,8 +1704,8 @@ class Particles:
         The operation is: Γ_i ← Γ_i + ΔΓ_i  for all i where mask[i] is True.
 
         Args:
-            mask:       Boolean array of shape (N,) selecting which particles to update.
-            delta_circ: Float array of shape (M, 3) where M = mask.sum().
+            mask: Boolean array of shape (N,) selecting particles to update.
+            vortex_strength_increment: Array of shape (M, 3), where M = mask.sum().
         """
         N = self.n_particles
         if N == 0 or int(mask.sum()) == 0:

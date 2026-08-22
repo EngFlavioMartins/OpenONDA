@@ -65,7 +65,7 @@ def plot(figure_format: str) -> None:
     vpm = _values(records, "timing_seconds", "vpm")
     fvm = _values(records, "timing_seconds", "fvm")
     transfer = sum(
-        (_values(records, "timing_seconds", name) for name in ("vpm_bc", "blending", "transfer")),
+        (_values(records, "timing_seconds", name) for name in ("vpm_bc", "transfer")),
         start=np.zeros_like(time),
     )
     timing.stackplot(
@@ -88,8 +88,8 @@ def plot(figure_format: str) -> None:
         label="total",
     )
     for key, label, style in (
-        ("n_remesh_out", "overlap/buffer", "-"),
-        ("n_free", "free wake", "--"),
+        ("n_existing", "existing", "-"),
+        ("n_added", "correction", "--"),
     ):
         population.plot(
             time,
@@ -100,68 +100,32 @@ def plot(figure_format: str) -> None:
     population.set(ylabel="particles [million]", title="Particle population")
     population.legend(loc="upper left", fontsize=7)
 
-    # In-band residual: a bug unless it is round-off. Out-of-band fraction: a
-    # resolution limit. Same axes, so the two are not confused.
     fidelity = axes[1, 0]
-    # Evaluated on a cadence: restrict to sampled steps or the lines never connect.
     sampled = _evaluated(records)
     t_sampled = time[sampled]
-    in_band = 100.0 * _values(records, "transfer", "transfer_in_band_residual")[sampled]
-    out_of_band = 100.0 * _values(records, "transfer", "transfer_out_of_band_fraction")[sampled]
     marker = "o" if t_sampled.size < 60 else None
     fidelity.semilogy(
         t_sampled,
-        np.maximum(in_band, 1e-14),
+        np.maximum(_values(records, "transfer", "divergence_correction_l2")[sampled], 1e-16),
         color=util.COLORS["fvm"],
         marker=marker,
         markersize=3,
-        label="represented-field residual",
+        label=r"correction $L_2$",
     )
-    fidelity.semilogy(
-        t_sampled,
-        np.maximum(out_of_band, 1e-14),
-        color=util.COLORS["vpm"],
-        marker=marker,
-        markersize=3,
-        label="raw-blend residual",
-    )
-    fidelity.set(xlabel="flow time [s]", ylabel="[%]", title="Local transfer residual")
+    fidelity.set(xlabel="flow time [s]", ylabel="dimensionless", title=r"$\nabla\cdot\omega$")
     fidelity.legend(loc="upper right", fontsize=7)
 
-    # Per-band |omega_VPM| / |omega_FVM|. Every curve should sit on 1.
     quality = axes[1, 1]
-    band_names = sorted(
-        {name for row in records for name in (row.get("spectral_band_ratio") or {})},
-        key=lambda s: float(s.split("-")[0]),
+    quality.semilogy(
+        time,
+        np.maximum(_values(records, "transfer", "correction_vortex_strength_l1"), 1e-30),
+        color=util.COLORS["accent"],
+        label=r"$\Sigma|\Delta\Gamma|$",
     )
-    for name in band_names:
-        quality.plot(
-            t_sampled,
-            np.asarray(
-                [
-                    (row.get("spectral_band_ratio") or {}).get(name, np.nan)
-                    for row, keep in zip(records, sampled)
-                    if keep
-                ],
-                dtype=float,
-            ),
-            marker=marker,
-            markersize=3,
-            label=rf"$\lambda$ = {name}",
-        )
-    quality.axhline(1.0, color="0.6", lw=0.8, ls=":")
-    if not band_names:
-        quality.semilogy(
-            time,
-            np.maximum(
-                100.0 * _values(records, "transfer", "pruned_vortex_strength_fraction"), 1e-8
-            ),
-            label=r"pruned $\Sigma|\Gamma|$ [%]",
-        )
     quality.set(
         xlabel="flow time [s]",
-        ylabel=r"$|\omega_{VPM}| / |\omega_{FVM}|$",
-        title="Spectral agreement",
+        ylabel=r"vortex strength [m$^3$/s]",
+        title="Applied local correction",
     )
     quality.legend(loc="upper right", fontsize=7)
 

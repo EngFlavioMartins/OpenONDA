@@ -8,7 +8,7 @@ All case parameters are kept below in one explicit configuration block. Edit
 them here to define a different case.
 
 Usage:
-    python cube_flow_setup.py
+    python cubeFlow_setup.py
 """
 
 from __future__ import annotations
@@ -36,37 +36,37 @@ INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
-FVM_CORES = 1 if SMOKE else 4
+FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", 1 if SMOKE else 4))
 TRANSFER_REGION_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 PIMPLE_CORRECTORS = 2
 
 FVM_WAKE_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
-SURFACE_CELL_SIZE = 0.125 if SMOKE else 0.015625
+SURFACE_CELL_SIZE = float(
+    os.environ.get("OPENONDA_SURFACE_CELL_SIZE", 0.125 if SMOKE else 0.015625)
+)
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
 VPM_PARTICLE_SPACING = SURFACE_CELL_SIZE * 2
-PARTICLE_LIMIT = 100_000 if SMOKE else 1_500_000
+PARTICLE_LIMIT = int(os.environ.get("OPENONDA_PARTICLE_LIMIT", 100_000 if SMOKE else 1_500_000))
 VPM_CORE_RADIUS_RATIO = 1.05
-TRANSFER_VORTICITY_CUTOFF = 0.05
-TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
 GBD_VORTICITY_FLOOR = 0.05
 AUTHORITY_RAMP_WIDTH = SURFACE_CELL_SIZE * 4
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
-TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Output and diagnostics
-FVM_TIME_STEP_SIZE = 0.01
+FVM_TIME_STEP_SIZE = 0.005
 FORCE_INTERVAL_TIME = 0.03 if SMOKE else 0.05
 DIAGNOSTIC_INTERVAL_TIME = 0.03 if SMOKE else 0.60
 VPM_CHECKPOINT_INTERVAL_TIME = 0.03 if SMOKE else 1.0
 FVM_VOLUME_INTERVAL_TIME = 0.03 if SMOKE else 1.0
 VPM_LOGGING_INTERVAL_STEPS = 1 if SMOKE else 20
-VPM_TIME_STEP_SIZE = 0.03
-END_TIME = VPM_TIME_STEP_SIZE if SMOKE else 20.0
+VPM_TIME_STEP_SIZE = 0.015
+# 1,333 complete coupling intervals; the last FVM time is 0.005 s below 20 s.
+END_TIME = float(os.environ.get("OPENONDA_T_END", VPM_TIME_STEP_SIZE if SMOKE else 19.995))
 COUPLER_CHECKPOINT_INTERVAL_STEPS = 1 if SMOKE else 20
 SAMPLE_SPACING = SURFACE_CELL_SIZE * 2
 TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 1 if SMOKE else 12
@@ -200,10 +200,6 @@ COUPLER_SETUP = coupling.CouplerSetup(
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
     authority_ramp_width=AUTHORITY_RAMP_WIDTH,
     vpm_only_width=0.0,
-    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
-    transfer_boundary_prune_multiplier=TRANSFER_BOUNDARY_PRUNE_MULTIPLIER,
-    transfer_max_particles=PARTICLE_LIMIT,
-    transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 

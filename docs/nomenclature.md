@@ -198,7 +198,6 @@ must match the live names exactly, in singular form.
 | `self.fvm` | `self.fvm_solver` |
 | `self.vpm` | `self.vpm_solver` |
 | `self.transfer` | `self.vorticity_transfer` |
-| `self.blending` | `self.blending_zone` |
 | `self.t_end` | `self.end_time` |
 | `self.dt_fvm` / `self.dt_vpm` | `self.fvm_time_step_size` / `self.vpm_time_step_size` |
 | `self.nu` / `self.rho` | `self.kinematic_viscosity` / `self.density` |
@@ -212,7 +211,6 @@ must match the live names exactly, in singular form.
 | `transfer_region_box` | `transfer_region_bounds` |
 | `bc_patch_name` | `coupling_patch` |
 | `vpm_bc_mode` | `boundary_condition_mode` |
-| `transfer_prune_vorticity_min` | `transfer_vorticity_cutoff` |
 | `coupler_backup_period` | `checkpoint_interval_steps` |
 | `overlap_zone_dead_zone_width` | `vpm_only_width` |
 | `overlap_zone_ramp_width` | `authority_ramp_width` |

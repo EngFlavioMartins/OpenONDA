@@ -534,9 +534,9 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
         if context.is_root
         else np.empty((0, 3))
     )
-    actual.set_cell_scalar_field("lambdaRelax", scalar_global)
+    actual.set_cell_scalar_field("scalarDiagnostic", scalar_global)
     actual.set_cell_vector_field(
-        "Utarget",
+        "vectorDiagnostic",
         vector_global[:, 0],
         vector_global[:, 1],
         vector_global[:, 2],
@@ -550,8 +550,8 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
     )
     expected_scalar = actual.parallel.comm.scatter(expected_scalar_payloads, root=0)
     expected_vector = actual.parallel.comm.scatter(expected_vector_payloads, root=0)
-    np.testing.assert_allclose(actual.registered_fields["lambdaRelax"], expected_scalar)
-    np.testing.assert_allclose(actual.registered_fields["Utarget"], expected_vector)
+    np.testing.assert_allclose(actual.registered_fields["scalarDiagnostic"], expected_scalar)
+    np.testing.assert_allclose(actual.registered_fields["vectorDiagnostic"], expected_vector)
 
 
 def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):

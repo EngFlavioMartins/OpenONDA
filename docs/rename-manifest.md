@@ -184,11 +184,9 @@ Compatibility policy: **no aliases**, confirmed already in effect — neither
 | `self.fvm` | `self.fvm_solver` | – | internal |
 | `self.vpm` | `self.vpm_solver` | – | internal |
 | `self.transfer` | `self.vorticity_transfer` | – | internal |
-| `self.blending` | `self.blending_zone` | – | internal |
 | `transfer_region_box` | `transfer_region_bounds` | m | API |
 | `bc_patch_name` | `coupling_patch` | – | API |
 | `vpm_bc_mode` | `boundary_condition_mode` | – | API |
-| `transfer_prune_vorticity_min` | `transfer_vorticity_cutoff` | m³/s | API |
 | `overlap_zone_dead_zone_width` | `vpm_only_width` | m | API |
 | `overlap_zone_ramp_width` | `authority_ramp_width` | m | API |
 | `_u_bc_prev` (etc.) | `_previous_boundary_velocity` (etc.) | m/s | internal |

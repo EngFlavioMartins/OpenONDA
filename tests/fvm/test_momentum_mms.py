@@ -3,8 +3,7 @@ operator* (convection + diffusion + volumetric source), independent of the
 pressure–velocity coupling.
 
 This pins the spatial accuracy of ``assemble_momentum_equation`` and, in doing
-so, exercises the generic ``source_explicit`` hook used by both MMS forcing and
-the future coupling blending source ``S = λ(Utarget − U)``.
+so, exercises the generic ``source_explicit`` forcing hook.
 
 Manufactured field (divergence-free 2D Taylor–Green, uniform in z, on [0,1]³)::
 

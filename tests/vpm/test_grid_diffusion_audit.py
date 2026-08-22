@@ -250,6 +250,43 @@ def test_regenerated_group_ids_fill_empty_diffusion_nodes(physics):
     assert labels[:, 0, 0].tolist() == [0, 0, 0, 1, 1]
 
 
+def test_pruned_moment_redistribution_disables_compact_lattice_tree(monkeypatch):
+    """Regular GBD lattices must avoid SciPy's recursive compact-tree build."""
+    import scipy.spatial
+
+    options = []
+
+    class Tree:
+        def __init__(self, _points, **kwargs):
+            options.append(kwargs)
+
+        @staticmethod
+        def query(points, **_kwargs):
+            return np.zeros(len(points)), np.zeros(len(points), dtype=np.intp)
+
+    monkeypatch.setattr(scipy.spatial, "cKDTree", Tree)
+    grid = np.zeros((3, 3, 3, 3), dtype=np.float64)
+    grid[..., 2] = 1.0
+    magnitude = np.linalg.norm(grid, axis=-1)
+    ix = np.array([0, 0, 1, 2])
+    iy = np.array([0, 2, 1, 0])
+    iz = np.array([0, 2, 1, 2])
+
+    from source.solvers.VPM.physics.diffusion.grid import _GridDiffusionMixin
+
+    _GridDiffusionMixin._redistribute_pruned_moments(
+        grid,
+        magnitude,
+        ix,
+        iy,
+        iz,
+        np.zeros(3),
+        1.0,
+    )
+
+    assert options == [{"compact_nodes": False}]
+
+
 def test_viscous_config_carries_particle_cap():
     vc = ViscousConfig.gbd(
         particle_spacing=0.05,

@@ -41,32 +41,30 @@ def _check_solver_history(diagnostics: list[dict]) -> tuple[float, float]:
 
 
 def _check_coupling_history(coupling: list[dict]) -> None:
-    circulation_error = max(
-        abs(float(record["conservation"]["corrected_mismatch"]["circulation"]))
-        for record in coupling
-    )
     vpm_bc_error = max(
         abs(float(record["vpm_bc_flux"]["corrected_mismatch"])) for record in coupling
     )
-    if circulation_error > 1e-8:
-        raise SystemExit(
-            f"FAIL: corrected transfer circulation mismatch is {circulation_error:.3g}"
-        )
     if vpm_bc_error > 1e-8:
         raise SystemExit(f"FAIL: corrected VPM-BC-flux mismatch is {vpm_bc_error:.3g}")
-    transfer_cfl = max(float(record.get("transfer", {}).get("cfl", 0.0)) for record in coupling)
-    if transfer_cfl > 1.0:
-        raise SystemExit(f"FAIL: peak transfer CFL is excessive ({transfer_cfl:.3g})")
-    cap_loss = max(
-        float(record.get("transfer", {}).get("population_pruned_vortex_strength_fraction", 0.0))
+    flux_excess = max(
+        float(record["vpm_bc_flux"]["raw_relative"])
+        - float(record["vpm_bc_flux"]["acceptance_limit"])
         for record in coupling
     )
-    if cap_loss > 0.02:
-        raise SystemExit(f"FAIL: population-cap pruning discarded {cap_loss:.2%} of circulation")
+    if flux_excess > 0.0:
+        raise SystemExit("FAIL: a physically significant VPM boundary flux was projected")
+    correction_divergence = max(
+        float(record["transfer"]["divergence_correction_linf"] or 0.0) for record in coupling
+    )
+    if correction_divergence > 1.0e-10:
+        raise SystemExit(
+            "FAIL: compatible-curl transfer lost solenoidality "
+            f"(dimensionless Linf={correction_divergence:.3g})"
+        )
 
 
 def _check_reference_drag(forces: np.ndarray) -> str:
-    reference_path = CASE_DIR / "referenceFlow" / "samples" / "forces_history.csv"
+    reference_path = CASE_DIR / "referenceFlow" / "samples_backup" / "forces_history.csv"
     with reference_path.open(newline="") as stream:
         rows = list(csv.DictReader(stream))
     reference = np.asarray([[float(row["time"]), float(row["Cd"])] for row in rows])
@@ -126,7 +124,7 @@ def main() -> None:
     print(
         "PASS: native cube run completed with converged FVM solves, "
         f"peak CFL={max_cfl:.3g}, peak continuity={max_continuity:.3g}, "
-        f"and conservative transfer through t={forces[-1, 0]:g}.{physics_summary}"
+        f"and solenoidal local transfer through t={forces[-1, 0]:g}.{physics_summary}"
     )
 
 

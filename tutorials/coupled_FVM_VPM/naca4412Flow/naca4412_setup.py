@@ -215,8 +215,6 @@ COUPLER_SETUP = coupling.CouplerSetup(
     vpm_particle_spacing=SPACING,
     authority_ramp_width=6 * SPACING,
     vpm_only_width=3.0 * SPACING,
-    transfer_vorticity_cutoff=0.01,
-    transfer_max_particles=MAX_PARTICLES,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
     checkpoint_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
 )

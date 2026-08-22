@@ -83,6 +83,7 @@ class VPMSolver:
         self.time_step_size = final_setup.time_step_size
         self.time = final_setup.time
         self.step = final_setup.step
+        self._particle_regeneration_pending = False
         self.time_integration = final_setup.time_integration.upper()
         self.coupled_max_strain_increment = final_setup.coupled_max_strain_increment
         self.coupled_max_advection_fraction = final_setup.coupled_max_advection_fraction
@@ -1342,6 +1343,11 @@ class VPMSolver:
     ) -> None:
         """Apply an in-place vortex-strength delta to a masked particle subset."""
         self.particles.update_vortex_strength_masked(mask, vortex_strength_increment)
+
+    def notify_external_particle_mutation(self) -> None:
+        """Schedule VPM-owned GBD regeneration before the next evolution step."""
+        if self.viscous_scheme == "GBD":
+            self._particle_regeneration_pending = True
 
     def _print_timestep_validation_summary(self, results: dict) -> None:
         Logging.time_step_validation_summary(results)

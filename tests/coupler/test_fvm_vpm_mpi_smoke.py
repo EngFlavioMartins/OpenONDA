@@ -11,6 +11,8 @@ no ``is_master_rank()`` calls, and no conditional imports.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -24,7 +26,7 @@ VPM_TIME_STEP_SIZE = 0.01
 
 @pytest.mark.slow
 def test_coupled_fvm_vpm_two_steps_mpi(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+    from mpi4py import MPI
 
     from source.coupler import CouplerSetup, FVMVPMCoupler
     from source.solvers.FVM import (
@@ -37,6 +39,11 @@ def test_coupled_fvm_vpm_two_steps_mpi(tmp_path, monkeypatch):
     )
     from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
     from source.solvers.VPM import VPMSetup, VPMSolver
+
+    rank = MPI.COMM_WORLD.Get_rank()
+    case_dir = Path(MPI.COMM_WORLD.bcast(str(tmp_path) if rank == 0 else None, root=0))
+    MPI.COMM_WORLD.Barrier()
+    monkeypatch.chdir(case_dir)
 
     h = 0.25
 
@@ -66,15 +73,22 @@ def test_coupled_fvm_vpm_two_steps_mpi(tmp_path, monkeypatch):
                 velocity_type="fixedValue",
                 velocity_value=setup.freestream_velocity,
                 pressure_type="fixedFluxPressure",
-            )
+            ),
+            BoundaryConfig.wall("cube"),
         ],
         initial_velocity=setup.freestream_velocity,
-        execution=ComputeConfig.petsc_replicated(),
+        execution=ComputeConfig.petsc_partitioned(),
+    )
+    mesh = coupling_box_mesh(
+        (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5),
+        h,
+        hole_box=(-0.25, 0.25, -0.25, 0.25, -0.25, 0.25),
+        wall_patch_name="cube",
     )
     fvm = FVMSolver(
         config,
-        case_dir=".",
-        mesh_data=coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), h),
+        case_dir=case_dir,
+        mesh_data=mesh if rank == 0 else None,
     )
 
     coupler = FVMVPMCoupler(fvm, vpm, setup)

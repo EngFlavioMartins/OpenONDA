@@ -1715,9 +1715,8 @@ class SIMPLESolver:
 
         ``U_old_old`` and the flux histories are accepted for interface parity
         with the transient driver but are unused by steady SIMPLE.
-        ``source_explicit``/``source_implicit``
-        are optional volumetric momentum sources (e.g. the coupling blending source
-        S = λ(Utarget − U)) forwarded to the momentum predictor.
+        ``source_explicit``/``source_implicit`` are optional volumetric momentum
+        sources forwarded to the momentum predictor.
 
         Args:
             U: Cell and boundary-ghost velocity [m/s], shape

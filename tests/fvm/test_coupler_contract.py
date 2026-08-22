@@ -4,9 +4,7 @@ The coupler (``source/coupler/``) drives the native FVM through a fixed
 duck-typed API. These tests guard that public contract:
 every method exists with the right shapes, the driver splits into
 ``solve_pimple`` (no time advance) + ``advance_time``, the per-face Dirichlet
-VPM BC applies, and the fvOptions-equivalent blending source
-``S = λ(Utarget − U)`` is wired from the registered fields to the momentum
-operator.
+VPM BC applies, and field access preserves the expected shapes.
 """
 
 import contextlib
@@ -152,18 +150,6 @@ def test_scalar_param_setters():
     assert s.time_step_size == 0.05 and s.setup.transport.kinematic_viscosity == 0.02
 
 
-def test_registered_fields_build_blending_source():
-    s, mesh = _make_solver()
-    n = mesh["n_cells"]
-    lam = np.full(n, 3.0)
-    ut = np.tile([2.0, -1.0, 0.5], (n, 1))
-    s.set_cell_scalar_field("lambdaRelax", lam)
-    s.set_cell_vector_field("Utarget", ut[:, 0], ut[:, 1], ut[:, 2])
-    su, sp = s._blending_source()
-    assert np.allclose(sp, lam)  # Sp = λ
-    assert np.allclose(su, lam[:, None] * ut)  # Su = λ·Utarget
-
-
 def test_driver_split_solve_then_advance():
     s, _ = _make_solver()
     t0, step0, nc0 = s.time, s.step, s._n_committed
@@ -193,10 +179,8 @@ def test_vector_dirichlet_writes_ghosts():
     assert b["velocity_type"] == "fixedValue"
 
 
-def test_blending_source_relaxes_velocity_to_target():
-    """At the momentum-operator level a strong blending source drives U → Utarget
-    (isolated from the continuity projection that suppresses net flow in a
-    closed box)."""
+def test_generic_implicit_source_relaxes_velocity_to_target():
+    """The generic momentum-source hook has the advertised Su - Sp U form."""
     mesh = structured_box(6, 6, 6)
     geo = compute_mesh_geometry(mesh)
     n = mesh["n_cells"]
@@ -228,7 +212,7 @@ def test_blending_source_relaxes_velocity_to_target():
         sol[:, i] = solve_linear_system(
             mom[c]["A"], mom[c]["b"], method="spsolve", equation_type="momentum"
         )
-    assert np.max(np.abs(sol - target)) < 1e-2, "strong blending source should pull U to Utarget"
+    assert np.max(np.abs(sol - target)) < 1e-2
 
 
 def test_fvm_solver_owns_its_setup_object():

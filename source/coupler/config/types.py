@@ -33,8 +33,7 @@ class CouplerSetup:
     # ---- OVERLAP ZONE (FVM/VPM authority profile) ----
     authority_ramp_width: float = 0.30
     """Width (m) of the C1 ramp over which FVM authority rises from zero to one
-    inside the overlap zone; also scales the blending relaxation. Must exceed
-    ``vpm_only_width``."""
+    inside the overlap zone; must exceed ``vpm_only_width``."""
     vpm_only_width: float = 0.15
     """Width (m) of the band just inside the overlap-zone faces where FVM
     authority is exactly zero; must be non-negative."""
@@ -44,15 +43,6 @@ class CouplerSetup:
     """(xmin, xmax, ymin, ymax, zmin, zmax) region over which FVM vorticity is
     transferred to VPM particles; must lie inside the FVM domain; None uses the
     full FVM domain."""
-    transfer_vorticity_cutoff: float = 0.005
-    """Minimum |vorticity| (1/s) kept after pruning; must be non-negative."""
-    transfer_boundary_prune_multiplier: float = 1.0
-    """Smooth multiplier on the prune threshold where FVM authority vanishes at
-    the transfer-region boundary; must be at least one."""
-    transfer_max_particles: int | None = None
-    """Post-transfer VPM particle population cap; None is unlimited."""
-    transfer_amplification_cap: float = 2.0
-    """Maximum gain of the bounded local circulation correction; at least one."""
     transfer_diagnostic_interval_steps: int = 1
     """Coupling steps between transfer diagnostics; at least one."""
 
@@ -111,8 +101,6 @@ class CouplerSetup:
             "vpm_particle_spacing": self.vpm_particle_spacing,
             "authority_ramp_width": self.authority_ramp_width,
             "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
-            "transfer_amplification_cap": self.transfer_amplification_cap,
-            "transfer_boundary_prune_multiplier": self.transfer_boundary_prune_multiplier,
         }
         invalid = [
             name for name, value in positive.items() if not np.isfinite(value) or value <= 0.0
@@ -121,20 +109,14 @@ class CouplerSetup:
             raise ValueError(f"Coupling values must be positive: {', '.join(invalid)}")
         if self.checkpoint_interval_steps < 0:
             raise ValueError("checkpoint_interval_steps must be non-negative")
-        if self.vpm_only_width < 0.0 or self.transfer_vorticity_cutoff < 0.0:
-            raise ValueError("vpm_only_width and transfer_vorticity_cutoff must be non-negative")
-        if self.transfer_amplification_cap < 1.0:
-            raise ValueError("transfer_amplification_cap must be at least one")
-        if self.transfer_boundary_prune_multiplier < 1.0:
-            raise ValueError("transfer_boundary_prune_multiplier must be at least one")
+        if self.vpm_only_width < 0.0:
+            raise ValueError("vpm_only_width must be non-negative")
         if self.transfer_diagnostic_interval_steps < 1:
             raise ValueError("transfer_diagnostic_interval must be at least one")
         if self.authority_ramp_width <= self.vpm_only_width:
             raise ValueError("authority_ramp_width must exceed vpm_only_width")
         if self.vpm_core_radius_ratio < 1.0:
             raise ValueError("vpm_core_radius_ratio must be at least one")
-        if self.transfer_max_particles is not None and self.transfer_max_particles < 1:
-            raise ValueError("transfer_max_particles must be positive")
 
     @property
     def freestream_velocity_vector(self) -> np.ndarray:
@@ -169,11 +151,7 @@ class CouplerSetup:
                 "vpm_particle_spacing": self.vpm_particle_spacing,
                 "authority_ramp_width": self.authority_ramp_width,
                 "vpm_only_width": self.vpm_only_width,
-                "transfer_vorticity_cutoff": self.transfer_vorticity_cutoff,
-                "transfer_boundary_prune_multiplier": self.transfer_boundary_prune_multiplier,
-                "transfer_max_particles": self.transfer_max_particles,
                 "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
-                "transfer_amplification_cap": self.transfer_amplification_cap,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
                 "bc_resync_after_transfer": self.bc_resync_after_transfer,
                 "pressure_anchor_to_freestream": self.pressure_anchor_to_freestream,

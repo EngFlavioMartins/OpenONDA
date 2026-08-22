@@ -18,20 +18,20 @@ def test_surface_sampler_can_skip_velocity_derivatives(tmp_path):
     class Solver:
         particles = SimpleNamespace(n_particles=1)
 
-        def compute_target_velocities(self, points, *, include_freestream):
-            assert include_freestream
-            return np.ones((len(points), 3))
-
-        def compute_target_vorticities(self, points):
-            return np.full((len(points), 3), 2.0)
-
-        def compute_target_velocity_gradients(self, points):
-            raise AssertionError("disabled derivative traversal was called")
+        def compute_complete_target_velocity_and_gradients(self, points, *, particle_spacing):
+            assert particle_spacing == 0.1
+            gradient = np.zeros((len(points), 3, 3))
+            gradient[:, 2, 1] = 2.0
+            gradient[:, 0, 2] = 3.0
+            gradient[:, 1, 0] = 4.0
+            return np.ones((len(points), 3)), gradient
 
     data = sampler.sample(Solver())
 
     np.testing.assert_allclose(data["Ux"], 1.0)
     np.testing.assert_allclose(data["omega_x"], 2.0)
+    np.testing.assert_allclose(data["omega_y"], 3.0)
+    np.testing.assert_allclose(data["omega_z"], 4.0)
     np.testing.assert_allclose(data["dudx"], 0.0)
     np.testing.assert_allclose(data["Sxx"], 0.0)
 

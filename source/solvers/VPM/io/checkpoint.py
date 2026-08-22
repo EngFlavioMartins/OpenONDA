@@ -253,6 +253,9 @@ class CheckpointManager:
             solver_group.attrs["step"] = int(solver.step)
             solver_group.attrs["time_step_size"] = float(solver.time_step_size)
             solver_group.attrs["dvh_fire_counter"] = int(getattr(solver, "_dvh_fire_counter", 0))
+            solver_group.attrs["particle_regeneration_pending"] = int(
+                getattr(solver, "_particle_regeneration_pending", False)
+            )
             solver_group.attrs["n_particles"] = int(solver.particles.n_particles)
 
             stabilization = _stabilization(solver)
@@ -652,6 +655,9 @@ class CheckpointManager:
             )
             if "dvh_fire_counter" in solver_group.attrs:
                 solver._dvh_fire_counter = int(solver_group.attrs["dvh_fire_counter"])
+            solver._particle_regeneration_pending = bool(
+                solver_group.attrs.get("particle_regeneration_pending", False)
+            )
 
             stabilization = _stabilization(solver)
             if stabilization is not None:

@@ -1,61 +1,102 @@
-"""Analytic sanity checks for the active local vorticity transfer."""
+"""Manufactured convergence tests for the compatible-curl handoff."""
 
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from source.coupler.vorticity_transfer import (
-    continuous_transfer,
+    build_transfer_lattice,
+    solenoidal_velocity_correction,
     vortex_strength_from_velocity_trace,
 )
 
 
-def _lattice(n: int, h: float):
-    axis = (np.arange(n) - (n - 1) / 2.0) * h
-    grid = np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1)
-    return grid.reshape(-1, 3), (n, n, n)
+def _scatter(lattice, result):
+    field = np.zeros((len(lattice.positions), 3))
+    index = {tuple(point): i for i, point in enumerate(lattice.positions)}
+    for point, strength in zip(result.pos, result.circ, strict=True):
+        field[index[tuple(point)]] = strength
+    return field
 
 
-def test_rung0_uniform_flow_produces_no_vorticity():
-    """A uniform stream must hand off nothing. Catches sign and trace errors."""
-    h = 0.1
-    points, _ = _lattice(16, h)
-    circulation = vortex_strength_from_velocity_trace(
-        points, h, lambda q: np.tile([1.3, -0.4, 0.7], (len(np.atleast_2d(q)), 1))
+def test_uniform_velocity_has_exactly_zero_curl():
+    rng = np.random.default_rng(3)
+    points = rng.uniform(-1.0, 1.0, (100, 3))
+    strength = vortex_strength_from_velocity_trace(
+        points,
+        0.1,
+        lambda query: np.tile([1.3, -0.4, 0.7], (len(query), 1)),
     )
-    assert np.abs(circulation).max() < 1e-15
+    np.testing.assert_array_equal(strength, np.zeros_like(strength))
 
 
-def test_rung0_uniform_flow_transfer_creates_no_particles():
-    box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+def test_solid_body_rotation_has_exact_constant_curl():
+    rng = np.random.default_rng(4)
+    points = rng.uniform(-1.0, 1.0, (100, 3))
+    h = 0.05
+    omega = np.array([0.3, -0.2, 1.1])
+    strength = vortex_strength_from_velocity_trace(
+        points,
+        h,
+        lambda query: 0.5 * np.cross(omega, np.asarray(query)),
+    )
+    np.testing.assert_allclose(strength, np.tile(omega * h**3, (len(points), 1)), atol=2.0e-18)
+
+
+def test_quadratic_velocity_curl_is_exact_on_the_transfer_lattice():
+    box = np.array([-1.0, 1.0] * 3)
     h = 0.1
-    result = continuous_transfer(
-        np.zeros((0, 3)),
-        np.zeros((0, 3)),
+    lattice = build_transfer_lattice(
         box,
         h,
-        vortex_strength_at_node=lambda q: vortex_strength_from_velocity_trace(
-            q, h, lambda p: np.tile([1.0, 0.0, 0.0], (len(np.atleast_2d(p)), 1))
-        ),
-        authority_ramp_width=4 * h,
-        transfer_buffer_length=2 * h,
-        transfer_prune_threshold_abs=1e-18,
-        freestream_velocity=[1.0, 0.0, 0.0],
     )
-    assert result.n_total == 0
-    assert result.transfer_out_of_band_fraction == pytest.approx(0.0, abs=1e-12)
 
+    def velocity(points):
+        x, y, z = np.asarray(points).T
+        return np.column_stack((y * z, x * z, x * y + x**2))
 
-def test_rung0_solid_body_rotation_is_reproduced_exactly():
-    """u = omega x r has constant curl; the trace must return it to round-off."""
-    h = 0.05
-    points, _ = _lattice(12, h)
-    omega = np.array([0.3, -0.2, 1.1])
-    circulation = vortex_strength_from_velocity_trace(
-        points, h, lambda q: 0.5 * np.cross(omega, np.asarray(q).reshape(-1, 3))
+    result = solenoidal_velocity_correction(
+        lattice,
+        h,
+        fvm_velocity_at=velocity,
+        vpm_velocity_at=lambda points: np.zeros((len(points), 3)),
+        authority_at=lambda points: np.ones(len(points)),
+        core_radius_ratio=1.0,
     )
-    np.testing.assert_allclose(circulation, np.tile(omega * h**3, (len(points), 1)), atol=1e-16)
+    numerical = _scatter(lattice, result) / h**3
+    x, _y, _z = lattice.positions.T
+    exact = np.column_stack((np.zeros_like(x), -2.0 * x, np.zeros_like(x)))
+    np.testing.assert_allclose(numerical, exact, atol=3.0e-14)
 
 
-# ---------------------------------------------------------------------------
+def _analytic_vortex_error(h: float) -> float:
+    box = np.array([-1.0, 1.0] * 3)
+    lattice = build_transfer_lattice(
+        box,
+        h,
+    )
+
+    def velocity(points):
+        x, y, _z = np.asarray(points).T
+        envelope = np.exp(-(x**2 + y**2))
+        return np.column_stack((-y * envelope, x * envelope, np.zeros(len(points))))
+
+    result = solenoidal_velocity_correction(
+        lattice,
+        h,
+        fvm_velocity_at=velocity,
+        vpm_velocity_at=lambda points: np.zeros((len(points), 3)),
+        authority_at=lambda points: np.ones(len(points)),
+        core_radius_ratio=1.0,
+    )
+    numerical = _scatter(lattice, result)[:, 2] / h**3
+    x, y, z = lattice.positions.T
+    exact = 2.0 * (1.0 - x**2 - y**2) * np.exp(-(x**2 + y**2))
+    core = (np.abs(x) <= 0.7) & (np.abs(y) <= 0.7) & (np.abs(z) <= 0.7)
+    return float(np.linalg.norm(numerical[core] - exact[core]) / np.linalg.norm(exact[core]))
+
+
+def test_analytic_vortex_is_second_order_convergent():
+    errors = np.array([_analytic_vortex_error(h) for h in (0.2, 0.1, 0.05)])
+    orders = np.log2(errors[:-1] / errors[1:])
+    assert np.all(orders > 1.8), (errors, orders)

@@ -751,7 +751,7 @@ class _GridDiffusionMixin:
             if np.any(empty_query):
                 populated_linear = np.flatnonzero(weight_flat > 0.0)
                 populated = np.column_stack(np.unravel_index(populated_linear, (nx, ny, nz)))
-                _, nearest = cKDTree(populated).query(query[empty_query])
+                _, nearest = cKDTree(populated, compact_nodes=False).query(query[empty_query])
                 empty_nodes = query[empty_query]
                 winner_grid[tuple(empty_nodes.T)] = winner_flat[populated_linear[nearest]]
         return winner_grid
@@ -1129,7 +1129,9 @@ class _GridDiffusionMixin:
             # keeps capped tail circulation near its original physical location.
             from scipy.spatial import cKDTree
 
-            nearest = cKDTree(survivor_positions).query(all_positions, k=1, workers=-1)[1]
+            nearest = cKDTree(survivor_positions, compact_nodes=False).query(
+                all_positions, k=1, workers=-1
+            )[1]
             corrected = np.zeros_like(survivor_circulation)
             np.add.at(corrected, nearest, all_circulation)
             weights = wmag / wsum
@@ -1278,7 +1280,7 @@ class _GridDiffusionMixin:
         externally; a warning is logged if α_node exceeds 1/6.
         """
         N = particles.n_particles
-        if N == 0 or time_step_size == 0.0:
+        if N == 0:
             return None
         self._ping = True
 

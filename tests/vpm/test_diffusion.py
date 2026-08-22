@@ -183,3 +183,33 @@ def test_dvh_subcycling_applies_the_full_accumulated_diffusion_interval():
     stepper._apply_viscous_diffusion(0.1)
     assert applied_intervals == pytest.approx([0.3])
     assert solver._dvh_fire_counter == 0
+
+
+def test_external_mutation_regenerates_before_physical_gbd_diffusion(tmp_path, monkeypatch):
+    solver = VPMSolver(
+        VPMSetup(
+            time_step_size=0.03,
+            compute_device="CPU",
+            stretching=StretchingConfig.disabled(),
+            viscous=ViscousConfig.gbd(
+                particle_spacing=0.1,
+                kinematic_viscosity=1.0e-3,
+            ),
+            advection=AdvectionConfig(scheme="NONE"),
+            checkpoint_interval_steps=0,
+            logging_interval_steps=0,
+            checkpoint_directory=str(tmp_path),
+        )
+    )
+    applied_intervals = []
+    monkeypatch.setattr(
+        solver.stepper,
+        "_apply_viscous_diffusion",
+        applied_intervals.append,
+    )
+
+    solver.notify_external_particle_mutation()
+    solver.advance()
+
+    assert applied_intervals == pytest.approx([0.0, 0.03])
+    assert solver._particle_regeneration_pending is False

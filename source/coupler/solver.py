@@ -1,4 +1,4 @@
-"""FVM–VPM coupling driver with VPM boundary conditions and conservative hand-off."""
+"""FVM–VPM coupling driver with VPM boundary conditions and compatible handoff."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ except ImportError:
 
 import numpy as np
 
-from source.coupler.blending import BlendingZone
 from source.coupler.boundary import (
     advance_fvm,
     evaluate_vpm_boundary,
+    initialize_vpm_boundary_history,
     resynchronize_vpm_boundary,
 )
 from source.coupler.checkpoint import (
@@ -71,7 +71,7 @@ def _vpm_solver_info(vpm_solver) -> str:
 
 class FVMVPMCoupler:
     """
-    FVM-VPM coupler: the four-step overset loop with blending-zone relaxation.
+    FVM-VPM coupler for boundary exchange and compatible-curl wake handoff.
     """
 
     def __init__(self, fvm_solver, vpm_solver, coupler_setup: CouplerSetup):
@@ -111,7 +111,6 @@ class FVMVPMCoupler:
         self.vpm_solver: VPMSolver | None = None
         self.fvm_solver: FVMSolver | None = None
         self.vorticity_transfer: VorticityTransfer | None = None
-        self.blending_zone = None
         self._velocity_bc_prev: np.ndarray | None = None
         self._normal_velocity_bc_prev: np.ndarray | None = None
         self._normal_velocity_bc_next: np.ndarray | None = None
@@ -124,6 +123,8 @@ class FVMVPMCoupler:
         self._velocity_gradient_global_buffer: np.ndarray | None = None
         self._last_vpm_bc_flux_diagnostics = {
             "raw_mismatch": 0.0,
+            "raw_relative": 0.0,
+            "acceptance_limit": 0.0,
             "applied_correction": 0.0,
             "corrected_mismatch": 0.0,
         }
@@ -367,13 +368,6 @@ class FVMVPMCoupler:
                 logger.info("[Init] VPM diffusion lattice aligned with the transfer lattice.")
 
         assert self.fvm_box is not None
-        self.blending_zone = BlendingZone(
-            cfg,
-            self.vpm_solver,
-            self.fvm_solver,
-            coupling_time_step_size=self.vpm_time_step_size,
-            fvm_box=self.fvm_box,
-        )
         self.pressure_reference = PressureReference(
             self.fvm_solver,
             fvm_box=self.fvm_box,
@@ -413,13 +407,12 @@ class FVMVPMCoupler:
     def solve(self, start_step: int = 0) -> None:
         """Run the FVM--VPM coupling loop."""
         face_geometry, n_steps = self._prepare_run()
+        initialize_vpm_boundary_history(self, *face_geometry)
         assert self.vpm_time_step_size is not None
         for step in range(1 + start_step, n_steps + 1):
             time_end = step * self.vpm_time_step_size
             vpm_time = self._advance_vpm(step, time_end)
-            u_previous, u_next, blending_time, boundary_time = evaluate_vpm_boundary(
-                self, *face_geometry
-            )
+            u_previous, u_next, boundary_time = evaluate_vpm_boundary(self, *face_geometry)
             fvm_time = advance_fvm(self, *face_geometry, u_previous, u_next)
             # A pressure datum shift changes neither the incompressible
             # solution nor closed-body pressure forces.  Keep the solver's
@@ -432,7 +425,7 @@ class FVMVPMCoupler:
                 self,
                 step,
                 time_end,
-                (vpm_time, blending_time, boundary_time, fvm_time, transfer_time),
+                (vpm_time, boundary_time, fvm_time, transfer_time),
                 transfer_result,
                 logger=logger,
                 comm=_mpi4py_comm,

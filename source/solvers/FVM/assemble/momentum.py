@@ -294,11 +294,9 @@ def assemble_momentum_equation(
         U_old: Previous time step velocity (optional, for transient term)
         source_explicit: Optional acceleration source Su [m/s²], shape
             ``(n_elements, 3)``. Added to the RHS as ``Su * V`` for each
-            component (e.g. body acceleration, MMS forcing, or the explicit
-            part λ·Utarget of the coupling blending source).
+            component (e.g. body acceleration or MMS forcing).
         source_implicit: Optional implicit volumetric source coefficient Sp
             [1/s], shape ``(n_elements,)``. Added to the diagonal as ``Sp * V``
-            (e.g. the implicit part λ of the blending source S = λ(Utarget − U)).
             Must be >= 0 to preserve diagonal dominance.
 
     Returns:
@@ -475,7 +473,7 @@ def assemble_momentum_equation(
 
         # 6b. Generic acceleration source terms: S = Su + Sp·U.
         #     Su → RHS (+Su·V); Sp → diagonal (+Sp·V), keeping U implicit.
-        #     Used by MMS forcing and the coupling blending source S = λ(Utarget − U).
+        #     Used by MMS forcing and other solver-owned source models.
         if source_explicit is not None:
             b += source_explicit[:n_cells, i_comp] * vol
         results[comp_name] = {

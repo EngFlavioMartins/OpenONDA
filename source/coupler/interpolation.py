@@ -9,7 +9,11 @@ import numpy as np
 
 
 class FVMVelocityInterpolator:
-    """Interpolate FVM velocity with cached, inverse-distance Taylor stencils."""
+    """Second-order local Taylor interpolation on arbitrary cell centres.
+
+    Exact donor gradients reproduce affine fields exactly. Smooth fields are
+    second-order accurate when the supplied FVM gradients are consistent.
+    """
 
     def __init__(self, cell_centres: np.ndarray, tree, neighbours: int = 4):
         self.cell_centres = np.asarray(cell_centres, dtype=np.float64).reshape(-1, 3)
@@ -40,7 +44,7 @@ class FVMVelocityInterpolator:
             weights[exact] = 0.0
             weights[exact, 0] = 1.0
         weights /= weights.sum(axis=1, keepdims=True)
-        result = indices, weights.astype(np.float32)
+        result = indices, weights
 
         self._cache[key] = result
         self._cache.move_to_end(key)

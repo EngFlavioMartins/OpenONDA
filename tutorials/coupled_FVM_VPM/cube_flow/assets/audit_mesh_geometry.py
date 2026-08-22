@@ -35,7 +35,7 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CASE_DIR))
 sys.path.insert(0, str(CASE_DIR.parents[2]))  # source/ root for in-place runs
 
-import cube_flow_setup  # noqa: E402  (defines FVM_MESH and the geometry config)
+import cubeFlow_setup as cube_flow_setup  # noqa: E402  (geometry configuration)
 
 
 def _boundary_face_sf(mesh_data) -> np.ndarray:

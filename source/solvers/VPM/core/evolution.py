@@ -56,6 +56,7 @@ class EvolutionStepper:
         """
 
         self.solver._domain_bounds_enforced_this_step = False
+        self._apply_pending_particle_regeneration()
         self.stabilization.run_phase("pre_evolution")
 
         self._advance_time_step()
@@ -197,6 +198,17 @@ class EvolutionStepper:
 
         if self.logging_interval_steps > 0 and self.step % self.logging_interval_steps == 0:
             self.log_diagnostics()
+
+    def _apply_pending_particle_regeneration(self) -> None:
+        """Regenerate externally modified GBD particles without advancing time."""
+        if not self.solver._particle_regeneration_pending:
+            return
+        if self.viscous_scheme != "GBD":
+            self.solver._particle_regeneration_pending = False
+            return
+        Logging.message("Performing pending GBD particle regeneration.")
+        self._apply_viscous_diffusion(0.0)
+        self.solver._particle_regeneration_pending = False
 
     def _debug_validate_particle_geometry(self, stage: str) -> None:
         """Validate active particle radii and volumes when stage tracing is enabled."""
@@ -811,6 +823,7 @@ class EvolutionStepper:
                     eddy_viscosity=new_p.get("eddy_viscosity"),
                     zone_id=new_p.get("zone_id", np.zeros(M, dtype=np.int32)),
                     group_id=new_p.get("group_id", np.zeros(M, dtype=np.int32)),
+                    report_removal=False,
                 )
                 new_circulation = np.asarray(new_p["vortex_strength"], dtype=np.float64)
                 new_moments = gaussian_particle_moments(

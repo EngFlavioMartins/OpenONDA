@@ -48,7 +48,6 @@ SCANNED_FILES = [
     "source/coupler/config/types.py",
     "source/coupler/solver.py",
     "source/coupler/boundary.py",
-    "source/coupler/blending.py",
     "source/coupler/vorticity_transfer.py",
     "openonda/fvm.py",
     "openonda/vpm.py",
@@ -128,7 +127,6 @@ FORBIDDEN_SELF_ATTRS = {
     "fvm",  # self.fvm -> self.fvm_solver (coupler)
     "vpm",  # self.vpm -> self.vpm_solver (coupler)
     "transfer",  # self.transfer -> self.vorticity_transfer (coupler)
-    "blending",  # self.blending -> self.blending_zone (coupler)
 }
 
 # Identifier *prefixes* that must never appear (the canonical form is the

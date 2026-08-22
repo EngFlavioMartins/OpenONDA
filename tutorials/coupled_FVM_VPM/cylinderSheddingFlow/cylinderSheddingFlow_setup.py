@@ -89,12 +89,9 @@ PARTICLE_LIMIT = 200_000 if SMOKE else 1_000_000
 
 # GBD diffusion has alpha = nu*dt/h^2 ~ 0.043, below the 1/6 stability limit.
 GBD_VORTICITY_FLOOR = 0.01
-TRANSFER_VORTICITY_CUTOFF = 0.01
-TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
-TRANSFER_AMPLIFICATION_CAP = 1.8
 AUTHORITY_RAMP_WIDTH = 6.0 * VPM_PARTICLE_SPACING
 TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 12
 COUPLER_CHECKPOINT_INTERVAL_STEPS = 20
@@ -247,10 +244,6 @@ COUPLER_SETUP = coupling.CouplerSetup(
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
     authority_ramp_width=AUTHORITY_RAMP_WIDTH,
     vpm_only_width=0.0,
-    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
-    transfer_boundary_prune_multiplier=TRANSFER_BOUNDARY_PRUNE_MULTIPLIER,
-    transfer_max_particles=PARTICLE_LIMIT,
-    transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 

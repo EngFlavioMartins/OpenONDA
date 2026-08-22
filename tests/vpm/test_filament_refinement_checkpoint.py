@@ -70,6 +70,7 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         source.stabilization.last_mechanism = "filament refinement"
         source.stabilization.last_vortex_strength_error = 4.2e-9
         source.stabilization.max_vorticity_growth = 1.5e-3
+        source._particle_regeneration_pending = True
         expected_moments = tuple(value.copy() for value in source.stabilization.reference_moments)
         checkpoint = tmp_path / "lineage"
         CheckpointManager.write_checkpoint(
@@ -96,6 +97,7 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         assert restored.stabilization.last_mechanism == "filament refinement"
         assert restored.stabilization.last_vortex_strength_error == pytest.approx(4.2e-9)
         assert restored.stabilization.max_vorticity_growth == pytest.approx(1.5e-3)
+        assert restored._particle_regeneration_pending is True
         for restored_value, expected_value in zip(
             restored.stabilization.reference_moments,
             expected_moments,

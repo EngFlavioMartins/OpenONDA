@@ -56,6 +56,26 @@ SAMPLER_CSV_COLUMNS = [
 # =========================================================
 
 
+def _sample_velocity_vorticity_gradient(solver, points, spacing):
+    """Evaluate velocity and define vorticity by the compatible velocity curl."""
+    if hasattr(solver, "compute_complete_target_velocity_and_gradients"):
+        velocity, gradient = solver.compute_complete_target_velocity_and_gradients(
+            points, particle_spacing=spacing
+        )
+    else:
+        velocity = solver.compute_target_velocities(points, include_freestream=True)
+        gradient = solver.compute_target_velocity_gradients(points)
+    gradient = np.asarray(gradient).reshape(-1, 3, 3)
+    vorticity = np.column_stack(
+        (
+            gradient[:, 2, 1] - gradient[:, 1, 2],
+            gradient[:, 0, 2] - gradient[:, 2, 0],
+            gradient[:, 1, 0] - gradient[:, 0, 1],
+        )
+    )
+    return np.asarray(velocity).reshape(-1, 3), vorticity, gradient
+
+
 def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
     """Extract body_stl path and case_dir from solver config (priority: FVM > VPM > direct)."""
     try:
@@ -127,10 +147,8 @@ class SurfaceSampler:
             spacing: Grid point spacing.
             file_name: Optional base name for output files. If None, uses
                       default naming based on sampler class name.
-            include_derivatives: Compute and export velocity-gradient and
-                      strain-rate fields. Disable when only velocity and
-                      vorticity diagnostics are needed to avoid an additional
-                      Biot--Savart tree traversal.
+            include_derivatives: Export velocity-gradient and strain-rate
+                      fields. Vorticity always comes from the velocity curl.
         """
         self.point = np.asarray(point, dtype=np.float32)
         normal = np.asarray(normal, dtype=np.float32)
@@ -345,14 +363,11 @@ class SurfaceSampler:
                 "dwdz": zeros_g[:, 8].copy(),
             }
 
-        # Compute induced fields using solver methods (for all points)
-        velocity = solver.compute_target_velocities(self.grid_points, include_freestream=True)
-        vorticity = solver.compute_target_vorticities(self.grid_points)
-
-        # Computing the gradient requires another full target tree traversal.
-        # Keep the legacy default, while allowing plot-only samplers to skip it.
+        velocity, vorticity, physical_gradient = _sample_velocity_vorticity_gradient(
+            solver, self.grid_points, self.spacing
+        )
         if self.include_derivatives:
-            grad_u_flat = solver.compute_target_velocity_gradients(self.grid_points)
+            grad_u_flat = physical_gradient.reshape(-1, 9)
         else:
             grad_u_flat = np.zeros((len(self.grid_points), 9), dtype=np.float64)
         Sxx = grad_u_flat[:, 0]
@@ -781,12 +796,10 @@ class LineSampler:
                 "dwdz": zeros_g[:, 8].copy(),
             }
 
-        # Compute induced fields (for all points)
-        velocity = solver.compute_target_velocities(self.line_points, include_freestream=True)
-        vorticity = solver.compute_target_vorticities(self.line_points)
-
-        # Compute velocity gradient → strain rate via Biot-Savart
-        grad_u_flat = solver.compute_target_velocity_gradients(self.line_points)
+        velocity, vorticity, gradient = _sample_velocity_vorticity_gradient(
+            solver, self.line_points, self.spacing
+        )
+        grad_u_flat = gradient.reshape(-1, 9)
         Sxx = grad_u_flat[:, 0]
         Sxy = 0.5 * (grad_u_flat[:, 1] + grad_u_flat[:, 3])
         Sxz = 0.5 * (grad_u_flat[:, 2] + grad_u_flat[:, 6])

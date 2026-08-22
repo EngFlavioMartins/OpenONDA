@@ -4,7 +4,7 @@ Every figure is built from sampler output alone — the line CSVs and slice VTS
 files under ``samples/`` — so plotting needs no solver, no GPU and no raw
 field dumps. Three solutions are compared:
 
-``reference``  fully meshed FVM (referenceFlow/samples/)
+``reference``  fully meshed FVM (referenceFlow/samples_backup/)
 ``fvm``        the coupled run's FVM near field (samples/fvm_*)
 ``vpm``        the coupled run's VPM far field  (samples/vpm_*)
 """
@@ -21,7 +21,7 @@ import numpy as np
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
 SAMPLES = CASE_DIR / "samples"
-REFERENCE_SAMPLES = CASE_DIR / "referenceFlow" / "samples"
+REFERENCE_SAMPLES = CASE_DIR / "referenceFlow" / "samples_backup"
 FIGURES = CASE_DIR / "figures"
 
 # Keep one publication theme: reference and coupled figures are intended to be
