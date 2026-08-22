@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
   <Collection>
-    <DataSet timestep="0.6" file="vpm_wake_slice_z0_000020.vts"/>
+    <DataSet timestep="0.09" file="vpm_wake_slice_z0_000003.vts"/>
   </Collection>
 </VTKFile>
