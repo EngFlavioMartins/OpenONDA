@@ -189,6 +189,7 @@ class EvolutionStepper:
         # state (including any topology-changing stabilization) is committed so
         # post-step boundary/panel queries cannot reuse the previous tree.
         self.particles.touch_state()
+        self.solver._execute_scheduled_samplers()
         self.profiler.report_step()
         self.solver.wall_time = self.profiler.wall_time
 
@@ -206,7 +207,7 @@ class EvolutionStepper:
         if self.viscous_scheme != "GBD":
             self.solver._particle_regeneration_pending = False
             return
-        Logging.message("Performing pending GBD particle regeneration.")
+        Logging.message("Applying global GBD population management after particle insertion.")
         self._apply_viscous_diffusion(0.0)
         self.solver._particle_regeneration_pending = False
 
@@ -923,8 +924,9 @@ class EvolutionStepper:
                 N = self.particles.n_particles
                 if N > 0:
                     nu_eff = self.particles.effective_viscosity_cpu()
+            operation = "GBD particle regeneration" if time_step_size == 0.0 else "GBD diffusion"
             Logging.message(
-                f"\tPerforming GBD diffusion"
+                f"\tPerforming {operation}"
                 f"(particle_spacing={vc.gbd_grid_spacing:.3e}, nu={nu:.3e}, "
                 f"threshold={vc.gbd_threshold:.2e}"
                 + (

@@ -68,6 +68,8 @@ class CouplerSetup:
     # ---- RUN-LEVEL OPERATIONAL ----
     checkpoint_interval_steps: int = 1
     """Coupling steps between automatic checkpoints; non-negative (0 disables checkpoints)."""
+    checkpoint_interval_time: float | None = None
+    """Flow-time interval between automatic checkpoints; mutually exclusive with steps."""
 
     def __post_init__(self) -> None:
         freestream_velocity = np.asarray(self.freestream_velocity, dtype=np.float64)
@@ -109,6 +111,16 @@ class CouplerSetup:
             raise ValueError(f"Coupling values must be positive: {', '.join(invalid)}")
         if self.checkpoint_interval_steps < 0:
             raise ValueError("checkpoint_interval_steps must be non-negative")
+        if self.checkpoint_interval_time is not None:
+            if (
+                not np.isfinite(self.checkpoint_interval_time)
+                or self.checkpoint_interval_time <= 0.0
+            ):
+                raise ValueError("checkpoint_interval_time must be finite and positive")
+            if self.checkpoint_interval_steps > 0:
+                raise ValueError(
+                    "Provide only one of checkpoint_interval_steps or checkpoint_interval_time"
+                )
         if self.vpm_only_width < 0.0:
             raise ValueError("vpm_only_width must be non-negative")
         if self.transfer_diagnostic_interval_steps < 1:
@@ -145,6 +157,7 @@ class CouplerSetup:
             "coupler": {
                 "freestream_velocity": self.freestream_velocity,
                 "checkpoint_interval_steps": self.checkpoint_interval_steps,
+                "checkpoint_interval_time": self.checkpoint_interval_time,
                 "coupling_patch": self.coupling_patch,
                 "boundary_condition_mode": self.boundary_condition_mode,
                 "transfer_region_bounds": transfer_region_bounds,

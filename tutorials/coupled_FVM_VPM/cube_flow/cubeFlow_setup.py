@@ -13,7 +13,6 @@ Usage:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
@@ -21,8 +20,6 @@ import numpy as np
 import openonda.fvm as fvm
 import openonda.coupler as coupling
 import openonda.vpm as vpm
-
-SMOKE = os.environ.get("OPENONDA_SMOKE", "0") == "1"
 
 # Physical problem
 CUBE_SIDE = 1.0
@@ -36,40 +33,37 @@ INITIAL_VELOCITY = (1.0, 0.0, 0.0)
 VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
-FVM_CORES = int(os.environ.get("OPENONDA_FVM_CORES", 1 if SMOKE else 4))
+FVM_CORES = 4
 TRANSFER_REGION_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 PIMPLE_CORRECTORS = 2
 
 FVM_WAKE_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
-SURFACE_CELL_SIZE = float(
-    os.environ.get("OPENONDA_SURFACE_CELL_SIZE", 0.125 if SMOKE else 0.015625)
-)
+SURFACE_CELL_SIZE = 0.015
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
-VPM_PARTICLE_SPACING = SURFACE_CELL_SIZE * 2
-PARTICLE_LIMIT = int(os.environ.get("OPENONDA_PARTICLE_LIMIT", 100_000 if SMOKE else 1_500_000))
+PARTICLE_LIMIT = 1_500_000
 VPM_CORE_RADIUS_RATIO = 1.05
 GBD_VORTICITY_FLOOR = 0.05
-AUTHORITY_RAMP_WIDTH = SURFACE_CELL_SIZE * 4
+VPM_PARTICLE_SPACING = 0.03125
+AUTHORITY_RAMP_WIDTH = 2 * VPM_PARTICLE_SPACING
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
 
 # Output and diagnostics
-FVM_TIME_STEP_SIZE = 0.005
-FORCE_INTERVAL_TIME = 0.03 if SMOKE else 0.05
-DIAGNOSTIC_INTERVAL_TIME = 0.03 if SMOKE else 0.60
-VPM_CHECKPOINT_INTERVAL_TIME = 0.03 if SMOKE else 1.0
-FVM_VOLUME_INTERVAL_TIME = 0.03 if SMOKE else 1.0
-VPM_LOGGING_INTERVAL_STEPS = 1 if SMOKE else 20
-VPM_TIME_STEP_SIZE = 0.015
-# 1,333 complete coupling intervals; the last FVM time is 0.005 s below 20 s.
-END_TIME = float(os.environ.get("OPENONDA_T_END", VPM_TIME_STEP_SIZE if SMOKE else 19.995))
-COUPLER_CHECKPOINT_INTERVAL_STEPS = 1 if SMOKE else 20
-SAMPLE_SPACING = SURFACE_CELL_SIZE * 2
-TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 1 if SMOKE else 12
+FVM_TIME_STEP_SIZE = 0.01
+LINE_SAMPLE_INTERVAL_TIME = 0.05
+SLICE_SAMPLE_INTERVAL_TIME = 0.10
+BACKUP_INTERVAL_TIME = 1.0
+VPM_LOGGING_INTERVAL_STEPS = 20
+VPM_TIME_STEP_SIZE = 0.03
+REQUESTED_END_TIME = 20.0
+COUPLING_STEPS = round(REQUESTED_END_TIME / VPM_TIME_STEP_SIZE)
+END_TIME = COUPLING_STEPS * VPM_TIME_STEP_SIZE
+SAMPLE_SPACING = VPM_PARTICLE_SPACING
+TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 12
 
 # Case files and derived sampling data
 CASE_DIR = Path(__file__).resolve().parent
@@ -96,21 +90,21 @@ FVM_SAMPLERS = (
         ref_area=CUBE_SIDE**2,
         ref_length=CUBE_SIDE,
         moment_centre=[0.0, 0.0, 0.0],
-        schedule=fvm.SamplingSchedule(every_time=FORCE_INTERVAL_TIME),
+        schedule=fvm.SamplingSchedule(every_time=LINE_SAMPLE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_centerline",
-        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL_TIME),
+        schedule=fvm.SamplingSchedule(every_time=LINE_SAMPLE_INTERVAL_TIME),
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], OFFAXIS_Y, 0.0],
         end=[FVM_BOX[1], OFFAXIS_Y, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="fvm_offaxis_y075",
-        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL_TIME),
+        schedule=fvm.SamplingSchedule(every_time=LINE_SAMPLE_INTERVAL_TIME),
     ),
     fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -118,7 +112,7 @@ FVM_SAMPLERS = (
         bounds=SLICE_BOUNDS,
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
-        schedule=fvm.SamplingSchedule(every_time=DIAGNOSTIC_INTERVAL_TIME),
+        schedule=fvm.SamplingSchedule(every_time=SLICE_SAMPLE_INTERVAL_TIME),
         body_bounds=FVM_MESH.surface_bounds,
     ),
 )
@@ -141,7 +135,7 @@ FVM_SETUP = fvm.FVMSetup(
         start_time=0.0,
         end_time=END_TIME,
         output_interval_steps=10**9,
-        output_interval_time=FVM_VOLUME_INTERVAL_TIME,
+        output_interval_time=BACKUP_INTERVAL_TIME,
         adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(
@@ -194,7 +188,8 @@ COUPLER_SETUP = coupling.CouplerSetup(
     transfer_region_bounds=TRANSFER_REGION_BOX,
     bc_resync_after_transfer=True,
     pressure_anchor_to_freestream=False,
-    checkpoint_interval_steps=COUPLER_CHECKPOINT_INTERVAL_STEPS,
+    checkpoint_interval_steps=0,
+    checkpoint_interval_time=BACKUP_INTERVAL_TIME,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     vpm_particle_spacing=VPM_PARTICLE_SPACING,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
@@ -210,12 +205,14 @@ VPM_SAMPLERS = (
         end=[VPM_DOMAIN[1], 0.0, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="vpm_centerline",
+        schedule=vpm.SamplingSchedule(every_time=LINE_SAMPLE_INTERVAL_TIME),
     ),
     vpm.LineSampler(
         start=[VPM_DOMAIN[0], OFFAXIS_Y, 0.0],
         end=[VPM_DOMAIN[1], OFFAXIS_Y, 0.0],
         spacing=SAMPLE_SPACING,
         file_name="vpm_offaxis_y075",
+        schedule=vpm.SamplingSchedule(every_time=LINE_SAMPLE_INTERVAL_TIME),
     ),
     vpm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -224,6 +221,7 @@ VPM_SAMPLERS = (
         spacing=SAMPLE_SPACING,
         file_name="vpm_slice_z0",
         include_derivatives=False,
+        schedule=vpm.SamplingSchedule(every_time=SLICE_SAMPLE_INTERVAL_TIME),
     ),
     vpm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -232,6 +230,7 @@ VPM_SAMPLERS = (
         spacing=SAMPLE_SPACING,
         file_name="vpm_wake_slice_z0",
         include_derivatives=False,
+        schedule=vpm.SamplingSchedule(every_time=SLICE_SAMPLE_INTERVAL_TIME),
     ),
 )
 VPM_PANEL_SOLVER = vpm.PanelSolver(
@@ -273,7 +272,8 @@ VPM_SETUP = vpm.VPMSetup(
     log_mode="file",
     logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
     timing_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
-    checkpoint_interval_steps=int(VPM_CHECKPOINT_INTERVAL_TIME / VPM_TIME_STEP_SIZE),
+    checkpoint_interval_steps=0,
+    checkpoint_interval_time=BACKUP_INTERVAL_TIME,
     checkpoint_directory=str(CASE_DIR / "solution"),
     export_flow_integrals=False,
     samplers=VPM_SAMPLERS,

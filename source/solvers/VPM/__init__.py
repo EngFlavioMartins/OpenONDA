@@ -27,6 +27,7 @@ from .core.solver import VPMSolver
 from .diagnostics import RingDiagnosticsSampler
 from .factory import create_vpm_solver
 from .io.checkpoint import CheckpointManager
+from .io.sampling import SamplingSchedule
 from .particles.distribution import ParticleDistributor
 from .stabilization import (
     DivergenceRelaxationError,
@@ -46,6 +47,7 @@ __all__ = [
     "PanelSolver",
     "ParticleDistributor",
     "RingDiagnosticsSampler",
+    "SamplingSchedule",
     "StabilizationConfig",
     "StabilizationError",
     "StabilizationManager",

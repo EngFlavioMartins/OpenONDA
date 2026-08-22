@@ -3,7 +3,7 @@
 **Status:** minimal operator implemented; exact/manufactured and short production-resolution time gates pass; long-time phase and spatial-convergence gates remain  
 **Scope:** `tutorials/coupled_FVM_VPM/cube_flow/` only  
 **Baseline snapshot:** local `development` at `a39eb34c64d5a03985998b6f13523f1d464a4942`  
-**Baseline data policy:** treat `cube_flow/samples/` and `cube_flow/referenceFlow/samples_backup/` as read-only reference artifacts
+**Baseline data policy:** treat `cube_flow/samples/` and `cube_flow/reference_flow/samples/` as read-only reference artifacts
 
 ## Constraints that govern the work
 
@@ -114,7 +114,7 @@ The additive correction application is a design hypothesis, not an exemption fro
 
 - After approval, re-read `git status`, inspect every change made by the other agent, and rebase this plan onto the then-current `development` state before touching overlapping files.
 - Record the commit, package versions, hardware, mesh counts, time steps, and case constants.
-- Hash the existing cube `samples/` and fully meshed `samples_backup/`; never run `allclean.sh` or the tutorial in those source directories.
+- Hash the existing cube `samples/` and fully meshed `reference_flow/samples/`; never run `allclean.sh` or the tutorial in those source directories.
 - Run the current operator and cube case only in an isolated copy. Archive logs, timings, particle counts, force histories, profiles, fields, and diagnostics as the “before” dataset.
 
 ### Phase 1 — write fundamental tests before deleting patches

@@ -1019,22 +1019,22 @@ class Particles:
             "zone_id": self.zone_id_cpu()[index],
         }
 
-    def _log_population(self, change: str, source: str) -> None:
+    def _log_population(self, change: str) -> None:
         """Report the population left behind by an operation that changed it."""
         total = int(self.n_particles)
         capacity = self.capacity
         fraction = 100.0 * total / capacity if capacity else 0.0
         Logging.message(
-            f"   [Particles] {change} ({source}) -> {total} total, {fraction:.1f}% of {capacity} capacity"
+            f"   [Particles] {change} -> {total} total, {fraction:.1f}% of {capacity} capacity"
         )
 
-    def _log_particles_added(self, count: int, source: str) -> None:
+    def _log_particles_added(self, count: int) -> None:
         """Report the population after particles were appended."""
-        self._log_population(f"+{int(count)}", source)
+        self._log_population(f"added {int(count)}")
 
-    def _log_particles_replaced(self, previous: int, source: str) -> None:
+    def _log_particles_replaced(self, previous: int) -> None:
         """Report the population after the whole cloud was replaced."""
-        self._log_population(f"replaced {int(previous)}", source)
+        self._log_population(f"cloud size {int(previous)}")
 
     def add_vortex_particle(
         self,
@@ -1090,7 +1090,7 @@ class Particles:
         # Increment particle count
         self.n_particles += 1
         self.touch_state()
-        self._log_particles_added(1, "single")
+        self._log_particles_added(1)
 
     def add_vortex_particles(
         self,
@@ -1226,7 +1226,7 @@ class Particles:
         self.n_particles = total_particles
 
         self.touch_state()
-        self._log_particles_added(N, "numpy arrays")
+        self._log_particles_added(N)
 
     def replace_from_numpy(
         self,
@@ -1271,7 +1271,7 @@ class Particles:
             self.n_particles = 0
             self.sync_device_counter()
             self.touch_state()
-            self._log_particles_replaced(previous, "numpy arrays, emptied")
+            self._log_particles_replaced(previous)
             return
         if position.shape != (N, 3) or velocity.shape != (N, 3) or vortex_strength.shape != (N, 3):
             raise ValueError("Position, velocity, and circulation must have shape (N x 3).")
@@ -1322,7 +1322,7 @@ class Particles:
         )
         self.sync_device_counter()
         self.touch_state()
-        self._log_particles_replaced(previous, "numpy arrays")
+        self._log_particles_replaced(previous)
 
     # ---- GPU-TO-GPU DATA TRANSFER ----
 
@@ -1421,7 +1421,7 @@ class Particles:
         self.n_particles += count
         self.sync_device_counter()
         self.touch_state()
-        self._log_particles_added(count, "VLM wake buffer")
+        self._log_particles_added(count)
 
         return True
 
@@ -1489,7 +1489,7 @@ class Particles:
         self.n_particles = total_particles
 
         self.touch_state()
-        self._log_particles_added(count, "GPU transfer")
+        self._log_particles_added(count)
 
     @ti.kernel
     def _copy_from_vlm_wake(
@@ -2064,5 +2064,5 @@ class Particles:
         self.n_particles += count
         self.sync_device_counter()
         self.touch_state()
-        self._log_particles_added(count, "VLM wake buffer, grouped")
+        self._log_particles_added(count)
         return True

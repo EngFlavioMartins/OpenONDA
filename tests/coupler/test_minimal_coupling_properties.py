@@ -88,6 +88,46 @@ def test_transfer_setup_worker_participates_in_collective_wall_query():
     assert transfer._lattice is None
 
 
+def test_transfer_rejects_noncommensurate_axis_aligned_body_lattice():
+    class FVM:
+        setup = SimpleNamespace(boundaries=[SimpleNamespace(name="cube", mesh_type="wall")])
+        ibm = None
+
+        @staticmethod
+        def get_cell_centre_coordinates():
+            return np.array([[0.0, 0.0, 0.0]])
+
+        @staticmethod
+        def get_boundary_face_centre_coordinates(_patch):
+            return np.array(
+                [
+                    [-0.5, 0.0, 0.0],
+                    [0.5, 0.0, 0.0],
+                    [0.0, -0.5, 0.0],
+                    [0.0, 0.5, 0.0],
+                    [0.0, 0.0, -0.5],
+                    [0.0, 0.0, 0.5],
+                ]
+            )
+
+    coupler = SimpleNamespace(
+        setup=SimpleNamespace(
+            transfer_region_bounds=None,
+            vpm_particle_spacing=0.03,
+            authority_ramp_width=0.06,
+            vpm_only_width=0.0,
+            vpm_core_radius_ratio=1.0,
+            transfer_diagnostic_interval_steps=1,
+        ),
+        kinematic_viscosity=1.0e-3,
+        vpm_time_step_size=0.03,
+        fvm_box=np.array([-1.5, 1.5] * 3),
+    )
+
+    with pytest.raises(ValueError, match="must divide every axis-aligned body extent"):
+        VorticityTransfer(coupler).setup(FVM())
+
+
 def test_eta_zero_is_exact_identity_inside_stencil_support():
     """A zero-authority stencil must not even evaluate or add a correction."""
     lattice = _lattice()
@@ -457,6 +497,71 @@ def test_fixed_point_preserves_complete_existing_particle_state():
     assert result.n_total == 3
     for name, values in before.items():
         np.testing.assert_array_equal(vpm.state[name], values)
+
+
+def test_strength_only_transfer_does_not_schedule_population_regeneration():
+    lattice = _lattice()
+
+    class RotatingTrace:
+        @staticmethod
+        def sample(points, _velocity, _gradient):
+            points = np.asarray(points)
+            return np.column_stack((-points[:, 1], points[:, 0], np.zeros(len(points))))
+
+    class ExistingLatticeVPM:
+        np_dtype = np.float64
+
+        def __init__(self):
+            self.particles = SimpleNamespace(
+                n_particles=len(lattice.positions),
+                capacity=2 * len(lattice.positions),
+                position_cpu=lambda: lattice.positions.copy(),
+                core_radius_cpu=lambda: np.full(len(lattice.positions), H),
+            )
+            self.updated = 0
+            self.notifications = 0
+
+        @staticmethod
+        def compute_target_velocities(points, **_kwargs):
+            return np.zeros((len(points), 3))
+
+        def update_particle_vortex_strength(self, mask, increment):
+            self.updated += int(np.count_nonzero(mask))
+            assert len(increment) == self.updated
+
+        def notify_external_particle_mutation(self):
+            self.notifications += 1
+
+        @staticmethod
+        def add_vortex_particles(**_kwargs):
+            raise AssertionError("coincident correction unexpectedly added particles")
+
+    transfer = object.__new__(VorticityTransfer)
+    transfer.step = 0
+    transfer.diagnostic_interval = 2
+    transfer._box = BOX.copy()
+    transfer._lattice = lattice
+    transfer._velocity_trace = RotatingTrace()
+    transfer._cell_centers = np.array([[0.0, 0.0, 0.0]])
+    transfer._face_cells = {}
+    transfer._body_bounds = None
+    transfer._solid_bodies = ()
+    transfer.particle_spacing = H
+    transfer.authority_ramp_width = 3.0 * H
+    transfer.vpm_only_width = 0.0
+    transfer.core_radius_ratio = 1.0
+    transfer.kinematic_viscosity = 1.0e-3
+    transfer.last_interface_flow = {}
+    transfer.last_vortex_line_closure = {}
+    transfer.last_transfer_diagnostics = {}
+    vpm = ExistingLatticeVPM()
+
+    result = transfer.transfer(vpm, np.zeros((1, 3)), np.zeros((1, 3, 3)))
+
+    assert result.n_added == 0
+    assert result.n_updated > 0
+    assert vpm.updated == result.n_updated
+    assert vpm.notifications == 0
 
 
 def test_actual_vpm_manufactured_donor_is_idempotent_for_20_transfers(tmp_path):

@@ -15,7 +15,7 @@ absolute global threshold (`0.05 h^3` in the cube case), global population
 policy, and moment treatment. No local-maximum vorticity criterion was added.
 
 The versioned hybrid `samples/` and fully meshed
-`referenceFlow/samples_backup/` were not modified. Every executable audit ran
+`reference_flow/samples/` were not modified. Every executable audit ran
 in an isolated directory under `/private/tmp`.
 
 ## Coupling timestep before the changes
@@ -169,9 +169,9 @@ manufactured represented-velocity error at `h=0.03125` from `0.2024` to
 - Flux acceptance: a discretization-scale residual is corrected; a physically
   significant residual fails.
 - Capacity: insufficient VPM capacity fails before any mutation.
-- VPM lifecycle: a real correction schedules exactly one pending global GBD
-  regeneration; fixed-point transfers schedule none; checkpoint/restart
-  preserves the pending state.
+- VPM lifecycle: insertion of new correction particles schedules one pending
+  global GBD regeneration; strength-only updates and fixed-point transfers
+  schedule none; checkpoint/restart preserves the pending state.
 
 ## Production-resolution cube results
 
@@ -182,7 +182,7 @@ All hybrid results below use the original spatial resolution:
 - VPM spacing: `h=0.03125`.
 - Transfer lattice: 857,375 nodes, of which 827,584 are open correction nodes.
 - VPM capacity: 1,500,000 particles.
-- Validated default VPM/coupling interval: `0.015`.
+- Production VPM/coupling interval: `0.03`.
 
 No coarse smoke result is used as force-accuracy evidence.
 
@@ -254,10 +254,26 @@ refined hybrid (`dt_coupling=0.015`, `dt_FVM=0.005`) gave `3.4865` (-3.67%) and
 `2.7385`. Thus the FVM refinement controls the settled error, while a coupling
 interval below `0.03` is required to resolve the first impulse.
 
-The validated cube defaults are therefore `dt_FVM=0.005` and
-`dt_coupling=0.015` (three FVM substeps). The production endpoint is explicitly
-`19.995`, exactly 1,333 coupling intervals and 0.005 s below the old nominal
-20 s endpoint; it is not silently rounded by the coupler.
+The refined `dt_FVM=0.005`, `dt_coupling=0.015` result remains a useful startup
+control, but it more than doubles the production cost and has not been shown to
+improve the long-time phase quantities targeted by this case. Production uses
+the previous `dt_FVM=0.01`, `dt_coupling=0.03` pair. Its explicit nearest
+complete endpoint is `20.01`, exactly 667 coupling intervals.
+
+### Production runtime correction
+
+A rejected run coupled `SURFACE_CELL_SIZE=0.015` directly to `h=0.03` and used
+`dt_coupling=0.015`. At `t=0.24`, it carried 465,299 particles before transfer
+and 995,144 afterwards; the VPM step took 100.5 s. The non-commensurate spacing
+also produced normalized correction-divergence values `L2=0.0674` and
+`Linf=0.292`, instead of the roundoff values obtained at `h=0.03125`.
+
+The production VPM spacing is now explicit rather than derived from the FVM
+surface size, and transfer setup rejects an axis-aligned body whose dimensions
+are not integer multiples of `h`. GBD regeneration is requested only when the
+handoff inserts particles; coincident strength updates do not trigger a second
+population pass. Particle logs report physical population changes rather than
+host storage types.
 
 ## Remaining questionable or open items
 
@@ -301,7 +317,7 @@ The validated cube defaults are therefore `dt_FVM=0.005` and
 - The cube runner and geometry audit referenced `cube_flow_setup.py`, while
   the real file is `cubeFlow_setup.py`; those paths were corrected.
 - Post-processing searched `referenceFlow/samples/`, while the immutable
-  archive is `referenceFlow/samples_backup/`; both locations are now handled.
+  archive is `reference_flow/samples/`; both locations are now handled.
 - The archived `couplingFace_xmax` full-FVM sample is at `x=3.5`, not at the
   hybrid boundary `x=1.5`; it is not used as a matched interface plane.
 

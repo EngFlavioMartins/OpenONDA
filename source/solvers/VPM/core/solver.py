@@ -188,6 +188,7 @@ class VPMSolver:
         self.stabilization_config: StabilizationConfig = final_setup.stabilization
         self.particle_kernel = final_setup.particle_kernel.upper()
         self.checkpoint_interval_steps = final_setup.checkpoint_interval_steps
+        self.checkpoint_interval_time = final_setup.checkpoint_interval_time
         self.logging_interval_steps = final_setup.logging_interval_steps
         self.timing_interval_steps = final_setup.timing_interval_steps
         self.checkpoint_name = final_setup.checkpoint_name
@@ -548,12 +549,16 @@ class VPMSolver:
         self.io.export_flow_integrals_csv(self)
 
     def _execute_samplers(self) -> None:
-        """Execute all configured field samplers (delegates to SamplerExecutor)."""
+        """Execute samplers without an explicit schedule at logging cadence."""
         SamplerExecutor.execute(self)
+
+    def _execute_scheduled_samplers(self) -> None:
+        """Execute due time- or step-scheduled field samplers."""
+        SamplerExecutor.execute(self, scheduled_only=True)
 
     def execute_final_samplers(self) -> None:
         """Execute the final-only samplers declared by the immutable setup."""
-        SamplerExecutor.execute(self, self.setup.final_samplers)
+        SamplerExecutor.execute(self, self.setup.final_samplers, scheduled_only=None)
 
     def _prepare_sampler_context(self, sampler_entry, samples_dir):
         """Delegate to SamplerExecutor."""

@@ -4,7 +4,7 @@ Every figure is built from sampler output alone — the line CSVs and slice VTS
 files under ``samples/`` — so plotting needs no solver, no GPU and no raw
 field dumps. Three solutions are compared:
 
-``reference``  fully meshed FVM (referenceFlow/samples_backup/)
+``reference``  fully meshed FVM (reference_flow/samples/)
 ``fvm``        the coupled run's FVM near field (samples/fvm_*)
 ``vpm``        the coupled run's VPM far field  (samples/vpm_*)
 """
@@ -21,7 +21,7 @@ import numpy as np
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
 SAMPLES = CASE_DIR / "samples"
-REFERENCE_SAMPLES = CASE_DIR / "referenceFlow" / "samples_backup"
+REFERENCE_SAMPLES = CASE_DIR / "reference_flow" / "samples"
 FIGURES = CASE_DIR / "figures"
 
 # Keep one publication theme: reference and coupled figures are intended to be
@@ -53,11 +53,16 @@ SOURCES = {
     "vpm": {"dir": SAMPLES, "prefix": "vpm_", "label": "Coupled VPM"},
 }
 
-# Hybrid line and surface diagnostics use a coarser cadence than the dense
-# reference history. PLOT_DT is their default comparison cadence;
-# common_times() still derives exact intersections from the files themselves.
-PLOT_TIME_STEP_SIZE = 0.60
-TIME_TOL = 1e-3
+# FVM/reference samples land on their requested times. VPM samples use the
+# nearest accepted state, so matching allows half a coupling step.
+PLOT_TIME_STEP_SIZE = 0.10
+try:
+    _VPM_TIME_STEP_SIZE = float(
+        json.loads((SOLUTION / "run_metadata.json").read_text())["vpm_time_step_size"]
+    )
+except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+    _VPM_TIME_STEP_SIZE = 0.03
+TIME_TOL = 0.5 * _VPM_TIME_STEP_SIZE + 1e-9
 
 
 def label(source: str) -> str:

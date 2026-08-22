@@ -31,7 +31,7 @@ class SamplerExecutor:
     """
 
     @staticmethod
-    def execute(solver, sampler_entries=None) -> None:
+    def execute(solver, sampler_entries=None, *, scheduled_only: bool | None = False) -> None:
         """Execute all configured samplers and persist their output.
 
         Reads ``solver.setup.samplers`` (list of sampler or
@@ -46,6 +46,23 @@ class SamplerExecutor:
         """
         sampler_entries = solver.setup.samplers if sampler_entries is None else sampler_entries
         if sampler_entries is None:
+            return
+
+        selected_entries = []
+        for sampler_entry in sampler_entries:
+            sampler = sampler_entry[0] if isinstance(sampler_entry, tuple) else sampler_entry
+            schedule = getattr(sampler, "schedule", None)
+            if scheduled_only is True:
+                if schedule is None or not schedule.is_due(
+                    solver.step,
+                    solver.time,
+                    solver.time_step_size,
+                ):
+                    continue
+            elif scheduled_only is False and schedule is not None:
+                continue
+            selected_entries.append(sampler_entry)
+        if not selected_entries:
             return
 
         n_particles = solver.particles.n_particles
@@ -65,7 +82,7 @@ class SamplerExecutor:
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
 
-        for sampler_entry in sampler_entries:
+        for sampler_entry in selected_entries:
             sampler, name_prefix, solution_dir = SamplerExecutor._prepare_context(
                 sampler_entry, samples_dir
             )

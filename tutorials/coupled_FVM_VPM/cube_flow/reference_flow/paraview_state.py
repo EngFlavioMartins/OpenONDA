@@ -1,4 +1,6 @@
 # state file generated using paraview version 6.1.0
+from pathlib import Path
+
 import paraview
 
 paraview.compatibility.major = 6
@@ -47,7 +49,7 @@ SetActiveView(renderView1)
 # create a new 'PVD Reader'
 referenceFlowpvd = PVDReader(
     registrationName="referenceFlow.pvd",
-    FileName="/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cube_flow/referenceFlow/solution/referenceFlow.pvd",
+    FileName=str(Path(__file__).resolve().parent / "solution" / "referenceFlow.pvd"),
 )
 referenceFlowpvd.Set(
     CellArrays=["U", "p", "Co", "vorticity", "vtkGhostType", "GlobalCellIds"],

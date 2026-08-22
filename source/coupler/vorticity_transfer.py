@@ -551,6 +551,13 @@ class VorticityTransfer:
                 on_planes |= np.isclose(wall_faces[:, axis], bounds[2 * axis], atol=1e-9)
                 on_planes |= np.isclose(wall_faces[:, axis], bounds[2 * axis + 1], atol=1e-9)
             if on_planes.all():
+                wall_cells = (bounds[[1, 3, 5]] - bounds[[0, 2, 4]]) / self.particle_spacing
+                if not np.allclose(wall_cells, np.rint(wall_cells), rtol=0.0, atol=1.0e-10):
+                    raise ValueError(
+                        "VPM particle spacing must divide every axis-aligned body extent; "
+                        f"got body cells {wall_cells.tolist()} at h={self.particle_spacing:.12g}. "
+                        "Use a wall-commensurate transfer/GBD lattice."
+                    )
                 self._body_bounds = bounds
                 # Put lattice nodes on the exact wall planes. With a zero
                 # velocity defect on/in the solid, curl support then lies
@@ -724,7 +731,7 @@ class VorticityTransfer:
                 zone_id=np.zeros(result.n_added, dtype=np.int32),
             )
 
-        if result.n_updated or result.n_added:
+        if result.n_added:
             notify_mutation = getattr(vpm, "notify_external_particle_mutation", None)
             if notify_mutation is not None:
                 notify_mutation()

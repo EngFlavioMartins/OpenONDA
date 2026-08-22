@@ -19,7 +19,7 @@ from source.solvers.FVM.mesh.validation import validate_mesh
 DOMAIN = (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
 BODY = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 SURFACE_FILE = (
-    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow/referenceFlow/assets/cube.stl"
+    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow/reference_flow/assets/cube.stl"
 )
 
 

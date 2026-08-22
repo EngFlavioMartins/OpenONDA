@@ -39,7 +39,7 @@ from source.solvers.VPM.initial_conditions import (
     VortexRingVPM,
 )
 from source.solvers.VPM.io.checkpoint import CheckpointManager
-from source.solvers.VPM.io.sampling import LineSampler, SurfaceSampler
+from source.solvers.VPM.io.sampling import LineSampler, SamplingSchedule, SurfaceSampler
 
 __all__ = [
     "AdvectionConfig",
@@ -58,6 +58,7 @@ __all__ = [
     "ParticleDistributor",
     "PitchingVLM",
     "RotatingVLM",
+    "SamplingSchedule",
     "RingDiagnosticsSampler",
     "SmoothRampVLM",
     "VPMSolver",

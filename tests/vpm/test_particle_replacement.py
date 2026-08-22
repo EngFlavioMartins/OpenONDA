@@ -11,8 +11,20 @@ from source.solvers.VPM.config.types import (
     StretchingConfig,
     ViscousConfig,
 )
+from source.solvers.VPM.io.logging import Logging
 from source.solvers.VPM.particles.container import Particles
 from source.solvers.VPM.runtime.backend import reset_taichi_backend
+
+
+def test_population_log_reports_physical_operation_not_storage_type(monkeypatch):
+    messages = []
+    monkeypatch.setattr(Logging, "message", messages.append)
+    particles = type("Population", (), {"n_particles": 4, "capacity": 16})()
+
+    Particles._log_population(particles, "cloud size 9")
+
+    assert messages == ["   [Particles] cloud size 9 -> 4 total, 25.0% of 16 capacity"]
+    assert "array" not in messages[0].lower()
 
 
 def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
@@ -378,17 +390,17 @@ def test_vulkan_chunked_replacement_preserves_distinct_reused_buffers(monkeypatc
 
         # Full replacements use persistent native arrays that are distinct for
         # every Taichi field.  Sharing one external ndarray across template
-        # fields caused circulation/position aliasing in the coupled cube run.
+        # fields caused vortex-strength/position aliasing in the coupled cube run.
         position_upload = particles._native_vector_uploads[id(particles.position)]
-        circulation_upload = particles._native_vector_uploads[id(particles.circulation)]
-        assert position_upload is not circulation_upload
+        strength_upload = particles._native_vector_uploads[id(particles.vortex_strength)]
+        assert position_upload is not strength_upload
         position_download = particles._host_vector_chunks[("download", id(particles.position))]
-        circulation_download = particles._host_vector_chunks[
-            ("download", id(particles.circulation))
+        strength_download = particles._host_vector_chunks[
+            ("download", id(particles.vortex_strength))
         ]
-        assert position_download is not circulation_download
+        assert position_download is not strength_download
         assert (
-            particles._native_scalar_uploads[id(particles.radius)]
+            particles._native_scalar_uploads[id(particles.core_radius)]
             is not particles._native_scalar_uploads[id(particles.volume)]
         )
     finally:

@@ -10,6 +10,7 @@ import sys
 import numpy as np
 
 from source.coupler.checkpoint import CHECKPOINT_DIRECTORY
+from source.utilities import nearest_time_event_due
 
 _REAL_STDOUT = sys.stdout
 
@@ -114,6 +115,7 @@ def write_run_metadata(coupler) -> None:
             "fvm_time_step_size": coupler.fvm_time_step_size,
             "end_time": coupler.end_time,
             "checkpoint_interval_steps": coupler.setup.checkpoint_interval_steps,
+            "checkpoint_interval_time": coupler.setup.checkpoint_interval_time,
         },
         "fvm_solver": {
             "coupling_patch": coupler.setup.coupling_patch,
@@ -277,10 +279,19 @@ def record_step(
 
     if comm is not None and comm.Get_size() > 1:
         comm.Barrier()
-    if (
-        coupler.setup.checkpoint_interval_steps > 0
+    checkpoint_due = (
+        coupler.setup.checkpoint_interval_time is not None
+        and nearest_time_event_due(
+            time_end,
+            coupler.vpm_time_step_size,
+            coupler.setup.checkpoint_interval_time,
+        )
+    ) or (
+        coupler.setup.checkpoint_interval_time is None
+        and coupler.setup.checkpoint_interval_steps > 0
         and step % coupler.setup.checkpoint_interval_steps == 0
-    ):
+    )
+    if checkpoint_due:
         coupler.save_state(coupler.solution_dir / CHECKPOINT_DIRECTORY, coupling_step=step)
 
 

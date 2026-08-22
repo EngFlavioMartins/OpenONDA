@@ -14,7 +14,7 @@ import pytest
 _CASE = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow/cubeFlow_setup.py"
 _REFERENCE = (
     Path(__file__).parents[2]
-    / "tutorials/coupled_FVM_VPM/cube_flow/referenceFlow/referenceFlow_setup.py"
+    / "tutorials/coupled_FVM_VPM/cube_flow/reference_flow/referenceFlow_setup.py"
 )
 _CUBE_ROOT = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow"
 
@@ -106,6 +106,57 @@ def test_wall_boundary_identical(bench, reference):
     assert wall(bench.FVM_SETUP) == wall(reference.FVM_SETUP)
 
 
+def test_cube_case_has_no_smoke_mode() -> None:
+    source = _CASE.read_text(encoding="utf-8")
+    readme = (_CUBE_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "OPENONDA_SMOKE" not in source
+    assert "OPENONDA_SMOKE" not in readme
+    assert "os.environ" not in source
+
+
+def test_sampling_cadence_matches_reference(bench, reference):
+    def schedules(samplers):
+        return {
+            sampler.__class__.__name__: getattr(sampler.schedule, "every_time", None)
+            for sampler in samplers
+        }
+
+    hybrid_fvm = schedules(bench.FVM_SAMPLERS)
+    reference_fvm = schedules(reference.SAMPLERS)
+    assert hybrid_fvm["ForceSampler"] == pytest.approx(reference_fvm["ForceSampler"])
+    assert hybrid_fvm["LineSampler"] == pytest.approx(reference_fvm["LineSampler"])
+    assert hybrid_fvm["SurfaceSampler"] == pytest.approx(reference_fvm["SurfaceSampler"])
+
+    for sampler in bench.VPM_SAMPLERS:
+        expected = (
+            bench.LINE_SAMPLE_INTERVAL_TIME
+            if sampler.__class__.__name__ == "LineSampler"
+            else bench.SLICE_SAMPLE_INTERVAL_TIME
+        )
+        assert sampler.schedule.every_time == pytest.approx(expected)
+
+
+def test_one_second_backup_schedule(bench):
+    assert bench.FVM_SETUP.time.output_interval_time == pytest.approx(1.0)
+    assert bench.VPM_SETUP.checkpoint_interval_steps == 0
+    assert bench.VPM_SETUP.checkpoint_interval_time == pytest.approx(1.0)
+    assert bench.COUPLER_SETUP.checkpoint_interval_steps == 0
+    assert bench.COUPLER_SETUP.checkpoint_interval_time == pytest.approx(1.0)
+
+
+def test_requested_end_uses_nearest_complete_coupling_step(bench):
+    assert pytest.approx(20.01) == bench.END_TIME
+    assert pytest.approx(bench.COUPLING_STEPS * bench.VPM_TIME_STEP_SIZE) == bench.END_TIME
+    assert abs(bench.END_TIME - bench.REQUESTED_END_TIME) <= bench.VPM_TIME_STEP_SIZE / 2
+
+
+def test_production_particle_lattice_is_cube_wall_commensurate(bench):
+    assert pytest.approx(0.03125) == bench.VPM_PARTICLE_SPACING
+    assert pytest.approx(32.0) == bench.CUBE_SIDE / bench.VPM_PARTICLE_SPACING
+    assert pytest.approx(0.03) == bench.VPM_TIME_STEP_SIZE
+    assert pytest.approx(0.01) == bench.FVM_TIME_STEP_SIZE
+
+
 def test_legitimate_differences_are_the_only_differences(bench, reference):
     hybrid_names = {boundary.name for boundary in bench.FVM_SETUP.boundaries}
     reference_names = {boundary.name for boundary in reference.FVM_SETUP.boundaries}
@@ -151,7 +202,11 @@ def test_vpm_setup_compatible(bench, vpm):
 def test_mesh_domain_uses_case_setting(bench, vpm):
     from source.solvers.FVM.mesh.triangulated_surface import TriangulatedSurface
 
-    assert bench.FVM_MESH.domain == bench.FVM_BOX
+    resolved = np.asarray(bench.FVM_MESH.domain)
+    requested = np.asarray(bench.FVM_BOX)
+    assert np.all(resolved[::2] <= requested[::2])
+    assert np.all(resolved[1::2] >= requested[1::2])
+    assert np.max(np.abs(resolved - requested)) < bench.FVM_MESH.requested_max_cell_size
     assert bench.FVM_MESH.requested_max_cell_size == pytest.approx(bench.SURFACE_CELL_SIZE * 4)
     assert bench.FVM_MESH.max_cell_size <= (bench.SURFACE_CELL_SIZE * 4)
     assert bench.FVM_MESH.surface_cell_size == pytest.approx(bench.SURFACE_CELL_SIZE)

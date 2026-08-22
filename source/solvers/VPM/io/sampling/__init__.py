@@ -12,10 +12,12 @@ from .field_samplers import (
     SurfaceSampler,
     resolve_samples_dir,
 )
+from .schedule import SamplingSchedule
 
 __all__ = [
     "SAMPLER_CSV_COLUMNS",
     "LineSampler",
+    "SamplingSchedule",
     "SurfaceSampler",
     "resolve_samples_dir",
 ]

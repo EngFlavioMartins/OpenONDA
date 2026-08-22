@@ -10,7 +10,7 @@ import pytest
 from source.solvers.FVM.mesh.triangulated_surface import TriangulatedSurface
 
 CUBE_STL = (
-    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow/referenceFlow/assets/cube.stl"
+    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow/reference_flow/assets/cube.stl"
 )
 
 

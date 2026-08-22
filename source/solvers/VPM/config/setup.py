@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -80,6 +81,7 @@ class VPMSetup:
     logging_interval_steps: int = 0
     timing_interval_steps: int = 0
     checkpoint_interval_steps: int = 0
+    checkpoint_interval_time: float | None = None
     checkpoint_name: str = DEFAULT_CHECKPOINT_NAME
     checkpoint_directory: str = "solution"
     sample_subdirectory: str | None = None
@@ -245,6 +247,18 @@ class VPMSetup:
         ):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} must be non-negative")
+        if self.checkpoint_interval_time is not None:
+            if (
+                not math.isfinite(self.checkpoint_interval_time)
+                or self.checkpoint_interval_time <= 0
+            ):
+                raise ValueError("checkpoint_interval_time must be finite and positive")
+            if self.checkpoint_interval_time < self.time_step_size:
+                raise ValueError("checkpoint_interval_time must not be smaller than time_step_size")
+            if self.checkpoint_interval_steps > 0:
+                raise ValueError(
+                    "Provide only one of checkpoint_interval_steps or checkpoint_interval_time"
+                )
 
         if self.max_particles < 1:
             raise ValueError("max_particles must be at least one")
@@ -358,6 +372,7 @@ class VPMSetup:
             "logging_interval_steps": self.logging_interval_steps,
             "timing_interval_steps": self.timing_interval_steps,
             "checkpoint_interval_steps": (self.checkpoint_interval_steps),
+            "checkpoint_interval_time": self.checkpoint_interval_time,
             "checkpoint_name": self.checkpoint_name,
             "checkpoint_directory": self.checkpoint_directory,
             "sample_subdirectory": self.sample_subdirectory,
@@ -536,7 +551,11 @@ class VPMSetup:
             f"  Compute device: {self.compute_device}",
             f"  Particle kernel: {self.particle_kernel}",
             (f"  Logging interval: {self.logging_interval_steps} steps"),
-            (f"  Checkpoint interval: {self.checkpoint_interval_steps} steps"),
+            (
+                f"  Checkpoint interval: {self.checkpoint_interval_time:g} s"
+                if self.checkpoint_interval_time is not None
+                else f"  Checkpoint interval: {self.checkpoint_interval_steps} steps"
+            ),
             f"  Freestream velocity: {self.freestream_velocity} m/s",
         ]
         return "\n".join(lines)

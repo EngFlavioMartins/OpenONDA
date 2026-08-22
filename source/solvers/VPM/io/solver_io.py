@@ -11,6 +11,8 @@ import json
 import os
 from typing import TYPE_CHECKING
 
+from source.utilities import nearest_time_event_due
+
 from .checkpoint import CheckpointManager
 from .sampling import resolve_samples_dir
 
@@ -50,6 +52,10 @@ class SolverIO:
         return self.solver.checkpoint_interval_steps
 
     @property
+    def checkpoint_interval_time(self) -> float | None:
+        return self.solver.checkpoint_interval_time
+
+    @property
     def checkpoint_name(self) -> str:
         return (self.solver.checkpoint_name or "").strip()
 
@@ -80,9 +86,18 @@ class SolverIO:
             True if a checkpoint should be written
         """
         ts = step if step is not None else self.step
-        return self.checkpoint_interval_steps > 0 and (
-            ts % self.checkpoint_interval_steps == 0 or ts == 0
-        )
+        if self.checkpoint_interval_time is not None:
+            time = (
+                float(self.time)
+                if step is None
+                else float(self.time) + (ts - self.step) * float(self.solver.time_step_size)
+            )
+            return nearest_time_event_due(
+                time,
+                float(self.solver.time_step_size),
+                self.checkpoint_interval_time,
+            )
+        return self.checkpoint_interval_steps > 0 and ts % self.checkpoint_interval_steps == 0
 
     def write_checkpoint(self, verbose: bool = True):
         """

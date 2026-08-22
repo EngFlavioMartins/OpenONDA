@@ -64,7 +64,7 @@ def _check_coupling_history(coupling: list[dict]) -> None:
 
 
 def _check_reference_drag(forces: np.ndarray) -> str:
-    reference_path = CASE_DIR / "referenceFlow" / "samples_backup" / "forces_history.csv"
+    reference_path = CASE_DIR / "reference_flow" / "samples" / "forces_history.csv"
     with reference_path.open(newline="") as stream:
         rows = list(csv.DictReader(stream))
     reference = np.asarray([[float(row["time"]), float(row["Cd"])] for row in rows])

@@ -18,6 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .schedule import SamplingSchedule
+
 try:
     from scipy.spatial import cKDTree
 except Exception:
@@ -132,6 +134,7 @@ class SurfaceSampler:
         spacing: float,
         file_name: str | None = None,
         include_derivatives: bool = True,
+        schedule: SamplingSchedule | None = None,
     ):
         """
         Initialize the surface sampler.
@@ -149,6 +152,7 @@ class SurfaceSampler:
                       default naming based on sampler class name.
             include_derivatives: Export velocity-gradient and strain-rate
                       fields. Vorticity always comes from the velocity curl.
+            schedule: Optional independent step- or flow-time output cadence.
         """
         self.point = np.asarray(point, dtype=np.float32)
         normal = np.asarray(normal, dtype=np.float32)
@@ -157,6 +161,7 @@ class SurfaceSampler:
         self.spacing = float(spacing)
         self.file_name = file_name
         self.include_derivatives = bool(include_derivatives)
+        self.schedule = schedule
 
         # Body geometry cache for masking / wall projection
         self._body_mesh = None
@@ -611,6 +616,7 @@ class LineSampler:
         end: np.ndarray | list,
         spacing: float,
         file_name: str | None = None,
+        schedule: SamplingSchedule | None = None,
     ):
         """
         Initialize the line sampler.
@@ -621,11 +627,13 @@ class LineSampler:
             spacing: Distance between sample points along the line.
             file_name: Optional base name for output CSV files. If None, uses
                       default naming based on sampler class name.
+            schedule: Optional independent step- or flow-time output cadence.
         """
         self.start = np.asarray(start, dtype=np.float32)
         self.end = np.asarray(end, dtype=np.float32)
         self.spacing = float(spacing)
         self.file_name = file_name
+        self.schedule = schedule
 
         # Body geometry cache for masking / wall projection
         self._body_mesh = None

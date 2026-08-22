@@ -577,7 +577,13 @@ class Logging:
         lines.append("\n" + "-" * 60)
         lines.append("MONITORING & I/O")
         lines.append("-" * 60)
-        lines.append(f"  Snapshot Frequency       : {system.checkpoint_interval_steps} steps")
+        checkpoint_time = getattr(system, "checkpoint_interval_time", None)
+        checkpoint_frequency = (
+            f"{checkpoint_time:g} s"
+            if checkpoint_time is not None
+            else f"{system.checkpoint_interval_steps} steps"
+        )
+        lines.append(f"  Snapshot Frequency       : {checkpoint_frequency}")
         lines.append(f"  Snapshot Prefix          : {prefix}")
         logging_freq = system.setup.logging_interval_steps
         lines.append(f"  Logging Frequency        : {logging_freq} steps")
@@ -829,7 +835,13 @@ class Logging:
         prefix = f"vpm_{name}" if name else "vpm"
         lines.append("")
         lines.append("MONITORING & I/O:")
-        lines.append(f"  Snapshot Frequency       : {system.checkpoint_interval_steps} steps")
+        checkpoint_time = getattr(system, "checkpoint_interval_time", None)
+        checkpoint_frequency = (
+            f"{checkpoint_time:g} s"
+            if checkpoint_time is not None
+            else f"{system.checkpoint_interval_steps} steps"
+        )
+        lines.append(f"  Snapshot Frequency       : {checkpoint_frequency}")
         lines.append(f"  Snapshot Prefix          : {prefix}")
 
         lines.append("-" * 60)
