@@ -14,7 +14,6 @@ VPM_TIME_STEP_SIZE = 0.15
 H = 0.125
 
 
-@pytest.mark.slow
 def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 

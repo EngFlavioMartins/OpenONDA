@@ -85,8 +85,7 @@ def leonard_term(
 
     This is the left-hand side of the Germano identity.  It is *identically*
     the exact SGS source that `exact_sgs_for_filter` returns for the test
-    filter acting on the resolved field, which is what
-    `tests/experiments/test_mansfield_dynamic_coefficient.py` asserts.
+    filter acting on the resolved field.
 
     Every term must carry the same composition of the test filter T as the
     model difference M = T(B) - B(T); omitting T on the two base terms leaves
@@ -125,8 +124,7 @@ def mansfield_dynamic_coefficient(
     part (I - T)N(u) in L, which is large and uncorrelated with M, and it
     inverted the sign of <L.M>.  The result was C_r^2 < 0 for a purely
     dissipative model, which the non-negativity clip then zeroed, silently
-    disabling the closure and failing every downstream gate.  See
-    `tests/test_mansfield_dynamic_coefficient.py`.
+    disabling the closure and failing every downstream gate.
     """
     test_sigma = test_ratio * particle_sigma
 

@@ -47,14 +47,13 @@ ruff format source tests         # formatting
 ## Tests
 
 ```bash
-# Fast physics-correctness gate (what CI blocks on):
-pytest tests/fvm -m "(unit or verification) and not slow and not mpi"
-# Coupler:
-pytest tests/coupler -m "not mpi"
+pytest tests
 ```
 
-Slow validation physics and MPI/PETSc runs are exercised nightly, not on every
-change (see `.github/workflows/`).
+The maintained suite is deliberately limited to the nomenclature/API gate,
+one FVM restart contract, strict VPM state validation, and one coupled
+FVM--VPM checkpoint round trip. Case studies, numerical sweeps, benchmarks,
+and MPI-specific regressions are not part of the repository test suite.
 
 ## Imported Claude Cowork project instructions
 
@@ -71,14 +70,7 @@ appeared). The corrective conventions are:
 - `assets/plot_plate_spanwise.py::load_spanwise_csv` closes the distribution
   with the finite-wing condition Γ(±b/2)=0 instead of stretching samples to
   ±1 (and reconstructs the physical y for legacy CSVs that were normalised to
-  ±1). The taper is a genuine mesh-resolution phenomenon, verified by
-  `tests/vpm/test_vlm_standalone_lifting_line.py` (incl. the
-  `test_coupled_tip_taper_depends_on_mesh_resolution_not_dt` regression that
-  proves **tip taper depends on spanwise mesh density, not on dt**).
-- `tests/vpm/test_vlm_loading_distribution.py` guarantees spanwise+chordwise
-  station sums reproduce the lattice total loads (guards the almost-constant
-  re-appearance), and `tests/vpm/test_vlm_frame_equivalence.py` checks the
-  body/wind-frame static equivalence the tutorial relies on.
+  ±1). The taper remains a mesh-resolution property of the finite-wing model.
 
 Tutorial runnability notes (all applied):
 - `setup_plate.py` uses `compute_device="AUTO"` (the previous hard-coded

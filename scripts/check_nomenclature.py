@@ -334,7 +334,6 @@ NEGATIVE_ASSERTION_FILES = frozenset(
     {
         "scripts/check_nomenclature.py",
         "tests/test_public_api_has_no_legacy_aliases.py",
-        "tests/test_tutorial_contracts.py",
     }
 )
 EXTERNAL_AMERICAN_API_NAMES = frozenset({"CenterOfRotation", "getCenterOfMass"})

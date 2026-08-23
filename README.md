@@ -131,8 +131,7 @@ includes its runtime; a separate Vulkan SDK is not required.
 git clone https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 python -m pip install -e ".[dev]"
-pytest tests/fvm -m "(unit or verification) and not slow and not mpi"
-pytest tests/coupler -m "not mpi"
+pytest tests
 pyrefly check
 ```
 

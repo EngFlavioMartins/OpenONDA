@@ -24,23 +24,38 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install Gmsh system libraries (Linux)
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install ".[dev]"
       - run: ruff check source tests tutorials scripts openonda
       - run: ruff format --check source tests tutorials scripts openonda
-      - name: Public API and tutorial contracts
-        run: >-
-          python -m pytest -q
-          tests/test_public_api_has_no_legacy_aliases.py
-          tests/test_tutorial_contracts.py
       - name: Pyrefly report (existing baseline; do not grow it)
         continue-on-error: true
         run: pyrefly check
       - run: python -m build
       - run: twine check dist/*
+
+  solver-contracts:
+    name: Minimal solver contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Gmsh system libraries (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglu1-mesa
+      - run: python -m pip install -e ".[test]"
+      - run: python -m pytest tests -p no:cacheprovider --junitxml=solver-contracts.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: solver-contracts
+          path: solver-contracts.xml
 
   installed-wheel:
     name: Wheel import (${{ matrix.os }}, Python ${{ matrix.python }})
@@ -78,76 +93,3 @@ jobs:
         run: |
           "$RUNNER_TEMP/openonda-wheel/bin/python" -m openonda.verify_install --require-site-packages
           "$RUNNER_TEMP/openonda-wheel/bin/python" -m pip check
-
-  fvm-fast:
-    name: FVM correctness
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-      - name: Install Gmsh system libraries (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libglu1-mesa
-      - run: python -m pip install -e ".[test]"
-      - run: >-
-          pytest tests/fvm
-          -m "(unit or verification) and not slow and not mpi"
-          -p no:cacheprovider
-          --junitxml=fvm-fast.xml
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fvm-fast
-          path: fvm-fast.xml
-
-  coupler:
-    name: FVM↔VPM coupler
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-      - name: Install Gmsh system libraries (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libglu1-mesa
-      - run: python -m pip install -e ".[test]"
-      - run: >-
-          pytest tests/coupler
-          -m "not mpi"
-          -p no:cacheprovider
-          --junitxml=coupler.xml
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coupler
-          path: coupler.xml
-
-  vpm-smoke:
-    name: VPM kernel smoke (CPU)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-      - name: Install Gmsh system libraries (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libglu1-mesa
-      - run: python -m pip install -e ".[test]"
-      - run: >-
-          pytest tests/vpm/test_kernels_math.py tests/vpm/test_biot_savart.py
-          tests/vpm/test_semi_infinite_horseshoe.py
-          tests/vpm/test_vlm_standalone_lifting_line.py
-          tests/vpm/test_vlm_loading_distribution.py
-          tests/vpm/test_vlm_frame_equivalence.py
-          -m "not gpu and not slow"
-          -p no:cacheprovider

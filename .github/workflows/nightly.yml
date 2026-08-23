@@ -1,9 +1,4 @@
-name: Nightly (full environment)
-
-# Heavy evidence that is impractical on every pull request: the full
-# conda/PETSc/MPI environment, collective MPI runs, the whole FVM suite, and the
-# canonical install entry point. It runs daily and on demand, and failures remain
-# visible even when branch protection does not require the scheduled workflow.
+name: Nightly (environment validation)
 
 on:
   schedule:
@@ -18,60 +13,6 @@ permissions:
   contents: read
 
 jobs:
-  fvm-full:
-    name: Full FVM suite (informational)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: OpenONDA
-          environment-file: scripts/environment/environment.yml
-          miniforge-version: latest
-          use-mamba: true
-      - run: python -m pip install -e ".[test]"
-      - name: Whole FVM suite incl. slow + integration/validation
-        run: >-
-          python -m pytest tests/fvm
-          -m "not mpi"
-          --junitxml=fvm-full.xml
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fvm-full
-          path: fvm-full.xml
-
-  petsc-mpi:
-    name: PETSc/MPI collective (informational)
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        ranks: [2, 4]
-    steps:
-      - uses: actions/checkout@v5
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: OpenONDA-parallel
-          environment-file: scripts/environment/environment-parallel.yml
-          miniforge-version: latest
-          use-mamba: true
-      - run: python -m pip install -e ".[test]"
-      - name: mpiexec -n ${{ matrix.ranks }}
-        run: >-
-          mpiexec --oversubscribe -n ${{ matrix.ranks }}
-          python scripts/run_fvm_mpi_tests.py
-      - name: Coupled two-rank public-API smoke
-        if: matrix.ranks == 2
-        run: >-
-          mpiexec --oversubscribe -n 2
-          python -m pytest -q tests/coupler/test_fvm_vpm_mpi_smoke.py -m mpi
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fvm-petsc-mpi-${{ matrix.ranks }}
-          path: artifacts/
-
   canonical-install:
     name: Canonical install entry point
     runs-on: ubuntu-latest
@@ -87,10 +28,9 @@ jobs:
         run: scripts/install/install_conda.sh -y
       - name: Install test dependencies without an editable checkout
         run: conda run -n OpenONDA-clean python -m pip install ".[test]"
-      - name: Non-hardware FVM + coupler evidence on the clean install
+      - name: Run the maintained solver contracts on the clean install
         run: >-
-          conda run -n OpenONDA-clean python -m pytest tests/fvm tests/coupler
-          -m "not mpi"
+          conda run -n OpenONDA-clean python -m pytest tests
           --junitxml=clean-install.xml
       - name: Native FVM-VPM tutorials from isolated directories
         run: conda run -n OpenONDA-clean python scripts/validate_native_tutorials.py

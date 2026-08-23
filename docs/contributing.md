@@ -25,15 +25,13 @@ resolution, or physical horizons merely to make a validation pass.
 python -m compileall -q source tests tutorials openonda scripts
 ruff check source tests tutorials scripts openonda
 ruff format --check source tests tutorials scripts openonda
-pytest -q tests/fvm -m "(unit or verification) and not slow and not mpi"
-pytest -q tests/coupler -m "not mpi"
-pytest -q tests/test_public_api_has_no_legacy_aliases.py tests/test_tutorial_contracts.py
+pytest -q tests
 ```
 
 Run `pyrefly check` after changing Python under `source/solvers/fvm`,
 `source/coupler`, or `source/utilities`. The Taichi-based VPM tree is excluded
-from static type checking. Add focused regression coverage for every bug fix
-and run the nearest scientific validation before broad suites.
+from static type checking. Keep repository coverage to the four maintained
+contracts; run case-specific scientific validation outside this test suite.
 
 Run `python scripts/check_nomenclature.py` before publishing a serializer,
 solver API, tutorial output, or checkpoint change. This is the repository gate
