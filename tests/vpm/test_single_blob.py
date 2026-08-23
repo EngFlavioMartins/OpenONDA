@@ -10,7 +10,7 @@ backend consistency.
 import numpy as np
 import pytest
 
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     ViscousConfig,
@@ -68,7 +68,7 @@ def _single_blob_solver(make_solver, kernel_name):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([0.0]),
     )
     return solver
@@ -87,7 +87,7 @@ def test_self_velocity_zero(kernel_name, backend, solver_for_backend):
     Failure → singular Biot-Savart kernel or missing self-interaction exclusion.
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
-    vel = solver.compute_target_velocities(np.array([[0.0, 0.0, 0.0]]), include_freestream=False)
+    vel = solver.compute_velocity_at_points(np.array([[0.0, 0.0, 0.0]]), include_freestream=False)
     assert np.allclose(vel, 0.0, atol=1e-6), (
         f"{kernel_name}/{backend}: self-velocity = {vel} (must be zero)"
     )
@@ -103,7 +103,7 @@ def test_vorticity_at_origin(kernel_name, backend, solver_for_backend):
     Failure → wrong ζ normalisation or σ exponent.
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
-    omega = solver.compute_target_vorticities(np.array([[0.0, 0.0, 0.0]]))
+    omega = solver.compute_vorticity_at_points(np.array([[0.0, 0.0, 0.0]]))
     expected = _ALPHA_Z * _ZETA_0[kernel_name] / (_SIGMA**3)
     assert abs(float(omega[0, 2]) - expected) / expected < 0.02, (
         f"{kernel_name}/{backend}: ωz(0) = {omega[0, 2]:.6e}, expected {expected:.6e}"
@@ -121,14 +121,14 @@ def test_target_gradient_layout_matches_velocity_finite_difference(backend, solv
     """
     solver = _single_blob_solver(solver_for_backend, "GAUSSIAN")
     probes = np.array([[0.11, 0.07, 0.0], [0.23, -0.05, 0.0], [-0.16, 0.12, 0.0]])
-    jacobian = solver.compute_target_velocity_gradients(probes).reshape(-1, 3, 3)
+    jacobian = solver.compute_velocity_gradient_at_points(probes).reshape(-1, 3, 3)
     step = 2.0e-4
     finite_difference = np.empty_like(jacobian)
     for axis in range(3):
         offset = np.zeros(3)
         offset[axis] = step
-        u_plus = solver.compute_target_velocities(probes + offset, include_freestream=False)
-        u_minus = solver.compute_target_velocities(probes - offset, include_freestream=False)
+        u_plus = solver.compute_velocity_at_points(probes + offset, include_freestream=False)
+        u_minus = solver.compute_velocity_at_points(probes - offset, include_freestream=False)
         finite_difference[:, :, axis] = (u_plus - u_minus) / (2.0 * step)
     np.testing.assert_allclose(jacobian, finite_difference, rtol=2.0e-3, atol=2.0e-3)
 
@@ -145,7 +145,7 @@ def test_vorticity_radial_decay(kernel_name, backend, solver_for_backend):
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     r_values = np.array([1.0, 2.0, 3.0]) * _SIGMA
     probes = np.column_stack([r_values, np.zeros_like(r_values), np.zeros_like(r_values)])
-    omega = solver.compute_target_vorticities(probes)[:, 2]
+    omega = solver.compute_vorticity_at_points(probes)[:, 2]
 
     rho = r_values / _SIGMA
     if kernel_name == "GAUSSIAN":
@@ -175,7 +175,7 @@ def test_far_field_velocity(kernel_name, backend, solver_for_backend):
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     r = 10.0 * _SIGMA
     probes = np.array([[r, 0.0, 0.0]])
-    vel = solver.compute_target_velocities(probes, include_freestream=False)
+    vel = solver.compute_velocity_at_points(probes, include_freestream=False)
     uy = float(vel[0, 1])
     expected = _ALPHA_Z / (4.0 * np.pi * r**2)
     rel_err = abs(uy - expected) / expected
@@ -220,14 +220,14 @@ def test_helicity_is_zero(kernel_name, backend, solver_for_backend):
     """
     Helicity of a single blob is zero (H = u · ω, and symmetry gives zero).
 
-    Failure → sign error in helicity kernel or missing self-interaction.
+    Failure → sign error in total_helicity kernel or missing self-interaction.
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     solver.advance()
     solver._update_all_flow_integrals()
-    helicity = solver.total_helicity
-    assert abs(helicity) < 1e-6, (
-        f"{kernel_name}/{backend}: helicity = {helicity:.3e} (must be zero for single blob)"
+    total_helicity = solver.total_helicity
+    assert abs(total_helicity) < 1e-6, (
+        f"{kernel_name}/{backend}: total_helicity = {total_helicity:.3e} (must be zero for single blob)"
     )
 
 
@@ -254,7 +254,7 @@ def test_linear_impulse(kernel_name, backend, solver_for_backend):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([0.0]),
     )
     solver.advance()
@@ -290,7 +290,7 @@ def test_angular_impulse(kernel_name, backend, solver_for_backend):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([0.0]),
     )
     solver.advance()
@@ -309,7 +309,7 @@ def test_angular_impulse(kernel_name, backend, solver_for_backend):
 def test_cross_backend_consistency_single_blob(kernel_name, backend, solver_for_backend):
     """
     Meta-test: the same single-blob setup on CPU, CUDA, and Vulkan must give
-    mutually consistent velocities and vorticity within 0.5%.
+    mutually consistent velocity and vorticity within 0.5%.
 
     This test is run per-backend; the assertion compares the current backend
     against a reference CPU run stored in a module-level cache.
@@ -320,8 +320,8 @@ def test_cross_backend_consistency_single_blob(kernel_name, backend, solver_for_
 
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     probes = np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
-    vel = solver.compute_target_velocities(probes, include_freestream=False)
-    omega = solver.compute_target_vorticities(probes)
+    vel = solver.compute_velocity_at_points(probes, include_freestream=False)
+    omega = solver.compute_vorticity_at_points(probes)
 
     key = f"{kernel_name}_vel"
     if backend == "CPU":

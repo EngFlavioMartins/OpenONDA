@@ -34,7 +34,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     ForceSampler,
@@ -45,11 +45,11 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.fields import gradients
-from source.solvers.FVM.fields.diagnostics import compute_surface_forces
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.mesh.rectilinear import box_mesh_3d, coupling_box_mesh
-from source.solvers.FVM.sampling.base import SamplingSchedule
+from source.solvers.fvm.fields import gradients
+from source.solvers.fvm.fields.diagnostics import compute_surface_forces
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.mesh.rectilinear import box_mesh_3d, coupling_box_mesh
+from source.solvers.fvm.sampling.base import SamplingSchedule
 
 BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
@@ -58,7 +58,7 @@ HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 def _carved(spacing: float):
     mesh = coupling_box_mesh(BOX, spacing, hole_box=HOLE, wall_patch_name="cube")
     for b in mesh["boundary"]:  # gradient reconstruction needs BC types
-        b["bc_type"] = "zeroGradient"
+        b["boundary_condition_type"] = "zeroGradient"
         b["velocity_type"] = "zeroGradient"
     return mesh, compute_mesh_geometry(mesh)
 
@@ -100,8 +100,8 @@ def test_uniform_pressure_zero_force_and_moment(cube):
         patch_names=["cube"],
         moment_centre=[0.3, -0.7, 1.1],
     )["cube"]
-    assert np.allclose(res["Fp"], 0.0, atol=1e-12)
-    assert np.allclose(res["Mtot"], 0.0, atol=1e-12), f"M={res['Mtot']}"
+    assert np.allclose(res["pressure_force"], 0.0, atol=1e-12)
+    assert np.allclose(res["moment"], 0.0, atol=1e-12), f"M={res['moment']}"
 
 
 def test_gauge_shift_does_not_change_closed_body_force(cube):
@@ -125,8 +125,8 @@ def test_gauge_shift_does_not_change_closed_body_force(cube):
         )["cube"]
 
     base, shifted = forces(0.0), forces(37.5)
-    np.testing.assert_allclose(shifted["Fp"], base["Fp"], atol=1e-10)
-    np.testing.assert_allclose(shifted["Mtot"], base["Mtot"], atol=1e-10)
+    np.testing.assert_allclose(shifted["pressure_force"], base["pressure_force"], atol=1e-10)
+    np.testing.assert_allclose(shifted["moment"], base["moment"], atol=1e-10)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -145,24 +145,24 @@ def test_linear_velocity_field_gives_analytic_traction(cube):
     mu = 0.037
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    centroids = geo["cell_centroids"][:n_elem]
+    centroids = geo["cell_centre"][:n_elem]
     velocity, p = _fields(mesh)
     velocity[:n_elem] = centroids @ A.T
     # Exact values on every boundary face (ghost slots follow the interior).
-    face_centroids = geo["face_centroids"][n_int:]
-    velocity[n_elem:] = face_centroids @ A.T
+    face_centre = geo["face_centre"][n_int:]
+    velocity[n_elem:] = face_centre @ A.T
 
     res = compute_surface_forces(
         velocity, p, mu, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"]
     )["cube"]
 
     faces, _ = _wall_faces(mesh)
-    sf = geo["face_sf"][faces]
+    sf = geo["face_area_vector"][faces]
     two_symm = A + A.T
     dev = two_symm - (2.0 / 3.0) * np.trace(A) * np.eye(3)
     # F_v = −Σ μ dev(2·symm A)·Sf  (Sf out of the fluid)
     expected = -mu * (sf @ dev.T).sum(axis=0)
-    np.testing.assert_allclose(res["Fv"], expected, rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(res["viscous_force"], expected, rtol=1e-9, atol=1e-12)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -205,12 +205,12 @@ def test_smooth_pressure_force_converges_second_order():
         mesh, geo = _carved(h)
         velocity, p = _fields(mesh)
         faces, ghost = _wall_faces(mesh)
-        fc = geo["face_centroids"][faces]
+        fc = geo["face_centre"][faces]
         p[ghost] = _smooth_p(fc[:, 0], fc[:, 1], fc[:, 2])
         res = compute_surface_forces(
             velocity, p, 0.0, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"]
         )["cube"]
-        errors.append(np.linalg.norm(res["Fp"] - exact))
+        errors.append(np.linalg.norm(res["pressure_force"] - exact))
     orders = [np.log2(errors[i] / errors[i + 1]) for i in range(len(errors) - 1)]
     assert min(orders) > 1.8, f"errors={errors}, observed orders={orders}"
 
@@ -224,11 +224,11 @@ def test_exact_reference_orientation():
     mesh, geo = _carved(0.25)
     velocity, p = _fields(mesh)
     faces, ghost = _wall_faces(mesh)
-    p[ghost] = a * geo["face_centroids"][faces][:, 0]
+    p[ghost] = a * geo["face_centre"][faces][:, 0]
     res = compute_surface_forces(
         velocity, p, 0.0, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"]
     )["cube"]
-    assert res["Fp"][0] == pytest.approx(-a * 1.0, abs=1e-9)  # −a·V on the body
+    assert res["pressure_force"][0] == pytest.approx(-a * 1.0, abs=1e-9)  # −a·V on the body
     # The quadrature reference must agree on the same linear field.
     ref = _exact_cube_pressure_force(p_fn=lambda x, y, z: a * x, n_quad=200)
     np.testing.assert_allclose(ref, [-a, 0.0, 0.0], atol=1e-12)
@@ -269,9 +269,9 @@ def _external_flow_solver(tmp_path, spacing: float, n_steps: int, time_step_size
         samplers=[
             ForceSampler(
                 patch_names=["cube"],
-                ref_velocity=1.0,
-                ref_area=1.0,
-                ref_length=1.0,
+                reference_velocity=1.0,
+                reference_area=1.0,
+                reference_length=1.0,
                 schedule=SamplingSchedule(every_n_steps=1),
             )
         ],
@@ -305,13 +305,13 @@ def test_symmetric_flow_gives_symmetric_forces(tmp_path):
         for _ in range(10):
             solver.advance()
     forces = solver.last_forces["cube"]
-    fx = abs(forces["Ftot"][0])
+    fx = abs(forces["total_force"][0])
     assert fx > 1e-3, "drag should be nonzero for the impulsively started flow"
-    assert abs(forces["Ftot"][1]) < 1e-4 * max(fx, 1.0), f"Fy={forces['Ftot'][1]}"
-    assert abs(forces["Ftot"][2]) < 1e-4 * max(fx, 1.0), f"Fz={forces['Ftot'][2]}"
+    assert abs(forces["total_force"][1]) < 1e-4 * max(fx, 1.0), f"Fy={forces['total_force'][1]}"
+    assert abs(forces["total_force"][2]) < 1e-4 * max(fx, 1.0), f"Fz={forces['total_force'][2]}"
     # Transverse moments about the body centre likewise vanish by symmetry.
-    assert abs(forces["Mtot"][1]) < 1e-4, f"My={forces['Mtot'][1]}"
-    assert abs(forces["Mtot"][2]) < 1e-4, f"Mz={forces['Mtot'][2]}"
+    assert abs(forces["moment"][1]) < 1e-4, f"My={forces['moment'][1]}"
+    assert abs(forces["moment"][2]) < 1e-4, f"Mz={forces['moment'][2]}"
 
 
 def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
@@ -333,30 +333,30 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
     mesh, geo = solver.mesh_data, solver.geo_data
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    rho = solver.setup.transport.density
-    mu = rho * solver.setup.transport.kinematic_viscosity
-    volumes = geo["cell_volumes"][:n_elem]
+    density = solver.setup.transport.density
+    mu = density * solver.setup.transport.kinematic_viscosity
+    volumes = geo["cell_volume"][:n_elem]
 
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(n_steps - 1):
             solver.advance()
-        momentum_before = rho * (volumes[:, None] * solver.velocity[:n_elem]).sum(axis=0)
+        momentum_before = density * (volumes[:, None] * solver.velocity[:n_elem]).sum(axis=0)
         solver.advance()
-    momentum_after = rho * (volumes[:, None] * solver.velocity[:n_elem]).sum(axis=0)
+    momentum_after = density * (volumes[:, None] * solver.velocity[:n_elem]).sum(axis=0)
     dmdt = (momentum_after - momentum_before) / solver.setup.time.time_step_size
 
-    velocity, p, face_flux = (
+    velocity, p, volumetric_face_flux = (
         np.asarray(solver.velocity),
         np.asarray(solver.kinematic_pressure),
-        np.asarray(solver.face_flux),
+        np.asarray(solver.volumetric_face_flux),
     )
-    grad_u = gradients._resolve_gradient_fn(geo)(velocity, mesh, geo)
+    velocity_gradient = gradients._resolve_gradient_fn(geo)(velocity, mesh, geo)
 
     def _transpose_stress_flux(faces):
         """Dynamic ``mu*dev2(T(grad(U))) . Sf`` used by momentum assembly."""
         ghost = n_elem + (faces - n_int)
-        grad_face = grad_u[ghost]
-        sf = geo["face_sf"][faces]
+        grad_face = velocity_gradient[ghost]
+        sf = geo["face_area_vector"][faces]
         trace = np.einsum("fii->f", grad_face)
         transposed = np.einsum("fji,fi->fj", grad_face, sf)
         return mu * (transposed - (2.0 / 3.0) * trace[:, None] * sf)
@@ -367,13 +367,13 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
             continue
         faces = np.arange(b["start_face"], b["start_face"] + b["n_faces"])
         ghost = n_elem + (faces - n_int)
-        sf = geo["face_sf"][faces]
-        dist = geo["wall_dist"][faces][:, None]
+        sf = geo["face_area_vector"][faces]
+        dist = geo["wall_distance"][faces][:, None]
         areas = np.linalg.norm(sf, axis=1)[:, None]
         # Convective outflow of momentum through the patch (φ = u·Sf).
-        f_cv -= (rho * face_flux[faces][:, None] * velocity[ghost]).sum(axis=0)
+        f_cv -= (density * volumetric_face_flux[faces][:, None] * velocity[ghost]).sum(axis=0)
         # Pressure on the outer boundary (p is kinematic).
-        f_cv -= (rho * p[ghost][:, None] * sf).sum(axis=0)
+        f_cv -= (density * p[ghost][:, None] * sf).sum(axis=0)
         # Viscous traction on the outer boundary from the normal gradient.
         f_cv += (mu * (velocity[ghost] - velocity[mesh["owners"][faces]]) / dist * areas).sum(
             axis=0
@@ -383,15 +383,15 @@ def _cv_forces(tmp_path, spacing: float, n_steps: int = 8) -> dict[str, float]:
     (wall,) = [b for b in mesh["boundary"] if b["name"] == "cube"]
     faces = np.arange(wall["start_face"], wall["start_face"] + wall["n_faces"])
     ghost = n_elem + (faces - n_int)
-    sf = geo["face_sf"][faces]
-    dist = geo["wall_dist"][faces][:, None]
+    sf = geo["face_area_vector"][faces]
+    dist = geo["wall_distance"][faces][:, None]
     areas = np.linalg.norm(sf, axis=1)[:, None]
-    f_disc = (rho * p[ghost][:, None] * sf).sum(axis=0) - (
+    f_disc = (density * p[ghost][:, None] * sf).sum(axis=0) - (
         mu * (velocity[ghost] - velocity[mesh["owners"][faces]]) / dist * areas
     ).sum(axis=0)
     f_disc -= _transpose_stress_flux(faces).sum(axis=0)
 
-    f_diag = np.asarray(solver.last_forces["cube"]["Ftot"])
+    f_diag = np.asarray(solver.last_forces["cube"]["total_force"])
     return {"cv": float(f_cv[0]), "disc": float(f_disc[0]), "diag": float(f_diag[0])}
 
 

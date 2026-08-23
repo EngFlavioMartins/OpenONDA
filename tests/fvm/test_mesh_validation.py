@@ -5,10 +5,10 @@ import copy
 import numpy as np
 import pytest
 
-from source.solvers.FVM.config.types import MeshQualityConfig
-from source.solvers.FVM.mesh.geometry import MeshGeometry, compute_mesh_geometry
-from source.solvers.FVM.mesh.topology import MeshTopology
-from source.solvers.FVM.mesh.validation import (
+from source.solvers.fvm.config.types import MeshQualityConfig
+from source.solvers.fvm.mesh.geometry import MeshGeometry, compute_mesh_geometry
+from source.solvers.fvm.mesh.topology import MeshTopology
+from source.solvers.fvm.mesh.validation import (
     MeshValidationError,
     enforce_quality_thresholds,
     validate_mesh,
@@ -28,7 +28,7 @@ def test_hand_built_mesh_passes_and_reports_quality(hand_built_3d_mesh):
 def test_typed_mesh_schema_is_contiguous_and_read_only(hand_built_3d_mesh):
     geo = compute_mesh_geometry(hand_built_3d_mesh, gradient_scheme="lsq")
     source_owners = hand_built_3d_mesh["owners"]
-    source_volumes = geo["cell_volumes"]
+    source_volumes = geo["cell_volume"]
     assert source_owners.flags.writeable
     assert source_volumes.flags.writeable
 
@@ -36,13 +36,13 @@ def test_typed_mesh_schema_is_contiguous_and_read_only(hand_built_3d_mesh):
     geometry = MeshGeometry.from_data(hand_built_3d_mesh, geo)
 
     assert topology.face_nodes.flags.c_contiguous
-    assert topology.cell_face_offsets[-1] == len(topology.cell_faces)
+    assert topology.cell_face_offset[-1] == len(topology.cell_face_indices)
     assert not topology.owners.flags.writeable
-    assert not geometry.cell_volumes.flags.writeable
+    assert not geometry.cell_volume.flags.writeable
     assert source_owners.flags.writeable
     assert source_volumes.flags.writeable
     assert np.shares_memory(topology.owners, source_owners)
-    assert np.shares_memory(geometry.cell_volumes, source_volumes)
+    assert np.shares_memory(geometry.cell_volume, source_volumes)
     assert geometry.lsq_condition.shape == (hand_built_3d_mesh["n_cells"],)
 
 

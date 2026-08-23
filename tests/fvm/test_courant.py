@@ -1,8 +1,8 @@
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.fields.diagnostics import compute_courant_number
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.assemble.convection import compute_volumetric_face_flux
+from source.solvers.fvm.fields.diagnostics import compute_courant_number
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 
 class TestCourant:
@@ -16,10 +16,10 @@ class TestCourant:
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
 
         velocity = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
-        face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
+        volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
         time_step_size = 0.1
 
-        co = compute_courant_number(velocity, face_flux, time_step_size, mesh, geo)
+        co = compute_courant_number(velocity, volumetric_face_flux, time_step_size, mesh, geo)
         assert co.shape[0] >= n_elem
         co_int = co[:n_elem]
         # On uniform mesh with dx=1, U=1, Co ≈ 0.1

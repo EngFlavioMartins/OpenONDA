@@ -54,11 +54,11 @@ VPM uses Taichi and defaults to `AUTO`, which selects Metal on macOS and a
 compatible GPU backend on Linux. Select a backend explicitly when needed:
 
 ```bash
-OPENONDA_COMPUTE_DEVICE=METAL python tutorials/VPM/vortexRing/ring_setup.py \
-  --variant DNS_transposed --number-of-steps 1
-OPENONDA_COMPUTE_DEVICE=VULKAN ./tutorials/VPM/deltaWing/allrun.sh
-OPENONDA_COMPUTE_DEVICE=CUDA ./tutorials/VPM/deltaWing/allrun.sh
-OPENONDA_COMPUTE_DEVICE=CPU ./tutorials/VPM/deltaWing/allrun.sh
+OPENONDA_COMPUTE_DEVICE=METAL python tutorials/vpm/vortex_ring/ring_setup.py \
+  --variant dns_transposed --number-of-steps 1
+OPENONDA_COMPUTE_DEVICE=VULKAN ./tutorials/vpm/delta_wing/allrun.sh
+OPENONDA_COMPUTE_DEVICE=CUDA ./tutorials/vpm/delta_wing/allrun.sh
+OPENONDA_COMPUTE_DEVICE=CPU ./tutorials/vpm/delta_wing/allrun.sh
 ```
 
 Metal supports the normal `f32` VPM path. Use the CPU backend for `f64`, which

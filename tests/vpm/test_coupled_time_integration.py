@@ -5,22 +5,22 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StabilizationConfig,
     StretchingConfig,
     VelocityConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.core.evolution import EvolutionStepper
+from source.solvers.vpm.core.evolution import EvolutionStepper
 
 
 def test_coupled_limits_can_be_disabled_for_one_common_stage():
     stepper = EvolutionStepper(
         SimpleNamespace(
-            particles_velocity_gradients=np.full((2, 3, 3), 1.0e6),
-            particles_velocities=np.full((2, 3), 1.0e6),
+            particle_velocity_gradient=np.full((2, 3, 3), 1.0e6),
+            particle_velocity=np.full((2, 3), 1.0e6),
             coupled_max_strain_increment=None,
             coupled_max_advection_fraction=None,
             _viscous_config=SimpleNamespace(particle_spacing=0.03125),
@@ -32,11 +32,11 @@ def test_coupled_limits_can_be_disabled_for_one_common_stage():
 
 def test_coupled_transposed_step_preserves_total_strength(tmp_path):
     rng = np.random.default_rng(731)
-    n_particles = 12
-    position = rng.uniform(-0.5, 0.5, (n_particles, 3))
-    circulation = 0.05 * rng.normal(size=(n_particles, 3))
-    radius = np.full(n_particles, 0.18)
-    volume = np.full(n_particles, 0.18**3)
+    n_particles_total = 12
+    position = rng.uniform(-0.5, 0.5, (n_particles_total, 3))
+    circulation = 0.05 * rng.normal(size=(n_particles_total, 3))
+    radius = np.full(n_particles_total, 0.18)
+    particle_volume = np.full(n_particles_total, 0.18**3)
 
     solver = VPMSolver(
         setup=VPMSetup(
@@ -59,8 +59,8 @@ def test_coupled_transposed_step_preserves_total_strength(tmp_path):
         velocity=np.zeros_like(position),
         vortex_strength=circulation,
         core_radius=radius,
-        volume=volume,
-        kinematic_viscosity=np.zeros(n_particles),
+        particle_volume=particle_volume,
+        kinematic_viscosity=np.zeros(n_particles_total),
     )
 
     strength_before = circulation.sum(axis=0)
@@ -72,11 +72,11 @@ def test_coupled_transposed_step_preserves_total_strength(tmp_path):
 
 def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(tmp_path):
     rng = np.random.default_rng(904)
-    n_particles = 24
-    position = rng.uniform(-0.7, 0.7, (n_particles, 3))
-    circulation = 0.08 * rng.normal(size=(n_particles, 3))
-    radius = np.full(n_particles, 0.2)
-    volume = np.full(n_particles, 0.2**3)
+    n_particles_total = 24
+    position = rng.uniform(-0.7, 0.7, (n_particles_total, 3))
+    circulation = 0.08 * rng.normal(size=(n_particles_total, 3))
+    radius = np.full(n_particles_total, 0.2)
+    particle_volume = np.full(n_particles_total, 0.2**3)
 
     solver = VPMSolver(
         setup=VPMSetup(
@@ -101,8 +101,8 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
         velocity=np.zeros_like(position),
         vortex_strength=circulation,
         core_radius=radius,
-        volume=volume,
-        kinematic_viscosity=np.zeros(n_particles),
+        particle_volume=particle_volume,
+        kinematic_viscosity=np.zeros(n_particles_total),
     )
 
     strength_before = circulation.sum(axis=0)
@@ -113,14 +113,14 @@ def test_coupled_direct_projection_preserves_closed_flow_invariants_and_energy(t
     )
     energy_before = solver.field_diagnostics.compute_flow_integrals(
         solver.particles, solver.time, record_history=False
-    )["kinetic_energy"]
+    )["total_kinetic_energy"]
     for _ in range(20):
         solver.advance()
-    evolved_position = solver.particles_positions
+    evolved_position = solver.particle_position
     evolved_circulation = solver.particle_vortex_strength
     energy_after = solver.field_diagnostics.compute_flow_integrals(
         solver.particles, solver.time, record_history=False
-    )["kinetic_energy"]
+    )["total_kinetic_energy"]
 
     np.testing.assert_allclose(
         evolved_circulation.sum(axis=0), strength_before, rtol=0.0, atol=2e-12
@@ -177,7 +177,7 @@ def test_axisymmetric_coupled_stages_preserve_complete_particle_orbits(tmp_path)
         velocity=np.zeros_like(position),
         vortex_strength=circulation,
         core_radius=radius,
-        volume=np.full(count, 0.2**3),
+        particle_volume=np.full(count, 0.2**3),
         kinematic_viscosity=np.zeros(count),
         group_id=orbit_id,
         zone_id=orbit_id,
@@ -186,7 +186,7 @@ def test_axisymmetric_coupled_stages_preserve_complete_particle_orbits(tmp_path)
     for _ in range(5):
         solver.advance()
 
-    evolved_position = solver.particles_positions
+    evolved_position = solver.particle_position
     evolved_circulation = solver.particle_vortex_strength
     for orbit in range(2):
         selected = orbit_id == orbit

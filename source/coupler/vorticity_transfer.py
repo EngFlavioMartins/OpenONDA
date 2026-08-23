@@ -24,23 +24,23 @@ _BLOB_SECOND_MOMENT = {
 
 
 def vortex_strength_from_velocity_trace(
-    positions: np.ndarray,
+    position: np.ndarray,
     particle_spacing: float,
     velocity_at: VelocityEvaluator,
 ) -> np.ndarray:
-    """Integrate ``n x u`` over each cubic particle control volume."""
-    pos = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
-    vortex_strength = np.zeros_like(pos)
+    """Integrate ``normal x velocity`` over each cubic particle control volume."""
+    position = np.asarray(position, dtype=np.float64).reshape(-1, 3)
+    vortex_strength = np.zeros_like(position)
     offset = np.zeros(3, dtype=np.float64)
     for axis in range(3):
         offset.fill(0.0)
         offset[axis] = 0.5 * particle_spacing
-        delta_u = np.asarray(velocity_at(pos + offset), dtype=np.float64) - np.asarray(
-            velocity_at(pos - offset), dtype=np.float64
-        )
+        velocity_difference = np.asarray(
+            velocity_at(position + offset), dtype=np.float64
+        ) - np.asarray(velocity_at(position - offset), dtype=np.float64)
         normal = np.zeros(3, dtype=np.float64)
         normal[axis] = 1.0
-        vortex_strength += particle_spacing**2 * np.cross(normal, delta_u)
+        vortex_strength += particle_spacing**2 * np.cross(normal, velocity_difference)
     return vortex_strength
 
 
@@ -104,7 +104,7 @@ class TransferLattice:
 
     origin: np.ndarray
     shape: tuple[int, int, int]
-    positions: np.ndarray
+    position: np.ndarray
     interior_nodes: np.ndarray
 
 
@@ -128,19 +128,19 @@ def build_transfer_lattice(
         for axis in range(3)
     )
     grid = np.meshgrid(*axes, indexing="ij")
-    positions = np.column_stack([component.ravel() for component in grid])
+    position = np.column_stack([component.ravel() for component in grid])
     shape = (len(axes[0]), len(axes[1]), len(axes[2]))
     interior = (
-        np.zeros(len(positions), dtype=bool)
+        np.zeros(len(position), dtype=bool)
         if interior_at_node is None
-        else np.asarray(interior_at_node(positions), dtype=bool).reshape(-1)
+        else np.asarray(interior_at_node(position), dtype=bool).reshape(-1)
     )
-    if interior.shape != (len(positions),):
+    if interior.shape != (len(position),):
         raise ValueError("interior_at_node returned the wrong number of values")
     return TransferLattice(
         origin=np.array([axis[0] for axis in axes], dtype=np.float64),
         shape=shape,
-        positions=positions,
+        position=position,
         interior_nodes=interior,
     )
 
@@ -170,16 +170,16 @@ def discrete_divergence(
     shape: tuple[int, int, int],
     particle_spacing: float,
 ) -> np.ndarray:
-    """Return centred ``div_h(omega)`` on lattice interior nodes."""
+    """Return centred ``div_h(vorticity)`` on lattice interior nodes."""
     field = np.asarray(vortex_strength, dtype=np.float64).reshape(*shape, 3)
     h = float(particle_spacing)
     if min(shape) < 3:
         return np.zeros((0, 0, 0), dtype=np.float64)
-    omega = field / h**3
+    vorticity = field / h**3
     return (
-        (omega[2:, 1:-1, 1:-1, 0] - omega[:-2, 1:-1, 1:-1, 0])
-        + (omega[1:-1, 2:, 1:-1, 1] - omega[1:-1, :-2, 1:-1, 1])
-        + (omega[1:-1, 1:-1, 2:, 2] - omega[1:-1, 1:-1, :-2, 2])
+        (vorticity[2:, 1:-1, 1:-1, 0] - vorticity[:-2, 1:-1, 1:-1, 0])
+        + (vorticity[1:-1, 2:, 1:-1, 1] - vorticity[1:-1, :-2, 1:-1, 1])
+        + (vorticity[1:-1, 1:-1, 2:, 2] - vorticity[1:-1, 1:-1, :-2, 2])
     ) / (2.0 * h)
 
 
@@ -193,9 +193,9 @@ def normalized_divergence(
     divergence = discrete_divergence(strength, shape, particle_spacing)
     if divergence.size == 0:
         return 0.0, 0.0
-    omega = strength[1:-1, 1:-1, 1:-1] / float(particle_spacing) ** 3
-    scale_l2 = float(np.linalg.norm(omega)) / np.sqrt(max(omega.size // 3, 1))
-    scale_max = float(np.max(np.linalg.norm(omega, axis=-1), initial=0.0))
+    vorticity = strength[1:-1, 1:-1, 1:-1] / float(particle_spacing) ** 3
+    scale_l2 = float(np.linalg.norm(vorticity)) / np.sqrt(max(vorticity.size // 3, 1))
+    scale_max = float(np.max(np.linalg.norm(vorticity, axis=-1), initial=0.0))
     h = float(particle_spacing)
     l2 = h * float(np.linalg.norm(divergence)) / np.sqrt(divergence.size)
     linf = h * float(np.max(np.abs(divergence), initial=0.0))
@@ -206,16 +206,16 @@ def normalized_divergence(
 class TransferResult:
     """Correction particles and diagnostics from one FVM-to-VPM handoff."""
 
-    pos: np.ndarray
-    circ: np.ndarray
-    vol: np.ndarray
-    rad: np.ndarray
+    position: np.ndarray
+    vortex_strength: np.ndarray
+    particle_volume: np.ndarray
+    core_radius: np.ndarray
     updated_indices: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=np.int64))
-    updated_circulation: np.ndarray = field(
+    updated_vortex_strength: np.ndarray = field(
         default_factory=lambda: np.empty((0, 3), dtype=np.float64)
     )
-    n_existing: int = 0
-    n_support: int = 0
+    n_existing_particles: int = 0
+    n_support_nodes: int = 0
     correction_vortex_strength_l1: float = 0.0
     correction_vortex_strength_net: np.ndarray = field(default_factory=lambda: np.zeros(3))
     divergence_correction_l2: float = 0.0
@@ -223,16 +223,16 @@ class TransferResult:
     diagnostics_evaluated: bool = True
 
     @property
-    def n_added(self) -> int:
-        return len(self.pos)
+    def n_added_particles(self) -> int:
+        return len(self.position)
 
     @property
-    def n_updated(self) -> int:
+    def n_updated_particles(self) -> int:
         return len(self.updated_indices)
 
     @property
-    def n_total(self) -> int:
-        return self.n_existing + self.n_added
+    def n_total_particles(self) -> int:
+        return self.n_existing_particles + self.n_added_particles
 
 
 def _transfer_log_record(step: int, result: TransferResult) -> str:
@@ -243,11 +243,13 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
         else "not_evaluated"
     )
     return (
-        f"[Coupler][Transfer] step={step} existing={result.n_existing} "
-        f"updated={result.n_updated} added={result.n_added} "
-        f"support_nodes={result.n_support} "
-        f"gamma_correction_abs_sum_m3_s={result.correction_vortex_strength_l1:.3e} "
-        f"gamma_correction_net_norm_m3_s="
+        f"[Coupler][Transfer] step={step} existing_particles={result.n_existing_particles} "
+        f"updated_particles={result.n_updated_particles} "
+        f"added_particles={result.n_added_particles} "
+        f"support_nodes={result.n_support_nodes} "
+        "vortex_strength_correction_magnitude_sum_m3_s="
+        f"{result.correction_vortex_strength_l1:.3e} "
+        f"net_vortex_strength_correction_magnitude_m3_s="
         f"{float(np.linalg.norm(result.correction_vortex_strength_net)):.3e} "
         f"divergence_l2_rel={divergence}"
     )
@@ -263,7 +265,7 @@ def solenoidal_velocity_correction(
     identity_authority_at: Callable[[np.ndarray], np.ndarray] | None = None,
     core_radius_ratio: float,
     blob_second_moment: float = 1.5,
-    n_existing: int = 0,
+    n_existing_particles: int = 0,
     compute_diagnostics: bool = True,
 ) -> TransferResult:
     r"""Return a blob-consistent compatible curl as correction particles.
@@ -339,11 +341,11 @@ def solenoidal_velocity_correction(
 
     identity_authority = np.asarray(
         (authority_at if identity_authority_at is None else identity_authority_at)(
-            lattice.positions
+            lattice.position
         ),
         dtype=np.float64,
     ).reshape(-1)
-    if identity_authority.shape != (len(lattice.positions),):
+    if identity_authority.shape != (len(lattice.position),):
         raise ValueError("identity_authority_at returned the wrong number of values")
     identity_active = identity_authority.reshape(shape) > 0.0
     outside_identity = ~identity_active & np.any(correction != 0.0, axis=-1)
@@ -367,22 +369,22 @@ def solenoidal_velocity_correction(
     correction[~support] = 0.0
     flat = correction.reshape(-1, 3)
     nonzero = support.reshape(-1) & np.any(flat != 0.0, axis=1)
-    position = lattice.positions[nonzero]
-    circulation = flat[nonzero]
-    volume = np.full(len(position), h**3, dtype=np.float64)
-    radius = np.full(len(position), h * float(core_radius_ratio), dtype=np.float64)
+    position = lattice.position[nonzero]
+    vortex_strength = flat[nonzero]
+    particle_volume = np.full(len(position), h**3, dtype=np.float64)
+    core_radius = np.full(len(position), h * float(core_radius_ratio), dtype=np.float64)
     divergence_l2, divergence_linf = (0.0, 0.0)
     if compute_diagnostics:
         divergence_l2, divergence_linf = normalized_divergence(flat, shape, h)
     return TransferResult(
-        pos=position,
-        circ=circulation,
-        vol=volume,
-        rad=radius,
-        n_existing=int(n_existing),
-        n_support=int(support.sum()),
-        correction_vortex_strength_l1=float(np.linalg.norm(circulation, axis=1).sum()),
-        correction_vortex_strength_net=np.sum(circulation, axis=0),
+        position=position,
+        vortex_strength=vortex_strength,
+        particle_volume=particle_volume,
+        core_radius=core_radius,
+        n_existing_particles=int(n_existing_particles),
+        n_support_nodes=int(support.sum()),
+        correction_vortex_strength_l1=float(np.linalg.norm(vortex_strength, axis=1).sum()),
+        correction_vortex_strength_net=np.sum(vortex_strength, axis=0),
         divergence_correction_l2=divergence_l2,
         divergence_correction_linf=divergence_linf,
         diagnostics_evaluated=compute_diagnostics,
@@ -399,10 +401,10 @@ def coalesce_lattice_corrections(
 ) -> TransferResult:
     """Add coincident same-kernel corrections through existing particles.
 
-    Only circulation is updated.  Position, radius, volume, viscosity, IDs,
-    and all other persistent fields remain untouched.
+    Only vortex strength is updated. Position, core radius, particle volume,
+    kinematic viscosity, IDs, and all other persistent fields remain untouched.
     """
-    if result.n_added == 0 or len(existing_position) == 0:
+    if result.n_added_particles == 0 or len(existing_position) == 0:
         return result
 
     position = np.asarray(existing_position, dtype=np.float64).reshape(-1, 3)
@@ -422,7 +424,7 @@ def coalesce_lattice_corrections(
     for particle_index in np.flatnonzero(on_lattice):
         existing_by_node.setdefault(tuple(lattice_index[particle_index]), int(particle_index))
 
-    correction_index = np.rint((result.pos - lattice.origin) / h).astype(np.int64)
+    correction_index = np.rint((result.position - lattice.origin) / h).astype(np.int64)
     matched_particle = np.array(
         [existing_by_node.get(tuple(index), -1) for index in correction_index], dtype=np.int64
     )
@@ -432,11 +434,11 @@ def coalesce_lattice_corrections(
 
     order = np.argsort(matched_particle[matched])
     result.updated_indices = matched_particle[matched][order]
-    result.updated_circulation = result.circ[matched][order]
-    result.pos = result.pos[~matched]
-    result.circ = result.circ[~matched]
-    result.vol = result.vol[~matched]
-    result.rad = result.rad[~matched]
+    result.updated_vortex_strength = result.vortex_strength[matched][order]
+    result.position = result.position[~matched]
+    result.vortex_strength = result.vortex_strength[~matched]
+    result.particle_volume = result.particle_volume[~matched]
+    result.core_radius = result.core_radius[~matched]
     return result
 
 
@@ -460,7 +462,7 @@ class VorticityTransfer:
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
         self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
         self._box: np.ndarray | None = None
-        self._cell_centers: np.ndarray | None = None
+        self._cell_centre: np.ndarray | None = None
         self._cell_tree = None
         self._velocity_trace: FVMVelocityInterpolator | None = None
         self._body_bounds: np.ndarray | None = None
@@ -475,9 +477,9 @@ class VorticityTransfer:
 
     def _build_face_cell_index(self) -> None:
         self._face_cells = {}
-        if self._cell_centers is None or self._box is None:
+        if self._cell_centre is None or self._box is None:
             return
-        centres = self._cell_centers
+        centres = self._cell_centre
         for axis in range(3):
             for side, (bound, sign) in enumerate(
                 ((self._box[2 * axis], -1.0), (self._box[2 * axis + 1], 1.0))
@@ -519,12 +521,12 @@ class VorticityTransfer:
         )
 
     def check_vortex_line_closure(self, velocity_gradient: np.ndarray) -> dict[str, float]:
-        omega = self._vorticity_from_gradient(velocity_gradient)
-        scale = float(np.linalg.norm(omega, axis=1).mean()) + np.finfo(float).tiny
+        vorticity = self._vorticity_from_gradient(velocity_gradient)
+        scale = float(np.linalg.norm(vorticity, axis=1).mean()) + np.finfo(float).tiny
         return {
-            name: float(np.mean(np.abs(omega[index] @ normal)) / scale)
+            name: float(np.mean(np.abs(vorticity[index] @ normal)) / scale)
             for name, (index, normal) in self._face_cells.items()
-            if index.max(initial=-1) < len(omega)
+            if index.max(initial=-1) < len(vorticity)
         }
 
     def setup(self, fvm) -> None:
@@ -532,25 +534,29 @@ class VorticityTransfer:
         self._box = np.asarray(transfer_box, dtype=np.float64)
         from scipy.spatial import cKDTree  # type: ignore[attr-defined]
 
-        self._cell_centers = np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64)
+        self._cell_centre = np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64)
 
         # Partitioned FVM getters are collective even though only rank zero
         # receives assembled arrays. Keep their order identical on all ranks.
-        wall_patches = [bc.name for bc in fvm.setup.boundaries if bc.mesh_type == "wall"]
+        wall_patches = [
+            boundary_condition.name
+            for boundary_condition in fvm.setup.boundaries
+            if boundary_condition.mesh_type == "wall"
+        ]
         wall_faces = None
         if len(wall_patches) == 1:
             wall_faces = np.asarray(
                 fvm.get_boundary_face_centre_coordinates(wall_patches[0]), dtype=np.float64
             ).reshape(-1, 3)
 
-        if len(self._cell_centers) == 0:
+        if len(self._cell_centre) == 0:
             self._build_face_cell_index()
             return
-        self._cell_tree = cKDTree(self._cell_centers)
+        self._cell_tree = cKDTree(self._cell_centre)
         self._velocity_trace = FVMVelocityInterpolator(
-            self._cell_centers,
+            self._cell_centre,
             self._cell_tree,
-            neighbours=4,
+            neighbour_count=4,
         )
 
         if wall_faces is not None and len(wall_faces):
@@ -587,7 +593,7 @@ class VorticityTransfer:
         self._solid_bodies = tuple(body for body in bodies if body.has_solid_geometry)
         if self._solid_bodies:
             self._body_bounds = None
-            self._lattice_anchor = self._cell_centers[0].copy()
+            self._lattice_anchor = self._cell_centre[0].copy()
 
         self._lattice = build_transfer_lattice(
             self._box,
@@ -598,7 +604,7 @@ class VorticityTransfer:
         self._build_face_cell_index()
         logger.info(
             "[Coupler][TransferGrid] nodes=%d h_m=%.4g authority_ramp_m=%.4g vpm_only_width_m=%.4g",
-            len(self._lattice.positions),
+            len(self._lattice.position),
             self.particle_spacing,
             self.authority_ramp_width,
             self.vpm_only_width,
@@ -639,7 +645,7 @@ class VorticityTransfer:
     def _sample_vpm_velocity(self, vpm, points: np.ndarray) -> np.ndarray:
         return self._chunked_evaluate(
             points,
-            lambda query: vpm.compute_target_velocities(
+            lambda query: vpm.compute_velocity_at_points(
                 query,
                 include_freestream=True,
                 zone_mask=None,
@@ -679,7 +685,7 @@ class VorticityTransfer:
         self.step += 1
         if self._box is None or self._lattice is None or self._velocity_trace is None:
             raise RuntimeError("VorticityTransfer.setup() has not prepared a transfer lattice")
-        cell_position = self._cell_centers
+        cell_position = self._cell_centre
         assert cell_position is not None
         velocity_values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
         gradient_values = np.asarray(velocity_gradient, dtype=np.float64).reshape(-1, 3, 3)
@@ -702,14 +708,14 @@ class VorticityTransfer:
             identity_authority_at=self._identity_authority,
             core_radius_ratio=self.core_radius_ratio,
             blob_second_moment=_BLOB_SECOND_MOMENT[getattr(vpm, "particle_kernel", "GAUSSIAN")],
-            n_existing=int(vpm.particles.n_particles),
+            n_existing_particles=int(vpm.particles.n_particles_total),
             compute_diagnostics=evaluate_diagnostics,
         )
 
         can_coalesce = all(
             hasattr(vpm.particles, name) for name in ("position_cpu", "core_radius_cpu")
         )
-        if result.n_added and can_coalesce:
+        if result.n_added_particles and can_coalesce:
             result = coalesce_lattice_corrections(
                 result,
                 vpm.particles.position_cpu(),
@@ -719,36 +725,38 @@ class VorticityTransfer:
                 self.particle_spacing * self.core_radius_ratio,
             )
 
-        required = result.n_total
+        required = result.n_total_particles
         capacity = int(vpm.particles.capacity)
         if required > capacity:
             raise RuntimeError(
                 "FVM-to-VPM correction requires "
-                f"{result.n_added} new particles ({result.n_existing} existing, "
+                f"{result.n_added_particles} new particles ({result.n_existing_particles} existing, "
                 f"required capacity {required}, VPM maximum {capacity}). Increase "
-                "VPMSetup.max_particles; the coupler will not delete wake particles."
+                "VPMSetup.max_n_particles; the coupler will not delete wake particles."
             )
 
-        if result.n_updated:
-            mask = np.zeros(result.n_existing, dtype=bool)
+        if result.n_updated_particles:
+            mask = np.zeros(result.n_existing_particles, dtype=bool)
             mask[result.updated_indices] = True
-            vpm.update_particle_vortex_strength(mask, result.updated_circulation)
+            vpm.update_particle_vortex_strength(mask, result.updated_vortex_strength)
 
-        if result.n_added:
+        if result.n_added_particles:
             dtype = vpm.np_dtype
             vpm.add_vortex_particles(
-                position=result.pos.astype(dtype),
-                velocity=np.zeros((result.n_added, 3), dtype=dtype),
-                vortex_strength=result.circ.astype(dtype),
-                core_radius=result.rad.astype(dtype),
-                volume=result.vol.astype(dtype),
-                kinematic_viscosity=np.full(result.n_added, self.kinematic_viscosity, dtype=dtype),
-                eddy_viscosity=np.zeros(result.n_added, dtype=dtype),
-                group_id=np.zeros(result.n_added, dtype=np.int32),
-                zone_id=np.zeros(result.n_added, dtype=np.int32),
+                position=result.position.astype(dtype),
+                velocity=np.zeros((result.n_added_particles, 3), dtype=dtype),
+                vortex_strength=result.vortex_strength.astype(dtype),
+                core_radius=result.core_radius.astype(dtype),
+                particle_volume=result.particle_volume.astype(dtype),
+                kinematic_viscosity=np.full(
+                    result.n_added_particles, self.kinematic_viscosity, dtype=dtype
+                ),
+                eddy_viscosity=np.zeros(result.n_added_particles, dtype=dtype),
+                group_id=np.zeros(result.n_added_particles, dtype=np.int32),
+                zone_id=np.zeros(result.n_added_particles, dtype=np.int32),
             )
 
-        if result.n_added:
+        if result.n_added_particles:
             notify_mutation = getattr(vpm, "notify_external_particle_mutation", None)
             if notify_mutation is not None:
                 notify_mutation()

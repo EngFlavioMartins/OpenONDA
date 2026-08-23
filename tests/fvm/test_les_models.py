@@ -15,9 +15,9 @@ ghosts), so the eddy viscosity is an analytic check rather than a smoke test:
 import numpy as np
 import pytest
 
-from source.solvers.FVM.config.types import TurbulenceConfig
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.turbulence import (
+from source.solvers.fvm.config.types import TurbulenceConfig
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.turbulence import (
     WALE,
     DynamicSmagorinsky,
     EquilibriumSmagorinsky,
@@ -25,7 +25,7 @@ from source.solvers.FVM.turbulence import (
     Smagorinsky,
     create_model,
 )
-from source.solvers.FVM.turbulence.les_models import _wale_operator
+from source.solvers.fvm.turbulence.les_models import _wale_operator
 
 from ._structured_mesh import structured_box
 
@@ -36,7 +36,7 @@ def _field_on_mesh(mesh, geo, fn):
         patch["velocity_type"] = "fixedValue"
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    cc, fc = geo["cell_centroids"], geo["face_centroids"]
+    cc, fc = geo["cell_centre"], geo["face_centre"]
     velocity = np.zeros((n_elem + mesh["n_faces"] - n_int, 3))
     velocity[:n_elem] = fn(cc[:, 0], cc[:, 1], cc[:, 2])
     for b in mesh["boundary"]:
@@ -70,7 +70,7 @@ class TestLESModels:
         self.mesh = structured_box(8, 8, 8)
         self.geo = compute_mesh_geometry(self.mesh)
         self.models = {
-            "smag": Smagorinsky(self.mesh, self.geo, Cs=0.17),
+            "smag": Smagorinsky(self.mesh, self.geo, smagorinsky_coefficient=0.17),
             "equilibrium_smag": EquilibriumSmagorinsky(self.mesh, self.geo),
             "wale": WALE(self.mesh, self.geo),
             "sigma": Sigma(self.mesh, self.geo),
@@ -84,7 +84,9 @@ class TestLESModels:
     def test_uniform_flow_zero_nut(self):
         for key in self.models:
             eddy_viscosity = self._nut(key, _uniform)
-            assert np.max(np.abs(eddy_viscosity)) < 1e-12, f"{key} nut nonzero for uniform flow"
+            assert np.max(np.abs(eddy_viscosity)) < 1e-12, (
+                f"{key} eddy viscosity nonzero for uniform flow"
+            )
 
     def test_pure_shear_wale_and_sigma_vanish(self):
         smag = self._nut("smag", _pure_shear)
@@ -97,8 +99,8 @@ class TestLESModels:
     def test_equilibrium_smagorinsky_matches_incompressible_reduction(self):
         model = self.models["equilibrium_smag"]
         eddy_viscosity = self._nut("equilibrium_smag", _pure_shear)
-        delta = self.geo["cell_volumes"] ** (1.0 / 3.0)
-        expected = model.equivalent_Cs**2 * delta**2
+        delta = self.geo["cell_volume"] ** (1.0 / 3.0)
+        expected = model.equivalent_smagorinsky_coefficient**2 * delta**2
         np.testing.assert_allclose(eddy_viscosity, expected, rtol=1e-12, atol=1e-14)
 
     def test_equilibrium_smagorinsky_uses_full_algebraic_energy_equation(self):
@@ -110,10 +112,10 @@ class TestLESModels:
         trace = float(np.sum(diagonal))
         dev = diagonal - trace / 3.0
         contraction = float(np.dot(dev, diagonal))
-        delta = self.geo["cell_volumes"] ** (1.0 / 3.0)
-        a = model.Ce / delta
+        delta = self.geo["cell_volume"] ** (1.0 / 3.0)
+        a = model.subgrid_dissipation_coefficient / delta
         b = (2.0 / 3.0) * trace
-        c = 2.0 * model.Ck * delta * contraction
+        c = 2.0 * model.subgrid_kinetic_energy_coefficient * delta * contraction
         expected = np.square((-b + np.sqrt(b * b + 4.0 * a * c)) / (2.0 * a))
         np.testing.assert_allclose(k_sgs, expected, rtol=1e-12, atol=1e-14)
 
@@ -142,7 +144,10 @@ class TestLESModels:
 
     @pytest.mark.parametrize(
         ("config", "attribute"),
-        [(TurbulenceConfig.wale(0.0), "Cw"), (TurbulenceConfig.sigma(0.0), "Csigma")],
+        [
+            (TurbulenceConfig.wale(0.0), "wale_coefficient"),
+            (TurbulenceConfig.sigma(0.0), "sigma_coefficient"),
+        ],
     )
     def test_explicit_zero_coefficient_is_preserved(self, config, attribute):
         model = create_model(config, self.mesh, self.geo)

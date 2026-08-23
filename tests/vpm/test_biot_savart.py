@@ -38,8 +38,8 @@ from math import erf, exp, pi, sqrt
 
 import numpy as np
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 
 # ── Analytical Gaussian kernel helpers ───────────────────────────────────────
 
@@ -53,7 +53,7 @@ def _u_y_analytical(r: float, sigma: float, alpha_z: float) -> float:
     """Analytical y-velocity at probe (r, 0, 0) from a z-particle at the origin.
 
     Derived directly from the kernel formula in kernels_common.py:
-        target_velocities[i] = -q(ρ) * (r_ij × αⱼ) / |r_ij|³ + U_bg
+        target_velocity[i] = -q(ρ) * (r_ij × αⱼ) / |r_ij|³ + U_bg
     For r_ij = (r, 0, 0), αⱼ = (0, 0, α_z):
         r_ij × αⱼ = (0, -r·α_z, 0)
         u_y = -q(r/σ) * (-r·α_z) / r³  =  q(r/σ) * α_z / r²
@@ -89,7 +89,7 @@ def _single_particle_solver(tmp_path):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([(4.0 / 3.0) * np.pi * _SIGMA**3]),
+        particle_volume=np.array([(4.0 / 3.0) * np.pi * _SIGMA**3]),
         kinematic_viscosity=np.array([0.0]),
     )
     return solver
@@ -128,7 +128,7 @@ def test_gaussian_kernel_velocity_matches_analytical_formula(tmp_path):
     r_values = np.array([0.5, 1.0, 2.0, 4.0, 10.0]) * _SIGMA
     probes = np.column_stack([r_values, np.zeros_like(r_values), np.zeros_like(r_values)])
 
-    vel_numerical = solver.compute_target_velocities(probes, include_freestream=False)
+    vel_numerical = solver.compute_velocity_at_points(probes, include_freestream=False)
     u_y_numerical = vel_numerical[:, 1]
 
     for idx, r in enumerate(r_values):
@@ -168,7 +168,7 @@ def test_gaussian_kernel_far_field_power_law(tmp_path):
     # Two far-field distances: r₁ = 10σ, r₂ = 20σ  → expected ratio = (20/10)² = 4
     r1, r2 = 10.0 * _SIGMA, 20.0 * _SIGMA
     probes = np.array([[r1, 0.0, 0.0], [r2, 0.0, 0.0]])
-    vel = solver.compute_target_velocities(probes, include_freestream=False)
+    vel = solver.compute_velocity_at_points(probes, include_freestream=False)
     u1, u2 = float(vel[0, 1]), float(vel[1, 1])
 
     expected_ratio = (r2 / r1) ** 2  # = 4.0

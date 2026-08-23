@@ -47,7 +47,7 @@ from stage_4b_spectral_pilot import (  # noqa: E402
     MODELS,
     VorticitySolver,
     coarse_reference,
-    energy_spectrum,
+    kinetic_energy_spectrum,
 )
 
 DISPLAY_LABELS = {**LABELS, "filtered_dns": "Filtered reference"}
@@ -74,8 +74,8 @@ def configuration(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "reference_n": args.reference_n,
         "les_n": args.les_n,
-        "viscosity": args.viscosity,
-        "dt": args.time_step_size,
+        "kinematic_viscosity": args.kinematic_viscosity,
+        "time_step_size": args.time_step_size,
         "end_time": args.end_time,
         "save_interval": args.save_interval,
         "checkpoint_interval": args.checkpoint_interval,
@@ -276,8 +276,8 @@ def initialize(
     dict[str, list[dict[str, Any]]],
     list[dict[str, Any]],
 ]:
-    reference_solver = VorticitySolver(args.reference_n, args.viscosity)
-    les_solver = VorticitySolver(args.les_n, args.viscosity)
+    reference_solver = VorticitySolver(args.reference_n, args.kinematic_viscosity)
+    les_solver = VorticitySolver(args.les_n, args.kinematic_viscosity)
     gaussian_delta = 2.0 * (2.0 * np.pi / args.les_n) / np.sqrt(6.0)
     if args.restart is not None:
         (
@@ -345,7 +345,9 @@ def append_diagnostics(
         gaussian_delta,
         time,
     )
-    fine_record["energy_spectrum"] = energy_spectrum(reference_solver, reference_vorticity).tolist()
+    fine_record["kinetic_energy_spectrum"] = kinetic_energy_spectrum(
+        reference_solver, reference_vorticity
+    ).tolist()
     fine_reference_history.append(fine_record)
     filtered = coarse_reference(
         reference_solver,
@@ -353,7 +355,7 @@ def append_diagnostics(
         les_solver.grid.n,
         gaussian_delta,
     )
-    filtered_spectrum = energy_spectrum(les_solver, filtered)
+    filtered_spectrum = kinetic_energy_spectrum(les_solver, filtered)
     filtered_record = add_reference_diagnostics(
         les_solver,
         filtered,
@@ -361,7 +363,7 @@ def append_diagnostics(
         gaussian_delta,
         time,
     )
-    filtered_record["energy_spectrum"] = filtered_spectrum.tolist()
+    filtered_record["kinetic_energy_spectrum"] = filtered_spectrum.tolist()
     histories["filtered_dns"].append(filtered_record)
     for model, state in states.items():
         record = add_model_diagnostics(
@@ -374,7 +376,7 @@ def append_diagnostics(
             model,
             time,
         )
-        record["energy_spectrum"] = energy_spectrum(les_solver, state).tolist()
+        record["kinetic_energy_spectrum"] = kinetic_energy_spectrum(les_solver, state).tolist()
         histories[model].append(record)
 
 
@@ -532,7 +534,7 @@ def time_mean(records: list[dict[str, Any]], quantity: str) -> float:
 
 
 def time_mean_spectrum(records: list[dict[str, Any]]) -> np.ndarray:
-    return np.mean([record["energy_spectrum"] for record in records], axis=0)
+    return np.mean([record["kinetic_energy_spectrum"] for record in records], axis=0)
 
 
 def summarize(
@@ -544,8 +546,8 @@ def summarize(
     start_time = float(stationarity["values"]["window_start_time"])
     selected = window_records(histories, start_time)
     reference = selected["filtered_dns"]
-    reference_energy = time_mean(reference, "energy")
-    reference_enstrophy = time_mean(reference, "enstrophy")
+    reference_total_kinetic_energy = time_mean(reference, "total_kinetic_energy")
+    reference_enstrophy = time_mean(reference, "total_enstrophy")
     reference_spectrum = time_mean_spectrum(reference)
     models = {}
     budgets = {}
@@ -554,10 +556,12 @@ def summarize(
         spectrum = time_mean_spectrum(records)
         budgets[model] = budget_summary(histories[model])
         models[model] = {
-            "mean_energy_relative_error": abs(time_mean(records, "energy") - reference_energy)
-            / reference_energy,
-            "mean_enstrophy_relative_error": abs(
-                time_mean(records, "enstrophy") - reference_enstrophy
+            "mean_total_kinetic_energy_relative_error": abs(
+                time_mean(records, "total_kinetic_energy") - reference_total_kinetic_energy
+            )
+            / reference_total_kinetic_energy,
+            "mean_total_enstrophy_relative_error": abs(
+                time_mean(records, "total_enstrophy") - reference_enstrophy
             )
             / reference_enstrophy,
             "mean_spectral_relative_l2": float(
@@ -565,15 +569,15 @@ def summarize(
             ),
             "mean_instantaneous_spectral_relative_l2": time_mean(records, "spectral_relative_l2"),
             "mean_high_k_energy_fraction": time_mean(records, "high_k_energy_fraction"),
-            "maximum_high_k_energy_fraction": max(
+            "max_high_k_energy_fraction": max(
                 record["high_k_energy_fraction"] for record in records
             ),
             "mean_sgs_power": time_mean(records, "sgs_power"),
             "mean_ssev_activation": time_mean(records, "activation"),
-            "maximum_kkt_condition": max(record["kkt_condition"] for record in records),
-            "maximum_divergence_relative": max(record["divergence_relative"] for record in records),
+            "max_kkt_condition": max(record["kkt_condition"] for record in records),
+            "max_divergence_relative": max(record["divergence_relative"] for record in records),
             "energy_budget_relative_residual": budgets[model]["relative_residual"],
-            "time_mean_energy_spectrum": spectrum.tolist(),
+            "time_mean_total_kinetic_energy_spectrum": spectrum.tolist(),
         }
     structural_improvement = 1.0 - (
         models["structural"]["mean_spectral_relative_l2"]
@@ -582,7 +586,7 @@ def summarize(
     screen_checks = {
         "reference_stationary_and_resolved": stationarity["pass"],
         "all_models_finite_and_solenoidal": max(
-            model["maximum_divergence_relative"] for model in models.values()
+            model["max_divergence_relative"] for model in models.values()
         )
         < 1.0e-12,
         "all_energy_budgets_close": max(
@@ -590,16 +594,15 @@ def summarize(
         )
         < 2.0e-3,
         "structural_energy_error_below_10_percent": models["structural"][
-            "mean_energy_relative_error"
+            "mean_total_kinetic_energy_relative_error"
         ]
         < 0.10,
         "structural_enstrophy_error_below_10_percent": models["structural"][
-            "mean_enstrophy_relative_error"
+            "mean_total_enstrophy_relative_error"
         ]
         < 0.10,
         "structural_spectrum_improves_by_25_percent": structural_improvement > 0.25,
-        "structural_no_high_k_pileup": models["structural"]["maximum_high_k_energy_fraction"]
-        < 0.01,
+        "structural_no_high_k_pileup": models["structural"]["max_high_k_energy_fraction"] < 0.01,
     }
     return {
         "gate": "B.1d stationary 64^3/32^3 paired screen",
@@ -615,7 +618,7 @@ def summarize(
         "budgets": budgets,
         "histories": histories,
         "fine_reference_history": fine_reference_history,
-        "reference_time_mean_energy_spectrum": reference_spectrum.tolist(),
+        "reference_time_mean_total_kinetic_energy_spectrum": reference_spectrum.tolist(),
     }
 
 
@@ -708,10 +711,14 @@ def plot_histories(result: dict[str, Any], output: Path) -> None:
     start = result["measurement_window_start_time"]
     fig, axes = plt.subplots(2, 2, figsize=(11.4, 7.5), constrained_layout=True)
     quantities = (
-        ("energy", "Resolved kinetic energy", None),
-        ("enstrophy", "Resolved enstrophy", None),
+        ("total_kinetic_energy", "Resolved kinetic total_kinetic_energy", None),
+        ("total_enstrophy", "Resolved total_enstrophy", None),
         ("spectral_relative_l2", "Instantaneous spectrum error", "relative $L_2$ error"),
-        ("high_k_energy_fraction", "High-wavenumber energy", "energy fraction"),
+        (
+            "high_k_energy_fraction",
+            "High-wavenumber total_kinetic_energy",
+            "total_kinetic_energy fraction",
+        ),
     )
     for axis, (quantity, title, ylabel) in zip(axes.flat, quantities, strict=True):
         models = MODELS if quantity == "spectral_relative_l2" else ("filtered_dns", *MODELS)
@@ -745,8 +752,11 @@ def plot_histories(result: dict[str, Any], output: Path) -> None:
 def plot_spectra(result: dict[str, Any], output: Path) -> None:
     fig, axis = plt.subplots(figsize=(7.5, 4.9), constrained_layout=True)
     spectra = {
-        "filtered_dns": result["reference_time_mean_energy_spectrum"],
-        **{model: result["models"][model]["time_mean_energy_spectrum"] for model in MODELS},
+        "filtered_dns": result["reference_time_mean_total_kinetic_energy_spectrum"],
+        **{
+            model: result["models"][model]["time_mean_total_kinetic_energy_spectrum"]
+            for model in MODELS
+        },
     }
     for model, values_list in spectra.items():
         values = np.asarray(values_list)
@@ -764,7 +774,7 @@ def plot_spectra(result: dict[str, Any], output: Path) -> None:
         )
     axis.set_xlabel(r"wavenumber shell $k$")
     axis.set_ylabel(r"time-mean $E(k)$")
-    axis.set_title("Stationary energy-spectrum reference overlay")
+    axis.set_title("Stationary total_kinetic_energy-spectrum reference overlay")
     axis.grid(color=GRID, linewidth=0.7, which="both")
     axis.spines[["top", "right"]].set_visible(False)
     axis.legend(frameon=False, fontsize=8)
@@ -775,8 +785,8 @@ def plot_spectra(result: dict[str, Any], output: Path) -> None:
 
 def plot_model_summary(result: dict[str, Any], output: Path) -> None:
     metrics = (
-        ("mean_energy_relative_error", "Mean energy error"),
-        ("mean_enstrophy_relative_error", "Mean enstrophy error"),
+        ("mean_total_kinetic_energy_relative_error", "Mean total_kinetic_energy error"),
+        ("mean_total_enstrophy_relative_error", "Mean total_enstrophy error"),
         ("mean_spectral_relative_l2", "Time-mean spectrum error"),
     )
     fig, axes = plt.subplots(1, 3, figsize=(11.3, 3.9), constrained_layout=True)
@@ -809,7 +819,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference-n", type=int, default=64)
     parser.add_argument("--les-n", type=int, default=32)
-    parser.add_argument("--viscosity", type=float, default=0.02)
+    parser.add_argument("--kinematic-viscosity", type=float, default=0.02)
     parser.add_argument("--time-step-size", dest="time_step_size", type=float, default=0.02)
     parser.add_argument("--end-time", type=float, default=60.0)
     parser.add_argument("--save-interval", type=float, default=0.5)

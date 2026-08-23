@@ -3,12 +3,12 @@ import copy
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble import convection, diffusion, matrix_assembly
-from source.solvers.FVM.fields import gradients
-from source.solvers.FVM.mesh import geometry
-from source.solvers.FVM.mesh.coupled import configure_cyclic_boundaries
-from source.solvers.FVM.mesh.validation import MeshValidationError
-from source.solvers.FVM.solve.simple_solver import (
+from source.solvers.fvm.assemble import convection, diffusion, matrix_assembly
+from source.solvers.fvm.fields import gradients
+from source.solvers.fvm.mesh import geometry
+from source.solvers.fvm.mesh.coupled import configure_cyclic_boundaries
+from source.solvers.fvm.mesh.validation import MeshValidationError
+from source.solvers.fvm.solve.simple_solver import (
     assemble_pressure_correction_equation_rhie_chow,
     update_scalar_boundaries,
 )
@@ -19,21 +19,21 @@ def _periodic_x_mesh(hand_built_3d_mesh):
     for patch in mesh["boundary"]:
         if patch["name"] == "xmin":
             patch.update(
-                bc_type="cyclic",
+                boundary_condition_type="cyclic",
                 velocity_type="cyclic",
                 pressure_type="cyclic",
                 neighbour_patch="xmax",
             )
         elif patch["name"] == "xmax":
             patch.update(
-                bc_type="cyclic",
+                boundary_condition_type="cyclic",
                 velocity_type="cyclic",
                 pressure_type="cyclic",
                 neighbour_patch="xmin",
             )
         else:
             patch.update(
-                bc_type="zeroGradient",
+                boundary_condition_type="zeroGradient",
                 velocity_type="zeroGradient",
                 pressure_type="zeroGradient",
             )
@@ -45,20 +45,26 @@ def _periodic_x_mesh(hand_built_3d_mesh):
 
 def test_cyclic_pairing_is_reciprocal_and_translational(hand_built_3d_mesh):
     mesh, geo = _periodic_x_mesh(hand_built_3d_mesh)
-    pair = mesh["boundary_pair_faces"]
+    pair = mesh["boundary_pair_face"]
     coupled = np.flatnonzero(pair >= 0)
 
     assert coupled.size == 8
     assert np.array_equal(pair[pair[coupled]], coupled)
-    assert np.all(mesh["boundary_neighbours"][coupled] >= 0)
-    assert np.all(np.sum(geo["face_sf"][coupled] * geo["face_cf_vector"][coupled], axis=1) > 0)
-    assert np.all((geo["face_weights"][coupled] > 0) & (geo["face_weights"][coupled] < 1))
+    assert np.all(mesh["boundary_neighbour_cell"][coupled] >= 0)
+    assert np.all(
+        np.sum(geo["face_area_vector"][coupled] * geo["cell_connection_vector"][coupled], axis=1)
+        > 0
+    )
+    assert np.all(
+        (geo["face_interpolation_weight"][coupled] > 0)
+        & (geo["face_interpolation_weight"][coupled] < 1)
+    )
 
 
 def test_cyclic_sparse_coupling_is_symmetric_with_constant_nullspace(hand_built_3d_mesh):
     mesh, _ = _periodic_x_mesh(hand_built_3d_mesh)
     n_faces = mesh["n_faces"]
-    coupled = mesh["boundary_neighbours"] >= 0
+    coupled = mesh["boundary_neighbour_cell"] >= 0
     flux = {
         "flux_cf": np.where(coupled, 1.0, 0.0),
         "flux_ff": np.where(coupled, -1.0, 0.0),
@@ -75,7 +81,7 @@ def test_cyclic_operators_preserve_a_constant_field(hand_built_3d_mesh):
     n_cells = mesh["n_cells"]
     n_total = n_cells + mesh["n_faces"] - mesh["n_interior_faces"]
     scalar = np.ones(n_total)
-    update_scalar_boundaries(scalar, mesh, mesh["boundary"], field_name="p")
+    update_scalar_boundaries(scalar, mesh, mesh["boundary"], field_name="kinematic_pressure")
 
     grad = gradients.compute_lsq_gradient(scalar, mesh, geo)
     diffusive = diffusion.assemble_diffusion_term(
@@ -88,9 +94,9 @@ def test_cyclic_operators_preserve_a_constant_field(hand_built_3d_mesh):
 
     velocity = np.zeros((n_total, 3))
     velocity[:, 0] = 1.0
-    mdot = convection.compute_volumetric_face_flux(velocity, mesh, geo)
+    volumetric_face_flux = convection.compute_volumetric_face_flux(velocity, mesh, geo)
     convective = convection.assemble_convection_term(
-        scalar, mdot, mesh, geo, mesh["boundary"], scheme="central"
+        scalar, volumetric_face_flux, mesh, geo, mesh["boundary"], scheme="central"
     )
     matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(convective, mesh)
     rhs = matrix_assembly.assemble_rhs_from_fluxes_vectorized(convective, mesh)

@@ -7,7 +7,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     ForceSampler,
@@ -20,7 +20,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.sampling.base import SamplingSchedule
+from source.solvers.fvm.sampling.base import SamplingSchedule
 
 from ._structured_mesh import structured_box
 
@@ -30,33 +30,33 @@ LINE_HEADER = [
     "x",
     "y",
     "z",
-    "Ux",
-    "Uy",
-    "Uz",
-    "omega_x",
-    "omega_y",
-    "omega_z",
-    "p",
+    "velocity_x",
+    "velocity_y",
+    "velocity_z",
+    "vorticity_x",
+    "vorticity_y",
+    "vorticity_z",
+    "kinematic_pressure",
 ]
 
 FORCES_HEADER = [
     "time",
     "step",
-    "dt",
+    "accepted_time_step_size",
     "patch",
-    "Fpx",
-    "Fpy",
-    "Fpz",
-    "Fvx",
-    "Fvy",
-    "Fvz",
-    "Ftx",
-    "Fty",
-    "Ftz",
-    "Cd",
-    "Cl",
-    "Cz",
-    "Cm",
+    "pressure_force_x",
+    "pressure_force_y",
+    "pressure_force_z",
+    "viscous_force_x",
+    "viscous_force_y",
+    "viscous_force_z",
+    "total_force_x",
+    "total_force_y",
+    "total_force_z",
+    "drag_coefficient",
+    "lift_coefficient",
+    "side_force_coefficient",
+    "pitching_moment_coefficient",
 ]
 
 
@@ -109,14 +109,14 @@ def test_force_history_lands_in_samples_with_unchanged_schema(tmp_path):
 
 def test_line_sampler_appends_a_time_aware_row_per_point(tmp_path):
     sampler = LineSampler(
-        start=[0.1, 0.5, 0.5], end=[0.9, 0.5, 0.5], n_points=4, file_name="centerline"
+        start=[0.1, 0.5, 0.5], end=[0.9, 0.5, 0.5], n_points=4, file_name="centreline"
     )
     solver = _solver(_config(samplers=(sampler,)), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(2):
             solver.advance()
 
-    csv_path = tmp_path / "samples" / "centerline.csv"
+    csv_path = tmp_path / "samples" / "centreline.csv"
     rows = _rows(csv_path)
     assert rows[0] == LINE_HEADER
     # One header + n_points rows per sampling event, two events.
@@ -134,10 +134,10 @@ def test_line_sampler_interpolates_a_uniform_field_exactly(tmp_path):
 
     data = sampler.sample(solver)
 
-    np.testing.assert_allclose(data["Ux"], 3.0)
-    np.testing.assert_allclose(data["Uy"], 0.0)
-    np.testing.assert_allclose(data["Uz"], 0.0)
-    np.testing.assert_allclose(data["p"], 7.0)
+    np.testing.assert_allclose(data["velocity_x"], 3.0)
+    np.testing.assert_allclose(data["velocity_y"], 0.0)
+    np.testing.assert_allclose(data["velocity_z"], 0.0)
+    np.testing.assert_allclose(data["kinematic_pressure"], 7.0)
 
 
 def test_line_sampler_reports_vorticity_of_a_linear_shear(tmp_path):
@@ -149,8 +149,8 @@ def test_line_sampler_reports_vorticity_of_a_linear_shear(tmp_path):
 
     # u_x = 2*y  ->  omega_z = dv/dx - du/dy = -2. Boundary-face values must be
     # set consistently too, or the gradient reconstruction skews boundary cells.
-    y_cells = solver.geo_data["cell_centroids"][:n, 1]
-    y_faces = solver.geo_data["face_centroids"][n_interior:, 1]
+    y_cells = solver.geo_data["cell_centre"][:n, 1]
+    y_faces = solver.geo_data["face_centre"][n_interior:, 1]
     solver.velocity[:] = 0.0
     solver.velocity[:n, 0] = 2.0 * y_cells
     solver.velocity[n:, 0] = 2.0 * y_faces
@@ -158,7 +158,7 @@ def test_line_sampler_reports_vorticity_of_a_linear_shear(tmp_path):
 
     data = sampler.sample(solver)
 
-    np.testing.assert_allclose(data["omega_z"], -2.0, atol=1e-6)
+    np.testing.assert_allclose(data["vorticity_z"], -2.0, atol=1e-6)
 
 
 def test_surface_sampler_writes_a_vts_with_vpm_compatible_arrays(tmp_path):
@@ -173,8 +173,8 @@ def test_surface_sampler_writes_a_vts_with_vpm_compatible_arrays(tmp_path):
     solver = _solver(_config(samplers=(sampler,)), tmp_path)
     n = solver.mesh_data["n_cells"]
     n_interior = solver.mesh_data["n_interior_faces"]
-    cells = solver.geo_data["cell_centroids"][:n]
-    faces = solver.geo_data["face_centroids"][n_interior:]
+    cells = solver.geo_data["cell_centre"][:n]
+    faces = solver.geo_data["face_centre"][n_interior:]
     solver.velocity[:n, 0] = 2.0 * cells[:, 0] + 3.0 * cells[:, 1]
     solver.velocity[n:, 0] = 2.0 * faces[:, 0] + 3.0 * faces[:, 1]
     solver._invalidate_derived_fields()
@@ -191,18 +191,18 @@ def test_surface_sampler_writes_a_vts_with_vpm_compatible_arrays(tmp_path):
     grid = pv.read(written[0])
     assert grid.dimensions == (4, 3, 1)
     assert set(grid.point_data) == {
-        "Velocity",
-        "VelocityMagnitude",
-        "Vorticity",
-        "VorticityMagnitude",
-        "Pressure",
+        "velocity",
+        "velocity_magnitude",
+        "vorticity",
+        "vorticity_magnitude",
+        "kinematic_pressure",
         "vtkValidPointMask",
     }
-    assert grid.point_data["Velocity"].shape == (12, 3)
-    assert "OpenONDASurfaceOrdering" in grid.field_data
+    assert grid.point_data["velocity"].shape == (12, 3)
+    assert "surface_ordering" in grid.field_data
     np.testing.assert_allclose(
-        grid.point_data["Velocity"][:, 0],
-        expected["Ux"].reshape(sampler.grid_shape).ravel(order="F"),
+        grid.point_data["velocity"][:, 0],
+        expected["velocity_x"].reshape(sampler.grid_shape).ravel(order="F"),
     )
 
 
@@ -229,7 +229,7 @@ def test_surface_sampler_cadence_is_owned_by_the_schedule(tmp_path):
 
 
 def test_explicit_force_sampler_writes_its_own_named_file(tmp_path):
-    extra = ForceSampler(patch_names=["ymin"], ref_velocity=0.5, file_name="wall_loads")
+    extra = ForceSampler(patch_names=["ymin"], reference_velocity=0.5, file_name="wall_loads")
     solver = _solver(_config(samplers=(extra,)), tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
         solver.advance()
@@ -246,7 +246,7 @@ def test_surface_sampler_masks_probes_inside_the_body(tmp_path):
     """Probe points geometrically inside the body are invalid in the output."""
     pv = pytest.importorskip("pyvista")
 
-    from source.solvers.FVM.mesh.adaptive_cartesian import AdaptiveCartesianMesher
+    from source.solvers.fvm.mesh.adaptive_cartesian import AdaptiveCartesianMesher
 
     from .test_preserve_body_geometry import write_box_stl
 
@@ -283,7 +283,7 @@ def test_surface_sampler_masks_probes_inside_the_body(tmp_path):
         def _vorticity_field(self):
             return np.zeros((n_cells, 3))
 
-    from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+    from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
     context = _Context()
     context.geo_data = compute_mesh_geometry(mesh)
@@ -302,7 +302,7 @@ def test_surface_sampler_masks_probes_inside_the_body(tmp_path):
     grid = pv.read(out / "masked_slice_000001.vts")
     points = np.asarray(grid.points)
     mask = np.asarray(grid.point_data["vtkValidPointMask"])
-    velocity = np.asarray(grid.point_data["Velocity"])
+    velocity = np.asarray(grid.point_data["velocity"])
     body = np.asarray(mesher.surface_bounds, dtype=np.float64)
     inside = (
         (points[:, 0] > body[0])

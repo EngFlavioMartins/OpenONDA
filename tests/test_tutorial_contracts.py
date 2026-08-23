@@ -22,14 +22,14 @@ SETUP_FILES = tuple(
             *(ROOT / "tutorials").rglob("*_setup.py"),
             *(ROOT / "tutorials").rglob("setup_*.py"),
         }
-        if "run_backups" not in path.parts
+        if "run_archives" not in path.parts
     )
 )
 COUPLED_SETUPS = tuple(
     path
     for path in SETUP_FILES
-    if "coupled_FVM_VPM" in path.parts
-    and "referenceFlow" not in path.parts
+    if "coupled_fvm_vpm" in path.parts
+    and "reference_flow" not in path.parts
     and "reference_flow" not in path.parts
 )
 PUBLIC_NAMESPACES = {
@@ -54,7 +54,7 @@ FORBIDDEN_METADATA_KEYS = {
     "processing_unit",
     "raw_backup_interval",
     "dt",
-    "num_steps",
+    "n_steps",
     "sample_interval",
 }
 
@@ -123,9 +123,9 @@ def test_tutorial_imports_solver_modules_as_namespaces(path: Path):
         node.module for node in tree.body if isinstance(node, ast.ImportFrom)
     }.intersection(PUBLIC_NAMESPACES)
 
-    if path.parts[-3] == "FVM" or {"referenceFlow", "reference_flow"}.intersection(path.parts):
+    if path.parts[-3] == "fvm" or "reference_flow" in path.parts:
         expected = {"openonda.fvm": "fvm"}
-    elif path.parts[-3] == "VPM":
+    elif path.parts[-3] == "vpm":
         expected = {"openonda.vpm": "vpm"}
     else:
         expected = PUBLIC_NAMESPACES
@@ -153,8 +153,8 @@ def test_coupled_tutorial_imports_public_module_namespaces(path: Path):
     assert ("openonda.coupler", "coupling") in imports
     assert not aliases.intersection(
         {
-            ("source.solvers.FVM", None),
-            ("source.solvers.VPM", None),
+            ("source.solvers.fvm", None),
+            ("source.solvers.vpm", None),
             ("source.coupler", None),
         }
     )

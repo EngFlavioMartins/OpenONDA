@@ -40,7 +40,7 @@ def _corrected_pressure(initial_shift: float) -> tuple[np.ndarray, float]:
         freestream_velocity=np.array([1.0, 0.0, 0.0]),
         particle_spacing=0.1,
         boundary_mode="vorticity_mixed",
-        enabled=True,
+        is_enabled=True,
         is_master=True,
     )
     reference.prepare()

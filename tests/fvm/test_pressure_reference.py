@@ -6,13 +6,13 @@ from scipy import sparse
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import spsolve
 
-from source.solvers.FVM.solve import linear_interface
-from source.solvers.FVM.solve.linear_interface import normalized_residual, solve_linear_system
-from source.solvers.FVM.solve.simple_solver import (
+from source.solvers.fvm.solve import linear_interface
+from source.solvers.fvm.solve.linear_interface import normalized_residual, solve_linear_system
+from source.solvers.fvm.solve.simple_solver import (
     _resolve_pressure_constraint,
     assemble_pressure_correction_equation_rhie_chow,
 )
-from source.solvers.FVM.utils.cavity_utils import (
+from source.solvers.fvm.utils.cavity_utils import (
     fix_pressure_reference,
     needs_pressure_reference,
 )
@@ -60,7 +60,7 @@ def test_reference_constraint_preserves_symmetry_and_other_equations():
 def test_nullspace_pressure_assembly_remains_singular_and_compatible(
     hand_built_3d_mesh,
 ):
-    from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+    from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
     mesh = hand_built_3d_mesh
     geo = compute_mesh_geometry(mesh)
@@ -114,7 +114,7 @@ def test_pressure_iterative_path_solves_current_matrix():
         A,
         b,
         method="bicgstab",
-        equation_type="pressure",
+        equation_type="kinematic_pressure",
         tol=1e-11,
         maxiter=100,
         amg_tolerance=1e-11,

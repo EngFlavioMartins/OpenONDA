@@ -93,12 +93,12 @@ import openonda.vpm as vpm
 import openonda.coupler as coupling
 ```
 
-Runnable cases live under `tutorials/FVM`, `tutorials/VPM`, and
-`tutorials/coupled_FVM_VPM`. The coupled cases use the native FVM's internal
+Runnable cases live under `tutorials/fvm`, `tutorials/vpm`, and
+`tutorials/coupled_fvm_vpm`. The coupled cases use the native FVM's internal
 mesher:
 
 ```bash
-cd tutorials/coupled_FVM_VPM/cube_flow
+cd tutorials/coupled_fvm_vpm/cube_flow
 ./allrun.sh
 ```
 

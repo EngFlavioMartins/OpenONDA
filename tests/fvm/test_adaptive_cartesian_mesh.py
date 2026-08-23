@@ -8,18 +8,18 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.adaptive_cartesian import (
+from source.solvers.fvm.mesh.adaptive_cartesian import (
     AdaptiveCartesianMesher,
     BoxRefinement,
 )
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.mesh.topology import build_cell_face_csr
-from source.solvers.FVM.mesh.validation import validate_mesh
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.mesh.topology import build_cell_face_csr
+from source.solvers.fvm.mesh.validation import validate_mesh
 
 DOMAIN = (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
 BODY = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 SURFACE_FILE = (
-    Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow/reference_flow/assets/cube.stl"
+    Path(__file__).parents[2] / "tutorials/coupled_fvm_vpm/cube_flow/reference_flow/assets/cube.stl"
 )
 
 
@@ -68,7 +68,7 @@ def test_topology_and_geometry_are_solver_valid(adaptive_mesh):
 
 def test_no_fluid_cells_inside_body(adaptive_mesh):
     _, mesh, geometry = adaptive_mesh
-    centres = geometry["cell_centroids"][: mesh["n_cells"]]
+    centres = geometry["cell_centre"][: mesh["n_cells"]]
     inside = np.all(
         (centres > np.asarray(BODY[::2])) & (centres < np.asarray(BODY[1::2])),
         axis=1,
@@ -80,8 +80,8 @@ def test_wall_is_closed_and_points_into_solid(adaptive_mesh):
     _, mesh, geometry = adaptive_mesh
     wall = _patch(mesh, "cube")
     ids = np.arange(wall["start_face"], wall["start_face"] + wall["n_faces"])
-    sf = geometry["face_sf"][ids]
-    centres = geometry["face_centroids"][ids]
+    sf = geometry["face_area_vector"][ids]
+    centres = geometry["face_centre"][ids]
     assert np.allclose(sf.sum(axis=0), 0.0, atol=1.0e-12)
     assert np.linalg.norm(sf, axis=1).sum() == pytest.approx(6.0)
     assert np.all(np.einsum("fi,fi->f", sf, -centres) > 0.0)
@@ -96,10 +96,10 @@ def test_wall_is_closed_and_points_into_solid(adaptive_mesh):
 
 def test_transition_cells_are_polyhedral_and_two_to_one(adaptive_mesh):
     _, mesh, _ = adaptive_mesh
-    cell_faces, offsets = build_cell_face_csr(
+    cell_face_indices, offsets = build_cell_face_csr(
         mesh["owners"], mesh["neighbours"], mesh["n_cells"], mesh["n_faces"]
     )
-    del cell_faces
+    del cell_face_indices
     counts = np.diff(offsets)
     assert counts.max() == 9
     assert np.any(counts > 6)

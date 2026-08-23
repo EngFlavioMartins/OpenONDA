@@ -17,7 +17,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -27,11 +27,11 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.fields.diagnostics import compute_surface_forces, compute_y_plus
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
-from source.solvers.FVM.sampling.base import SamplingSchedule
-from source.solvers.FVM.sampling.forces import ForceSampler
+from source.solvers.fvm.fields.diagnostics import compute_surface_forces, compute_y_plus
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
+from source.solvers.fvm.sampling.base import SamplingSchedule
+from source.solvers.fvm.sampling.forces import ForceSampler
 
 BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
@@ -67,10 +67,10 @@ def test_cube_patch_is_closed_surface(cube_mesh):
     """The carved cube's outward area vectors sum to zero (closed surface)."""
     mesh, geo = cube_mesh
     faces, _ = _wall_face_slice(mesh)
-    net_sf = geo["face_sf"][faces].sum(axis=0)
+    net_sf = geo["face_area_vector"][faces].sum(axis=0)
     assert np.allclose(net_sf, 0.0, atol=1e-12), f"cube not closed: ΣSf={net_sf}"
     # And it is the physical cube surface area: 6 faces × (1×1).
-    area = np.linalg.norm(geo["face_sf"][faces], axis=1).sum()
+    area = np.linalg.norm(geo["face_area_vector"][faces], axis=1).sum()
     assert area == pytest.approx(6.0, abs=1e-9)
 
 
@@ -82,7 +82,9 @@ def test_uniform_pressure_gives_zero_net_force(cube_mesh):
     res = compute_surface_forces(
         velocity, p, 0.0, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"]
     )["cube"]
-    assert np.allclose(res["Fp"], 0.0, atol=1e-12), f"Fp={res['Fp']}"
+    assert np.allclose(res["pressure_force"], 0.0, atol=1e-12), (
+        f"pressure_force={res['pressure_force']}"
+    )
 
 
 def test_drag_sign_is_positive_for_front_high_back_low(cube_mesh):
@@ -93,7 +95,7 @@ def test_drag_sign_is_positive_for_front_high_back_low(cube_mesh):
     mesh, geo = cube_mesh
     velocity, p = _blank_fields(mesh)
     faces, ghost = _wall_face_slice(mesh)
-    fc = geo["face_centroids"][faces]
+    fc = geo["face_centre"][faces]
     # Select the upstream (x=-0.5) and downstream (x=+0.5) cube faces purely by
     # geometry; the test then certifies the force ORIENTATION is physical
     # (no assumption about the stored normal sign).
@@ -111,14 +113,18 @@ def test_drag_sign_is_positive_for_front_high_back_low(cube_mesh):
         geo,
         mesh["boundary"],
         patch_names=["cube"],
-        ref_U=1.0,
-        ref_area=1.0,
+        reference_velocity=1.0,
+        reference_area=1.0,
     )["cube"]
-    assert res["Fp"][0] > 0.0, f"expected positive drag, got Fx={res['Fp'][0]}"
-    assert res["coeffs"]["Cd"] > 0.0, f"expected Cd>0, got {res['coeffs']['Cd']}"
+    assert res["pressure_force"][0] > 0.0, (
+        f"expected positive drag, got Fx={res['pressure_force'][0]}"
+    )
+    assert res["coeffs"]["drag_coefficient"] > 0.0, (
+        f"expected drag_coefficient>0, got {res['coeffs']['drag_coefficient']}"
+    )
     # front area = back area = 1 → Fx = -(p_front*(-1) + p_back*(+1)) = 1.0 - (-0.5) = 1.5
-    assert res["Fp"][0] == pytest.approx(1.5, abs=1e-9)
-    assert np.allclose(res["Fp"][1:], 0.0, atol=1e-12)
+    assert res["pressure_force"][0] == pytest.approx(1.5, abs=1e-9)
+    assert np.allclose(res["pressure_force"][1:], 0.0, atol=1e-12)
 
 
 def test_linear_pressure_field_matches_analytic_force(cube_mesh):
@@ -129,16 +135,16 @@ def test_linear_pressure_field_matches_analytic_force(cube_mesh):
     mesh, geo = cube_mesh
     velocity, p = _blank_fields(mesh)
     faces, ghost = _wall_face_slice(mesh)
-    a, rho = 2.0, 1.5
-    fc = geo["face_centroids"][faces]
+    a, density = 2.0, 1.5
+    fc = geo["face_centre"][faces]
     p[ghost] = a * fc[:, 0]
     res = compute_surface_forces(
-        velocity, p, 0.0, rho, mesh, geo, mesh["boundary"], patch_names=["cube"]
+        velocity, p, 0.0, density, mesh, geo, mesh["boundary"], patch_names=["cube"]
     )["cube"]
-    expected = rho * (geo["face_sf"][faces] * p[ghost][:, None]).sum(axis=0)
-    assert np.allclose(res["Fp"], expected, atol=1e-12)
+    expected = density * (geo["face_area_vector"][faces] * p[ghost][:, None]).sum(axis=0)
+    assert np.allclose(res["pressure_force"], expected, atol=1e-12)
     # divergence-theorem value on the unit cube: |Fp_x| = ρ·a·V = ρ·a·1
-    assert abs(res["Fp"][0]) == pytest.approx(rho * a * 1.0, abs=1e-9)
+    assert abs(res["pressure_force"][0]) == pytest.approx(density * a * 1.0, abs=1e-9)
 
 
 def test_viscous_force_matches_boundary_diffusion_flux(cube_mesh):
@@ -147,11 +153,11 @@ def test_viscous_force_matches_boundary_diffusion_flux(cube_mesh):
     flux — mirroring the certified box-mesh test on the carved-cube topology."""
     mesh, geo = cube_mesh
     for b in mesh["boundary"]:  # gradient reconstruction needs BC types
-        b["bc_type"] = "zeroGradient"
+        b["boundary_condition_type"] = "zeroGradient"
         b["velocity_type"] = "zeroGradient"
     velocity, p = _blank_fields(mesh)
     faces, ghost = _wall_face_slice(mesh)
-    fc = geo["face_centroids"][faces]
+    fc = geo["face_centre"][faces]
     back = np.abs(fc[:, 0] - 0.5) < 1e-9  # x=+0.5 faces (wall normal ‖ x)
     assert back.any()
     mu = 0.01
@@ -159,10 +165,10 @@ def test_viscous_force_matches_boundary_diffusion_flux(cube_mesh):
     res = compute_surface_forces(
         velocity, p, mu, 1.0, mesh, geo, mesh["boundary"], patch_names=["cube"]
     )["cube"]
-    areas = np.linalg.norm(geo["face_sf"][faces[back]], axis=1)
-    expected_y = -mu * np.sum(areas / geo["wall_dist"][faces[back]])
-    assert res["Fv"][1] == pytest.approx(expected_y, rel=1e-9)
-    assert abs(res["Fv"][0]) < 1e-9 and abs(res["Fv"][2]) < 1e-9
+    areas = np.linalg.norm(geo["face_area_vector"][faces[back]], axis=1)
+    expected_y = -mu * np.sum(areas / geo["wall_distance"][faces[back]])
+    assert res["viscous_force"][1] == pytest.approx(expected_y, rel=1e-9)
+    assert abs(res["viscous_force"][0]) < 1e-9 and abs(res["viscous_force"][2]) < 1e-9
 
 
 def test_yplus_on_couette_field_matches_analytic(cube_mesh):
@@ -173,7 +179,7 @@ def test_yplus_on_couette_field_matches_analytic(cube_mesh):
         b.setdefault("velocity_type", "noSlip" if b["name"] == "cube" else "zeroGradient")
     velocity, _ = _blank_fields(mesh)
     faces, _ = _wall_face_slice(mesh)
-    fc = geo["face_centroids"][faces]
+    fc = geo["face_centre"][faces]
     back = np.abs(fc[:, 0] - 0.5) < 1e-9  # x-normal faces: U_y is tangential
     owners = mesh["owners"][faces[back]]
     kinematic_viscosity, ut = 1e-3, 0.5
@@ -184,29 +190,29 @@ def test_yplus_on_couette_field_matches_analytic(cube_mesh):
     assert "cube" in stats
     s = stats["cube"]
     assert s["max"] > 0.0 and s["avg"] > 0.0
-    d0 = float(geo["wall_dist"][faces[back][0]])
+    d0 = float(geo["wall_distance"][faces[back][0]])
     yplus_ref = np.sqrt(kinematic_viscosity * ut / d0) * d0 / kinematic_viscosity
     assert s["max"] == pytest.approx(yplus_ref, rel=1e-6)
 
 
 def test_yplus_uses_local_cell_viscosity():
-    """A viscosity field is sampled at each wall-face owner, not averaged."""
+    """A kinematic_viscosity field is sampled at each wall-face owner, not averaged."""
     velocity = np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-    viscosity = np.array([1.0e-6, 4.0e-6])
+    kinematic_viscosity = np.array([1.0e-6, 4.0e-6])
     mesh = {
         "n_cells": 2,
         "owners": np.array([0, 1], dtype=np.int32),
     }
     geometry = {
-        "wall_dist": np.array([1.0e-3, 1.0e-3]),
-        "face_sf": np.array([[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]]),
+        "wall_distance": np.array([1.0e-3, 1.0e-3]),
+        "face_area_vector": np.array([[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]]),
     }
     boundaries = [{"name": "wall", "type": "wall", "start_face": 0, "n_faces": 2}]
 
-    stats = compute_y_plus(velocity, viscosity, mesh, geometry, boundaries, patch_names=["wall"])[
-        "wall"
-    ]
-    expected = np.sqrt(viscosity / 1.0e-3) * 1.0e-3 / viscosity
+    stats = compute_y_plus(
+        velocity, kinematic_viscosity, mesh, geometry, boundaries, patch_names=["wall"]
+    )["wall"]
+    expected = np.sqrt(kinematic_viscosity / 1.0e-3) * 1.0e-3 / kinematic_viscosity
 
     assert stats["min"] == pytest.approx(float(np.min(expected)))
     assert stats["max"] == pytest.approx(float(np.max(expected)))
@@ -254,9 +260,9 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
     params_forces = [
         ForceSampler(
             patch_names=["cube"],
-            ref_velocity=1.0,
-            ref_area=1.0,
-            ref_length=1.0,
+            reference_velocity=1.0,
+            reference_area=1.0,
+            reference_length=1.0,
             schedule=SamplingSchedule(every_n_steps=1),
         )
     ]
@@ -291,7 +297,7 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
     faces = np.arange(cube["start_face"], cube["start_face"] + cube["n_faces"])
     ghost = n_elem + (faces - n_int)
     p_ghost = np.asarray(solver.kinematic_pressure)[ghost]
-    fc = geo["face_centroids"][faces]
+    fc = geo["face_centre"][faces]
 
     # (1) the ghost is a real, populated field — not stale zeros
     assert np.all(np.isfinite(p_ghost))
@@ -301,5 +307,5 @@ def test_wall_pressure_ghost_is_physical_after_solve(tmp_path):
     back = p_ghost[np.abs(fc[:, 0] - 0.5) < 1e-9].mean()
     assert front > back, f"no stagnation/base signature: front={front:.4f} back={back:.4f}"
     # (3) the force built from this ghost is a physical, positive drag
-    cd = solver.last_forces["cube"]["coeffs"]["Cd"]
+    cd = solver.last_forces["cube"]["coeffs"]["drag_coefficient"]
     assert cd > 0.0, f"non-physical drag from wall ghost: Cd={cd}"

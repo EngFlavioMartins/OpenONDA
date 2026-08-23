@@ -21,24 +21,24 @@ Crank–Nicolson schemes, which must lift it to ≈ 2.
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.assemble.momentum import assemble_momentum_equation
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
+from source.solvers.fvm.assemble.convection import compute_volumetric_face_flux
+from source.solvers.fvm.assemble.momentum import assemble_momentum_equation
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.solve.linear_interface import solve_linear_system
 
 from ._structured_mesh import structured_box
 
 PI = np.pi
 
 
-def _phi(x, y):
+def _scalar_field(x, y):
     """Divergence-free 2D Taylor–Green spatial profile (z-uniform)."""
     return np.column_stack(
         [np.sin(PI * x) * np.cos(PI * y), -np.cos(PI * x) * np.sin(PI * y), np.zeros_like(x)]
     )
 
 
-def _a_dot_grad_phi(x, y, a):
+def _advection_direction_dot_scalar_field_gradient(x, y, a):
     """(a·∇)φ for the field above, a constant."""
     sx, sy = np.sin(PI * x), np.sin(PI * y)
     cx, cy = np.cos(PI * x), np.cos(PI * y)
@@ -50,25 +50,25 @@ def _a_dot_grad_phi(x, y, a):
 def _source(x, y, t, a, kinematic_viscosity):
     """S = g'φ + g(a·∇)φ − ν g ∇²φ with g=e^{-t}, ∇²φ = −2π²φ."""
     g = np.exp(-t)
-    face_flux = _phi(x, y)
-    adv = _a_dot_grad_phi(x, y, a)
-    return g * (-face_flux + adv + 2.0 * kinematic_viscosity * PI**2 * face_flux)
+    scalar_field = _scalar_field(x, y)
+    adv = _advection_direction_dot_scalar_field_gradient(x, y, a)
+    return g * (-scalar_field + adv + 2.0 * kinematic_viscosity * PI**2 * scalar_field)
 
 
 def _set_ghosts(velocity, mesh, geo, t):
     """Write u_exact(t) into the boundary ghost cells (Dirichlet)."""
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    fc = geo["face_centroids"]
+    fc = geo["face_centre"]
     g = np.exp(-t)
     for b in mesh["boundary"]:
-        b["bc_type"] = "fixedValue"
+        b["boundary_condition_type"] = "fixedValue"
         b["velocity_type"] = "fixedValue"
         b["velocity_value"] = [0.0, 0.0, 0.0]
         for j in range(b["n_faces"]):
             fi = b["start_face"] + j
             gi = n_elem + (fi - n_int)
-            velocity[gi] = g * _phi(np.array([fc[fi, 0]]), np.array([fc[fi, 1]])).ravel()
+            velocity[gi] = g * _scalar_field(np.array([fc[fi, 0]]), np.array([fc[fi, 1]])).ravel()
 
 
 def _integrate(mesh, geo, n_steps, T, a, kinematic_viscosity, ddt_scheme="euler"):
@@ -79,7 +79,7 @@ def _integrate(mesh, geo, n_steps, T, a, kinematic_viscosity, ddt_scheme="euler"
     """
     n_elem = mesh["n_cells"]
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-    cc = geo["cell_centroids"]
+    cc = geo["cell_centre"]
     time_step_size = T / n_steps
 
     # Frozen advecting flux from the constant velocity a.
@@ -87,7 +87,7 @@ def _integrate(mesh, geo, n_steps, T, a, kinematic_viscosity, ddt_scheme="euler"
     phi_flux = compute_volumetric_face_flux(a_field, mesh, geo)
 
     velocity = np.zeros((n_elem + n_bnd, 3))
-    velocity[:n_elem] = _phi(cc[:, 0], cc[:, 1])  # u(0) = φ
+    velocity[:n_elem] = _scalar_field(cc[:, 0], cc[:, 1])  # u(0) = φ
     _set_ghosts(velocity, mesh, geo, 0.0)
     p = np.zeros(n_elem + n_bnd)
 
@@ -151,7 +151,7 @@ class TestTemporalOrder:
     T = 0.4
 
     def _order(self, mesh, geo, ddt_scheme):
-        vol = geo["cell_volumes"]
+        vol = geo["cell_volume"]
         u_n = _integrate(mesh, geo, 8, self.T, self.A, self.NU, ddt_scheme)
         u_2n = _integrate(mesh, geo, 16, self.T, self.A, self.NU, ddt_scheme)
         u_4n = _integrate(mesh, geo, 32, self.T, self.A, self.NU, ddt_scheme)

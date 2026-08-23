@@ -2,8 +2,8 @@
 
 OpenONDA is a CFD library. The Python sources are:
 
-- `source/solvers/FVM` — native incompressible finite-volume solver
-- `source/solvers/VPM` — vortex-particle solver (Taichi/GPU DSL)
+- `source/solvers/fvm` — native incompressible finite-volume solver
+- `source/solvers/vpm` — vortex-particle solver (Taichi/GPU DSL)
 - `source/coupler` — FVM↔VPM coupler
 - `source/utilities` — shared helpers
 
@@ -14,7 +14,7 @@ imports it.
 ## Type checking with Pyrefly — required for Python changes
 
 Before completing any task that **creates or modifies Python files** under
-`source/solvers/FVM`, `source/coupler`, or `source/utilities`, you MUST:
+`source/solvers/fvm`, `source/coupler`, or `source/utilities`, you MUST:
 
 1. Run `pyrefly check` at the repo root — or `pyrefly check <the files you
    changed>` to focus on your edit.
@@ -29,7 +29,7 @@ Notes that make this workable:
   bugs. You are **not** required to clear pre-existing errors — only to avoid
   adding new ones. Fixing a real one (e.g. an un-narrowed `None` that pyrefly
   flags as "not subscriptable") in code you are already editing is welcome.
-- `source/solvers/VPM` is **excluded** from Pyrefly on purpose: its Taichi DSL is
+- `source/solvers/vpm` is **excluded** from Pyrefly on purpose: its Taichi DSL is
   not statically typeable (the same reason `[tool.ty]` and `[tool.mypy]` suppress
   it). Do not try to type-check it.
 - Scope and settings live in `[tool.pyrefly]` in `pyproject.toml`.
@@ -58,7 +58,7 @@ change (see `.github/workflows/`).
 
 ## Imported Claude Cowork project instructions
 
-I am working on perfecting the VLM+VPM solver for the OpenONDA project. Currently, I notice that the flat-plate case (in tutorials/VPM/flatPlate) has an issue that I can't seen to fix: it does not show a reasonable match to the parabolic-like lift distribution, instead showing an almost constant lift that does not even drop to zero at the tips. I want you to find out why and fix it.
+I am working on perfecting the VLM+VPM solver for the OpenONDA project. Currently, I notice that the flat-plate case (in tutorials/vpm/flat_plate) has an issue that I can't seen to fix: it does not show a reasonable match to the parabolic-like lift distribution, instead showing an almost constant lift that does not even drop to zero at the tips. I want you to find out why and fix it.
 
 ### Flat-plate spanwise loading — resolution
 
@@ -86,7 +86,7 @@ Tutorial runnability notes (all applied):
   Linux/Windows).
 - Every `assets/plot_*.py` (incl. `plot_flat_plate_kelvin.py`) degrades
   gracefully with a `[MISSING]`/skip message when a sample CSV is absent, so
-  `allplot.sh` never hard-fails on a partial solution set.
+  `plot_all.sh` never hard-fails on a partial solution set.
 - Data layout is consistent across code and scripts via
   `resolve_samples_dir` (`samples/` lifted next to a dir literally named
   `solution/`).

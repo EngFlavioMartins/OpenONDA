@@ -1,15 +1,15 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble.convection import (
+from source.solvers.fvm.assemble.convection import (
     assemble_convection_term,
     compute_volumetric_face_flux,
 )
-from source.solvers.FVM.assemble.matrix_assembly import (
+from source.solvers.fvm.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 
 @pytest.fixture
@@ -21,15 +21,20 @@ def conv_data(hand_built_3d_mesh):
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
 
     for b in mesh["boundary"]:
-        b["bc_type"] = "zeroGradient"
+        b["boundary_condition_type"] = "zeroGradient"
 
     # Uniform velocity field (interior + ghost)
     velocity = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
 
     # Mass flow rate
-    mdot = compute_volumetric_face_flux(velocity, mesh, geo)
+    volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
 
-    return {"mesh": mesh, "geo": geo, "U": velocity, "mdot": mdot}
+    return {
+        "mesh": mesh,
+        "geo": geo,
+        "velocity": velocity,
+        "volumetric_face_flux": volumetric_face_flux,
+    }
 
 
 class TestConvectionBounded:
@@ -39,10 +44,10 @@ class TestConvectionBounded:
         """Upwind convection matrix has off-diag ≤ 0 and diag > 0 (M-matrix)."""
         n_elem = conv_data["mesh"]["n_cells"]
         n_bnd = conv_data["mesh"]["n_faces"] - conv_data["mesh"]["n_interior_faces"]
-        face_flux = np.zeros(n_elem + n_bnd)
+        scalar_field = np.zeros(n_elem + n_bnd)
         flux_data = assemble_convection_term(
-            face_flux,
-            conv_data["mdot"],
+            scalar_field,
+            conv_data["volumetric_face_flux"],
             conv_data["mesh"],
             conv_data["geo"],
             conv_data["mesh"]["boundary"],
@@ -57,10 +62,10 @@ class TestConvectionBounded:
         """If φ=const=1, convection RHS and matrix product should cancel."""
         n_elem = conv_data["mesh"]["n_cells"]
         n_bnd = conv_data["mesh"]["n_faces"] - conv_data["mesh"]["n_interior_faces"]
-        face_flux = np.ones(n_elem + n_bnd)
+        scalar_field = np.ones(n_elem + n_bnd)
         flux_data = assemble_convection_term(
-            face_flux,
-            conv_data["mdot"],
+            scalar_field,
+            conv_data["volumetric_face_flux"],
             conv_data["mesh"],
             conv_data["geo"],
             conv_data["mesh"]["boundary"],

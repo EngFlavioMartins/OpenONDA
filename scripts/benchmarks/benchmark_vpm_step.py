@@ -10,8 +10,8 @@ Usage::
     python scripts/benchmarks/benchmark_vpm_step.py --n 1000 8000  # explicit N
     python scripts/benchmarks/benchmark_vpm_step.py --backend CPU --steps 8
 
-The particle field is a seeded random cloud in a unit box with random
-circulations; identical for a given N across runs, so timings are comparable.
+The particle field is a seeded random cloud in a unit box with random vortex
+vortex_strength; identical for a given N across runs, so timings are comparable.
 """
 
 import argparse
@@ -34,8 +34,8 @@ def _rss_mb() -> float:
 
 
 def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = False):
-    from source.solvers.VPM import VPMSolver
-    from source.solvers.VPM.config.types import StretchingConfig, VelocityConfig, VPMSetup
+    from source.solvers.vpm import VPMSolver
+    from source.solvers.vpm.config.types import StretchingConfig, VelocityConfig, VPMSetup
 
     setup = VPMSetup.dns_simulation(
         compute_device=backend,
@@ -43,7 +43,7 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
         stretching=StretchingConfig.transposed(
             scheme="RK3", use_treecode=stretch_treecode, treecode_theta=0.5
         ),
-        max_particles=max(2 * n, 4096),
+        max_n_particles=max(2 * n, 4096),
         logging_interval_steps=0,
         checkpoint_interval_steps=0,
         timing_interval_steps=0,

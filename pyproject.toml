@@ -192,7 +192,7 @@ disable_error_code = ["valid-type"]
 # When running mypy on coupler/, ignore errors in imported solver code
 # so that only genuine coupler/ issues are reported.
 [[tool.mypy.overrides]]
-module = "source.solvers.FVM.*"
+module = "source.solvers.fvm.*"
 ignore_errors = true
 
 [tool.ty]
@@ -230,7 +230,7 @@ missing-argument = "ignore"
 # (Claude Code, Codex/ChatGPT) are expected to use this.
 [tool.pyrefly]
 project-includes = [
-    "source/solvers/FVM",
+    "source/solvers/fvm",
     "source/coupler",
     "source/utilities",
 ]

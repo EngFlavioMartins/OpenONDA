@@ -1,6 +1,6 @@
 """Native finite-volume solver API."""
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     AdaptiveCartesianMesher,
     BoundaryConfig,
     BoxRefinement,
@@ -27,21 +27,21 @@ from source.solvers.FVM import (
     TurbulenceConfig,
     create_fvm_solver,
 )
-from source.solvers.FVM.fields.diagnostics import (
+from source.solvers.fvm.fields.diagnostics import (
     compute_continuity_error,
     compute_enstrophy,
     compute_kinetic_energy,
 )
-from source.solvers.FVM.immersed_boundary import ImmersedBody
-from source.solvers.FVM.mesh import geometry
-from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
-from source.solvers.FVM.mesh.rectilinear import (
+from source.solvers.fvm.immersed_boundary import ImmersedBody
+from source.solvers.fvm.mesh import geometry
+from source.solvers.fvm.mesh.gmsh_importer import GmshImporter
+from source.solvers.fvm.mesh.rectilinear import (
     coupling_box_mesh,
     periodic_square_mesh,
     stretched,
     wall_refined_axis,
 )
-from source.solvers.FVM.sampling.base import SamplingSchedule
+from source.solvers.fvm.sampling.base import SamplingSchedule
 
 __all__ = [
     "AdaptiveCartesianMesher",

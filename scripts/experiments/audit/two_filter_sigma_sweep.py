@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Two follow-ups to the OpenONDA VPM-LES audit.
 
-(1) Is the DIAD rejection specific to sigma/h = 2.5?  Sweep the
-    particle-vs-added-filter enstrophy-transfer split over sigma/h.
+(1) Is the DIAD rejection specific to core_radius/particle_spacing = 2.5?  Sweep the
+    particle-vs-added-filter enstrophy-transfer split over core_radius/particle_spacing.
 (2) What coefficient would a dissipation-matched Mansfield model need,
     versus the appendix value and the dynamic value?
 """
@@ -63,10 +63,10 @@ def m4_symbol(theta, phase):
     )
 
 
-def particle_symbol(grid, h, sigma):
+def particle_symbol(grid, particle_spacing, core_radius):
     wave = np.fft.fftfreq(grid.n, d=1.0 / grid.n)
-    o = [np.abs(m4_symbol(wave * h, p)) ** 2 for p in PHASES]
-    return np.exp(-(sigma**2) * grid.k2 / 4.0) * (
+    o = [np.abs(m4_symbol(wave * particle_spacing, p)) ** 2 for p in PHASES]
+    return np.exp(-(core_radius**2) * grid.k2 / 4.0) * (
         o[0][:, None, None] * o[1][None, :, None] * o[2][None, None, :]
     )
 
@@ -78,12 +78,12 @@ def nl(grid, u, w):
     )
 
 
-def sgs(grid, u, F):
+def sgs(grid, u, filter_function):
     v = grid.curl(u)
     c, s = nl(grid, u, v)
-    ub, wb = F(u), F(v)
+    ub, wb = filter_function(u), filter_function(v)
     cb, sb = nl(grid, ub, wb)
-    return ub, wb, (-F(c) + cb) + (F(s) - sb)
+    return ub, wb, (-filter_function(c) + cb) + (filter_function(s) - sb)
 
 
 def strain_mag(grid, u):
@@ -108,8 +108,8 @@ vel = (
     .astype(np.float64)
 )
 grid = Grid(128)
-h = 2.0 * np.pi / LES_N
-paper_delta = DELTA_OVER_H * h
+particle_spacing = 2.0 * np.pi / LES_N
+paper_delta = DELTA_OVER_H * particle_spacing
 gdelta = paper_delta / math.sqrt(6.0)
 gsym = np.exp(-(gdelta**2) * grid.k2 / 4.0)
 
@@ -120,22 +120,24 @@ def G(f):
 
 WR = float((6.0 * 2.0**1.5 * math.sqrt(math.pi)) ** (1.0 / 3.0))
 
-print("(1) Two-filter transfer split vs sigma/h  (added filter Delta/h = 2)")
 print(
-    f"{'sigma/h':>8} {'K_sig(pi/h)':>12} {'particle share':>15} {'added share':>12} {'D_eff/h':>8}"
+    "(1) Two-filter transfer split vs core_radius/particle_spacing  (added filter Delta/particle_spacing = 2)"
+)
+print(
+    f"{'core_radius/particle_spacing':>8} {'K_sig(pi/particle_spacing)':>12} {'particle share':>15} {'added share':>12} {'D_eff/particle_spacing':>8}"
 )
 for s_h in (0.75, 1.0, 1.5, 2.0, 2.5):
-    sigma = s_h * h
-    symbol = particle_symbol(grid, h, sigma)
+    core_radius = s_h * particle_spacing
+    symbol = particle_symbol(grid, particle_spacing, core_radius)
 
-    def P(f, sy=symbol):
-        return grid.ifft(sy * grid.fft(f))
+    def particle_filter(field, filter_symbol=symbol):
+        return grid.ifft(filter_symbol * grid.fft(field))
 
-    def H(f, p=P):
-        return G(p(f))
+    def combined_filter(field, particle_filter_operator=particle_filter):
+        return G(particle_filter_operator(field))
 
-    _, wb_t, g_tot = sgs(grid, vel, H)
-    ut, wt, g_par = sgs(grid, vel, P)
+    _, wb_t, g_tot = sgs(grid, vel, combined_filter)
+    ut, wt, g_par = sgs(grid, vel, particle_filter)
     _, _, g_add = sgs(grid, ut, G)
     t_tot = tr(wb_t, g_tot)
     t_par = tr(wb_t, G(g_par))
@@ -144,9 +146,9 @@ for s_h in (0.75, 1.0, 1.5, 2.0, 2.5):
     deff = math.sqrt(DELTA_OVER_H**2 + 6.0 * s_h**2)
     print(f"{s_h:>8.2f} {knyq:>12.2e} {t_par / t_tot:>15.5f} {t_add / t_tot:>12.5f} {deff:>8.3f}")
 
-print("\n(2) Mansfield coefficient calibration at sigma/h = 2.5")
-sigma = 2.5 * h
-symbol = particle_symbol(grid, h, sigma)
+print("\n(2) Mansfield coefficient calibration at core_radius/particle_spacing = 2.5")
+core_radius = 2.5 * particle_spacing
+symbol = particle_symbol(grid, particle_spacing, core_radius)
 
 
 def P(f, sy=symbol):
@@ -154,7 +156,7 @@ def P(f, sy=symbol):
 
 
 u, w, g_ex = sgs(grid, vel, P)
-width = WR * sigma
+width = WR * core_radius
 base = -(width**2) * grid.curl(strain_mag(grid, u)[None, ...] * grid.curl(w))
 t_ex, t_base = tr(w, g_ex), tr(w, base)
 c2_match = t_ex / t_base

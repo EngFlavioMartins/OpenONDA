@@ -2,24 +2,24 @@
 
 import numpy as np
 
-from source.solvers.VPM.initial_conditions import VortexRingVPM
+from source.solvers.vpm.initial_conditions import vortex_ring_vpm
 
 
 def _vorticity(points: np.ndarray) -> np.ndarray:
-    _, _, strengths = VortexRingVPM(
+    _, _, vortex_strength = vortex_ring_vpm(
         kinematic_viscosity=1.0e-3,
-        ring_center=np.zeros(3),
-        ring_strength=np.pi,
+        ring_centre=np.zeros(3),
+        tube_circulation=np.pi,
         ring_radius=1.0,
-        ring_thickness=0.1,
-        avg_particle_radius=0.02,
-        positions=points,
-        volumes=np.ones(len(points)),
-        epsilon_W=0.03,
+        ring_core_radius=0.1,
+        mean_core_radius=0.02,
+        position=points,
+        particle_volume=np.ones(len(points)),
+        widnall_amplitude=0.03,
         seed=7,
-        max_modes=4,
+        n_widnall_modes=4,
     )
-    return strengths
+    return vortex_strength
 
 
 def _sample_divergence() -> tuple[np.ndarray, np.ndarray]:

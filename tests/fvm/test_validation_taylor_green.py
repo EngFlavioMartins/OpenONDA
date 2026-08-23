@@ -23,7 +23,7 @@ import tempfile
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -78,8 +78,8 @@ def _run(N, scheme, kinematic_viscosity=0.1, time_step_size=0.005, nsteps=10):
         s.auto_write = False
         ne = mesh["n_cells"]
         cc, vol = (
-            s.geo_data["cell_centroids"],
-            s.geo_data["cell_volumes"],
+            s.geo_data["cell_centre"],
+            s.geo_data["cell_volume"],
         )
 
         s.set_initial_velocity(_tgv_U(cc[:, 0], cc[:, 1], 0.0, kinematic_viscosity))

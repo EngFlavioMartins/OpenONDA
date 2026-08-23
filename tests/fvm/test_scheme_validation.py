@@ -5,19 +5,19 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.FVM.config.types import (
+from source.solvers.fvm.config.types import (
     DiscretizationConfig,
     LinearSolverConfig,
     PimpleControl,
     TurbulenceConfig,
 )
-from source.solvers.FVM.schemes import (
+from source.solvers.fvm.schemes import (
     validate_boundary_conditions,
     validate_solver_params,
     validate_turbulence,
 )
-from source.solvers.FVM.schemes.boundaries import BOUNDARIES, BoundaryStrategy
-from source.solvers.FVM.solve.simple_solver import update_scalar_boundaries
+from source.solvers.fvm.schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from source.solvers.fvm.solve.simple_solver import update_scalar_boundaries
 
 
 def _params(**overrides):
@@ -71,7 +71,7 @@ def test_known_scheme_aliases_accepted():
 
 
 def test_adaptive_bdf2_rejected_until_variable_step_weights_exist():
-    from source.solvers.FVM import TimeConfig
+    from source.solvers.fvm import TimeConfig
 
     params = _params_from(
         (DiscretizationConfig(time_scheme="backward"), LinearSolverConfig(), PimpleControl())
@@ -118,7 +118,7 @@ def test_unsupported_boundary_condition_rejected():
 
 def test_registry_resolves_every_claimed_operator_to_a_strategy():
     operators = ("gradient", "convection", "diffusion", "pressure", "flux", "ghost", "diagnostics")
-    for field in ("U", "p"):
+    for field in ("velocity", "kinematic_pressure"):
         for name in BOUNDARIES.names_for(field):
             for operator in operators:
                 assert isinstance(BOUNDARIES.strategy(name, field, operator), BoundaryStrategy)
@@ -129,7 +129,9 @@ def test_direct_pressure_update_cannot_fall_back_for_unknown_bc(hand_built_3d_me
     boundaries = [dict(patch, pressure_type="typoGradient") for patch in mesh["boundary"]]
     n_total = mesh["n_cells"] + mesh["n_faces"] - mesh["n_interior_faces"]
     with pytest.raises(ValueError, match="typoGradient.*ghost for p"):
-        update_scalar_boundaries(np.zeros(n_total), mesh, boundaries, field_name="p")
+        update_scalar_boundaries(
+            np.zeros(n_total), mesh, boundaries, field_name="kinematic_pressure"
+        )
 
 
 def test_turbulence_models():
@@ -144,7 +146,11 @@ def test_turbulence_models():
         validate_turbulence(cfg)
     with pytest.raises(ValueError, match="Unknown turbulence model"):
         validate_turbulence(TurbulenceConfig(model="kEpsilon"))
-    with pytest.raises(ValueError, match="c_k"):
-        validate_turbulence(TurbulenceConfig.equilibrium_smagorinsky(c_k=-0.1))
-    with pytest.raises(ValueError, match="c_e"):
-        validate_turbulence(TurbulenceConfig.equilibrium_smagorinsky(c_e=0.0))
+    with pytest.raises(ValueError, match="subgrid_kinetic_energy_coefficient"):
+        validate_turbulence(
+            TurbulenceConfig.equilibrium_smagorinsky(subgrid_kinetic_energy_coefficient=-0.1)
+        )
+    with pytest.raises(ValueError, match="subgrid_dissipation_coefficient"):
+        validate_turbulence(
+            TurbulenceConfig.equilibrium_smagorinsky(subgrid_dissipation_coefficient=0.0)
+        )

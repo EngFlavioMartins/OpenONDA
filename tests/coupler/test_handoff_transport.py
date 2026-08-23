@@ -43,9 +43,9 @@ def test_vortex_crossing_authority_ramp_has_no_fixed_point_strength_jump():
             vpm_velocity_at=velocity,
             authority_at=lambda points: cosine_eta(points, box, ramp_width, 0.1),
             core_radius_ratio=1.0,
-            n_existing=4096,
+            n_existing_particles=4096,
         )
-        populations.append(result.n_total)
+        populations.append(result.n_total_particles)
         correction_norms.append(result.correction_vortex_strength_l1)
 
     np.testing.assert_array_equal(populations, np.full(14, 4096))

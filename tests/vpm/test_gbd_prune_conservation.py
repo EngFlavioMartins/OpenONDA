@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.VPM.physics.diffusion import _GridDiffusionMixin
+from source.solvers.vpm.physics.diffusion import _GridDiffusionMixin
 
 redistribute = _GridDiffusionMixin._redistribute_pruned_moments
 cap_survivors = _GridDiffusionMixin._cap_surviving_nodes
@@ -185,7 +185,7 @@ def test_redistribution_conserves_each_vortex_group():
         h,
         labels=labels,
     ).astype(np.float64)
-    positions = np.stack(
+    position = np.stack(
         [grid_min[0] + ix * h, grid_min[1] + iy * h, grid_min[2] + iz * h],
         axis=1,
     )
@@ -196,9 +196,9 @@ def test_redistribution_conserves_each_vortex_group():
         circulation, linear, angular, _ = _moments(grid, grid_min, h, mask=full_mask)
         selected = survivor_labels == label
         group_circulation = corrected[selected].sum(axis=0)
-        group_linear = np.cross(positions[selected], corrected[selected]).sum(axis=0)
+        group_linear = np.cross(position[selected], corrected[selected]).sum(axis=0)
         group_angular = (
-            np.cross(positions[selected], np.cross(positions[selected], corrected[selected])).sum(
+            np.cross(position[selected], np.cross(position[selected], corrected[selected])).sum(
                 axis=0
             )
             / 3.0

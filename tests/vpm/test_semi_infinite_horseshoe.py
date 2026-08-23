@@ -33,7 +33,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM.boundary_elements.vlm.kernels.biot_savart import (
+from source.solvers.vpm.boundary_elements.vlm.kernels.biot_savart import (
     bound_vortex_velocity,
     horseshoe_semi_infinite_velocity,
     horseshoe_velocity,
@@ -52,7 +52,7 @@ def _taichi_cpu():
 # ── Independent NumPy reference ─────────────────────────────────────────────
 
 
-def _fin_segment_np(target, a, b, gamma, epsilon):
+def _fin_segment_np(target, a, b, circulation, epsilon):
     """Independent NumPy regularised Biot-Savart for a straight segment A→B.
 
     Same physical law as ``bound_vortex_velocity`` but written out directly
@@ -69,7 +69,7 @@ def _fin_segment_np(target, a, b, gamma, epsilon):
     r1_mag = np.linalg.norm(r1)
     r2_mag = np.linalg.norm(r2)
     r12_dot_hat = float(r12.dot(r1 / r1_mag - r2 / r2_mag))
-    factor = gamma * r12_dot_hat / (4.0 * np.pi * (cross_mag_sq + epsilon * epsilon))
+    factor = circulation * r12_dot_hat / (4.0 * np.pi * (cross_mag_sq + epsilon * epsilon))
     return factor * cross
 
 
@@ -93,61 +93,63 @@ def _lazy_fields():
 
 @ti.func
 def _semi_primitive_impl(
-    target: ti.types.vector(3, float), gamma: float, epsilon: float
+    target: ti.types.vector(3, float), circulation: float, epsilon: float
 ) -> ti.types.vector(3, float):
-    return semi_infinite_vortex_velocity(target, _v2[0], _da[0], gamma, epsilon)
+    return semi_infinite_vortex_velocity(target, _v2[0], _da[0], circulation, epsilon)
 
 
 @ti.func
 def _finite_segment_impl(
-    target: ti.types.vector(3, float), frac: float, gamma: float, epsilon: float
+    target: ti.types.vector(3, float), frac: float, circulation: float, epsilon: float
 ) -> ti.types.vector(3, float):
     p = _v2[0]
-    return bound_vortex_velocity(target, p, p + frac * _da[0], gamma, epsilon)
+    return bound_vortex_velocity(target, p, p + frac * _da[0], circulation, epsilon)
 
 
 @ti.func
 def _semi_horseshoe_impl(
-    target: ti.types.vector(3, float), gamma: float, epsilon: float
+    target: ti.types.vector(3, float), circulation: float, epsilon: float
 ) -> ti.types.vector(3, float):
-    return horseshoe_semi_infinite_velocity(target, _v2[0], _v3[0], _da[0], _db[0], gamma, epsilon)
+    return horseshoe_semi_infinite_velocity(
+        target, _v2[0], _v3[0], _da[0], _db[0], circulation, epsilon
+    )
 
 
 @ti.func
 def _finite_horseshoe_impl(
-    target: ti.types.vector(3, float), frac: float, gamma: float, epsilon: float
+    target: ti.types.vector(3, float), frac: float, circulation: float, epsilon: float
 ) -> ti.types.vector(3, float):
     v1 = _v2[0] + frac * _da[0]
     v4 = _v3[0] + frac * _db[0]
-    return horseshoe_velocity(target, v1, _v2[0], _v3[0], v4, gamma, epsilon)
+    return horseshoe_velocity(target, v1, _v2[0], _v3[0], v4, circulation, epsilon)
 
 
 @ti.kernel
 def _semi_primitive(
-    target: ti.types.vector(3, float), gamma: float, epsilon: float
+    target: ti.types.vector(3, float), circulation: float, epsilon: float
 ) -> ti.types.vector(3, float):
-    return _semi_primitive_impl(target, gamma, epsilon)
+    return _semi_primitive_impl(target, circulation, epsilon)
 
 
 @ti.kernel
 def _finite_segment(
-    target: ti.types.vector(3, float), frac: float, gamma: float, epsilon: float
+    target: ti.types.vector(3, float), frac: float, circulation: float, epsilon: float
 ) -> ti.types.vector(3, float):
-    return _finite_segment_impl(target, frac, gamma, epsilon)
+    return _finite_segment_impl(target, frac, circulation, epsilon)
 
 
 @ti.kernel
 def _semi_horseshoe(
-    target: ti.types.vector(3, float), gamma: float, epsilon: float
+    target: ti.types.vector(3, float), circulation: float, epsilon: float
 ) -> ti.types.vector(3, float):
-    return _semi_horseshoe_impl(target, gamma, epsilon)
+    return _semi_horseshoe_impl(target, circulation, epsilon)
 
 
 @ti.kernel
 def _finite_horseshoe(
-    target: ti.types.vector(3, float), frac: float, gamma: float, epsilon: float
+    target: ti.types.vector(3, float), frac: float, circulation: float, epsilon: float
 ) -> ti.types.vector(3, float):
-    return _finite_horseshoe_impl(target, frac, gamma, epsilon)
+    return _finite_horseshoe_impl(target, frac, circulation, epsilon)
 
 
 def _prepare(da, db):

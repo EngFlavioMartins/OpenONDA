@@ -6,9 +6,9 @@ Merging all six sides clamps a reference's outlet to the freestream.
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.mesh.rectilinear import OUTER_PATCH_NAMES, coupling_box_mesh
-from source.solvers.FVM.utils.cavity_utils import needs_pressure_reference
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.mesh.rectilinear import OUTER_PATCH_NAMES, coupling_box_mesh
+from source.solvers.fvm.utils.cavity_utils import needs_pressure_reference
 
 BOX = (-1.0, 2.0, -1.0, 1.0, -0.25, 0.25)
 SPACING = 0.25
@@ -51,7 +51,7 @@ def test_separated_outlet_keeps_its_outward_normal():
     geometry = compute_mesh_geometry(mesh)
     patch = next(p for p in mesh["boundary"] if p["name"] == "outlet")
     span = slice(patch["start_face"], patch["start_face"] + patch["n_faces"])
-    sf = geometry["face_sf"][span]
+    sf = geometry["face_area_vector"][span]
     normals = sf / np.linalg.norm(sf, axis=1, keepdims=True)
     np.testing.assert_allclose(normals, np.tile([1.0, 0.0, 0.0], (len(normals), 1)), atol=1e-12)
 

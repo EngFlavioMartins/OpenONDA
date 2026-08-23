@@ -5,19 +5,19 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.FVM.config.types import OutputConfig
-from source.solvers.FVM.io.partitioned import (
+from source.solvers.fvm.config.types import OutputConfig
+from source.solvers.fvm.io.partitioned import (
     reconstruct_partition_checkpoint,
     write_partition_checkpoint,
     write_partition_vtu,
 )
-from source.solvers.FVM.mesh import geometry
-from source.solvers.FVM.mesh.partition import (
+from source.solvers.fvm.mesh import geometry
+from source.solvers.fvm.mesh.partition import (
     CellPartition,
     localize_mesh_and_geometry,
     ownership_ranges,
 )
-from source.solvers.FVM.mesh.rectilinear import box_mesh_3d
+from source.solvers.fvm.mesh.rectilinear import box_mesh_3d
 
 from ._structured_mesh import structured_box
 
@@ -76,8 +76,8 @@ def test_polyhedral_visualization_mesh_contains_complete_halo_cells():
 
     assert len(partition.ghost_global_ids) > 0
     assert visualization["n_cells"] == len(partition.local_global_ids)
-    assert np.all(np.diff(visualization["cell_face_offsets"]) == 6)
-    assert np.all(visualization["cell_faces"] >= 0)
+    assert np.all(np.diff(visualization["cell_face_offset"]) == 6)
+    assert np.all(visualization["cell_face_indices"] >= 0)
 
 
 def test_rectilinear_visualization_mesh_uses_compact_native_hexes():
@@ -88,12 +88,12 @@ def test_rectilinear_visualization_mesh_uses_compact_native_hexes():
     local_mesh, _local_geo, partition = localize_mesh_and_geometry(mesh, geo, 0, 2)
     visualization = local_mesh["_visualization_mesh"]
 
-    assert visualization["cell_vertices"].shape == (
+    assert visualization["cell_vertex_indices"].shape == (
         len(partition.local_global_ids),
         8,
     )
     assert visualization["faces"].size == 0
-    assert np.all(visualization["cell_type_codes"] == 5)
+    assert np.all(visualization["cell_type_code"] == 5)
 
 
 @pytest.mark.parametrize("size", (2, 4))
@@ -111,20 +111,20 @@ def test_localized_mesh_has_complete_owned_stencils(size):
         np.add.at(incident, neighbours[owned_neighbours], 1)
         assert np.all(incident == 6)
         np.testing.assert_array_equal(
-            local_geo["cell_volumes"][:n_owned],
-            geo["cell_volumes"][partition.owned_global_ids],
+            local_geo["cell_volume"][:n_owned],
+            geo["cell_volume"][partition.owned_global_ids],
         )
-        assert local_mesh["global_cell_ids"].shape[0] == local_mesh["n_cells"]
+        assert local_mesh["global_cell_id"].shape[0] == local_mesh["n_cells"]
         visualization = local_mesh["_visualization_mesh"]
         assert visualization["n_cells"] == len(partition.local_global_ids)
         np.testing.assert_array_equal(
-            visualization["global_cell_ids"],
+            visualization["global_cell_id"],
             partition.local_global_ids,
         )
-        if len(visualization["cell_faces"]):
-            assert np.all(np.diff(visualization["cell_face_offsets"]) == 6)
+        if len(visualization["cell_face_indices"]):
+            assert np.all(np.diff(visualization["cell_face_offset"]) == 6)
         else:
-            assert visualization["cell_vertices"].shape == (
+            assert visualization["cell_vertex_indices"].shape == (
                 len(partition.local_global_ids),
                 8,
             )
@@ -170,8 +170,8 @@ def test_partition_vtu_writes_cell_data_and_parallel_metadata(tmp_path):
     assert 'GhostLevel="1"' in text
     assert 'Name="velocity" NumberOfComponents="3"' in text
     assert 'Name="vtkGhostType" NumberOfComponents="1"' in text
-    assert 'Name="GlobalCellIds" NumberOfComponents="1"' in text
-    assert 'Name="GlobalPointIds" NumberOfComponents="1"' in text
+    assert 'Name="global_cell_id" NumberOfComponents="1"' in text
+    assert 'Name="global_point_id" NumberOfComponents="1"' in text
     assert 'Piece Source="state-0001-rank-00000.vtu"' in text
 
     import pyvista as pv
@@ -180,9 +180,9 @@ def test_partition_vtu_writes_cell_data_and_parallel_metadata(tmp_path):
     assert data.n_cells == len(partition.local_global_ids)
     assert "velocity" in data.cell_data
     assert "velocity" not in data.point_data
-    np.testing.assert_array_equal(data.cell_data["GlobalCellIds"], partition.local_global_ids)
+    np.testing.assert_array_equal(data.cell_data["global_cell_id"], partition.local_global_ids)
     assert np.count_nonzero(data.cell_data["vtkGhostType"]) == 0
-    assert "GlobalPointIds" in data.point_data
+    assert "global_point_id" in data.point_data
     smooth = data.cell_data_to_point_data()
     assert "velocity" in smooth.point_data
 
@@ -209,7 +209,7 @@ def test_partition_vtu_can_omit_visualization_ghosts(tmp_path):
     text = collection.read_text(encoding="utf-8")
     assert 'GhostLevel="0"' in text
     assert "vtkGhostType" not in text
-    assert 'Name="GlobalCellIds"' in text
+    assert 'Name="global_cell_id"' in text
 
 
 def test_partition_vtu_float32_fields(tmp_path):
@@ -232,14 +232,14 @@ def test_partition_vtu_float32_fields(tmp_path):
     assert data.cell_data["pressure"].dtype == np.float32
 
 
-def test_localized_adaptive_mesh_ghost_cell_vertices_are_valid(tmp_path):
+def test_localized_adaptive_mesh_ghost_cell_vertex_indices_are_valid(tmp_path):
     """Ghost-cell hex vertices must reference a compact point index, never -1.
 
     Ghost cells are stored completely in the local view and their far-side
     corners are not referenced by any local face; the compact point set must
     therefore include every local cell corner explicitly.
     """
-    from source.solvers.FVM.mesh.adaptive_cartesian import AdaptiveCartesianMesher
+    from source.solvers.fvm.mesh.adaptive_cartesian import AdaptiveCartesianMesher
 
     from .test_preserve_body_geometry import write_box_stl
 
@@ -256,9 +256,9 @@ def test_localized_adaptive_mesh_ghost_cell_vertices_are_valid(tmp_path):
 
     for size in (1, 2, 4):
         local_mesh, _geo, partition = localize_mesh_and_geometry(mesh, {}, 0, size)
-        cell_vertices = np.asarray(local_mesh["cell_vertices"])
-        assert cell_vertices.min() >= 0, (
-            f"size={size}: {int(np.count_nonzero(cell_vertices < 0))} ghost corners "
+        cell_vertex_indices = np.asarray(local_mesh["cell_vertex_indices"])
+        assert cell_vertex_indices.min() >= 0, (
+            f"size={size}: {int(np.count_nonzero(cell_vertex_indices < 0))} ghost corners "
             "referenced -1 in the compact point set"
         )
         if size > 1:
@@ -273,7 +273,7 @@ def test_four_rank_pvtu_round_trip_preserves_adaptive_mesh_geometry(tmp_path):
     may overlap the body with positive volume.
     """
     pv = pytest.importorskip("pyvista", reason="partitioned VTK output requires PyVista")
-    from source.solvers.FVM.mesh.adaptive_cartesian import AdaptiveCartesianMesher
+    from source.solvers.fvm.mesh.adaptive_cartesian import AdaptiveCartesianMesher
 
     from .test_preserve_body_geometry import write_box_stl
 
@@ -303,7 +303,7 @@ def test_four_rank_pvtu_round_trip_preserves_adaptive_mesh_geometry(tmp_path):
         )
 
     collection = pv.read(tmp_path / "preserved4.pvtu")
-    global_ids = np.asarray(collection.cell_data["GlobalCellIds"])
+    global_ids = np.asarray(collection.cell_data["global_cell_id"])
     ghost = np.asarray(collection.cell_data["vtkGhostType"])
     owned_ids = global_ids[ghost == 0]
     assert len(owned_ids) == mesh["n_cells"]

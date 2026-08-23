@@ -28,13 +28,13 @@ test_pressure_eulerian_method_requires_dt_and_velocity_previous
 test_velocity_gradient_tensor_matches_analytical_formula
     The full 3×3 velocity gradient tensor at (r,0,0) for a single z-vortex
     must agree with the closed-form derivatives of the Gaussian Biot-Savart
-    kernel.  Validates compute_target_velocity_gradients() and the
-    grad_u[a,b] = ∂u_a/∂x_b row-vector convention.
+    kernel.  Validates compute_target_velocity_gradient() and the
+    velocity_gradient[a,b] = ∂u_a/∂x_b row-vector convention.
 
 test_advective_pressure_gradient_matches_analytical
     The convective contribution −ρ(u·∇)u at (r,0,0) for a single z-vortex
     must match the closed-form result ∂p/∂x = ρ·q²·α_z²/r⁵.  Validates the
-    einsum "mb,mab->ma" in compute_target_pressure_gradients() and confirms
+    einsum "mb,mab->ma" in compute_target_pressure_gradient() and confirms
     ∂p/∂y = ∂p/∂z = 0 for this axisymmetric configuration.
 
 test_advective_pressure_gradient_radial_power_law
@@ -48,14 +48,14 @@ test_pressure_gradient_component_decomposition
     contributions.  Guards against split-sign bugs in the component method.
 
 test_viscous_term_small_at_high_reynolds
-    At Re=1000 the viscous contribution ρnu∇²u must be smaller than the
+    At Re=1000 the viscous contribution ρkinematic_viscosity∇²u must be smaller than the
     convective contribution −ρ(u·∇)u by at least a factor of 100 everywhere
     on the probe grid.  Confirms that omitting the viscous term in the
     coupling BC is physically justified.
 
 test_eulerian_temporal_term_self_consistency
     When velocity_previous is obtained from the same internal code path as
-    u_target (i.e., PressurePhysics.compute_target_velocities), the computed
+    prescribed_velocity (i.e., PressurePhysics.compute_target_velocity), the computed
     temporal term (u_new − u_old)/dt must equal the finite-difference of two
     consecutive evaluations to machine precision.  This is the correctness
     contract that must hold for the Eulerian temporal term to be physically
@@ -63,7 +63,7 @@ test_eulerian_temporal_term_self_consistency
 
 test_eulerian_temporal_mismatch_with_corrected_velocity
     Supplying a velocity_previous that was computed via a DIFFERENT code path
-    (VPMSolver.compute_target_velocities, which applies a divergence-free
+    (VPMSolver.compute_target_velocity, which applies a divergence-free
     correction) to a steady, unchanging particle field must produce a nonzero
     temporal term.  This is the canary test that documents and protects against
     the source-of-error identified in the coupling BC: if the coupler naively
@@ -76,9 +76,9 @@ from math import erf, exp, pi, sqrt
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
-from source.solvers.VPM.physics.pressure import _q_kernel, _zeta_kernel
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.vpm.physics.pressure import _q_kernel, _zeta_kernel
 
 # Physical constants
 _ONE_OVER_FOUR_PI = 1.0 / (4.0 * np.pi)  # ≈ 0.079577
@@ -177,9 +177,9 @@ def test_pressure_gradients_zero_for_empty_field(tmp_path):
     Physical basis
     --------------
     With N=0 particles every velocity and velocity-derivative sum is zero.
-    The momentum equation ∇p = -ρ[∂u/∂t + (u·∇)u - nu∇²u] then gives ∇p=0
+    The momentum equation ∇p = -ρ[∂u/∂t + (u·∇)u - kinematic_viscosity∇²u] then gives ∇p=0
     everywhere.  The code short-circuits this via an early-return when
-    particles.number_of_particles == 0.
+    particles.n_particles_total == 0.
 
     This test fails when
     --------------------
@@ -189,16 +189,16 @@ def test_pressure_gradients_zero_for_empty_field(tmp_path):
     solver = _empty_solver(tmp_path)
     targets = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
-    result = solver.compute_target_pressure_gradients(
+    result = solver.compute_pressure_gradient_at_points(
         targets,
-        nu=1e-5,
+        kinematic_viscosity=1e-5,
         include_viscous=True,
         include_temporal=True,
     )
-    grad_p = result["grad_p"]
+    pressure_gradient = result["pressure_gradient"]
 
     np.testing.assert_array_equal(
-        grad_p,
+        pressure_gradient,
         np.zeros((3, 3)),
         err_msg="Pressure gradient must be zero when no particles are present.",
     )
@@ -212,7 +212,7 @@ def test_hierarchical_pressure_can_exclude_body_velocity(tmp_path):
     )
     targets = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
-    result, velocity = solver.compute_target_pressure_gradients(
+    result, velocity = solver.compute_pressure_gradient_at_points(
         targets,
         include_viscous=False,
         include_temporal=False,
@@ -222,13 +222,13 @@ def test_hierarchical_pressure_can_exclude_body_velocity(tmp_path):
         treecode_theta=0.3,
     )
 
-    np.testing.assert_array_equal(result["grad_p"], np.zeros_like(targets))
+    np.testing.assert_array_equal(result["pressure_gradient"], np.zeros_like(targets))
     np.testing.assert_array_equal(velocity, np.zeros_like(targets))
 
 
 def test_pressure_eulerian_method_requires_dt_and_velocity_previous(tmp_path):
     """
-    Calling compute_target_pressure_gradients with temporal_method='eulerian'
+    Calling compute_target_pressure_gradient with temporal_method='eulerian'
     but without supplying velocity_previous and dt must raise ValueError.
 
     Physical basis
@@ -259,16 +259,16 @@ def test_pressure_eulerian_method_requires_dt_and_velocity_previous(tmp_path):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([sigma]),
-        volume=np.full(1, (4.0 / 3.0) * np.pi * sigma**3),
+        particle_volume=np.full(1, (4.0 / 3.0) * np.pi * sigma**3),
         kinematic_viscosity=np.array([1e-5]),
     )
 
     targets = np.array([[1.0, 0.0, 0.0]])
 
     with pytest.raises(ValueError):
-        solver.compute_target_pressure_gradients(
+        solver.compute_pressure_gradient_at_points(
             targets,
-            nu=1e-5,
+            kinematic_viscosity=1e-5,
             include_temporal=True,
             temporal_method="eulerian",
             # velocity_previous and dt intentionally omitted
@@ -361,7 +361,7 @@ def _single_vortex_solver(tmp_path, sigma: float = _SIGMA_A, alpha_z: float = _A
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, alpha_z]]),
         core_radius=np.array([sigma]),
-        volume=np.array([(4.0 / 3.0) * pi * sigma**3]),
+        particle_volume=np.array([(4.0 / 3.0) * pi * sigma**3]),
         kinematic_viscosity=np.full(1, _NU),
     )
     return solver
@@ -398,7 +398,7 @@ def test_velocity_gradient_tensor_matches_analytical_formula(tmp_path):
     r_values = [rr * _SIGMA_A for rr in probe_ratios]
     targets = np.array([[r, 0.0, 0.0] for r in r_values])
 
-    grad_flat = solver.compute_target_velocity_gradients(targets)  # (M, 9)
+    grad_flat = solver.compute_velocity_gradient_at_points(targets)  # (M, 9)
     grad = grad_flat.reshape(-1, 3, 3)  # grad[m, a, b] = ∂u_a/∂x_b
 
     for k, r in enumerate(r_values):
@@ -444,7 +444,7 @@ def test_advective_pressure_gradient_matches_analytical(tmp_path):
     This test fails when
     --------------------
     * The einsum "mb,mab->ma" is wrong (e.g., wrong contraction index).
-    * grad_u is transposed, swapping the component and direction roles.
+    * velocity_gradient is transposed, swapping the component and direction roles.
     * The overall sign of ∇p = −ρ(u·∇)u is inverted.
     """
     solver = _single_vortex_solver(tmp_path)
@@ -453,18 +453,18 @@ def test_advective_pressure_gradient_matches_analytical(tmp_path):
     r_values = [rr * _SIGMA_A for rr in probe_ratios]
     targets = np.array([[r, 0.0, 0.0] for r in r_values])
 
-    grad_p = solver.compute_target_pressure_gradients(
+    pressure_gradient = solver.compute_pressure_gradient_at_points(
         targets,
         density=_DENSITY,
-        nu=_NU,
+        kinematic_viscosity=_NU,
         include_viscous=False,
         include_temporal=False,
         include_freestream=False,
-    )["grad_p"]
+    )["pressure_gradient"]
 
     for k, r in enumerate(r_values):
         expected = _analytical_grad_p_at_r00(r, _SIGMA_A, _ALPHA_Z_A, _DENSITY)
-        computed = grad_p[k]
+        computed = pressure_gradient[k]
 
         # x-component: must match analytical within 2%
         rel_err = abs(computed[0] - expected[0]) / abs(expected[0])
@@ -511,25 +511,29 @@ def test_advective_pressure_gradient_radial_power_law(tmp_path):
         r2 = r2_ratio * _SIGMA_A
         targets = np.array([[r1, 0.0, 0.0], [r2, 0.0, 0.0]])
 
-        grad_p = solver.compute_target_pressure_gradients(
+        pressure_gradient = solver.compute_pressure_gradient_at_points(
             targets,
             density=_DENSITY,
-            nu=_NU,
+            kinematic_viscosity=_NU,
             include_viscous=False,
             include_temporal=False,
             include_freestream=False,
-        )["grad_p"]
+        )["pressure_gradient"]
 
-        gp1 = grad_p[0, 0]
-        gp2 = grad_p[1, 0]
+        pressure_gradient_first = pressure_gradient[0, 0]
+        pressure_gradient_second = pressure_gradient[1, 0]
 
         # Both positive
-        assert gp1 > 0, f"∂p/∂x at r/σ={r1_ratio} must be positive, got {gp1:.3e}"
-        assert gp2 > 0, f"∂p/∂x at r/σ={r2_ratio} must be positive, got {gp2:.3e}"
+        assert pressure_gradient_first > 0, (
+            f"∂p/∂x at r/σ={r1_ratio} must be positive, got {pressure_gradient_first:.3e}"
+        )
+        assert pressure_gradient_second > 0, (
+            f"∂p/∂x at r/σ={r2_ratio} must be positive, got {pressure_gradient_second:.3e}"
+        )
 
-        # r⁻⁵ scaling: gp1/gp2 = (r2/r1)^5
+        # r⁻⁵ scaling: pressure_gradient_first/pressure_gradient_second = (r2/r1)^5
         expected_ratio = (r2 / r1) ** 5
-        computed_ratio = gp1 / gp2
+        computed_ratio = pressure_gradient_first / pressure_gradient_second
         rel_err = abs(computed_ratio - expected_ratio) / expected_ratio
         assert rel_err < 0.02, (
             f"r/σ=({r1_ratio},{r2_ratio}): expected ratio {expected_ratio:.4f}, "
@@ -549,7 +553,7 @@ def test_pressure_gradient_component_decomposition(tmp_path):
 
     Physical basis
     --------------
-    ∇p = −ρ(∂u/∂t + (u·∇)u − nu∇²u)
+    ∇p = −ρ(∂u/∂t + (u·∇)u − kinematic_viscosity∇²u)
        = convective + temporal + viscous
 
     This test fails when
@@ -563,23 +567,27 @@ def test_pressure_gradient_component_decomposition(tmp_path):
     targets = np.array([[0.5, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
 
     # include_viscous=True, include_temporal=False (no snapshot)
-    components = solver.compute_target_pressure_gradients(
+    components = solver.compute_pressure_gradient_at_points(
         targets,
         density=_DENSITY,
-        nu=_NU,
+        kinematic_viscosity=_NU,
         include_viscous=True,
         include_temporal=False,
         include_freestream=False,
     )
 
-    total = components["grad_p"]
-    reconstructed = components["convective"] + components["viscous"] + components["temporal"]
+    total = components["pressure_gradient"]
+    reconstructed = (
+        components["convective_pressure_gradient"]
+        + components["viscous_pressure_gradient"]
+        + components["temporal_pressure_gradient"]
+    )
 
     np.testing.assert_allclose(
         total,
         reconstructed,
         atol=1e-10,
-        err_msg="grad_p must equal convective + viscous + temporal component-wise",
+        err_msg="pressure_gradient must equal convective + viscous + temporal component-wise",
     )
 
 
@@ -590,19 +598,19 @@ def test_pressure_gradient_component_decomposition(tmp_path):
 
 def test_viscous_term_small_at_high_reynolds(tmp_path):
     """
-    At nu=1e-3 (Re≈1000 for unit velocity and length), the viscous term
-    ρnu∇²u must be at most 1% of the convective term −ρ(u·∇)u.
+    At kinematic_viscosity=1e-3 (Re≈1000 for unit velocity and length), the viscous term
+    ρkinematic_viscosity∇²u must be at most 1% of the convective term −ρ(u·∇)u.
 
     Physical basis
     --------------
-    The ratio |viscous|/|convective| ≈ nu/(u·L) = 1/Re.  At Re=1000 this is
+    The ratio |viscous|/|convective| ≈ kinematic_viscosity/(u·L) = 1/Re.  At Re=1000 this is
     0.1% — far below 1%.  If the ratio is larger, something is wrong with the
     finite-difference Laplacian or its scaling.
 
     This test fails when
     --------------------
     * The h parameter for finite differences is too large (coarsens the stencil).
-    * nu is applied twice (once in the term, once in the FD normalisation).
+    * kinematic_viscosity is applied twice (once in the term, once in the FD normalisation).
     """
     solver = _single_vortex_solver(tmp_path, sigma=0.5, alpha_z=1.0)
 
@@ -610,23 +618,27 @@ def test_viscous_term_small_at_high_reynolds(tmp_path):
     r_values = [2.0, 3.0, 4.0]
     targets = np.array([[r, 0.0, 0.0] for r in r_values])
 
-    components = solver.compute_target_pressure_gradients(
+    components = solver.compute_pressure_gradient_at_points(
         targets,
         density=_DENSITY,
-        nu=_NU,
+        kinematic_viscosity=_NU,
         include_viscous=True,
         include_temporal=False,
         include_freestream=False,
         particle_spacing=_SIGMA_A,
     )
 
-    conv_mag = np.linalg.norm(components["convective"], axis=1)
-    visc_mag = np.linalg.norm(components["viscous"], axis=1)
+    convective_pressure_gradient_magnitude = np.linalg.norm(
+        components["convective_pressure_gradient"], axis=1
+    )
+    viscous_pressure_gradient_magnitude = np.linalg.norm(
+        components["viscous_pressure_gradient"], axis=1
+    )
 
     for k, r in enumerate(r_values):
-        if conv_mag[k] < 1e-10:
+        if convective_pressure_gradient_magnitude[k] < 1e-10:
             continue  # no convective signal, skip ratio check
-        ratio = visc_mag[k] / conv_mag[k]
+        ratio = viscous_pressure_gradient_magnitude[k] / convective_pressure_gradient_magnitude[k]
         assert ratio < 0.01, f"r={r}: viscous/convective = {ratio:.4e} (must be < 0.01 at Re≈1000)"
 
 
@@ -638,7 +650,7 @@ def test_viscous_term_small_at_high_reynolds(tmp_path):
 def test_eulerian_temporal_term_self_consistency(tmp_path):
     """
     When the previous velocity snapshot is obtained from the same internal
-    code path as u_target (PressurePhysics.compute_target_velocities), the
+    code path as prescribed_velocity (PressurePhysics.compute_target_velocity), the
     temporal term must be numerically identical to (u_new − u_old)/dt.
 
     Physical basis
@@ -647,14 +659,14 @@ def test_eulerian_temporal_term_self_consistency(tmp_path):
         ∂u/∂t ≈ (u^{n} − u^{n−1}) / dt
 
     Both u^{n} and u^{n−1} must be evaluated by the same function
-    (PressurePhysics.compute_target_velocities) to avoid a code-path mismatch.
+    (PressurePhysics.compute_target_velocity) to avoid a code-path mismatch.
     In practice: obtain u_prev by calling the SAME internal method before
     moving particles, call the pressure method after.  The temporal term
     returned must equal (u_new − u_prev) / dt.
 
     This test fails when
     --------------------
-    * u_target and velocity_previous are evaluated by different functions.
+    * prescribed_velocity and velocity_previous are evaluated by different functions.
     * The sign of (u_new − u_old) is inverted.
     * The dt divisor is applied twice.
     """
@@ -663,54 +675,58 @@ def test_eulerian_temporal_term_self_consistency(tmp_path):
     targets = np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]])
 
     # Force lazy initialisation of _pressure_physics
-    _ = solver.compute_target_pressure_gradients(
-        targets, density=_DENSITY, nu=_NU, include_temporal=False, include_freestream=False
+    _ = solver.compute_pressure_gradient_at_points(
+        targets,
+        density=_DENSITY,
+        kinematic_viscosity=_NU,
+        include_temporal=False,
+        include_freestream=False,
     )
     pp = solver._pressure_physics
 
     # Step n-1: obtain velocity from the SAME internal code path
-    u_prev = pp.compute_target_velocities(
-        solver.particles, targets, include_freestream=False
-    ).copy()
+    u_prev = pp.compute_target_velocity(solver.particles, targets, include_freestream=False).copy()
 
     # Simulate a small particle displacement (freestream advection Δx = U·dt)
     time_step_size = 0.05
     pos = solver.particles.position_cpu()
     solver.particles.set_field("position", pos + np.array([[0.05, 0.0, 0.0]]))
 
-    # Step n: total grad_p with temporal enabled and velocity_previous from step n-1
-    grad_p = solver.compute_target_pressure_gradients(
+    # Step n: total pressure_gradient with temporal enabled and velocity_previous from step n-1
+    pressure_gradient = solver.compute_pressure_gradient_at_points(
         targets,
         density=_DENSITY,
-        nu=_NU,
+        kinematic_viscosity=_NU,
         include_viscous=False,
         include_temporal=True,
         temporal_method="eulerian",
         velocity_previous=u_prev,
         time_step_size=time_step_size,
         include_freestream=False,
-    )["grad_p"]
+    )["pressure_gradient"]
 
     # Retrieve u_new that the pressure method computed internally
-    u_new = pp.compute_target_velocities(solver.particles, targets, include_freestream=False)
+    u_new = pp.compute_target_velocity(solver.particles, targets, include_freestream=False)
 
     # Expected temporal contribution: −ρ·(u_new − u_prev)/dt
     expected_temporal = -_DENSITY * (u_new - u_prev) / time_step_size
 
-    # Expected total grad_p (convective + temporal, no viscous)
-    grad_u = pp.compute_target_velocity_gradients(solver.particles, targets).reshape(-1, 3, 3)
-    advective = np.einsum("mb,mab->ma", u_new, grad_u)
+    # Expected total pressure_gradient (convective + temporal, no viscous)
+    velocity_gradient = pp.compute_target_velocity_gradient(solver.particles, targets).reshape(
+        -1, 3, 3
+    )
+    advective = np.einsum("mb,mab->ma", u_new, velocity_gradient)
     expected_convective = -_DENSITY * advective
 
     expected_total = expected_convective + expected_temporal
 
     np.testing.assert_allclose(
-        grad_p,
+        pressure_gradient,
         expected_total,
         atol=1e-8,
         rtol=1e-6,
         err_msg=(
-            "compute_target_pressure_gradients with temporal_method='eulerian' must match "
+            "compute_target_pressure_gradient with temporal_method='eulerian' must match "
             "(convective + temporal), where temporal = −ρ(u_new − u_prev)/dt"
         ),
     )
@@ -723,14 +739,14 @@ def test_eulerian_temporal_term_self_consistency(tmp_path):
 
 def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
     """
-    Supplying a velocity_previous obtained from VPMSolver.compute_target_velocities
-    (which may differ from PressurePhysics.compute_target_velocities due to
+    Supplying a velocity_previous obtained from VPMSolver.compute_target_velocity
+    (which may differ from PressurePhysics.compute_target_velocity due to
     divergence-free correction or source induction) to a steady particle field
     must produce a nonzero temporal contribution.
 
     This is the *canary* test for the code-path mismatch between:
         - the coupler's face-centre velocity (corrected for mass flux)
-        - the pressure method's internal u_target (pure Biot-Savart)
+        - the pressure method's internal prescribed_velocity (pure Biot-Savart)
 
     Physical basis
     --------------
@@ -742,7 +758,7 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
 
     This test fails when
     --------------------
-    * VPMSolver.compute_target_velocities and PressurePhysics.compute_target_velocities
+    * VPMSolver.compute_target_velocity and PressurePhysics.compute_target_velocity
       return identical results (e.g., the divergence-free correction is removed
       from the coupler, at which point this test rightly stops alerting).
     * The test is refactored to pass a consistent snapshot (then test 1.6 is
@@ -754,7 +770,7 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
     # Steady state: same particles, two consecutive velocity evaluations
     # via the VPMSolver-level API (which adds div-free correction if present).
     # We simulate the correction by adding a small uniform offset.
-    u_via_solver = solver.compute_target_velocities(targets, include_freestream=False)
+    u_via_solver = solver.compute_velocity_at_points(targets, include_freestream=False)
 
     # Apply a synthetic divergence-free correction (uniform normal shift) as
     # the coupler does.  This mimics the real mismatch without needing a full
@@ -766,21 +782,21 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
     # Nothing has moved — physics says ∂u/∂t = 0.
     # But using the corrected velocity as the previous snapshot must give nonzero temporal.
     time_step_size = 0.1
-    _ = solver.compute_target_pressure_gradients(
+    _ = solver.compute_pressure_gradient_at_points(
         targets,
         density=_DENSITY,
-        nu=_NU,
+        kinematic_viscosity=_NU,
         include_viscous=False,
         include_temporal=True,
         temporal_method="eulerian",
         velocity_previous=u_corrected,
         time_step_size=time_step_size,
         include_freestream=False,
-    )["grad_p"]
+    )["pressure_gradient"]
 
-    # Force lazy init, then get what the pressure method actually computed for u_target
+    # Force lazy init, then get what the pressure method actually computed for prescribed_velocity
     pp = solver._pressure_physics
-    u_internal = pp.compute_target_velocities(solver.particles, targets, include_freestream=False)
+    u_internal = pp.compute_target_velocity(solver.particles, targets, include_freestream=False)
 
     # The temporal term (internal) is (u_internal - u_corrected)/dt
     temporal_from_mismatch = (u_internal - u_corrected) / time_step_size
@@ -791,8 +807,8 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
     assert mismatch_norm > 0.5 * expected_norm, (
         f"Expected nonzero temporal term from code-path mismatch "
         f"(norm ≈ {expected_norm:.3e}), got {mismatch_norm:.3e}. "
-        "This means VPMSolver.compute_target_velocities and "
-        "PressurePhysics.compute_target_velocities now return the same result — "
+        "This means VPMSolver.compute_target_velocity and "
+        "PressurePhysics.compute_target_velocity now return the same result — "
         "verify whether the divergence-free correction is still present."
     )
 
@@ -804,7 +820,7 @@ def test_eulerian_temporal_mismatch_with_corrected_velocity(tmp_path):
 
 def test_return_velocity_enables_consistent_temporal_term(tmp_path):
     """
-    Using return_velocity=True to obtain u_target at step n-1 and passing it
+    Using return_velocity=True to obtain prescribed_velocity at step n-1 and passing it
     as velocity_previous at step n must produce the correct Eulerian temporal
     term — identical to the self-consistency result in test 1.6.
 
@@ -815,17 +831,17 @@ def test_return_velocity_enables_consistent_temporal_term(tmp_path):
     solver = _single_vortex_solver(tmp_path)
     targets = np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]])
 
-    # Step n-1: get grad_p AND u_snapshot from the same code path
-    result = solver.compute_target_pressure_gradients(
+    # Step n-1: get pressure_gradient AND velocity_snapshot from the same code path
+    result = solver.compute_pressure_gradient_at_points(
         targets,
         density=_DENSITY,
-        nu=_NU,
+        kinematic_viscosity=_NU,
         include_viscous=False,
         include_temporal=False,
         include_freestream=False,
         return_velocity=True,
     )
-    _components_prev, u_snapshot = result
+    _components_prev, velocity_snapshot = result
 
     # Move the particle to simulate physical evolution
     time_step_size = 0.05
@@ -833,45 +849,45 @@ def test_return_velocity_enables_consistent_temporal_term(tmp_path):
     solver.particles.set_field("position", pos + np.array([[0.05, 0.0, 0.0]]))
 
     # Step n: use the stored snapshot as velocity_previous
-    grad_p_with_temporal = solver.compute_target_pressure_gradients(
+    grad_p_with_temporal = solver.compute_pressure_gradient_at_points(
         targets,
         density=_DENSITY,
-        nu=_NU,
+        kinematic_viscosity=_NU,
         include_viscous=False,
         include_temporal=True,
         temporal_method="eulerian",
-        velocity_previous=u_snapshot,
+        velocity_previous=velocity_snapshot,
         time_step_size=time_step_size,
         include_freestream=False,
         return_velocity=True,
     )
-    _components_temporal, u_new_snapshot = grad_p_with_temporal
-    grad_p_temporal = _components_temporal["grad_p"]
+    temporal_components, u_new_snapshot = grad_p_with_temporal
+    temporal_pressure_gradient = temporal_components["pressure_gradient"]
 
     # Independently compute convective-only at the new state
-    grad_p_conv_only = solver.compute_target_pressure_gradients(
+    grad_p_conv_only = solver.compute_pressure_gradient_at_points(
         targets,
         density=_DENSITY,
-        nu=_NU,
+        kinematic_viscosity=_NU,
         include_viscous=False,
         include_temporal=False,
         include_freestream=False,
-    )["grad_p"]
+    )["pressure_gradient"]
 
     # The temporal contribution should equal -ρ(u_new - u_old)/dt
     pp = solver._pressure_physics
-    u_new = pp.compute_target_velocities(solver.particles, targets, include_freestream=False)
-    expected_temporal = -_DENSITY * (u_new - u_snapshot) / time_step_size
+    u_new = pp.compute_target_velocity(solver.particles, targets, include_freestream=False)
+    expected_temporal = -_DENSITY * (u_new - velocity_snapshot) / time_step_size
     expected_total = grad_p_conv_only + expected_temporal
 
     np.testing.assert_allclose(
-        grad_p_temporal,
+        temporal_pressure_gradient,
         expected_total,
         atol=1e-8,
         rtol=1e-6,
         err_msg=(
             "return_velocity=True snapshot must produce a temporally consistent "
-            "grad_p when fed back as velocity_previous"
+            "pressure_gradient when fed back as velocity_previous"
         ),
     )
 
@@ -880,5 +896,5 @@ def test_return_velocity_enables_consistent_temporal_term(tmp_path):
         u_new_snapshot,
         u_new,
         atol=1e-10,
-        err_msg="Returned u_snapshot must match PressurePhysics.compute_target_velocities",
+        err_msg="Returned velocity_snapshot must match PressurePhysics.compute_target_velocity",
     )

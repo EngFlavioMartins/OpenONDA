@@ -19,8 +19,8 @@ test_direct_stretching_changes_total_circulation
 
 import numpy as np
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
 
 # ── Shared parameters ─────────────────────────────────────────────────────────
 _RNG_SEED = 42
@@ -30,7 +30,7 @@ _SIGMA = 0.1  # particle core radius [m]
 _GAMMA_SCALE = 1.0  # RMS circulation magnitude per component [m²/s]
 
 
-def _stretching_solver(tmp_path, *, stretching_config, positions, circulations):
+def _stretching_solver(tmp_path, *, stretching_config, position, circulations):
     """Return a solver with only stretching active (advection=NONE, viscous=NONE)."""
     config = VPMSetup(
         time_step_size=_TIME_STEP_SIZE,
@@ -43,14 +43,14 @@ def _stretching_solver(tmp_path, *, stretching_config, positions, circulations):
         checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
-    n = len(positions)
-    volume = (4.0 / 3.0) * np.pi * _SIGMA**3
+    n = len(position)
+    particle_volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
-        position=positions,
+        position=position,
         velocity=np.zeros((n, 3)),
         vortex_strength=circulations,
         core_radius=np.full(n, _SIGMA),
-        volume=np.full(n, volume),
+        particle_volume=np.full(n, particle_volume),
         kinematic_viscosity=np.full(n, 1e-5),
     )
     return solver
@@ -80,13 +80,13 @@ def test_disabled_stretching_leaves_circulation_invariant(tmp_path):
       side-effect that modifies particle circulations.
     """
     rng = np.random.default_rng(_RNG_SEED)
-    positions = rng.uniform(-1.0, 1.0, (_N_PARTICLES, 3))
+    position = rng.uniform(-1.0, 1.0, (_N_PARTICLES, 3))
     circulations = rng.normal(0.0, _GAMMA_SCALE, (_N_PARTICLES, 3))
 
     solver = _stretching_solver(
         tmp_path,
         stretching_config=StretchingConfig.disabled(),
-        positions=positions,
+        position=position,
         circulations=circulations,
     )
 
@@ -122,13 +122,13 @@ def test_direct_stretching_changes_total_circulation(tmp_path):
       accidentally conserves ΣΓ (extremely unlikely with random seed).
     """
     rng = np.random.default_rng(_RNG_SEED + 1)
-    positions = rng.uniform(-0.5, 0.5, (_N_PARTICLES, 3))
+    position = rng.uniform(-0.5, 0.5, (_N_PARTICLES, 3))
     circulations = rng.normal(0.0, _GAMMA_SCALE, (_N_PARTICLES, 3))
 
     solver = _stretching_solver(
         tmp_path,
         stretching_config=StretchingConfig.direct(scheme="EULER"),
-        positions=positions,
+        position=position,
         circulations=circulations,
     )
 

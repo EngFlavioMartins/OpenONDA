@@ -1,0 +1,1901 @@
+"""
+Taichi GPU-Accelerated Barnes-Hut Treecode for VPM.
+====================================================
+Fully parallel LBVH (Linear Bounding Volume Hierarchy) construction and
+binary-tree traversal using Taichi for GPU acceleration.
+
+The tree is built on-device via:
+  1. AABB computation (parallel min/max reduction)
+  2. Morton-code encoding (30-bit, 10 bits/axis)
+  3. On-device Morton sort (ti.algorithms.parallel_sort; CPU argsort fallback)
+  4. GPU Karras radix tree (O(N), fully parallel — one thread per internal node)
+  5. Level-synchronous bottom-up multipole moments (one kernel per tree level)
+
+The tree construction (step 4) uses the Karras 2012 algorithm with each internal
+node solved independently (no serial stack, no shared scratch, Vulkan-portable):
+  - δ(i, j) = common-prefix length of sorted Morton keys (index tie-break on ties)
+  - each internal node determines its [first, last] range and split via δ +
+    exponential/binary search
+  - internal node 0 is the root (covers [0, N-1])
+
+All phases are GPU-resident: the sort runs on-device (parallel_sort), the level
+bound is derived from N (no device→host scalar read), and results stay on the GPU
+(field→field copies).  The CPU argsort remains only as a one-time-validated
+fallback for any backend whose parallel_sort misbehaves.
+
+Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
+Date: February 2026
+
+Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+"""
+
+import time
+
+import numpy as np
+import taichi as ti
+import taichi.algorithms  # noqa: F401  (ti.algorithms.parallel_sort)
+
+from ..config.constants import (
+    FOUR_OVER_THREE_SQRT_PI,
+    GAUSSIAN_Q_SERIES_CROSSOVER,
+    TREECODE_SUPPORTED_KERNELS,
+)
+
+_HOST_TRANSFER_CHUNK_SIZE = 65536
+# Bound each traversal dispatch.  Large all-particle kernels can exceed the
+# i915/Metal watchdog even though the complete step is otherwise valid; the
+# driver then resets the device and all Taichi fields read back as zero.  The
+# batches are mathematically independent because every target owns its stack
+# and output slot.
+# A traversal target can visit hundreds of nodes, so the number of loop
+# iterations is much larger than the target count suggests.  32k targets was
+# still enough to trip the i915 Vulkan fence watchdog once the coupled cube
+# wake reached ~220k particles.  A 4k dispatch keeps even the late-wake tree
+# traversals short on integrated GPUs; launch overhead is negligible next to
+# the O(N log N) walk and discrete GPUs remain fully occupied.
+_TRAVERSAL_BATCH_SIZE = 4096
+# Topology passes are cheap relative to traversal, but a malformed parent link
+# must never leave one giant Vulkan kernel spinning until the driver resets.
+_TOPOLOGY_BATCH_SIZE = 4096
+
+
+@ti.data_oriented
+class TaichiTreecode:
+    """
+    GPU-accelerated Barnes-Hut treecode using Taichi with LBVH build.
+
+    The tree is a **binary** radix tree (Karras 2012) constructed from
+    Morton-coded particle position.  Traversal uses the same stack-based
+    MAC-driven iteration as the previous octree code, adapted to two
+    children per internal node.
+
+    Parameters:
+        max_n_particles: Maximum number of particles
+        max_nodes: Maximum number of tree nodes (typically 2*max_n_particles)
+        theta: Opening angle for MAC criterion
+        max_leaf_size: Maximum particles per leaf node
+    """
+
+    def __init__(
+        self,
+        max_n_particles: int = 100000,
+        max_nodes: int = 200000,
+        theta: float = 0.5,
+        max_leaf_size: int = 32,
+        kernel_type: str = "WINCKELMANS",
+        multipole_order: int = 1,
+        sort_particle_targets: bool = False,
+        traversal_block_dim: int = 128,
+    ):
+        self.max_n_particles = max_n_particles
+        self.max_nodes = max_nodes
+        self.theta = theta
+        self.max_leaf_size = max_leaf_size
+        self.theta_sq = theta * theta
+        self.kernel_type = kernel_type.upper()
+        if multipole_order not in (1, 2, 3):
+            raise ValueError(f"Unsupported treecode multipole_order: {multipole_order}")
+        if traversal_block_dim < 0:
+            raise ValueError(f"traversal_block_dim must be >= 0, got {traversal_block_dim}")
+        self.traversal_block_dim = int(traversal_block_dim)
+
+        # -------------------------------------------------------------
+        # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
+        # -------------------------------------------------------------
+        self.position = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
+        self.vortex_strength = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
+        self.core_radius = ti.field(dtype=ti.f32, shape=max_n_particles)
+
+        # -------------------------------------------------------------
+        # TREE STRUCTURE (binary LBVH)
+        # -------------------------------------------------------------
+        # Node properties (centre/half_size computed from AABB)
+        self.node_centre = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
+        self.node_half_size = ti.field(dtype=ti.f32, shape=max_nodes)
+
+        # Multipole moments
+        self.node_net_vortex_strength = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
+        self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
+        self.node_avg_radius = ti.field(dtype=ti.f32, shape=max_nodes)
+        # Higher-order moments are sized by the requested order: at the default
+        # order 1 they would otherwise cost 36 + 108 bytes/node (144 MB at 1e6
+        # nodes) for fields no kernel ever reads.  Allocating one element keeps
+        # the fields defined so the kernels still compile; every write and read
+        # is guarded by the runtime order check, so the stub is never indexed.
+        self._dipole_nodes = max_nodes if multipole_order >= 2 else 1
+        self._quad_nodes = max_nodes if multipole_order >= 3 else 1
+        # First-order source-position moment around node_com:
+        #   M[b, a] = sum_j (x_j - node_com)_b * vortex_strength_{j,a}
+        # Used by the opt-in dipole correction when multipole_order == 2.
+        self.node_vortex_strength_dipole = ti.Matrix.field(
+            3, 3, dtype=ti.f32, shape=self._dipole_nodes
+        )
+        # Second-order source-position moment around node_com:
+        #   Q[node, k][a, b] = sum_j vortex_strength_{j,k} * d_a * d_b,   d = x_j - node_com
+        # (symmetric in a, b).  Used when multipole_order == 3 (quadrupole).
+        self.node_vortex_strength_quadrupole = ti.Matrix.field(
+            3, 3, dtype=ti.f32, shape=(self._quad_nodes, 3)
+        )
+
+        # Binary tree structure (left/right child, -1 = none)
+        self.node_left = ti.field(dtype=ti.i32, shape=max_nodes)
+        self.node_right = ti.field(dtype=ti.i32, shape=max_nodes)
+        # Parent pointer (root = -1); derived from the child links after build.
+        self.node_parent = ti.field(dtype=ti.i32, shape=max_nodes)
+        # Depth from the root, used by the level-synchronous multipole pass.
+        self.node_depth = ti.field(dtype=ti.i32, shape=max_nodes)
+        self.node_is_leaf = ti.field(dtype=ti.i32, shape=max_nodes)
+        self.node_particle_start = ti.field(dtype=ti.i32, shape=max_nodes)
+        self.node_particle_count = ti.field(dtype=ti.i32, shape=max_nodes)
+
+        # Particle-to-leaf mapping (contiguous sorted indices)
+        self.leaf_particles = ti.field(dtype=ti.i32, shape=max_n_particles)
+
+        # -------------------------------------------------------------
+        # LBVH BUILD FIELDS
+        # -------------------------------------------------------------
+        self.morton_codes = ti.field(dtype=ti.u32, shape=max_n_particles)
+        self.sorted_indices = ti.field(dtype=ti.i32, shape=max_n_particles)
+        # GPU-sort scratch (a permutable copy of the keys) — lets the Morton sort
+        # run on-device, removing the per-build CPU argsort host round-trip.
+        self._sort_keys = ti.field(dtype=ti.u32, shape=max_n_particles)
+        # Taichi 1.7's Vulkan parallel_sort can fail only for particular active
+        # lengths even after an earlier invocation validated successfully.  A
+        # bad permutation creates malformed Karras parent links; the subsequent
+        # depth walk then triggers an i915 fence reset and zeroes unrelated
+        # fields.  Keep the fast device sort on CUDA, where it is stable, and
+        # use deterministic NumPy argsort on Vulkan/Metal/CPU.  The O(N) key
+        # transfer is small beside the O(N log N) tree traversal.
+        self._gpu_sort = ti.lang.impl.current_cfg().arch == ti.cuda
+        self._sort_validated = False
+        # LCP array (for Karras tree; length max_n_particles for simplicity)
+        self._lcp = ti.field(dtype=ti.i32, shape=max_n_particles)
+        # Nearest smaller LCP left/right (for Karras tree construction)
+        self._nsl = ti.field(dtype=ti.i32, shape=max_n_particles)
+        self._nsr = ti.field(dtype=ti.i32, shape=max_n_particles)
+        # Temporary stack for serial NSL/NSR computation (GPU)
+        self._stack = ti.field(dtype=ti.i32, shape=max_n_particles)
+        # Node particle range in sorted order
+        self._node_first = ti.field(dtype=ti.i32, shape=max_nodes)
+        self._node_last = ti.field(dtype=ti.i32, shape=max_nodes)
+        # Node AABB
+        self._node_aabb_min = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
+        self._node_aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
+
+        # -------------------------------------------------------------
+        # OUTPUT VELOCITIES
+        # -------------------------------------------------------------
+        self.velocity = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
+
+        # -------------------------------------------------------------
+        # OUTPUT VELOCITY GRADIENTS AND STRAIN RATES
+        # -------------------------------------------------------------
+        self.velocity_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_n_particles)
+        self.strain_rate = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_n_particles)
+
+        # -------------------------------------------------------------
+        # TARGET POINT FIELDS
+        # -------------------------------------------------------------
+        self.max_evaluation_points = max_n_particles
+        self.target_position = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
+        self.target_velocity = ti.Vector.field(3, dtype=ti.f32, shape=max_n_particles)
+        self.target_velocity_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_n_particles)
+        self.n_targets = ti.field(dtype=ti.i32, shape=())
+        self.kernel_type_id = ti.field(dtype=ti.i32, shape=())
+        self.multipole_order = ti.field(dtype=ti.i32, shape=())
+        self.sort_particle_targets = ti.field(dtype=ti.i32, shape=())
+
+        # -------------------------------------------------------------
+        # TREE TRAVERSAL STACK
+        # -------------------------------------------------------------
+        self.max_stack_depth = 48
+        self.traversal_stack = ti.field(dtype=ti.i32, shape=(max_n_particles, 48))
+        self.target_traversal_stack = ti.field(dtype=ti.i32, shape=(max_n_particles, 48))
+
+        # -------------------------------------------------------------
+        # COUNTERS
+        # -------------------------------------------------------------
+        self.n_particles_total = ti.field(dtype=ti.i32, shape=())
+        self.n_nodes = ti.field(dtype=ti.i32, shape=())
+        self._root = ti.field(dtype=ti.i32, shape=())
+        self._max_depth = ti.field(dtype=ti.i32, shape=())
+        self._topology_error = ti.field(dtype=ti.i32, shape=())
+        self.max_tree_depth_guard = 96
+
+        # Background velocity
+        self.freestream_velocity = ti.Vector.field(3, dtype=ti.f32, shape=())
+
+        # Statistics
+        self.build_time = 0.0
+        self.eval_time = 0.0
+        self.grad_time = 0.0
+
+        # AABB fields (allocated at instance level, not class level)
+        self._aabb_min = ti.Vector.field(3, dtype=ti.f32, shape=())
+        self._aabb_max = ti.Vector.field(3, dtype=ti.f32, shape=())
+
+        # Constants for gradient kernel
+        self.default_cutoff_radius_factor = 15.0
+
+        self._host_vector_chunks = {}
+        self._host_scalar_chunks = {}
+        self._host_matrix_chunks = {}
+        self._host_u32_chunks = {}
+        self._host_i32_chunks = {}
+
+        # Topology-reuse state (see refit()): last built particle count and the
+        # combine-level bound.  None until the first build().
+        self._built_n = None
+        self._combine_levels = 0
+
+        self.set_kernel_type(self.kernel_type)
+        self.set_multipole_order(multipole_order)
+        self.set_sort_particle_targets(sort_particle_targets)
+
+    def set_kernel_type(self, kernel_type: str) -> None:
+        """Select the regularization kernel evaluated during traversal.
+
+        Only the kernels in ``TREECODE_SUPPORTED_KERNELS`` have a Taichi
+        implementation here; ``VPMSetup`` validation rejects the other
+        combinations up front, so reaching this error means the treecode was
+        constructed outside the normal configuration path.
+        """
+        normalized = kernel_type.upper()
+        if normalized not in TREECODE_SUPPORTED_KERNELS:
+            raise ValueError(
+                f"Unsupported treecode kernel_type: {kernel_type}. "
+                f"Supported: {list(TREECODE_SUPPORTED_KERNELS)}."
+            )
+        self.kernel_type = normalized
+        self.kernel_type_id[None] = TREECODE_SUPPORTED_KERNELS.index(normalized)
+
+    def set_multipole_order(self, order: int) -> None:
+        """Set the far-field expansion order.
+
+        Cannot exceed the order the instance was constructed with: the dipole and
+        quadrupole moment fields are sized at construction and Taichi fields
+        cannot grow, so raising the order here would index a one-element stub.
+        """
+        if order not in (1, 2, 3):
+            raise ValueError(f"Unsupported treecode multipole_order: {order}")
+        if order >= 2 and self._dipole_nodes < self.max_nodes:
+            raise ValueError(
+                f"treecode was built for multipole_order={self.multipole_order[None]}; "
+                f"cannot raise it to {order} because the dipole moments were not "
+                "allocated. Construct a new TaichiTreecode with the higher order."
+            )
+        if order >= 3 and self._quad_nodes < self.max_nodes:
+            raise ValueError(
+                f"treecode was built for multipole_order={self.multipole_order[None]}; "
+                f"cannot raise it to {order} because the quadrupole moments were not "
+                "allocated. Construct a new TaichiTreecode with the higher order."
+            )
+        self.multipole_order[None] = int(order)
+
+    def set_sort_particle_targets(self, enabled: bool) -> None:
+        """Evaluate particle targets in Morton order for better GPU coherence."""
+        self.sort_particle_targets[None] = 1 if enabled else 0
+
+    # BUILD — On-GPU LBVH construction
+
+    def build(
+        self, position=None, vortex_strength=None, core_radius=None, N=None, force: bool = False
+    ) -> None:
+        """
+        Build LBVH binary tree from particle data.
+
+        Supports two calling conventions:
+
+        1. Field-based (preferred)::
+            tree.build(pos_field, strg_field, rad_field, N)
+
+           Copies from Taichi fields directly — **no CPU round-trip**.
+
+        2. NumPy arrays (backward compat)::
+            tree.build(pos_np, strg_np, rad_np)
+
+        When called with the same *N* (and no *force*) repeatedly, the build
+        is skipped — the tree is already valid.
+
+        Args:
+            position:  Taichi vec3 field *or* NumPy array [N,3] of position.
+            vortex_strength: Taichi vec3 field or NumPy array [N, 3] [m³/s].
+            core_radius: Taichi scalar field or NumPy array [N] [m].
+            N:  Number of active particles (required for field API).
+            force:  Accepted for API compatibility; the tree is always rebuilt.
+        """
+        # The tree is rebuilt on every call.
+        t_start = time.perf_counter()
+
+        # -- Detect calling convention ----------------------------------
+        using_fields = (
+            hasattr(position, "shape")
+            and hasattr(position, "__getitem__")
+            and not isinstance(position, np.ndarray)
+        )
+
+        if using_fields:
+            N_val = N if N is not None else self.n_particles_total[None]
+            if N_val > self.max_n_particles:
+                raise ValueError(
+                    f"Too many particles ({N_val}) for treecode capacity ({self.max_n_particles})"
+                )
+            self.n_particles_total[None] = N_val
+            self._copy_particle_fields(position, vortex_strength, core_radius, N_val)
+        else:
+            pos_np = position
+            strg_np = vortex_strength
+            rad_np = core_radius
+            N_val = len(pos_np)
+            if N_val > self.max_n_particles:
+                raise ValueError(
+                    f"Too many particles ({N_val}) for treecode capacity ({self.max_n_particles})"
+                )
+            self.n_particles_total[None] = N_val
+            self._upload_numpy_particles(pos_np, strg_np, rad_np, N_val)
+
+        # -- Build LBVH ------------------------------------------------
+        self._build_lbvh(N_val)
+
+        # Record the built configuration so refit() can validate that the tree
+        # topology it reuses matches the current particle set.
+        self._built_n = N_val
+        self._combine_levels = 2 * int(np.ceil(np.log2(max(N_val, 2)))) + 34
+
+        self.build_time = time.perf_counter() - t_start
+
+    @ti.kernel
+    def _copy_positions_field(self, pos: ti.template(), N: ti.i32):
+        """Overwrite position while leaving vortex strength and core radius unchanged."""
+        for i in range(N):
+            self.position[i] = pos[i]
+
+    @ti.kernel
+    def _copy_vortex_strengths_field(self, vortex_strength: ti.template(), N: ti.i32):
+        """Overwrite only vortex strength for a fixed-position topology refit."""
+        for i in range(N):
+            self.vortex_strength[i] = vortex_strength[i]
+
+    def refit(self, position, N: int) -> None:
+        """Reuse the existing LBVH topology, updating only position multipoles.
+
+        Between the stages of a single RK advection step every particle moves
+        by less than one inter-particle spacing (any sane advection CFL), so the
+        Morton-sorted leaf assignment and the Karras hierarchy built at stage 1
+        remain a valid — if very slightly sub-optimal — bounding-particle_volume tree for
+        the displaced position.  Circulations and core_radius do not change during
+        advection, only position do.
+
+        A refit therefore keeps ``sorted_indices``, the node child/parent links,
+        the leaf particle ranges and the per-node depths from the last
+        :meth:`build`, and only re-seeds the leaf multipoles from the new
+        position and re-runs the level-synchronous bottom-up combine.  This
+        skips the Morton-code, sort, Karras-build, parents and depths passes —
+        typically the majority of build cost (the sort in particular).
+
+        Args:
+            position: vec3 field of the displaced position, in the SAME
+                particle order as the last :meth:`build` (length >= N).
+            N: number of active particles; must equal the last build's N.
+
+        Raises:
+            RuntimeError: if no compatible prior build exists (the caller should
+                fall back to a full :meth:`build`).
+        """
+        if getattr(self, "_built_n", None) != N or N <= 1:
+            raise RuntimeError(
+                "treecode.refit requires a prior build() with the same N "
+                f"(built N={getattr(self, '_built_n', None)}, requested N={N})"
+            )
+        t_start = time.perf_counter()
+        self.n_particles_total[None] = N
+        # Update only position; vortex strength and core radius are advection-invariant.
+        self._copy_positions_field(position, N)
+        # Re-seed leaf multipoles/AABB from the new position, then rebuild the
+        # internal-node moments bottom-up over the unchanged level structure.
+        self._leaf_multipole_init_kernel(N)
+        for level in range(self._combine_levels, -1, -1):
+            self._combine_level_kernel(N, level)
+        self.build_time = time.perf_counter() - t_start
+
+    def refit_vortex_strength(self, vortex_strength, N: int) -> None:
+        """Refit multipoles after vortex_strength change at fixed position.
+
+        Standalone RK stretching stages keep particle position and core_radius
+        fixed while changing only vortex strength.  Their Morton ordering and
+        Karras topology are therefore unchanged; rebuilding that topology at
+        every stage adds work and has triggered Vulkan device loss in long,
+        memory-heavy coupled runs.  Refresh the vortex strength field and all
+        dependent multipoles while retaining the validated topology.
+        """
+        if getattr(self, "_built_n", None) != N or N <= 1:
+            raise RuntimeError(
+                "treecode.refit_vortex_strength requires a prior build() with the same N "
+                f"(built N={getattr(self, '_built_n', None)}, requested N={N})"
+            )
+        t_start = time.perf_counter()
+        self.n_particles_total[None] = N
+        self._copy_vortex_strengths_field(vortex_strength, N)
+        self._leaf_multipole_init_kernel(N)
+        for level in range(self._combine_levels, -1, -1):
+            self._combine_level_kernel(N, level)
+        ti.sync()
+        self.build_time = time.perf_counter() - t_start
+
+    @ti.kernel
+    def _copy_ndarray_to_vec3_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            for k in ti.static(range(3)):
+                dst[start_idx + i][k] = src[i, k]
+
+    @ti.kernel
+    def _copy_ndarray_to_scalar_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            dst[start_idx + i] = src[i]
+
+    @ti.kernel
+    def _copy_ndarray_to_i32_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            dst[start_idx + i] = src[i]
+
+    @ti.kernel
+    def _extract_vec3_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            for k in ti.static(range(3)):
+                dst[i, k] = src[start_idx + i][k]
+
+    @ti.kernel
+    def _extract_mat3_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            for j in ti.static(range(3)):
+                for k in ti.static(range(3)):
+                    dst[i, j, k] = src[start_idx + i][j, k]
+
+    @ti.kernel
+    def _extract_u32_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        for i in range(n):
+            dst[i] = src[start_idx + i]
+
+    def _host_transfer_buffer(self, family: str, field, direction: str) -> np.ndarray:
+        """Return a fixed staging array unique to a field and direction."""
+        key = (direction, id(field))
+        if family == "vector":
+            buffers = self._host_vector_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3)
+            dtype = np.float32
+        elif family == "scalar":
+            buffers = self._host_scalar_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
+            dtype = np.float32
+        elif family == "matrix":
+            buffers = self._host_matrix_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3, 3)
+            dtype = np.float32
+        elif family == "u32":
+            buffers = self._host_u32_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
+            dtype = np.uint32
+        elif family == "i32":
+            buffers = self._host_i32_chunks
+            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
+            dtype = np.int32
+        else:
+            raise ValueError(f"Unknown host transfer buffer family {family!r}")
+        if key not in buffers:
+            buffers[key] = np.empty(shape, dtype=dtype)
+        return buffers[key]
+
+    def _upload_vector_array(self, src: np.ndarray, dst, n: int | None = None):
+        arr = np.ascontiguousarray(src, dtype=np.float32)
+        if arr.ndim != 2 or arr.shape[1] != 3:
+            raise ValueError(f"Expected vector array with shape (N, 3), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        buf = self._host_transfer_buffer("vector", dst, "upload")
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_vec3_field(buf, dst, lo, n_chunk)
+            ti.sync()
+
+    def _upload_scalar_array(self, src: np.ndarray, dst, n: int | None = None):
+        arr = np.ascontiguousarray(src, dtype=np.float32)
+        if arr.ndim != 1:
+            raise ValueError(f"Expected scalar array with shape (N,), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        buf = self._host_transfer_buffer("scalar", dst, "upload")
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
+            ti.sync()
+
+    def _upload_i32_array(self, src: np.ndarray, dst, n: int | None = None):
+        arr = np.ascontiguousarray(src, dtype=np.int32)
+        if arr.ndim != 1:
+            raise ValueError(f"Expected int array with shape (N,), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        buf = self._host_transfer_buffer("i32", dst, "upload")
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_i32_field(buf, dst, lo, n_chunk)
+            ti.sync()
+
+    def _download_vector_field(self, src, n: int) -> np.ndarray:
+        if n == 0:
+            return np.empty((0, 3), dtype=np.float32)
+        out = np.empty((n, 3), dtype=np.float32)
+        buf = self._host_transfer_buffer("vector", src, "download")
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_vec3_field_prefix(src, buf, lo, count)
+            ti.sync()
+            out[lo : lo + count] = buf[:count]
+        return out
+
+    def _download_matrix_field(self, src, n: int) -> np.ndarray:
+        if n == 0:
+            return np.empty((0, 3, 3), dtype=np.float32)
+        out = np.empty((n, 3, 3), dtype=np.float32)
+        buf = self._host_transfer_buffer("matrix", src, "download")
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_mat3_field_prefix(src, buf, lo, count)
+            ti.sync()
+            out[lo : lo + count] = buf[:count]
+        return out
+
+    def _download_u32_field(self, src, n: int) -> np.ndarray:
+        if n == 0:
+            return np.empty((0,), dtype=np.uint32)
+        out = np.empty((n,), dtype=np.uint32)
+        buf = self._host_transfer_buffer("u32", src, "download")
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_u32_field_prefix(src, buf, lo, count)
+            ti.sync()
+            out[lo : lo + count] = buf[:count]
+        return out
+
+    def _upload_numpy_particles(self, pos_np, strg_np, rad_np, N):
+        """Upload arrays through the explicit f32 treecode boundary."""
+        self._upload_vector_array(pos_np, self.position, N)
+        self._upload_vector_array(strg_np, self.vortex_strength, N)
+        self._upload_scalar_array(rad_np, self.core_radius, N)
+        ti.sync()
+
+    @ti.kernel
+    def _copy_particle_fields(
+        self, pos: ti.template(), strg: ti.template(), rad: ti.template(), N: ti.i32
+    ):
+        """Copy particle data from source Taichi fields to treecode fields."""
+        for i in range(N):
+            self.position[i] = pos[i]
+            self.vortex_strength[i] = strg[i]
+            self.core_radius[i] = rad[i]
+
+    # -- GPU Karras tree build (fully parallel, Vulkan-portable) ----------
+
+    @ti.func
+    def _clz32(self, x: ti.u32) -> ti.i32:
+        """Count leading zeros of a 32-bit word (x may be 0 → 32)."""
+        n = 0
+        if x == ti.u32(0):
+            n = 32
+        else:
+            v = x
+            while (v & ti.u32(0x80000000)) == ti.u32(0):
+                v = v << ti.u32(1)
+                n += 1
+        return n
+
+    @ti.func
+    def _delta(self, i: ti.i32, j: ti.i32, N: ti.i32) -> ti.i32:
+        """Karras δ: common-prefix length of sorted Morton keys i and j.
+
+        Out-of-range j → -1.  Equal keys fall back to the index tie-break
+        (32 + clz(i^j)), which makes the effective keys distinct and bounds the
+        tree depth (so duplicate Morton cells cannot create an unbounded chain).
+        """
+        res = -1
+        if j >= 0 and j < N:
+            ki = self.morton_codes[self.sorted_indices[i]]
+            kj = self.morton_codes[self.sorted_indices[j]]
+            x = ki ^ kj
+            if x == ti.u32(0):  # noqa: SIM108
+                res = 32 + self._clz32(ti.u32(i) ^ ti.u32(j))
+            else:
+                res = self._clz32(x)
+        return res
+
+    @ti.kernel
+    def _build_karras_parallel_kernel(self, N: ti.i32):
+        """Parallel Karras 2012 radix-tree build.
+
+        Internal node ``i`` is stored at field index ``N + i`` and covers a
+        contiguous sorted range; leaf ``j`` is stored at field index ``j``.
+        Internal node 0 is always the root (covers [0, N-1]).
+        """
+        # -- init all nodes (parallel) --
+        for idx in range(2 * N - 1):
+            self.node_left[idx] = -1
+            self.node_right[idx] = -1
+            self.node_is_leaf[idx] = 0
+            self._node_first[idx] = -1
+            self._node_last[idx] = -1
+            self.node_particle_start[idx] = -1
+            self.node_particle_count[idx] = 0
+        # -- leaves (parallel) --
+        for j in range(N):
+            self.node_is_leaf[j] = 1
+            self.leaf_particles[j] = self.sorted_indices[j]
+            self._node_first[j] = j
+            self._node_last[j] = j
+            self.node_particle_start[j] = j
+            self.node_particle_count[j] = 1
+        # -- internal nodes: one independent thread per node --
+        for i in range(N - 1):
+            # Direction of the range (toward the neighbour with longer prefix).
+            dl = self._delta(i, i - 1, N)
+            dr = self._delta(i, i + 1, N)
+            d = 1
+            if dr <= dl:
+                d = -1
+            delta_min = self._delta(i, i - d, N)
+            # Exponential search for a far end of the range.
+            l_max = 2
+            while self._delta(i, i + l_max * d, N) > delta_min:
+                l_max *= 2
+            # Binary search for the precise other end.
+            range_length = 0
+            t = l_max >> 1
+            while t >= 1:
+                if self._delta(i, i + (range_length + t) * d, N) > delta_min:
+                    range_length += t
+                t = t >> 1
+            j = i + range_length * d
+            first = ti.min(i, j)
+            last = ti.max(i, j)
+            # Find split: last index of the left subrange.
+            node_delta = self._delta(first, last, N)
+            split = first
+            stride = last - first
+            cont = 1
+            while cont == 1:
+                stride = (stride + 1) >> 1
+                newsplit = split + stride
+                if newsplit < last and self._delta(first, newsplit, N) > node_delta:
+                    split = newsplit
+                if stride <= 1:
+                    cont = 0
+            # Children: leaf if the sub-range is a single element, else internal.
+            left = split if split == first else (N + split)
+            right = (split + 1) if (split + 1) == last else (N + split + 1)
+            idx = N + i
+            self.node_left[idx] = left
+            self.node_right[idx] = right
+            self._node_first[idx] = first
+            self._node_last[idx] = last
+            self.node_particle_start[idx] = first
+            self.node_particle_count[idx] = last - first + 1
+            if i == 0:
+                self._root[None] = N  # internal node 0 is the root
+
+    @ti.kernel
+    def _init_sort_pairs_kernel(self, N: ti.i32):
+        """Seed (key, payload) pairs for the on-device Morton sort.
+
+        Real particles get their Morton key + their own index; the unused tail is
+        keyed 0xFFFFFFFF so it sorts after all 30-bit real keys, leaving the first
+        N slots as the Morton-ordered permutation."""
+        for i in range(self.max_n_particles):
+            if i < N:
+                self._sort_keys[i] = self.morton_codes[i]
+                self.sorted_indices[i] = i
+            else:
+                self._sort_keys[i] = ti.u32(0xFFFFFFFF)
+                self.sorted_indices[i] = i
+
+    def _cpu_argsort(self, N):
+        """CPU fallback: argsort Morton keys → sorted_indices (host round-trip)."""
+        morton_np = self._download_u32_field(self.morton_codes, N)
+        sorted_idx = np.argsort(morton_np, kind="mergesort")
+        padded = np.full(self.max_n_particles, -1, dtype=np.int32)
+        padded[:N] = sorted_idx.astype(np.int32)
+        self._upload_i32_array(padded, self.sorted_indices, self.max_n_particles)
+
+    def _sort_morton(self, N):
+        """Morton sort → sorted_indices, on-device when the backend supports it."""
+        if self._gpu_sort:
+            try:
+                self._init_sort_pairs_kernel(N)
+                ti.algorithms.parallel_sort(keys=self._sort_keys, values=self.sorted_indices)
+            except Exception:
+                self._gpu_sort = False
+            else:
+                if not self._sort_validated:
+                    # One-time correctness gate: catch a backend whose
+                    # parallel_sort silently misbehaves (e.g. on Vulkan) and fall
+                    # back permanently to the proven CPU argsort.
+                    keys = self._download_u32_field(self._sort_keys, N)
+                    if N > 1 and bool(np.any(np.diff(keys.astype(np.int64)) < 0)):
+                        self._gpu_sort = False
+                    self._sort_validated = True
+        if not self._gpu_sort:
+            self._cpu_argsort(N)
+
+    def _build_lbvh(self, N):
+        """Internal LBVH build pipeline (all steps after data upload)."""
+        if N <= 1:
+            # Trivial: single particle, root = that particle
+            self.n_nodes[None] = N
+            self._root[None] = 0 if N == 0 else 0
+            self.node_is_leaf[0] = 1
+            self.node_particle_start[0] = 0
+            self.node_particle_count[0] = N
+            if N > 0:
+                self.sorted_indices[0] = 0
+                self.leaf_particles[0] = 0
+                self.node_net_vortex_strength[0] = self.vortex_strength[0]
+                self.node_com[0] = self.position[0]
+                # NB: Python scope — ti.Matrix.zero is Taichi-scope only here.
+                zero33 = np.zeros((3, 3), dtype=np.float32)
+                self.node_vortex_strength_dipole[0] = zero33
+                for k in range(3):
+                    self.node_vortex_strength_quadrupole[0, k] = zero33
+                self.node_centre[0] = self.position[0]
+                self.node_half_size[0] = 0.0
+                self.node_avg_radius[0] = self.core_radius[0]
+                self.node_left[0] = -1
+                self.node_right[0] = -1
+                self.node_parent[0] = -1
+            return
+
+        # Step 1: AABB (parallel min/max reduction)
+        self._compute_aabb_kernel(N)
+
+        # Step 2: Morton codes (30-bit) — reads the AABB written above
+        self._compute_morton_codes_kernel(N, self._aabb_min, self._aabb_max)
+
+        # Step 3: sort particle indices by Morton key.  On-device by default
+        # (no host round-trip); validated once and falling back to a CPU argsort
+        # if a backend's parallel_sort misbehaves, so the build is correct anywhere.
+        self._sort_morton(N)
+
+        # Step 4: GPU Karras tree — fully parallel, one thread per internal node
+        # (no serialize, no shared scratch → Vulkan-correct).
+        self._build_karras_parallel_kernel(N)
+
+        # Step 5: parents + depths, then the level-synchronous bottom-up.
+        self._compute_parents_kernel(N)
+        self._leaf_multipole_init_kernel(N)
+        self._max_depth[None] = 0
+        self._topology_error[None] = 0
+        n_nodes = 2 * N - 1
+        for start in range(0, n_nodes, _TOPOLOGY_BATCH_SIZE):
+            count = min(_TOPOLOGY_BATCH_SIZE, n_nodes - start)
+            self._compute_depths_kernel(N, start, count)
+            ti.sync()
+        if self._topology_error[None] != 0:
+            raise RuntimeError(
+                "LBVH topology contains a parent cycle or exceeds the guarded "
+                f"depth of {self.max_tree_depth_guard}"
+            )
+        # One combine kernel per level, deepest → root.  Each level reads only the
+        # already-finalised level below it.
+        max_levels = 2 * int(np.ceil(np.log2(max(N, 2)))) + 34
+        for level in range(max_levels, -1, -1):
+            self._combine_level_kernel(N, level)
+
+        self.n_nodes[None] = 2 * N - 1
+
+    # -- AABB kernel --------------------------------------------------
+
+    @ti.kernel
+    def _compute_aabb_kernel(self, N: ti.i32):
+        """Parallel min/max reduction over particle position.
+
+        The static init unrolls to three scalar stores that run before the
+        parallel ``range(N)`` loop; the per-particle atomics then reduce
+        concurrently across threads (no ``serialize`` needed).
+        """
+        for k in ti.static(range(3)):
+            self._aabb_min[None][k] = 1e10
+            self._aabb_max[None][k] = -1e10
+        for i in range(N):
+            p = self.position[i]
+            for k in ti.static(range(3)):
+                ti.atomic_min(self._aabb_min[None][k], p[k])
+                ti.atomic_max(self._aabb_max[None][k], p[k])
+
+    # -- Morton-code kernel --------------------------------------------
+
+    @ti.func
+    def _expand_bits(self, v: ti.u32) -> ti.u32:
+        """Expand 10-bit integer to 30-bit by inserting two zero bits
+        between each original bit (for 3D Morton code)."""
+        v = (v | (v << 16)) & 0x030000FF
+        v = (v | (v << 8)) & 0x0300F00F
+        v = (v | (v << 4)) & 0x030C30C3
+        v = (v | (v << 2)) & 0x09249249
+        return v
+
+    @ti.kernel
+    def _compute_morton_codes_kernel(
+        self, N: ti.i32, aabb_min: ti.template(), aabb_max: ti.template()
+    ):
+        """Quantize f32 position to 30-bit Morton codes (10 bits/axis)."""
+        inv_range = ti.Vector([0.0, 0.0, 0.0])
+        for k in ti.static(range(3)):
+            span = aabb_max[None][k] - aabb_min[None][k]
+            inv_range[k] = 1023.0 / (span + 1e-30)
+
+        for i in range(N):
+            p = self.position[i]
+            qi = ti.Vector([ti.u32(0), ti.u32(0), ti.u32(0)])
+            for k in ti.static(range(3)):
+                q = ti.u32(ti.floor((p[k] - aabb_min[None][k]) * inv_range[k]))
+                qi[k] = ti.min(q, ti.u32(1023))
+            code = ti.u32(0)
+            code |= self._expand_bits(qi[0]) << 2
+            code |= self._expand_bits(qi[1]) << 1
+            code |= self._expand_bits(qi[2])
+            self.morton_codes[i] = code
+
+    # -- Bottom-up multipoles ------------------------------------------
+
+    @ti.kernel
+    def _compute_parents_kernel(self, N: ti.i32):
+        """Derive node_parent from the child links set by the Karras kernel.
+
+        Robust by construction: every node is the child of exactly one internal
+        node, so scanning internal nodes and writing parent[child]=idx covers
+        all non-root nodes; the root is the only node never written and keeps
+        its -1 sentinel.
+        """
+        for idx in range(2 * N - 1):
+            self.node_parent[idx] = -1
+        for idx in range(N, 2 * N - 1):
+            left = self.node_left[idx]
+            right = self.node_right[idx]
+            if left >= 0:
+                self.node_parent[left] = idx
+            if right >= 0:
+                self.node_parent[right] = idx
+
+    @ti.kernel
+    def _leaf_multipole_init_kernel(self, N: ti.i32):
+        """Seed leaf multipoles/AABB directly from particles."""
+        for j in range(N):
+            p = self.sorted_indices[j]
+            self.node_net_vortex_strength[j] = self.vortex_strength[p]
+            self.node_avg_radius[j] = self.core_radius[p]
+            self.node_com[j] = self.position[p]
+            if self.multipole_order[None] >= 2:
+                self.node_vortex_strength_dipole[j] = ti.Matrix.zero(ti.f32, 3, 3)
+            if self.multipole_order[None] >= 3:
+                for k in ti.static(range(3)):
+                    self.node_vortex_strength_quadrupole[j, k] = ti.Matrix.zero(ti.f32, 3, 3)
+            self.node_centre[j] = self.position[p]
+            self.node_half_size[j] = 0.0
+            self._node_aabb_min[j] = self.position[p]
+            self._node_aabb_max[j] = self.position[p]
+
+    @ti.kernel
+    def _compute_depths_kernel(
+        self,
+        N: ti.i32,
+        start_node: ti.i32,
+        count: ti.i32,
+    ):
+        """Depth (distance to root) of every node, and the max over the tree.
+
+        One thread per node climbs ``node_parent`` to the root counting hops, so
+        no ordering is required.  ``_max_depth`` bounds the level-synchronous
+        combine loop; it is the only host read in the multipole pass.
+        """
+        for local_node in range(count):
+            idx = start_node + local_node
+            d = 0
+            node = self.node_parent[idx]
+            while node >= 0 and d < self.max_tree_depth_guard:
+                node = self.node_parent[node]
+                d += 1
+            if node >= 0:
+                ti.atomic_max(self._topology_error[None], 1)
+            self.node_depth[idx] = d
+            ti.atomic_max(self._max_depth[None], d)
+
+    @ti.kernel
+    def _combine_level_kernel(self, N: ti.i32, level: ti.i32):
+        """Combine every internal node at ``level`` from its two children.
+
+        Called once per level, deepest first.  A node at ``level`` has children at
+        ``level + 1`` that the previous launch already finalised, so this is a
+        pure read of the level below — no cross-thread hazard, correct on every
+        backend without a fence.  Leaves (idx < N) are seeded separately.
+        """
+        for idx in range(N, 2 * N - 1):
+            if self.node_depth[idx] == level:
+                self._combine_node(idx)
+
+    @ti.func
+    def _combine_node(self, idx: ti.i32):
+        left = self.node_left[idx]
+        right = self.node_right[idx]
+        if left >= 0 and right >= 0:
+            first = ti.min(self._node_first[left], self._node_first[right])
+            last = ti.max(self._node_last[left], self._node_last[right])
+            self._node_first[idx] = first
+            self._node_last[idx] = last
+            self.node_particle_start[idx] = first
+            self.node_particle_count[idx] = last - first + 1
+
+            net_vortex_strength = (
+                self.node_net_vortex_strength[left] + self.node_net_vortex_strength[right]
+            )
+            self.node_net_vortex_strength[idx] = net_vortex_strength
+
+            mag_l = ti.sqrt(
+                self.node_net_vortex_strength[left].dot(self.node_net_vortex_strength[left])
+            )
+            mag_r = ti.sqrt(
+                self.node_net_vortex_strength[right].dot(self.node_net_vortex_strength[right])
+            )
+            total_mag = mag_l + mag_r
+            com = ti.Vector([0.0, 0.0, 0.0])
+            if total_mag > 1e-15:
+                com = (self.node_com[left] * mag_l + self.node_com[right] * mag_r) / total_mag
+            else:
+                com = (self.node_com[left] + self.node_com[right]) * 0.5
+            self.node_com[idx] = com
+
+            d_left = self.node_com[left] - com
+            d_right = self.node_com[right] - com
+            vortex_strength_left = self.node_net_vortex_strength[left]
+            vortex_strength_right = self.node_net_vortex_strength[right]
+            if self.multipole_order[None] >= 2:
+                dipole = ti.Matrix.zero(ti.f32, 3, 3)
+                for b in ti.static(range(3)):
+                    for a in ti.static(range(3)):
+                        dipole[b, a] = (
+                            self.node_vortex_strength_dipole[left][b, a]
+                            + d_left[b] * vortex_strength_left[a]
+                            + self.node_vortex_strength_dipole[right][b, a]
+                            + d_right[b] * vortex_strength_right[a]
+                        )
+                self.node_vortex_strength_dipole[idx] = dipole
+
+            if self.multipole_order[None] >= 3:
+                # Quadrupole shift: Q'_k[a,b] = Q_k[a,b] + s_a D[b,k] + s_b D[a,k]
+                # + vortex_strength_k s_a s_b, with s the child COM offset and D the
+                # child's own dipole (D[b,k] = sum d_b vortex_strength_k about child COM).
+                dip_l = self.node_vortex_strength_dipole[left]
+                dip_r = self.node_vortex_strength_dipole[right]
+                for k in ti.static(range(3)):
+                    quad = ti.Matrix.zero(ti.f32, 3, 3)
+                    for a in ti.static(range(3)):
+                        for b in ti.static(range(3)):
+                            quad[a, b] = (
+                                self.node_vortex_strength_quadrupole[left, k][a, b]
+                                + d_left[a] * dip_l[b, k]
+                                + d_left[b] * dip_l[a, k]
+                                + vortex_strength_left[k] * d_left[a] * d_left[b]
+                                + self.node_vortex_strength_quadrupole[right, k][a, b]
+                                + d_right[a] * dip_r[b, k]
+                                + d_right[b] * dip_r[a, k]
+                                + vortex_strength_right[k] * d_right[a] * d_right[b]
+                            )
+                    self.node_vortex_strength_quadrupole[idx, k] = quad
+
+            count_l = max(self.node_particle_count[left], 1)
+            count_r = max(self.node_particle_count[right], 1)
+            total_count = count_l + count_r
+            average_core_radius = (
+                self.node_avg_radius[left] * count_l + self.node_avg_radius[right] * count_r
+            ) / total_count
+            self.node_avg_radius[idx] = average_core_radius
+
+            aabb_min = ti.Vector([0.0, 0.0, 0.0])
+            aabb_max = ti.Vector([0.0, 0.0, 0.0])
+            for k in ti.static(range(3)):
+                aabb_min[k] = ti.min(self._node_aabb_min[left][k], self._node_aabb_min[right][k])
+                aabb_max[k] = ti.max(self._node_aabb_max[left][k], self._node_aabb_max[right][k])
+            self._node_aabb_min[idx] = aabb_min
+            self._node_aabb_max[idx] = aabb_max
+
+            centre = (aabb_min + aabb_max) * 0.5
+            self.node_centre[idx] = centre
+            half_size = ti.sqrt((aabb_max - aabb_min).dot(aabb_max - aabb_min)) * 0.5
+            self.node_half_size[idx] = max(half_size, 1e-8)
+
+    # KERNEL FUNCTIONS (qf, zeta, erf, skew)
+
+    @ti.func
+    def _erf_approx(self, x: ti.f32) -> ti.f32:
+        a1 = 0.254829592
+        a2 = -0.284496736
+        a3 = 1.421413741
+        a4 = -1.453152027
+        a5 = 1.061405429
+        p = 0.327591100
+        sign = ti.cast(1.0, ti.f32)
+        x_abs = x
+        if x < 0.0:
+            sign = -1.0
+            x_abs = -x
+        t = 1.0 / (1.0 + p * x_abs)
+        y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * ti.exp(-x_abs * x_abs))
+        return sign * y
+
+    @ti.func
+    def q_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)
+        result = ti.cast(0.0, ti.f32)
+        if self.kernel_type_id[None] == 0:
+            two_over_sqrt_pi = ti.cast(1.1283791671, ti.f32)
+            if r_sigma < GAUSSIAN_Q_SERIES_CROSSOVER:
+                d2 = r_sigma * r_sigma
+                result = (
+                    FOUR_OVER_THREE_SQRT_PI
+                    * r_sigma
+                    * d2
+                    * (1.0 - 0.6 * d2 + (3.0 / 14.0) * d2 * d2)
+                    * ONE_OVER_FOUR_PI
+                )
+            else:
+                erf_term = self._erf_approx(r_sigma)
+                exp_term = two_over_sqrt_pi * r_sigma * ti.exp(-r_sigma * r_sigma)
+                result = (erf_term - exp_term) * ONE_OVER_FOUR_PI
+        else:
+            r2 = r_sigma * r_sigma
+            base = r2 + 1.0  # > 0: x**2.5 = x²·√x (no transcendental pow)
+            result = r_sigma * r2 * (r2 + 2.5) / (base * base * ti.sqrt(base)) * ONE_OVER_FOUR_PI
+        return result
+
+    @ti.func
+    def zeta_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)
+        result = ti.cast(0.0, ti.f32)
+        if self.kernel_type_id[None] == 0:
+            one_over_pi_15 = ti.cast(0.179587122125, ti.f32)
+            result = one_over_pi_15 * ti.exp(-r_sigma * r_sigma)
+        else:
+            r2 = r_sigma * r_sigma
+            base = r2 + 1.0  # > 0: x**3.5 = x³·√x (no transcendental pow)
+            result = 7.5 / (base * base * base * ti.sqrt(base)) * ONE_OVER_FOUR_PI
+        return result
+
+    @ti.func
+    def zeta_prime_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        result = ti.cast(0.0, ti.f32)
+        zeta_val = self.zeta_kernel(r_sigma)
+        if self.kernel_type_id[None] == 0:
+            result = -2.0 * r_sigma * zeta_val
+        else:
+            base = r_sigma * r_sigma + 1.0
+            result = -7.0 * r_sigma * zeta_val / base
+        return result
+
+    @ti.func
+    def zeta_double_prime_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        """Second derivative of the regularization kernel zeta.
+
+        Gaussian:  zeta'' = (4x^2 - 2) zeta.
+        HOA:       zeta'' = zeta (56x^2 - 7) / (x^2 + 1)^2.
+        """
+        result = ti.cast(0.0, ti.f32)
+        zeta_val = self.zeta_kernel(r_sigma)
+        x2 = r_sigma * r_sigma
+        if self.kernel_type_id[None] == 0:
+            result = (4.0 * x2 - 2.0) * zeta_val
+        else:
+            base = x2 + 1.0
+            result = zeta_val * (56.0 * x2 - 7.0) / (base * base)
+        return result
+
+    @ti.func
+    def skew(self, v: ti.template()) -> ti.Matrix:
+        return ti.Matrix([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
+
+    @ti.func
+    def _dipole_vortex_strength_dot_r(self, node: ti.i32, r_vec: ti.template()) -> ti.math.vec3:
+        """Return sum vortex_strength_j * dot(r_vec, x_j - node_com)."""
+        moment = self.node_vortex_strength_dipole[node]
+        out = ti.Vector([0.0, 0.0, 0.0])
+        for a in ti.static(range(3)):
+            for b in ti.static(range(3)):
+                out[a] += moment[b, a] * r_vec[b]
+        return out
+
+    @ti.func
+    def _dipole_vortex_strength_cross_d(self, node: ti.i32) -> ti.math.vec3:
+        """Return sum vortex_strength_j x (x_j - node_com)."""
+        moment = self.node_vortex_strength_dipole[node]
+        return ti.Vector(
+            [
+                moment[2, 1] - moment[1, 2],
+                moment[0, 2] - moment[2, 0],
+                moment[1, 0] - moment[0, 1],
+            ]
+        )
+
+    @ti.func
+    def _dipole_cross_columns(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:
+        """Matrix whose column b is r_vec x sum_j d_{j,b} vortex_strength_j."""
+        moment = self.node_vortex_strength_dipole[node]
+        out = ti.Matrix.zero(ti.f32, 3, 3)
+        for b in ti.static(range(3)):
+            vortex_strength_b = ti.Vector([moment[b, 0], moment[b, 1], moment[b, 2]])
+            col = r_vec.cross(vortex_strength_b)
+            for a in ti.static(range(3)):
+                out[a, b] = col[a]
+        return out
+
+    @ti.func
+    def _quad_P_matrix(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:
+        """P[k, j] = (Q_k r)_j = sum_p vortex_strength_{p,k} (r . d_p) d_{p,j}."""
+        out = ti.Matrix.zero(ti.f32, 3, 3)
+        for k in ti.static(range(3)):
+            for j in ti.static(range(3)):
+                acc = 0.0
+                for b in ti.static(range(3)):
+                    acc += self.node_vortex_strength_quadrupole[node, k][j, b] * r_vec[b]
+                out[k, j] = acc
+        return out
+
+    @ti.func
+    def _quad_B_vector(self, node: ti.i32, P: ti.template(), r_vec: ti.template()) -> ti.math.vec3:
+        """B_k = r^T Q_k r = sum_p vortex_strength_{p,k} (r . d_p)^2  (= P_k . r)."""
+        out = ti.Vector([0.0, 0.0, 0.0])
+        for k in ti.static(range(3)):
+            out[k] = P[k, 0] * r_vec[0] + P[k, 1] * r_vec[1] + P[k, 2] * r_vec[2]
+        return out
+
+    @ti.func
+    def _quad_trace_vector(self, node: ti.i32) -> ti.math.vec3:
+        """trQ_k = sum_p vortex_strength_{p,k} |d_p|^2."""
+        out = ti.Vector([0.0, 0.0, 0.0])
+        for k in ti.static(range(3)):
+            out[k] = (
+                self.node_vortex_strength_quadrupole[node, k][0, 0]
+                + self.node_vortex_strength_quadrupole[node, k][1, 1]
+                + self.node_vortex_strength_quadrupole[node, k][2, 2]
+            )
+        return out
+
+    @ti.func
+    def _quad_A_vector(self, P: ti.template()) -> ti.math.vec3:
+        """A_i = eps_ijk P[k, j] = sum_p (r . d_p) (d_p x alpha_p)_i."""
+        return ti.Vector([P[2, 1] - P[1, 2], P[0, 2] - P[2, 0], P[1, 0] - P[0, 1]])
+
+    @ti.func
+    def _far_velocity_node(
+        self, node: ti.i32, r_vec: ti.template(), r_mag: ti.f32, sigma: ti.f32
+    ) -> ti.math.vec3:
+        r2 = r_mag * r_mag
+        r3 = r2 * r_mag
+        r5 = r3 * r2
+        q_val = self.q_kernel(r_mag / sigma)
+        net_vortex_strength = self.node_net_vortex_strength[node]
+        vel = -q_val * r_vec.cross(net_vortex_strength) / r3
+        if self.multipole_order[None] >= 2:
+            zeta_val = self.zeta_kernel(r_mag / sigma) / (sigma * sigma * sigma)
+            term1 = q_val / r3
+            term2 = 3.0 * q_val / r5 - zeta_val / r2
+            moment_dot = self._dipole_vortex_strength_dot_r(node, r_vec)
+            cross_moment = self._dipole_vortex_strength_cross_d(node)
+            vel += -term1 * cross_moment - term2 * r_vec.cross(moment_dot)
+            if self.multipole_order[None] >= 3:
+                # Quadrupole:  u += g A + (g/2) r x trQ + (g'/2r) r x B,
+                # g = term2 (from (d.grad)^2 F = 2g rd d + [g|d|^2 + (g'/r) rd^2] r).
+                zeta_p = self.zeta_prime_kernel(r_mag / sigma)
+                g_prime_over_r = (
+                    5.0 * zeta_val / (r2 * r2)
+                    - 15.0 * q_val / (r5 * r2)
+                    - zeta_p / (sigma * sigma * sigma * sigma * r3)
+                )
+                P = self._quad_P_matrix(node, r_vec)
+                A = self._quad_A_vector(P)
+                B = self._quad_B_vector(node, P, r_vec)
+                trQ = self._quad_trace_vector(node)
+                vel += term2 * A + r_vec.cross(0.5 * (term2 * trQ + g_prime_over_r * B))
+        return vel
+
+    @ti.func
+    def _far_gradient_node(
+        self, node: ti.i32, r_vec: ti.template(), r_mag: ti.f32, sigma: ti.f32
+    ) -> ti.Matrix:
+        r2 = r_mag * r_mag
+        r3 = r2 * r_mag
+        r4 = r2 * r2
+        r5 = r3 * r2
+        r7 = r5 * r2
+        r_sigma = r_mag / sigma
+        q_val = self.q_kernel(r_sigma)
+        zeta_val = self.zeta_kernel(r_sigma) / (sigma * sigma * sigma)
+        net_vortex_strength = self.node_net_vortex_strength[node]
+        term1 = q_val / r3
+        term2 = 3.0 * q_val / r5 - zeta_val / r2
+        gradu = term1 * self.skew(net_vortex_strength) + term2 * r_vec.cross(
+            net_vortex_strength
+        ).outer_product(r_vec)
+        if self.multipole_order[None] >= 2:
+            zeta_prime_val = self.zeta_prime_kernel(r_sigma)
+            t1p_over_r = zeta_val / r2 - 3.0 * q_val / r5
+            t2p_over_r = (
+                5.0 * zeta_val / r4
+                - 15.0 * q_val / r7
+                - zeta_prime_val / (sigma * sigma * sigma * sigma * r3)
+            )
+            moment_dot = self._dipole_vortex_strength_dot_r(node, r_vec)
+            cross_moment = self._dipole_vortex_strength_cross_d(node)
+            cross_columns = self._dipole_cross_columns(node, r_vec)
+            gradu += (
+                -t1p_over_r * self.skew(moment_dot)
+                - t2p_over_r * r_vec.cross(moment_dot).outer_product(r_vec)
+                + term2 * cross_moment.outer_product(r_vec)
+                - term2 * cross_columns
+            )
+            if self.multipole_order[None] >= 3:
+                # Quadrupole:  grad u += 1/2 [ -skew(c1) + (r x c2) (x) r
+                #                              + 2h (A (x) r + X) + 2g W ]
+                # with g = term2, h = g'/r (= t2p_over_r), c1_k = h B_k + g trQ_k,
+                # c2_k = (h'/r) B_k + h trQ_k, X[:,m] = r x P[:,m], and
+                # W[i,m] = eps_ijk Q_k[j,m].
+                sigma4 = sigma * sigma * sigma * sigma
+                zeta_pp = self.zeta_double_prime_kernel(r_sigma)
+                g_dbl_prime = (
+                    7.0 * zeta_prime_val / (sigma4 * r3)
+                    - 30.0 * zeta_val / r4
+                    + 90.0 * q_val / r7
+                    - zeta_pp / (sigma4 * sigma * r2)
+                )
+                h_val = t2p_over_r
+                hp_over_r = g_dbl_prime / r2 - h_val / r2
+                P = self._quad_P_matrix(node, r_vec)
+                A = self._quad_A_vector(P)
+                B = self._quad_B_vector(node, P, r_vec)
+                trQ = self._quad_trace_vector(node)
+                c1 = h_val * B + term2 * trQ
+                c2 = hp_over_r * B + h_val * trQ
+                X = ti.Matrix.zero(ti.f32, 3, 3)
+                W = ti.Matrix.zero(ti.f32, 3, 3)
+                for m in ti.static(range(3)):
+                    p_m = ti.Vector([P[0, m], P[1, m], P[2, m]])
+                    col = r_vec.cross(p_m)
+                    for i in ti.static(range(3)):
+                        X[i, m] = col[i]
+                    W[0, m] = (
+                        self.node_vortex_strength_quadrupole[node, 2][1, m]
+                        - self.node_vortex_strength_quadrupole[node, 1][2, m]
+                    )
+                    W[1, m] = (
+                        self.node_vortex_strength_quadrupole[node, 0][2, m]
+                        - self.node_vortex_strength_quadrupole[node, 2][0, m]
+                    )
+                    W[2, m] = (
+                        self.node_vortex_strength_quadrupole[node, 1][0, m]
+                        - self.node_vortex_strength_quadrupole[node, 0][1, m]
+                    )
+                gradu += 0.5 * (
+                    -self.skew(c1)
+                    + r_vec.cross(c2).outer_product(r_vec)
+                    + 2.0 * h_val * (A.outer_product(r_vec) + X)
+                    + 2.0 * term2 * W
+                )
+        return gradu
+
+    # LEAF SUMMATION FUNCTIONS
+
+    @ti.func
+    def _leaf_velocity_sum(
+        self, node: int, target_pos: ti.template(), target_rad: ti.f32, self_idx: int
+    ) -> ti.math.vec3:
+        vel = ti.Vector([0.0, 0.0, 0.0])
+        start = self.node_particle_start[node]
+        count = self.node_particle_count[node]
+        for k in range(count):
+            j = self.leaf_particles[start + k]
+            if j != self_idx:
+                r_vec_j = target_pos - self.position[j]
+                r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
+                if r_mag_j > 1e-10:
+                    sigma = 0.5 * (target_rad + self.core_radius[j])
+                    q_val = self.q_kernel(r_mag_j / sigma)
+                    vel -= q_val * r_vec_j.cross(self.vortex_strength[j]) / (r_mag_j**3)
+        return vel
+
+    @ti.func
+    def _target_leaf_velocity_sum(self, node: int, target_pos: ti.template()) -> ti.math.vec3:
+        vel = ti.Vector([0.0, 0.0, 0.0])
+        start = self.node_particle_start[node]
+        count = self.node_particle_count[node]
+        for k in range(count):
+            j = self.leaf_particles[start + k]
+            r_vec_j = target_pos - self.position[j]
+            r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
+            if r_mag_j > 1e-10:
+                sigma = self.core_radius[j]
+                q_val = self.q_kernel(r_mag_j / sigma)
+                vel -= q_val * r_vec_j.cross(self.vortex_strength[j]) / (r_mag_j**3)
+        return vel
+
+    @ti.func
+    def _leaf_gradient_sum(
+        self,
+        node: int,
+        target_pos: ti.template(),
+        target_rad: ti.f32,
+        self_idx: int,
+        max_r_sigma: ti.f32,
+    ) -> ti.Matrix:
+        gradu = ti.Matrix.zero(ti.f32, 3, 3)
+        start = self.node_particle_start[node]
+        count = self.node_particle_count[node]
+        for k in range(count):
+            j = self.leaf_particles[start + k]
+            if j != self_idx:
+                r_vec_j = target_pos - self.position[j]
+                r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
+                if r_mag_j > 1e-10:
+                    sigma = 0.5 * (target_rad + self.core_radius[j])
+                    r_sigma = r_mag_j / sigma
+                    if r_sigma < max_r_sigma:
+                        q_val = self.q_kernel(r_sigma)
+                        zeta_val = self.zeta_kernel(r_sigma) / sigma**3
+                        term1 = q_val / r_mag_j**3
+                        term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
+                        cross_j = r_vec_j.cross(self.vortex_strength[j])
+                        gradu += term1 * self.skew(
+                            self.vortex_strength[j]
+                        ) + term2 * cross_j.outer_product(r_vec_j)
+        return gradu
+
+    @ti.func
+    def _target_leaf_gradient_sum(self, node: int, target_pos: ti.template()) -> ti.Matrix:
+        gradu = ti.Matrix.zero(ti.f32, 3, 3)
+        start = self.node_particle_start[node]
+        count = self.node_particle_count[node]
+        for k in range(count):
+            j = self.leaf_particles[start + k]
+            r_vec_j = target_pos - self.position[j]
+            r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
+            if r_mag_j > 1e-10:
+                sigma = self.core_radius[j]
+                r_sigma = r_mag_j / sigma
+                q_val = self.q_kernel(r_sigma)
+                zeta_val = self.zeta_kernel(r_sigma) / sigma**3
+                term1 = q_val / r_mag_j**3
+                term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
+                cross_j = r_vec_j.cross(self.vortex_strength[j])
+                gradu += term1 * self.skew(self.vortex_strength[j]) + term2 * cross_j.outer_product(
+                    r_vec_j
+                )
+        return gradu
+
+    # TRAVERSAL — Binary-tree stack-based
+
+    @ti.func
+    def _push_children_particle(self, i: int, node: int, stack_ptr: int) -> int:
+        """Push children of *node* onto the per-thread particle traversal stack."""
+        left = self.node_left[node]
+        right = self.node_right[node]
+        if right >= 0 and stack_ptr < self.max_stack_depth - 1:
+            self.traversal_stack[i, stack_ptr] = right
+            stack_ptr += 1
+        if left >= 0 and stack_ptr < self.max_stack_depth - 1:
+            self.traversal_stack[i, stack_ptr] = left
+            stack_ptr += 1
+        return stack_ptr
+
+    @ti.func
+    def _push_children_target(self, i: int, node: int, stack_ptr: int) -> int:
+        left = self.node_left[node]
+        right = self.node_right[node]
+        if right >= 0 and stack_ptr < self.max_stack_depth - 1:
+            self.target_traversal_stack[i, stack_ptr] = right
+            stack_ptr += 1
+        if left >= 0 and stack_ptr < self.max_stack_depth - 1:
+            self.target_traversal_stack[i, stack_ptr] = left
+            stack_ptr += 1
+        return stack_ptr
+
+    @ti.func
+    def _traverse_particle_vel(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.math.vec3:
+        vel = ti.Vector([0.0, 0.0, 0.0])
+        target_pos = self.position[i]
+        target_rad = self.core_radius[i]
+        root = self._root[None]
+        self.traversal_stack[i, 0] = root
+        stack_ptr = 1
+        while stack_ptr > 0:
+            stack_ptr -= 1
+            node = self.traversal_stack[i, stack_ptr]
+            if node < 0 or node >= n_nodes:
+                continue
+            com = self.node_com[node]
+            r_vec = target_pos - com
+            r_sq = r_vec.dot(r_vec)
+            r_mag = ti.sqrt(r_sq)
+            node_size = 2.0 * self.node_half_size[node]
+            if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                sigma = 0.5 * (target_rad + self.node_avg_radius[node])
+                vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
+            elif self.node_is_leaf[node] == 1:
+                vel += self._leaf_velocity_sum(node, target_pos, target_rad, i)
+            else:
+                stack_ptr = self._push_children_particle(i, node, stack_ptr)
+        return vel
+
+    @ti.func
+    def _traverse_particle_grad(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.Matrix:
+        gradu = ti.Matrix.zero(ti.f32, 3, 3)
+        target_pos = self.position[i]
+        target_rad = self.core_radius[i]
+        MAX_R_SIGMA = ti.cast(15.0, ti.f32)
+        root = self._root[None]
+        self.traversal_stack[i, 0] = root
+        stack_ptr = 1
+        while stack_ptr > 0:
+            stack_ptr -= 1
+            node = self.traversal_stack[i, stack_ptr]
+            if node < 0 or node >= n_nodes:
+                continue
+            com = self.node_com[node]
+            r_vec = target_pos - com
+            r_sq = r_vec.dot(r_vec)
+            r_mag = ti.sqrt(r_sq)
+            node_size = 2.0 * self.node_half_size[node]
+            if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                sigma = 0.5 * (target_rad + self.node_avg_radius[node])
+                r_sigma = r_mag / sigma
+                if r_sigma < MAX_R_SIGMA:
+                    gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
+            elif self.node_is_leaf[node] == 1:
+                gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i, MAX_R_SIGMA)
+            else:
+                stack_ptr = self._push_children_particle(i, node, stack_ptr)
+        return gradu
+
+    @ti.func
+    def _traverse_target_vel(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.math.vec3:
+        vel = ti.Vector([0.0, 0.0, 0.0])
+        target_pos = self.target_position[i]
+        root = self._root[None]
+        self.target_traversal_stack[i, 0] = root
+        stack_ptr = 1
+        while stack_ptr > 0:
+            stack_ptr -= 1
+            node = self.target_traversal_stack[i, stack_ptr]
+            if node < 0 or node >= n_nodes:
+                continue
+            com = self.node_com[node]
+            r_vec = target_pos - com
+            r_sq = r_vec.dot(r_vec)
+            r_mag = ti.sqrt(r_sq)
+            node_size = 2.0 * self.node_half_size[node]
+            if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                sigma = self.node_avg_radius[node]
+                vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
+            elif self.node_is_leaf[node] == 1:
+                vel += self._target_leaf_velocity_sum(node, target_pos)
+            else:
+                stack_ptr = self._push_children_target(i, node, stack_ptr)
+        return vel
+
+    @ti.func
+    def _traverse_target_grad(self, i: int, theta_sq: ti.f32, n_nodes: int) -> ti.Matrix:
+        gradu = ti.Matrix.zero(ti.f32, 3, 3)
+        target_pos = self.target_position[i]
+        root = self._root[None]
+        self.target_traversal_stack[i, 0] = root
+        stack_ptr = 1
+        while stack_ptr > 0:
+            stack_ptr -= 1
+            node = self.target_traversal_stack[i, stack_ptr]
+            if node < 0 or node >= n_nodes:
+                continue
+            com = self.node_com[node]
+            r_vec = target_pos - com
+            r_sq = r_vec.dot(r_vec)
+            r_mag = ti.sqrt(r_sq)
+            node_size = 2.0 * self.node_half_size[node]
+            if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                sigma = self.node_avg_radius[node]
+                gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
+            elif self.node_is_leaf[node] == 1:
+                gradu += self._target_leaf_gradient_sum(node, target_pos)
+            else:
+                stack_ptr = self._push_children_target(i, node, stack_ptr)
+        return gradu
+
+    # COMPUTE KERNELS
+
+    @ti.kernel
+    def compute_velocities_kernel(self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32):
+        n_nodes = self.n_nodes[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_slot in range(count):
+            slot = start_slot + local_slot
+            i = slot
+            if self.sort_particle_targets[None] != 0:
+                i = self.sorted_indices[slot]
+            self.velocity[i] = (
+                self._traverse_particle_vel(i, theta_sq, n_nodes) + self.freestream_velocity[None]
+            )
+
+    @ti.kernel
+    def compute_velocity_gradients_kernel(
+        self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32
+    ):
+        n_nodes = self.n_nodes[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_slot in range(count):
+            slot = start_slot + local_slot
+            i = slot
+            if self.sort_particle_targets[None] != 0:
+                i = self.sorted_indices[slot]
+            gradu = self._traverse_particle_grad(i, theta_sq, n_nodes)
+            self.velocity_gradient[i] = gradu
+            strain = ti.Matrix.zero(ti.f32, 3, 3)
+            for p in ti.static(range(3)):
+                for q in ti.static(range(3)):
+                    strain[p, q] = 0.5 * (gradu[p, q] + gradu[q, p])
+            self.strain_rate[i] = strain
+
+    @ti.kernel
+    def compute_velocity_and_gradient_kernel(
+        self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32
+    ):
+        """Fused single-traversal evaluation of u, ∇u and S.
+
+        The solver needs **both** u (advection) and ∇u (stretching) at the same
+        configuration every RK stage.  Walking the tree once and sharing the
+        MAC/open decision, node geometry, and the leaf direct sums is strictly
+        cheaper than two traversals.  Every per-branch term here is identical to
+        ``_traverse_particle_vel`` + ``_traverse_particle_grad`` — velocity and
+        the near-core gradient both use the regularized kernel directly — so
+        the output is bit-identical to the two separate kernels.
+        """
+        n_nodes = self.n_nodes[None]
+        MAX_R_SIGMA = ti.cast(15.0, ti.f32)
+        freestream_velocity = self.freestream_velocity[None]
+        root = self._root[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_slot in range(count):
+            slot = start_slot + local_slot
+            i = slot
+            if self.sort_particle_targets[None] != 0:
+                i = self.sorted_indices[slot]
+            vel = ti.Vector([0.0, 0.0, 0.0])
+            gradu = ti.Matrix.zero(ti.f32, 3, 3)
+            target_pos = self.position[i]
+            target_rad = self.core_radius[i]
+            self.traversal_stack[i, 0] = root
+            stack_ptr = 1
+            while stack_ptr > 0:
+                stack_ptr -= 1
+                node = self.traversal_stack[i, stack_ptr]
+                if node < 0 or node >= n_nodes:
+                    continue
+                com = self.node_com[node]
+                r_vec = target_pos - com
+                r_sq = r_vec.dot(r_vec)
+                r_mag = ti.sqrt(r_sq)
+                node_size = 2.0 * self.node_half_size[node]
+                if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                    # Far field: one node, both fields share sigma / r_sigma / q.
+                    sigma = 0.5 * (target_rad + self.node_avg_radius[node])
+                    r_sigma = r_mag / sigma
+                    vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
+                    if r_sigma < MAX_R_SIGMA:
+                        gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
+                elif self.node_is_leaf[node] == 1:
+                    vel += self._leaf_velocity_sum(node, target_pos, target_rad, i)
+                    gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i, MAX_R_SIGMA)
+                else:
+                    stack_ptr = self._push_children_particle(i, node, stack_ptr)
+            self.velocity[i] = vel + freestream_velocity
+            self.velocity_gradient[i] = gradu
+            strain = ti.Matrix.zero(ti.f32, 3, 3)
+            for p in ti.static(range(3)):
+                for q in ti.static(range(3)):
+                    strain[p, q] = 0.5 * (gradu[p, q] + gradu[q, p])
+            self.strain_rate[i] = strain
+
+    @ti.kernel
+    def _copy_freestream_from_field(self, src: ti.template()):
+        """Device-to-device copy of a 0-d vec3, avoiding a host round-trip."""
+        self.freestream_velocity[None] = src[None]
+
+    def compute_velocities_gpu(
+        self,
+        freestream_velocity: np.ndarray | None = None,
+        background_field=None,
+    ) -> None:
+        """Run the velocity traversal on-device; the result stays in
+        ``self.velocity`` (a Taichi field).  No ``to_numpy`` download — callers
+        that keep the data on the GPU (e.g. ``base.compute_self_induced_velocity`` via a
+        field-to-field copy) use this to avoid a per-step N×3 round-trip.
+
+        Pass ``background_field`` (a 0-d vec3 field) rather than
+        ``freestream_velocity`` to keep the freestream on device too; reading it
+        back as a numpy array forces a sync at every RK stage.
+        """
+        t_start = time.perf_counter()
+        if background_field is not None:
+            self._copy_freestream_from_field(background_field)
+        elif freestream_velocity is not None:
+            self.freestream_velocity[None] = ti.Vector(
+                freestream_velocity.astype(np.float32).tolist()
+            )
+        else:
+            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
+        N = int(self.n_particles_total[None])
+        for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, N - start)
+            self.compute_velocities_kernel(self.theta * self.theta, start, count)
+            ti.sync()
+        self.eval_time = time.perf_counter() - t_start
+
+    def compute_velocities(self, freestream_velocity: np.ndarray | None = None) -> np.ndarray:
+        self.compute_velocities_gpu(freestream_velocity)
+        N = self.n_particles_total[None]
+        return self._download_vector_field(self.velocity, N)
+
+    def compute_velocity_gradients_gpu(self) -> None:
+        """Run the velocity-gradient traversal on-device; results stay in
+        ``self.velocity_gradient`` / ``self.strain_rate`` (Taichi fields)."""
+        t_start = time.perf_counter()
+        N = int(self.n_particles_total[None])
+        for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, N - start)
+            self.compute_velocity_gradients_kernel(self.theta * self.theta, start, count)
+            ti.sync()
+        self.grad_time = time.perf_counter() - t_start
+
+    def compute_velocity_gradients(self) -> tuple:
+        self.compute_velocity_gradients_gpu()
+        N = self.n_particles_total[None]
+        grads = self._download_matrix_field(self.velocity_gradient, N)
+        strains = self._download_matrix_field(self.strain_rate, N)
+        return grads, strains
+
+    def compute_velocity_and_gradient_gpu(
+        self, freestream_velocity: np.ndarray | None = None
+    ) -> None:
+        """Fused on-device evaluation of u, ∇u and S in a *single* tree traversal.
+        Results stay in ``self.velocity`` / ``self.velocity_gradient``"""
+        t_start = time.perf_counter()
+        if freestream_velocity is not None:
+            self.freestream_velocity[None] = ti.Vector(
+                freestream_velocity.astype(np.float32).tolist()
+            )
+        else:
+            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
+        N = int(self.n_particles_total[None])
+        for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, N - start)
+            self.compute_velocity_and_gradient_kernel(self.theta * self.theta, start, count)
+            ti.sync()
+        self.eval_time = time.perf_counter() - t_start
+
+    def compute_velocity_and_gradient(self, freestream_velocity: np.ndarray | None = None) -> tuple:
+        self.compute_velocity_and_gradient_gpu(freestream_velocity)
+        N = self.n_particles_total[None]
+        return (
+            self._download_vector_field(self.velocity, N),
+            self._download_matrix_field(self.velocity_gradient, N),
+            self._download_matrix_field(self.strain_rate, N),
+        )
+
+    # TARGET POINT EVALUATIONS
+
+    @ti.kernel
+    def compute_target_velocity_kernel(
+        self,
+        theta_sq: ti.f32,
+        start_target: ti.i32,
+        count: ti.i32,
+    ):
+        n_nodes = self.n_nodes[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_target in range(count):
+            i = start_target + local_target
+            self.target_velocity[i] = (
+                self._traverse_target_vel(i, theta_sq, n_nodes) + self.freestream_velocity[None]
+            )
+
+    @ti.kernel
+    def compute_target_velocity_gradient_kernel(
+        self,
+        theta_sq: ti.f32,
+        start_target: ti.i32,
+        count: ti.i32,
+    ):
+        n_nodes = self.n_nodes[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_target in range(count):
+            i = start_target + local_target
+            self.target_velocity_gradient[i] = self._traverse_target_grad(i, theta_sq, n_nodes)
+
+    @ti.kernel
+    def compute_target_velocity_and_gradients_kernel(
+        self,
+        theta_sq: ti.f32,
+        start_target: ti.i32,
+        count: ti.i32,
+    ):
+        """Evaluate target velocity and Jacobian in one tree traversal."""
+        n_nodes = self.n_nodes[None]
+        root = self._root[None]
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_target in range(count):
+            i = start_target + local_target
+            target_pos = self.target_position[i]
+            velocity = ti.Vector([0.0, 0.0, 0.0])
+            gradient = ti.Matrix.zero(ti.f32, 3, 3)
+            self.target_traversal_stack[i, 0] = root
+            stack_ptr = 1
+            while stack_ptr > 0:
+                stack_ptr -= 1
+                node = self.target_traversal_stack[i, stack_ptr]
+                if node < 0 or node >= n_nodes:
+                    continue
+                com = self.node_com[node]
+                r_vec = target_pos - com
+                r_sq = r_vec.dot(r_vec)
+                r_mag = ti.sqrt(r_sq)
+                node_size = 2.0 * self.node_half_size[node]
+                if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                    sigma = self.node_avg_radius[node]
+                    velocity += self._far_velocity_node(node, r_vec, r_mag, sigma)
+                    gradient += self._far_gradient_node(node, r_vec, r_mag, sigma)
+                elif self.node_is_leaf[node] == 1:
+                    velocity += self._target_leaf_velocity_sum(node, target_pos)
+                    gradient += self._target_leaf_gradient_sum(node, target_pos)
+                else:
+                    stack_ptr = self._push_children_target(i, node, stack_ptr)
+            self.target_velocity[i] = velocity + self.freestream_velocity[None]
+            self.target_velocity_gradient[i] = gradient
+
+    def compute_target_velocity(
+        self, target_position: np.ndarray, freestream_velocity: np.ndarray | None = None
+    ) -> np.ndarray:
+        M = len(target_position)
+        if M == 0:
+            return np.zeros((0, 3), dtype=np.float32)
+        if self.max_evaluation_points < M:
+            raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
+        self.n_targets[None] = M
+        self._upload_vector_array(target_position, self.target_position, M)
+        if freestream_velocity is not None:
+            self.freestream_velocity[None] = ti.Vector(
+                freestream_velocity.astype(np.float32).tolist()
+            )
+        else:
+            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
+        theta_sq = self.theta * self.theta
+        for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, M - start)
+            self.compute_target_velocity_kernel(theta_sq, start, count)
+            ti.sync()
+        return self._download_vector_field(self.target_velocity, M)
+
+    def compute_target_velocity_gradient(self, target_position: np.ndarray) -> np.ndarray:
+        M = len(target_position)
+        if M == 0:
+            return np.zeros((0, 3, 3), dtype=np.float32)
+        if self.max_evaluation_points < M:
+            raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
+        self.n_targets[None] = M
+        self._upload_vector_array(target_position, self.target_position, M)
+        theta_sq = self.theta * self.theta
+        for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, M - start)
+            self.compute_target_velocity_gradient_kernel(theta_sq, start, count)
+            ti.sync()
+        return self._download_matrix_field(self.target_velocity_gradient, M)
+
+    def compute_target_velocity_and_gradients(
+        self, target_position: np.ndarray, freestream_velocity: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return target velocity and Jacobian after one tree traversal per target."""
+        M = len(target_position)
+        if M == 0:
+            return (
+                np.zeros((0, 3), dtype=np.float32),
+                np.zeros((0, 3, 3), dtype=np.float32),
+            )
+        if self.max_evaluation_points < M:
+            raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
+        self.n_targets[None] = M
+        self._upload_vector_array(target_position, self.target_position, M)
+        if freestream_velocity is not None:
+            self.freestream_velocity[None] = ti.Vector(
+                freestream_velocity.astype(np.float32).tolist()
+            )
+        else:
+            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
+        theta_sq = self.theta * self.theta
+        for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, M - start)
+            self.compute_target_velocity_and_gradients_kernel(theta_sq, start, count)
+            ti.sync()
+        return (
+            self._download_vector_field(self.target_velocity, M),
+            self._download_matrix_field(self.target_velocity_gradient, M),
+        )
+
+    # INFO
+
+    def info(self) -> str:
+        grad_info = f"\n  Grad time: {self.grad_time * 1000:.2f} ms" if self.grad_time > 0 else ""
+        return (
+            f"TaichiTreecode (GPU/LBVH):\n"
+            f"  Particles: {self.n_particles_total[None]}\n"
+            f"  Nodes: {self.n_nodes[None]}\n"
+            f"  Opening angle θ: {self.theta}\n"
+            f"  Build time: {self.build_time * 1000:.2f} ms\n"
+            f"  Eval time: {self.eval_time * 1000:.2f} ms{grad_info}"
+        )
+
+
+# =========================================================
+# Convenience function
+# =========================================================
+
+
+def compute_velocities_treecode_gpu(
+    position: np.ndarray,
+    vortex_strength: np.ndarray,
+    core_radius: np.ndarray,
+    theta: float = 0.5,
+    freestream_velocity: np.ndarray | None = None,
+) -> np.ndarray:
+    N = len(position)
+    tree = TaichiTreecode(max_n_particles=N, max_nodes=2 * N, theta=theta)
+    tree.build(position, vortex_strength, core_radius)
+    return tree.compute_velocities(freestream_velocity)

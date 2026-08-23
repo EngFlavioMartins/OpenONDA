@@ -1,21 +1,21 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble.convection import (
+from source.solvers.fvm.assemble.convection import (
     assemble_convection_term,
     compute_volumetric_face_flux,
 )
-from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
-from source.solvers.FVM.assemble.matrix_assembly import (
+from source.solvers.fvm.assemble.diffusion import assemble_diffusion_term
+from source.solvers.fvm.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gauss_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
+from source.solvers.fvm.fields.gradients import compute_gauss_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.solve.linear_interface import solve_linear_system
 
 
-def _phi_exact(x, y, z):
+def _scalar_field_exact(x, y, z):
     return np.sin(np.pi * x) * np.sin(np.pi * y) * np.sin(np.pi * z)
 
 
@@ -60,7 +60,7 @@ def _make_mms_mesh(lcar):
         model.occ.synchronize()
         model.mesh.setSize(model.getEntities(0), lcar)
         model.mesh.generate(3)
-        from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+        from source.solvers.fvm.mesh.gmsh_importer import GmshImporter
 
         imp = GmshImporter()
         mesh = imp.get_mesh_data()
@@ -73,23 +73,23 @@ def _setup_dirichlet_bcs(mesh, geo):
     """Set φ = φ_exact on all boundary faces."""
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    fc = geo["face_centroids"]
-    face_flux = np.zeros(n_elem + mesh["n_faces"] - n_int)
-    face_flux[:n_elem] = _phi_exact(
-        geo["cell_centroids"][:, 0],
-        geo["cell_centroids"][:, 1],
-        geo["cell_centroids"][:, 2],
+    fc = geo["face_centre"]
+    scalar_field = np.zeros(n_elem + mesh["n_faces"] - n_int)
+    scalar_field[:n_elem] = _scalar_field_exact(
+        geo["cell_centre"][:, 0],
+        geo["cell_centre"][:, 1],
+        geo["cell_centre"][:, 2],
     )
     for b in mesh["boundary"]:
-        b["bc_type"] = "fixedValue"
+        b["boundary_condition_type"] = "fixedValue"
         b["velocity_type"] = "fixedValue"
         b["velocity_value"] = [1.0, 1.0, 1.0]
         start, nf = b["start_face"], b["n_faces"]
         for j in range(nf):
             fi = start + j
             gi = n_elem + (fi - n_int)
-            face_flux[gi] = _phi_exact(fc[fi, 0], fc[fi, 1], fc[fi, 2])
-    return face_flux
+            scalar_field[gi] = _scalar_field_exact(fc[fi, 0], fc[fi, 1], fc[fi, 2])
+    return scalar_field
 
 
 class TestMMSSteadyAdvectionDiffusion:
@@ -107,27 +107,27 @@ class TestMMSSteadyAdvectionDiffusion:
             geo = compute_mesh_geometry(mesh)
             n_elem = mesh["n_cells"]
             n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-            cents = geo["cell_centroids"]
+            cents = geo["cell_centre"]
 
-            face_flux = _setup_dirichlet_bcs(mesh, geo)
-            vol = geo["cell_volumes"]
+            scalar_field = _setup_dirichlet_bcs(mesh, geo)
+            vol = geo["cell_volume"]
 
             # Velocity field
             U_field = np.tile(velocity, (n_elem + n_bnd, 1))
 
             # Mass flow rate
-            mdot = compute_volumetric_face_flux(U_field, mesh, geo)
+            volumetric_face_flux = compute_volumetric_face_flux(U_field, mesh, geo)
 
             # Diffusion
-            grad_phi = compute_gauss_gradient(face_flux, mesh, geo)
-            gamma = kinematic_viscosity * np.ones(n_elem)
+            scalar_field_gradient = compute_gauss_gradient(scalar_field, mesh, geo)
+            diffusivity = kinematic_viscosity * np.ones(n_elem)
             diff_flux = assemble_diffusion_term(
-                face_flux, grad_phi, gamma, mesh, geo, mesh["boundary"]
+                scalar_field, scalar_field_gradient, diffusivity, mesh, geo, mesh["boundary"]
             )
 
             # Convection (upwind)
             conv_flux = assemble_convection_term(
-                face_flux, mdot, mesh, geo, mesh["boundary"], scheme="upwind"
+                scalar_field, volumetric_face_flux, mesh, geo, mesh["boundary"], scheme="upwind"
             )
 
             # Combine fluxes
@@ -149,7 +149,7 @@ class TestMMSSteadyAdvectionDiffusion:
             b += S * vol
 
             phi_sol = solve_linear_system(A, b, method="spsolve", equation_type="scalar")
-            phi_exact = _phi_exact(cents[:, 0], cents[:, 1], cents[:, 2])
+            phi_exact = _scalar_field_exact(cents[:, 0], cents[:, 1], cents[:, 2])
             err = _l2_error(phi_sol, phi_exact, vol)
             errors.append(err)
             h_vals.append(lcar)

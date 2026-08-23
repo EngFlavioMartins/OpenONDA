@@ -15,7 +15,7 @@ import pytest
 
 gmsh = pytest.importorskip("gmsh", reason="Gmsh FVM test dependency is not installed")
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -25,7 +25,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+from source.solvers.fvm.mesh.gmsh_importer import GmshImporter
 
 L = 2.0
 H = 1.0
@@ -135,7 +135,7 @@ class TestEmptyBCQuasi3D:
         assert np.isfinite(p).all(), "NaN/Inf in pressure — solver diverged"
 
         # 1. Single z-layer
-        cents = solver.geo_data["cell_centroids"]
+        cents = solver.geo_data["cell_centre"]
         z_vals = np.unique(np.round(cents[:, 2], decimals=10))
         assert len(z_vals) == 1, f"Expected single z-layer for quasi-3D mesh, got {len(z_vals)}"
 
@@ -157,7 +157,7 @@ class TestEmptyBCQuasi3D:
         assert p_in > p_out, f"Pressure should drop along duct: p_in={p_in:.4f} p_out={p_out:.4f}"
 
         # 5. Surface forces are finite (for all mesh patches)
-        from source.solvers.FVM.fields.diagnostics import compute_surface_forces
+        from source.solvers.fvm.fields.diagnostics import compute_surface_forces
 
         patch_names = [b["name"] for b in mesh["boundary"]]
         result = compute_surface_forces(
@@ -169,11 +169,11 @@ class TestEmptyBCQuasi3D:
             solver.geo_data,
             mesh["boundary"],
             patch_names=patch_names,
-            ref_U=U_IN,
-            ref_area=H * L,
+            reference_velocity=U_IN,
+            reference_area=H * L,
         )
         for name in patch_names:
             assert name in result, f"Missing patch '{name}' in force results"
-            assert np.isfinite(result[name]["Ftot"]).all(), (
-                f"Non-finite force on {name}: {result[name]['Ftot']}"
+            assert np.isfinite(result[name]["total_force"]).all(), (
+                f"Non-finite force on {name}: {result[name]['total_force']}"
             )

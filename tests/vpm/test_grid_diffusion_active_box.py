@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM.runtime.backend import reset_taichi_backend
+from source.solvers.vpm.runtime.backend import reset_taichi_backend
 
 H = 0.05
 DOMAIN = [-0.5, 0.5, -0.5, 0.5, -0.5, 0.5]
@@ -28,9 +28,9 @@ DOMAIN = [-0.5, 0.5, -0.5, 0.5, -0.5, 0.5]
 def diffusion():
     reset_taichi_backend()
     ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32, random_seed=0)
-    from source.solvers.VPM.physics.diffusion import DiffusionPhysics
+    from source.solvers.vpm.physics.diffusion import DiffusionPhysics
 
-    d = DiffusionPhysics(max_particles=4096)
+    d = DiffusionPhysics(max_n_particles=4096)
     d.configure_max_grid_extent(DOMAIN, H)
     yield d
     reset_taichi_backend()
@@ -140,13 +140,13 @@ def test_bounded_transfer_spans_multiple_chunks():
     reset_taichi_backend()
     ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32, random_seed=0)
     try:
-        from source.solvers.VPM.physics import diffusion as diffusion_module
-        from source.solvers.VPM.physics.diffusion import DiffusionPhysics
+        from source.solvers.vpm.physics import diffusion as diffusion_module
+        from source.solvers.vpm.physics.diffusion import DiffusionPhysics
 
         nx = ny = nz = 50
         assert nx * ny * nz > diffusion_module._GRID_TRANSFER_CHUNK
 
-        d = DiffusionPhysics(max_particles=256)
+        d = DiffusionPhysics(max_n_particles=256)
         d.configure_max_grid_extent([0.0, (nx - 1) * H] * 3, H)
         d._ensure_grid_capacity(nx, ny, nz)
 
@@ -165,24 +165,24 @@ def test_bounded_scalar_grid_upload(diffusion):
     diffusion._ensure_grid_capacity(nx, ny, nz)
     rng = np.random.default_rng(3)
     payload = rng.random((nx, ny, nz)).astype(np.float32)
-    diffusion._upload_active_scalar_grid(diffusion._nu_eff_grid, payload, nx, ny, nz)
-    got = diffusion._nu_eff_grid.to_numpy()[:nx, :ny, :nz]
+    diffusion._upload_active_scalar_grid(diffusion._effective_viscosity_grid, payload, nx, ny, nz)
+    got = diffusion._effective_viscosity_grid.to_numpy()[:nx, :ny, :nz]
     np.testing.assert_array_equal(got, payload)
 
 
 @pytest.mark.unit
 def test_batched_m4_scatter_matches_single_dispatch(diffusion):
     """Splitting particle deposits must leave the accumulated grid unchanged."""
-    from source.solvers.VPM.particles.container import Particles
+    from source.solvers.vpm.particles.container import Particles
 
     position, circulation = _cloud(n=37, seed=44)
-    particles = Particles(max_particles=64)
+    particles = Particles(max_n_particles=64)
     particles.add_vortex_particles(
         position=position,
         velocity=np.zeros_like(position),
         vortex_strength=circulation,
         core_radius=np.full(len(position), H, dtype=np.float32),
-        volume=np.full(len(position), H**3, dtype=np.float32),
+        particle_volume=np.full(len(position), H**3, dtype=np.float32),
         kinematic_viscosity=np.full(len(position), 1.0e-3, dtype=np.float32),
     )
     grid_min, (nx, ny, nz) = diffusion._lattice_aligned_bounds(position, H, 3.0)
@@ -231,16 +231,16 @@ def test_batched_m4_scatter_matches_single_dispatch(diffusion):
 
 def _run_gbd(d, pos, circ, force_full_domain: bool):
     """Run one GBD firing, optionally pinning the old full-domain active box."""
-    from source.solvers.VPM.particles.container import Particles
+    from source.solvers.vpm.particles.container import Particles
 
     n = len(pos)
-    particles = Particles(max_particles=4096)
+    particles = Particles(max_n_particles=4096)
     particles.add_vortex_particles(
         position=pos,
         velocity=np.zeros((n, 3), np.float32),
         vortex_strength=circ,
         core_radius=np.full(n, 1.5 * H, np.float32),
-        volume=np.full(n, H**3, np.float32),
+        particle_volume=np.full(n, H**3, np.float32),
         kinematic_viscosity=np.full(n, 1e-3, np.float32),
     )
     if force_full_domain:
@@ -251,35 +251,39 @@ def _run_gbd(d, pos, circ, force_full_domain: bool):
         )
     try:
         d.gbd_diffusion(
-            particles, time_step_size=1.0e-3, particle_spacing=H, nu=1.0e-3, domain_padding=3.0
+            particles,
+            time_step_size=1.0e-3,
+            particle_spacing=H,
+            kinematic_viscosity=1.0e-3,
+            domain_padding=3.0,
         )
     finally:
         if force_full_domain:
             d._lattice_aligned_bounds = original
-    n_out = particles.n_particles
+    n_out = particles.n_particles_total
     assert d._ping is True
     return {
         "n": n_out,
         "position": particles.position_cpu()[:n_out].copy(),
-        "circulation": particles.vortex_strength_cpu()[:n_out].copy(),
-        "radius": particles.core_radius_cpu()[:n_out].copy(),
+        "vortex_strength": particles.vortex_strength_cpu()[:n_out].copy(),
+        "core_radius": particles.core_radius_cpu()[:n_out].copy(),
         "group_id": particles.group_id_cpu()[:n_out].copy(),
-        "total_circulation": particles.vortex_strength_cpu()[:n_out].sum(axis=0),
+        "net_vortex_strength": particles.vortex_strength_cpu()[:n_out].sum(axis=0),
     }
 
 
 def test_zero_time_gbd_performs_regeneration_without_diffusion(diffusion):
     """An external mutation may be globally remeshed before physical evolution."""
-    from source.solvers.VPM.particles.container import Particles
+    from source.solvers.vpm.particles.container import Particles
 
     pos, circ = _cloud(n=80)
-    particles = Particles(max_particles=4096)
+    particles = Particles(max_n_particles=4096)
     particles.add_vortex_particles(
         position=pos,
         velocity=np.zeros((len(pos), 3), np.float32),
         vortex_strength=circ,
         core_radius=np.full(len(pos), 1.5 * H, np.float32),
-        volume=np.full(len(pos), H**3, np.float32),
+        particle_volume=np.full(len(pos), H**3, np.float32),
         kinematic_viscosity=np.full(len(pos), 1.0e-3, np.float32),
     )
 
@@ -287,7 +291,7 @@ def test_zero_time_gbd_performs_regeneration_without_diffusion(diffusion):
         particles,
         time_step_size=0.0,
         particle_spacing=H,
-        nu=1.0e-3,
+        kinematic_viscosity=1.0e-3,
         domain_padding=3.0,
         regen_threshold=1.0e-8,
         regen_threshold_mode="absolute",
@@ -316,15 +320,15 @@ def test_active_box_gbd_matches_full_domain_gbd(diffusion):
     order_old = np.lexsort(old["position"].T)
     for key, tol in (
         ("position", 1e-6),
-        ("circulation", 1e-9),
-        ("radius", 1e-6),
+        ("vortex_strength", 1e-9),
+        ("core_radius", 1e-6),
     ):
         np.testing.assert_allclose(
             new[key][order_new], old[key][order_old], rtol=0, atol=tol, err_msg=f"{key} changed"
         )
     np.testing.assert_array_equal(new["group_id"][order_new], old["group_id"][order_old])
     np.testing.assert_allclose(
-        new["total_circulation"], old["total_circulation"], rtol=0, atol=1e-9
+        new["net_vortex_strength"], old["net_vortex_strength"], rtol=0, atol=1e-9
     )
 
 
@@ -335,7 +339,7 @@ def test_active_box_gbd_matches_full_domain_gbd(diffusion):
 def test_vulkan_large_allocation_small_active_box():
     """A large allocation must stay usable as long as dispatches are bounded.
 
-    This is the shape of the cubeFlow failure: an allocation whose whole-field
+    This is the shape of the cube_flow failure: an allocation whose whole-field
     dispatch exceeds maxComputeWorkGroupCount, driven only over a small box.
     """
     reset_taichi_backend()
@@ -345,12 +349,12 @@ def test_vulkan_large_allocation_small_active_box():
         pytest.skip("Vulkan backend unavailable")
 
     try:
-        from source.solvers.VPM.physics.diffusion import DiffusionPhysics
+        from source.solvers.vpm.physics.diffusion import DiffusionPhysics
 
         nx_full, ny_full, nz_full = 260, 200, 200
         assert nx_full * ny_full * nz_full > 65535 * 128, "allocation too small to test the limit"
 
-        d = DiffusionPhysics(max_particles=1024)
+        d = DiffusionPhysics(max_n_particles=1024)
         h = 0.05
         d.configure_max_grid_extent(
             [0.0, (nx_full - 1) * h, 0.0, (ny_full - 1) * h, 0.0, (nz_full - 1) * h], h

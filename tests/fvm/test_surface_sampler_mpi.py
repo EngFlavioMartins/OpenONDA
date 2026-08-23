@@ -18,7 +18,7 @@ import pytest
 mpi4py = pytest.importorskip("mpi4py", reason="parallel FVM test requires mpi4py")
 pytest.importorskip("petsc4py", reason="parallel FVM test requires petsc4py")
 
-from source.solvers.FVM import (  # noqa: E402
+from source.solvers.fvm import (  # noqa: E402
     BoundaryConfig,
     ComputeConfig,
     DiscretizationConfig,
@@ -29,9 +29,9 @@ from source.solvers.FVM import (  # noqa: E402
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.core.parallel import ParallelContext  # noqa: E402
-from source.solvers.FVM.sampling.base import SamplingSchedule  # noqa: E402
-from source.solvers.FVM.sampling.fields import SurfaceSampler  # noqa: E402
+from source.solvers.fvm.core.parallel import ParallelContext  # noqa: E402
+from source.solvers.fvm.sampling.base import SamplingSchedule  # noqa: E402
+from source.solvers.fvm.sampling.fields import SurfaceSampler  # noqa: E402
 
 from ._structured_mesh import structured_box  # noqa: E402
 

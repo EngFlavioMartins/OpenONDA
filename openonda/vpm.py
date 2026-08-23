@@ -1,6 +1,6 @@
 """Vortex-particle and vortex-lattice solver API."""
 
-from source.solvers.VPM import (
+from source.solvers.vpm import (
     AdvectionConfig,
     DivergenceRelaxationConfig,
     DivergenceRelaxationError,
@@ -22,7 +22,7 @@ from source.solvers.VPM import (
     VPMSolver,
     create_vpm_solver,
 )
-from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
+from source.solvers.vpm.boundary_elements.vlm.coupling.kinematics import (
     ManeuverVLM,
     PitchingVLM,
     RotatingVLM,
@@ -30,28 +30,28 @@ from source.solvers.VPM.boundary_elements.vlm.coupling.kinematics import (
     StaticVLM,
     TranslatingVLM,
 )
-from source.solvers.VPM.boundary_elements.vlm.solver import VLMLoadingDistribution
-from source.solvers.VPM.initial_conditions import (
-    DoubletFlowVPM,
-    IsotropicTurbulenceVPM,
-    LambOseenVPM,
-    TaylorGreenVortexVPM,
-    VortexRingVPM,
+from source.solvers.vpm.boundary_elements.vlm.solver import VLMLoadingDistribution
+from source.solvers.vpm.initial_conditions import (
+    doublet_flow_vpm,
+    isotropic_turbulence_vpm,
+    lamb_oseen_vpm,
+    taylor_green_vortex_vpm,
+    vortex_ring_vpm,
 )
-from source.solvers.VPM.io.checkpoint import CheckpointManager
-from source.solvers.VPM.io.sampling import LineSampler, SamplingSchedule, SurfaceSampler
+from source.solvers.vpm.io.checkpoint import CheckpointManager
+from source.solvers.vpm.io.sampling import LineSampler, SamplingSchedule, SurfaceSampler
 
 __all__ = [
     "AdvectionConfig",
     "CheckpointManager",
-    "DoubletFlowVPM",
+    "doublet_flow_vpm",
     "DivergenceRelaxationConfig",
     "DivergenceRelaxationError",
     "FilamentRefinementConfig",
     "FilamentRefinementError",
     "ForceConfig",
-    "IsotropicTurbulenceVPM",
-    "LambOseenVPM",
+    "isotropic_turbulence_vpm",
+    "lamb_oseen_vpm",
     "LineSampler",
     "ManeuverVLM",
     "PanelSolver",
@@ -66,7 +66,7 @@ __all__ = [
     "StaticVLM",
     "StretchingConfig",
     "SurfaceSampler",
-    "TaylorGreenVortexVPM",
+    "taylor_green_vortex_vpm",
     "TranslatingVLM",
     "TurbulenceConfig",
     "VelocityConfig",
@@ -75,7 +75,7 @@ __all__ = [
     "VLMMeshSetup",
     "VLMSetup",
     "VLMSurfaceSetup",
-    "VortexRingVPM",
+    "vortex_ring_vpm",
     "VPMSetup",
     "create_vpm_solver",
 ]

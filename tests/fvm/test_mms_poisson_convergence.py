@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble import diffusion, matrix_assembly
-from source.solvers.FVM.fields.gradients import compute_lsq_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
+from source.solvers.fvm.assemble import diffusion, matrix_assembly
+from source.solvers.fvm.fields.gradients import compute_lsq_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.solve.linear_interface import solve_linear_system
 
 from ._polyhedral_mesh import split_prism_box
 
@@ -19,10 +19,10 @@ def _set_dirichlet_ghosts(field, mesh, geo):
     n_cells = mesh["n_cells"]
     n_internal = mesh["n_interior_faces"]
     for patch in mesh["boundary"]:
-        patch["bc_type"] = "fixedValue"
+        patch["boundary_condition_type"] = "fixedValue"
         faces = np.arange(patch["start_face"], patch["start_face"] + patch["n_faces"])
         ghosts = n_cells + faces - n_internal
-        field[ghosts] = _exact(geo["face_centroids"][faces])
+        field[ghosts] = _exact(geo["face_centre"][faces])
 
 
 def _solve_poisson(mesh):
@@ -31,8 +31,8 @@ def _solve_poisson(mesh):
     n_total = n_cells + mesh["n_faces"] - mesh["n_interior_faces"]
     field = np.zeros(n_total)
     _set_dirichlet_ghosts(field, mesh, geo)
-    source = 3.0 * np.pi**2 * _exact(geo["cell_centroids"])
-    volumes = geo["cell_volumes"]
+    source = 3.0 * np.pi**2 * _exact(geo["cell_centre"])
+    volumes = geo["cell_volume"]
 
     for _ in range(80):
         gradient = compute_lsq_gradient(field, mesh, geo)
@@ -49,7 +49,7 @@ def _solve_poisson(mesh):
     else:
         raise AssertionError("Non-orthogonal Poisson iteration did not converge")
 
-    error = field[:n_cells] - _exact(geo["cell_centroids"])
+    error = field[:n_cells] - _exact(geo["cell_centre"])
     return np.sqrt(np.sum(volumes * error**2) / np.sum(volumes))
 
 
@@ -62,7 +62,7 @@ def _tetrahedral_box(size):
         gmsh.model.occ.synchronize()
         gmsh.model.mesh.setSize(gmsh.model.getEntities(0), size)
         gmsh.model.mesh.generate(3)
-        from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+        from source.solvers.fvm.mesh.gmsh_importer import GmshImporter
 
         return GmshImporter().get_mesh_data()
     finally:
@@ -71,14 +71,14 @@ def _tetrahedral_box(size):
 
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    ("family", "mesh_factory", "sizes", "minimum_order"),
+    ("family", "mesh_factory", "sizes", "min_order"),
     [
         ("tet", _tetrahedral_box, (0.5, 0.25, 0.125), 0.7),
         ("prism", lambda n: split_prism_box(n), (2, 4, 8), 0.7),
         ("mixed", lambda n: split_prism_box(n, mixed=True), (2, 4, 8), 0.7),
     ],
 )
-def test_poisson_mms_converges_over_three_levels(family, mesh_factory, sizes, minimum_order):
+def test_poisson_mms_converges_over_three_levels(family, mesh_factory, sizes, min_order):
     errors = [_solve_poisson(mesh_factory(size)) for size in sizes]
     spacing = np.asarray(sizes, dtype=float)
     if family != "tet":
@@ -86,6 +86,6 @@ def test_poisson_mms_converges_over_three_levels(family, mesh_factory, sizes, mi
     observed_order = np.polyfit(np.log(spacing), np.log(errors), 1)[0]
 
     assert np.all(np.diff(errors) < 0.0), f"{family} errors are not monotone: {errors}"
-    assert observed_order >= minimum_order, (
-        f"{family} observed order {observed_order:.3f} < {minimum_order}; errors={errors}"
+    assert observed_order >= min_order, (
+        f"{family} observed order {observed_order:.3f} < {min_order}; errors={errors}"
     )

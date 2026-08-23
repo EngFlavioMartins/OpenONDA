@@ -24,19 +24,19 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import BoundaryConfig, FVMSetup, FVMSolver, TimeConfig, TransportConfig
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.mesh.rectilinear import (
+from source.solvers.fvm import BoundaryConfig, FVMSetup, FVMSolver, TimeConfig, TransportConfig
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.mesh.rectilinear import (
     coupling_box_mesh,
     wall_refined_axis,
 )
-from source.solvers.FVM.mesh.validation import validate_mesh
-from source.solvers.FVM.sampling.base import SamplingSchedule
-from source.solvers.FVM.sampling.forces import ForceSampler
+from source.solvers.fvm.mesh.validation import validate_mesh
+from source.solvers.fvm.sampling.base import SamplingSchedule
+from source.solvers.fvm.sampling.forces import ForceSampler
 
 BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 HOLE = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
-BODY_CENTER = np.array([0.0, 0.0, 0.0])
+BODY_CENTRE = np.array([0.0, 0.0, 0.0])
 
 
 def _build(grading: str):
@@ -74,7 +74,7 @@ def test_production_validator_accepts(carved):
 
 def test_no_fluid_cells_inside_body(carved):
     mesh, geo = carved
-    c = geo["cell_centroids"][: mesh["n_cells"]]
+    c = geo["cell_centre"][: mesh["n_cells"]]
     inside = (
         (c[:, 0] > HOLE[0])
         & (c[:, 0] < HOLE[1])
@@ -88,7 +88,7 @@ def test_no_fluid_cells_inside_body(carved):
 
 def test_positive_volumes_and_valid_connectivity(carved):
     mesh, geo = carved
-    vols = geo["cell_volumes"][: mesh["n_cells"]]
+    vols = geo["cell_volume"][: mesh["n_cells"]]
     assert np.all(vols > 0.0)
     owners = np.asarray(mesh["owners"])
     neighbours = np.asarray(mesh["neighbours"])
@@ -100,7 +100,7 @@ def test_positive_volumes_and_valid_connectivity(carved):
 
 def test_no_duplicate_or_zero_area_faces(carved):
     mesh, geo = carved
-    areas = np.linalg.norm(geo["face_sf"], axis=1)
+    areas = np.linalg.norm(geo["face_area_vector"], axis=1)
     assert areas.min() > 0.0, "zero-area face present"
     keys = {tuple(sorted(int(i) for i in quad)) for quad in mesh["faces"]}
     assert len(keys) == mesh["n_faces"], "duplicated face (same node set) present"
@@ -110,9 +110,9 @@ def test_wall_patch_is_closed_manifold(carved):
     mesh, geo = carved
     faces = _wall_faces(mesh)
     # Closed surface: outward area vectors sum to zero, total area = 6 L².
-    net = geo["face_sf"][faces].sum(axis=0)
+    net = geo["face_area_vector"][faces].sum(axis=0)
     assert np.allclose(net, 0.0, atol=1e-12), f"wall not closed: ΣSf={net}"
-    area = np.linalg.norm(geo["face_sf"][faces], axis=1).sum()
+    area = np.linalg.norm(geo["face_area_vector"][faces], axis=1).sum()
     assert area == pytest.approx(6.0, abs=1e-9)
     # 2-manifold: every wall-face edge is shared by exactly two wall faces.
     edge_count: dict[tuple[int, int], int] = {}
@@ -131,9 +131,9 @@ def test_wall_normals_point_out_of_fluid(carved):
     face normal points from its centroid toward the body interior."""
     mesh, geo = carved
     faces = _wall_faces(mesh)
-    sf = geo["face_sf"][faces]
-    fc = geo["face_centroids"][faces]
-    inward = np.einsum("fi,fi->f", sf, BODY_CENTER - fc)
+    sf = geo["face_area_vector"][faces]
+    fc = geo["face_centre"][faces]
+    inward = np.einsum("fi,fi->f", sf, BODY_CENTRE - fc)
     assert np.all(inward > 0.0), (
         f"{np.sum(inward <= 0.0)} wall faces have normals pointing into the fluid"
     )
@@ -184,9 +184,9 @@ def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
         samplers=(
             ForceSampler(
                 patch_names=["cube"],
-                ref_velocity=1.0,
-                ref_area=1.0,
-                ref_length=1.0,
+                reference_velocity=1.0,
+                reference_area=1.0,
+                reference_length=1.0,
                 schedule=SamplingSchedule(every_n_steps=1),
             ),
         ),
@@ -200,5 +200,5 @@ def test_ibm_path_unreachable_in_tutorial_solver(tmp_path):
     # actual bounds.
     force_sampler = next(s for s in solver.setup.samplers if s.name == "forces_history")
     assert force_sampler.patch_names == ["cube"]
-    assert force_sampler.ref_area == pytest.approx(1.0)
-    assert force_sampler.ref_length == pytest.approx(1.0)
+    assert force_sampler.reference_area == pytest.approx(1.0)
+    assert force_sampler.reference_length == pytest.approx(1.0)

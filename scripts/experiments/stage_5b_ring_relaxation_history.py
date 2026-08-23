@@ -31,8 +31,8 @@ from scripts.experiments.stage_5b_ring_quasi_steady import (  # noqa: E402
     sample_solver,
     serializable_metrics,
 )
-from source.solvers.VPM import VPMSolver  # noqa: E402
-from source.solvers.VPM.io import CheckpointManager  # noqa: E402
+from source.solvers.vpm import VPMSolver  # noqa: E402
+from source.solvers.vpm.io import CheckpointManager  # noqa: E402
 
 INK = "#20252a"
 BLUE = "#286f9b"
@@ -51,20 +51,16 @@ LIMITS = {
     "last_three_relative_range": 0.10,
     "circulation_relative_drift": 1.0e-3,
     "impulse_relative_drift": 1.0e-3,
-    "maximum_axisymmetry_mode_amplitude": 1.0e-4,
+    "max_axisymmetry_mode_amplitude": 1.0e-4,
     "energy_balance_relative_residual": 5.0e-2,
-    "maximum_invariant_projection_correction_ratio": 1.0e-2,
+    "max_invariant_projection_correction_ratio": 1.0e-2,
 }
 
 
 def checkpoint_time(path: Path) -> float:
     with h5py.File(path, "r") as handle:
         attributes = handle["solver"].attrs
-        if "time" in attributes:
-            return float(attributes["time"])
-        if "flow_time" in attributes:
-            return float(attributes["flow_time"])
-        raise KeyError("checkpoint has neither time nor legacy flow_time")
+        return float(attributes["time"])
 
 
 def trajectory_files(run_directory: Path, label: str) -> list[Path]:
@@ -78,10 +74,10 @@ def trajectory_files(run_directory: Path, label: str) -> list[Path]:
     return [by_time[time] for time in sorted(by_time)]
 
 
-def local_speeds(times: np.ndarray, centers: np.ndarray) -> np.ndarray:
+def local_speeds(times: np.ndarray, vortex_centre_position: np.ndarray) -> np.ndarray:
     if len(times) < 3:
-        return np.gradient(centers, times, edge_order=1)
-    return np.gradient(centers, times, edge_order=2)
+        return np.gradient(vortex_centre_position, times, edge_order=1)
+    return np.gradient(vortex_centre_position, times, edge_order=2)
 
 
 def relative_range(values: np.ndarray) -> float:
@@ -89,14 +85,18 @@ def relative_range(values: np.ndarray) -> float:
 
 
 def cumulative_energy_residuals(run_directory: Path, target_times: np.ndarray) -> np.ndarray:
-    """Compare measured energy loss with the integrated exact molecular sink."""
+    """Compare measured total_kinetic_energy loss with the integrated exact molecular sink."""
     path = run_directory / "samples/flow_integrals.csv"
     history = np.genfromtxt(path, delimiter=",", names=True)
     time = np.atleast_1d(history["time"])
-    energy = np.atleast_1d(history["kinetic_energy"])
-    dissipation = np.atleast_1d(history["neg_nu_enstrophy"])
+    total_kinetic_energy = np.atleast_1d(history["total_kinetic_energy"])
+    dissipation = np.atleast_1d(history["viscous_kinetic_energy_rate"])
     order = np.argsort(time)
-    time, energy, dissipation = time[order], energy[order], dissipation[order]
+    time, total_kinetic_energy, dissipation = (
+        time[order],
+        total_kinetic_energy[order],
+        dissipation[order],
+    )
     residuals: list[float] = []
     for target in target_times:
         if target <= time[0]:
@@ -108,7 +108,7 @@ def cumulative_energy_residuals(run_directory: Path, target_times: np.ndarray) -
             dissipation[inside], np.interp(target, time, dissipation)
         )
         predicted = float(np.trapezoid(integration_dissipation, integration_time))
-        measured = float(np.interp(target, time, energy) - energy[0])
+        measured = float(np.interp(target, time, total_kinetic_energy) - total_kinetic_energy[0])
         residuals.append(abs((measured - predicted) / predicted))
     return np.asarray(residuals)
 
@@ -143,11 +143,9 @@ def evaluate(rows: list[dict[str, object]]) -> dict[str, object]:
         "last_three_relative_ranges": plateau,
         "circulation_relative_drift": circulation_drift,
         "impulse_relative_drift": impulse_drift,
-        "maximum_axisymmetry_mode_amplitude": max(
-            float(row["maximum_mode_amplitude"]) for row in rows
-        ),
+        "max_axisymmetry_mode_amplitude": max(float(row["max_mode_amplitude"]) for row in rows),
         "energy_balance_relative_residual": float(final["energy_balance_relative_residual"]),
-        "maximum_invariant_projection_correction_ratio": max(
+        "max_invariant_projection_correction_ratio": max(
             float(row["invariant_projection_correction_ratio"]) for row in rows
         ),
     }
@@ -161,12 +159,12 @@ def evaluate(rows: list[dict[str, object]]) -> dict[str, object]:
         "time_plateau": max(plateau.values()) <= LIMITS["last_three_relative_range"],
         "circulation": circulation_drift <= LIMITS["circulation_relative_drift"],
         "impulse": impulse_drift <= LIMITS["impulse_relative_drift"],
-        "axisymmetry": observed["maximum_axisymmetry_mode_amplitude"]
-        <= LIMITS["maximum_axisymmetry_mode_amplitude"],
+        "axisymmetry": observed["max_axisymmetry_mode_amplitude"]
+        <= LIMITS["max_axisymmetry_mode_amplitude"],
         "energy_balance": observed["energy_balance_relative_residual"]
         <= LIMITS["energy_balance_relative_residual"],
-        "small_invariant_projection": observed["maximum_invariant_projection_correction_ratio"]
-        <= LIMITS["maximum_invariant_projection_correction_ratio"],
+        "small_invariant_projection": observed["max_invariant_projection_correction_ratio"]
+        <= LIMITS["max_invariant_projection_correction_ratio"],
     }
     if all(checks.values()):
         status = "QUASI_STEADY"
@@ -193,8 +191,8 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
     states = [load_state(path) for path in paths]
     moments = [archer_moments(state) for state in states]
     times = np.asarray([float(state["time"]) for state in states])
-    centers = np.asarray([item["axial_centroid"] for item in moments])
-    speeds = local_speeds(times, centers)
+    vortex_centre_position = np.asarray([item["axial_centroid"] for item in moments])
+    speeds = local_speeds(times, vortex_centre_position)
     energy_residuals = cumulative_energy_residuals(run_directory, times)
     projection_ratios = projection_correction_history(run_directory, times)
 
@@ -217,7 +215,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
         sample = sample_solver(
             solver,
             grid_size,
-            axial_center=float(moment["axial_centroid"]),
+            axial_centre=float(moment["axial_centroid"]),
             translation_speed=float(speed),
         )
         metrics = sample["sensitivity"][f"{PRIMARY_CORE_FRACTION:.2f}"]
@@ -310,7 +308,7 @@ def plot(rows: list[dict], gate: dict, output: Path) -> None:
     )
     axis.semilogy(
         time,
-        [row["maximum_mode_amplitude"] for row in rows],
+        [row["max_mode_amplitude"] for row in rows],
         "^-",
         color=GOLD,
         label="largest artificial mode",
@@ -320,7 +318,7 @@ def plot(rows: list[dict], gate: dict, output: Path) -> None:
         [row["energy_balance_relative_residual"] for row in rows[1:]],
         "d-",
         color="#7a5195",
-        label="energy-balance residual",
+        label="total_kinetic_energy-balance residual",
     )
     if max(float(row["invariant_projection_correction_ratio"]) for row in rows) > 0.0:
         axis.semilogy(
@@ -332,7 +330,9 @@ def plot(rows: list[dict], gate: dict, output: Path) -> None:
         )
     axis.axhline(1.0e-3, color=INK, linestyle="--", label="circulation/impulse limit")
     axis.axhline(1.0e-4, color=GREY, linestyle=":", label="axisymmetry limit")
-    axis.axhline(5.0e-2, color="#7a5195", linestyle="--", label="energy-balance limit")
+    axis.axhline(
+        5.0e-2, color="#7a5195", linestyle="--", label="total_kinetic_energy-balance limit"
+    )
     axis.axhline(1.0e-2, color="#ef5675", linestyle=":", label="projection limit")
     axis.set_xlabel(r"time $t^*$")
     axis.set_ylabel("relative magnitude")

@@ -3,7 +3,6 @@
 # =================================================
 from pathlib import Path
 
-
 # =================================================
 # Third-party library imports
 # =================================================
@@ -20,9 +19,9 @@ import numpy as np
 
 def theoretical_ring_trajectory(
     kinematic_viscosity: float,
-    ring_thickness_0: float,
-    ring_radius_0: float,
-    ring_strength_0: float,
+    initial_core_radius: float,
+    initial_ring_radius: float,
+    tube_circulation: float,
     time: np.ndarray,
 ):
     """
@@ -32,47 +31,49 @@ def theoretical_ring_trajectory(
     ----------
     kinematic_viscosity : float
         The kinematic viscosity of the fluid.
-    ring_thickness_0 : float
-        The initial core thickness of the vortex ring.
-    ring_radius_0 : float
+    initial_core_radius : float
+        The initial core radius of the vortex ring.
+    initial_ring_radius : float
         The initial radius of the vortex ring.
-    ring_strength_0 : float
-        The initial strength (circulation) of the vortex ring.
+    tube_circulation : float
+        The vortex-ring tube circulation.
     time : np.ndarray
         Array of time points at which to compute the trajectory.
 
     Returns:
     --------
-    ring_location_theo : np.ndarray
+    theoretical_ring_position : np.ndarray
         Theoretical cumulative distance traveled by the ring over time.
-    ring_speed_theo : np.ndarray
+    theoretical_ring_velocity : np.ndarray
         Theoretical speed of the ring at each time point.
     """
     # Calculate ring thickness over time
-    ring_thickness = np.sqrt(4 * kinematic_viscosity * time + ring_thickness_0**2)
+    ring_core_radius = np.sqrt(4 * kinematic_viscosity * time + initial_core_radius**2)
 
     # Core thickness ratio
-    eps = ring_thickness / ring_radius_0
+    core_to_ring_radius_ratio = ring_core_radius / initial_ring_radius
 
     # Empirical correction factor for finite core thickness
-    C = -0.558 - 1.12 * eps**2 - 5.0 * eps**4
+    correction_coefficient = (
+        -0.558 - 1.12 * core_to_ring_radius_ratio**2 - 5.0 * core_to_ring_radius_ratio**4
+    )
 
     # Term A based on initial circulation and radius
-    term_a = ring_strength_0 / (4 * np.pi * ring_radius_0)
+    circulation_velocity_scale = tube_circulation / (4 * np.pi * initial_ring_radius)
 
     # Term B includes the logarithmic factor and correction coefficient
-    term_b = np.log(8 / eps) + C
+    logarithmic_correction = np.log(8 / core_to_ring_radius_ratio) + correction_coefficient
 
     # Compute theoretical ring speed
-    ring_speed_theo = term_a * term_b
+    theoretical_ring_velocity = circulation_velocity_scale * logarithmic_correction
 
     # Calculate time step from the time array
-    time_step = np.gradient(time)
+    time_increment = np.gradient(time)
 
     # Compute theoretical ring location by cumulative sum of speed * time_step
-    ring_location_theo = np.cumsum(ring_speed_theo * time_step)
+    theoretical_ring_position = np.cumsum(theoretical_ring_velocity * time_increment)
 
-    return ring_location_theo, ring_speed_theo
+    return theoretical_ring_position, theoretical_ring_velocity
 
 
 # -- Plot style ---------------------------------------------------------------
@@ -107,7 +108,7 @@ MARKER_EDGE_WIDTH = 0.4
 SECONDARY_LINESTYLE = ":"
 MARK_EVERY = {
     "default": 3,
-    "energy": 4,
+    "total_kinetic_energy": 4,
     "trajectory": 5,
 }
 
@@ -213,12 +214,12 @@ INTENDED_CASE_ORDER = {
 }
 
 VORTEX_RING_VARIANT_STYLE = {
-    "DNS_direct": {"color": COLORS["DNSblue"], "marker": "o", "linestyle": "--"},
-    "DNS_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
-    "DNS_mixed": {"color": PALETTE["orange"], "marker": "^", "linestyle": "--"},
-    "LES_direct": {"color": PALETTE["dark"], "marker": "D", "linestyle": "-"},
-    "LES_transposed": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
-    "LES_mixed": {"color": PALETTE["gray"], "marker": "p", "linestyle": "-"},
+    "dns_direct": {"color": COLORS["DNSblue"], "marker": "o", "linestyle": "--"},
+    "dns_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
+    "dns_mixed": {"color": PALETTE["orange"], "marker": "^", "linestyle": "--"},
+    "les_direct": {"color": PALETTE["dark"], "marker": "D", "linestyle": "-"},
+    "les_transposed": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
+    "les_mixed": {"color": PALETTE["gray"], "marker": "p", "linestyle": "-"},
 }
 for _style in VORTEX_RING_VARIANT_STYLE.values():
     _style["linewidth"] = LINE_WIDTH
@@ -246,14 +247,14 @@ ROTOR_STYLE = {
     "bem": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0, "label": "BEM"},
     "theory": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0},
     "reference": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0},
-    "ct": {
+    "thrust_coefficient": {
         "color": COLORS["vpm"],
         "marker": "o",
         "markersize": 1.5,
         "linewidth": 1.0,
         "label": r"$C_T$",
     },
-    "cp": {
+    "power_coefficient": {
         "color": COLORS["vpm"],
         "marker": "s",
         "markersize": 1.5,

@@ -138,7 +138,7 @@ def hand_built_3d_mesh():
     ]
 
     mesh_data = {
-        "points": points,
+        "vertex_position": points,
         "faces": faces,
         "owners": owners,
         "neighbours": neighbours,
@@ -164,7 +164,7 @@ def gmsh_unit_cube(request):
         model.occ.synchronize()
         model.mesh.setSize(model.getEntities(0), lcar)
         model.mesh.generate(3)
-        from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+        from source.solvers.fvm.mesh.gmsh_importer import GmshImporter
 
         importer = GmshImporter()
         mesh_data = importer.get_mesh_data()
@@ -185,7 +185,7 @@ def cavity_mesh_3d(n):
         lcar = 1.0 / n
         model.mesh.setSize(model.getEntities(0), lcar)
         model.mesh.generate(3)
-        from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+        from source.solvers.fvm.mesh.gmsh_importer import GmshImporter
 
         importer = GmshImporter()
         mesh_data = importer.get_mesh_data()

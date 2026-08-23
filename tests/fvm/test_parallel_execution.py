@@ -8,8 +8,8 @@ import types
 import numpy as np
 import pytest
 
-from source.solvers.FVM import ComputeConfig, FVMSetup
-from source.solvers.FVM.core.parallel import ParallelContext, detected_world_size
+from source.solvers.fvm import ComputeConfig, FVMSetup
+from source.solvers.fvm.core.parallel import ParallelContext, detected_world_size
 
 
 class _FakeComm:

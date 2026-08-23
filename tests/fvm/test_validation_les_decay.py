@@ -8,7 +8,7 @@ import tempfile
 
 import numpy as np
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -19,8 +19,8 @@ from source.solvers.FVM import (
     TransportConfig,
     TurbulenceConfig,
 )
-from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.solve.simple_solver import update_scalar_boundaries
+from source.solvers.fvm.assemble.convection import compute_volumetric_face_flux
+from source.solvers.fvm.solve.simple_solver import update_scalar_boundaries
 
 from ._structured_mesh import structured_box
 
@@ -67,7 +67,7 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
         solver = FVMSolver(config, case_dir=case_dir, mesh_data=mesh)
         solver.auto_write = False
         n_cells = mesh["n_cells"]
-        centres = solver.geo_data["cell_centroids"]
+        centres = solver.geo_data["cell_centre"]
         x, y, z = centres.T
         velocity = np.column_stack(
             (
@@ -79,30 +79,34 @@ def _run_wale_decay(level: int) -> tuple[float, float, float]:
         pressure = (np.cos(2.0 * x) + np.cos(2.0 * y)) * (np.cos(2.0 * z) + 2.0) / 16.0
         solver.set_initial_velocity(velocity)
         solver.kinematic_pressure[:n_cells] = pressure - np.mean(pressure)
-        update_scalar_boundaries(solver.kinematic_pressure, mesh, solver.boundaries, field_name="p")
-        solver.face_flux = compute_volumetric_face_flux(solver.velocity, mesh, solver.geo_data)
+        update_scalar_boundaries(
+            solver.kinematic_pressure, mesh, solver.boundaries, field_name="kinematic_pressure"
+        )
+        solver.volumetric_face_flux = compute_volumetric_face_flux(
+            solver.velocity, mesh, solver.geo_data
+        )
 
-        volumes = solver.geo_data["cell_volumes"]
+        volumes = solver.geo_data["cell_volume"]
         total_volume = np.sum(volumes)
-        energy = [
+        total_kinetic_energy_history = [
             0.5 * np.sum(volumes * np.sum(solver.velocity[:n_cells] ** 2, axis=1)) / total_volume
         ]
         for _ in range(steps):
             solver.solve_pimple(time_step_size)
             solver.advance_time()
-            energy.append(
+            total_kinetic_energy_history.append(
                 0.5
                 * np.sum(volumes * np.sum(solver.velocity[:n_cells] ** 2, axis=1))
                 / total_volume
             )
 
     times = np.arange(steps + 1) * time_step_size
-    dissipation = -np.gradient(np.asarray(energy), times, edge_order=2)
+    dissipation = -np.gradient(np.asarray(total_kinetic_energy_history), times, edge_order=2)
     peak_index = int(np.argmax(dissipation))
     return (
         float(dissipation[peak_index]),
         float(times[peak_index]),
-        solver.last_diagnostics.continuity_max,
+        solver.last_diagnostics.max_continuity_error,
     )
 
 

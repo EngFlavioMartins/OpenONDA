@@ -6,7 +6,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.surface_classification import (
+from source.solvers.fvm.mesh.surface_classification import (
     SurfaceIndex,
     closest_point_on_triangles,
     triangle_box_overlap,
@@ -15,13 +15,13 @@ from source.solvers.FVM.mesh.surface_classification import (
 
 def uv_sphere_triangles(radius: float, n_theta: int = 24, n_phi: int = 16) -> np.ndarray:
     """Watertight UV-sphere triangulation centred at the origin."""
-    face_flux = np.linspace(0.0, np.pi, n_phi + 1)
-    theta = np.linspace(0.0, 2.0 * np.pi, n_theta, endpoint=False)
+    polar_angle = np.linspace(0.0, np.pi, n_phi + 1)
+    azimuthal_angle = np.linspace(0.0, 2.0 * np.pi, n_theta, endpoint=False)
     verts = np.empty((n_phi + 1, n_theta, 3))
-    for i, p in enumerate(face_flux):
-        verts[i, :, 0] = radius * np.sin(p) * np.cos(theta)
-        verts[i, :, 1] = radius * np.sin(p) * np.sin(theta)
-        verts[i, :, 2] = radius * np.cos(p)
+    for i, angle in enumerate(polar_angle):
+        verts[i, :, 0] = radius * np.sin(angle) * np.cos(azimuthal_angle)
+        verts[i, :, 1] = radius * np.sin(angle) * np.sin(azimuthal_angle)
+        verts[i, :, 2] = radius * np.cos(angle)
     triangles = []
     for i in range(n_phi):
         for j in range(n_theta):
@@ -37,9 +37,21 @@ def uv_sphere_triangles(radius: float, n_theta: int = 24, n_phi: int = 16) -> np
 
 def capped_cylinder_triangles(radius: float, z0: float, z1: float, n_theta: int = 32) -> np.ndarray:
     """Watertight capped-cylinder triangulation, axis along z."""
-    theta = np.linspace(0.0, 2.0 * np.pi, n_theta, endpoint=False)
-    ring0 = np.column_stack((radius * np.cos(theta), radius * np.sin(theta), np.full(n_theta, z0)))
-    ring1 = np.column_stack((radius * np.cos(theta), radius * np.sin(theta), np.full(n_theta, z1)))
+    azimuthal_angle = np.linspace(0.0, 2.0 * np.pi, n_theta, endpoint=False)
+    ring0 = np.column_stack(
+        (
+            radius * np.cos(azimuthal_angle),
+            radius * np.sin(azimuthal_angle),
+            np.full(n_theta, z0),
+        )
+    )
+    ring1 = np.column_stack(
+        (
+            radius * np.cos(azimuthal_angle),
+            radius * np.sin(azimuthal_angle),
+            np.full(n_theta, z1),
+        )
+    )
     centre0 = np.array([0.0, 0.0, z0])
     centre1 = np.array([0.0, 0.0, z1])
     triangles = []

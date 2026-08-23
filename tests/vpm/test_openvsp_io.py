@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from source.solvers.VPM.boundary_elements.vlm.geometry.openvsp_io import (
+from source.solvers.vpm.boundary_elements.vlm.geometry.openvsp_io import (
     OpenVSPImportConfig,
     _import_openvsp,
     load_degengeom_csv,
@@ -194,7 +194,7 @@ class TestOpenVspVSP3:
 
     def test_export_degengeom_csv(self, simple_vsp3: Path, tmp_path: Path):
         csv_path = tmp_path / "test_wing_degen.csv"
-        from source.solvers.VPM.boundary_elements.vlm.geometry.openvsp_io import (
+        from source.solvers.vpm.boundary_elements.vlm.geometry.openvsp_io import (
             export_openvsp_degengeom,
         )
 

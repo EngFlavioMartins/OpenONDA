@@ -8,7 +8,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -18,8 +18,8 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.solve.simple_solver import update_scalar_boundaries
+from source.solvers.fvm.assemble.convection import compute_volumetric_face_flux
+from source.solvers.fvm.solve.simple_solver import update_scalar_boundaries
 
 from ._structured_mesh import structured_box
 
@@ -66,23 +66,27 @@ def _run_abc(level: int, *, time_step_size: float = 0.005, steps: int = 4) -> tu
         solver = FVMSolver(config, mesh_data=mesh)
         solver.auto_write = False
         n_cells = mesh["n_cells"]
-        centres = solver.geo_data["cell_centroids"]
+        centres = solver.geo_data["cell_centre"]
         initial_velocity = _abc_velocity(centres, 0.0, kinematic_viscosity)
         solver.set_initial_velocity(initial_velocity)
         solver.kinematic_pressure[:n_cells] = -0.5 * np.sum(initial_velocity**2, axis=1)
         solver.kinematic_pressure[:n_cells] -= np.mean(solver.kinematic_pressure[:n_cells])
-        update_scalar_boundaries(solver.kinematic_pressure, mesh, solver.boundaries, field_name="p")
-        solver.face_flux = compute_volumetric_face_flux(solver.velocity, mesh, solver.geo_data)
+        update_scalar_boundaries(
+            solver.kinematic_pressure, mesh, solver.boundaries, field_name="kinematic_pressure"
+        )
+        solver.volumetric_face_flux = compute_volumetric_face_flux(
+            solver.velocity, mesh, solver.geo_data
+        )
 
         for _ in range(steps):
             solver.solve_pimple(time_step_size)
             solver.advance_time()
 
     exact = _abc_velocity(centres, steps * time_step_size, kinematic_viscosity)
-    volumes = solver.geo_data["cell_volumes"]
+    volumes = solver.geo_data["cell_volume"]
     error = np.sqrt(np.sum(volumes[:, None] * (solver.velocity[:n_cells] - exact) ** 2))
     norm = np.sqrt(np.sum(volumes[:, None] * exact**2))
-    return float(error / norm), solver.last_diagnostics.continuity_max
+    return float(error / norm), solver.last_diagnostics.max_continuity_error
 
 
 @pytest.mark.verification

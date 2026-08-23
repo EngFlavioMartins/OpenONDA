@@ -13,13 +13,13 @@ import time
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.io import RuntimeProfiler
+from source.solvers.vpm.io import RuntimeProfiler
 
 _SIGMA = 0.05
 
@@ -68,13 +68,13 @@ def test_format_report_contains_sections_and_footer():
     prof = RuntimeProfiler(sync=None)
     prof.set_particle_count(42)
     for _ in range(3):
-        with prof.step(), prof.section("Velocity"):
+        with prof.step(), prof.section("velocity"):
             pass
     report = "\n".join(prof.format_report())
     assert "VPM RUNTIME PROFILE" in report
     assert "Number of particles" in report
     assert "42" in report
-    assert "Velocity" in report
+    assert "velocity" in report
     assert "Step total" in report
     assert "3 steps" in report
 
@@ -101,13 +101,13 @@ def _tiny_solver(tmp_path, timing_interval_steps=0):
         checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
-    volume = (4.0 / 3.0) * np.pi * _SIGMA**3
+    particle_volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([volume]),
+        particle_volume=np.array([particle_volume]),
         kinematic_viscosity=np.array([1e-5]),
     )
     return solver

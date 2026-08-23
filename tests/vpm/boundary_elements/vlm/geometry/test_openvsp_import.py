@@ -4,21 +4,21 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from source.solvers.VPM.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
-import source.solvers.VPM.boundary_elements.vlm.geometry.openvsp_io as openvsp_io
-from source.solvers.VPM.boundary_elements.vlm.geometry.openvsp_io import (
+from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
+import source.solvers.vpm.boundary_elements.vlm.geometry.openvsp_io as openvsp_io
+from source.solvers.vpm.boundary_elements.vlm.geometry.openvsp_io import (
     OpenVSPImportConfig,
     load_degengeom_csv,
     load_openvsp_surface,
 )
-from source.solvers.VPM.boundary_elements.vlm.geometry.surface_io import load_surface, save_surface
-from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import load_surface, save_surface
+from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
 
 def _write_minimal_degengeom_csv(path: Path) -> Path:
     chord_u = [0.0, 0.5, 1.0]
     span_w = [0.0, 0.5, 1.0]
-    radii = [0.2, 0.5, 0.8]
+    core_radius = [0.2, 0.5, 0.8]
     chords = [0.16, 0.12, 0.08]
     x_le = [0.0, 0.02, 0.04]
     z_te = [0.08, 0.04, 0.02]
@@ -34,7 +34,7 @@ def _write_minimal_degengeom_csv(path: Path) -> Path:
     for u in chord_u:
         for station, w in enumerate(span_w):
             x = x_le[station] + u * chords[station]
-            y = radii[station]
+            y = core_radius[station]
             z = u * z_te[station]
             lines.append(f"Test Rotor Blade,rotor,{u},{w},{x:.8f},{y:.8f},{z:.8f}")
 
@@ -52,13 +52,13 @@ def test_parse_minimal_degengeom_csv_to_aircraft(tmp_path):
     wing = next(iter(aircraft.wings.values()))
     assert wing.uid == "Test_Rotor_Blade"
     assert len(wing.segments) == 2
-    assert aircraft.total_num_panels() == 4
+    assert aircraft.total_n_panels() == 4
     for segment in wing.segments.values():
         assert segment.area > 0.0
-        assert segment.panels_chord == 2
-        assert segment.panels_span == 1
-        np.testing.assert_allclose(segment.vertices["a"][1], segment.vertices["d"][1])
-        np.testing.assert_allclose(segment.vertices["b"][1], segment.vertices["c"][1])
+        assert segment.n_chordwise_panels == 2
+        assert segment.n_spanwise_panels == 1
+        np.testing.assert_allclose(segment.vertex_position["a"][1], segment.vertex_position["d"][1])
+        np.testing.assert_allclose(segment.vertex_position["b"][1], segment.vertex_position["c"][1])
 
 
 def test_parse_native_openvsp_plate_block(tmp_path):
@@ -109,27 +109,29 @@ def test_parse_native_openvsp_plate_block(tmp_path):
     wing = next(iter(aircraft.wings.values()))
     assert wing.uid == "Native_Blade_0"
     assert len(wing.segments) == 2
-    assert aircraft.total_num_panels() == 2
+    assert aircraft.total_n_panels() == 2
     first = next(iter(wing.segments.values()))
-    np.testing.assert_allclose(first.vertices["a"], [0.0, 0.0, 0.0])
-    np.testing.assert_allclose(first.vertices["b"], [0.0, 0.5, 0.0])
-    np.testing.assert_allclose(first.vertices["c"], [1.0, 0.5, 0.0])
-    np.testing.assert_allclose(first.vertices["d"], [1.0, 0.0, 0.0])
+    np.testing.assert_allclose(first.vertex_position["a"], [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(first.vertex_position["b"], [0.0, 0.5, 0.0])
+    np.testing.assert_allclose(first.vertex_position["c"], [1.0, 0.5, 0.0])
+    np.testing.assert_allclose(first.vertex_position["d"], [1.0, 0.0, 0.0])
 
 
 def test_panel_count_override_and_json_round_trip(tmp_path):
     csv_path = _write_minimal_degengeom_csv(tmp_path / "blade_degengeom.csv")
-    config = OpenVSPImportConfig(panels_chord=4, panels_span=6)
+    config = OpenVSPImportConfig(n_chordwise_panels=4, n_spanwise_panels=6)
 
     aircraft = load_degengeom_csv(csv_path, config)
     json_path = save_surface(aircraft, str(tmp_path / "blade"))
     reloaded = load_surface(json_path)
 
-    assert reloaded.total_num_panels() == aircraft.total_num_panels()
-    assert reloaded.total_num_panels() == 24
+    assert reloaded.total_n_panels() == aircraft.total_n_panels()
+    assert reloaded.total_n_panels() == 24
     original_segment = next(iter(next(iter(aircraft.wings.values())).segments.values()))
     loaded_segment = next(iter(next(iter(reloaded.wings.values())).segments.values()))
-    np.testing.assert_allclose(loaded_segment.vertices["c"], original_segment.vertices["c"])
+    np.testing.assert_allclose(
+        loaded_segment.vertex_position["c"], original_segment.vertex_position["c"]
+    )
 
 
 def test_high_level_loader_saves_json(tmp_path):
@@ -138,9 +140,9 @@ def test_high_level_loader_saves_json(tmp_path):
 
     aircraft = load_openvsp_surface(csv_path, save_json=json_path)
 
-    assert aircraft.total_num_panels() == 4
+    assert aircraft.total_n_panels() == 4
     assert json_path.exists()
-    assert load_surface(str(json_path)).total_num_panels() == 4
+    assert load_surface(str(json_path)).total_n_panels() == 4
 
 
 def test_vlm_solver_accepts_imported_aircraft(tmp_path):
@@ -150,7 +152,7 @@ def test_vlm_solver_accepts_imported_aircraft(tmp_path):
     vlm = VLMSolver(
         VLMSetup(
             surfaces=(VLMSurfaceSetup(aircraft, name="openvsp_blade"),),
-            max_panels=32,
+            max_n_panels=32,
             linear_solver="SCIPY",
         )
     )

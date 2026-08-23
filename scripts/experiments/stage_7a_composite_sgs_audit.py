@@ -56,16 +56,19 @@ def apply_symbol(grid: SpectralGrid, field: np.ndarray, symbol: np.ndarray) -> n
 
 
 def particle_symbol(
-    grid: SpectralGrid, h: float, sigma: float, phases: tuple[float, float, float]
+    grid: SpectralGrid,
+    particle_spacing: float,
+    core_radius: float,
+    phases: tuple[float, float, float],
 ) -> np.ndarray:
     wave = np.fft.fftfreq(grid.n, d=1.0 / grid.n)
-    one_dimensional = [np.abs(m4_symbol(wave * h, phase)) ** 2 for phase in phases]
+    one_dimensional = [np.abs(m4_symbol(wave * particle_spacing, phase)) ** 2 for phase in phases]
     m4 = (
         one_dimensional[0][:, None, None]
         * one_dimensional[1][None, :, None]
         * one_dimensional[2][None, None, :]
     )
-    return np.exp(-(sigma**2) * grid.k2 / 4.0) * m4
+    return np.exp(-(core_radius**2) * grid.k2 / 4.0) * m4
 
 
 def exact_sgs_for_filter(
@@ -78,7 +81,7 @@ def exact_sgs_for_filter(
     convection_bar, stretching_bar = nonlinear_parts(grid, u_bar, w_bar)
     g_c = -filter_field(convection) + convection_bar
     g_s = filter_field(stretching) - stretching_bar
-    return {"u": u_bar, "w": w_bar, "g": g_c + g_s}
+    return {"velocity": u_bar, "vorticity": w_bar, "subgrid_torque": g_c + g_s}
 
 
 def generalized_diad(
@@ -149,13 +152,13 @@ def evaluate(
 ) -> tuple[dict[str, object], dict[str, np.ndarray]]:
     velocity = load_agard(agard_path)
     grid = SpectralGrid(velocity.shape[-1])
-    h = 2.0 * np.pi / les_n
-    sigma = sigma_over_h * h
-    paper_delta = delta_over_h * h
+    particle_spacing = 2.0 * np.pi / les_n
+    core_radius = sigma_over_h * particle_spacing
+    paper_delta = delta_over_h * particle_spacing
     gaussian_delta = paper_delta / np.sqrt(6.0)
-    delta_effective = float(np.sqrt(paper_delta**2 + 6.0 * sigma**2))
+    delta_effective = float(np.sqrt(paper_delta**2 + 6.0 * core_radius**2))
 
-    p_symbol = particle_symbol(grid, h, sigma, PHASES)
+    p_symbol = particle_symbol(grid, particle_spacing, core_radius, PHASES)
     g_symbol = np.exp(-(gaussian_delta**2) * grid.k2 / 4.0)
     h_symbol = p_symbol * g_symbol
 
@@ -167,44 +170,46 @@ def evaluate(
 
     # Exact nested-filter decomposition: g_H = G(g_P) + g_{G|P}.
     exact_particle = exact_sgs_for_filter(grid, velocity, particle_filter)
-    particle_filtered_torque = grid.gaussian(exact_particle["g"], gaussian_delta)
-    tilde_velocity = exact_particle["u"]
+    particle_filtered_torque = grid.gaussian(exact_particle["subgrid_torque"], gaussian_delta)
+    tilde_velocity = exact_particle["velocity"]
     exact_added = exact_sgs(grid, tilde_velocity, gaussian_delta)
     exact_total = exact_sgs_for_filter(grid, velocity, total_filter)
     decomposition_residual = norm(
-        exact_total["g"] - particle_filtered_torque - exact_added["g"]
-    ) / norm(exact_total["g"])
-    resolved_residual = norm(exact_total["u"] - exact_added["u"]) / norm(exact_total["u"])
+        exact_total["subgrid_torque"] - particle_filtered_torque - exact_added["subgrid_torque"]
+    ) / norm(exact_total["subgrid_torque"])
+    resolved_residual = norm(exact_total["velocity"] - exact_added["velocity"]) / norm(
+        exact_total["velocity"]
+    )
 
     # Current model: invert only G and close only the added-filter stress.
-    reconstructed_g, diagnostics_g = diad(grid, exact_total["u"], gaussian_delta)
+    reconstructed_g, diagnostics_g = diad(grid, exact_total["velocity"], gaussian_delta)
     torque_g = stress_torque(grid, structural_stress(grid, reconstructed_g, gaussian_delta))
 
     # Candidate correction: invert and close the actual complete symbol H.
     reconstructed_h, diagnostics_h = generalized_diad(
-        grid, exact_total["u"], total_filter, delta_effective
+        grid, exact_total["velocity"], total_filter, delta_effective
     )
     torque_h = stress_torque(
         grid,
         generalized_structural_stress(grid, reconstructed_h, total_filter),
     )
 
-    w_bar = exact_total["w"]
-    metric_g_added = metrics(grid, w_bar, exact_added["g"], torque_g)
-    metric_g_total = metrics(grid, w_bar, exact_total["g"], torque_g)
-    metric_h_total = metrics(grid, w_bar, exact_total["g"], torque_h)
+    w_bar = exact_total["vorticity"]
+    metric_g_added = metrics(grid, w_bar, exact_added["subgrid_torque"], torque_g)
+    metric_g_total = metrics(grid, w_bar, exact_total["subgrid_torque"], torque_g)
+    metric_h_total = metrics(grid, w_bar, exact_total["subgrid_torque"], torque_h)
 
-    total_norm = norm(exact_total["g"])
+    total_norm = norm(exact_total["subgrid_torque"])
     transfers = {
-        "exact_total": transfer_value(w_bar, exact_total["g"]),
+        "exact_total": transfer_value(w_bar, exact_total["subgrid_torque"]),
         "exact_particle_filtered": transfer_value(w_bar, particle_filtered_torque),
-        "exact_added_filter": transfer_value(w_bar, exact_added["g"]),
+        "exact_added_filter": transfer_value(w_bar, exact_added["subgrid_torque"]),
         "model_G_only": transfer_value(w_bar, torque_g),
         "model_complete_H": transfer_value(w_bar, torque_h),
     }
     component_shares = {
         "particle_torque_rms_over_total": norm(particle_filtered_torque) / total_norm,
-        "added_filter_torque_rms_over_total": norm(exact_added["g"]) / total_norm,
+        "added_filter_torque_rms_over_total": norm(exact_added["subgrid_torque"]) / total_norm,
         "particle_transfer_over_total": transfers["exact_particle_filtered"]
         / transfers["exact_total"],
         "added_filter_transfer_over_total": transfers["exact_added_filter"]
@@ -248,7 +253,7 @@ def evaluate(
             "nominal_les_n": les_n,
             "sigma_over_h": sigma_over_h,
             "delta_over_h": delta_over_h,
-            "delta_effective_over_h": delta_effective / h,
+            "delta_effective_over_h": delta_effective / particle_spacing,
             "particle_grid_phase": list(PHASES),
             "particle_operator": "Gaussian core followed by M4' P2M/M2P symbol",
             "added_filter": "Gaussian G_delta",
@@ -286,9 +291,9 @@ def evaluate(
         ),
     }
     arrays = {
-        "shell_exact_total": shell_transfer(grid, w_bar, exact_total["g"]),
+        "shell_exact_total": shell_transfer(grid, w_bar, exact_total["subgrid_torque"]),
         "shell_exact_particle": shell_transfer(grid, w_bar, particle_filtered_torque),
-        "shell_exact_added": shell_transfer(grid, w_bar, exact_added["g"]),
+        "shell_exact_added": shell_transfer(grid, w_bar, exact_added["subgrid_torque"]),
         "shell_model_g": shell_transfer(grid, w_bar, torque_g),
         "shell_model_h": shell_transfer(grid, w_bar, torque_h),
     }
@@ -372,8 +377,8 @@ def plot(result: dict[str, object], arrays: dict[str, np.ndarray], output: Path)
     axes[2].legend(frameon=False, fontsize=7)
 
     fig.suptitle(
-        r"Composite SGS audit: $\sigma/h=2.5$, $\Delta/h=2$, "
-        + rf"$\Delta_{{\rm eff}}/h={result['configuration']['delta_effective_over_h']:.2f}$",
+        r"Composite SGS audit: $\core_radius/particle_spacing=2.5$, $\Delta/particle_spacing=2$, "
+        + rf"$\Delta_{{\rm eff}}/particle_spacing={result['configuration']['delta_effective_over_h']:.2f}$",
         fontsize=12,
     )
     output.parent.mkdir(parents=True, exist_ok=True)

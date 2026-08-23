@@ -30,8 +30,8 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM.acceleration import treecode_gpu
-from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
+from source.solvers.vpm.acceleration import treecode_gpu
+from source.solvers.vpm.acceleration.treecode_gpu import TaichiTreecode
 
 ONE_OVER_FOUR_PI = 0.07957747154594767
 
@@ -54,7 +54,7 @@ def _cloud(N, seed=1):
 
 def _make_tree(N, theta, multipole_order=1, sort_particle_targets=False, traversal_block_dim=128):
     return TaichiTreecode(
-        max_particles=N + 8,
+        max_n_particles=N + 8,
         max_nodes=2 * (N + 8),
         theta=theta,
         kernel_type="WINCKELMANS",
@@ -131,7 +131,7 @@ def test_root_total_circulation_equals_global_sum(N):
     tree = _make_tree(N, theta=0.4)
     tree.build(pos, circ, rad, force=True)
     root = tree._root[None]
-    root_circ = tree.node_total_vortex_strength.to_numpy()[root]
+    root_circ = tree.node_net_vortex_strength.to_numpy()[root]
     true_sum = circ.astype(np.float64).sum(axis=0)
     assert tree.node_particle_count.to_numpy()[root] == N
     assert _rel_l2(root_circ, true_sum) < 1e-4
@@ -169,7 +169,7 @@ def test_internal_node_circulation_matches_its_leaf_range():
     pos, circ, rad = _cloud(N, seed=5)
     tree = _make_tree(N, theta=0.4)
     tree.build(pos, circ, rad, force=True)
-    nc = tree.node_total_vortex_strength.to_numpy()
+    nc = tree.node_net_vortex_strength.to_numpy()
     start = tree.node_particle_start.to_numpy()
     count = tree.node_particle_count.to_numpy()
     leaf_particles = tree.leaf_particles.to_numpy()
@@ -244,15 +244,15 @@ def test_batched_traversal_matches_single_dispatch(monkeypatch):
     velocity_single, gradient_single, strain_single = tree.compute_velocity_and_gradient(
         np.zeros(3, dtype=np.float32)
     )
-    target_velocity_single = tree.compute_target_velocities(targets)
-    target_gradient_single = tree.compute_target_velocity_gradients(targets)
+    target_velocity_single = tree.compute_target_velocity(targets)
+    target_gradient_single = tree.compute_target_velocity_gradient(targets)
 
     monkeypatch.setattr(treecode_gpu, "_TRAVERSAL_BATCH_SIZE", 4)
     velocity_batched, gradient_batched, strain_batched = tree.compute_velocity_and_gradient(
         np.zeros(3, dtype=np.float32)
     )
-    target_velocity_batched = tree.compute_target_velocities(targets)
-    target_gradient_batched = tree.compute_target_velocity_gradients(targets)
+    target_velocity_batched = tree.compute_target_velocity(targets)
+    target_gradient_batched = tree.compute_target_velocity_gradient(targets)
 
     np.testing.assert_array_equal(velocity_batched, velocity_single)
     np.testing.assert_array_equal(gradient_batched, gradient_single)
@@ -281,13 +281,13 @@ def test_order2_improves_far_target_velocity_and_gradient():
 
     tree1 = _make_tree(N, theta=1.0, multipole_order=1)
     tree1.build(pos, circ, rad, force=True)
-    v1 = tree1.compute_target_velocities(targets)
-    g1 = tree1.compute_target_velocity_gradients(targets)
+    v1 = tree1.compute_target_velocity(targets)
+    g1 = tree1.compute_target_velocity_gradient(targets)
 
     tree2 = _make_tree(N, theta=1.0, multipole_order=2)
     tree2.build(pos, circ, rad, force=True)
-    v2 = tree2.compute_target_velocities(targets)
-    g2 = tree2.compute_target_velocity_gradients(targets)
+    v2 = tree2.compute_target_velocity(targets)
+    g2 = tree2.compute_target_velocity_gradient(targets)
 
     v_err1 = _rel_l2(v1, v_exact)
     v_err2 = _rel_l2(v2, v_exact)
@@ -350,11 +350,11 @@ def test_rebuild_reflects_moved_particles_from_fields():
     vA = tree.compute_velocities(np.zeros(3, dtype=np.float32)).copy()
 
     pos_f.from_numpy(posB)
-    tree.build(pos_f, circ_f, rad_f, N)  # same N, moved positions
+    tree.build(pos_f, circ_f, rad_f, N)  # same N, moved position
     vB = tree.compute_velocities(np.zeros(3, dtype=np.float32)).copy()
 
-    # A rigid translation leaves the induced velocities invariant, so a correct
-    # rebuild reproduces them; a frozen tree (evaluating at stale positions
+    # A rigid translation leaves the induced velocity invariant, so a correct
+    # rebuild reproduces them; a frozen tree (evaluating at stale position
     # against stale nodes) would not.  Compare against the direct sum at B.
     assert _rel_l2(vB, _direct_velocity(posB, circ, rad)) < 5e-2
     # Sanity: B truly used the new field (B's internal node COMs moved by ~0.25).
@@ -376,13 +376,13 @@ def test_gpu_only_paths_match_numpy_returning_paths():
 
     v_np = tree.compute_velocities(bg)  # numpy path (does to_numpy)
     tree.compute_velocities_gpu(bg)  # on-device path (no download)
-    v_field = tree.velocities.to_numpy()[:N]
+    v_field = tree.velocity.to_numpy()[:N]
     assert np.allclose(v_field, v_np, atol=1e-6)
 
     g_np, s_np = tree.compute_velocity_gradients()
     tree.compute_velocity_gradients_gpu()
-    g_field = tree.velocity_gradients.to_numpy()[:N]
-    s_field = tree.strain_rates.to_numpy()[:N]
+    g_field = tree.velocity_gradient.to_numpy()[:N]
+    s_field = tree.strain_rate.to_numpy()[:N]
     assert np.allclose(g_field, g_np, atol=1e-6)
     assert np.allclose(s_field, s_np, atol=1e-6)
 
@@ -440,8 +440,8 @@ def test_morton_ordered_particle_traversal_matches_default_order():
 def test_fused_direct_kernel_matches_separate_direct_kernels():
     """A1 (direct path): the fused single-j-loop u/∇u/S kernel must match the two
     separate direct kernels bit-for-bit."""
-    from source.solvers.VPM.kernels.winckelmans import create_winckelmans_kernels
-    from source.solvers.VPM.numerics.kernels_common import (
+    from source.solvers.vpm.kernels.winckelmans import create_winckelmans_kernels
+    from source.solvers.vpm.numerics.kernels_common import (
         _create_basic_kernels,
         _create_gradient_kernels,
     )

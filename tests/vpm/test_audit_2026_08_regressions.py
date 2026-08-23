@@ -24,7 +24,7 @@ Each test pins one defect that the audit found and fixed:
 
   D-2  ``vlm/kernels/wake_shedding.py`` was dead code implementing a wake model
        that shed the *full* panel circulation per trailing-edge panel, so the
-       shed streamwise circulation summed to sum(Gamma_i)*l != 0, violating
+       shed streamwise circulation summed to sum(circulation_i)*l != 0, violating
        Kelvin's theorem.  The surviving implementation sheds spanwise
        *differences* and must telescope to zero.
 
@@ -40,11 +40,11 @@ import pytest
 from scipy.special import erf
 import taichi as ti
 
-from source.solvers.VPM.config.constants import (
+from source.solvers.vpm.config.constants import (
     GAUSSIAN_Q_SERIES_CROSSOVER,
     TREECODE_SUPPORTED_KERNELS,
 )
-from source.solvers.VPM.config.types import VelocityConfig, VPMSetup
+from source.solvers.vpm.config.types import VelocityConfig, VPMSetup
 
 ONE_OVER_FOUR_PI = 0.07957747154594767
 
@@ -61,7 +61,7 @@ def test_treecode_rejects_unsupported_kernel_at_config_time(kernel):
             particle_kernel=kernel,
             velocity=VelocityConfig.treecode(theta=0.5),
             compute_device="CPU",
-            max_particles=1000,
+            max_n_particles=1000,
         )
 
 
@@ -73,7 +73,7 @@ def test_direct_method_accepts_every_kernel(kernel):
         particle_kernel=kernel,
         velocity=VelocityConfig.direct(),
         compute_device="CPU",
-        max_particles=1000,
+        max_n_particles=1000,
     )
     assert setup.particle_kernel == kernel
 
@@ -85,7 +85,7 @@ def test_treecode_supported_kernels_are_accepted(kernel):
         particle_kernel=kernel,
         velocity=VelocityConfig.treecode(theta=0.5),
         compute_device="CPU",
-        max_particles=1000,
+        max_n_particles=1000,
     )
     assert setup.velocity.method == "TREECODE"
 
@@ -127,7 +127,7 @@ def _probe_treecode_q(rho: np.ndarray) -> np.ndarray:
     annotations eagerly, which requires ``ti.init`` to have already run.
     """
     ti.init(arch=ti.cpu, default_fp=ti.f32, random_seed=0)
-    from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
+    from source.solvers.vpm.acceleration.treecode_gpu import TaichiTreecode
 
     @ti.data_oriented
     class _QProbe:
@@ -141,7 +141,7 @@ def _probe_treecode_q(rho: np.ndarray) -> np.ndarray:
             for i in range(n):
                 self.out[i] = self.tree.q_kernel(self.rho[i])
 
-    tree = TaichiTreecode(max_particles=8, max_nodes=16, theta=0.5, kernel_type="GAUSSIAN")
+    tree = TaichiTreecode(max_n_particles=8, max_nodes=16, theta=0.5, kernel_type="GAUSSIAN")
     probe = _QProbe(tree, len(rho))
     probe.rho.from_numpy(np.ascontiguousarray(rho, dtype=np.float32))
     probe.run(len(rho))
@@ -208,22 +208,22 @@ def test_gaussian_q_is_positive_and_monotone_through_the_cancellation_band():
 # ── D-2: VLM wake shedding conserves circulation (Kelvin) ───────────────────
 
 
-def _telescoped_trailing_strengths(gamma: np.ndarray) -> np.ndarray:
+def _telescoped_trailing_strengths(circulation: np.ndarray) -> np.ndarray:
     """Reference model of the shipped shedding rule, per unit ``l_te * V_unit``.
 
     Mirrors ``vlm/solver/kernels.py:shed_wake_particles_kernel``:
-      * left edge of panel i  -> -(Gamma_i - Gamma_{i-1}); at the left tip -Gamma_0
-      * right edge, tip only  -> +Gamma_{n-1}
+      * left edge of panel i  -> -(circulation_i - circulation_{i-1}); at the left tip -circulation_0
+      * right edge, tip only  -> +circulation_{n-1}
     """
-    out = [-gamma[0]]
-    out += [-(gamma[i] - gamma[i - 1]) for i in range(1, len(gamma))]
-    out.append(+gamma[-1])
+    out = [-circulation[0]]
+    out += [-(circulation[i] - circulation[i - 1]) for i in range(1, len(circulation))]
+    out.append(+circulation[-1])
     return np.array(out)
 
 
 @pytest.mark.verification
 @pytest.mark.parametrize(
-    "gamma",
+    "circulation",
     [
         np.array([1.0, 1.0, 1.0, 1.0]),  # rectangular loading
         np.array([0.4, 0.9, 1.0, 0.9, 0.4]),  # elliptic-ish loading
@@ -231,15 +231,15 @@ def _telescoped_trailing_strengths(gamma: np.ndarray) -> np.ndarray:
         np.linspace(0.1, 2.0, 12),  # monotone ramp
     ],
 )
-def test_shed_trailing_circulation_telescopes_to_zero(gamma):
+def test_shed_trailing_circulation_telescopes_to_zero(circulation):
     """Total shed streamwise circulation must vanish (Kelvin's theorem).
 
-    The deleted ``vlm/kernels/wake_shedding.py`` shed ``Gamma_i`` at every TE
-    panel instead of the spanwise difference, giving sum(Gamma_i) != 0 for any
+    The deleted ``vlm/kernels/wake_shedding.py`` shed ``circulation_i`` at every TE
+    panel instead of the spanwise difference, giving sum(circulation_i) != 0 for any
     lifting distribution.  This pins the correct behaviour.
     """
-    shed = _telescoped_trailing_strengths(gamma)
-    assert abs(shed.sum()) < 1e-12 * max(1.0, np.abs(gamma).sum())
+    shed = _telescoped_trailing_strengths(circulation)
+    assert abs(shed.sum()) < 1e-12 * max(1.0, np.abs(circulation).sum())
 
 
 # ── N-6: the RWM random seed is configurable ────────────────────────────────
@@ -263,7 +263,7 @@ def test_f64_with_treecode_is_rejected_rather_than_silently_downgraded():
             precision="f64",
             velocity=VelocityConfig.treecode(theta=0.5),
             compute_device="CPU",
-            max_particles=1000,
+            max_n_particles=1000,
         )
 
 
@@ -274,7 +274,7 @@ def test_f64_with_direct_summation_is_accepted():
         precision="f64",
         velocity=VelocityConfig.direct(),
         compute_device="CPU",
-        max_particles=1000,
+        max_n_particles=1000,
     )
     assert setup.precision == "f64"
 
@@ -301,7 +301,7 @@ _ZETA = {
 @pytest.mark.verification
 @pytest.mark.parametrize("name", sorted(_ZETA))
 def test_regularization_kernels_are_normalized(name):
-    """Every zeta must integrate to 1 over R^3, or Gamma is not circulation."""
+    """Every zeta must integrate to 1 over R^3, or circulation is not circulation."""
     zeta = _ZETA[name]
     assert _sph(lambda r: zeta(r) * 4.0 * np.pi * r * r) == pytest.approx(1.0, abs=1e-9)
 
@@ -328,7 +328,7 @@ def test_kernel_second_moment_matches_declared_angular_impulse_constant(name, ex
 @pytest.mark.verification
 @pytest.mark.parametrize(("name", "expected_c"), [("GAUSSIAN", 4.0), ("WINCKELMANS", 4.0)])
 def test_core_spreading_constant_follows_from_the_second_moment(name, expected_c):
-    """C = 6/m2, from <r^2> = m2 sigma^2 and d<r^2>/dt = 6 nu.
+    """C = 6/m2, from <r^2> = m2 sigma^2 and d<r^2>/dt = 6 kinematic_viscosity.
 
     Both kernels have m2 = 3/2, so both give C = 4.  WINCKELMANS previously
     declared 256/45 = 5.689, a hand-calibrated value presented as a derived one.
@@ -342,8 +342,8 @@ def test_core_spreading_constant_follows_from_the_second_moment(name, expected_c
 def test_declared_diffusivity_constants_match_the_derivation():
     """Pin the values the Taichi kernels actually return."""
     ti.init(arch=ti.cpu, default_fp=ti.f32, random_seed=0)
-    from source.solvers.VPM.kernels.gaussian import create_gaussian_kernels
-    from source.solvers.VPM.kernels.winckelmans import create_winckelmans_kernels
+    from source.solvers.vpm.kernels.gaussian import create_gaussian_kernels
+    from source.solvers.vpm.kernels.winckelmans import create_winckelmans_kernels
 
     @ti.data_oriented
     class _Probe:

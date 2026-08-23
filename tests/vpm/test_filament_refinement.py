@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.VPM import FilamentRefinementConfig, StabilizationConfig, VPMSetup
-from source.solvers.VPM.stabilization.filament_refinement import (
+from source.solvers.vpm import FilamentRefinementConfig, StabilizationConfig, VPMSetup
+from source.solvers.vpm.stabilization.filament_refinement import (
     FilamentRefinementError,
     gaussian_particle_moments,
     gaussian_refinement_integral_transfer,
@@ -18,17 +18,17 @@ def _particles() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     circulation = rng.normal(size=(32, 3))
     circulation[:12] *= 4.0
     radius = rng.uniform(0.08, 0.13, size=32)
-    volume = rng.uniform(1e-5, 4e-5, size=32)
-    return position, circulation, radius, volume
+    particle_volume = rng.uniform(1e-5, 4e-5, size=32)
+    return position, circulation, radius, particle_volume
 
 
 def _reference_state(
     circulation: np.ndarray,
-    volume: np.ndarray,
+    particle_volume: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     reference_strength = np.linalg.norm(circulation, axis=1).copy()
     reference_strength[:12] *= 0.2
-    return reference_strength, np.cbrt(volume)
+    return reference_strength, np.cbrt(particle_volume)
 
 
 def _direct_gaussian_integrals(
@@ -65,14 +65,14 @@ def _direct_gaussian_integrals(
 
 
 def test_axial_split_preserves_gaussian_blob_moments_and_volume():
-    position, circulation, radius, volume = _particles()
-    reference_strength, reference_length = _reference_state(circulation, volume)
+    position, circulation, radius, particle_volume = _particles()
+    reference_strength, reference_length = _reference_state(circulation, particle_volume)
     before = gaussian_particle_moments(position, circulation, radius)
     result = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
@@ -84,21 +84,23 @@ def test_axial_split_preserves_gaussian_blob_moments_and_volume():
     np.testing.assert_allclose(after[1], before[1], rtol=0.0, atol=2e-14)
     np.testing.assert_allclose(after[2], before[2], rtol=0.0, atol=2e-14)
     np.testing.assert_allclose(after[3], before[3], rtol=0.0, atol=3e-14)
-    np.testing.assert_allclose(result.volume.sum(), volume.sum(), rtol=0.0, atol=2e-19)
+    np.testing.assert_allclose(
+        result.particle_volume.sum(), particle_volume.sum(), rtol=0.0, atol=2e-19
+    )
 
 
 def test_children_are_symmetric_and_parallel_to_parent_circulation():
     position = np.array([[0.4, -0.2, 0.1]])
     circulation = np.array([[2.0, -3.0, 6.0]])
     radius = np.array([0.12])
-    volume = np.array([8e-6])
+    particle_volume = np.array([8e-6])
     reference_strength = np.array([2.0])
     reference_length = np.array([0.04])
     result = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
@@ -112,7 +114,7 @@ def test_children_are_symmetric_and_parallel_to_parent_circulation():
         np.repeat(0.5 * circulation, 2, axis=0),
     )
     np.testing.assert_allclose(result.radius, radius[0])
-    np.testing.assert_allclose(result.volume, 0.5 * volume[0])
+    np.testing.assert_allclose(result.particle_volume, 0.5 * particle_volume[0])
     expected_current_length = reference_length[0] * np.linalg.norm(circulation[0]) / 2.0
     np.testing.assert_allclose(np.linalg.norm(offsets, axis=1), 0.25 * expected_current_length)
     np.testing.assert_allclose(
@@ -123,44 +125,44 @@ def test_children_are_symmetric_and_parallel_to_parent_circulation():
 
 
 def test_isolated_split_energy_is_strictly_non_increasing():
-    position, circulation, radius, volume = _particles()
-    reference_strength, reference_length = _reference_state(circulation, volume)
+    position, circulation, radius, particle_volume = _particles()
+    reference_strength, reference_length = _reference_state(circulation, particle_volume)
     result = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
     )
-    assert result.isolated_energy_change < 0.0
+    assert result.isolated_kinetic_energy_change < 0.0
 
     colocated = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
         offset_fraction=0.0,
     )
-    assert colocated.isolated_energy_change == pytest.approx(0.0, abs=2e-15)
+    assert colocated.isolated_kinetic_energy_change == pytest.approx(0.0, abs=2e-15)
 
 
 def test_transfer_audit_matches_full_gaussian_pair_integrals():
-    position, circulation, radius, volume = _particles()
+    position, circulation, radius, particle_volume = _particles()
     position = position[:9]
     circulation = circulation[:9]
     radius = radius[:9]
-    volume = volume[:9]
-    reference_strength, reference_length = _reference_state(circulation, volume)
+    particle_volume = particle_volume[:9]
+    reference_strength, reference_length = _reference_state(circulation, particle_volume)
     result = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
@@ -180,9 +182,9 @@ def test_transfer_audit_matches_full_gaussian_pair_integrals():
 
     np.testing.assert_allclose(
         [
-            transfer.energy_change,
-            transfer.enstrophy_change,
-            transfer.helicity_change,
+            transfer.total_kinetic_energy_change,
+            transfer.total_enstrophy_change,
+            transfer.total_helicity_change,
         ],
         expected,
         rtol=2e-13,
@@ -191,14 +193,14 @@ def test_transfer_audit_matches_full_gaussian_pair_integrals():
 
 
 def test_noop_transfer_has_exactly_zero_integral_jump():
-    position, circulation, radius, volume = _particles()
+    position, circulation, radius, particle_volume = _particles()
     result = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=np.linalg.norm(circulation, axis=1),
-        reference_length=np.cbrt(volume),
+        reference_length=np.cbrt(particle_volume),
         max_stretch_factor=2.0,
     )
     transfer = gaussian_refinement_integral_transfer(
@@ -207,36 +209,36 @@ def test_noop_transfer_has_exactly_zero_integral_jump():
         radius,
         result,
     )
-    assert transfer.energy_change == 0.0
-    assert transfer.enstrophy_change == 0.0
-    assert transfer.helicity_change == 0.0
+    assert transfer.total_kinetic_energy_change == 0.0
+    assert transfer.total_enstrophy_change == 0.0
+    assert transfer.total_helicity_change == 0.0
 
 
 def test_refinement_rejects_an_insufficient_particle_budget():
-    position, circulation, radius, volume = _particles()
-    reference_strength, reference_length = _reference_state(circulation, volume)
+    position, circulation, radius, particle_volume = _particles()
+    reference_strength, reference_length = _reference_state(circulation, particle_volume)
     with pytest.raises(FilamentRefinementError, match="declared budget"):
         split_stretched_filaments(
             position,
             circulation,
             radius,
-            volume,
+            particle_volume,
             reference_vortex_strength=reference_strength,
             reference_length=reference_length,
             max_stretch_factor=2.0,
-            max_particles=len(position),
+            max_n_particles=len(position),
         )
 
 
 def test_particles_below_threshold_are_an_exact_noop():
-    position, circulation, radius, volume = _particles()
+    position, circulation, radius, particle_volume = _particles()
     reference_strength = np.linalg.norm(circulation, axis=1)
-    reference_length = np.cbrt(volume)
+    reference_length = np.cbrt(particle_volume)
     result = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
@@ -245,7 +247,7 @@ def test_particles_below_threshold_are_an_exact_noop():
     np.testing.assert_array_equal(result.position, position)
     np.testing.assert_array_equal(result.vortex_strength, circulation)
     np.testing.assert_array_equal(result.radius, radius)
-    np.testing.assert_array_equal(result.volume, volume)
+    np.testing.assert_array_equal(result.particle_volume, particle_volume)
     np.testing.assert_array_equal(result.reference_vortex_strength, reference_strength)
     np.testing.assert_array_equal(result.reference_length, reference_length)
 
@@ -254,12 +256,12 @@ def test_children_reset_their_own_stretch_reference():
     position = np.zeros((1, 3))
     circulation = np.array([[0.0, 0.0, 4.2]])
     radius = np.array([0.1])
-    volume = np.array([1e-3])
+    particle_volume = np.array([1e-3])
     result = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=np.array([2.0]),
         reference_length=np.array([0.1]),
         max_stretch_factor=2.0,
@@ -269,7 +271,7 @@ def test_children_reset_their_own_stretch_reference():
         result.position,
         result.vortex_strength,
         result.radius,
-        result.volume,
+        result.particle_volume,
         reference_vortex_strength=result.reference_vortex_strength,
         reference_length=result.reference_length,
         max_stretch_factor=2.0,
@@ -278,15 +280,15 @@ def test_children_reset_their_own_stretch_reference():
 
 
 def test_axial_split_preserves_strength_weighted_centroid():
-    position, circulation, radius, volume = _particles()
-    reference_strength, reference_length = _reference_state(circulation, volume)
+    position, circulation, radius, particle_volume = _particles()
+    reference_strength, reference_length = _reference_state(circulation, particle_volume)
     weights = np.linalg.norm(circulation, axis=1)
     centroid_before = (weights[:, None] * position).sum(axis=0) / weights.sum()
     result = split_stretched_filaments(
         position,
         circulation,
         radius,
-        volume,
+        particle_volume,
         reference_vortex_strength=reference_strength,
         reference_length=reference_length,
         max_stretch_factor=2.0,
@@ -303,7 +305,7 @@ def test_filament_refinement_configuration_round_trip():
                 interval_steps=10,
                 max_vortex_strength_factor=2.5,
                 offset_fraction=0.4,
-                max_particles=120_000,
+                max_n_particles=120_000,
             )
         )
     )
@@ -330,13 +332,13 @@ def test_filament_refinement_rejects_children_outside_the_parent_segment():
 
 
 def test_refinement_budget_must_fit_the_fixed_particle_allocation():
-    with pytest.raises(ValueError, match="cannot exceed VPMSetup.max_particles"):
+    with pytest.raises(ValueError, match="cannot exceed VPMSetup.max_n_particles"):
         VPMSetup(
-            max_particles=100,
+            max_n_particles=100,
             stabilization=StabilizationConfig(
                 filament_refinement=FilamentRefinementConfig.adaptive(
                     interval_steps=1,
-                    max_particles=101,
+                    max_n_particles=101,
                 )
             ),
         )

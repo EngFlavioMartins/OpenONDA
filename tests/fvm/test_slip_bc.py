@@ -14,7 +14,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -68,7 +68,7 @@ def test_uniform_stream_is_preserved_by_slip_walls(tmp_path):
     velocity = solver.velocity[:n]
     assert np.allclose(velocity[:, 0], U_INF, atol=1e-8)
     assert np.allclose(velocity[:, 1], 0.0, atol=1e-8)
-    assert solver.continuity_max < 1e-10
+    assert solver.max_continuity_error < 1e-10
 
 
 def test_slip_ghosts_are_tangential(tmp_path):
@@ -87,32 +87,36 @@ def test_slip_ghosts_are_tangential(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "face_sf",
+    "face_area_vector",
     [
         np.array([[2.0, -1.0, 3.0], [-4.0, 2.0, 1.0], [0.0, 0.0, 0.0]]),
     ],
 )
-def test_vectorized_projection_preserves_tangential_velocity_and_degenerate_fallback(face_sf):
+def test_vectorized_projection_preserves_tangential_velocity_and_degenerate_fallback(
+    face_area_vector,
+):
     """Both production projection paths retain the scalar BC contract."""
-    from source.solvers.FVM.assemble.momentum import _apply_empty_bc_ustar
-    from source.solvers.FVM.solve.simple_solver import _apply_slip_bc
+    from source.solvers.fvm.assemble.momentum import _apply_empty_bc_ustar
+    from source.solvers.fvm.solve.simple_solver import _apply_slip_bc
 
     owners = np.array([1, 0, 1], dtype=np.int64)
     interior = np.array([[2.0, 3.0, -1.0], [-4.0, 1.0, 5.0]])
     velocity = np.vstack((interior, np.zeros((3, 3))))
     boundary_indices = np.array([2, 3, 4], dtype=np.int64)
 
-    _apply_empty_bc_ustar(velocity, boundary_indices, owners, face_sf)
+    _apply_empty_bc_ustar(velocity, boundary_indices, owners, face_area_vector)
     expected = interior[owners].copy()
-    valid = np.linalg.norm(face_sf, axis=1) > 1e-10
-    normal = face_sf[valid] / np.linalg.norm(face_sf[valid], axis=1)[:, np.newaxis]
+    valid = np.linalg.norm(face_area_vector, axis=1) > 1e-10
+    normal = (
+        face_area_vector[valid] / np.linalg.norm(face_area_vector[valid], axis=1)[:, np.newaxis]
+    )
     expected[valid] -= np.sum(expected[valid] * normal, axis=1)[:, np.newaxis] * normal
     assert np.allclose(velocity[boundary_indices], expected, rtol=0.0, atol=1e-14)
     assert np.allclose(velocity[boundary_indices[~valid]], interior[owners[~valid]])
     assert np.allclose(np.sum(velocity[boundary_indices[valid]] * normal, axis=1), 0.0, atol=1e-14)
 
     boundary = {"start_face": 0, "n_faces": 3}
-    geo = {"face_sf": face_sf}
+    geo = {"face_area_vector": face_area_vector}
     U_slip = np.vstack((interior, np.zeros((3, 3))))
     _apply_slip_bc(U_slip, boundary, owners, geo, n_cells=2, n_interior=0)
     assert np.allclose(U_slip[2:], expected, rtol=0.0, atol=1e-14)

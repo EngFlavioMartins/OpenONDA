@@ -18,8 +18,8 @@ from scripts.experiments.stage_5b_ring_relaxation_history import (  # noqa: E402
 
 def test_local_speeds_recovers_quadratic_path() -> None:
     time = np.linspace(0.0, 2.0, 5)
-    center = 0.2 * time + 0.03 * time**2
-    np.testing.assert_allclose(local_speeds(time, center), 0.2 + 0.06 * time, atol=1.0e-14)
+    centre = 0.2 * time + 0.03 * time**2
+    np.testing.assert_allclose(local_speeds(time, centre), 0.2 + 0.06 * time, atol=1.0e-14)
 
 
 def test_gate_requires_small_residuals_not_only_a_plateau() -> None:
@@ -32,8 +32,8 @@ def test_gate_requires_small_residuals_not_only_a_plateau() -> None:
                 "fitted_translation_speed": 0.25,
                 "fitted_speed_relative_difference": 0.01,
                 "tube_circulation": 1.0,
-                "impulse_x": 3.0,
-                "maximum_mode_amplitude": 1.0e-8,
+                "linear_impulse_x": 3.0,
+                "max_mode_amplitude": 1.0e-8,
                 "energy_balance_relative_residual": 0.0,
                 "invariant_projection_correction_ratio": 0.0,
                 "time_star": time,

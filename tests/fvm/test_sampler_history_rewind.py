@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from source.solvers.FVM.io.solver_io import SolverIO
+from source.solvers.fvm.io.solver_io import SolverIO
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def _write(tmp_path, relpath, text):
 def test_rewind_trims_time_line_csv(io, tmp_path):
     path = _write(
         tmp_path,
-        "samples/centerline.csv",
+        "samples/centreline.csv",
         "time,step,x\n0.00,0,0.5\n0.02,2,0.5\n0.04,4,0.5\n0.06,6,0.5\n",
     )
     io.rewind_histories(0.04)

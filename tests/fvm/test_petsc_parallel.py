@@ -21,7 +21,7 @@ from scipy.sparse.linalg import spsolve
 mpi4py = pytest.importorskip("mpi4py", reason="parallel FVM test requires mpi4py")
 pytest.importorskip("petsc4py", reason="parallel FVM test requires petsc4py")
 
-from source.solvers.FVM import (  # noqa: E402
+from source.solvers.fvm import (  # noqa: E402
     BoundaryConfig,
     ComputeConfig,
     DiscretizationConfig,
@@ -32,15 +32,15 @@ from source.solvers.FVM import (  # noqa: E402
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.core.parallel import ParallelContext  # noqa: E402
-from source.solvers.FVM.fields import diagnostics  # noqa: E402
-from source.solvers.FVM.mesh.partition import CellPartition  # noqa: E402
-from source.solvers.FVM.mesh.rectilinear import box_mesh_3d  # noqa: E402
-from source.solvers.FVM.solve.linear_interface import (  # noqa: E402
+from source.solvers.fvm.core.parallel import ParallelContext  # noqa: E402
+from source.solvers.fvm.fields import diagnostics  # noqa: E402
+from source.solvers.fvm.mesh.partition import CellPartition  # noqa: E402
+from source.solvers.fvm.mesh.rectilinear import box_mesh_3d  # noqa: E402
+from source.solvers.fvm.solve.linear_interface import (  # noqa: E402
     normalized_residual,
     solve_linear_system,
 )
-from source.solvers.FVM.solve.petsc_partitioned import (  # noqa: E402
+from source.solvers.fvm.solve.petsc_partitioned import (  # noqa: E402
     OwnedRowsCSR,
     PartitionedLinearWorkspace,
     solve_owned_rows,
@@ -160,7 +160,7 @@ def test_collective_petsc_solution_matches_scipy():
         A,
         b,
         method="cg",
-        equation_type="pressure",
+        equation_type="kinematic_pressure",
         tol=1e-11,
         maxiter=200,
         backend="petsc",
@@ -193,7 +193,7 @@ def test_collective_petsc_constant_pressure_nullspace():
         matrix,
         rhs,
         method="cg",
-        equation_type="pressure",
+        equation_type="kinematic_pressure",
         tol=1e-11,
         maxiter=300,
         backend="petsc",
@@ -233,7 +233,7 @@ def test_collective_pimple_step_is_rank_invariant(tmp_path):
         solver.auto_write = False
         residuals = solver.solve_pimple(0.01)
 
-    assert residuals["p"] < 1e-8
+    assert residuals["kinematic_pressure"] < 1e-8
     assert np.all(np.isfinite(solver.velocity))
     states = context.comm.allgather(solver.velocity.copy())
     for state in states[1:]:
@@ -299,7 +299,7 @@ def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
     stdout = io.StringIO()
 
     with contextlib.redirect_stdout(stdout):
-        from source.solvers.FVM.sampling.forces import ForceSampler
+        from source.solvers.fvm.sampling.forces import ForceSampler
 
         config = _pimple_config(execution, "root-owned-output")
         config.logging.mode = "debug"
@@ -333,7 +333,7 @@ def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
         forces = case_dir / "samples" / "forces_history.csv"
         assert len(diagnostics.read_text(encoding="utf-8").splitlines()) == 1
         force_lines = forces.read_text(encoding="utf-8").splitlines()
-        assert force_lines[0].startswith("time,step,dt,patch,")
+        assert force_lines[0].startswith("time,step,time_step_size,patch,")
         assert len(force_lines) == 5
         fvm_log = (case_dir / "solution" / "fvm.log").read_text(encoding="utf-8")
         for marker in markers:
@@ -376,15 +376,17 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
     pressure = np.concatenate(pressure_parts)
     np.testing.assert_allclose(velocity, reference.velocity[: mesh["n_cells"]], atol=2e-9)
     np.testing.assert_allclose(pressure, reference.kinematic_pressure[: mesh["n_cells"]], atol=2e-9)
-    assert actual.last_diagnostics.continuity_max == pytest.approx(
-        reference.last_diagnostics.continuity_max, rel=2e-7, abs=1e-10
+    assert actual.last_diagnostics.max_continuity_error == pytest.approx(
+        reference.last_diagnostics.max_continuity_error, rel=2e-7, abs=1e-10
     )
-    assert actual_residuals["p"] == pytest.approx(reference_residuals["p"], abs=2e-9)
+    assert actual_residuals["kinematic_pressure"] == pytest.approx(
+        reference_residuals["kinematic_pressure"], abs=2e-9
+    )
     force_kwargs = {
         "patch_names": ["ymin", "ymax", "zmin", "zmax"],
-        "ref_U": 1.0,
-        "ref_area": 1.0,
-        "ref_length": 1.0,
+        "reference_velocity": 1.0,
+        "reference_area": 1.0,
+        "reference_length": 1.0,
     }
     reference_forces = diagnostics.compute_surface_forces(
         reference.velocity,
@@ -411,7 +413,7 @@ def test_partitioned_pimple_matches_replicated_reference(tmp_path):
     )
     for patch, expected in reference_forces.items():
         np.testing.assert_allclose(
-            partitioned_forces[patch]["Ftot"], expected["Ftot"], rtol=1e-7, atol=2e-8
+            partitioned_forces[patch]["total_force"], expected["total_force"], rtol=1e-7, atol=2e-8
         )
 
 
@@ -438,8 +440,8 @@ def test_partitioned_initial_velocity_rebuilds_histories_halos_and_flux(tmp_path
     np.testing.assert_allclose(solver.velocity[: solver.mesh_data["n_cells"]], expected)
     np.testing.assert_allclose(solver.velocity_old, solver.velocity)
     np.testing.assert_allclose(solver.velocity_older, solver.velocity)
-    assert np.all(np.isfinite(solver.face_flux))
-    assert np.any(np.abs(solver.face_flux) > 0.0)
+    assert np.all(np.isfinite(solver.volumetric_face_flux))
+    assert np.any(np.abs(solver.volumetric_face_flux) > 0.0)
 
 
 def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_path):
@@ -470,9 +472,9 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
 
     velocity = actual.get_velocity_field()
     centres = actual.get_cell_centre_coordinates()
-    volumes = actual.get_cell_volumes()
+    volumes = actual.get_cell_volume()
     reference_centres = reference.get_cell_centre_coordinates()
-    reference_volumes = reference.get_cell_volumes()
+    reference_volumes = reference.get_cell_volume()
     expected_n = mesh["n_cells"] if context.is_root else 0
     assert velocity.shape == (expected_n, 3)
     assert centres.shape == (expected_n, 3)
@@ -492,17 +494,17 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
 
     patch = "ymin"
     face_centres = actual.get_boundary_face_centre_coordinates(patch)
-    face_normals = actual.get_boundary_face_normals(patch)
-    face_areas = actual.get_boundary_face_areas(patch)
+    face_normals = actual.get_boundary_face_normal(patch)
+    face_area = actual.get_boundary_face_area(patch)
     reference_face_centres = reference.get_boundary_face_centre_coordinates(patch)
     if context.is_root:
         np.testing.assert_allclose(face_centres, reference_face_centres)
         assert face_normals.shape == face_centres.shape
-        assert face_areas.shape == (len(face_centres),)
+        assert face_area.shape == (len(face_centres),)
     else:
         assert face_centres.shape == (0, 3)
         assert face_normals.shape == (0, 3)
-        assert face_areas.shape == (0,)
+        assert face_area.shape == (0,)
 
     # Repeated coupling calls reuse the immutable rank/face layout.
     np.testing.assert_array_equal(actual.get_boundary_face_centre_coordinates(patch), face_centres)
@@ -514,7 +516,7 @@ def test_partitioned_coupling_interface_gathers_and_scatters_global_fields(tmp_p
     if boundary is not None:
         start = boundary["start_face"]
         stop = start + boundary["n_faces"]
-        local_face_ids = actual.mesh_data["global_face_ids"][start:stop]
+        local_face_ids = actual.mesh_data["global_face_id"][start:stop]
     ids_by_rank = actual.parallel.comm.allgather(local_face_ids)
     sorted_face_ids = np.sort(np.concatenate(ids_by_rank))
     expected_patch_values = (
@@ -582,7 +584,9 @@ def test_partitioned_lsq_pimple_matches_replicated_reference(tmp_path):
         actual.solve_pimple(0.01)
 
     pressure_results = [
-        result for result in actual.algorithm.last_linear_results if result.equation == "pressure"
+        result
+        for result in actual.algorithm.last_linear_results
+        if result.equation == "kinematic_pressure"
     ]
     assert [result.preconditioner_rebuilt for result in pressure_results] == [
         True,
@@ -629,18 +633,18 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
         partition = solver.parallel.partition
         assert piece.n_cells == len(partition.local_global_ids)
         np.testing.assert_array_equal(
-            piece.cell_data["GlobalCellIds"],
+            piece.cell_data["global_cell_id"],
             partition.local_global_ids,
         )
         assert np.count_nonzero(piece.cell_data["vtkGhostType"]) == len(partition.ghost_global_ids)
-        assert "GlobalPointIds" in piece.point_data
-        assert "U" not in piece.point_data
+        assert "global_point_id" in piece.point_data
+        assert "velocity" not in piece.point_data
         smooth = piece.cell_data_to_point_data()
-        assert np.all(np.isfinite(smooth.point_data["U"]))
+        assert np.all(np.isfinite(smooth.point_data["velocity"]))
         if solver.parallel.is_root:
             parallel = pv.read(Path(shared_root) / "partitioned-state.pvtu")
             assert parallel.n_cells >= mesh["n_cells"]
-            assert "U" in parallel.cell_data
+            assert "velocity" in parallel.cell_data
         solver.save_state(f"{shared_root}/partitioned-checkpoint")
 
         restored = FVMSolver(
@@ -654,16 +658,16 @@ def test_partitioned_checkpoint_restores_complete_pimple_state(tmp_path):
     for name in (
         "velocity",
         "kinematic_pressure",
-        "face_flux",
-        "face_flux_old",
-        "face_flux_older",
+        "volumetric_face_flux",
+        "volumetric_face_flux_old",
+        "volumetric_face_flux_older",
         "velocity_old",
         "velocity_older",
     ):
         np.testing.assert_array_equal(getattr(restored, name), getattr(solver, name))
     assert restored.time == solver.time
     assert restored.step == solver.step
-    assert restored._n_committed == solver._n_committed
+    assert restored._n_committed_time_steps == solver._n_committed_time_steps
     if context.is_root:
         assert (Path(shared_root) / "partitioned-state.pvtu").exists()
         for rank in range(context.size):

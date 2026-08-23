@@ -8,9 +8,9 @@ exact).
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.fields.diagnostics import compute_continuity_error
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.assemble.convection import compute_volumetric_face_flux
+from source.solvers.fvm.fields.diagnostics import compute_continuity_error
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 from ._structured_mesh import structured_box
 
@@ -18,7 +18,7 @@ from ._structured_mesh import structured_box
 def _field(mesh, geo, fn):
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    cc, fc = geo["cell_centroids"], geo["face_centroids"]
+    cc, fc = geo["cell_centre"], geo["face_centre"]
     velocity = np.zeros((n_elem + mesh["n_faces"] - n_int, 3))
     velocity[:n_elem] = fn(cc[:, 0], cc[:, 1], cc[:, 2])
     for b in mesh["boundary"]:
@@ -40,8 +40,8 @@ def test_uniform_flow_is_divergence_free():
             [np.ones_like(x), 0.3 * np.ones_like(x), -0.5 * np.ones_like(x)]
         ),
     )
-    face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
-    div = compute_continuity_error(face_flux, mesh, geo)
+    volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
+    div = compute_continuity_error(volumetric_face_flux, mesh, geo)
     assert np.max(np.abs(div)) < 1e-12, (
         f"uniform flow not divergence-free: {np.max(np.abs(div)):.2e}"
     )
@@ -52,9 +52,9 @@ def test_linear_field_recovers_known_divergence():
     mesh = structured_box(8, 8, 8)
     geo = compute_mesh_geometry(mesh)
     velocity = _field(mesh, geo, lambda x, y, z: np.column_stack([x, 2.0 * y, np.zeros_like(x)]))
-    face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
-    div = compute_continuity_error(face_flux, mesh, geo)
-    local_div = div / geo["cell_volumes"]
+    volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
+    div = compute_continuity_error(volumetric_face_flux, mesh, geo)
+    local_div = div / geo["cell_volume"]
     assert np.allclose(local_div, 3.0, atol=1e-10), (
         f"max dev: {np.max(np.abs(local_div - 3.0)):.2e}"
     )

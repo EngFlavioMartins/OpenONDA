@@ -2,9 +2,9 @@
 
 import numpy as np
 
-from source.solvers.FVM.coupling.coupler_interface import CouplerInterfaceMixin
-from source.solvers.FVM.fields import gradients
-from source.solvers.FVM.solve.simple_solver import _update_fixed_flux_pressure_boundaries
+from source.solvers.fvm.coupling.coupler_interface import CouplerInterfaceMixin
+from source.solvers.fvm.fields import gradients
+from source.solvers.fvm.solve.simple_solver import _update_fixed_flux_pressure_boundaries
 
 
 def _one_cell_fixed_flux_case():
@@ -32,39 +32,41 @@ def _one_cell_fixed_flux_case():
         ],
     }
     geo = {
-        "face_sf": sf,
-        "face_cf_vector": face_centres,
-        "face_centroids": face_centres,
-        "face_weights": np.full(6, 0.5),
-        "cell_volumes": np.ones(1),
+        "face_area_vector": sf,
+        "cell_connection_vector": face_centres,
+        "face_centre": face_centres,
+        "face_interpolation_weight": np.full(6, 0.5),
+        "cell_volume": np.ones(1),
         "gradient_scheme": "gauss",
     }
     U_star = np.zeros((7, 3))
     U_star[0] = [1.0, 0.0, 0.0]
     U_star[1:] = [0.5, 0.0, 0.0]
-    DU = np.full((1, 3), 0.25)
-    return mesh, geo, U_star, DU
+    pressure_velocity_coefficient = np.full((1, 3), 0.25)
+    return mesh, geo, U_star, pressure_velocity_coefficient
 
 
 def test_fixed_flux_pressure_recovers_normal_momentum_balance():
-    mesh, geo, U_star, DU = _one_cell_fixed_flux_case()
+    mesh, geo, U_star, pressure_velocity_coefficient = _one_cell_fixed_flux_case()
     p = np.zeros(7)
 
-    grad = _update_fixed_flux_pressure_boundaries(p, U_star, DU, mesh, geo, mesh["boundary"])
+    grad = _update_fixed_flux_pressure_boundaries(
+        p, U_star, pressure_velocity_coefficient, mesh, geo, mesh["boundary"]
+    )
 
     np.testing.assert_allclose(p[1:], [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0], atol=1e-14)
     np.testing.assert_allclose(grad[0], [2.0, 0.0, 0.0], atol=1e-14)
 
 
 def test_fixed_flux_pressure_accepts_explicit_pressure_free_face_flux():
-    mesh, geo, U_star, DU = _one_cell_fixed_flux_case()
+    mesh, geo, U_star, pressure_velocity_coefficient = _one_cell_fixed_flux_case()
     p = np.zeros(7)
     pressure_free_flux = np.array([-1.0, 1.0, 0.0, 0.0, 0.0, 0.0])
 
     grad = _update_fixed_flux_pressure_boundaries(
         p,
         U_star,
-        DU,
+        pressure_velocity_coefficient,
         mesh,
         geo,
         mesh["boundary"],
@@ -87,8 +89,8 @@ def test_vector_neumann_pressure_gradient_sets_face_increment():
         "owners": np.zeros(2, dtype=np.int32),
     }
     interface.geo_data = {
-        "face_sf": np.array([[-2.0, 0.0, 0.0], [3.0, 0.0, 0.0]]),
-        "face_cf_vector": np.array([[-0.4, 0.0, 0.0], [0.6, 0.0, 0.0]]),
+        "face_area_vector": np.array([[-2.0, 0.0, 0.0], [3.0, 0.0, 0.0]]),
+        "cell_connection_vector": np.array([[-0.4, 0.0, 0.0], [0.6, 0.0, 0.0]]),
     }
     interface.boundaries = [{"name": "cut", "start_face": 0, "n_faces": 2}]
     interface.kinematic_pressure = np.array([7.0, 0.0, 0.0])

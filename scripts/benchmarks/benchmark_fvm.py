@@ -143,7 +143,7 @@ def _run(
         solver.auto_write = False
 
         start = time.perf_counter()
-        solver.set_initial_velocity(_velocity(solver.geo_data["cell_centroids"]))
+        solver.set_initial_velocity(_velocity(solver.geo_data["cell_centre"]))
         field_initialization = time.perf_counter() - start
 
         step_samples = []
@@ -175,7 +175,7 @@ def _run(
     step = warmed["median"] if warmed is not None else first_step["seconds"]
     return {
         "target_cells": target_cells,
-        "cells": mesh["n_elements"],
+        "n_cells": mesh["n_elements"],
         "faces": mesh["n_faces"],
         "momentum_solver": params_linear.momentum_solver,
         "pressure_solver": params_linear.pressure_solver,
@@ -192,8 +192,8 @@ def _run(
         "linear_solve_seconds": linear_solve,
         "operators_and_diagnostics_seconds": max(float(step) - linear_setup - linear_solve, 0.0),
         "peak_rss_bytes": _peak_rss_bytes(),
-        "continuity_max": solver.last_diagnostics.continuity_max,
-        "cfl_max": solver.last_diagnostics.cfl_max,
+        "max_continuity_error": solver.last_diagnostics.max_continuity_error,
+        "max_courant_number": solver.last_diagnostics.max_courant_number,
     }
 
 

@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StabilizationConfig,
     StretchingConfig,
@@ -19,7 +19,7 @@ def test_stretching_viscosity_acts_only_on_positive_line_amplification(tmp_path)
         setup=VPMSetup(
             compute_device="CPU",
             precision="f64",
-            max_particles=16,
+            max_n_particles=16,
             advection=AdvectionConfig(scheme="NONE"),
             stretching=StretchingConfig.disabled(),
             viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.5),
@@ -36,7 +36,7 @@ def test_stretching_viscosity_acts_only_on_positive_line_amplification(tmp_path)
         velocity=np.zeros((count, 3)),
         vortex_strength=np.eye(3),
         core_radius=np.full(count, 0.2),
-        volume=np.full(count, 0.5**3),
+        particle_volume=np.full(count, 0.5**3),
         kinematic_viscosity=np.full(count, 0.01),
         eddy_viscosity=np.full(count, 0.02),
     )
@@ -47,7 +47,7 @@ def test_stretching_viscosity_acts_only_on_positive_line_amplification(tmp_path)
 
     expected_stabilization = np.array([0.2, 0.0, 0.0])
     np.testing.assert_allclose(
-        solver.stabilization.operators.stabilization_viscosity.to_numpy()[:count],
+        solver.stabilization.operators.stabilization_kinematic_viscosity.to_numpy()[:count],
         expected_stabilization,
         rtol=1.0e-7,
         atol=1.0e-12,
@@ -58,6 +58,8 @@ def test_stretching_viscosity_acts_only_on_positive_line_amplification(tmp_path)
         rtol=1.0e-7,
         atol=1.0e-12,
     )
-    assert diagnostics["stabilization_viscosity_mean"] == pytest.approx(0.2 / 3.0)
-    assert diagnostics["stabilization_viscosity_max"] == pytest.approx(0.2)
-    assert diagnostics["stabilization_viscosity_active_fraction"] == pytest.approx(1.0 / 3.0)
+    assert diagnostics["mean_stabilization_kinematic_viscosity"] == pytest.approx(0.2 / 3.0)
+    assert diagnostics["max_stabilization_kinematic_viscosity"] == pytest.approx(0.2)
+    assert diagnostics["stabilization_kinematic_viscosity_active_fraction"] == pytest.approx(
+        1.0 / 3.0
+    )

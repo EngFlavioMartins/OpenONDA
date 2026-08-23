@@ -4,7 +4,7 @@
 import contextlib
 import io
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,

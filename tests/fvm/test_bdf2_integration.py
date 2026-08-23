@@ -14,7 +14,7 @@ import tempfile
 
 import numpy as np
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,

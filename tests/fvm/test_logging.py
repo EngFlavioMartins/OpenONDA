@@ -8,7 +8,7 @@ import io
 import numpy as np
 from scipy import sparse
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -19,8 +19,8 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.io.logging import Logging
-from source.solvers.FVM.solve import linear_interface
+from source.solvers.fvm.io.logging import Logging
+from source.solvers.fvm.solve import linear_interface
 
 from ._structured_mesh import structured_box
 
@@ -177,11 +177,11 @@ def test_acceptance_warning_forces_a_report_and_is_logged(tmp_path, monkeypatch)
     monkeypatch.setenv("FVM_PROFILE", "0")
 
     config = _logging_config(LoggingConfig(interval_steps=100), steps=1)
-    config.acceptance.cfl_warning = 1e-12
+    config.acceptance.max_courant_number_warning = 1e-12
 
     console = _run(tmp_path, config)
 
-    assert "! cfl=" in console
+    assert "! max_courant_number=" in console
     assert "exceeds warning threshold" in console
 
 

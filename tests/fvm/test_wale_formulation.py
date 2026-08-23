@@ -1,6 +1,6 @@
 """Direct algebraic certification of the WALE SGS operator (PLAN.md §13).
 
-These tests exercise ``source.solvers.FVM.turbulence.les_models.WALE`` and its
+These tests exercise ``source.solvers.fvm.turbulence.les_models.WALE`` and its
 helper ``_wale_operator`` against canonical velocity-gradient tensors with
 known analytic behaviour, independent of the full FVM solver (no mesh
 assembly, no PIMPLE loop) — so a failure here isolates the SGS *formula*
@@ -9,7 +9,7 @@ itself from the baseline discretisation.
 Reference: Nicoud & Ducros, "Subgrid-Scale Stress Modelling Based on the
 Square of the Velocity Gradient Tensor", Flow Turb. Combust. 62 (1999):
 
-    nu_t = (Cw * Delta)^2 * (Sd_ij Sd_ij)^{3/2}
+    eddy_viscosity = (wale_coefficient * Delta)^2 * (Sd_ij Sd_ij)^{3/2}
                               / ( (S_ij S_ij)^{5/2} + (Sd_ij Sd_ij)^{5/4} )
 
     S_ij  = symmetric part of the velocity-gradient tensor g_ij = du_i/dx_j
@@ -22,7 +22,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.FVM.turbulence.les_models import WALE, _strain_rate, _wale_operator
+from source.solvers.fvm.turbulence.les_models import WALE, _strain_rate, _wale_operator
 
 
 def _random_gradient_tensors(n: int, seed: int) -> np.ndarray:
@@ -33,7 +33,7 @@ def _random_gradient_tensors(n: int, seed: int) -> np.ndarray:
 def test_wale_operator_solid_body_rotation_matches_closed_form():
     """Solid-body rotation has S_ij = 0 identically (g is pure-antisymmetric),
     which zeroes the WALE denominator's (S:S)^{5/2} term -- but this does
-    *not* make nu_t zero, because Sd_ij Sd_ij (built from g^2, not S) stays
+    *not* make eddy_viscosity zero, because Sd_ij Sd_ij (built from g^2, not S) stays
     nonzero for a genuine rotation. For g = [[0,-w,0],[w,0,0],[0,0,0]]:
 
         g^2 = diag(-w^2, -w^2, 0)  (already symmetric)
@@ -66,14 +66,14 @@ def test_wale_operator_solid_body_rotation_matches_closed_form():
 def test_wale_operator_zero_for_canonical_simple_shear():
     """Canonical simple shear u = (gamma*y, 0, 0) gives g^2 = 0 identically
     (g is nilpotent: g_ij has a single nonzero entry g_01), so the WALE
-    traceless-square invariant Sd:Sd is exactly zero and nu_t = 0 -- one of
+    traceless-square invariant Sd:Sd is exactly zero and eddy_viscosity = 0 -- one of
     WALE's literature-cited advantages over plain Smagorinsky (Nicoud &
     Ducros 1999, §4.1): it does not spuriously flag mean shear as SGS
     turbulence.
     """
-    gamma = 2.3
+    shear_rate = 2.3
     g = np.zeros((4, 3, 3))
-    g[:, 0, 1] = gamma  # du/dy = gamma, all other components zero
+    g[:, 0, 1] = shear_rate
     gradient_squared = np.einsum("cik,ckj->cij", g, g)
     assert np.allclose(gradient_squared, 0.0), "g must be nilpotent for this case"
     op = _wale_operator(g)
@@ -81,7 +81,7 @@ def test_wale_operator_zero_for_canonical_simple_shear():
 
 
 def test_wale_eddy_viscosity_non_negative_for_arbitrary_gradients():
-    """nu_t = (Cw Delta)^2 * op must be >= 0 for arbitrary velocity gradients:
+    """eddy_viscosity = (wale_coefficient Delta)^2 * op must be >= 0 for arbitrary velocity gradients:
     op is a ratio of a non-negative numerator (an even power of a real
     quantity) over a strictly non-negative denominator (sum of squares plus
     epsilon), so it cannot go negative regardless of the input tensor.
@@ -124,14 +124,14 @@ def test_wale_operator_rotation_invariant():
 
 
 def test_wale_compute_eddy_viscosity_rejects_invalid_coefficient():
-    """Cw must be validated eagerly at construction (PLAN.md's "do not tune
-    c_w to force the DNS peak" only makes sense if Cw is a real, checked
+    """wale_coefficient must be validated eagerly at construction (PLAN.md's "do not tune
+    wale_coefficient to force the DNS peak" only makes sense if wale_coefficient is a real, checked
     physical parameter, not a silently-accepted arbitrary float).
     """
     with pytest.raises(ValueError):
-        WALE(mesh_data={}, geo_data={"cell_volumes": np.array([1.0])}, Cw=-0.1)
+        WALE(mesh_data={}, geo_data={"cell_volume": np.array([1.0])}, wale_coefficient=-0.1)
     with pytest.raises(ValueError):
-        WALE(mesh_data={}, geo_data={"cell_volumes": np.array([1.0])}, Cw=float("nan"))
+        WALE(mesh_data={}, geo_data={"cell_volume": np.array([1.0])}, wale_coefficient=float("nan"))
 
 
 def test_wale_operator_matches_literature_formula_directly():

@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.fields.gradients import compute_lsq_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.fields.gradients import compute_lsq_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 from ._polyhedral_mesh import split_prism_box
 
@@ -12,16 +12,16 @@ def _l2_error(grad_computed, grad_exact, volumes):
     return np.sqrt(np.sum(volumes[:, np.newaxis] * (err**2))) / np.sqrt(np.sum(volumes))
 
 
-def _set_ghost_cells_to_analytic(face_flux, mesh, geo, func):
+def _set_ghost_cells_to_analytic(scalar_field, mesh, geo, func):
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    fc = geo["face_centroids"]
+    fc = geo["face_centre"]
     for b in mesh["boundary"]:
         start, nf = b["start_face"], b["n_faces"]
         for j in range(nf):
             fi = start + j
             gi = n_elem + (fi - n_int)
-            face_flux[gi] = func(fc[fi])
+            scalar_field[gi] = func(fc[fi])
 
 
 class TestGradientConvergence:
@@ -32,19 +32,19 @@ class TestGradientConvergence:
         geo = compute_mesh_geometry(mesh, gradient_scheme="lsq")
         n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        cents = geo["cell_centroids"]
+        cents = geo["cell_centre"]
 
-        def phi_func(c):
+        def scalar_field_function(c):
             return c[0] ** 2 + c[1] ** 2 + c[2] ** 2
 
-        face_flux = np.zeros(n_elem + n_bnd)
-        face_flux[:n_elem] = np.array([phi_func(c) for c in cents])
-        _set_ghost_cells_to_analytic(face_flux, mesh, geo, phi_func)
+        scalar_field = np.zeros(n_elem + n_bnd)
+        scalar_field[:n_elem] = np.array([scalar_field_function(c) for c in cents])
+        _set_ghost_cells_to_analytic(scalar_field, mesh, geo, scalar_field_function)
 
-        grad = compute_lsq_gradient(face_flux, mesh, geo)
+        grad = compute_lsq_gradient(scalar_field, mesh, geo)
         g = grad[:n_elem].squeeze()
         grad_exact = 2.0 * cents
-        err = _l2_error(g, grad_exact, geo["cell_volumes"])
+        err = _l2_error(g, grad_exact, geo["cell_volume"])
         assert err < 0.7, f"L₂ error too large: {err:.4f}"
 
     @pytest.mark.slow
@@ -61,27 +61,27 @@ class TestGradientConvergence:
                 model.occ.synchronize()
                 model.mesh.setSize(model.getEntities(0), lcar)
                 model.mesh.generate(3)
-                from source.solvers.FVM.mesh.gmsh_importer import GmshImporter
+                from source.solvers.fvm.mesh.gmsh_importer import GmshImporter
 
                 imp = GmshImporter()
                 mesh = imp.get_mesh_data()
             finally:
                 gmsh.finalize()
 
-            def phi_func(c):
+            def scalar_field_function(c):
                 return c[0] ** 2 + c[1] ** 2 + c[2] ** 2
 
             geo = compute_mesh_geometry(mesh, gradient_scheme="lsq")
-            cents = geo["cell_centroids"]
+            cents = geo["cell_centre"]
             n_elem = mesh["n_cells"]
             n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-            face_flux = np.zeros(n_elem + n_bnd)
-            face_flux[:n_elem] = np.array([phi_func(c) for c in cents])
-            _set_ghost_cells_to_analytic(face_flux, mesh, geo, phi_func)
-            grad = compute_lsq_gradient(face_flux, mesh, geo)
+            scalar_field = np.zeros(n_elem + n_bnd)
+            scalar_field[:n_elem] = np.array([scalar_field_function(c) for c in cents])
+            _set_ghost_cells_to_analytic(scalar_field, mesh, geo, scalar_field_function)
+            grad = compute_lsq_gradient(scalar_field, mesh, geo)
             g = grad[:n_elem].squeeze()
             grad_exact = 2.0 * cents
-            err = _l2_error(g, grad_exact, geo["cell_volumes"])
+            err = _l2_error(g, grad_exact, geo["cell_volume"])
             errors.append(err)
 
         observed_order = np.polyfit(
@@ -97,14 +97,14 @@ class TestGradientConvergence:
         for n in (2, 4, 8):
             mesh = split_prism_box(n, mixed=mixed)
             geo = compute_mesh_geometry(mesh, gradient_scheme="lsq")
-            centres = geo["cell_centroids"]
+            centres = geo["cell_centre"]
             n_cells = mesh["n_cells"]
             n_boundary = mesh["n_faces"] - mesh["n_interior_faces"]
             field = np.zeros(n_cells + n_boundary)
             field[:n_cells] = np.sum(centres**2, axis=1)
             _set_ghost_cells_to_analytic(field, mesh, geo, lambda point: np.sum(point**2))
             computed = compute_lsq_gradient(field, mesh, geo)[:n_cells].squeeze()
-            errors.append(_l2_error(computed, 2.0 * centres, geo["cell_volumes"]))
+            errors.append(_l2_error(computed, 2.0 * centres, geo["cell_volume"]))
             sizes.append(1.0 / n)
 
         observed_order = np.polyfit(np.log(sizes), np.log(errors), 1)[0]

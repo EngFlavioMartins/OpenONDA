@@ -3,8 +3,8 @@ Treecode topology-reuse (refit) tests.
 
 `refit()` reuses the LBVH topology from the previous `build()` and updates only
 the position-dependent multipoles.  For a small per-stage displacement (< h)
-the refitted tree must produce velocities/gradients that match a full rebuild
-at the same displaced positions to well within the Barnes–Hut tolerance.
+the refitted tree must produce velocity/gradients that match a full rebuild
+at the same displaced position to well within the Barnes–Hut tolerance.
 """
 
 import math
@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
+from source.solvers.vpm.acceleration.treecode_gpu import TaichiTreecode
 
 _ERF = np.vectorize(math.erf)
 
@@ -45,7 +45,7 @@ def _ti_init():
 
 
 def _make_tree(n, theta=0.5):
-    tree = TaichiTreecode(max_particles=n + 16, kernel_type="GAUSSIAN")
+    tree = TaichiTreecode(max_n_particles=n + 16, kernel_type="GAUSSIAN")
     tree.theta = theta
     tree.theta_sq = theta * theta
     return tree
@@ -64,14 +64,14 @@ def _velocities(tree, pos_np, circ_np, rad_np, build=True, refit=False):
     else:
         tree.build(pos, circ, rad, N)
     tree.compute_velocities_gpu(np.zeros(3, np.float32))
-    return tree.velocities.to_numpy()[:N].copy()
+    return tree.velocity.to_numpy()[:N].copy()
 
 
 def test_refit_accuracy_matches_full_build():
     """Refit's error vs the exact field must be no worse than a full rebuild's.
 
     Two different tree topologies each carry the Barnes–Hut approximation error,
-    so refit and full-build velocities differ by O(tree error) — that is NOT a
+    so refit and full-build velocity differ by O(tree error) — that is NOT a
     refit defect.  The correct invariant is that refit does not *degrade*
     accuracy: its error against the exact O(N²) sum matches a full rebuild's.
     """
@@ -113,14 +113,14 @@ def test_refit_zero_displacement_matches_build_exactly():
 
     tree = _make_tree(N, theta=0.4)
     v_build = _velocities(tree, pos, circ, rad, build=True)
-    v_refit = _velocities(tree, pos, circ, rad, refit=True)  # same positions
+    v_refit = _velocities(tree, pos, circ, rad, refit=True)  # same position
 
     rel = np.linalg.norm(v_refit - v_build) / (np.linalg.norm(v_build) + 1e-30)
     assert rel < 1e-5, f"refit at zero displacement differs by {rel:.2e}"
 
 
 def test_circulation_refit_matches_full_rebuild_exactly():
-    """Fixed-position RK stretching may reuse topology after strengths change."""
+    """Fixed-position RK stretching may reuse topology after vortex_strength change."""
     rng = np.random.default_rng(17)
     N = 900
     pos = rng.uniform(-1, 1, (N, 3)).astype(np.float32)
@@ -142,12 +142,12 @@ def test_circulation_refit_matches_full_rebuild_exactly():
     sorted_before = refitted.sorted_indices.to_numpy()[:N].copy()
     refitted.refit_vortex_strength(circ1_field, N)
     refitted.compute_velocity_gradients_gpu()
-    gradient_refit = refitted.velocity_gradients.to_numpy()[:N].copy()
+    gradient_refit = refitted.velocity_gradient.to_numpy()[:N].copy()
 
     rebuilt = _make_tree(N, theta=0.3)
     rebuilt.build(pos_field, circ1_field, rad_field, N)
     rebuilt.compute_velocity_gradients_gpu()
-    gradient_rebuild = rebuilt.velocity_gradients.to_numpy()[:N].copy()
+    gradient_rebuild = rebuilt.velocity_gradient.to_numpy()[:N].copy()
 
     np.testing.assert_array_equal(refitted.sorted_indices.to_numpy()[:N], sorted_before)
     np.testing.assert_allclose(gradient_refit, gradient_rebuild, rtol=2e-6, atol=2e-6)

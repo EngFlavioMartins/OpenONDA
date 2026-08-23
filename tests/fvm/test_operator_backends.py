@@ -7,7 +7,7 @@ import io
 
 import numpy as np
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     ComputeConfig,
     DiscretizationConfig,
@@ -19,7 +19,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.assemble.matrix_assembly import (
+from source.solvers.fvm.assemble.matrix_assembly import (
     MatrixAssemblyWorkspace,
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
@@ -99,7 +99,7 @@ def _run_steps(tmp_path, backend, steps=1):
     return (
         solver.velocity.copy(),
         solver.kinematic_pressure.copy(),
-        solver.face_flux.copy(),
+        solver.volumetric_face_flux.copy(),
         diagnostics,
     )
 

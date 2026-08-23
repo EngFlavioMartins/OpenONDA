@@ -2,7 +2,7 @@
 """Gate B.1b pilot: transient forced homogeneous-turbulence comparison.
 
 This reduced 48^3/24^3 calculation is a screen for forcing/filter consistency,
-energy budgets, stability, and model separation.  It is not a statistically
+total_kinetic_energy budgets, stability, and model separation.  It is not a statistically
 stationary or publication-resolution Gate-B result.
 """
 
@@ -33,7 +33,7 @@ from stage_4b_spectral_pilot import (  # noqa: E402
     VorticitySolver,
     coarse_reference,
     diagnostics,
-    energy_spectrum,
+    kinetic_energy_spectrum,
 )
 
 DISPLAY_LABELS = {**LABELS, "filtered_dns": "Filtered reference"}
@@ -53,17 +53,19 @@ def forcing_power(
     return float(np.mean(np.sum(velocity * acceleration, axis=0)))
 
 
-def reynolds_lambda(energy: float, enstrophy: float, viscosity: float) -> float:
-    component_variance = 2.0 * energy / 3.0
-    dissipation = 2.0 * viscosity * enstrophy
+def reynolds_lambda(
+    total_kinetic_energy: float, total_enstrophy: float, kinematic_viscosity: float
+) -> float:
+    component_variance = 2.0 * total_kinetic_energy / 3.0
+    dissipation = 2.0 * kinematic_viscosity * total_enstrophy
     if dissipation <= np.finfo(float).tiny:
         return 0.0
-    microscale = np.sqrt(15.0 * viscosity * component_variance / dissipation)
-    return float(np.sqrt(component_variance) * microscale / viscosity)
+    microscale = np.sqrt(15.0 * kinematic_viscosity * component_variance / dissipation)
+    return float(np.sqrt(component_variance) * microscale / kinematic_viscosity)
 
 
-def integral_scale(spectrum: np.ndarray, energy: float) -> float:
-    component_variance = 2.0 * energy / 3.0
+def integral_scale(spectrum: np.ndarray, total_kinetic_energy: float) -> float:
+    component_variance = 2.0 * total_kinetic_energy / 3.0
     wave = np.arange(len(spectrum), dtype=float)
     positive = wave > 0.0
     if component_variance <= np.finfo(float).tiny:
@@ -86,7 +88,9 @@ def add_reference_diagnostics(
             "relative_vorticity_error": 0.0,
             "spectral_relative_l2": 0.0,
             "reynolds_lambda": reynolds_lambda(
-                record["energy"], record["enstrophy"], solver.viscosity
+                record["total_kinetic_energy"],
+                record["total_enstrophy"],
+                solver.kinematic_viscosity,
             ),
         }
     )
@@ -104,7 +108,7 @@ def add_model_diagnostics(
     time: float,
 ) -> dict[str, float]:
     record = diagnostics(solver, vorticity, model, gaussian_delta)
-    spectrum = energy_spectrum(solver, vorticity)
+    spectrum = kinetic_energy_spectrum(solver, vorticity)
     record.update(
         {
             "time": time,
@@ -112,7 +116,9 @@ def add_model_diagnostics(
             "relative_vorticity_error": relative_error(vorticity, reference),
             "spectral_relative_l2": relative_error(spectrum, reference_spectrum),
             "reynolds_lambda": reynolds_lambda(
-                record["energy"], record["enstrophy"], solver.viscosity
+                record["total_kinetic_energy"],
+                record["total_enstrophy"],
+                solver.kinematic_viscosity,
             ),
         }
     )
@@ -121,12 +127,12 @@ def add_model_diagnostics(
 
 def budget_summary(records: list[dict[str, float]]) -> dict[str, object]:
     time = np.asarray([record["time"] for record in records])
-    energy = np.asarray([record["energy"] for record in records])
+    total_kinetic_energy = np.asarray([record["total_kinetic_energy"] for record in records])
     forcing = np.asarray([record["forcing_power"] for record in records])
-    viscous = np.asarray([record["viscous_power"] for record in records])
+    viscous = np.asarray([record["viscous_kinetic_energy_rate"] for record in records])
     sgs = np.asarray([record["sgs_power"] for record in records])
     predicted = cumulative_trapezoid(forcing + viscous + sgs, time)
-    actual = energy - energy[0]
+    actual = total_kinetic_energy - total_kinetic_energy[0]
     scale = float(np.trapezoid(np.abs(forcing) + np.abs(viscous) + np.abs(sgs), time))
     return {
         "actual_energy_change": actual.tolist(),
@@ -142,8 +148,8 @@ def mean_time_error(records: list[dict[str, float]], quantity: str) -> float:
 def run(args: argparse.Namespace) -> dict[str, object]:
     if args.reference_n != 2 * args.les_n:
         raise ValueError("pilot requires reference_n = 2 * les_n")
-    reference_solver = VorticitySolver(args.reference_n, args.viscosity)
-    les_solver = VorticitySolver(args.les_n, args.viscosity)
+    reference_solver = VorticitySolver(args.reference_n, args.kinematic_viscosity)
+    les_solver = VorticitySolver(args.les_n, args.kinematic_viscosity)
     gaussian_delta = 2.0 * (2.0 * np.pi / args.les_n) / np.sqrt(6.0)
     forcing = ForcingHistory(
         args.les_n,
@@ -194,9 +200,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         ),
                     ),
                     "reynolds_lambda": reynolds_lambda(
-                        fine_record["energy"],
-                        fine_record["enstrophy"],
-                        reference_solver.viscosity,
+                        fine_record["total_kinetic_energy"],
+                        fine_record["total_enstrophy"],
+                        reference_solver.kinematic_viscosity,
                     ),
                 }
             )
@@ -207,7 +213,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 args.les_n,
                 gaussian_delta,
             )
-            reference_spectrum = energy_spectrum(les_solver, final_reference)
+            reference_spectrum = kinetic_energy_spectrum(les_solver, final_reference)
             histories["filtered_dns"].append(
                 add_reference_diagnostics(
                     les_solver,
@@ -254,9 +260,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             if not np.all(np.isfinite(states[model])):
                 raise FloatingPointError(f"non-finite {model} state at step {step + 1}")
 
-    final_spectra = {"filtered_dns": energy_spectrum(les_solver, final_reference).tolist()}
+    final_spectra = {"filtered_dns": kinetic_energy_spectrum(les_solver, final_reference).tolist()}
     final_spectra.update(
-        {model: energy_spectrum(les_solver, state).tolist() for model, state in states.items()}
+        {
+            model: kinetic_energy_spectrum(les_solver, state).tolist()
+            for model, state in states.items()
+        }
     )
     reference_final = histories["filtered_dns"][-1]
     summary: dict[str, object] = {}
@@ -265,22 +274,26 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         records = histories[model]
         final = records[-1]
         spectrum = np.asarray(final_spectra[model])
-        scale = integral_scale(spectrum, final["energy"])
-        turnover = scale / np.sqrt(2.0 * final["energy"] / 3.0)
+        scale = integral_scale(spectrum, final["total_kinetic_energy"])
+        turnover = scale / np.sqrt(2.0 * final["total_kinetic_energy"] / 3.0)
         budgets[model] = budget_summary(records)
         summary[model] = {
-            "final_energy_relative_error": abs(final["energy"] - reference_final["energy"])
-            / reference_final["energy"],
-            "final_enstrophy_relative_error": abs(final["enstrophy"] - reference_final["enstrophy"])
-            / reference_final["enstrophy"],
+            "final_total_kinetic_energy_relative_error": abs(
+                final["total_kinetic_energy"] - reference_final["total_kinetic_energy"]
+            )
+            / reference_final["total_kinetic_energy"],
+            "final_total_enstrophy_relative_error": abs(
+                final["total_enstrophy"] - reference_final["total_enstrophy"]
+            )
+            / reference_final["total_enstrophy"],
             "final_vorticity_relative_l2": final["relative_vorticity_error"],
             "time_mean_spectral_relative_l2": mean_time_error(records, "spectral_relative_l2"),
-            "maximum_high_k_energy_fraction": max(
+            "max_high_k_energy_fraction": max(
                 record["high_k_energy_fraction"] for record in records
             ),
-            "maximum_divergence_relative": max(record["divergence_relative"] for record in records),
+            "max_divergence_relative": max(record["divergence_relative"] for record in records),
             "mean_ssev_activation": mean_time_error(records, "activation"),
-            "maximum_kkt_condition": max(record["kkt_condition"] for record in records),
+            "max_kkt_condition": max(record["kkt_condition"] for record in records),
             "final_reynolds_lambda": final["reynolds_lambda"],
             "final_integral_scale": scale,
             "final_turnover_time": turnover,
@@ -288,23 +301,24 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "energy_budget_relative_residual": budgets[model]["relative_residual"],
         }
     reference_resolution = {
-        "maximum_high_k_energy_fraction": max(
+        "max_high_k_energy_fraction": max(
             record["high_k_energy_fraction"] for record in fine_reference_history
         ),
         "final_high_k_energy_fraction": fine_reference_history[-1]["high_k_energy_fraction"],
-        "maximum_divergence_relative": max(
+        "max_divergence_relative": max(
             record["divergence_relative"] for record in fine_reference_history
         ),
         "final_reynolds_lambda": fine_reference_history[-1]["reynolds_lambda"],
         "high_k_gate": 0.01,
-        "final_energy_spectrum": energy_spectrum(reference_solver, reference_vorticity).tolist(),
+        "final_kinetic_energy_spectrum": kinetic_energy_spectrum(
+            reference_solver, reference_vorticity
+        ).tolist(),
     }
     pilot_pass = bool(
         all(np.isfinite(value["final_vorticity_relative_l2"]) for value in summary.values())
-        and max(value["maximum_divergence_relative"] for value in summary.values()) < 1.0e-12
+        and max(value["max_divergence_relative"] for value in summary.values()) < 1.0e-12
         and max(value["energy_budget_relative_residual"] for value in summary.values()) < 2.0e-3
-        and reference_resolution["maximum_high_k_energy_fraction"]
-        < reference_resolution["high_k_gate"]
+        and reference_resolution["max_high_k_energy_fraction"] < reference_resolution["high_k_gate"]
         and summary["sensed"]["time_mean_spectral_relative_l2"]
         < summary["no_sgs"]["time_mean_spectral_relative_l2"]
     )
@@ -315,8 +329,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "configuration": {
             "reference_n": args.reference_n,
             "les_n": args.les_n,
-            "viscosity": args.viscosity,
-            "dt": args.time_step_size,
+            "kinematic_viscosity": args.kinematic_viscosity,
+            "time_step_size": args.time_step_size,
             "end_time": args.end_time,
             "save_interval": args.save_interval,
             "forcing_rms": args.forcing_rms,
@@ -326,7 +340,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "paper_filter_width_over_h": 2.0,
             "gaussian_delta": gaussian_delta,
         },
-        "theoretical_model_energy_balance": "dE/dt = P_f - 2 nu Z + P_SGS",
+        "theoretical_model_energy_balance": "dE/dt = P_f - 2 kinematic viscosity Z + P_SGS",
         "histories": histories,
         "fine_reference_history": fine_reference_history,
         "reference_resolution": reference_resolution,
@@ -340,9 +354,9 @@ def plot_histories(result: dict[str, object], output: Path) -> None:
     histories = result["histories"]
     fig, axes = plt.subplots(1, 3, figsize=(13.2, 4.1), constrained_layout=True)
     quantities = (
-        ("energy", "Resolved kinetic energy"),
-        ("enstrophy", "Resolved enstrophy"),
-        ("high_k_energy_fraction", "High-wavenumber energy fraction"),
+        ("total_kinetic_energy", "Resolved kinetic total_kinetic_energy"),
+        ("total_enstrophy", "Resolved total_enstrophy"),
+        ("high_k_energy_fraction", "High-wavenumber total_kinetic_energy fraction"),
     )
     for axis, (quantity, title) in zip(axes, quantities, strict=True):
         for model in ("filtered_dns", *MODELS):
@@ -382,7 +396,7 @@ def plot_spectra(result: dict[str, object], output: Path) -> None:
         )
     axis.set_xlabel(r"wavenumber shell $k$")
     axis.set_ylabel(r"$E(k)$")
-    axis.set_title("Final energy-spectrum reference overlay")
+    axis.set_title("Final total_kinetic_energy-spectrum reference overlay")
     axis.grid(color="#d8dde2", linewidth=0.7, which="both")
     axis.spines[["top", "right"]].set_visible(False)
     axis.legend(frameon=False, fontsize=8)
@@ -414,11 +428,11 @@ def plot_budgets(result: dict[str, object], output: Path) -> None:
         )
         axis.set_title(f"{DISPLAY_LABELS[model]}: residual {budget['relative_residual']:.2e}")
         axis.set_xlabel(r"$t$")
-        axis.set_ylabel("energy change")
+        axis.set_ylabel("total_kinetic_energy change")
         axis.grid(color="#d8dde2", linewidth=0.7)
         axis.spines[["top", "right"]].set_visible(False)
     axes[0, 0].legend(frameon=False, fontsize=8)
-    fig.suptitle("Model energy balances: numerical and theoretical", fontsize=14)
+    fig.suptitle("Model total_kinetic_energy balances: numerical and theoretical", fontsize=14)
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=180, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -468,7 +482,7 @@ def plot_errors(result: dict[str, object], output: Path) -> None:
 def plot_reference_resolution(result: dict[str, object], output: Path) -> None:
     resolution = result["reference_resolution"]
     history = result["fine_reference_history"]
-    spectrum = np.asarray(resolution["final_energy_spectrum"])
+    spectrum = np.asarray(resolution["final_kinetic_energy_spectrum"])
     wave = np.arange(len(spectrum))
     positive = (wave > 0) & (spectrum > 0.0)
     cutoff = result["configuration"]["reference_n"] // 3
@@ -478,7 +492,7 @@ def plot_reference_resolution(result: dict[str, object], output: Path) -> None:
     axes[0].axvspan(high_start, cutoff, color="#d9973b", alpha=0.18, label="resolution-check band")
     axes[0].set_xlabel(r"wavenumber shell $k$")
     axes[0].set_ylabel(r"$E(k)$")
-    axes[0].set_title("Fine-grid final energy spectrum")
+    axes[0].set_title("Fine-grid final total_kinetic_energy spectrum")
     axes[0].legend(frameon=False, fontsize=8)
     axes[1].plot(
         [record["time"] for record in history],
@@ -493,7 +507,7 @@ def plot_reference_resolution(result: dict[str, object], output: Path) -> None:
         label="1% reference-resolution gate",
     )
     axes[1].set_xlabel(r"$t$")
-    axes[1].set_ylabel("fine-grid high-wavenumber energy fraction")
+    axes[1].set_ylabel("fine-grid high-wavenumber total_kinetic_energy fraction")
     axes[1].set_title("Reference resolution over time")
     axes[1].legend(frameon=False, fontsize=8)
     for axis in axes:
@@ -509,7 +523,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference-n", type=int, default=48)
     parser.add_argument("--les-n", type=int, default=24)
-    parser.add_argument("--viscosity", type=float, default=0.01)
+    parser.add_argument("--kinematic-viscosity", type=float, default=0.01)
     parser.add_argument("--time-step-size", dest="time_step_size", type=float, default=0.02)
     parser.add_argument("--end-time", type=float, default=2.0)
     parser.add_argument("--save-interval", type=float, default=0.1)

@@ -1,4 +1,4 @@
-from source.solvers.VPM.runtime import backend
+from source.solvers.vpm.runtime import backend
 
 
 def _names(chain):

@@ -4,7 +4,7 @@ These pin the three properties the vortex-ring study depends on, each of which
 is an identity rather than a tolerance:
 
 1. The regularised field integrals (E, H, enstrophy) use the *convolved* pair
-   width sqrt(s_i^2 + s_j^2), which is what makes dE/dt = -nu*int|omega|^2 hold
+   width sqrt(s_i^2 + s_j^2), which is what makes dE/dt = -kinematic_viscosity*int|omega|^2 hold
    exactly under core spreading.
 2. TRANSPOSED stretching conserves sum(Gamma); the other supported formulations
    do not.
@@ -26,7 +26,7 @@ TWO_OVER_SQRT_PI = 2.0 / np.sqrt(np.pi)
 ONE_OVER_FOUR_PI = 1.0 / (4.0 * np.pi)
 
 
-# -- NumPy mirrors of source/solvers/VPM/numerics/kernels_common.py -----------
+# -- NumPy mirrors of source/solvers/vpm/numerics/kernels_common.py -----------
 
 
 def _q(rho):
@@ -89,12 +89,12 @@ def stretch_rate(x, g, s, mode):
     return term.sum(axis=1)
 
 
-def energy(x, g, s, convolved=True):
+def total_kinetic_energy(x, g, s, convolved=True):
     r, r_mag, sigma = _pairs(x, s, convolved)
     return 0.5 * np.einsum("ij,ij->", _g(r_mag / sigma) / sigma, g @ g.T)
 
 
-def enstrophy(x, g, s, convolved=True):
+def total_enstrophy(x, g, s, convolved=True):
     r, r_mag, sigma = _pairs(x, s, convolved)
     return np.einsum("ij,ij->", _zeta(r_mag / sigma) / sigma**3, g @ g.T)
 
@@ -118,7 +118,7 @@ def cloud():
 
 
 def test_convolved_pair_width_closes_the_viscous_energy_budget(cloud):
-    """d/dt E = -nu*int|omega|^2 exactly, under core spreading d(s^2)/dt = 4 nu_eff.
+    """d/dt E = -kinematic_viscosity*int|omega|^2 exactly, under core spreading d(s^2)/dt = 4 effective_viscosity.
 
     This is what the LES energy-budget contract measures.  It holds only when E
     and the enstrophy use the convolved pair width; with the pair mean the ratio
@@ -126,13 +126,21 @@ def test_convolved_pair_width_closes_the_viscous_energy_budget(cloud):
     """
     x, g, s = cloud
     rng = np.random.default_rng(5)
-    nu = rng.uniform(5e-4, 2e-3, len(s))  # per-particle nu_eff, as LES produces
+    kinematic_viscosity = rng.uniform(
+        5e-4, 2e-3, len(s)
+    )  # per-particle effective_viscosity, as LES produces
 
     step = 1e-7
-    advance = lambda k: np.sqrt(s**2 + 4.0 * nu * k * step)  # noqa: E731
-    sink = -(0.5 * (nu[:, None] + nu[None, :]) * _pair_enstrophy(x, g, s)).sum()
+    advance = lambda k: np.sqrt(s**2 + 4.0 * kinematic_viscosity * k * step)  # noqa: E731
+    sink = -(
+        0.5
+        * (kinematic_viscosity[:, None] + kinematic_viscosity[None, :])
+        * _pair_enstrophy(x, g, s)
+    ).sum()
 
-    dedt = (energy(x, g, advance(1)) - energy(x, g, advance(-1))) / (2.0 * step)
+    dedt = (total_kinetic_energy(x, g, advance(1)) - total_kinetic_energy(x, g, advance(-1))) / (
+        2.0 * step
+    )
     assert dedt == pytest.approx(sink, rel=1e-6)
 
 
@@ -144,14 +152,15 @@ def _pair_enstrophy(x, g, s):
 def test_pair_mean_width_does_not_close_the_budget(cloud):
     """Guard the fix: the old convention is wrong by a wide, s-dependent margin."""
     x, g, s = cloud
-    nu = np.full(len(s), 1e-3)
+    kinematic_viscosity = np.full(len(s), 1e-3)
     step = 1e-7
-    advance = lambda k: np.sqrt(s**2 + 4.0 * nu * k * step)  # noqa: E731
+    advance = lambda k: np.sqrt(s**2 + 4.0 * kinematic_viscosity * k * step)  # noqa: E731
 
-    dedt = (energy(x, g, advance(1), convolved=False) - energy(x, g, advance(-1), False)) / (
-        2.0 * step
-    )
-    sink = -(nu[0] * enstrophy(x, g, s))
+    dedt = (
+        total_kinetic_energy(x, g, advance(1), convolved=False)
+        - total_kinetic_energy(x, g, advance(-1), False)
+    ) / (2.0 * step)
+    sink = -(kinematic_viscosity[0] * total_enstrophy(x, g, s))
     assert abs(dedt / sink) > 1.2
 
 

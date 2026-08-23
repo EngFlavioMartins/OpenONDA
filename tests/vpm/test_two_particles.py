@@ -8,7 +8,7 @@ occur.  All tests have analytical answers or exact symmetry arguments.
 import numpy as np
 import pytest
 
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     ViscousConfig,
@@ -32,7 +32,7 @@ def _two_particle_solver(make_solver, kernel_name, pos1, pos2, gamma1, gamma2):
         velocity=np.zeros((2, 3)),
         vortex_strength=np.array([gamma1, gamma2]),
         core_radius=np.full(2, _SIGMA),
-        volume=np.full(2, _VOLUME),
+        particle_volume=np.full(2, _VOLUME),
         kinematic_viscosity=np.zeros(2),
     )
     return solver
@@ -44,7 +44,7 @@ def _two_particle_solver(make_solver, kernel_name, pos1, pos2, gamma1, gamma2):
 def test_mutual_induction_symmetry(kernel_name, backend, solver_for_backend):
     """
     Two identical particles symmetric about the origin induce equal and opposite
-    velocities on each other: u(A from B) = −u(B from A) in the x-direction.
+    velocity on each other: u(A from B) = −u(B from A) in the x-direction.
 
     Failure → sign error in Biot-Savart cross product.
     """
@@ -56,10 +56,10 @@ def test_mutual_induction_symmetry(kernel_name, backend, solver_for_backend):
         gamma1=[0.0, 0.0, 1.0],
         gamma2=[0.0, 0.0, 1.0],
     )
-    vel_at_1 = solver.compute_target_velocities(
+    vel_at_1 = solver.compute_velocity_at_points(
         np.array([[-0.5, 0.0, 0.0]]), include_freestream=False
     )
-    vel_at_2 = solver.compute_target_velocities(
+    vel_at_2 = solver.compute_velocity_at_points(
         np.array([[0.5, 0.0, 0.0]]), include_freestream=False
     )
     # u_y must be equal and opposite by reflection symmetry.
@@ -87,7 +87,7 @@ def test_vorticity_superposition(kernel_name, backend, solver_for_backend):
         gamma1=[0.0, 0.0, 1.0],
         gamma2=[0.0, 0.0, 1.0],
     )
-    omega_two = solver.compute_target_vorticities(np.array([[0.0, 0.0, 0.0]]))
+    omega_two = solver.compute_vorticity_at_points(np.array([[0.0, 0.0, 0.0]]))
 
     # Single blob at the same distance from the midpoint as either member
     # of the symmetric pair.
@@ -103,10 +103,10 @@ def test_vorticity_superposition(kernel_name, backend, solver_for_backend):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([0.0]),
     )
-    omega_one = solver1.compute_target_vorticities(np.array([[0.0, 0.0, 0.0]]))
+    omega_one = solver1.compute_vorticity_at_points(np.array([[0.0, 0.0, 0.0]]))
 
     ratio = float(omega_two[0, 2]) / float(omega_one[0, 2])
     assert abs(ratio - 2.0) < 0.02, (
@@ -149,7 +149,7 @@ def test_kinetic_energy_pairwise(kernel_name, backend, solver_for_backend):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([0.0]),
     )
     solver1.advance()
@@ -246,7 +246,7 @@ def test_enstrophy_pairwise(kernel_name, backend, solver_for_backend):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([0.0]),
     )
     solver1.advance()
@@ -277,7 +277,7 @@ def test_strain_rate_pure_shear(kernel_name, backend, solver_for_backend):
         gamma1=[0.0, 0.0, 1.0],
         gamma2=[0.0, 0.0, 1.0],
     )
-    grad = solver.compute_target_velocity_gradients(np.array([[0.0, 0.0, 0.0]])).reshape(1, 3, 3)
+    grad = solver.compute_velocity_gradient_at_points(np.array([[0.0, 0.0, 0.0]])).reshape(1, 3, 3)
     S = 0.5 * (grad[0] + grad[0].T)
     assert abs(S[0, 0]) < 1e-6 and abs(S[1, 1]) < 1e-6 and abs(S[2, 2]) < 1e-6, (
         f"{kernel_name}/{backend}: diagonal strain components must vanish: {np.diag(S)}"

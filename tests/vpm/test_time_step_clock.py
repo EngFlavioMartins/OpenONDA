@@ -1,8 +1,8 @@
 """
 Regression tests for two VPM solver correctness fixes.
 
-* ``VPMSolver._advance_time_step`` must accumulate ``flow_time`` (adding each
-  applied step size) rather than recompute ``time_step * dt``, so
+* ``VPMSolver._advance_time_step`` must accumulate ``time`` (adding each
+  applied step size) rather than recompute ``step * dt``, so
   the clock stays monotonic and physically correct when the step size changes
   mid-run.  Failing that, ``set_dt`` could make time run backwards.
 
@@ -17,14 +17,14 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     VelocityConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.stabilization.filament_refinement import particle_moments
+from source.solvers.vpm.stabilization.filament_refinement import particle_moments
 
 _SIGMA = 0.05
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
@@ -47,7 +47,7 @@ def _cpu_solver(tmp_path, time_step_size, viscous):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([1e-3]),
     )
     return solver
@@ -151,14 +151,14 @@ def test_variable_viscosity_core_spreading_conserves_both_impulses(
     position = rng.normal(size=(count, 3))
     circulation = rng.normal(size=(count, 3))
     radius = np.full(count, 0.15)
-    volume = np.full(count, 0.02)
+    particle_volume = np.full(count, 0.02)
     solver = VPMSolver(
         setup=VPMSetup(
             time_step_size=0.02,
             time_integration="COUPLED",
             precision="f64",
             compute_device="CPU",
-            max_particles=16,
+            max_n_particles=16,
             stretching=StretchingConfig.transposed(
                 scheme="RK2",
                 conserve_moments=True,
@@ -177,7 +177,7 @@ def test_variable_viscosity_core_spreading_conserves_both_impulses(
         velocity=np.zeros_like(position),
         vortex_strength=circulation,
         core_radius=radius,
-        volume=volume,
+        particle_volume=particle_volume,
         kinematic_viscosity=np.full(count, 1.0e-3),
         eddy_viscosity=np.linspace(0.0, 0.02, count),
     )

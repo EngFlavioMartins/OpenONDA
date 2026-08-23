@@ -3,7 +3,7 @@
 
 The run branches from the qualified stationary 64^3 reference checkpoint at
 t=60.  A 32^3 LES is initialized from the same reference after applying the
-actual Gaussian-particle plus M4' filter at sigma/h=2.5.  Three models are
+actual Gaussian-particle plus M4' filter at core_radius/particle_spacing=2.5.  Three models are
 compared: no SGS, the continuous analogue of current OpenONDA Smagorinsky+GBD,
 and the filter-adjusted Mansfield vorticity eddy-diffusivity operator.
 
@@ -39,7 +39,7 @@ from stage_4b2_stationary_reference import (  # noqa: E402
 )
 from stage_4b_spectral_pilot import (  # noqa: E402
     VorticitySolver,
-    energy_spectrum,
+    kinetic_energy_spectrum,
     projected_force_from_torque,
 )
 from stage_6a_composite_filter_gate import PHASES  # noqa: E402
@@ -118,7 +118,7 @@ def model_torque(
     solver: VorticitySolver,
     vorticity: np.ndarray,
     model: str,
-    h: float,
+    particle_spacing: float,
     filter_width: float,
     mansfield_coefficient: float,
 ) -> np.ndarray:
@@ -126,7 +126,9 @@ def model_torque(
         return np.zeros_like(vorticity)
     velocity = solver.velocity(vorticity)
     if model == "openonda_current":
-        return openonda_current_torque(solver.grid, velocity, vorticity, cs=0.17, h=h)[0]
+        return openonda_current_torque(
+            solver.grid, velocity, vorticity, cs=0.17, particle_spacing=particle_spacing
+        )[0]
     if model == "mansfield":
         return mansfield_torque(
             solver.grid,
@@ -143,12 +145,14 @@ def model_rhs(
     vorticity: np.ndarray,
     model: str,
     acceleration_curl_hat: np.ndarray,
-    h: float,
+    particle_spacing: float,
     filter_width: float,
     mansfield_coefficient: float,
 ) -> np.ndarray:
     base = rotational_reference_rhs(solver, vorticity, acceleration_curl_hat)
-    torque = model_torque(solver, vorticity, model, h, filter_width, mansfield_coefficient)
+    torque = model_torque(
+        solver, vorticity, model, particle_spacing, filter_width, mansfield_coefficient
+    )
     return solver.grid.ifft(solver.grid.fft(base + torque) * solver.mask)
 
 
@@ -159,7 +163,7 @@ def model_step(
     time_step_size: float,
     acceleration_start_curl_hat: np.ndarray,
     acceleration_end_curl_hat: np.ndarray,
-    h: float,
+    particle_spacing: float,
     filter_width: float,
     mansfield_coefficient: float,
 ) -> np.ndarray:
@@ -168,7 +172,7 @@ def model_step(
         vorticity,
         model,
         acceleration_start_curl_hat,
-        h,
+        particle_spacing,
         filter_width,
         mansfield_coefficient,
     )
@@ -178,7 +182,7 @@ def model_step(
         predictor,
         model,
         acceleration_end_curl_hat,
-        h,
+        particle_spacing,
         filter_width,
         mansfield_coefficient,
     )
@@ -194,38 +198,41 @@ def diagnostics(
     model: str,
     reference: np.ndarray,
     reference_spectrum: np.ndarray,
-    h: float,
+    particle_spacing: float,
     filter_width: float,
     mansfield_coefficient: float,
     time: float,
 ) -> dict[str, Any]:
     velocity = solver.velocity(vorticity)
-    spectrum = energy_spectrum(solver, vorticity)
-    energy = 0.5 * float(np.mean(np.sum(velocity * velocity, axis=0)))
-    enstrophy = 0.5 * float(np.mean(np.sum(vorticity * vorticity, axis=0)))
-    torque = model_torque(solver, vorticity, model, h, filter_width, mansfield_coefficient)
+    spectrum = kinetic_energy_spectrum(solver, vorticity)
+    total_kinetic_energy = 0.5 * float(np.mean(np.sum(velocity * velocity, axis=0)))
+    total_enstrophy = 0.5 * float(np.mean(np.sum(vorticity * vorticity, axis=0)))
+    torque = model_torque(
+        solver, vorticity, model, particle_spacing, filter_width, mansfield_coefficient
+    )
     force = projected_force_from_torque(solver, torque)
     divergence = sum(solver.grid.derivative(vorticity[i], i) for i in range(3))
     wave = np.arange(len(spectrum))
     high_k = wave >= max(1, int(np.floor(0.7 * (solver.grid.n // 3))))
     return {
         "time": time,
-        "energy": energy,
-        "enstrophy": enstrophy,
-        "energy_spectrum": spectrum.tolist(),
+        "total_kinetic_energy": total_kinetic_energy,
+        "total_enstrophy": total_enstrophy,
+        "kinetic_energy_spectrum": spectrum.tolist(),
         "spectral_relative_l2": float(
             np.linalg.norm(spectrum - reference_spectrum)
             / max(np.linalg.norm(reference_spectrum), np.finfo(float).tiny)
         ),
-        "energy_relative_error": abs(
-            energy - 0.5 * float(np.mean(np.sum(solver.velocity(reference) ** 2, axis=0)))
+        "total_kinetic_energy_relative_error": abs(
+            total_kinetic_energy
+            - 0.5 * float(np.mean(np.sum(solver.velocity(reference) ** 2, axis=0)))
         )
         / max(
             0.5 * float(np.mean(np.sum(solver.velocity(reference) ** 2, axis=0))),
             np.finfo(float).tiny,
         ),
-        "enstrophy_relative_error": abs(
-            enstrophy - 0.5 * float(np.mean(np.sum(reference * reference, axis=0)))
+        "total_enstrophy_relative_error": abs(
+            total_enstrophy - 0.5 * float(np.mean(np.sum(reference * reference, axis=0)))
         )
         / max(0.5 * float(np.mean(np.sum(reference * reference, axis=0))), np.finfo(float).tiny),
         "high_k_energy_fraction": float(
@@ -233,7 +240,7 @@ def diagnostics(
         ),
         "divergence_relative": norm(divergence) / max(norm(vorticity), np.finfo(float).tiny),
         "forcing_power": float(np.mean(np.sum(velocity * acceleration, axis=0))),
-        "viscous_power": -2.0 * solver.viscosity * enstrophy,
+        "viscous_kinetic_energy_rate": -2.0 * solver.kinematic_viscosity * total_enstrophy,
         "sgs_power": float(np.mean(np.sum(velocity * force, axis=0))),
         "enstrophy_transfer": float(np.mean(np.sum(vorticity * torque, axis=0))),
     }
@@ -246,26 +253,26 @@ def reference_diagnostics(
     time: float,
 ) -> dict[str, Any]:
     velocity = solver.velocity(vorticity)
-    spectrum = energy_spectrum(solver, vorticity)
-    energy = 0.5 * float(np.mean(np.sum(velocity * velocity, axis=0)))
-    enstrophy = 0.5 * float(np.mean(np.sum(vorticity * vorticity, axis=0)))
+    spectrum = kinetic_energy_spectrum(solver, vorticity)
+    total_kinetic_energy = 0.5 * float(np.mean(np.sum(velocity * velocity, axis=0)))
+    total_enstrophy = 0.5 * float(np.mean(np.sum(vorticity * vorticity, axis=0)))
     divergence = sum(solver.grid.derivative(vorticity[i], i) for i in range(3))
     wave = np.arange(len(spectrum))
     high_k = wave >= max(1, int(np.floor(0.7 * (solver.grid.n // 3))))
     return {
         "time": time,
-        "energy": energy,
-        "enstrophy": enstrophy,
-        "energy_spectrum": spectrum.tolist(),
+        "total_kinetic_energy": total_kinetic_energy,
+        "total_enstrophy": total_enstrophy,
+        "kinetic_energy_spectrum": spectrum.tolist(),
         "spectral_relative_l2": 0.0,
-        "energy_relative_error": 0.0,
-        "enstrophy_relative_error": 0.0,
+        "total_kinetic_energy_relative_error": 0.0,
+        "total_enstrophy_relative_error": 0.0,
         "high_k_energy_fraction": float(
             np.sum(spectrum[high_k]) / max(np.sum(spectrum), np.finfo(float).tiny)
         ),
         "divergence_relative": norm(divergence) / max(norm(vorticity), np.finfo(float).tiny),
         "forcing_power": float(np.mean(np.sum(velocity * acceleration, axis=0))),
-        "viscous_power": -2.0 * solver.viscosity * enstrophy,
+        "viscous_kinetic_energy_rate": -2.0 * solver.kinematic_viscosity * total_enstrophy,
         "sgs_power": 0.0,
         "enstrophy_transfer": 0.0,
     }
@@ -280,13 +287,13 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
     metadata = json.loads(metadata_path.read_text())
     arrays = np.load(args.checkpoint)
     reference_vorticity = arrays["reference_vorticity"].copy()
-    reference_solver = VorticitySolver(args.reference_n, args.viscosity)
-    les_solver = VorticitySolver(args.les_n, args.viscosity)
-    h = 2.0 * np.pi / args.les_n
-    sigma = args.sigma_over_h * h
-    filter_width = gaussian_energy_width_ratio() * sigma
+    reference_solver = VorticitySolver(args.reference_n, args.kinematic_viscosity)
+    les_solver = VorticitySolver(args.les_n, args.kinematic_viscosity)
+    particle_spacing = 2.0 * np.pi / args.les_n
+    core_radius = args.sigma_over_h * particle_spacing
+    filter_width = gaussian_energy_width_ratio() * core_radius
     coefficient = mansfield_gaussian_coefficient()
-    p_reference = particle_symbol(reference_solver.grid, h, sigma, PHASES)
+    p_reference = particle_symbol(reference_solver.grid, particle_spacing, core_radius, PHASES)
 
     forcing = StreamingOUForcing(
         args.les_n,
@@ -324,11 +331,11 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
             final_reference = coarse_particle_filtered(
                 reference_solver, reference_vorticity, args.les_n, p_reference
             )
-            reference_spectrum = energy_spectrum(les_solver, final_reference)
+            reference_spectrum = kinetic_energy_spectrum(les_solver, final_reference)
             histories["filtered_dns"].append(
                 reference_diagnostics(les_solver, final_reference, les_force, time)
             )
-            fine_spectrum = energy_spectrum(reference_solver, reference_vorticity)
+            fine_spectrum = kinetic_energy_spectrum(reference_solver, reference_vorticity)
             fine_wave = np.arange(len(fine_spectrum))
             fine_high_k.append(
                 float(
@@ -345,7 +352,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
                         model,
                         final_reference,
                         reference_spectrum,
-                        h,
+                        particle_spacing,
                         filter_width,
                         coefficient,
                         time,
@@ -374,7 +381,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
                 args.time_step_size,
                 les_start_curl,
                 les_end_curl,
-                h,
+                particle_spacing,
                 filter_width,
                 coefficient,
             )
@@ -391,20 +398,24 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
         records = histories[model]
         budgets[model] = budget_summary(records)
         summaries[model] = {
-            "mean_energy_relative_error": mean(records, "energy_relative_error"),
-            "final_energy_relative_error": records[-1]["energy_relative_error"],
-            "mean_enstrophy_relative_error": mean(records, "enstrophy_relative_error"),
-            "final_enstrophy_relative_error": records[-1]["enstrophy_relative_error"],
+            "mean_total_kinetic_energy_relative_error": mean(
+                records, "total_kinetic_energy_relative_error"
+            ),
+            "final_total_kinetic_energy_relative_error": records[-1][
+                "total_kinetic_energy_relative_error"
+            ],
+            "mean_total_enstrophy_relative_error": mean(records, "total_enstrophy_relative_error"),
+            "final_total_enstrophy_relative_error": records[-1]["total_enstrophy_relative_error"],
             "mean_spectral_relative_l2": mean(records, "spectral_relative_l2"),
             "final_spectral_relative_l2": records[-1]["spectral_relative_l2"],
-            "maximum_high_k_energy_fraction": max(
+            "max_high_k_energy_fraction": max(
                 record["high_k_energy_fraction"] for record in records
             ),
-            "maximum_divergence_relative": max(record["divergence_relative"] for record in records),
+            "max_divergence_relative": max(record["divergence_relative"] for record in records),
             "mean_sgs_power": mean(records, "sgs_power"),
-            "mean_enstrophy_transfer": mean(records, "enstrophy_transfer"),
+            "mean_total_enstrophy_transfer": mean(records, "enstrophy_transfer"),
             "energy_budget_relative_residual": budgets[model]["relative_residual"],
-            "final_energy_spectrum": records[-1]["energy_spectrum"],
+            "final_kinetic_energy_spectrum": records[-1]["kinetic_energy_spectrum"],
         }
 
     no_sgs_error = summaries["no_sgs"]["mean_spectral_relative_l2"]
@@ -414,8 +425,8 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
     mansfield_better_count = sum(
         summaries["mansfield"][key] < summaries["openonda_current"][key]
         for key in (
-            "mean_energy_relative_error",
-            "mean_enstrophy_relative_error",
+            "mean_total_kinetic_energy_relative_error",
+            "mean_total_enstrophy_relative_error",
             "mean_spectral_relative_l2",
         )
     )
@@ -426,18 +437,17 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
             summary["energy_budget_relative_residual"] for summary in summaries.values()
         )
         < 5.0e-3,
-        "mansfield_remains_solenoidal": summaries["mansfield"]["maximum_divergence_relative"]
-        < 1.0e-10,
-        "mansfield_mean_energy_error_below_10_percent": summaries["mansfield"][
-            "mean_energy_relative_error"
+        "mansfield_remains_solenoidal": summaries["mansfield"]["max_divergence_relative"] < 1.0e-10,
+        "mansfield_mean_total_kinetic_energy_error_below_10_percent": summaries["mansfield"][
+            "mean_total_kinetic_energy_relative_error"
         ]
         < 0.10,
-        "mansfield_mean_enstrophy_error_below_10_percent": summaries["mansfield"][
-            "mean_enstrophy_relative_error"
+        "mansfield_mean_total_enstrophy_error_below_10_percent": summaries["mansfield"][
+            "mean_total_enstrophy_relative_error"
         ]
         < 0.10,
         "mansfield_spectrum_improves_over_no_sgs_by_20_percent": improvement > 0.20,
-        "mansfield_has_no_high_k_pileup": summaries["mansfield"]["maximum_high_k_energy_fraction"]
+        "mansfield_has_no_high_k_pileup": summaries["mansfield"]["max_high_k_energy_fraction"]
         < 0.01,
         "mansfield_beats_current_openonda_on_two_of_three_statistics": mansfield_better_count >= 2,
     }
@@ -450,16 +460,16 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
             "checkpoint_time": metadata["time"],
             "reference_n": args.reference_n,
             "les_n": args.les_n,
-            "viscosity": args.viscosity,
-            "dt": args.time_step_size,
+            "kinematic_viscosity": args.kinematic_viscosity,
+            "time_step_size": args.time_step_size,
             "duration": args.duration,
             "sigma_over_h": args.sigma_over_h,
-            "particle_filter_energy_equivalent_width_over_h": filter_width / h,
+            "particle_filter_energy_equivalent_width_over_h": filter_width / particle_spacing,
             "mansfield_gaussian_coefficient": coefficient,
             "models": list(MODELS),
         },
         "forcing_relation_relative_l2": forcing_relation_error,
-        "maximum_reference_high_k_energy_fraction": max(fine_high_k),
+        "max_reference_high_k_energy_fraction": max(fine_high_k),
         "models": summaries,
         "mansfield_spectral_improvement_over_no_sgs": improvement,
         "mansfield_better_statistics_count_vs_current": mansfield_better_count,
@@ -480,10 +490,14 @@ def plot(result: dict[str, Any], figure_dir: Path) -> None:
     figure_dir.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(2, 2, figsize=(11.6, 7.4), constrained_layout=True)
     quantities = (
-        ("energy", "Resolved kinetic energy", None),
-        ("enstrophy", "Resolved enstrophy", None),
+        ("total_kinetic_energy", "Resolved kinetic total_kinetic_energy", None),
+        ("total_enstrophy", "Resolved total_enstrophy", None),
         ("spectral_relative_l2", "Instantaneous spectrum error", "relative $L_2$"),
-        ("high_k_energy_fraction", "High-wavenumber energy", "energy fraction"),
+        (
+            "high_k_energy_fraction",
+            "High-wavenumber total_kinetic_energy",
+            "total_kinetic_energy fraction",
+        ),
     )
     for axis, (key, title, ylabel) in zip(axes.flat, quantities, strict=True):
         names = MODELS if key == "spectral_relative_l2" else ("filtered_dns", *MODELS)
@@ -512,7 +526,7 @@ def plot(result: dict[str, Any], figure_dir: Path) -> None:
 
     fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.5), constrained_layout=True)
     for name in ("filtered_dns", *MODELS):
-        values = np.asarray(histories[name][-1]["energy_spectrum"])
+        values = np.asarray(histories[name][-1]["kinetic_energy_spectrum"])
         wave = np.arange(len(values))
         positive = (wave > 0) & (values > 0.0)
         axes[0].loglog(
@@ -527,7 +541,7 @@ def plot(result: dict[str, Any], figure_dir: Path) -> None:
         )
     # A slope guide is a theoretical reference, not a fitted claim.
     guide_k = np.asarray([2.0, 7.0])
-    reference_values = np.asarray(histories["filtered_dns"][-1]["energy_spectrum"])
+    reference_values = np.asarray(histories["filtered_dns"][-1]["kinetic_energy_spectrum"])
     guide_amplitude = reference_values[2] * 2.0 ** (5.0 / 3.0)
     axes[0].loglog(
         guide_k,
@@ -543,11 +557,11 @@ def plot(result: dict[str, Any], figure_dir: Path) -> None:
     axes[0].legend(frameon=False, fontsize=7)
 
     keys = (
-        "mean_energy_relative_error",
-        "mean_enstrophy_relative_error",
+        "mean_total_kinetic_energy_relative_error",
+        "mean_total_enstrophy_relative_error",
         "mean_spectral_relative_l2",
     )
-    labels = ("energy", "enstrophy", "spectrum")
+    labels = ("total_kinetic_energy", "total_enstrophy", "spectrum")
     x = np.arange(3)
     width = 0.24
     for offset, model in zip((-width, 0.0, width), MODELS, strict=True):
@@ -590,8 +604,8 @@ def plot(result: dict[str, Any], figure_dir: Path) -> None:
         )
     axis.axhline(0.0, color="#20252a", linewidth=0.8)
     axis.set_xlabel("time after stationary checkpoint")
-    axis.set_ylabel("change in resolved kinetic energy")
-    axis.set_title("Measured energy change against the theoretical budget")
+    axis.set_ylabel("change in resolved kinetic total_kinetic_energy")
+    axis.set_title("Measured total_kinetic_energy change against the theoretical budget")
     axis.grid(color=GRID, linewidth=0.7)
     axis.legend(frameon=False, fontsize=7, ncol=2)
     fig.savefig(figure_dir / "stage_8b_functional_energy_budget.png", dpi=180, facecolor="white")
@@ -607,13 +621,13 @@ def main() -> None:
     )
     parser.add_argument("--reference-n", type=int, default=64)
     parser.add_argument("--les-n", type=int, default=32)
-    parser.add_argument("--viscosity", type=float, default=0.02)
+    parser.add_argument("--kinematic-viscosity", type=float, default=0.02)
     parser.add_argument("--time-step-size", dest="time_step_size", type=float, default=0.02)
     parser.add_argument("--duration", type=float, default=4.0)
     # Power must be sampled at every Heun step; the earlier stage-4 budget
     # audit showed that 0.2-wide sampling aliases the rapidly varying OU force.
     parser.add_argument("--save-interval", type=float, default=0.02)
-    parser.add_argument("--sigma-over-h", type=float, default=2.5)
+    parser.add_argument("--core_radius-over-particle_spacing", type=float, default=2.5)
     parser.add_argument("--forcing-rms", type=float, default=0.5)
     parser.add_argument("--correlation-time", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=20260817)

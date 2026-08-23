@@ -2,9 +2,9 @@ import copy
 
 import numpy as np
 
-from source.solvers.FVM.config.types import BoundaryConfig
-from source.solvers.FVM.mesh import geometry
-from source.solvers.FVM.solve.simple_solver import (
+from source.solvers.fvm.config.types import BoundaryConfig
+from source.solvers.fvm.mesh import geometry
+from source.solvers.fvm.solve.simple_solver import (
     _pressure_boundary_matrix_is_reusable,
     _pressure_requires_constraint,
     _update_velocity_bcs,
@@ -55,11 +55,11 @@ def test_freestream_switches_velocity_and_pressure_per_face(hand_built_3d_mesh):
 
     velocity = np.zeros((n_total, 3))
     velocity[:n_cells, 1] = np.arange(1, n_cells + 1)
-    face_flux = np.zeros(mesh["n_faces"])
-    face_flux[faces] = [-1.0, 1.0, -2.0, 2.0]
+    volumetric_face_flux = np.zeros(mesh["n_faces"])
+    volumetric_face_flux[faces] = [-1.0, 1.0, -2.0, 2.0]
     _update_velocity_bcs(
         velocity,
-        face_flux,
+        volumetric_face_flux,
         [patch],
         owners,
         geo,
@@ -67,12 +67,18 @@ def test_freestream_switches_velocity_and_pressure_per_face(hand_built_3d_mesh):
         n_interior,
     )
 
-    inflow = face_flux[faces] < 0.0
+    inflow = volumetric_face_flux[faces] < 0.0
     assert np.allclose(velocity[ghosts[inflow]], patch["velocity_value"])
     assert np.allclose(velocity[ghosts[~inflow]], velocity[owners[faces[~inflow]]])
 
     pressure = np.arange(n_total, dtype=float)
-    update_scalar_boundaries(pressure, mesh, [patch], field_name="p", face_flux=face_flux)
+    update_scalar_boundaries(
+        pressure,
+        mesh,
+        [patch],
+        field_name="kinematic_pressure",
+        volumetric_face_flux=volumetric_face_flux,
+    )
     assert np.allclose(pressure[ghosts[~inflow]], patch["kinematic_pressure_value"])
     assert np.allclose(pressure[ghosts[inflow]], pressure[owners[faces[inflow]]])
 
@@ -96,11 +102,11 @@ def test_freestream_preserves_per_face_inflow_values(hand_built_3d_mesh):
 
     velocity = np.zeros((n_total, 3))
     velocity[:n_cells] = [2.0, 1.0, 0.0]
-    face_flux = np.zeros(mesh["n_faces"])
-    face_flux[faces] = [-1.0, 1.0, -2.0, 2.0]
+    volumetric_face_flux = np.zeros(mesh["n_faces"])
+    volumetric_face_flux[faces] = [-1.0, 1.0, -2.0, 2.0]
     _update_velocity_bcs(
         velocity,
-        face_flux,
+        volumetric_face_flux,
         [patch],
         owners,
         geo,
@@ -108,7 +114,7 @@ def test_freestream_preserves_per_face_inflow_values(hand_built_3d_mesh):
         n_interior,
     )
 
-    inflow = face_flux[faces] < 0.0
+    inflow = volumetric_face_flux[faces] < 0.0
     np.testing.assert_allclose(
         velocity[ghosts[inflow]],
         patch["velocity_value_field"][inflow],
@@ -128,7 +134,7 @@ def test_freestream_pressure_constraint_depends_on_flow_direction(hand_built_3d_
     ghosts = n_cells + faces - n_interior
     velocity = np.zeros((n_total, 3))
 
-    normals = geo["face_sf"][faces]
+    normals = geo["face_area_vector"][faces]
     velocity[ghosts] = -normals
     assert _pressure_requires_constraint([patch], velocity, mesh, geo)
 

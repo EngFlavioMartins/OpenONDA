@@ -1,17 +1,17 @@
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import (
+from source.solvers.fvm.assemble.convection import (
     assemble_convection_term,
     compute_volumetric_face_flux,
 )
-from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
-from source.solvers.FVM.assemble.matrix_assembly import (
+from source.solvers.fvm.assemble.diffusion import assemble_diffusion_term
+from source.solvers.fvm.assemble.matrix_assembly import (
     MatrixAssemblyWorkspace,
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gauss_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.fields.gradients import compute_gauss_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 
 class TestMatrixAssembly:
@@ -20,15 +20,17 @@ class TestMatrixAssembly:
     def test_diffusion_identity(self, hand_built_3d_mesh):
         mesh = hand_built_3d_mesh
         for b in mesh["boundary"]:
-            b["bc_type"] = "zeroGradient"
+            b["boundary_condition_type"] = "zeroGradient"
         geo = compute_mesh_geometry(mesh)
         n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        face_flux = np.ones(n_elem + n_bnd)
-        grad_phi = compute_gauss_gradient(face_flux, mesh, geo)
-        gamma = np.ones(n_elem)
+        scalar_field = np.ones(n_elem + n_bnd)
+        scalar_field_gradient = compute_gauss_gradient(scalar_field, mesh, geo)
+        diffusivity = np.ones(n_elem)
 
-        flux_data = assemble_diffusion_term(face_flux, grad_phi, gamma, mesh, geo, mesh["boundary"])
+        flux_data = assemble_diffusion_term(
+            scalar_field, scalar_field_gradient, diffusivity, mesh, geo, mesh["boundary"]
+        )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh)
         b = assemble_rhs_from_fluxes_vectorized(flux_data, mesh)
         assert np.allclose(A @ np.ones(n_elem) - b, 0.0, atol=1e-12)
@@ -36,16 +38,16 @@ class TestMatrixAssembly:
     def test_convection_identity(self, hand_built_3d_mesh):
         mesh = hand_built_3d_mesh
         for b in mesh["boundary"]:
-            b["bc_type"] = "zeroGradient"
+            b["boundary_condition_type"] = "zeroGradient"
         geo = compute_mesh_geometry(mesh)
         n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
         velocity = np.tile([1.0, 0.0, 0.0], (n_elem + n_bnd, 1))
-        mdot = compute_volumetric_face_flux(velocity, mesh, geo)
-        face_flux = np.ones(n_elem + n_bnd)
+        volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
+        scalar_field = np.ones(n_elem + n_bnd)
 
         flux_data = assemble_convection_term(
-            face_flux, mdot, mesh, geo, mesh["boundary"], scheme="upwind"
+            scalar_field, volumetric_face_flux, mesh, geo, mesh["boundary"], scheme="upwind"
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh)
         b = assemble_rhs_from_fluxes_vectorized(flux_data, mesh)

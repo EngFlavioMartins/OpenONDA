@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     DivergenceRelaxationConfig,
     FilamentRefinementConfig,
@@ -12,8 +12,8 @@ from source.solvers.VPM.config.types import (
     StretchingConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.io.checkpoint import CheckpointManager
-from source.solvers.VPM.runtime.backend import reset_taichi_backend
+from source.solvers.vpm.io.checkpoint import CheckpointManager
+from source.solvers.vpm.runtime.backend import reset_taichi_backend
 
 
 def _solver(tmp_path, *, refinement: bool) -> VPMSolver:
@@ -25,7 +25,7 @@ def _solver(tmp_path, *, refinement: bool) -> VPMSolver:
             advection=AdvectionConfig(scheme="NONE"),
             stabilization=StabilizationConfig(
                 filament_refinement=(
-                    FilamentRefinementConfig.adaptive(interval_steps=1, max_particles=32)
+                    FilamentRefinementConfig.adaptive(interval_steps=1, max_n_particles=32)
                     if refinement
                     else FilamentRefinementConfig.disabled()
                 )
@@ -33,7 +33,7 @@ def _solver(tmp_path, *, refinement: bool) -> VPMSolver:
             checkpoint_interval_steps=0,
             logging_interval_steps=0,
             checkpoint_directory=str(tmp_path),
-            max_particles=32,
+            max_n_particles=32,
         )
     )
 
@@ -49,7 +49,7 @@ def _add_cloud(solver: VPMSolver, count: int) -> None:
             (np.zeros(count), np.zeros(count), 0.1 + coordinate)
         ).astype(np.float32),
         core_radius=np.full(count, 0.1, dtype=np.float32),
-        volume=np.full(count, 1e-3, dtype=np.float32),
+        particle_volume=np.full(count, 1e-3, dtype=np.float32),
         kinematic_viscosity=np.zeros(count, dtype=np.float32),
     )
 
@@ -70,7 +70,7 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         source.stabilization.last_mechanism = "filament refinement"
         source.stabilization.last_vortex_strength_error = 4.2e-9
         source.stabilization.max_vorticity_growth = 1.5e-3
-        source._particle_regeneration_pending = True
+        source._is_particle_regeneration_pending = True
         expected_moments = tuple(value.copy() for value in source.stabilization.reference_moments)
         checkpoint = tmp_path / "lineage"
         CheckpointManager.write_checkpoint(
@@ -97,7 +97,7 @@ def test_checkpoint_round_trip_preserves_material_lineage_and_transfer_audit(
         assert restored.stabilization.last_mechanism == "filament refinement"
         assert restored.stabilization.last_vortex_strength_error == pytest.approx(4.2e-9)
         assert restored.stabilization.max_vorticity_growth == pytest.approx(1.5e-3)
-        assert restored._particle_regeneration_pending is True
+        assert restored._is_particle_regeneration_pending is True
         for restored_value, expected_value in zip(
             restored.stabilization.reference_moments,
             expected_moments,
@@ -123,23 +123,23 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
                 stabilization=StabilizationConfig(
                     filament_refinement=FilamentRefinementConfig.adaptive(
                         interval_steps=100,
-                        max_particles=256,
+                        max_n_particles=256,
                     ),
                     divergence_relaxation=DivergenceRelaxationConfig.constrained(
                         interval_steps=1,
                         grid_spacing=spacing,
                         max_correction_norm=0.2,
                         max_residual_ratio=0.9,
-                        energy_tolerance=1e-6,
-                        enstrophy_tolerance=0.03,
-                        helicity_tolerance=1e-5,
+                        total_kinetic_energy_tolerance=1e-6,
+                        total_enstrophy_tolerance=0.03,
+                        total_helicity_tolerance=1e-5,
                         variation_tolerance=0.02,
                     ),
                 ),
                 checkpoint_interval_steps=0,
                 logging_interval_steps=0,
                 checkpoint_directory=str(tmp_path),
-                max_particles=256,
+                max_n_particles=256,
             )
         )
         coordinates = np.linspace(-0.2, 0.2, 5, dtype=np.float32)
@@ -165,8 +165,8 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
         )
         vorticity *= np.exp(-radius_squared / 0.05)[:, None]
         vorticity += 0.15 * position * np.exp(-radius_squared / 0.04)[:, None]
-        volume = np.full(len(position), spacing**3, dtype=np.float32)
-        circulation = vorticity * volume[:, None]
+        particle_volume = np.full(len(position), spacing**3, dtype=np.float32)
+        circulation = vorticity * particle_volume[:, None]
         solver.add_vortex_particles(
             position=position,
             velocity=np.zeros_like(position),
@@ -174,7 +174,7 @@ def test_solver_uploads_relaxation_and_preserves_lineage_stretch_ratio(
             core_radius=(1.5 * spacing * np.linspace(0.995, 1.005, len(position))).astype(
                 np.float32
             ),
-            volume=volume,
+            particle_volume=particle_volume,
             kinematic_viscosity=np.zeros(len(position), dtype=np.float32),
         )
         solver.stabilization.capture_reference_state()
@@ -272,7 +272,7 @@ def test_solver_uploads_refinement_without_reporting_particle_deletion(tmp_path)
 
         solver.stabilization.apply_filament_refinement()
 
-        assert solver.particles.n_particles == 8
+        assert solver.particles.n_particles_total == 8
         assert solver.stabilization.events == 1
         assert solver.stabilization.last_mechanism == "filament refinement"
         assert solver.stabilization.last_vortex_strength_error <= 512.0 * np.finfo(np.float32).eps

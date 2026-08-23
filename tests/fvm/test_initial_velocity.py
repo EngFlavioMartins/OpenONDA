@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM import BoundaryConfig, FVMSetup, FVMSolver, TransportConfig
+from source.solvers.fvm import BoundaryConfig, FVMSetup, FVMSolver, TransportConfig
 
 
 def _config() -> FVMSetup:
@@ -28,7 +28,7 @@ def test_set_initial_velocity_rebuilds_history_boundaries_and_flux(hand_built_3d
     np.testing.assert_allclose(solver.velocity[0], values[0])
     np.testing.assert_allclose(solver.velocity_old, solver.velocity)
     np.testing.assert_allclose(solver.velocity_older, solver.velocity)
-    assert np.any(np.abs(solver.face_flux) > 0.0)
+    assert np.any(np.abs(solver.volumetric_face_flux) > 0.0)
 
 
 def test_set_initial_velocity_rejects_invalid_or_late_values(hand_built_3d_mesh, tmp_path):

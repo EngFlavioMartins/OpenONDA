@@ -1,4 +1,4 @@
-"""The VPM owns molecular nu in a coupled VLM+VPM run; mismatch must fail loudly."""
+"""The VPM owns molecular kinematic_viscosity in a coupled VLM+VPM run; mismatch must fail loudly."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from source.solvers.VPM.core.solver import VPMSolver
-from source.solvers.VPM.io.logging import Logging
+from source.solvers.vpm.core.solver import VPMSolver
+from source.solvers.vpm.io.logging import Logging
 
 
 def test_mismatched_vlm_viscosity_is_rejected():
@@ -39,8 +39,8 @@ def test_matching_viscosities_are_accepted():
 
 def test_vlm_log_uses_canonical_kinematic_viscosity_field():
     vlm = SimpleNamespace(
-        lattice=SimpleNamespace(num_panels=12),
-        max_panels=16,
+        lattice=SimpleNamespace(n_panels=12),
+        max_n_panels=16,
         surfaces={},
         dtype="f32",
         linear_solver="SCIPY",

@@ -58,11 +58,11 @@ class CouplerSetup:
     ] = "dirichlet"
     """VPM boundary-condition mode: dirichlet, characteristic, directional_outflow,
     pressure_gradient, or vorticity_mixed."""
-    bc_resync_after_transfer: bool = True
+    is_boundary_condition_resynchronized_after_transfer: bool = True
     """Re-synchronize the VPM boundary trace after each vorticity transfer."""
 
     # ---- PRESSURE REFERENCE ----
-    pressure_anchor_to_freestream: bool = True
+    is_pressure_anchored_to_freestream: bool = True
     """Anchor the mean upstream total-pressure reference to the freestream value."""
 
     # ---- RUN-LEVEL OPERATIONAL ----
@@ -166,7 +166,7 @@ class CouplerSetup:
                 "vpm_only_width": self.vpm_only_width,
                 "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
-                "bc_resync_after_transfer": self.bc_resync_after_transfer,
-                "pressure_anchor_to_freestream": self.pressure_anchor_to_freestream,
+                "is_boundary_condition_resynchronized_after_transfer": self.is_boundary_condition_resynchronized_after_transfer,
+                "is_pressure_anchored_to_freestream": self.is_pressure_anchored_to_freestream,
             }
         }

@@ -19,7 +19,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -115,8 +115,8 @@ def test_relaxation_converges_to_the_unrelaxed_step():
 
 def test_relative_linear_tolerances_are_disabled_at_final_stages(tmp_path, monkeypatch):
     """Exercise intermediate/final momentum and pressure solver selection."""
-    from source.solvers.FVM.assemble import momentum
-    from source.solvers.FVM.solve import pimple_solver
+    from source.solvers.fvm.assemble import momentum
+    from source.solvers.fvm.solve import pimple_solver
 
     momentum_tolerances = []
     pressure_tolerances = []

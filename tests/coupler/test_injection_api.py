@@ -3,7 +3,7 @@
 Exercises the wiring — solver adoption, dt/sub-cycle reconciliation from the
 injected VPM step, master/non-master rank gating, and injected-solver
 validation — with lightweight fakes so no GPU/Taichi runtime is needed.
-The full end-to-end coupling loop is covered by the cubeFlow acceptance run.
+The full end-to-end coupling loop is covered by the cube_flow acceptance run.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from source.coupler.boundary import outflow_axis_sign
 
 
 class _FakeParticles:
-    n_particles = 0
+    n_particles_total = 0
 
 
 class _FakeVPM:
@@ -77,7 +77,7 @@ class _FakeFVM:
     def get_cell_centre_coordinates(self):
         return np.zeros((0, 3))
 
-    def get_cell_volumes(self):
+    def get_cell_volume(self):
         return np.zeros((0,))
 
     def get_velocity_field(self):
@@ -101,7 +101,7 @@ class _FakeFVM:
             ]
         )
 
-    def get_boundary_face_normals(self, patch):
+    def get_boundary_face_normal(self, patch):
         return np.array(
             [
                 [-1.0, 0.0, 0.0],
@@ -113,7 +113,7 @@ class _FakeFVM:
             ]
         )
 
-    def get_boundary_face_areas(self, patch):
+    def get_boundary_face_area(self, patch):
         return np.ones(6)
 
 
@@ -130,7 +130,7 @@ def _make_config(**over):
         "vpm_particle_spacing": 0.05,
         "authority_ramp_width": 0.3,
         "vpm_only_width": 0.2,
-        "pressure_anchor_to_freestream": False,
+        "is_pressure_anchored_to_freestream": False,
     }
     base.update(over)
     return CouplerSetup(**base)
@@ -165,7 +165,7 @@ def test_substep_count_derived_from_vpm_step(monkeypatch, tmp_path):
     c.initialize()
     assert c.fvm_time_step_size == pytest.approx(0.02)
     assert c.vpm_time_step_size == pytest.approx(0.06)
-    assert c.fvm_substeps == 3
+    assert c.n_fvm_substeps == 3
 
 
 def test_master_requires_vpm(monkeypatch, tmp_path):
@@ -207,7 +207,7 @@ def test_physics_first_coupler_factory(monkeypatch):
 
 
 def test_coupler_uses_native_case_directory(monkeypatch, tmp_path):
-    from source.solvers.FVM import FVMSetup
+    from source.solvers.fvm import FVMSetup
 
     class _NativeFVM:
         setup = FVMSetup(case_name="native")
@@ -221,8 +221,8 @@ def test_vpm_factory_hides_distributed_root_ownership(
     monkeypatch,
     tmp_path,
 ):
-    from source.solvers.VPM import VPMSetup, create_vpm_solver
-    import source.solvers.VPM.factory as vpm_factory
+    from source.solvers.vpm import VPMSetup, create_vpm_solver
+    import source.solvers.vpm.factory as vpm_factory
 
     monkeypatch.setattr(
         vpm_factory,
@@ -248,7 +248,7 @@ def test_positional_solver_setup_constructor(monkeypatch, tmp_path):
         vpm_particle_spacing=0.05,
         authority_ramp_width=0.3,
         vpm_only_width=0.2,
-        pressure_anchor_to_freestream=False,
+        is_pressure_anchored_to_freestream=False,
     )
     vpm = _FakeVPM(time_step_size=0.1)
     fvm = _FakeFVM()

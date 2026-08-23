@@ -118,9 +118,9 @@ log.*
 *.ply
 *.obj
 
-# Fixed geometry inputs required by the native cubeFlow tutorials
-!tutorials/coupled_FVM_VPM/cubeFlow/assets/cube.stl
-!tutorials/coupled_FVM_VPM/cubeFlow/referenceFlow/assets/cube.stl
+# Fixed geometry inputs required by the native cube_flow tutorials
+!tutorials/coupled_fvm_vpm/cube_flow/assets/cube.stl
+!tutorials/coupled_fvm_vpm/cube_flow/reference_flow/assets/cube.stl
 
 # Other simulation data
 *.xdmf
@@ -129,7 +129,7 @@ log.*
 *.csv
 
 # Digitized literature reference curves plotted against sampled results
-!tutorials/VPM/lambOseenVortex/assets/references/*.csv
+!tutorials/vpm/lamb_oseen_vortex/assets/references/*.csv
 
 # VPM JSON outputs
 vpm*.json
@@ -152,7 +152,7 @@ vpm*.json
 !tutorials/**/README*.txt
 !tutorials/**/*.py
 !tutorials/**/*.sh
-tests/**/referenceFlow/**
+tests/**/reference_flow/**
 
 # Processed sampler output is durable cross-device post-processing data.
 # Version every samples/ tree, including samples produced by grid studies.

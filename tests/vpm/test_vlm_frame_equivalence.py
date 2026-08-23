@@ -25,13 +25,13 @@ import math
 import numpy as np
 import pytest
 
-from source.solvers.VPM.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
-from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import (
+from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
+from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import (
     Aircraft,
     Wing,
     WingSegment,
 )
-from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
 CHORD = 1.0
 HALF_SPAN = 5.0
@@ -54,7 +54,7 @@ def _rot_y(alpha: float) -> np.ndarray:
 def _build_plate(alpha_body: float) -> VLMSolver:
     """Rectangular wing (symmetry=0) with its chord axis rotated about +y."""
     R = _rot_y(alpha_body)
-    vertices = {
+    vertex_position = {
         "a": R @ np.array([0.0, 0.0, 0.0]),
         "b": R @ np.array([0.0, HALF_SPAN, 0.0]),
         "c": R @ np.array([CHORD, HALF_SPAN, 0.0]),
@@ -62,33 +62,40 @@ def _build_plate(alpha_body: float) -> VLMSolver:
     }
     wing = Wing(uid="main_wing", symmetry=0)
     wing.add_segment(
-        WingSegment(uid="segment_0", vertices=vertices, panels_chord=NC, panels_span=NS)
+        WingSegment(
+            uid="segment_0",
+            vertex_position=vertex_position,
+            n_chordwise_panels=NC,
+            n_spanwise_panels=NS,
+        )
     )
     aircraft = Aircraft(uid="plate")
     aircraft.add_wing(wing)
-    return VLMSolver(VLMSetup(surfaces=(VLMSurfaceSetup(aircraft),), max_panels=4096))
+    return VLMSolver(VLMSetup(surfaces=(VLMSurfaceSetup(aircraft),), max_n_panels=4096))
 
 
 def _solve_stations(vlm: VLMSolver, V_rel: np.ndarray):
     """Standalone steady solve; return (station_y, spanwise circulation)."""
     vlm.generate_mesh()
-    n = vlm.lattice.num_panels
-    gamma = vlm.solve(external_velocity=np.tile(V_rel, (n, 1)), time_step_size=None, coupled=False)
-    vortex = vlm.lattice.vortex_points.to_numpy()[:n]
+    n = vlm.lattice.n_panels
+    circulation = vlm.solve(
+        external_velocity=np.tile(V_rel, (n, 1)), time_step_size=None, coupled=False
+    )
+    vortex = vlm.lattice.vortex_point_position.to_numpy()[:n]
     y_mid = 0.5 * (vortex[:, 1, 1] + vortex[:, 2, 1])
     grouped = {}
     for k in range(n):
-        grouped.setdefault(round(y_mid[k], 6), []).append(gamma[k])
+        grouped.setdefault(round(y_mid[k], 6), []).append(circulation[k])
     stations = sorted(grouped)
     return np.array(stations), np.array([sum(grouped[y]) for y in stations])
 
 
 @pytest.mark.verification
-@pytest.mark.parametrize("alpha_deg", [2, 5, 8])
-def test_moving_static_frame_equivalence(alpha_deg: int):
+@pytest.mark.parametrize("angle_of_attack_degrees", [2, 5, 8])
+def test_moving_static_frame_equivalence(angle_of_attack_degrees: int):
     """A (pitched plate, streamwise flow) and B (flat plate, rotated inflow)
     must be the same physical problem for the tangent-plane far-wake model."""
-    alpha = math.radians(alpha_deg)
+    alpha = math.radians(angle_of_attack_degrees)
     v_wind = np.array([1.0, 0.0, 0.0])
     v_body = np.array([math.cos(alpha), 0.0, math.sin(alpha)])
 

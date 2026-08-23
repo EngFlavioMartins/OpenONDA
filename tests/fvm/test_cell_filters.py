@@ -10,7 +10,7 @@ These tests pin the two weightings apart so that cannot regress silently.
 import numpy as np
 import pytest
 
-from source.solvers.FVM.fields.filters import CellBoxFilter
+from source.solvers.fvm.fields.filters import CellBoxFilter
 
 
 def _chain(n: int = 12):
@@ -20,7 +20,7 @@ def _chain(n: int = 12):
         "owners": np.arange(n - 1),
         "neighbours": np.arange(1, n),
     }
-    geo = {"cell_volumes": np.ones(n)}
+    geo = {"cell_volume": np.ones(n)}
     return mesh, geo
 
 
@@ -33,7 +33,7 @@ def _modes(n: int):
     }
 
 
-@pytest.mark.parametrize("centre_weight", ["volume", "neighbour_sum"])
+@pytest.mark.parametrize("centre_weight", ["cell_volume", "neighbour_sum"])
 def test_constant_is_preserved(centre_weight):
     """Partition of unity: any filter must leave a uniform field untouched."""
     mesh, geo = _chain()
@@ -67,7 +67,7 @@ def test_volume_weighting_does_have_a_negative_lobe():
     default for the blending zone.  Kept as the dynamic Smagorinsky test filter."""
     n = 12
     mesh, geo = _chain(n)
-    f = CellBoxFilter(mesh, geo, centre_weight="volume")
+    f = CellBoxFilter(mesh, geo, centre_weight="cell_volume")
     m = _modes(n)
     i = n // 2
 
@@ -92,7 +92,7 @@ def test_rejects_unknown_centre_weight():
 
 def test_matches_the_dynamic_smagorinsky_test_filter():
     """The lifted filter must reproduce what DynamicSmagorinsky used to compute."""
-    from source.solvers.FVM.turbulence.les_models import DynamicSmagorinsky
+    from source.solvers.fvm.turbulence.les_models import DynamicSmagorinsky
 
     n = 12
     mesh, geo = _chain(n)
@@ -101,5 +101,5 @@ def test_matches_the_dynamic_smagorinsky_test_filter():
 
     model = DynamicSmagorinsky(mesh, geo)
     np.testing.assert_allclose(
-        model._box_filter(field), CellBoxFilter(mesh, geo, centre_weight="volume")(field)
+        model._box_filter(field), CellBoxFilter(mesh, geo, centre_weight="cell_volume")(field)
     )

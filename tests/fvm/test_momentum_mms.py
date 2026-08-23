@@ -26,13 +26,13 @@ its most basic form.
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.assemble.momentum import (
+from source.solvers.fvm.assemble.convection import compute_volumetric_face_flux
+from source.solvers.fvm.assemble.momentum import (
     assemble_momentum_equation,
     compute_dev2_stress_source,
 )
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.solve.linear_interface import solve_linear_system
 
 from ._structured_mesh import structured_box
 
@@ -67,13 +67,13 @@ def _setup_exact_field(mesh, geo):
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
     n_bnd = mesh["n_faces"] - n_int
-    cc = geo["cell_centroids"]
-    fc = geo["face_centroids"]
+    cc = geo["cell_centre"]
+    fc = geo["face_centre"]
 
     velocity = np.zeros((n_elem + n_bnd, 3))
     velocity[:n_elem] = _u_exact(cc[:, 0], cc[:, 1], cc[:, 2])
     for b in mesh["boundary"]:
-        b["bc_type"] = "fixedValue"
+        b["boundary_condition_type"] = "fixedValue"
         b["velocity_type"] = "fixedValue"
         b["velocity_value"] = [0.0, 0.0, 0.0]  # unused: ghosts below carry the exact value
         start, nf = b["start_face"], b["n_faces"]
@@ -91,17 +91,17 @@ def _solve_momentum_operator(mesh, geo, kinematic_viscosity, scheme):
     source; return (U_solution[n_elem, 3], U_exact[n_elem, 3], volumes)."""
     n_elem = mesh["n_cells"]
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-    cc = geo["cell_centroids"]
+    cc = geo["cell_centre"]
 
     velocity = _setup_exact_field(mesh, geo)
     p = np.zeros(n_elem + n_bnd)
-    face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
+    volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
     S = _momentum_source(cc[:, 0], cc[:, 1], cc[:, 2], kinematic_viscosity)
 
     mom = assemble_momentum_equation(
         velocity,
         p,
-        face_flux,
+        volumetric_face_flux,
         1.0,
         kinematic_viscosity,
         mesh,
@@ -119,7 +119,7 @@ def _solve_momentum_operator(mesh, geo, kinematic_viscosity, scheme):
         U_sol[:, i] = solve_linear_system(A, b, method="spsolve", equation_type="momentum")
 
     U_exact = _u_exact(cc[:, 0], cc[:, 1], cc[:, 2])
-    return U_sol, U_exact, geo["cell_volumes"]
+    return U_sol, U_exact, geo["cell_volume"]
 
 
 def _observed_order(errors, h_vals):

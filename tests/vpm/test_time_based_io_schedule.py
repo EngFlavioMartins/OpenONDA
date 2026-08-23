@@ -5,22 +5,26 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.VPM.config import VPMSetup
-from source.solvers.VPM.io.sampler import SamplerExecutor
-from source.solvers.VPM.io.sampling import SamplingSchedule
-from source.solvers.VPM.io.solver_io import SolverIO
+from source.solvers.vpm.config import VPMSetup
+from source.solvers.vpm.io.sampler import SamplerExecutor
+from source.solvers.vpm.io.sampling import SamplingSchedule
+from source.solvers.vpm.io.solver_io import SolverIO
 
 
 def test_nearest_time_schedule_has_no_cumulative_drift() -> None:
-    dt = 0.015
+    time_step_size = 0.015
     schedule = SamplingSchedule(every_time=1.0)
-    due = [step * dt for step in range(1, 1334) if schedule.is_due(step, step * dt, dt)]
+    due = [
+        step * time_step_size
+        for step in range(1, 1334)
+        if schedule.is_due(step, step * time_step_size, time_step_size)
+    ]
 
     assert len(due) == 20
     assert np.allclose(due[:3], [1.005, 1.995, 3.0])
     assert (
         max(abs(actual - target) for actual, target in zip(due, range(1, 21), strict=True))
-        <= dt / 2
+        <= time_step_size / 2
     )
 
 
@@ -47,7 +51,7 @@ def test_vpm_checkpoint_cadences_are_mutually_exclusive() -> None:
 def test_non_due_scheduled_sampler_does_not_touch_particle_state() -> None:
     class Particles:
         @property
-        def n_particles(self):
+        def n_particles_total(self):
             raise AssertionError("particle state was accessed for a non-due sampler")
 
     solver = SimpleNamespace(
@@ -70,7 +74,7 @@ def test_due_scheduled_sampler_is_selected(monkeypatch, tmp_path) -> None:
     )
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=(sampler,), sample_subdirectory=None),
-        particles=SimpleNamespace(n_particles=2),
+        particles=SimpleNamespace(n_particles_total=2),
         particle_vortex_strength=np.ones((2, 3)),
         case_dir=tmp_path,
         step=3,

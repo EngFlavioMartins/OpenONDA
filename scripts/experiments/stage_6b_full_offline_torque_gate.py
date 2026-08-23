@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import fft as spfft
 
-from source.solvers.VPM.physics.diffusion.grid import _m4_prime_1d
+from source.solvers.vpm.physics.diffusion.grid import _m4_prime_1d
 
 STENCIL = 5
 UPDATES = 2

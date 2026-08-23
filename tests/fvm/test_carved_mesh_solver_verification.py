@@ -13,7 +13,7 @@ import io
 
 import numpy as np
 
-from source.solvers.FVM.fields.diagnostics import compute_continuity_error
+from source.solvers.fvm.fields.diagnostics import compute_continuity_error
 
 from .test_force_first_principles import _external_flow_solver
 
@@ -33,13 +33,13 @@ def test_mass_conservation_on_carved_mesh(tmp_path):
     global boundary flux balances exactly (what enters leaves)."""
     solver = _run(tmp_path)
     mesh, geo = solver.mesh_data, solver.geo_data
-    div = compute_continuity_error(np.asarray(solver.face_flux), mesh, geo)
-    volumes = geo["cell_volumes"][: mesh["n_cells"]]
+    div = compute_continuity_error(np.asarray(solver.volumetric_face_flux), mesh, geo)
+    volumes = geo["cell_volume"][: mesh["n_cells"]]
     local = np.abs(div) / volumes  # 1/s — local divergence
     assert local.max() < 1e-6, f"max cell divergence {local.max():.3e} 1/s"
     # Global: sum of boundary fluxes = sum of per-cell residuals ≈ 0.
     n_int = mesh["n_interior_faces"]
-    net_boundary = float(np.asarray(solver.face_flux)[n_int:].sum())
+    net_boundary = float(np.asarray(solver.volumetric_face_flux)[n_int:].sum())
     assert abs(net_boundary) < 1e-8, f"net boundary flux {net_boundary:.3e} m³/s"
 
 
@@ -53,7 +53,7 @@ def test_wall_bc_enforcement_on_carved_cube(tmp_path):
     faces = np.arange(wall["start_face"], wall["start_face"] + wall["n_faces"])
     ghost = mesh["n_cells"] + (faces - mesh["n_interior_faces"])
     assert np.all(np.asarray(solver.velocity)[ghost] == 0.0), "wall ghost velocity not zero"
-    assert np.all(np.asarray(solver.face_flux)[faces] == 0.0), "wall face flux not zero"
+    assert np.all(np.asarray(solver.volumetric_face_flux)[faces] == 0.0), "wall face flux not zero"
 
 
 def test_deterministic_for_fixed_configuration(tmp_path):
@@ -67,4 +67,6 @@ def test_deterministic_for_fixed_configuration(tmp_path):
         np.asarray(b.kinematic_pressure),
     ), "pressure fields differ"
     fa, fb = a.last_forces["cube"], b.last_forces["cube"]
-    assert np.array_equal(fa["Ftot"], fb["Ftot"]), f"forces differ: {fa['Ftot']} vs {fb['Ftot']}"
+    assert np.array_equal(fa["total_force"], fb["total_force"]), (
+        f"forces differ: {fa['total_force']} vs {fb['total_force']}"
+    )

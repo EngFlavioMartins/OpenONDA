@@ -29,7 +29,7 @@ def test_coupled_fvm_vpm_two_steps_mpi(tmp_path, monkeypatch):
     from mpi4py import MPI
 
     from source.coupler import CouplerSetup, FVMVPMCoupler
-    from source.solvers.FVM import (
+    from source.solvers.fvm import (
         BoundaryConfig,
         ComputeConfig,
         FVMSetup,
@@ -37,8 +37,8 @@ def test_coupled_fvm_vpm_two_steps_mpi(tmp_path, monkeypatch):
         TimeConfig,
         TransportConfig,
     )
-    from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
-    from source.solvers.VPM import VPMSetup, VPMSolver
+    from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
+    from source.solvers.vpm import VPMSetup, VPMSolver
 
     rank = MPI.COMM_WORLD.Get_rank()
     case_dir = Path(MPI.COMM_WORLD.bcast(str(tmp_path) if rank == 0 else None, root=0))
@@ -57,7 +57,7 @@ def test_coupled_fvm_vpm_two_steps_mpi(tmp_path, monkeypatch):
     vpm_setup = VPMSetup(
         time_step_size=VPM_TIME_STEP_SIZE,
         compute_device="CPU",
-        max_particles=50_000,
+        max_n_particles=50_000,
         domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
         freestream_velocity=[1.0, 0.0, 0.0],
     )
@@ -94,7 +94,7 @@ def test_coupled_fvm_vpm_two_steps_mpi(tmp_path, monkeypatch):
     coupler = FVMVPMCoupler(fvm, vpm, setup)
     coupler.run()
 
-    assert coupler.fvm_substeps == 3
+    assert coupler.n_fvm_substeps == 3
     assert coupler.vpm_time_step_size == pytest.approx(VPM_TIME_STEP_SIZE)
 
     # Every rank observes the same committed coupling state through the

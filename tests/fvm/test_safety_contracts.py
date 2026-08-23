@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM import FVMSetup, FVMSolver, MeshMotionConfig
-from source.solvers.FVM.fields.diagnostics import _should_compute_yplus
+from source.solvers.fvm import FVMSetup, FVMSolver, MeshMotionConfig
+from source.solvers.fvm.fields.diagnostics import _should_compute_yplus
 
 
 def test_dynamic_mesh_is_explicitly_unsupported(hand_built_3d_mesh, tmp_path):

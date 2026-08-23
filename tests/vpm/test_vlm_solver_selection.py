@@ -12,9 +12,9 @@ Date: May 2026
 
 import numpy as np
 
-from source.solvers.VPM.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
-from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
-from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
+from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
+from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
 
 def create_dummy_aircraft(n_chord=4, n_span=8):
@@ -23,14 +23,14 @@ def create_dummy_aircraft(n_chord=4, n_span=8):
     wing.add_segment(
         WingSegment(
             uid="seg1",
-            vertices={
+            vertex_position={
                 "a": np.array([0.0, 0.0, 0.0]),
                 "b": np.array([1.0, 0.0, 0.0]),
                 "c": np.array([1.0, 2.0, 0.0]),
                 "d": np.array([0.0, 2.0, 0.0]),
             },
-            panels_chord=n_chord,
-            panels_span=n_span,
+            n_chordwise_panels=n_chord,
+            n_spanwise_panels=n_span,
         )
     )
     aircraft = Aircraft(uid="test")
@@ -93,7 +93,7 @@ class TestAdaptiveSolverSelection:
         vlm.generate_mesh()
 
         # Mock external velocity
-        n_panels = vlm.lattice.num_panels
+        n_panels = vlm.lattice.n_panels
         V_ext = np.tile([1.0, 0.0, 0.0], (n_panels, 1))
 
         # Compile Taichi kernels before timing steady-state execution.
@@ -101,10 +101,10 @@ class TestAdaptiveSolverSelection:
         ti.sync()
 
         t0 = time.perf_counter()
-        gamma = vlm.solve(external_velocity=V_ext)
+        circulation = vlm.solve(external_velocity=V_ext)
         ti.sync()
         time_step_size = time.perf_counter() - t0
 
         assert time_step_size < 1.0, f"SCIPY solve took {time_step_size:.2f}s, expected < 1.0s"
-        assert gamma is not None
-        assert len(gamma) == n_panels
+        assert circulation is not None
+        assert len(circulation) == n_panels

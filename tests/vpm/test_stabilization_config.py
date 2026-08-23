@@ -4,13 +4,15 @@ import runpy
 import numpy as np
 import pytest
 
-from source.solvers.VPM import StabilizationConfig, TurbulenceConfig, VPMSetup
+from source.solvers.vpm import StabilizationConfig, TurbulenceConfig, VPMSetup
 
 
 def test_equilibrium_smagorinsky_factory_recovers_ck():
     config = TurbulenceConfig.equilibrium_smagorinsky()
 
-    recovered_ck = (config.c_s**2 * config.c_e**0.5) ** (2.0 / 3.0)
+    recovered_ck = (
+        config.smagorinsky_coefficient**2 * config.subgrid_dissipation_coefficient**0.5
+    ) ** (2.0 / 3.0)
     assert config.flow_model == "LES"
     assert recovered_ck == pytest.approx(0.094)
 
@@ -43,7 +45,7 @@ def test_conservative_filter_factory_round_trip_and_validation():
         interval_steps=25,
         start_step=100,
         grid_spacing=0.08,
-        max_particles=4000,
+        max_n_particles=4000,
         tail_budget=0.002,
         divergence_trigger=0.03,
         misalignment_trigger=15.0,
@@ -64,7 +66,7 @@ def test_conservative_filter_factory_round_trip_and_validation():
             interval_steps=1,
             start_step=0,
             grid_spacing=0.08,
-            max_particles=100,
+            max_n_particles=100,
             tail_budget=0.0,
         )
     with pytest.raises(ValueError, match="regularization_misalignment_trigger"):
@@ -72,23 +74,23 @@ def test_conservative_filter_factory_round_trip_and_validation():
             interval_steps=1,
             start_step=0,
             grid_spacing=0.08,
-            max_particles=100,
+            max_n_particles=100,
             misalignment_trigger=181.0,
         )
-    with pytest.raises(ValueError, match="regularization_enstrophy_dissipation_limit"):
+    with pytest.raises(ValueError, match="regularization_total_enstrophy_dissipation_limit"):
         StabilizationConfig.conservative_filter(
             interval_steps=1,
             start_step=0,
             grid_spacing=0.08,
-            max_particles=100,
-            enstrophy_dissipation_limit=1.0,
+            max_n_particles=100,
+            total_enstrophy_dissipation_limit=1.0,
         )
     with pytest.raises(ValueError, match="regularization_capacity_fraction"):
         StabilizationConfig.conservative_filter(
             interval_steps=1,
             start_step=0,
             grid_spacing=0.08,
-            max_particles=100,
+            max_n_particles=100,
             capacity_fraction=0.0,
         )
     for name in ("capacity_grid_spacing", "core_radius", "capacity_core_radius"):
@@ -97,7 +99,7 @@ def test_conservative_filter_factory_round_trip_and_validation():
                 interval_steps=1,
                 start_step=0,
                 grid_spacing=0.08,
-                max_particles=100,
+                max_n_particles=100,
                 **{name: np.nan},
             )
 
@@ -116,12 +118,12 @@ def test_solver_config_rejects_removed_top_level_stabilization_options():
 
 
 def _vortex_interactions_namespace():
-    tutorial = Path(__file__).parents[2] / "tutorials/VPM/vortexInteractions/rings_setup.py"
+    tutorial = Path(__file__).parents[2] / "tutorials/vpm/vortex_interactions/rings_setup.py"
     return runpy.run_path(tutorial)
 
 
 def _rotor_flow_namespace():
-    tutorial = Path(__file__).parents[2] / "tutorials/VPM/rotorFlow/rotor_setup.py"
+    tutorial = Path(__file__).parents[2] / "tutorials/vpm/rotor_flow/rotor_setup.py"
     return runpy.run_path(tutorial)
 
 
@@ -139,9 +141,9 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         "collide_les_stabilized",
     )
     assert namespace["PARTICLE_SPACING"] == pytest.approx(0.04)
-    assert namespace["TIME_STEP"] == pytest.approx(20.0 * 0.04**2 / np.pi)
+    assert namespace["TIME_STEP_SIZE"] == pytest.approx(20.0 * 0.04**2 / np.pi)
     assert namespace["NUM_STEPS"] == 1140
-    assert namespace["END_TIME"] == pytest.approx(1140 * namespace["TIME_STEP"])
+    assert namespace["END_TIME"] == pytest.approx(1140 * namespace["TIME_STEP_SIZE"])
     assert namespace["BASELINE_DIVERGENCE_LIMIT"] == pytest.approx(0.12)
     for config in configs.values():
         assert config.compute_device == "CPU"
@@ -166,10 +168,10 @@ def test_vortex_interactions_uses_one_hard_coded_six_case_matrix(tmp_path):
         )
 
     assert configs["leapfrog_dns"].turbulence.flow_model == "DNS"
-    assert configs["leapfrog_les"].turbulence.c_s == pytest.approx(
+    assert configs["leapfrog_les"].turbulence.smagorinsky_coefficient == pytest.approx(
         namespace["LES_COEFFICIENT"]["leapfrog"]
     )
-    assert configs["collide_les"].turbulence.c_s == pytest.approx(
+    assert configs["collide_les"].turbulence.smagorinsky_coefficient == pytest.approx(
         namespace["LES_COEFFICIENT"]["collide"]
     )
     assert configs["leapfrog_les"].stabilization == StabilizationConfig.disabled()
@@ -248,12 +250,12 @@ def test_vortex_interactions_initial_state_matches_ring_invariants():
     config = namespace["solver_setup"]("leapfrog_dns", Path("solution/test"))
 
     total = circulation.sum(axis=0)
-    impulse_x = 0.5 * np.cross(position, circulation).sum(axis=0)[0]
+    linear_impulse_x = 0.5 * np.cross(position, circulation).sum(axis=0)[0]
     expected_impulse = np.pi * namespace["RING_CIRCULATION"] * namespace["RING_RADIUS"] ** 2
 
-    assert 2 * len(position) <= config.max_particles
+    assert 2 * len(position) <= config.max_n_particles
     assert np.linalg.norm(total) < 1.0e-12
-    assert impulse_x == pytest.approx(expected_impulse, rel=5.0e-3)
+    assert linear_impulse_x == pytest.approx(expected_impulse, rel=5.0e-3)
     np.testing.assert_allclose(radius, namespace["PARTICLE_RADIUS"])
     assert config.axisymmetric_no_swirl_axis is None
 
@@ -261,7 +263,7 @@ def test_vortex_interactions_initial_state_matches_ring_invariants():
 def test_rotor_flow_cli_defaults_to_physics_preserving_policy():
     namespace = _rotor_flow_namespace()
 
-    assert namespace["TIME_STEP"] == pytest.approx(0.006)
+    assert namespace["TIME_STEP_SIZE"] == pytest.approx(0.006)
     assert namespace["TREECODE_THETA"] == pytest.approx(0.20)
     assert namespace["COUPLED_MAX_STRAIN_INCREMENT"] == pytest.approx(0.08)
     assert namespace["COUPLED_MAX_ADVECTION_FRACTION"] == pytest.approx(0.25)
@@ -284,6 +286,6 @@ def test_rotor_flow_uses_scalable_coupled_stabilization():
     assert config.viscous.scheme == "CS"
     assert config.viscous.kinematic_viscosity == pytest.approx(namespace["KINEMATIC_VISCOSITY"])
     assert config.viscous.particle_spacing == pytest.approx(
-        namespace["nominal_wake_spacing"](namespace["TIME_STEP"])
+        namespace["nominal_wake_spacing"](namespace["TIME_STEP_SIZE"])
     )
     assert config.stabilization.remove_particles_by_bounds is not None

@@ -13,16 +13,16 @@ test_transposed_stretching_conserves_total_circulation
     Failure → sign error or wrong stretching mode in the kernel.
 
 test_cs_diffusion_conserves_total_circulation
-    Core Spreading grows particle core radii but does NOT modify circulation
-    strengths.  The discrete sum ΣΓz must therefore stay constant.
-    Failure → CS incorrectly alters particle strengths (α).
+    Core spreading grows particle core radius but does not modify circulation
+    vortex_strength.  The discrete sum ΣΓz must therefore stay constant.
+    Failure → CS incorrectly alters particle vortex_strength (α).
 """
 
 import numpy as np
 
-from source.solvers.VPM import ParticleDistributor, VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
-from source.solvers.VPM.initial_conditions import LambOseenVPM
+from source.solvers.vpm import ParticleDistributor, VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.vpm.initial_conditions import lamb_oseen_vpm
 
 # ── Shared physics parameters (Lamb-Oseen benchmark) ─────────────────────────
 _NU = 1.887e-3  # kinematic viscosity  [m²/s]
@@ -53,22 +53,22 @@ def _minimal_config(tmp_path, *, stretching, viscous, advection, time_step_size=
 
 def _load_lamb_oseen(solver, bounds, h):
     """Populate *solver* with a Lamb-Oseen vortex and return the circulations."""
-    positions, volumes, radii = ParticleDistributor.hexagonal_distribution(bounds, h)
-    velocities, viscosities, circulations = LambOseenVPM(
+    position, particle_volume, core_radius = ParticleDistributor.hexagonal_distribution(bounds, h)
+    velocity, kinematic_viscosity, circulations = lamb_oseen_vpm(
         kinematic_viscosity=_NU,
-        avg_particle_radius=float(radii.mean()),
-        positions=positions,
-        volumes=volumes,
+        mean_core_radius=float(core_radius.mean()),
+        position=position,
+        particle_volume=particle_volume,
         circulation=_GAMMA,
-        vortex_time=_T0,
+        vortex_age=_T0,
     )
     solver.add_vortex_particles(
-        position=positions,
-        velocity=velocities,
+        position=position,
+        velocity=velocity,
         vortex_strength=circulations,
-        core_radius=radii,
-        volume=volumes,
-        kinematic_viscosity=viscosities,
+        core_radius=core_radius,
+        particle_volume=particle_volume,
+        kinematic_viscosity=kinematic_viscosity,
     )
     return circulations
 
@@ -100,14 +100,14 @@ def test_transposed_stretching_conserves_total_circulation(tmp_path):
     """
     rng = np.random.default_rng(42)
     N = 100
-    positions = rng.uniform(-1.0, 1.0, (N, 3))
+    position = rng.uniform(-1.0, 1.0, (N, 3))
     # Non-trivial 3-D circulations (not aligned with z) to exercise all components.
     circulations = rng.uniform(-0.05, 0.05, (N, 3))
     sigma = 0.15
-    radii = np.full(N, sigma)
-    volumes = (4.0 / 3.0) * np.pi * radii**3
-    velocities = np.zeros((N, 3))
-    viscosities = np.zeros(N)
+    core_radius = np.full(N, sigma)
+    particle_volume = (4.0 / 3.0) * np.pi * core_radius**3
+    velocity = np.zeros((N, 3))
+    kinematic_viscosity = np.zeros(N)
 
     config = _minimal_config(
         tmp_path,
@@ -117,12 +117,12 @@ def test_transposed_stretching_conserves_total_circulation(tmp_path):
     )
     solver = VPMSolver(setup=config)
     solver.add_vortex_particles(
-        position=positions,
-        velocity=velocities,
+        position=position,
+        velocity=velocity,
         vortex_strength=circulations,
-        core_radius=radii,
-        volume=volumes,
-        kinematic_viscosity=viscosities,
+        core_radius=core_radius,
+        particle_volume=particle_volume,
+        kinematic_viscosity=kinematic_viscosity,
     )
 
     gamma_before = solver.particle_vortex_strength.sum(axis=0)
@@ -155,7 +155,7 @@ def test_cs_diffusion_conserves_total_circulation(tmp_path):
     This test fails when
     --------------------
     * CS accidentally modifies αᵢ instead of (only) σᵢ.
-    * A volume update introduces spurious circulation gains/losses.
+    * A particle_volume update introduces spurious circulation gains/losses.
     """
     bounds = [-3 * _RC, 3 * _RC, -3 * _RC, 3 * _RC, -_H * 0.5, _H * 0.5]
     config = _minimal_config(

@@ -38,11 +38,11 @@ _DVH_BETA = 0.077
 
 
 def dvh_scatter_pure_numpy(
-    pos: np.ndarray,  # (N, 3)
-    circ: np.ndarray,  # (N, 3)
+    position: np.ndarray,  # (N, 3)
+    vortex_strength: np.ndarray,  # (N, 3)
     grid_min: np.ndarray,  # (3,)
-    h: float,
-    nu: float,
+    particle_spacing: float,
+    kinematic_viscosity: float,
     time_step_size: float,  # advection dt (unused — width set by β and R_d)
     nx: int,
     ny: int,
@@ -56,28 +56,28 @@ def dvh_scatter_pure_numpy(
 
     Returns float64 grid of shape (nx, ny, nz, 3).
     """
-    R_d = rd_ratio * h
+    R_d = rd_ratio * particle_spacing
     R_d_sq = R_d * R_d
     four_nu_dt = _DVH_BETA * R_d * R_d  # = β·R_d² (≡ 4nu·Δt_d)
     grid = np.zeros((nx, ny, nz, 3), dtype=np.float64)
 
-    for j in range(len(pos)):
-        yj = pos[j]
-        aj = circ[j]
+    for j in range(len(position)):
+        yj = position[j]
+        aj = vortex_strength[j]
 
-        i_lo = max(0, int(np.floor((yj[0] - R_d - grid_min[0]) / h)))
-        i_hi = min(nx - 1, int(np.ceil((yj[0] + R_d - grid_min[0]) / h)))
-        j_lo = max(0, int(np.floor((yj[1] - R_d - grid_min[1]) / h)))
-        j_hi = min(ny - 1, int(np.ceil((yj[1] + R_d - grid_min[1]) / h)))
-        k_lo = max(0, int(np.floor((yj[2] - R_d - grid_min[2]) / h)))
-        k_hi = min(nz - 1, int(np.ceil((yj[2] + R_d - grid_min[2]) / h)))
+        i_lo = max(0, int(np.floor((yj[0] - R_d - grid_min[0]) / particle_spacing)))
+        i_hi = min(nx - 1, int(np.ceil((yj[0] + R_d - grid_min[0]) / particle_spacing)))
+        j_lo = max(0, int(np.floor((yj[1] - R_d - grid_min[1]) / particle_spacing)))
+        j_hi = min(ny - 1, int(np.ceil((yj[1] + R_d - grid_min[1]) / particle_spacing)))
+        k_lo = max(0, int(np.floor((yj[2] - R_d - grid_min[2]) / particle_spacing)))
+        k_hi = min(nz - 1, int(np.ceil((yj[2] + R_d - grid_min[2]) / particle_spacing)))
 
         if i_lo > i_hi or j_lo > j_hi or k_lo > k_hi:
             continue
 
-        xI = grid_min[0] + np.arange(i_lo, i_hi + 1) * h
-        xJ = grid_min[1] + np.arange(j_lo, j_hi + 1) * h
-        xK = grid_min[2] + np.arange(k_lo, k_hi + 1) * h
+        xI = grid_min[0] + np.arange(i_lo, i_hi + 1) * particle_spacing
+        xJ = grid_min[1] + np.arange(j_lo, j_hi + 1) * particle_spacing
+        xK = grid_min[2] + np.arange(k_lo, k_hi + 1) * particle_spacing
 
         r2 = (
             ((xI - yj[0]) ** 2)[:, None, None]
@@ -104,37 +104,41 @@ def dvh_scatter_pure_numpy(
 
 
 def make_lamb_oseen_particles(
-    h: float,
-    rc: float,
-    gamma: float,
-    nu: float,
+    particle_spacing: float,
+    initial_core_radius: float,
+    circulation: float,
+    kinematic_viscosity: float,
     domain_half: float = 0.5,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Create a 3D Lamb-Oseen vortex on a hexagonal-like lattice.
 
-    The vortex axis is along z. Circulation α = vol * ω(r).
+    The vortex axis is along z. Circulation α = particle_volume * ω(r).
 
-    Returns (positions, circulations, volumes) — all float64.
+    Returns (position, circulations, particle_volume) — all float64.
     """
-    t0 = rc**2 / (4 * nu)  # initial age
-    coords_1d = np.arange(-domain_half, domain_half + h / 2, h)
-    z_1d = np.arange(-domain_half, domain_half + h / 2, h)
+    t0 = initial_core_radius**2 / (4 * kinematic_viscosity)  # initial age
+    coords_1d = np.arange(-domain_half, domain_half + particle_spacing / 2, particle_spacing)
+    z_1d = np.arange(-domain_half, domain_half + particle_spacing / 2, particle_spacing)
     xx, yy, zz = np.meshgrid(coords_1d, coords_1d, z_1d, indexing="ij")
-    pos = np.stack([xx.ravel(), yy.ravel(), zz.ravel()], axis=1)
+    position = np.stack([xx.ravel(), yy.ravel(), zz.ravel()], axis=1)
 
-    r2 = pos[:, 0] ** 2 + pos[:, 1] ** 2
-    vol = h**3
-    # ω_z = Γ / (4π nu t₀) · exp(-r²/(4nut₀))
-    omega_z = gamma / (4 * np.pi * nu * t0) * np.exp(-r2 / (4 * nu * t0))
-    circ = np.zeros((len(pos), 3), dtype=np.float64)
-    circ[:, 2] = omega_z * vol
+    r2 = position[:, 0] ** 2 + position[:, 1] ** 2
+    particle_volume = particle_spacing**3
+    # ω_z = Γ / (4π kinematic_viscosity t₀) · exp(-r²/(4nut₀))
+    vorticity_z = (
+        circulation
+        / (4 * np.pi * kinematic_viscosity * t0)
+        * np.exp(-r2 / (4 * kinematic_viscosity * t0))
+    )
+    vortex_strength = np.zeros((len(position), 3), dtype=np.float64)
+    vortex_strength[:, 2] = vorticity_z * particle_volume
 
-    volumes = np.full(len(pos), vol, dtype=np.float64)
+    particle_volume = np.full(len(position), particle_volume, dtype=np.float64)
 
     # Remove negligible particles
-    mag = np.abs(circ[:, 2])
+    mag = np.abs(vortex_strength[:, 2])
     keep = mag > 1e-12 * mag.max()
-    return pos[keep], circ[keep], volumes[keep]
+    return position[keep], vortex_strength[keep], particle_volume[keep]
 
 
 # ===================================================================== #
@@ -144,25 +148,36 @@ def make_lamb_oseen_particles(
 
 def test_single_particle_conservation():
     """A single particle's Γ must be exactly conserved by DVH scatter."""
-    h = 0.1
-    nu = 1e-3
+    particle_spacing = 0.1
+    kinematic_viscosity = 1e-3
     time_step_size = 0.01
     rd_ratio = 4.0
 
-    pos = np.array([[0.5, 0.5, 0.5]])
-    circ = np.array([[0.0, 0.0, 1.0]])
+    position = np.array([[0.5, 0.5, 0.5]])
+    vortex_strength = np.array([[0.0, 0.0, 1.0]])
     grid_min = np.array([0.0, 0.0, 0.0])
     nx = ny = nz = 11
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(
+        position,
+        vortex_strength,
+        grid_min,
+        particle_spacing,
+        kinematic_viscosity,
+        time_step_size,
+        nx,
+        ny,
+        nz,
+        rd_ratio,
+    )
 
     total_circ = grid.sum(axis=(0, 1, 2))  # (3,)
-    err = np.abs(total_circ - circ[0])
+    err = np.abs(total_circ - vortex_strength[0])
     print("  Single-particle conservation test:")
-    print(f"    Input Γ  = {circ[0]}")
+    print(f"    Input Γ  = {vortex_strength[0]}")
     print(f"    Output Γ = {total_circ}")
     print(f"    Error    = {err}")
-    assert np.allclose(total_circ, circ[0], atol=1e-14), (
+    assert np.allclose(total_circ, vortex_strength[0], atol=1e-14), (
         f"Single-particle circulation NOT conserved! Error: {err}"
     )
     print("    ✓ PASS")
@@ -170,31 +185,44 @@ def test_single_particle_conservation():
 
 def test_multi_particle_conservation():
     """Total Σα must be conserved by DVH scatter (before pruning)."""
-    h = 0.05
-    nu = 1.0 / 530.0
-    rc = 0.125
-    gamma = 1.0
-    pos, circ, vol = make_lamb_oseen_particles(h, rc, gamma, nu, domain_half=0.5)
+    particle_spacing = 0.05
+    kinematic_viscosity = 1.0 / 530.0
+    initial_core_radius = 0.125
+    circulation = 1.0
+    position, vortex_strength, particle_volume = make_lamb_oseen_particles(
+        particle_spacing, initial_core_radius, circulation, kinematic_viscosity, domain_half=0.5
+    )
 
     # Generous grid to contain everything
-    pad = 20 * h
-    lo = pos.min(axis=0) - pad
-    hi = pos.max(axis=0) + pad
-    nx = int(np.ceil((hi[0] - lo[0]) / h)) + 1
-    ny = int(np.ceil((hi[1] - lo[1]) / h)) + 1
-    nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
+    pad = 20 * particle_spacing
+    lo = position.min(axis=0) - pad
+    hi = position.max(axis=0) + pad
+    nx = int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1
+    ny = int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1
+    nz = int(np.ceil((hi[2] - lo[2]) / particle_spacing)) + 1
     grid_min = lo.astype(np.float64)
 
     time_step_size = 0.01
     rd_ratio = 4.0
 
-    input_total = circ.sum(axis=0)  # (3,)
+    input_total = vortex_strength.sum(axis=0)  # (3,)
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(
+        position,
+        vortex_strength,
+        grid_min,
+        particle_spacing,
+        kinematic_viscosity,
+        time_step_size,
+        nx,
+        ny,
+        nz,
+        rd_ratio,
+    )
     output_total = grid.sum(axis=(0, 1, 2))
 
     rel_err = np.abs(output_total - input_total) / (np.abs(input_total) + 1e-30)
-    print(f"  Multi-particle conservation test ({len(pos)} particles):")
+    print(f"  Multi-particle conservation test ({len(position)} particles):")
     print(f"    Grid: {nx}×{ny}×{nz} = {nx * ny * nz} nodes")
     print(f"    Input  ΣΓ = {input_total}")
     print(f"    Output ΣΓ = {output_total}")
@@ -205,32 +233,45 @@ def test_multi_particle_conservation():
     print("    ✓ PASS")
 
 
-def test_center_of_vorticity_preservation():
-    """Center of vorticity must not drift for a symmetric vortex."""
-    h = 0.05
-    nu = 1.0 / 530.0
-    rc = 0.125
-    gamma = 1.0
-    pos, circ, vol = make_lamb_oseen_particles(h, rc, gamma, nu, domain_half=0.5)
+def test_centre_of_vorticity_preservation():
+    """Centre of vorticity must not drift for a symmetric vortex."""
+    particle_spacing = 0.05
+    kinematic_viscosity = 1.0 / 530.0
+    initial_core_radius = 0.125
+    circulation = 1.0
+    position, vortex_strength, particle_volume = make_lamb_oseen_particles(
+        particle_spacing, initial_core_radius, circulation, kinematic_viscosity, domain_half=0.5
+    )
 
-    pad = 20 * h
-    lo = pos.min(axis=0) - pad
-    hi = pos.max(axis=0) + pad
-    nx = int(np.ceil((hi[0] - lo[0]) / h)) + 1
-    ny = int(np.ceil((hi[1] - lo[1]) / h)) + 1
-    nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
+    pad = 20 * particle_spacing
+    lo = position.min(axis=0) - pad
+    hi = position.max(axis=0) + pad
+    nx = int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1
+    ny = int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1
+    nz = int(np.ceil((hi[2] - lo[2]) / particle_spacing)) + 1
     grid_min = lo.astype(np.float64)
 
     time_step_size = 0.01
     rd_ratio = 4.0
 
-    # Input center of vorticity
-    circ_mag_in = np.linalg.norm(circ, axis=1)
-    cov_in = (pos * circ_mag_in[:, None]).sum(axis=0) / circ_mag_in.sum()
+    # Input centre of vorticity
+    circ_mag_in = np.linalg.norm(vortex_strength, axis=1)
+    cov_in = (position * circ_mag_in[:, None]).sum(axis=0) / circ_mag_in.sum()
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(
+        position,
+        vortex_strength,
+        grid_min,
+        particle_spacing,
+        kinematic_viscosity,
+        time_step_size,
+        nx,
+        ny,
+        nz,
+        rd_ratio,
+    )
 
-    # Output center of vorticity from grid
+    # Output centre of vorticity from grid
     circ_mag_grid = np.linalg.norm(grid, axis=-1)
     ixs, iys, izs = np.where(circ_mag_grid > 0)
     if len(ixs) == 0:
@@ -238,9 +279,9 @@ def test_center_of_vorticity_preservation():
 
     grid_pos = np.stack(
         [
-            grid_min[0] + ixs * h,
-            grid_min[1] + iys * h,
-            grid_min[2] + izs * h,
+            grid_min[0] + ixs * particle_spacing,
+            grid_min[1] + iys * particle_spacing,
+            grid_min[2] + izs * particle_spacing,
         ],
         axis=1,
     )
@@ -253,33 +294,48 @@ def test_center_of_vorticity_preservation():
     print(f"    Output CoV = {cov_out}")
     print(f"    Drift      = {drift:.6e} m")
     # Drift should be tiny (grid quantization only)
-    assert drift < 2 * h, f"Vortex drifted {drift:.4e} m (> 2h = {2 * h})!"
+    assert drift < 2 * particle_spacing, (
+        f"Vortex drifted {drift:.4e} m (> 2h = {2 * particle_spacing})!"
+    )
     print("    ✓ PASS")
 
 
 def test_enstrophy_decrease():
     """Enstrophy (Σ|α|²) must decrease after diffusion scatter."""
-    h = 0.05
-    nu = 1.0 / 530.0
-    rc = 0.125
-    gamma = 1.0
-    pos, circ, vol = make_lamb_oseen_particles(h, rc, gamma, nu, domain_half=0.5)
+    particle_spacing = 0.05
+    kinematic_viscosity = 1.0 / 530.0
+    initial_core_radius = 0.125
+    circulation = 1.0
+    position, vortex_strength, particle_volume = make_lamb_oseen_particles(
+        particle_spacing, initial_core_radius, circulation, kinematic_viscosity, domain_half=0.5
+    )
 
-    pad = 20 * h
-    lo = pos.min(axis=0) - pad
-    hi = pos.max(axis=0) + pad
-    nx = int(np.ceil((hi[0] - lo[0]) / h)) + 1
-    ny = int(np.ceil((hi[1] - lo[1]) / h)) + 1
-    nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
+    pad = 20 * particle_spacing
+    lo = position.min(axis=0) - pad
+    hi = position.max(axis=0) + pad
+    nx = int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1
+    ny = int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1
+    nz = int(np.ceil((hi[2] - lo[2]) / particle_spacing)) + 1
     grid_min = lo.astype(np.float64)
 
     time_step_size = 0.01
     rd_ratio = 4.0
 
     # Input enstrophy proxy: Σ|α|²
-    enstr_in = (circ**2).sum()
+    enstr_in = (vortex_strength**2).sum()
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(
+        position,
+        vortex_strength,
+        grid_min,
+        particle_spacing,
+        kinematic_viscosity,
+        time_step_size,
+        nx,
+        ny,
+        nz,
+        rd_ratio,
+    )
     enstr_out = (grid**2).sum()
 
     ratio = enstr_out / enstr_in
@@ -296,13 +352,13 @@ def test_enstrophy_decrease():
 
 def test_symmetry():
     """An axisymmetric vortex must produce symmetric grid output."""
-    h = 0.1
-    nu = 1e-3
+    particle_spacing = 0.1
+    kinematic_viscosity = 1e-3
     time_step_size = 0.01
     rd_ratio = 4.0
 
     # Place 4 particles symmetrically around origin (in xy plane, single z)
-    pos = np.array(
+    position = np.array(
         [
             [0.1, 0.0, 0.0],
             [-0.1, 0.0, 0.0],
@@ -311,7 +367,7 @@ def test_symmetry():
         ],
         dtype=np.float64,
     )
-    circ = np.array(
+    vortex_strength = np.array(
         [
             [0, 0, 1.0],
             [0, 0, 1.0],
@@ -324,7 +380,18 @@ def test_symmetry():
     grid_min = np.array([-0.5, -0.5, -0.5])
     nx = ny = nz = 11
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(
+        position,
+        vortex_strength,
+        grid_min,
+        particle_spacing,
+        kinematic_viscosity,
+        time_step_size,
+        nx,
+        ny,
+        nz,
+        rd_ratio,
+    )
     gz = grid[:, :, 5, 2]  # z-component at z=0 slice
 
     # Check x-symmetry: grid[i,j] ~ grid[nx-1-i,j]
@@ -340,25 +407,38 @@ def test_symmetry():
 
 def test_pruning_budget_mode():
     """Budget pruning should keep at least (1-threshold) of total |Γ|."""
-    h = 0.05
-    nu = 1.0 / 530.0
-    rc = 0.125
-    gamma = 1.0
-    pos, circ, vol = make_lamb_oseen_particles(h, rc, gamma, nu, domain_half=0.5)
+    particle_spacing = 0.05
+    kinematic_viscosity = 1.0 / 530.0
+    initial_core_radius = 0.125
+    circulation = 1.0
+    position, vortex_strength, particle_volume = make_lamb_oseen_particles(
+        particle_spacing, initial_core_radius, circulation, kinematic_viscosity, domain_half=0.5
+    )
 
-    pad = 20 * h
-    lo = pos.min(axis=0) - pad
-    hi = pos.max(axis=0) + pad
-    nx = int(np.ceil((hi[0] - lo[0]) / h)) + 1
-    ny = int(np.ceil((hi[1] - lo[1]) / h)) + 1
-    nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
+    pad = 20 * particle_spacing
+    lo = position.min(axis=0) - pad
+    hi = position.max(axis=0) + pad
+    nx = int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1
+    ny = int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1
+    nz = int(np.ceil((hi[2] - lo[2]) / particle_spacing)) + 1
     grid_min = lo.astype(np.float64)
 
     time_step_size = 0.01
     rd_ratio = 4.0
     threshold_frac = 0.01  # budget threshold
 
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(
+        position,
+        vortex_strength,
+        grid_min,
+        particle_spacing,
+        kinematic_viscosity,
+        time_step_size,
+        nx,
+        ny,
+        nz,
+        rd_ratio,
+    )
     circ_mag = np.linalg.norm(grid, axis=-1)
     gamma_total = circ_mag.sum()
 
@@ -388,35 +468,46 @@ def test_pruning_budget_mode():
 
 def test_repeated_regen_stability():
     """Repeated DVH scatter + budget prune cycles must not blow up or drift."""
-    h = 0.05
-    nu = 1.0 / 530.0
-    rc = 0.125
-    gamma = 1.0
+    particle_spacing = 0.05
+    kinematic_viscosity = 1.0 / 530.0
+    initial_core_radius = 0.125
+    circulation = 1.0
     time_step_size = 0.01
     rd_ratio = 4.0
     threshold_frac = 0.005
     n_cycles = 10
 
-    pos, circ, vol = make_lamb_oseen_particles(h, rc, gamma, nu, domain_half=0.5)
-    initial_total_gamma = circ.sum(axis=0).copy()
-    initial_abs_gamma = np.abs(circ[:, 2]).sum()
+    position, vortex_strength, particle_volume = make_lamb_oseen_particles(
+        particle_spacing, initial_core_radius, circulation, kinematic_viscosity, domain_half=0.5
+    )
+    initial_total_gamma = vortex_strength.sum(axis=0).copy()
+    initial_abs_gamma = np.abs(vortex_strength[:, 2]).sum()
 
     print(f"  Repeated regen stability test ({n_cycles} cycles):")
-    print(f"    Initial particles    = {len(pos)}")
+    print(f"    Initial particles    = {len(position)}")
     print(f"    Initial Σ|Γ_z|       = {initial_abs_gamma:.6e}")
     print(f"    Initial ΣΓ           = {initial_total_gamma}")
 
     for cycle in range(n_cycles):
-        pad = 20 * h
-        lo = pos.min(axis=0) - pad
-        hi = pos.max(axis=0) + pad
-        nx = int(np.ceil((hi[0] - lo[0]) / h)) + 1
-        ny = int(np.ceil((hi[1] - lo[1]) / h)) + 1
-        nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
+        pad = 20 * particle_spacing
+        lo = position.min(axis=0) - pad
+        hi = position.max(axis=0) + pad
+        nx = int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1
+        ny = int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1
+        nz = int(np.ceil((hi[2] - lo[2]) / particle_spacing)) + 1
         grid_min = lo.astype(np.float64)
 
         grid = dvh_scatter_pure_numpy(
-            pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio
+            position,
+            vortex_strength,
+            grid_min,
+            particle_spacing,
+            kinematic_viscosity,
+            time_step_size,
+            nx,
+            ny,
+            nz,
+            rd_ratio,
         )
 
         # Budget pruning
@@ -437,9 +528,9 @@ def test_repeated_regen_stability():
         # Rebuild particles from surviving grid nodes
         new_pos = np.stack(
             [
-                grid_min[0] + ix * h,
-                grid_min[1] + iy * h,
-                grid_min[2] + iz * h,
+                grid_min[0] + ix * particle_spacing,
+                grid_min[1] + iy * particle_spacing,
+                grid_min[2] + iz * particle_spacing,
             ],
             axis=1,
         )
@@ -448,7 +539,7 @@ def test_repeated_regen_stability():
         total_gamma = new_circ.sum(axis=0)
         abs_gamma = np.abs(new_circ[:, 2]).sum()
 
-        # Center of vorticity
+        # Centre of vorticity
         mags = np.linalg.norm(new_circ, axis=1)
         cov = (new_pos * mags[:, None]).sum(axis=0) / mags.sum()
 
@@ -458,19 +549,19 @@ def test_repeated_regen_stability():
             f"CoV=({cov[0]:+.4f},{cov[1]:+.4f},{cov[2]:+.4f})"
         )
 
-        pos = new_pos
-        circ = new_circ
+        position = new_pos
+        vortex_strength = new_circ
 
     # After all cycles, check no blow-up
-    final_abs_gamma = np.abs(circ[:, 2]).sum()
-    circ_mag_final = np.linalg.norm(circ, axis=1)
-    cov_final = (pos * circ_mag_final[:, None]).sum(axis=0) / circ_mag_final.sum()
+    final_abs_gamma = np.abs(vortex_strength[:, 2]).sum()
+    circ_mag_final = np.linalg.norm(vortex_strength, axis=1)
+    cov_final = (position * circ_mag_final[:, None]).sum(axis=0) / circ_mag_final.sum()
     drift = np.linalg.norm(cov_final[:2])  # xy drift from origin
 
     print(f"    Final xy-drift from origin = {drift:.6e} m")
     print(f"    Final Σ|Γ_z| / initial     = {final_abs_gamma / initial_abs_gamma:.4f}")
 
-    assert drift < 5 * h, f"Vortex drifted {drift} m after {n_cycles} regen cycles!"
+    assert drift < 5 * particle_spacing, f"Vortex drifted {drift} m after {n_cycles} regen cycles!"
     assert final_abs_gamma > 0.5 * initial_abs_gamma, (
         f"Lost too much circulation: {final_abs_gamma / initial_abs_gamma:.2%} remaining"
     )
@@ -479,50 +570,63 @@ def test_repeated_regen_stability():
 
 def test_lamb_oseen_profile_accuracy():
     """After one DVH scatter step, radial profile should match analytical diffusion."""
-    h = 0.03125
-    nu = 1.0 / 530.0
-    rc = 0.125
-    gamma = 1.0
+    particle_spacing = 0.03125
+    kinematic_viscosity = 1.0 / 530.0
+    initial_core_radius = 0.125
+    circulation = 1.0
     time_step_size = 0.05
 
-    pos, circ, vol = make_lamb_oseen_particles(h, rc, gamma, nu, domain_half=0.6)
+    position, vortex_strength, particle_volume = make_lamb_oseen_particles(
+        particle_spacing, initial_core_radius, circulation, kinematic_viscosity, domain_half=0.6
+    )
 
-    pad = 20 * h
-    lo = pos.min(axis=0) - pad
-    hi = pos.max(axis=0) + pad
-    nx = int(np.ceil((hi[0] - lo[0]) / h)) + 1
-    ny = int(np.ceil((hi[1] - lo[1]) / h)) + 1
-    nz = int(np.ceil((hi[2] - lo[2]) / h)) + 1
+    pad = 20 * particle_spacing
+    lo = position.min(axis=0) - pad
+    hi = position.max(axis=0) + pad
+    nx = int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1
+    ny = int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1
+    nz = int(np.ceil((hi[2] - lo[2]) / particle_spacing)) + 1
     grid_min = lo.astype(np.float64)
 
     rd_ratio = 4.0
-    grid = dvh_scatter_pure_numpy(pos, circ, grid_min, h, nu, time_step_size, nx, ny, nz, rd_ratio)
+    grid = dvh_scatter_pure_numpy(
+        position,
+        vortex_strength,
+        grid_min,
+        particle_spacing,
+        kinematic_viscosity,
+        time_step_size,
+        nx,
+        ny,
+        nz,
+        rd_ratio,
+    )
 
     # Analytical solution at t = t0 + dt
-    t0 = rc**2 / (4 * nu)
+    t0 = initial_core_radius**2 / (4 * kinematic_viscosity)
     t_new = t0 + time_step_size
 
     # Sample radial profile from grid at z mid-plane
     nz_mid = nz // 2
     gz = grid[:, :, nz_mid, 2]  # ω_z component
 
-    # Convert grid circulation to vorticity: ω = α / vol
-    vol_cell = h**3
+    # Convert grid circulation to vorticity: ω = α / particle_volume
+    vol_cell = particle_spacing**3
     omega_grid = gz / vol_cell
 
-    # Compute radial distance from center
+    # Compute radial distance from centre
     # Radial bins
-    r_max = 4 * rc
+    r_max = 4 * initial_core_radius
     n_bins = 40
     r_edges = np.linspace(0, r_max, n_bins + 1)
-    r_centers = 0.5 * (r_edges[:-1] + r_edges[1:])
+    r_centres = 0.5 * (r_edges[:-1] + r_edges[1:])
 
     omega_binned = np.zeros(n_bins)
     counts = np.zeros(n_bins)
     for i in range(nx):
         for j in range(ny):
-            x = grid_min[0] + i * h
-            y = grid_min[1] + j * h
+            x = grid_min[0] + i * particle_spacing
+            y = grid_min[1] + j * particle_spacing
             r = np.sqrt(x**2 + y**2)
             bin_idx = np.searchsorted(r_edges, r) - 1
             if 0 <= bin_idx < n_bins:
@@ -534,10 +638,14 @@ def test_lamb_oseen_profile_accuracy():
     omega_avg[valid] = omega_binned[valid] / counts[valid]
 
     # Analytical
-    omega_analytical = gamma / (4 * np.pi * nu * t_new) * np.exp(-(r_centers**2) / (4 * nu * t_new))
+    omega_analytical = (
+        circulation
+        / (4 * np.pi * kinematic_viscosity * t_new)
+        * np.exp(-(r_centres**2) / (4 * kinematic_viscosity * t_new))
+    )
 
-    # Compare only up to 2*rc where signal is strong
-    mask = r_centers < 2 * rc
+    # Compare only up to 2*initial_core_radius where signal is strong
+    mask = r_centres < 2 * initial_core_radius
     if mask.sum() > 0 and valid[mask].sum() > 0:
         inner_mask = mask & valid
         if inner_mask.sum() > 3:
@@ -547,7 +655,7 @@ def test_lamb_oseen_profile_accuracy():
             max_rel_err = rel_err.max()
             mean_rel_err = rel_err.mean()
             print("  Lamb-Oseen profile accuracy test:")
-            print(f"    Particles    = {len(pos)}")
+            print(f"    Particles    = {len(position)}")
             print(f"    Grid         = {nx}×{ny}×{nz}")
             print(f"    t0={t0:.4f}, dt={time_step_size}, t_new={t_new:.4f}")
             print(f"    Max rel err (r < 2rc)  = {max_rel_err:.4f}")

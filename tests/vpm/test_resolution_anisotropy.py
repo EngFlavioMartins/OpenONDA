@@ -178,13 +178,17 @@ def test_pancake_deformation_exact_recovery(reference_cloud, lam):
 
 
 def test_simple_shear_matches_direct_numpy_svd(reference_cloud):
-    X, mask, nbrs = reference_cloud
-    gamma = 0.6
-    F_applied = np.array([[1.0, gamma, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-    F_hat, _ = _apply_and_recover(X, mask, nbrs, F_applied)
-    s_direct = np.linalg.svd(F_applied, compute_uv=False)
+    position, mask, neighbours = reference_cloud
+    shear_rate = 0.6
+    applied_deformation_gradient = np.array(
+        [[1.0, shear_rate, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    )
+    recovered_deformation_gradient, _ = _apply_and_recover(
+        position, mask, neighbours, applied_deformation_gradient
+    )
+    s_direct = np.linalg.svd(applied_deformation_gradient, compute_uv=False)
     s_direct = np.sort(s_direct)[::-1]
-    s_hat = principal_stretches(F_hat)
+    s_hat = principal_stretches(recovered_deformation_gradient)
     np.testing.assert_allclose(s_hat, np.broadcast_to(s_direct, s_hat.shape), atol=1e-7, rtol=1e-6)
 
 
@@ -246,10 +250,10 @@ def test_degenerate_coplanar_neighborhood_flagged_by_condition_number():
     # All neighbours in the z=0 plane: the reference moment matrix is
     # singular in z, must be flagged by a large condition number.
     rng = np.random.default_rng(5)
-    center = np.zeros(3)
+    centre = np.zeros(3)
     planar_nbrs = rng.uniform(-1, 1, size=(20, 3))
     planar_nbrs[:, 2] = 0.0
-    Xi = planar_nbrs - center  # reference offsets to particle 0's neighbours
+    Xi = planar_nbrs - centre  # reference offsets to particle 0's neighbours
     den = Xi.T @ Xi
     cond = np.linalg.cond(den)
     assert cond > 1e10

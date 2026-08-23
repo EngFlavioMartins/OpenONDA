@@ -11,14 +11,14 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     VelocityConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.runtime.backend import reset_taichi_backend
+from source.solvers.vpm.runtime.backend import reset_taichi_backend
 
 _SIGMA = 0.2
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
@@ -38,7 +38,7 @@ def _single_blob_solver(make_solver, kernel_name):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([0.0]),
     )
     return solver
@@ -58,7 +58,7 @@ def _two_particle_solver(make_solver, kernel_name, pos1, pos2, gamma1, gamma2):
         velocity=np.zeros((2, 3)),
         vortex_strength=np.array([gamma1, gamma2]),
         core_radius=np.full(2, _SIGMA),
-        volume=np.full(2, _VOLUME),
+        particle_volume=np.full(2, _VOLUME),
         kinematic_viscosity=np.zeros(2),
     )
     return solver
@@ -74,7 +74,7 @@ def test_divergence_free_single_blob(kernel_name, backend, solver_for_backend):
     """
     Incompressible flow: trace(∇u) = ∂u_x/∂x + ∂u_y/∂y + ∂u_z/∂z = 0.
 
-    For a single Gaussian blob probed at several radii the trace must vanish
+    For a single Gaussian blob probed at several core_radius the trace must vanish
     within numerical round-off.
 
     Failure → compressible velocity kernel or wrong diagonal components.
@@ -82,7 +82,7 @@ def test_divergence_free_single_blob(kernel_name, backend, solver_for_backend):
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     r_values = np.array([0.5, 1.0, 2.0, 5.0]) * _SIGMA
     probes = np.column_stack([r_values, np.zeros_like(r_values), np.zeros_like(r_values)])
-    grad_flat = solver.compute_target_velocity_gradients(probes)
+    grad_flat = solver.compute_velocity_gradient_at_points(probes)
     grad = grad_flat.reshape(-1, 3, 3)
     trace = np.trace(grad, axis1=1, axis2=2)
     assert np.allclose(trace, 0.0, atol=1e-5), (
@@ -102,7 +102,7 @@ def test_self_gradient_zero(kernel_name, backend, solver_for_backend):
     Failure → missing self-exclusion in gradient kernel.
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
-    grad_flat = solver.compute_target_velocity_gradients(np.array([[0.0, 0.0, 0.0]]))
+    grad_flat = solver.compute_velocity_gradient_at_points(np.array([[0.0, 0.0, 0.0]]))
     grad = grad_flat.reshape(3, 3)
     assert np.allclose(grad, 0.0, atol=1e-6), (
         f"{kernel_name}/{backend}: self-gradient = {grad} (must be zero)"
@@ -124,7 +124,7 @@ def test_vorticity_tensor_antisymmetry(kernel_name, backend, solver_for_backend)
     """
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     probes = np.array([[_SIGMA, 0.0, 0.0], [2 * _SIGMA, 0.0, 0.0]])
-    grad_flat = solver.compute_target_velocity_gradients(probes)
+    grad_flat = solver.compute_velocity_gradient_at_points(probes)
     grad = grad_flat.reshape(-1, 3, 3)
     Omega = 0.5 * (grad - np.transpose(grad, (0, 2, 1)))
     # Diagonal must vanish
@@ -158,7 +158,7 @@ def test_strain_tensor_symmetry(kernel_name, backend, solver_for_backend):
         gamma2=[0.0, 0.0, -1.0],
     )
     probes = np.array([[0.0, 0.0, 0.0], [0.25, 0.0, 0.0]])
-    grad_flat = solver.compute_target_velocity_gradients(probes)
+    grad_flat = solver.compute_velocity_gradient_at_points(probes)
     grad = grad_flat.reshape(-1, 3, 3)
     S = 0.5 * (grad + np.transpose(grad, (0, 2, 1)))
     diff = S - np.transpose(S, (0, 2, 1))
@@ -181,7 +181,7 @@ def test_cross_backend_consistency_gradients(kernel_name, backend, solver_for_ba
 
     solver = _single_blob_solver(solver_for_backend, kernel_name)
     probes = np.array([[_SIGMA, 0.0, 0.0], [2 * _SIGMA, 0.0, 0.0], [5 * _SIGMA, 0.0, 0.0]])
-    grad_flat = solver.compute_target_velocity_gradients(probes)
+    grad_flat = solver.compute_velocity_gradient_at_points(probes)
     grad = grad_flat.reshape(-1, 3, 3)
 
     key = f"{kernel_name}_grad"
@@ -228,7 +228,7 @@ def test_target_velocity_gradient_matches_velocity_finite_difference(tmp_path, t
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.2, -0.4, 1.0]]),
         core_radius=np.array([sigma]),
-        volume=np.array([(4.0 / 3.0) * np.pi * sigma**3]),
+        particle_volume=np.array([(4.0 / 3.0) * np.pi * sigma**3]),
         kinematic_viscosity=np.array([0.0]),
     )
 
@@ -237,11 +237,11 @@ def test_target_velocity_gradient_matches_velocity_finite_difference(tmp_path, t
     for axis in range(3):
         offset = np.zeros((1, 3))
         offset[0, axis] = h
-        up = solver.compute_target_velocities(target + offset, include_freestream=False)[0]
-        down = solver.compute_target_velocities(target - offset, include_freestream=False)[0]
+        up = solver.compute_velocity_at_points(target + offset, include_freestream=False)[0]
+        down = solver.compute_velocity_at_points(target - offset, include_freestream=False)[0]
         grad_fd[:, axis] = (up - down) / (2.0 * h)
 
-    grad_kernel = solver.compute_target_velocity_gradients(target).reshape(3, 3)
+    grad_kernel = solver.compute_velocity_gradient_at_points(target).reshape(3, 3)
     np.testing.assert_allclose(grad_kernel, grad_fd, rtol=1.5e-2, atol=2e-3)
 
 
@@ -263,7 +263,7 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
             logging_interval_steps=0,
         )
     )
-    positions = np.array(
+    position = np.array(
         [
             [-0.55, -0.30, 0.10],
             [-0.20, 0.45, -0.35],
@@ -276,8 +276,8 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
         ]
     )
     solver.add_vortex_particles(
-        position=positions,
-        velocity=np.zeros_like(positions),
+        position=position,
+        velocity=np.zeros_like(position),
         vortex_strength=np.array(
             [
                 [0.2, -0.1, 0.6],
@@ -290,9 +290,9 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
                 [0.2, 0.2, 0.4],
             ]
         ),
-        core_radius=np.full(len(positions), _SIGMA),
-        volume=np.full(len(positions), _VOLUME),
-        kinematic_viscosity=np.zeros(len(positions)),
+        core_radius=np.full(len(position), _SIGMA),
+        particle_volume=np.full(len(position), _VOLUME),
+        kinematic_viscosity=np.zeros(len(position)),
     )
 
     physics = solver.physics
@@ -309,8 +309,8 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     monkeypatch.setattr(
         physics, "compute_target_velocity_and_gradients_hierarchical", record_hierarchical_fields
     )
-    monkeypatch.setattr(physics, "compute_target_velocity_gradients", direct_gradient_must_not_run)
-    tree = physics._get_or_create_treecode(len(positions), theta)
+    monkeypatch.setattr(physics, "compute_target_velocity_gradient", direct_gradient_must_not_run)
+    tree = physics._get_or_create_treecode(len(position), theta)
     tree_build = tree.build
     tree_builds = []
 
@@ -321,7 +321,7 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     monkeypatch.setattr(tree, "build", record_tree_build)
 
     target = np.array([[0.12, 0.16, -0.22]])
-    velocity, gradient = solver.compute_complete_target_velocity_and_gradients(
+    velocity, gradient = solver.compute_velocity_and_gradient_at_points(
         target, particle_spacing=0.04
     )
     gradient = gradient[0]
@@ -332,11 +332,11 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     for axis in range(3):
         offset = np.zeros((1, 3))
         offset[0, axis] = step
-        upper = solver.compute_target_velocities(target + offset, include_freestream=False)[0]
-        lower = solver.compute_target_velocities(target - offset, include_freestream=False)[0]
+        upper = solver.compute_velocity_at_points(target + offset, include_freestream=False)[0]
+        lower = solver.compute_velocity_at_points(target - offset, include_freestream=False)[0]
         finite_difference[:, axis] = (upper - lower) / (2.0 * step)
 
-    np.testing.assert_allclose(velocity, solver.compute_target_velocities(target))
+    np.testing.assert_allclose(velocity, solver.compute_velocity_at_points(target))
     np.testing.assert_allclose(gradient, finite_difference, rtol=5e-2, atol=3e-3)
     # The face trace and neighbouring target probes see one unchanged particle
     # state, hence share the already-built tree.
@@ -345,15 +345,15 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     # A self evaluation can build the same tree from an intermediate RK state.
     # It must invalidate the target key so the next public target query cannot
     # accept that internal tree on the basis of a stale source revision.
-    physics.velocity_self(
+    physics.compute_self_induced_velocity(
         solver.particles.position,
         solver.particles.vortex_strength,
         solver.particles.core_radius,
         solver.particles.velocity,
         solver.particles.velocity_background,
-        len(positions),
+        len(position),
     )
-    solver.compute_target_velocities(target)
+    solver.compute_velocity_at_points(target)
     assert len(tree_builds) == 3
 
     # Mutating a Biot--Savart source publishes a new particle revision and must
@@ -361,7 +361,7 @@ def test_complete_target_fields_use_one_treecode_operator(tmp_path, monkeypatch)
     updated_circulation = solver.particle_vortex_strength.copy()
     updated_circulation[0, 2] *= 1.1
     solver.particles.set_field("vortex_strength", updated_circulation)
-    solver.compute_target_velocities(target)
+    solver.compute_velocity_at_points(target)
     assert len(tree_builds) == 4
 
 
@@ -370,24 +370,24 @@ def test_mixed_target_trace_uses_only_two_nonparticle_samples():
     solver = VPMSolver.__new__(VPMSolver)
     solver.physics = SimpleNamespace(
         velocity_method="DIRECT",
-        compute_target_velocities=lambda *_args, **_kwargs: np.zeros((2, 3)),
-        compute_target_velocity_gradients=lambda *_args, **_kwargs: np.zeros((2, 9)),
+        compute_target_velocity=lambda *_args, **_kwargs: np.zeros((2, 3)),
+        compute_target_velocity_gradient=lambda *_args, **_kwargs: np.zeros((2, 9)),
     )
     solver.particles = object()
     solver._body_induced_fn = lambda points: np.asarray(points) @ matrix.T
-    solver.num_sources = 0
+    solver.n_sources = 0
     solver._add_target_velocity_corrections = lambda points, velocity, include_body: (
         np.asarray(velocity) + solver._body_induced_fn(points)
     )
     solver._nonparticle_target_velocity = solver._body_induced_fn
 
     points = np.array([[0.2, -0.1, 0.3], [-0.4, 0.5, -0.2]])
-    normals = np.array([[1.0, 0.0, 0.0], [0.0, 3.0, 4.0]])
-    velocity, tangential = solver.compute_complete_target_velocity_and_tangential_normal_gradient(
-        points, normals, particle_spacing=0.04
+    normal = np.array([[1.0, 0.0, 0.0], [0.0, 3.0, 4.0]])
+    velocity, tangential = solver.compute_velocity_and_tangential_normal_gradient_at_points(
+        points, normal, particle_spacing=0.04
     )
 
-    unit_normals = normals / np.linalg.norm(normals, axis=1)[:, None]
+    unit_normals = normal / np.linalg.norm(normal, axis=1)[:, None]
     expected_velocity = points @ matrix.T
     derivative = np.einsum("ij,fj->fi", matrix, unit_normals)
     expected_tangential = (

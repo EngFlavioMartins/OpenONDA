@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from source.solvers.VPM.core.solver import VPMSolver
-from source.solvers.VPM.physics.engine import _AdvectionHandler
+from source.solvers.vpm.core.solver import VPMSolver
+from source.solvers.vpm.physics.engine import _AdvectionHandler
 
 
 def test_panel_body_field_is_added_to_target_velocity():
@@ -13,7 +13,7 @@ def test_panel_body_field_is_added_to_target_velocity():
         def add_surface(self, uid, path):
             assert uid == "body"
             assert path == "cube.stl"
-            self.lattice = SimpleNamespace(num_panels=12)
+            self.lattice = SimpleNamespace(n_panels=12)
 
         def initialize(self, force=False):
             assert force
@@ -50,7 +50,9 @@ def test_body_field_is_added_at_each_advection_velocity_evaluation():
         body_velocity = staticmethod(lambda points: np.full_like(points, [0.2, -0.1, 0.0]))
 
         @staticmethod
-        def velocity_self(_pos, _gamma, _radius, output, _background, _count, reuse_tree=False):
+        def compute_self_induced_velocity(
+            _pos, _gamma, _radius, output, _background, _count, reuse_tree=False
+        ):
             output.values[:] = [1.0, 0.0, 0.0]
 
     particles = SimpleNamespace(
@@ -58,18 +60,18 @@ def test_body_field_is_added_at_each_advection_velocity_evaluation():
         core_radius=Field(np.ones(2)),
         velocity_background=Field(np.zeros((2, 3))),
     )
-    positions = Field([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-    velocities = Field(np.zeros((2, 3)))
+    position = Field([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    velocity = Field(np.zeros((2, 3)))
 
-    _AdvectionHandler(Physics())._vel(particles, positions, velocities, 2)
+    _AdvectionHandler(Physics())._vel(particles, position, velocity, 2)
 
-    np.testing.assert_allclose(velocities.values, [[1.2, -0.1, 0.0]] * 2)
+    np.testing.assert_allclose(velocity.values, [[1.2, -0.1, 0.0]] * 2)
 
 
 def test_target_only_panel_field_is_not_added_to_particle_advection():
     class Panel:
-        lattice = SimpleNamespace(num_panels=12)
-        coupling_scope = "vpm_bc"
+        lattice = SimpleNamespace(n_panels=12)
+        coupling_scope = "vpm_boundary_condition"
 
         @staticmethod
         def initialize(force=False):
@@ -90,7 +92,7 @@ def test_target_only_panel_field_is_not_added_to_particle_advection():
 
 def test_pressure_only_panel_field_is_not_added_to_velocity_targets():
     class Panel:
-        lattice = SimpleNamespace(num_panels=12)
+        lattice = SimpleNamespace(n_panels=12)
         coupling_scope = "pressure"
 
         @staticmethod
@@ -115,22 +117,22 @@ def test_panel_field_contributes_to_pressure_gradient():
 
     class PressurePhysics:
         @staticmethod
-        def compute_target_pressure_gradients_hierarchical(_particles, points, **kwargs):
+        def compute_target_pressure_gradient_hierarchical(_particles, points, **kwargs):
             body_velocity = kwargs["body_fn"](points)
             velocity = kwargs["freestream_velocity"] + body_velocity
-            return {"grad_p": -np.einsum("mb,ab->ma", velocity, matrix)}
+            return {"pressure_gradient": -np.einsum("mb,ab->ma", velocity, matrix)}
 
     solver = VPMSolver.__new__(VPMSolver)
     freestream = np.array([1.0, 0.0, 0.0])
     solver.particles = SimpleNamespace(
-        n_particles=0,
+        n_particles_total=0,
         velocity_background_cpu=lambda: freestream,
     )
     solver._pressure_physics = PressurePhysics()
     solver._body_induced_fn = lambda points: np.asarray(points) @ matrix.T
 
     points = np.array([[0.4, -0.2, 0.1]])
-    result = solver.compute_target_pressure_gradients(
+    result = solver.compute_pressure_gradient_at_points(
         points,
         include_viscous=False,
         include_temporal=False,
@@ -140,4 +142,4 @@ def test_panel_field_contributes_to_pressure_gradient():
 
     velocity = freestream + points @ matrix.T
     expected = -np.einsum("mb,ab->ma", velocity, matrix)
-    np.testing.assert_allclose(result["grad_p"], expected, rtol=1e-8, atol=1e-8)
+    np.testing.assert_allclose(result["pressure_gradient"], expected, rtol=1e-8, atol=1e-8)

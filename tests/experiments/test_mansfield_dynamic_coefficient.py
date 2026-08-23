@@ -16,7 +16,7 @@ be non-negative, the clip set C_r = 0, the closure supplied no SGS transfer, and
 
 The decisive invariant tested here: the Leonard term is not a free choice.  It
 is identically the exact SGS source of the test filter acting on the resolved
-field, so it must equal `exact_sgs_for_filter(grid, u_resolved, T)["g"]` to
+field, so it must equal `exact_sgs_for_filter(grid, u_resolved, T)["subgrid_torque"]` to
 machine precision.  That reference path is independent of the dynamic procedure
 and was already validated in Stage 7A, where the two-filter decomposition closed
 to 3.1e-15.
@@ -130,7 +130,7 @@ def test_leonard_term_equals_exact_sgs_of_test_filter():
     test_filter = gaussian_test_filter(grid, 0.35)
 
     computed = leonard_term(grid, velocity, vorticity, test_filter)
-    reference = exact_sgs_for_filter(grid, velocity, test_filter)["g"]
+    reference = exact_sgs_for_filter(grid, velocity, test_filter)["subgrid_torque"]
 
     assert relative_error(computed, reference) < 1.0e-12
 
@@ -148,7 +148,7 @@ def test_legacy_leonard_term_violates_the_identity():
     test_filter = gaussian_test_filter(grid, 0.35)
 
     legacy = legacy_leonard_term(grid, velocity, vorticity, test_filter)
-    reference = exact_sgs_for_filter(grid, velocity, test_filter)["g"]
+    reference = exact_sgs_for_filter(grid, velocity, test_filter)["subgrid_torque"]
 
     assert relative_error(legacy, reference) > 0.5
 
@@ -187,7 +187,7 @@ def test_dynamic_coefficient_is_admissible_on_agard():
     width = gaussian_energy_width_ratio() * sigma
 
     coefficient, diagnostics = mansfield_dynamic_coefficient(
-        grid, exact["u"], exact["w"], width, sigma
+        grid, exact["velocity"], exact["vorticity"], width, sigma
     )
 
     assert diagnostics["coefficient_squared_raw"] > 0.0, (
@@ -209,10 +209,10 @@ def test_legacy_expression_inverts_the_coefficient_sign_on_agard():
     test_filter = gaussian_test_filter(grid, 2.0 * sigma)
 
     base = -(width**2) * grid.curl(
-        strain_magnitude(grid, exact["u"])[None, ...] * grid.curl(exact["w"])
+        strain_magnitude(grid, exact["velocity"])[None, ...] * grid.curl(exact["vorticity"])
     )
     test_width = 2.0 * width
-    velocity_test, vorticity_test = test_filter(exact["u"]), test_filter(exact["w"])
+    velocity_test, vorticity_test = test_filter(exact["velocity"]), test_filter(exact["vorticity"])
     test_basis = -(test_width**2) * grid.curl(
         strain_magnitude(grid, velocity_test)[None, ...] * grid.curl(vorticity_test)
     )
@@ -222,8 +222,12 @@ def test_legacy_expression_inverts_the_coefficient_sign_on_agard():
     def coefficient_squared(ell):
         return float(np.mean(np.sum(ell * m, axis=0))) / denominator
 
-    legacy = coefficient_squared(legacy_leonard_term(grid, exact["u"], exact["w"], test_filter))
-    corrected = coefficient_squared(leonard_term(grid, exact["u"], exact["w"], test_filter))
+    legacy = coefficient_squared(
+        legacy_leonard_term(grid, exact["velocity"], exact["vorticity"], test_filter)
+    )
+    corrected = coefficient_squared(
+        leonard_term(grid, exact["velocity"], exact["vorticity"], test_filter)
+    )
 
     assert legacy < 0.0, "legacy expression should reproduce the historical failure"
     assert corrected > 0.0, "corrected expression must be admissible"
@@ -242,12 +246,12 @@ def test_dynamic_procedure_still_underpredicts_transfer():
     width = gaussian_energy_width_ratio() * sigma
 
     coefficient, diagnostics = mansfield_dynamic_coefficient(
-        grid, exact["u"], exact["w"], width, sigma
+        grid, exact["velocity"], exact["vorticity"], width, sigma
     )
-    torque, _ = mansfield_torque(grid, exact["u"], exact["w"], coefficient, width)
+    torque, _ = mansfield_torque(grid, exact["velocity"], exact["vorticity"], coefficient, width)
 
-    exact_transfer = float(np.mean(np.sum(exact["w"] * exact["g"], axis=0)))
-    model_transfer = float(np.mean(np.sum(exact["w"] * torque, axis=0)))
+    exact_transfer = float(np.mean(np.sum(exact["vorticity"] * exact["subgrid_torque"], axis=0)))
+    model_transfer = float(np.mean(np.sum(exact["vorticity"] * torque, axis=0)))
 
     assert exact_transfer < 0.0
     assert 0.0 < model_transfer / exact_transfer < 0.5
@@ -263,7 +267,7 @@ def test_mansfield_operator_is_solenoidal():
     """curl-curl form cannot inject divergence into the vorticity field."""
     grid, _, sigma, exact = agard_resolved_state()
     width = gaussian_energy_width_ratio() * sigma
-    torque, _ = mansfield_torque(grid, exact["u"], exact["w"], 0.1367, width)
+    torque, _ = mansfield_torque(grid, exact["velocity"], exact["vorticity"], 0.1367, width)
     assert divergence_relative(grid, torque) < 1.0e-12
 
 
@@ -271,9 +275,9 @@ def test_mansfield_operator_is_solenoidal():
 def test_current_openonda_operator_is_not_solenoidal():
     """Known production defect, pinned so the contrast stays visible.
 
-    `nu_t * laplacian(omega)` with spatially varying nu_t does not preserve
+    `eddy_viscosity * laplacian(omega)` with spatially varying eddy_viscosity does not preserve
     div(omega) = 0.  Fixing this is tracked separately from the LES question.
     """
     grid, h, _, exact = agard_resolved_state()
-    torque, _ = openonda_current_torque(grid, exact["u"], exact["w"], cs=0.17, h=h)
+    torque, _ = openonda_current_torque(grid, exact["velocity"], exact["vorticity"], cs=0.17, h=h)
     assert divergence_relative(grid, torque) > 0.1

@@ -5,12 +5,12 @@ from __future__ import annotations
 from pydantic import ValidationError
 import pytest
 
-from source.solvers.VPM.config.state import ParticlesState, SolverState
+from source.solvers.vpm.config.state import ParticlesState, SolverState
 
 
 def test_solver_state_rejects_obsolete_processing_unit():
     with pytest.raises(ValidationError):
-        SolverState(time_step_size=0.01, processing_unit="CUDA")
+        SolverState(time_step_size=0.01, unsupported_backend_key="CUDA")
 
 
 def test_particles_state_rejects_legacy_circulation_field():

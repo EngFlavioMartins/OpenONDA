@@ -36,7 +36,7 @@ from stage_4b1_forcing_verification import (  # noqa: E402
 from stage_4b_spectral_pilot import (  # noqa: E402
     VorticitySolver,
     diagnostics,
-    energy_spectrum,
+    kinetic_energy_spectrum,
 )
 
 INK = "#20252a"
@@ -122,7 +122,7 @@ def rotational_reference_rhs(
     nonlinear_curl_hat = curl_hat(solver, velocity_cross_vorticity)
     rhs_hat = (
         nonlinear_curl_hat
-        - solver.viscosity * solver.grid.k2 * vorticity_hat
+        - solver.kinematic_viscosity * solver.grid.k2 * vorticity_hat
         + acceleration_curl_hat
     ) * solver.mask
     return solver.grid.ifft(rhs_hat)
@@ -165,15 +165,15 @@ def record_state(
 ) -> dict[str, float]:
     record = diagnostics(solver, vorticity, "no_sgs", gaussian_delta)
     velocity = solver.velocity(vorticity)
-    spectrum = energy_spectrum(solver, vorticity)
-    energy = float(record["energy"])
-    enstrophy = float(record["enstrophy"])
-    dissipation = 2.0 * solver.viscosity * enstrophy
-    scale = integral_scale(spectrum, energy)
-    component_rms = np.sqrt(2.0 * energy / 3.0)
+    spectrum = kinetic_energy_spectrum(solver, vorticity)
+    total_kinetic_energy = float(record["total_kinetic_energy"])
+    total_enstrophy = float(record["total_enstrophy"])
+    dissipation = 2.0 * solver.kinematic_viscosity * total_enstrophy
+    scale = integral_scale(spectrum, total_kinetic_energy)
+    component_rms = np.sqrt(2.0 * total_kinetic_energy / 3.0)
     variances = component_variances(velocity)
     turnover = scale / max(component_rms, np.finfo(float).tiny)
-    eta = (solver.viscosity**3 / max(dissipation, np.finfo(float).tiny)) ** 0.25
+    eta = (solver.kinematic_viscosity**3 / max(dissipation, np.finfo(float).tiny)) ** 0.25
     conservative_kmax = solver.grid.n // 3 - 1
     record.update(
         {
@@ -182,7 +182,9 @@ def record_state(
             "dissipation": dissipation,
             "integral_scale": scale,
             "turnover_time": turnover,
-            "reynolds_lambda": reynolds_lambda(energy, enstrophy, solver.viscosity),
+            "reynolds_lambda": reynolds_lambda(
+                total_kinetic_energy, total_enstrophy, solver.kinematic_viscosity
+            ),
             "kmax_eta": conservative_kmax * eta,
             "component_anisotropy": component_anisotropy(velocity),
             "component_variance_x": float(variances[0]),
@@ -217,13 +219,13 @@ def half_window_change(values: np.ndarray) -> float:
 
 
 def integral_correlation_time(x: np.ndarray, values: np.ndarray) -> float:
-    centered = values - np.mean(values)
-    variance = float(np.mean(centered * centered))
+    centred = values - np.mean(values)
+    variance = float(np.mean(centred * centred))
     numerical_floor = 100.0 * np.finfo(float).eps * float(np.mean(values * values))
     if variance <= max(numerical_floor, np.finfo(float).tiny):
         return 0.0
-    correlation = np.correlate(centered, centered, mode="full")[len(centered) - 1 :]
-    correlation /= np.arange(len(centered), 0, -1) * variance
+    correlation = np.correlate(centred, centred, mode="full")[len(centred) - 1 :]
+    correlation /= np.arange(len(centred), 0, -1) * variance
     nonpositive = np.flatnonzero(correlation[1:] <= 0.0)
     stop = int(nonpositive[0] + 1) if len(nonpositive) else len(correlation)
     spacing = float(np.mean(np.diff(x)))
@@ -264,7 +266,7 @@ def assess_stationarity(
     start = total_turnovers - window_turnovers
     window = [record for record in records if record["turnovers"] >= start]
     coordinate = np.asarray([record["turnovers"] for record in window])
-    energy = np.asarray([record["energy"] for record in window])
+    total_kinetic_energy = np.asarray([record["total_kinetic_energy"] for record in window])
     dissipation = np.asarray([record["dissipation"] for record in window])
     forcing = np.asarray([record["forcing_power"] for record in window])
     high_k = np.asarray([record["high_k_energy_fraction"] for record in window])
@@ -276,70 +278,70 @@ def assess_stationarity(
         ]
     )
     averaged_anisotropy = float(np.max(np.abs(mean_variances / np.mean(mean_variances) - 1.0)))
-    energy_blocks = block_mean_test(coordinate, energy)
+    total_kinetic_energy_blocks = block_mean_test(coordinate, total_kinetic_energy)
     dissipation_blocks = block_mean_test(coordinate, dissipation)
-    energy_integral_time = integral_correlation_time(coordinate, energy)
+    total_kinetic_energy_integral_time = integral_correlation_time(coordinate, total_kinetic_energy)
     dissipation_integral_time = integral_correlation_time(coordinate, dissipation)
-    longest_integral_time = max(energy_integral_time, dissipation_integral_time)
+    longest_integral_time = max(total_kinetic_energy_integral_time, dissipation_integral_time)
     correlation_times_covered = (
         float("inf")
         if longest_integral_time == 0.0
         else float(np.ptp(coordinate) / longest_integral_time)
     )
     thresholds = {
-        "minimum_development_turnovers": 5.0,
-        "minimum_total_turnovers": 5.0 + window_turnovers,
-        "minimum_correlation_times_covered": 5.0,
-        "energy_slope_per_turnover": 0.02,
+        "min_development_turnovers": 5.0,
+        "min_total_turnovers": 5.0 + window_turnovers,
+        "min_correlation_times_covered": 5.0,
+        "total_kinetic_energy_slope_per_turnover": 0.02,
         "dissipation_slope_per_turnover": 0.05,
-        "maximum_block_relative_change": 0.20,
-        "maximum_block_z_score": 1.96,
+        "max_block_relative_change": 0.20,
+        "max_block_z_score": 1.96,
         "mean_power_imbalance": 0.10,
-        "maximum_high_k_energy_fraction": 0.01,
-        "minimum_kmax_eta": 1.0,
+        "max_high_k_energy_fraction": 0.01,
+        "min_kmax_eta": 1.0,
         "time_averaged_component_anisotropy": 0.10,
     }
     values = {
         "total_turnovers": total_turnovers,
         "window_turnovers": float(coordinate[-1] - coordinate[0]),
-        "energy_slope_per_turnover": relative_slope(coordinate, energy),
+        "total_kinetic_energy_slope_per_turnover": relative_slope(coordinate, total_kinetic_energy),
         "dissipation_slope_per_turnover": relative_slope(coordinate, dissipation),
-        "energy_half_window_change": energy_blocks["relative_change"],
+        "energy_half_window_change": total_kinetic_energy_blocks["relative_change"],
         "dissipation_half_window_change": dissipation_blocks["relative_change"],
-        "energy_block_z_score": energy_blocks["z_score"],
+        "energy_block_z_score": total_kinetic_energy_blocks["z_score"],
         "dissipation_block_z_score": dissipation_blocks["z_score"],
-        "energy_integral_correlation_time": energy_integral_time,
+        "energy_integral_correlation_time": total_kinetic_energy_integral_time,
         "dissipation_integral_correlation_time": dissipation_integral_time,
         "correlation_times_covered": correlation_times_covered,
         "mean_power_imbalance": float(
             abs(np.mean(forcing) - np.mean(dissipation)) / max(abs(np.mean(dissipation)), 1.0e-15)
         ),
-        "maximum_high_k_energy_fraction": float(np.max(high_k)),
-        "minimum_kmax_eta": float(np.min(kmax_eta)),
+        "max_high_k_energy_fraction": float(np.max(high_k)),
+        "min_kmax_eta": float(np.min(kmax_eta)),
         "time_averaged_component_anisotropy": averaged_anisotropy,
         "mean_reynolds_lambda": float(np.mean([record["reynolds_lambda"] for record in window])),
         "window_start_time": float(window[0]["time"]),
         "window_end_time": float(window[-1]["time"]),
     }
     checks = {
-        "enough_spinup_and_window": total_turnovers >= thresholds["minimum_total_turnovers"],
+        "enough_spinup_and_window": total_turnovers >= thresholds["min_total_turnovers"],
         "enough_effective_samples": correlation_times_covered
-        >= thresholds["minimum_correlation_times_covered"],
-        "energy_drift": values["energy_slope_per_turnover"]
-        <= thresholds["energy_slope_per_turnover"],
+        >= thresholds["min_correlation_times_covered"],
+        "total_kinetic_energy_drift": values["total_kinetic_energy_slope_per_turnover"]
+        <= thresholds["total_kinetic_energy_slope_per_turnover"],
         "dissipation_drift": values["dissipation_slope_per_turnover"]
         <= thresholds["dissipation_slope_per_turnover"],
         "energy_block_agreement": values["energy_half_window_change"]
-        <= thresholds["maximum_block_relative_change"]
-        and values["energy_block_z_score"] <= thresholds["maximum_block_z_score"],
+        <= thresholds["max_block_relative_change"]
+        and values["energy_block_z_score"] <= thresholds["max_block_z_score"],
         "dissipation_block_agreement": values["dissipation_half_window_change"]
-        <= thresholds["maximum_block_relative_change"]
-        and values["dissipation_block_z_score"] <= thresholds["maximum_block_z_score"],
+        <= thresholds["max_block_relative_change"]
+        and values["dissipation_block_z_score"] <= thresholds["max_block_z_score"],
         "stationary_energy_balance": values["mean_power_imbalance"]
         <= thresholds["mean_power_imbalance"],
-        "spectral_resolution": values["maximum_high_k_energy_fraction"]
-        <= thresholds["maximum_high_k_energy_fraction"],
-        "kolmogorov_resolution": values["minimum_kmax_eta"] >= thresholds["minimum_kmax_eta"],
+        "spectral_resolution": values["max_high_k_energy_fraction"]
+        <= thresholds["max_high_k_energy_fraction"],
+        "kolmogorov_resolution": values["min_kmax_eta"] >= thresholds["min_kmax_eta"],
         "isotropy": values["time_averaged_component_anisotropy"]
         <= thresholds["time_averaged_component_anisotropy"],
     }
@@ -354,16 +356,16 @@ def assess_stationarity(
 def verify_assessment_logic() -> dict[str, object]:
     coordinate = np.linspace(0.0, 20.0, 201)
 
-    def synthetic(energy_drift: float, imbalance: float) -> list[dict[str, float]]:
+    def synthetic(total_kinetic_energy_drift: float, imbalance: float) -> list[dict[str, float]]:
         records = []
         for value in coordinate:
-            energy = 1.0 + energy_drift * value
+            total_kinetic_energy = 1.0 + total_kinetic_energy_drift * value
             dissipation = 0.1
             records.append(
                 {
                     "time": value,
                     "turnover_time": 1.0,
-                    "energy": energy,
+                    "total_kinetic_energy": total_kinetic_energy,
                     "dissipation": dissipation,
                     "forcing_power": dissipation * (1.0 + imbalance),
                     "high_k_energy_fraction": 0.001,
@@ -392,7 +394,7 @@ def verify_assessment_logic() -> dict[str, object]:
 def run(args: argparse.Namespace) -> tuple[dict[str, object], np.ndarray]:
     if args.reference_n != 2 * args.les_n:
         raise ValueError("reference_n must equal 2 * les_n")
-    solver = VorticitySolver(args.reference_n, args.viscosity)
+    solver = VorticitySolver(args.reference_n, args.kinematic_viscosity)
     gaussian_delta = 2.0 * (2.0 * np.pi / args.les_n) / np.sqrt(6.0)
     forcing = StreamingOUForcing(
         args.les_n,
@@ -437,7 +439,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, object], np.ndarray]:
             raise FloatingPointError(f"non-finite reference state at step {step + 1}")
 
     assessment = assess_stationarity(records, args.window_turnovers)
-    spectrum = energy_spectrum(solver, vorticity)
+    spectrum = kinetic_energy_spectrum(solver, vorticity)
     return (
         {
             "gate": "B.1c stationary forced-HIT reference qualification",
@@ -445,8 +447,8 @@ def run(args: argparse.Namespace) -> tuple[dict[str, object], np.ndarray]:
             "configuration": {
                 "reference_n": args.reference_n,
                 "les_n": args.les_n,
-                "viscosity": args.viscosity,
-                "dt": args.time_step_size,
+                "kinematic_viscosity": args.kinematic_viscosity,
+                "time_step_size": args.time_step_size,
                 "end_time": args.end_time,
                 "save_interval": args.save_interval,
                 "forcing_rms": args.forcing_rms,
@@ -460,14 +462,14 @@ def run(args: argparse.Namespace) -> tuple[dict[str, object], np.ndarray]:
             "theory": {
                 "energy_balance": "dE/dt = P_f - epsilon",
                 "stationary_limit": "<P_f> = <epsilon>",
-                "kolmogorov_scale": "eta = (nu^3/epsilon)^(1/4)",
+                "kolmogorov_scale": "eta = (kinematic viscosity^3/epsilon)^(1/4)",
                 "literature_spinup": "approximately 3-5 large-eddy turnover times",
             },
             "assessment_verification": verify_assessment_logic(),
             "rotational_rhs_relative_difference": rhs_difference,
             "assessment": assessment,
             "records": records,
-            "final_energy_spectrum": spectrum.tolist(),
+            "final_kinetic_energy_spectrum": spectrum.tolist(),
         },
         vorticity,
     )
@@ -478,17 +480,17 @@ def plot_stationarity(result: dict[str, object], output: Path) -> None:
     assessment = result["assessment"]
     values = assessment["values"]
     x = np.asarray([record["turnovers"] for record in records])
-    energy = np.asarray([record["energy"] for record in records])
+    total_kinetic_energy = np.asarray([record["total_kinetic_energy"] for record in records])
     power = np.asarray([record["forcing_power"] for record in records])
     dissipation = np.asarray([record["dissipation"] for record in records])
     window = np.asarray([record["time"] >= values["window_start_time"] for record in records])
-    mean_energy = float(np.mean(energy[window]))
+    mean_total_kinetic_energy = float(np.mean(total_kinetic_energy[window]))
     mean_dissipation = float(np.mean(dissipation[window]))
 
     fig, axes = plt.subplots(2, 2, figsize=(11.2, 7.5), constrained_layout=True)
-    axes[0, 0].plot(x, energy / mean_energy, color=BLUE, linewidth=1.7)
+    axes[0, 0].plot(x, total_kinetic_energy / mean_total_kinetic_energy, color=BLUE, linewidth=1.7)
     axes[0, 0].axhline(1.0, color=INK, linestyle="--", label="stationary mean")
-    axes[0, 0].set_title("Kinetic energy")
+    axes[0, 0].set_title("Kinetic total_kinetic_energy")
     axes[0, 0].set_ylabel(r"$E/\langle E\rangle_{window}$")
 
     axes[0, 1].plot(
@@ -513,7 +515,7 @@ def plot_stationarity(result: dict[str, object], output: Path) -> None:
     axes[1, 0].plot(x, high_k, color=BLUE, linewidth=1.7)
     axes[1, 0].axhline(0.01, color=GOLD, linestyle="--", label="1% spectral-tail gate")
     axes[1, 0].set_title("Fine-grid spectral tail")
-    axes[1, 0].set_ylabel("high-wavenumber energy fraction")
+    axes[1, 0].set_ylabel("high-wavenumber total_kinetic_energy fraction")
     axes[1, 0].legend(frameon=False, fontsize=8)
 
     axes[1, 1].plot(
@@ -560,7 +562,7 @@ def plot_stationarity(result: dict[str, object], output: Path) -> None:
 
 
 def plot_spectrum(result: dict[str, object], output: Path) -> None:
-    spectrum = np.asarray(result["final_energy_spectrum"])
+    spectrum = np.asarray(result["final_kinetic_energy_spectrum"])
     wave = np.arange(len(spectrum), dtype=float)
     positive = (wave > 0.0) & (spectrum > 0.0)
     fig, axis = plt.subplots(figsize=(7.4, 4.8), constrained_layout=True)
@@ -585,7 +587,7 @@ def plot_spectrum(result: dict[str, object], output: Path) -> None:
     axis.axvspan(0.7 * cutoff, cutoff, color=GOLD, alpha=0.15, label="resolution-check band")
     axis.set_xlabel(r"wavenumber shell $k$")
     axis.set_ylabel(r"$E(k)$")
-    axis.set_title("Final reference energy spectrum")
+    axis.set_title("Final reference total_kinetic_energy spectrum")
     axis.grid(color=GRID, linewidth=0.7, which="both")
     axis.spines[["top", "right"]].set_visible(False)
     axis.legend(frameon=False, fontsize=8)
@@ -598,7 +600,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference-n", type=int, default=64)
     parser.add_argument("--les-n", type=int, default=32)
-    parser.add_argument("--viscosity", type=float, default=0.01)
+    parser.add_argument("--kinematic-viscosity", type=float, default=0.01)
     parser.add_argument("--time-step-size", dest="time_step_size", type=float, default=0.02)
     parser.add_argument("--end-time", type=float, default=60.0)
     parser.add_argument("--save-interval", type=float, default=0.1)

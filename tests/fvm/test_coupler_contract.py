@@ -13,7 +13,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -23,24 +23,24 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.assemble.momentum import assemble_momentum_equation
-from source.solvers.FVM.core.parallel import ParallelContext
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
+from source.solvers.fvm.assemble.convection import compute_volumetric_face_flux
+from source.solvers.fvm.assemble.momentum import assemble_momentum_equation
+from source.solvers.fvm.core.parallel import ParallelContext
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.solve.linear_interface import solve_linear_system
 
 from ._structured_mesh import structured_box
 
 CONTRACT_METHODS = [
     "get_cell_centre_coordinates",
-    "get_cell_volumes",
+    "get_cell_volume",
     "get_velocity_field",
     "get_velocity_field_into",
     "get_vorticity_field",
     "get_vorticity_field_into",
     "get_boundary_face_centre_coordinates",
-    "get_boundary_face_normals",
-    "get_boundary_face_areas",
+    "get_boundary_face_normal",
+    "get_boundary_face_area",
     "n_procs",
     "set_cell_scalar_field",
     "set_cell_vector_field",
@@ -90,14 +90,14 @@ def test_getter_shapes_and_normals():
     s, mesh = _make_solver()
     n = mesh["n_cells"]
     assert s.get_cell_centre_coordinates().shape == (n, 3)
-    assert s.get_cell_volumes().shape == (n,)
+    assert s.get_cell_volume().shape == (n,)
     assert s.get_velocity_field().shape == (n, 3)
     assert s.get_vorticity_field().shape == (n, 3)
     nf = next(b["n_faces"] for b in mesh["boundary"] if b["name"] == "xmax")
     assert s.get_boundary_face_centre_coordinates("xmax").shape == (nf, 3)
-    normals = s.get_boundary_face_normals("xmax")
+    normals = s.get_boundary_face_normal("xmax")
     assert np.allclose(np.linalg.norm(normals, axis=1), 1.0)
-    assert s.get_boundary_face_areas("xmax").shape == (nf,)
+    assert s.get_boundary_face_area("xmax").shape == (nf,)
     assert s.n_procs() == 1
 
 
@@ -130,12 +130,12 @@ def test_replicated_parallel_getters_expose_cells_on_root_only():
     worker.parallel = ParallelContext(mode="petsc_replicated", rank=1, size=2)
     assert worker.n_procs() == 2
     assert worker.get_cell_centre_coordinates().shape == (0, 3)
-    assert worker.get_cell_volumes().shape == (0,)
+    assert worker.get_cell_volume().shape == (0,)
     assert worker.get_velocity_field().shape == (0, 3)
     assert worker.get_vorticity_field().shape == (0, 3)
     assert worker.get_boundary_face_centre_coordinates("xmax").shape == (0, 3)
-    assert worker.get_boundary_face_normals("xmax").shape == (0, 3)
-    assert worker.get_boundary_face_areas("xmax").shape == (0,)
+    assert worker.get_boundary_face_normal("xmax").shape == (0, 3)
+    assert worker.get_boundary_face_area("xmax").shape == (0,)
 
     u_out = np.empty((0, 3), dtype=np.float64)
     w_out = np.empty((0, 3), dtype=np.float64)
@@ -152,14 +152,14 @@ def test_scalar_param_setters():
 
 def test_driver_split_solve_then_advance():
     s, _ = _make_solver()
-    t0, step0, nc0 = s.time, s.step, s._n_committed
+    t0, step0, nc0 = s.time, s.step, s._n_committed_time_steps
     with contextlib.redirect_stdout(io.StringIO()):
         s.set_time_step(0.1)
         s.solve_pimple()
         assert s.time == t0 and s.step == step0, "solve_pimple must not advance time"
         s.advance_time()
     assert abs(s.time - (t0 + 0.1)) < 1e-12
-    assert s.step == step0 + 1 and s._n_committed == nc0 + 1
+    assert s.step == step0 + 1 and s._n_committed_time_steps == nc0 + 1
 
 
 def test_vector_dirichlet_writes_ghosts():
@@ -189,13 +189,13 @@ def test_generic_implicit_source_relaxes_velocity_to_target():
         b["velocity_type"] = "zeroGradient"
     velocity = np.zeros((n + nb, 3))
     p = np.zeros(n + nb)
-    face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
+    volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
     target = np.tile([2.0, -1.0, 0.5], (n, 1))
     lam = np.full(n, 1.0e4)
     mom = assemble_momentum_equation(
         velocity,
         p,
-        face_flux,
+        volumetric_face_flux,
         1.0,
         0.05,
         mesh,

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-_PLOT_UTIL = Path(__file__).parents[2] / "tutorials/coupled_FVM_VPM/cube_flow/assets/_plotutil.py"
+_PLOT_UTIL = Path(__file__).parents[2] / "tutorials/coupled_fvm_vpm/cube_flow/assets/_plotutil.py"
 _PLOT_FIELDS = _PLOT_UTIL.with_name("plot_velocity_fields.py")
 _ALLPLOT_SCRIPTS = (
     _PLOT_UTIL.with_name("plot_velocity_profiles.py"),
@@ -47,15 +47,15 @@ def test_common_times_rejects_neighbouring_vpm_states(plotutil):
 
 
 def test_load_line_requires_the_requested_physical_time(plotutil, tmp_path, monkeypatch):
-    path = tmp_path / "fvm_centerline.csv"
+    path = tmp_path / "fvm_centreline.csv"
     path.write_text(
-        "time,step,x,y,z,Ux,Uy,Uz,omega_x,omega_y,omega_z,p\n0.09,9,0,0,0,1,0,0,0,0,0,0\n",
+        "time,step,position_x,position_y,position_z,velocity_x,velocity_y,velocity_z,vorticity_x,vorticity_y,vorticity_z,kinematic_pressure\n0.09,9,0,0,0,1,0,0,0,0,0,0\n",
         encoding="utf-8",
     )
     monkeypatch.setitem(plotutil.SOURCES["fvm"], "dir", tmp_path)
 
-    assert plotutil.load_line("fvm", "centerline", 0.1) is None
-    frame = plotutil.load_line("fvm", "centerline", 0.09)
+    assert plotutil.load_line("fvm", "centreline", 0.1) is None
+    frame = plotutil.load_line("fvm", "centreline", 0.09)
     assert frame is not None
     assert frame["time"] == pytest.approx(0.09)
 
@@ -63,7 +63,7 @@ def test_load_line_requires_the_requested_physical_time(plotutil, tmp_path, monk
 def test_field_plot_has_separate_fvm_and_reference_vpm_comparisons(fieldplot, monkeypatch):
     x, y = np.meshgrid(np.array([-1.5, 1.5]), np.array([-1.5, 1.5]), indexing="ij")
     fields = {
-        source: {"x": x, "y": y, "Ux": np.ones_like(x) * scale}
+        source: {"x": x, "y": y, "velocity_x": np.ones_like(x) * scale}
         for source, scale in (("fvm", 1.0), ("vpm", 0.9), ("reference", 1.1))
     }
     monkeypatch.setattr(fieldplot.util, "load_slice", lambda source, time: fields[source])

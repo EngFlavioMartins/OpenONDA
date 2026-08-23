@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.io import async_output
+from source.solvers.fvm.io import async_output
 
 
 class _Exporter:
@@ -14,7 +14,7 @@ class _Exporter:
         self.output = output
 
     def export(self, filename, fields):
-        self.writes.append((filename, fields["p"].copy()))
+        self.writes.append((filename, fields["kinematic_pressure"].copy()))
 
 
 class _PVD:
@@ -34,7 +34,7 @@ def test_buffered_writer_snapshots_and_flushes(monkeypatch, tmp_path):
     _PVD.entries.clear()
     values = np.array([1.0, 2.0])
     writer = async_output.BufferedVTKWriter({}, str(tmp_path / "case.pvd"))
-    writer.submit(str(tmp_path / "one.vtu"), 0.1, {"p": values})
+    writer.submit(str(tmp_path / "one.vtu"), 0.1, {"kinematic_pressure": values})
     values[:] = -1.0
     writer.flush()
     writer.close()
@@ -50,6 +50,10 @@ def test_buffered_writer_propagates_background_failure(monkeypatch, tmp_path):
 
     monkeypatch.setattr(async_output, "VTKExporter", _FailingExporter)
     writer = async_output.BufferedVTKWriter({}, str(tmp_path / "case.pvd"))
-    writer.submit(str(tmp_path / "one.vtu"), 0.1, {"p": np.ones(1)})
+    writer.submit(
+        str(tmp_path / "one.vtu"),
+        0.1,
+        {"kinematic_pressure": np.ones(1)},
+    )
     with pytest.raises(OSError, match="disk full"):
         writer.close()

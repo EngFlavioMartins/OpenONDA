@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "release_level": "R3",
+  "reference_backend": "numpy-scipy-serial-cpu-float64",
+  "mesh_input_contracts": {
+    "native": {
+      "contract": "openonda-native-mesh-v1",
+      "representation": "in-memory Python mesh dictionary",
+      "cell_representation": "first-order polyhedron"
+    },
+    "gmsh": {
+      "contract": "gmsh-api-first-order-3d-v1",
+      "dimension": 3,
+      "element_order": 1,
+      "cell_type_code": {
+        "4": "tetrahedron",
+        "5": "hexahedron",
+        "6": "prism",
+        "7": "pyramid"
+      }
+    }
+  },
+  "verified_components": [
+    "strict native Python configuration, boundary, field, and Gmsh parsing",
+    "static-mesh topology, geometry, and quality validation",
+    "serial float64 NumPy/SciPy SIMPLE, PISO, and PIMPLE",
+    "structured linear, nonlinear, conservation, force, and acceptance diagnostics",
+    "BDF1/BDF2 serial and partitioned checkpoint restart equivalence",
+    "translational cyclic and incompressible freestream boundaries",
+    "native/Gmsh first-order importer operator equivalence",
+    "three-level tetrahedral, prism, and mixed Poisson verification",
+    "three-level periodic 2D Taylor-Green PIMPLE convergence and energy decay",
+    "three-level periodic 3D ABC/Beltrami PIMPLE convergence",
+    "three-level analytical square-duct profile and pressure-drop convergence",
+    "three-level cubic lid-cavity comparison with published data",
+    "WALE Taylor-Green decay trend against published DNS peak data",
+    "NumPy/Numba/Taichi-CPU assembly and multi-step PIMPLE parity",
+    "fixed-body IBM transfer identities and two-level body-fitted force/wake comparison",
+    "one-rank FVM-VPM conservation, Picard residual, and coupled restart",
+    "one/two/four-rank partitioned Gauss-gradient PIMPLE, global diagnostics, restart, and PVTU output"
+  ],
+  "performance_evidence": {
+    "serial": "docs/benchmarks/fvm-serial-baseline-macos-arm64.json",
+    "operator_backends": "docs/benchmarks/fvm-backend-10k-macos-arm64.json",
+    "mpi_weak_scaling": "docs/benchmarks/fvm-mpi-weak-scaling-macos-arm64.json",
+    "max_verified_serial_cells": 1000000,
+    "qualified_partitioned_ranks": 4
+  },
+  "experimental": [
+    "FVM-VPM coupling beyond the uniform one-rank reference",
+    "Numba CPU assembly reductions",
+    "Taichi CPU assembly reductions",
+    "replicated PETSc compatibility mode"
+  ],
+  "unsupported": [
+    "dynamic/ALE meshes",
+    "compressible or multiphase flow",
+    "partitioned cyclic patches or least-squares gradients",
+    "partitioned FVM-VPM coupling",
+    "moving immersed bodies",
+    "Taichi CUDA, Metal, or Vulkan operators",
+    "float32 or mixed-precision FVM",
+    "high-order Gmsh elements"
+  ]
+}

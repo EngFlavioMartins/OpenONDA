@@ -9,7 +9,7 @@ growth laws, and exchange symmetry.
 import numpy as np
 import pytest
 
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     VelocityConfig,
@@ -55,11 +55,11 @@ def _viscous_solver(
 )
 def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
     """
-    After one CS step: σ² = σ₀² + C·nu·dt.
+    After one CS step: σ² = σ₀² + C·kinematic_viscosity·dt.
 
     C = 4 (Gaussian), 4 (HOG), 2 (Super-Gaussian), 4 (Winckelmans).
     """
-    nu = 0.01
+    kinematic_viscosity = 0.01
     time_step_size = 0.01
     C = {
         "GAUSSIAN": 4.0,
@@ -74,12 +74,12 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
-        kinematic_viscosity=np.array([nu]),
+        particle_volume=np.array([_VOLUME]),
+        kinematic_viscosity=np.array([kinematic_viscosity]),
     )
     solver.advance()
     sigma_new = float(solver.particle_core_radius[0])
-    expected_sq = _SIGMA**2 + C * nu * time_step_size
+    expected_sq = _SIGMA**2 + C * kinematic_viscosity * time_step_size
     rel_err = abs(sigma_new**2 - expected_sq) / expected_sq
     assert rel_err < 1e-4, (
         f"{kernel_name}/{backend}: CS radius growth wrong: σ²={sigma_new**2:.6e}, expected {expected_sq:.6e}"
@@ -90,17 +90,17 @@ def test_cs_one_step_radius_growth(kernel_name, backend, solver_for_backend):
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
 def test_cs_one_step_circulation_unchanged(kernel_name, backend, solver_for_backend):
-    """CS must never modify circulation strengths."""
+    """CS must never modify circulation vortex_strength."""
     solver = _viscous_solver(solver_for_backend, "CS", kernel=kernel_name)
     rng = np.random.default_rng(42)
-    positions = rng.uniform(-1.0, 1.0, (5, 3))
+    position = rng.uniform(-1.0, 1.0, (5, 3))
     circulations = rng.normal(0.0, 0.1, (5, 3))
     solver.add_vortex_particles(
-        position=positions,
+        position=position,
         velocity=np.zeros((5, 3)),
         vortex_strength=circulations,
         core_radius=np.full(5, _SIGMA),
-        volume=np.full(5, _VOLUME),
+        particle_volume=np.full(5, _VOLUME),
         kinematic_viscosity=np.full(5, 0.01),
     )
     gamma_before = solver.particle_vortex_strength.copy()
@@ -112,18 +112,18 @@ def test_cs_one_step_circulation_unchanged(kernel_name, backend, solver_for_back
 # ── Random Walk Method (RWM) ──────────────────────────────────────────────────
 
 
-def _rwm_displacements(make_solver, kernel_name, nu, n_samples):
+def _rwm_displacements(make_solver, kernel_name, kinematic_viscosity, n_samples):
     solver = _viscous_solver(make_solver, "RWM", kernel=kernel_name)
     solver.add_vortex_particles(
         position=np.zeros((n_samples, 3)),
         velocity=np.zeros((n_samples, 3)),
         vortex_strength=np.tile([0.0, 0.0, 1.0], (n_samples, 1)),
         core_radius=np.full(n_samples, _SIGMA),
-        volume=np.full(n_samples, _VOLUME),
-        kinematic_viscosity=np.full(n_samples, nu),
+        particle_volume=np.full(n_samples, _VOLUME),
+        kinematic_viscosity=np.full(n_samples, kinematic_viscosity),
     )
     solver.advance()
-    return solver.particles_positions.copy()
+    return solver.particle_position.copy()
 
 
 @pytest.mark.parametrize(
@@ -134,9 +134,11 @@ def test_rwm_one_step_mean_zero(kernel_name, backend, solver_for_backend):
     if backend != "CPU":
         pytest.skip("RWM ensemble test: random sequences differ across GPU backends")
 
-    nu = 0.1
+    kinematic_viscosity = 0.1
     n_ensemble = 2_000
-    displacements = _rwm_displacements(solver_for_backend, kernel_name, nu, n_ensemble)
+    displacements = _rwm_displacements(
+        solver_for_backend, kernel_name, kinematic_viscosity, n_ensemble
+    )
     mean_disp = np.mean(displacements, axis=0)
     assert np.all(np.abs(mean_disp) < 0.01), (
         f"{kernel_name}/{backend}: RWM mean displacement = {mean_disp} (must ≈ 0)"
@@ -151,12 +153,14 @@ def test_rwm_one_step_variance(kernel_name, backend, solver_for_backend):
     if backend != "CPU":
         pytest.skip("RWM ensemble test: random sequences differ across GPU backends")
 
-    nu = 0.1
+    kinematic_viscosity = 0.1
     time_step_size = 0.01
     n_ensemble = 2_000
-    displacements = _rwm_displacements(solver_for_backend, kernel_name, nu, n_ensemble)
+    displacements = _rwm_displacements(
+        solver_for_backend, kernel_name, kinematic_viscosity, n_ensemble
+    )
     var = np.var(displacements, axis=0)
-    expected = 2.0 * nu * time_step_size
+    expected = 2.0 * kinematic_viscosity * time_step_size
     for i, label in enumerate(["x", "y", "z"]):
         rel_err = abs(var[i] - expected) / expected
         assert rel_err < 0.15, (
@@ -168,14 +172,14 @@ def test_rwm_one_step_variance(kernel_name, backend, solver_for_backend):
     "kernel_name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
 )
 def test_rwm_circulation_unchanged(kernel_name, backend, solver_for_backend):
-    """RWM must not modify circulation strengths."""
+    """RWM must not modify circulation vortex_strength."""
     solver = _viscous_solver(solver_for_backend, "RWM", kernel=kernel_name)
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([_VOLUME]),
+        particle_volume=np.array([_VOLUME]),
         kinematic_viscosity=np.array([0.1]),
     )
     gamma_before = solver.particle_vortex_strength.copy()
@@ -202,14 +206,14 @@ def test_dvh_one_step_circulation_conservation(kernel_name, backend, solver_for_
         dvh_threshold=1e-8,
     )
     rng = np.random.default_rng(42)
-    positions = rng.uniform(-0.3, 0.3, (8, 3))
+    position = rng.uniform(-0.3, 0.3, (8, 3))
     circulations = rng.normal(0.0, 0.1, (8, 3))
     solver.add_vortex_particles(
-        position=positions,
+        position=position,
         velocity=np.zeros((8, 3)),
         vortex_strength=circulations,
         core_radius=np.full(8, _SIGMA),
-        volume=np.full(8, _VOLUME),
+        particle_volume=np.full(8, _VOLUME),
         kinematic_viscosity=np.full(8, 0.01),
     )
     gamma_sum_before = solver.particle_vortex_strength.sum(axis=0)
@@ -229,8 +233,8 @@ def test_dvh_one_step_circulation_conservation(kernel_name, backend, solver_for_
 def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
     """GBD at CFL limit must not crash and must conserve circulation."""
     h = 2.0 * _SIGMA
-    nu = 0.01
-    time_step_size = h**2 / (6.0 * nu)  # explicit Laplacian CFL
+    kinematic_viscosity = 0.01
+    time_step_size = h**2 / (6.0 * kinematic_viscosity)  # explicit Laplacian CFL
     solver = _viscous_solver(
         solver_for_backend,
         "GBD",
@@ -241,15 +245,15 @@ def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
         gbd_threshold=1e-8,
     )
     rng = np.random.default_rng(43)
-    positions = rng.uniform(-0.3, 0.3, (8, 3))
+    position = rng.uniform(-0.3, 0.3, (8, 3))
     circulations = rng.normal(0.0, 0.1, (8, 3))
     solver.add_vortex_particles(
-        position=positions,
+        position=position,
         velocity=np.zeros((8, 3)),
         vortex_strength=circulations,
         core_radius=np.full(8, _SIGMA),
-        volume=np.full(8, _VOLUME),
-        kinematic_viscosity=np.full(8, nu),
+        particle_volume=np.full(8, _VOLUME),
+        kinematic_viscosity=np.full(8, kinematic_viscosity),
     )
     gamma_sum_before = solver.particle_vortex_strength.sum(axis=0)
     solver.advance()
@@ -268,7 +272,7 @@ def test_gbd_full_solver_subcycles_1000_particles_above_cfl(backend, solver_for_
     h = 0.1
     time_step_size = 0.05
     alpha = 0.425
-    nu = alpha * h**2 / time_step_size
+    kinematic_viscosity = alpha * h**2 / time_step_size
     solver = _viscous_solver(
         solver_for_backend,
         "GBD",
@@ -281,23 +285,23 @@ def test_gbd_full_solver_subcycles_1000_particles_above_cfl(backend, solver_for_
 
     axis = (np.arange(side, dtype=np.float32) - 0.5 * (side - 1)) * h
     x, y, z = np.meshgrid(axis, axis, axis, indexing="ij")
-    positions = np.column_stack((x.ravel(), y.ravel(), z.ravel())).astype(np.float32)
+    position = np.column_stack((x.ravel(), y.ravel(), z.ravel())).astype(np.float32)
     radius_sq = x**2 + y**2 + z**2
     circulations = np.zeros((side**3, 3), dtype=np.float32)
     circulations[:, 2] = (1.0e-3 * np.exp(-radius_sq / (2.0 * (2.0 * h) ** 2))).ravel()
     solver.add_vortex_particles(
-        position=positions,
-        velocity=np.zeros_like(positions),
+        position=position,
+        velocity=np.zeros_like(position),
         vortex_strength=circulations,
         core_radius=np.full(side**3, 1.1 * h, dtype=np.float32),
-        volume=np.full(side**3, h**3, dtype=np.float32),
-        kinematic_viscosity=np.full(side**3, nu, dtype=np.float32),
+        particle_volume=np.full(side**3, h**3, dtype=np.float32),
+        kinematic_viscosity=np.full(side**3, kinematic_viscosity, dtype=np.float32),
     )
 
     circulation_before = circulations.astype(np.float64).sum(axis=0)
     solver.advance()
 
-    assert 0 < solver.particles.n_particles <= solver.particles.capacity
+    assert 0 < solver.particles.n_particles_total <= solver.particles.capacity
     assert np.isfinite(solver.particle_vortex_strength).all()
     circulation_after = solver.particle_vortex_strength.astype(np.float64).sum(axis=0)
     np.testing.assert_allclose(circulation_after, circulation_before, rtol=2e-4, atol=1e-8)
@@ -318,7 +322,7 @@ def test_cross_backend_viscous_consistency(scheme, backend, solver_for_backend):
         velocity=np.zeros((2, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
         core_radius=np.full(2, _SIGMA),
-        volume=np.full(2, _VOLUME),
+        particle_volume=np.full(2, _VOLUME),
         kinematic_viscosity=np.full(2, 0.01),
     )
     solver.advance()

@@ -18,16 +18,16 @@ the baseline number for the existing schemes.
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import (
+from source.solvers.fvm.assemble.convection import (
     assemble_convection_term,
     compute_volumetric_face_flux,
 )
-from source.solvers.FVM.assemble.matrix_assembly import (
+from source.solvers.fvm.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gauss_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.fields.gradients import compute_gauss_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 from ._structured_mesh import structured_box
 
@@ -45,12 +45,12 @@ def _setup():
     geo = compute_mesh_geometry(mesh)
     n_elem = mesh["n_cells"]
     n_int = mesh["n_interior_faces"]
-    cc, fc = geo["cell_centroids"], geo["face_centroids"]
+    cc, fc = geo["cell_centre"], geo["face_centre"]
 
     velocity = np.zeros((n_elem + mesh["n_faces"] - n_int, 3))
     velocity[:n_elem] = _tgv(cc[:, 0], cc[:, 1])
     for b in mesh["boundary"]:
-        b["bc_type"] = "fixedValue"
+        b["boundary_condition_type"] = "fixedValue"
         for j in range(b["n_faces"]):
             fi = b["start_face"] + j
             gi = n_elem + (fi - n_int)
@@ -61,14 +61,20 @@ def _setup():
 def _energy_production(mesh, geo, velocity, scheme):
     """P = Σ_c u_c·(du/dt|_conv)_c V_c, with du/dt|_conv = (−A_conv u + b_conv)/V."""
     n_elem = mesh["n_cells"]
-    vol = geo["cell_volumes"]
-    mdot = compute_volumetric_face_flux(velocity, mesh, geo)
+    vol = geo["cell_volume"]
+    volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
     P = 0.0
     for i in range(3):
         u_comp = velocity[:, i]
         grad = compute_gauss_gradient(u_comp, mesh, geo)[:, :, 0]
         conv = assemble_convection_term(
-            u_comp, mdot, mesh, geo, mesh["boundary"], scheme=scheme, grad_phi=grad
+            u_comp,
+            volumetric_face_flux,
+            mesh,
+            geo,
+            mesh["boundary"],
+            scheme=scheme,
+            scalar_field_gradient=grad,
         )
         A = assemble_matrix_from_fluxes_vectorized(conv, mesh)
         b = assemble_rhs_from_fluxes_vectorized(conv, mesh)
@@ -81,14 +87,14 @@ class TestConvectionDissipation:
     def test_tgv_zero_boundary_flux(self):
         """Precondition: the TGV normal velocity vanishes on all box faces."""
         mesh, geo, velocity = _setup()
-        mdot = compute_volumetric_face_flux(velocity, mesh, geo)
+        volumetric_face_flux = compute_volumetric_face_flux(velocity, mesh, geo)
         n_int = mesh["n_interior_faces"]
-        assert np.abs(mdot[n_int:]).max() < 1e-12
+        assert np.abs(volumetric_face_flux[n_int:]).max() < 1e-12
 
     def test_central_conserves_upwind_dissipates(self):
         mesh, geo, velocity = _setup()
         n_elem = mesh["n_cells"]
-        ke = 0.5 * float(np.sum(np.sum(velocity[:n_elem] ** 2, axis=1) * geo["cell_volumes"]))
+        ke = 0.5 * float(np.sum(np.sum(velocity[:n_elem] ** 2, axis=1) * geo["cell_volume"]))
 
         p_upwind = _energy_production(mesh, geo, velocity, "upwind") / ke
         p_central = _energy_production(mesh, geo, velocity, "central") / ke
@@ -108,7 +114,7 @@ class TestConvectionDissipation:
         dramatically less dissipative than upwind on the smooth TGV field."""
         mesh, geo, velocity = _setup()
         n_elem = mesh["n_cells"]
-        ke = 0.5 * float(np.sum(np.sum(velocity[:n_elem] ** 2, axis=1) * geo["cell_volumes"]))
+        ke = 0.5 * float(np.sum(np.sum(velocity[:n_elem] ** 2, axis=1) * geo["cell_volume"]))
         p_upwind = _energy_production(mesh, geo, velocity, "upwind") / ke
 
         for scheme in ("limitedLinear", "vanLeer", "MUSCL", "minmod", "LUST"):

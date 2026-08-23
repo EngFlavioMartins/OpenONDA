@@ -10,6 +10,7 @@ import sys
 import numpy as np
 
 from source.coupler.checkpoint import CHECKPOINT_DIRECTORY
+from source.schemas.serialization import schema_metadata
 from source.utilities import nearest_time_event_due
 
 _REAL_STDOUT = sys.stdout
@@ -129,8 +130,9 @@ def write_run_metadata(coupler) -> None:
         },
         **coupler.setup.to_dict(),
         "vpm_time_step_size": coupler.vpm_time_step_size,
-        "fvm_substeps": coupler.fvm_substeps,
+        "n_fvm_substeps": coupler.n_fvm_substeps,
     }
+    metadata = schema_metadata(**metadata)
     (coupler.solution_dir / "run_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
     )
@@ -145,10 +147,10 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     if result is None:
         transfer = {
             "diagnostics_evaluated": False,
-            "n_existing": 0,
-            "n_updated": 0,
-            "n_added": 0,
-            "n_support": 0,
+            "n_existing_particles": 0,
+            "n_updated_particles": 0,
+            "n_added_particles": 0,
+            "n_support_nodes": 0,
             "correction_vortex_strength_l1": 0.0,
             "correction_vortex_strength_net_x": 0.0,
             "correction_vortex_strength_net_y": 0.0,
@@ -161,10 +163,10 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         correction_net = np.asarray(result.correction_vortex_strength_net, dtype=np.float64)
         transfer = {
             "diagnostics_evaluated": bool(result.diagnostics_evaluated),
-            "n_existing": int(result.n_existing),
-            "n_updated": int(result.n_updated),
-            "n_added": int(result.n_added),
-            "n_support": int(result.n_support),
+            "n_existing_particles": int(result.n_existing_particles),
+            "n_updated_particles": int(result.n_updated_particles),
+            "n_added_particles": int(result.n_added_particles),
+            "n_support_nodes": int(result.n_support_nodes),
             "correction_vortex_strength_l1": float(result.correction_vortex_strength_l1),
             "correction_vortex_strength_net_x": float(correction_net[0]),
             "correction_vortex_strength_net_y": float(correction_net[1]),
@@ -176,7 +178,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
                 float(result.divergence_correction_linf) if result.diagnostics_evaluated else None
             ),
         }
-        particle_count = result.n_total
+        particle_count = result.n_total_particles
     if not all(
         np.isfinite(value)
         for value in transfer.values()
@@ -184,7 +186,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     ):
         raise FloatingPointError("non-finite transfer diagnostic")
     boundary_flux = {
-        name: float(coupler._last_vpm_bc_flux_diagnostics[name])
+        name: float(coupler._last_vpm_boundary_condition_flux_diagnostics[name])
         for name in (
             "raw_mismatch",
             "raw_relative",
@@ -210,15 +212,15 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     pressure_shift = (
         0.0 if coupler.pressure_reference is None else coupler.pressure_reference.last_shift
     )
-    return {
-        "vpm_bc_flux": boundary_flux,
-        "transfer": transfer,
-        "interface_normal_velocity": interface,
-        "vortex_line_closure": closure,
-        "pressure_datum_shift": float(pressure_shift),
-        "n_fvm_substeps": int(coupler.fvm_substeps),
-        "transfer_particle_count": int(particle_count),
-    }
+    return schema_metadata(
+        vpm_boundary_condition_flux=boundary_flux,
+        transfer=transfer,
+        boundary_normal_velocity=interface,
+        vortex_line_closure=closure,
+        pressure_reference_shift=float(pressure_shift),
+        n_fvm_substeps=int(coupler.n_fvm_substeps),
+        n_transfer_particles=int(particle_count),
+    )
 
 
 def record_step(
@@ -232,11 +234,11 @@ def record_step(
     comm=None,
 ) -> None:
     """Persist diagnostics and synchronize a completed coupling step."""
-    t_vpm, t_vpm_bc, t_fvm, t_transfer = timing
+    t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
     diagnostics = compute_diagnostics(coupler, transfer_result)
     timing_data = {
         "vpm": float(t_vpm),
-        "vpm_bc": float(t_vpm_bc),
+        "vpm_boundary_condition": float(t_vpm_boundary_condition),
         "fvm": float(t_fvm),
         "transfer": float(t_transfer),
         "total": float(sum(timing)),
@@ -253,7 +255,8 @@ def record_step(
 
         stats = coupler._step_transfer_stats or {}
         logger.info(
-            "[Coupler][VPMState] step=%d particles=%d->%d gamma_abs_sum_m3_s=%.4e->%.4e",
+            "[Coupler][VPMState] step=%d particles=%d->%d "
+            "vortex_strength_magnitude_sum_m3_s=%.4e->%.4e",
             step,
             int(stats.get("n_before", 0)),
             int(stats.get("n_after", 0)),
@@ -265,7 +268,7 @@ def record_step(
             "fvm_s=%.3f transfer_s=%.3f total_s=%.3f",
             step,
             timing_data["vpm"],
-            timing_data["vpm_bc"],
+            timing_data["vpm_boundary_condition"],
             timing_data["fvm"],
             timing_data["transfer"],
             timing_data["total"],

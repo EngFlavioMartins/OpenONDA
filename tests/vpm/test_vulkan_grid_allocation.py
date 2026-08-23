@@ -1,10 +1,10 @@
 import pytest
 import taichi as ti
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
-from source.solvers.VPM.core import solver as solver_module
-from source.solvers.VPM.runtime.backend import reset_taichi_backend
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.vpm.core import solver as solver_module
+from source.solvers.vpm.runtime.backend import reset_taichi_backend
 
 
 def _pretend_vulkan_on_cpu(monkeypatch):

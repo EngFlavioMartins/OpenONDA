@@ -15,9 +15,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
-from source.solvers.VPM.io.solver_io import SolverIO
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.vpm.io.solver_io import SolverIO
 
 _SIGMA = 0.2
 
@@ -36,13 +36,13 @@ def _make_solver(case_dir) -> VPMSolver:
         checkpoint_directory="solution",
     )
     solver = VPMSolver(setup=config, case_dir=case_dir)
-    volume = (4.0 / 3.0) * np.pi * _SIGMA**3
+    particle_volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0]]),
         core_radius=np.array([_SIGMA]),
-        volume=np.array([volume]),
+        particle_volume=np.array([particle_volume]),
         kinematic_viscosity=np.array([1e-5]),
     )
     return solver
@@ -84,13 +84,19 @@ def test_panel_force_csv_is_rooted_in_case_samples(tmp_path):
     checkpoint_directory = case_dir / "solution"
 
     class PanelSolver:
-        lattice = SimpleNamespace(num_panels=1)
+        lattice = SimpleNamespace(n_panels=1)
         density = 1.0
         freestream_velocity = np.array([1.0, 0.0, 0.0])
 
         @staticmethod
         def compute_forces_coefficients(**_kwargs):
-            return {"CL": 0.2, "CD": 0.1, "Fx": 0.1, "Fy": 0.0, "Fz": 0.2}
+            return {
+                "lift_coefficient": 0.2,
+                "drag_coefficient": 0.1,
+                "force_x": 0.1,
+                "force_y": 0.0,
+                "force_z": 0.2,
+            }
 
     solver = SimpleNamespace(
         case_dir=case_dir,

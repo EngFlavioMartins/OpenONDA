@@ -1,10 +1,10 @@
-"""Physics tests for Pedrizzetti relaxation of the particle strengths."""
+"""Physics tests for Pedrizzetti relaxation of the particle vortex_strength."""
 
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StabilizationConfig,
     StretchingConfig,
@@ -18,7 +18,7 @@ def _relaxation_solver(tmp_path, stabilization: StabilizationConfig) -> VPMSolve
         setup=VPMSetup(
             compute_device="CPU",
             precision="f64",
-            max_particles=16,
+            max_n_particles=16,
             advection=AdvectionConfig(scheme="NONE"),
             stretching=StretchingConfig.disabled(),
             viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.5),
@@ -35,7 +35,7 @@ def _relaxation_solver(tmp_path, stabilization: StabilizationConfig) -> VPMSolve
         velocity=np.zeros((count, 3)),
         vortex_strength=np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]]),
         core_radius=np.full(count, 0.2),
-        volume=np.full(count, 0.5**3),
+        particle_volume=np.full(count, 0.5**3),
         kinematic_viscosity=np.full(count, 0.01),
         eddy_viscosity=np.zeros(count),
     )

@@ -10,13 +10,13 @@ from openonda.vpm import RingDiagnosticsSampler
 
 def test_builtin_ring_sampler_writes_each_particle_group(tmp_path):
     theta = np.linspace(0.0, 2.0 * np.pi, 24, endpoint=False)
-    positions = []
+    position = []
     circulations = []
     groups = []
-    for group_id, center in enumerate((-0.5, 0.5)):
+    for group_id, centre in enumerate((-0.5, 0.5)):
         position = np.column_stack(
             (
-                np.full_like(theta, center),
+                np.full_like(theta, centre),
                 np.cos(theta),
                 np.sin(theta),
             )
@@ -28,14 +28,14 @@ def test_builtin_ring_sampler_writes_each_particle_group(tmp_path):
                 np.cos(theta),
             )
         )
-        positions.append(position)
+        position.append(position)
         circulations.append(circulation)
         groups.append(np.full(len(theta), group_id))
 
     solver = SimpleNamespace(
-        particles_positions=np.vstack(positions),
+        particle_position=np.vstack(position),
         particle_vortex_strength=np.vstack(circulations),
-        particles_group_ids=np.concatenate(groups),
+        particle_group_id=np.concatenate(groups),
     )
     output = tmp_path / "ring_diagnostics.csv"
     RingDiagnosticsSampler().save_csv(solver, output, time=0.25, step=5)

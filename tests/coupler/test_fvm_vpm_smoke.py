@@ -19,15 +19,15 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     from source.coupler import CouplerSetup, FVMVPMCoupler
-    from source.solvers.FVM import (
+    from source.solvers.fvm import (
         BoundaryConfig,
         FVMSetup,
         FVMSolver,
         TimeConfig,
         TransportConfig,
     )
-    from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
-    from source.solvers.VPM import VPMSetup, VPMSolver
+    from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
+    from source.solvers.vpm import VPMSetup, VPMSolver
 
     # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
     setup = CouplerSetup(
@@ -40,7 +40,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     vpm_setup = VPMSetup(
         time_step_size=VPM_TIME_STEP_SIZE,
         compute_device="CPU",
-        max_particles=50_000,
+        max_n_particles=50_000,
         domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
         freestream_velocity=[1.0, 0.0, 0.0],
     )
@@ -80,7 +80,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     coupler.run()
 
     # Sub-cycling derived from the two native solver time steps.
-    assert coupler.fvm_substeps == 3
+    assert coupler.n_fvm_substeps == 3
     assert coupler.vpm_time_step_size == pytest.approx(VPM_TIME_STEP_SIZE)
 
     # Uniform inflow, no body → the FVM field stays finite and uniform.
@@ -92,7 +92,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert fvm.time == pytest.approx(2 * VPM_TIME_STEP_SIZE)
 
     # Impulsive start with zero interior vorticity: hand-off ran, no particles.
-    assert vpm.particles.n_particles == 0
+    assert vpm.particles.n_particles_total == 0
 
     # Native FVM and coupler diagnostics are written independently.
     sol = tmp_path / "solution"
@@ -100,27 +100,29 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     coupler_log = (sol / "coupler.log").read_text()
     assert "[Coupler][Run]" in coupler_log
     assert coupler_log.count("[Coupler][Transfer]") >= 2
-    assert "fvm_substeps=3" in coupler_log
-    checkpoint = sol / "checkpoint"
+    assert "n_fvm_substeps=3" in coupler_log
+    checkpoint = sol / "checkpoints"
     manifest = json.loads((checkpoint / "manifest.json").read_text())
-    assert manifest["format_version"] == 5
+    assert manifest["format_version"] == 7
     assert manifest["kind"] == "openonda.coupled_checkpoint"
     assert all((checkpoint / name).is_file() for name in manifest["artifacts"].values())
     assert manifest["artifacts"] == {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
-        "vpm_bc": "vpm_bc_000002.npz",
+        "vpm_xdmf": "vpm_000002.xdmf",
+        "vpm_boundary_condition": "vpm_boundary_condition_000002.npz",
     }
+    assert set(manifest["artifact_sha256"]) == set(manifest["artifacts"])
     assert not list(checkpoint.glob("*_000001*"))
 
     expected_u = fvm.velocity.copy()
     expected_p = fvm.kinematic_pressure.copy()
-    expected_phi = fvm.face_flux.copy()
+    expected_flux = fvm.volumetric_face_flux.copy()
     restored_vpm = VPMSolver(
         VPMSetup(
             time_step_size=VPM_TIME_STEP_SIZE,
             compute_device="CPU",
-            max_particles=50_000,
+            max_n_particles=50_000,
             domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
             freestream_velocity=[1.0, 0.0, 0.0],
         )
@@ -135,7 +137,9 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert restored_vpm.step == 2
     np.testing.assert_allclose(restored_fvm.velocity, expected_u, rtol=0.0, atol=1e-13)
     np.testing.assert_allclose(restored_fvm.kinematic_pressure, expected_p, rtol=0.0, atol=1e-13)
-    np.testing.assert_allclose(restored_fvm.face_flux, expected_phi, rtol=0.0, atol=1e-13)
+    np.testing.assert_allclose(
+        restored_fvm.volumetric_face_flux, expected_flux, rtol=0.0, atol=1e-13
+    )
     # No external solver case artifacts were created anywhere.
     assert not (tmp_path / "constant").exists()
     assert not (tmp_path / "system").exists()

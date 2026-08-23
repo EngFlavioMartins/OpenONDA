@@ -5,8 +5,8 @@ from pathlib import Path
 
 import numpy as np
 
-from source.solvers.FVM.mesh import geometry
-from source.solvers.FVM.mesh.validation import validate_mesh
+from source.solvers.fvm.mesh import geometry
+from source.solvers.fvm.mesh.validation import validate_mesh
 
 MESH_MODULE_PATH = (
     Path(__file__).parents[2] / "tutorials" / "FVM" / "step_profile" / "assets" / "mesh_step.py"
@@ -26,7 +26,7 @@ def test_step_tutorial_has_a_geometric_step():
     )
     geo = geometry.compute_mesh_geometry(mesh)
     report = validate_mesh(mesh, geo)
-    centres = geo["cell_centroids"][: mesh["n_cells"]]
+    centres = geo["cell_centre"][: mesh["n_cells"]]
 
     # The lower-left block is solid, while the same y range is fluid after
     # the expansion. This distinguishes a geometric step from a scalar front.
@@ -37,7 +37,7 @@ def test_step_tutorial_has_a_geometric_step():
     assert patches["outlet"]["n_faces"] == 2 * patches["inlet"]["n_faces"]
 
     wall = patches["walls"]
-    wall_centres = geo["face_centroids"][wall["start_face"] : wall["start_face"] + wall["n_faces"]]
+    wall_centres = geo["face_centre"][wall["start_face"] : wall["start_face"] + wall["n_faces"]]
     vertical_step = np.isclose(wall_centres[:, 0], 0.0) & (wall_centres[:, 1] < 1.0)
     assert np.count_nonzero(vertical_step) == 2
     assert report["max_non_orthogonality_deg"] < 1e-10

@@ -5,10 +5,10 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "source"))
 
-from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
-from source.solvers.FVM.assemble.matrix_assembly import assemble_matrix_from_fluxes_vectorized
-from source.solvers.FVM.fields.gradients import compute_gauss_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.assemble.diffusion import assemble_diffusion_term
+from source.solvers.fvm.assemble.matrix_assembly import assemble_matrix_from_fluxes_vectorized
+from source.solvers.fvm.fields.gradients import compute_gauss_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 
 def hand_built_3d_mesh():
@@ -137,7 +137,7 @@ def hand_built_3d_mesh():
     ]
 
     mesh_data = {
-        "points": points,
+        "vertex_position": points,
         "faces": faces,
         "owners": owners,
         "neighbours": neighbours,
@@ -155,38 +155,36 @@ def main():
     mesh_data = hand_built_3d_mesh()
     geo_data = compute_mesh_geometry(mesh_data)
 
-    volumes = geo_data["cell_volumes"]
+    volumes = geo_data["cell_volume"]
     print("Element volumes:", volumes)
     assert np.allclose(volumes, 1.0), f"Volumes not all 1.0: {volumes}"
 
-    centroids = geo_data["cell_centroids"]
+    centroids = geo_data["cell_centre"]
     print("Element centroids:\n", centroids)
 
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
 
-    phi_elem = centroids[:, 0] + centroids[:, 1] + centroids[:, 2]
+    scalar_field_cells = centroids[:, 0] + centroids[:, 1] + centroids[:, 2]
 
-    face_centroids = geo_data["face_centroids"]
-    phi_b = (
-        face_centroids[n_interior:, 0]
-        + face_centroids[n_interior:, 1]
-        + face_centroids[n_interior:, 2]
+    face_centre = geo_data["face_centre"]
+    scalar_field_boundary = (
+        face_centre[n_interior:, 0] + face_centre[n_interior:, 1] + face_centre[n_interior:, 2]
     )
-    face_flux = np.concatenate([phi_elem, phi_b])
+    scalar_field = np.concatenate([scalar_field_cells, scalar_field_boundary])
 
-    grad_phi = compute_gauss_gradient(face_flux, mesh_data, geo_data)
-    grad_elem = grad_phi[:n_cells]
+    scalar_field_gradient = compute_gauss_gradient(scalar_field, mesh_data, geo_data)
+    grad_elem = scalar_field_gradient[:n_cells]
     print("Gradient phi (element average):\n", grad_elem.mean(axis=0))
     expected = np.array([1.0, 1.0, 1.0])
     assert np.allclose(grad_elem.mean(axis=0), expected, atol=1e-10), (
         f"Gradient not [1,1,1]: {grad_elem.mean(axis=0)}"
     )
 
-    gamma = np.ones(n_cells, dtype=np.float64)
+    diffusivity = np.ones(n_cells, dtype=np.float64)
     boundaries = mesh_data["boundary"]
     flux_data = assemble_diffusion_term(
-        face_flux, grad_elem, gamma, mesh_data, geo_data, boundaries
+        scalar_field, grad_elem, diffusivity, mesh_data, geo_data, boundaries
     )
     A = assemble_matrix_from_fluxes_vectorized(flux_data, mesh_data)
     A_dense = A.toarray()
@@ -196,12 +194,12 @@ def main():
     output_path = output_dir / "golden_reference.npz"
     np.savez(
         output_path,
-        cell_volumes=volumes,
-        cell_centroids=centroids,
-        face_sf=geo_data["face_sf"],
-        face_areas=geo_data["face_areas"],
-        face_weights=geo_data["face_weights"],
-        grad_phi=grad_elem,
+        cell_volume=volumes,
+        cell_centre=centroids,
+        face_area_vector=geo_data["face_area_vector"],
+        face_area=geo_data["face_area"],
+        face_interpolation_weight=geo_data["face_interpolation_weight"],
+        scalar_field_gradient=grad_elem,
         matrix_diagonal=diag,
         matrix_row_sum=row_sum,
     )

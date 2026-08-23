@@ -5,10 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble import diffusion, matrix_assembly
-from source.solvers.FVM.fields.gradients import compute_lsq_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
+from source.solvers.fvm.assemble import diffusion, matrix_assembly
+from source.solvers.fvm.fields.gradients import compute_lsq_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.solve.linear_interface import solve_linear_system
 
 from ._structured_mesh import structured_box
 
@@ -48,13 +48,13 @@ def _solve_duct(cross_stream_cells):
     field = np.zeros(n_cells + mesh["n_faces"] - n_interior)
 
     for patch in mesh["boundary"]:
-        patch["bc_type"] = "fixedValue"
+        patch["boundary_condition_type"] = "fixedValue"
         faces = np.arange(patch["start_face"], patch["start_face"] + patch["n_faces"])
         ghosts = n_cells + faces - n_interior
-        centres = geometry["face_centroids"][faces]
+        centres = geometry["face_centre"][faces]
         field[ghosts] = square_duct_velocity(centres[:, 1] - 0.5, centres[:, 2] - 0.5)
 
-    volumes = geometry["cell_volumes"]
+    volumes = geometry["cell_volume"]
     for _ in range(80):
         gradient = compute_lsq_gradient(field, mesh, geometry)
         flux = diffusion.assemble_diffusion_term(
@@ -70,7 +70,7 @@ def _solve_duct(cross_stream_cells):
     else:
         raise AssertionError("Square-duct non-orthogonal iteration did not converge")
 
-    centres = geometry["cell_centroids"]
+    centres = geometry["cell_centre"]
     exact = square_duct_velocity(centres[:, 1] - 0.5, centres[:, 2] - 0.5)
     profile_error = np.sqrt(np.sum(volumes * (field[:n_cells] - exact) ** 2) / np.sum(volumes))
     numerical_bulk = np.sum(volumes * field[:n_cells]) / np.sum(volumes)

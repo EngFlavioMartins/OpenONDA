@@ -8,7 +8,7 @@ import io
 import numpy as np
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -35,8 +35,8 @@ def _cosine_clustered_cube(level: int) -> tuple[dict, np.ndarray]:
     mesh = structured_box(level, level, level)
     nodes = 0.5 * (1.0 - np.cos(np.pi * np.arange(level + 1) / level))
     for axis in range(3):
-        indices = np.rint(mesh["points"][:, axis] * level).astype(int)
-        mesh["points"][:, axis] = nodes[indices]
+        indices = np.rint(mesh["vertex_position"][:, axis] * level).astype(int)
+        mesh["vertex_position"][:, axis] = nodes[indices]
     return mesh, 0.5 * (nodes[:-1] + nodes[1:])
 
 
@@ -75,7 +75,7 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
         solver.auto_write = False
         for _ in range(5000):
             solver.advance()
-            increment = solver.last_diagnostics.residuals["U_increment"]
+            increment = solver.last_diagnostics.residuals["velocity_increment"]
             if increment < 2.0e-5:
                 break
         else:
@@ -92,7 +92,7 @@ def _run_cavity(level: int) -> tuple[np.ndarray, float, float]:
             np.interp(REFERENCE["v_max"][1], coordinates, v_line),
         ]
     )
-    return samples, increment, solver.last_diagnostics.continuity_max
+    return samples, increment, solver.last_diagnostics.max_continuity_error
 
 
 @pytest.mark.verification

@@ -5,13 +5,13 @@ import platform
 
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.runtime.backend import initialize_taichi_backend, reset_taichi_backend
+from source.solvers.vpm.runtime.backend import initialize_taichi_backend, reset_taichi_backend
 
 # ── CLI options ──────────────────────────────────────────────────────────────
 

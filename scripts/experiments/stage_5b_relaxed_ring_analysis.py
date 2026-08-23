@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
-RING_ASSETS = ROOT / "tutorials" / "VPM" / "vortexRing" / "assets"
+RING_ASSETS = ROOT / "tutorials" / "vpm" / "vortex_ring" / "assets"
 sys.path.insert(0, str(RING_ASSETS))
 
 from ring_diagnostics import RingModeDiagnosticsSampler  # noqa: E402
@@ -37,14 +37,14 @@ VISCOSITY = CIRCULATION / 3000.0
 # short runs.  They authorize the next, prospectively gated relaxation; they
 # are not presented as an independent confirmation of the solver.
 PREFLIGHT_LIMITS = {
-    "maximum_energy_balance_relative_residual": 0.05,
-    "maximum_impulse_relative_drift": 1.0e-3,
-    "maximum_axisymmetry_mode_amplitude": 1.0e-4,
-    "maximum_time_pair_relative_difference": 5.0e-3,
-    "maximum_time_pair_mode_absolute_difference": 1.0e-6,
-    "maximum_finest_pair_speed_relative_difference": 1.0e-2,
-    "maximum_finest_pair_energy_relative_difference": 2.0e-2,
-    "maximum_finest_initial_core_radius_relative_error": 1.0e-2,
+    "max_energy_balance_relative_residual": 0.05,
+    "max_impulse_relative_drift": 1.0e-3,
+    "max_axisymmetry_mode_amplitude": 1.0e-4,
+    "max_time_pair_relative_difference": 5.0e-3,
+    "max_time_pair_mode_absolute_difference": 1.0e-6,
+    "max_finest_pair_speed_relative_difference": 1.0e-2,
+    "max_finest_pair_energy_relative_difference": 2.0e-2,
+    "max_finest_initial_core_radius_relative_error": 1.0e-2,
 }
 
 INK = "#20252a"
@@ -61,49 +61,49 @@ class RunSpec:
     name: str
     directory: Path
     spacing: float
-    time_step: float
+    time_step_size: float
     diffusion: str
 
 
 RUNS = (
     RunSpec(
         "CS h=0.15",
-        ROOT / "tutorials/VPM/vortexRing/solution/relaxed_reference_cs_h015_tstar02",
+        ROOT / "tutorials/vpm/vortex_ring/solution/relaxed_reference_cs_h015_tstar02",
         0.15,
         0.02,
         "Core Spreading",
     ),
     RunSpec(
         "CS h=0.12",
-        ROOT / "tutorials/VPM/vortexRing/solution/relaxed_reference_cs_h012_dt002_tstar02",
+        ROOT / "tutorials/vpm/vortex_ring/solution/relaxed_reference_cs_h012_dt002_tstar02",
         0.12,
         0.02,
         "Core Spreading",
     ),
     RunSpec(
         "CS h=0.10",
-        ROOT / "tutorials/VPM/vortexRing/solution/relaxed_reference_cs_h010_dt002_tstar02",
+        ROOT / "tutorials/vpm/vortex_ring/solution/relaxed_reference_cs_h010_dt002_tstar02",
         0.10,
         0.02,
         "Core Spreading",
     ),
     RunSpec(
         "CS h=0.08",
-        ROOT / "tutorials/VPM/vortexRing/solution/relaxed_reference_cs_h008_dt002_tstar02",
+        ROOT / "tutorials/vpm/vortex_ring/solution/relaxed_reference_cs_h008_dt002_tstar02",
         0.08,
         0.02,
         "Core Spreading",
     ),
     RunSpec(
         "CS h=0.10, dt=0.01",
-        ROOT / "tutorials/VPM/vortexRing/solution/relaxed_reference_cs_h010_tstar02",
+        ROOT / "tutorials/vpm/vortex_ring/solution/relaxed_reference_cs_h010_tstar02",
         0.10,
         0.01,
         "Core Spreading",
     ),
     RunSpec(
         "GBD h=0.15",
-        ROOT / "tutorials/VPM/vortexRing/solution/relaxed_reference_gbd_h015_tstar02",
+        ROOT / "tutorials/vpm/vortex_ring/solution/relaxed_reference_gbd_h015_tstar02",
         0.15,
         0.02,
         "Grid-Based Diffusion",
@@ -124,17 +124,13 @@ def load_state(path: Path) -> dict[str, np.ndarray | float | int]:
     with h5py.File(path, "r") as handle:
         particles = handle["particles"]
         attrs = handle["solver"].attrs
-        strength_key = "vortex_strength" if "vortex_strength" in particles else "circulation"
-        radius_key = "core_radius" if "core_radius" in particles else "radius"
-        time_key = "time" if "time" in attrs else "flow_time"
-        count_key = "n_particles" if "n_particles" in attrs else "number_of_particles"
         return {
             "position": np.asarray(particles["position"], dtype=np.float64),
-            "vortex_strength": np.asarray(particles[strength_key], dtype=np.float64),
-            "core_radius": np.asarray(particles[radius_key], dtype=np.float64),
+            "vortex_strength": np.asarray(particles["vortex_strength"], dtype=np.float64),
+            "core_radius": np.asarray(particles["core_radius"], dtype=np.float64),
             "group_id": np.asarray(particles["group_id"], dtype=np.int32),
-            "time": float(attrs[time_key]),
-            "particles": int(attrs[count_key]),
+            "time": float(attrs["time"]),
+            "n_particles_total": int(attrs["n_particles_total"]),
         }
 
 
@@ -175,7 +171,7 @@ def archer_moments(state: dict[str, np.ndarray | float | int]) -> dict[str, floa
 
 def modal_metrics(state: dict[str, np.ndarray | float | int]) -> dict[str, float]:
     sampler = RingModeDiagnosticsSampler(
-        maximum_mode=16,
+        max_mode=16,
         azimuthal_bins=96,
         reference_radius=RADIUS,
         transverse_origin=(0.0, 0.0),
@@ -191,7 +187,7 @@ def modal_metrics(state: dict[str, np.ndarray | float | int]) -> dict[str, float
         raise RuntimeError(f"failed to recover all 16 centreline modes: {rows.shape}")
     combined = rows[:, 3]
     return {
-        "maximum_mode_amplitude": float(combined.max()),
+        "max_mode_amplitude": float(combined.max()),
         "rms_mode_amplitude": float(np.sqrt(np.mean(combined**2))),
         "dominant_mode": int(rows[np.argmax(combined), 0]),
         "diagnostic_ring_radius": float(rows[0, 6]),
@@ -199,15 +195,15 @@ def modal_metrics(state: dict[str, np.ndarray | float | int]) -> dict[str, float
     }
 
 
-def gaussian_speed(gamma: float, radius: float, core_radius: float) -> float:
+def gaussian_speed(circulation: float, radius: float, core_radius: float) -> float:
     epsilon = core_radius / radius
-    return gamma / (4.0 * np.pi * radius) * (np.log(8.0 / epsilon) - 0.558)
+    return circulation / (4.0 * np.pi * radius) * (np.log(8.0 / epsilon) - 0.558)
 
 
-def relaxed_empirical_speed(gamma: float, radius: float, core_radius: float) -> float:
+def relaxed_empirical_speed(circulation: float, radius: float, core_radius: float) -> float:
     epsilon = core_radius / radius
     correction = -0.558 - 1.12 * epsilon**2 - 5.0 * epsilon**4
-    return gamma / (4.0 * np.pi * radius) * (np.log(8.0 / epsilon) + correction)
+    return circulation / (4.0 * np.pi * radius) * (np.log(8.0 / epsilon) + correction)
 
 
 def analyze_run(run: RunSpec) -> dict[str, object]:
@@ -221,9 +217,11 @@ def analyze_run(run: RunSpec) -> dict[str, object]:
     first = flow.iloc[0]
     last = flow.iloc[-1]
     duration = float(final_state["time"]) - float(initial_state["time"])
-    energy_change = float(last["kinetic_energy"] - first["kinetic_energy"])
+    energy_change = float(last["total_kinetic_energy"] - first["total_kinetic_energy"])
     molecular_energy_change = (
-        duration * 0.5 * float(first["neg_nu_enstrophy"] + last["neg_nu_enstrophy"])
+        duration
+        * 0.5
+        * float(first["viscous_kinetic_energy_rate"] + last["viscous_kinetic_energy_rate"])
     )
     mean_gaussian_speed = 0.5 * (
         gaussian_speed(
@@ -254,9 +252,9 @@ def analyze_run(run: RunSpec) -> dict[str, object]:
         "name": run.name,
         "diffusion": run.diffusion,
         "spacing": run.spacing,
-        "time_step": run.time_step,
-        "initial_particles": int(initial_state["particles"]),
-        "final_particles": int(final_state["particles"]),
+        "time_step_size": run.time_step_size,
+        "initial_n_particles_total": int(initial_state["n_particles_total"]),
+        "final_n_particles_total": int(final_state["n_particles_total"]),
         "duration": duration,
         "measured_speed": (final["axial_centroid"] - initial["axial_centroid"]) / duration,
         "gaussian_speed_reference": mean_gaussian_speed,
@@ -265,8 +263,8 @@ def analyze_run(run: RunSpec) -> dict[str, object]:
         "final": final,
         "predicted_gaussian_core_radius": float(predicted_core),
         "core_diffusion_relative_error": abs(final["core_radius_theta"] / predicted_core - 1.0),
-        "energy_initial": float(first["kinetic_energy"]),
-        "energy_final": float(last["kinetic_energy"]),
+        "initial_total_kinetic_energy": float(first["total_kinetic_energy"]),
+        "final_total_kinetic_energy": float(last["total_kinetic_energy"]),
         "measured_energy_decay_rate": -energy_change / duration,
         "molecular_dissipation_rate": -molecular_energy_change / duration,
         "energy_balance_relative_residual": abs(
@@ -277,7 +275,9 @@ def analyze_run(run: RunSpec) -> dict[str, object]:
             final["tube_circulation"] / initial["tube_circulation"] - 1.0
         ),
         "final_vorticity_divergence_error": float(last["vorticity_divergence_error"]),
-        "final_strength_misalignment_deg": float(last["strength_misalignment_deg"]),
+        "final_vortex_strength_misalignment_degrees": float(
+            last["vortex_strength_misalignment_degrees"]
+        ),
         **modes,
     }
 
@@ -298,7 +298,7 @@ def evaluate_gates(results: list[dict[str, object]]) -> dict[str, object]:
         key: relative_difference(float(time_coarse[key]), float(time_fine[key]))
         for key in (
             "measured_speed",
-            "energy_final",
+            "final_total_kinetic_energy",
         )
     }
     time_pair_metrics["ring_radius_theta"] = relative_difference(
@@ -310,15 +310,15 @@ def evaluate_gates(results: list[dict[str, object]]) -> dict[str, object]:
         float(time_fine["final"]["core_radius_theta"]),
     )
     time_pair_mode_absolute_difference = abs(
-        float(time_coarse["maximum_mode_amplitude"]) - float(time_fine["maximum_mode_amplitude"])
+        float(time_coarse["max_mode_amplitude"]) - float(time_fine["max_mode_amplitude"])
     )
     speed_difference = relative_difference(
         float(spatial_coarse["measured_speed"]),
         float(spatial_fine["measured_speed"]),
     )
     energy_difference = relative_difference(
-        float(spatial_coarse["energy_final"]),
-        float(spatial_fine["energy_final"]),
+        float(spatial_coarse["final_total_kinetic_energy"]),
+        float(spatial_fine["final_total_kinetic_energy"]),
     )
     finest_initial_core_error = abs(
         float(spatial_fine["initial"]["core_radius_theta"]) / CORE_RADIUS - 1.0
@@ -327,23 +327,22 @@ def evaluate_gates(results: list[dict[str, object]]) -> dict[str, object]:
         "energy_balance": max(
             float(result["energy_balance_relative_residual"]) for result in cs_primary
         )
-        <= PREFLIGHT_LIMITS["maximum_energy_balance_relative_residual"],
+        <= PREFLIGHT_LIMITS["max_energy_balance_relative_residual"],
         "impulse": max(float(result["impulse_relative_drift"]) for result in cs_primary)
-        <= PREFLIGHT_LIMITS["maximum_impulse_relative_drift"],
-        "axisymmetry": max(float(result["maximum_mode_amplitude"]) for result in cs_primary)
-        <= PREFLIGHT_LIMITS["maximum_axisymmetry_mode_amplitude"],
-        "time_step": (
-            max(time_pair_metrics.values())
-            <= PREFLIGHT_LIMITS["maximum_time_pair_relative_difference"]
+        <= PREFLIGHT_LIMITS["max_impulse_relative_drift"],
+        "axisymmetry": max(float(result["max_mode_amplitude"]) for result in cs_primary)
+        <= PREFLIGHT_LIMITS["max_axisymmetry_mode_amplitude"],
+        "time_step_convergence": (
+            max(time_pair_metrics.values()) <= PREFLIGHT_LIMITS["max_time_pair_relative_difference"]
             and time_pair_mode_absolute_difference
-            <= PREFLIGHT_LIMITS["maximum_time_pair_mode_absolute_difference"]
+            <= PREFLIGHT_LIMITS["max_time_pair_mode_absolute_difference"]
         ),
         "finest_pair_speed": speed_difference
-        <= PREFLIGHT_LIMITS["maximum_finest_pair_speed_relative_difference"],
+        <= PREFLIGHT_LIMITS["max_finest_pair_speed_relative_difference"],
         "finest_pair_energy": energy_difference
-        <= PREFLIGHT_LIMITS["maximum_finest_pair_energy_relative_difference"],
+        <= PREFLIGHT_LIMITS["max_finest_pair_energy_relative_difference"],
         "benchmark_core_definition": finest_initial_core_error
-        <= PREFLIGHT_LIMITS["maximum_finest_initial_core_radius_relative_error"],
+        <= PREFLIGHT_LIMITS["max_finest_initial_core_radius_relative_error"],
     }
     return {
         "threshold_provenance": (
@@ -352,18 +351,18 @@ def evaluate_gates(results: list[dict[str, object]]) -> dict[str, object]:
         ),
         "limits": PREFLIGHT_LIMITS,
         "observed": {
-            "maximum_energy_balance_relative_residual": max(
+            "max_energy_balance_relative_residual": max(
                 float(result["energy_balance_relative_residual"]) for result in cs_primary
             ),
-            "maximum_impulse_relative_drift": max(
+            "max_impulse_relative_drift": max(
                 float(result["impulse_relative_drift"]) for result in cs_primary
             ),
-            "maximum_axisymmetry_mode_amplitude": max(
-                float(result["maximum_mode_amplitude"]) for result in cs_primary
+            "max_axisymmetry_mode_amplitude": max(
+                float(result["max_mode_amplitude"]) for result in cs_primary
             ),
             "time_pair_relative_differences": time_pair_metrics,
             "time_pair_mode_absolute_difference": time_pair_mode_absolute_difference,
-            "maximum_time_pair_relative_difference": max(time_pair_metrics.values()),
+            "max_time_pair_relative_difference": max(time_pair_metrics.values()),
             "finest_pair_speed_relative_difference": speed_difference,
             "finest_pair_energy_relative_difference": energy_difference,
             "finest_initial_core_radius_relative_error": finest_initial_core_error,
@@ -383,7 +382,7 @@ def plot(results: list[dict[str, object]], output: Path) -> None:
     cs = [
         result
         for result in results
-        if result["diffusion"] == "Core Spreading" and result["time_step"] == 0.02
+        if result["diffusion"] == "Core Spreading" and result["time_step_size"] == 0.02
     ]
     cs.sort(key=lambda item: float(item["spacing"]), reverse=True)
     gbd = next(result for result in results if result["diffusion"] == "Grid-Based Diffusion")
@@ -480,18 +479,18 @@ def plot(results: list[dict[str, object]], output: Path) -> None:
     style_axis(axis)
 
     axis = axes[1, 1]
-    cs_modes = [float(result["maximum_mode_amplitude"]) for result in cs]
+    cs_modes = [float(result["max_mode_amplitude"]) for result in cs]
     axis.semilogy(h, cs_modes, "o-", color=BLUE, label="Core Spreading")
     axis.scatter(
         [float(gbd["spacing"])],
-        [float(gbd["maximum_mode_amplitude"])],
+        [float(gbd["max_mode_amplitude"])],
         marker="s",
         color=RED,
         label="Grid-Based Diffusion",
         zorder=3,
     )
     axis.axhline(
-        PREFLIGHT_LIMITS["maximum_axisymmetry_mode_amplitude"],
+        PREFLIGHT_LIMITS["max_axisymmetry_mode_amplitude"],
         color=INK,
         linestyle="--",
         label="preflight limit",

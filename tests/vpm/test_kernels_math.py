@@ -257,7 +257,7 @@ def _second_radial_moment(zeta, r_max=400.0, n=800000):
     """M₂ = 4π ∫₀^∞ ρ⁴ ζ(ρ) dρ — the 2nd radial moment of the vorticity kernel.
 
     Uses its own quadrature (NOT _radial_quadrature, which already carries the
-    4πρ² spherical-volume factor and would double-count it here).  r_max is large
+    4πρ² spherical-particle_volume factor and would double-count it here).  r_max is large
     because the Winckelmans kernel has an algebraic tail — 4πρ⁴ζ ~ ρ⁻³ — so the
     integral converges only slowly and a short cutoff truncates ~1e-3 of M₂.
     """

@@ -1,6 +1,6 @@
 import numpy as np
 
-from source.solvers.VPM.boundary_elements.vlm.solver.mesh import _stitch_segment_neighbors
+from source.solvers.vpm.boundary_elements.vlm.solver.mesh import _stitch_segment_neighbors
 
 
 def test_stitch_segment_neighbors_connects_openvsp_style_span_segments():

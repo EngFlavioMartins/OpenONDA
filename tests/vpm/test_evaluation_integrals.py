@@ -12,7 +12,7 @@ is performed.
 import numpy as np
 import pytest
 
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     VelocityConfig,
@@ -24,7 +24,7 @@ _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
 
 
 def _two_particle_solver(make_solver, kernel_name, gamma1, gamma2):
-    """Create a solver with two particles at fixed positions."""
+    """Create a solver with two particles at fixed position."""
     solver = make_solver(
         time_step_size=0.01,
         particle_kernel=kernel_name,
@@ -38,7 +38,7 @@ def _two_particle_solver(make_solver, kernel_name, gamma1, gamma2):
         velocity=np.zeros((2, 3)),
         vortex_strength=np.array([gamma1, gamma2]),
         core_radius=np.full(2, _SIGMA),
-        volume=np.full(2, _VOLUME),
+        particle_volume=np.full(2, _VOLUME),
         kinematic_viscosity=np.zeros(2),
     )
     return solver
@@ -59,7 +59,7 @@ def test_energy_rate_matches_latest_nonuniform_diagnostic_interval(
         velocity=VelocityConfig.direct(),
     )
     diagnostics = solver.field_diagnostics
-    diagnostics._flow_time_history = [
+    diagnostics._energy_history = [
         (0.0, 27.0),
         (0.3, 19.0),
         (1.1, 18.0),
@@ -98,7 +98,7 @@ def test_empty_system_zero_integrals(kernel_name, backend, solver_for_backend):
     assert solver.total_helicity == 0.0
     assert np.allclose(solver.total_linear_impulse, 0.0)
     assert np.allclose(solver.total_angular_impulse, 0.0)
-    assert np.allclose(solver.total_vortex_strength, 0.0)
+    assert np.allclose(solver.net_vortex_strength, 0.0)
 
 
 def test_angular_impulse_core_correction_is_per_particle(backend, solver_for_backend):
@@ -116,7 +116,7 @@ def test_angular_impulse_core_correction_is_per_particle(backend, solver_for_bac
         velocity=np.zeros((2, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]]),
         core_radius=np.array([0.1, 0.3]),
-        volume=np.full(2, _VOLUME),
+        particle_volume=np.full(2, _VOLUME),
         kinematic_viscosity=np.zeros(2),
     )
 
@@ -158,8 +158,8 @@ def test_strength_linear_scaling(kernel_name, backend, solver_for_backend):
     solver2.advance()
     solver2._update_all_flow_integrals()
     assert np.allclose(
-        solver2.total_vortex_strength,
-        2.0 * solver1.total_vortex_strength,
+        solver2.net_vortex_strength,
+        2.0 * solver1.net_vortex_strength,
     ), f"{kernel_name}/{backend}: strength not linear in Γ"
 
 
@@ -256,7 +256,7 @@ def test_translation_invariance_energy_enstrophy(kernel_name, backend, solver_fo
         velocity=np.zeros((2, 3)),
         vortex_strength=np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
         core_radius=np.full(2, _SIGMA),
-        volume=np.full(2, _VOLUME),
+        particle_volume=np.full(2, _VOLUME),
         kinematic_viscosity=np.zeros(2),
     )
     solver1.advance()
@@ -299,8 +299,8 @@ def test_cross_backend_consistency_flow_integrals(kernel_name, backend, solver_f
     if backend == "CPU":
         test_cross_backend_consistency_flow_integrals._cpu_cache[key] = {
             "ke": solver.total_kinetic_energy,
-            "enstrophy": solver.total_enstrophy,
-            "helicity": solver.total_helicity,
+            "total_enstrophy": solver.total_enstrophy,
+            "total_helicity": solver.total_helicity,
             "impulse": solver.total_linear_impulse.copy(),
         }
     else:
@@ -308,7 +308,9 @@ def test_cross_backend_consistency_flow_integrals(kernel_name, backend, solver_f
         if ref is None:
             pytest.skip("CPU reference not yet computed — run CPU tests first")
         rel_ke = abs(solver.total_kinetic_energy - ref["ke"]) / (ref["ke"] + 1e-15)
-        rel_ens = abs(solver.total_enstrophy - ref["enstrophy"]) / (ref["enstrophy"] + 1e-15)
+        rel_ens = abs(solver.total_enstrophy - ref["total_enstrophy"]) / (
+            ref["total_enstrophy"] + 1e-15
+        )
         rel_imp = np.linalg.norm(solver.total_linear_impulse - ref["impulse"]) / (
             np.linalg.norm(ref["impulse"]) + 1e-15
         )

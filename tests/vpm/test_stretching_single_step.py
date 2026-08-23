@@ -9,7 +9,7 @@ single time step with no advection or diffusion.
 import numpy as np
 import pytest
 
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     VelocityConfig,
@@ -20,7 +20,7 @@ _SIGMA = 0.2
 _VOLUME = (4.0 / 3.0) * np.pi * _SIGMA**3
 
 
-def _solver_with_particles(make_solver, kernel_name, positions, circulations):
+def _solver_with_particles(make_solver, kernel_name, position, circulations):
     """Create a solver with stretching enabled and given particles."""
     solver = make_solver(
         time_step_size=0.01,
@@ -30,13 +30,13 @@ def _solver_with_particles(make_solver, kernel_name, positions, circulations):
         advection=AdvectionConfig(scheme="NONE"),
         velocity=VelocityConfig.direct(),
     )
-    N = len(positions)
+    N = len(position)
     solver.add_vortex_particles(
-        position=np.array(positions),
+        position=np.array(position),
         velocity=np.zeros((N, 3)),
         vortex_strength=np.array(circulations),
         core_radius=np.full(N, _SIGMA),
-        volume=np.full(N, _VOLUME),
+        particle_volume=np.full(N, _VOLUME),
         kinematic_viscosity=np.zeros(N),
     )
     return solver
@@ -61,7 +61,7 @@ def test_single_blob_no_stretching(kernel_name, scheme, mode, backend, solver_fo
     solver = _solver_with_particles(
         solver_for_backend,
         kernel_name,
-        positions=[[0.0, 0.0, 0.0]],
+        position=[[0.0, 0.0, 0.0]],
         circulations=[[0.0, 0.0, 1.0]],
     )
     gamma_before = solver.particles.vortex_strength_cpu().copy()
@@ -94,7 +94,7 @@ def test_two_parallel_vortices_2d_invariance(
     solver = _solver_with_particles(
         solver_for_backend,
         kernel_name,
-        positions=[[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]],
+        position=[[-0.5, 0.0, 0.0], [0.5, 0.0, 0.0]],
         circulations=[[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
     )
     gamma_before = solver.particles.vortex_strength_cpu().copy()
@@ -121,7 +121,7 @@ def test_transposed_circulation_conservation(kernel_name, backend, solver_for_ba
     solver = _solver_with_particles(
         solver_for_backend,
         kernel_name,
-        positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        position=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     )
     sum_before = np.sum(solver.particles.vortex_strength_cpu(), axis=0)
@@ -155,7 +155,7 @@ def test_stretching_rate_matches_velocity_gradient_form(
     solver = _solver_with_particles(
         solver_for_backend,
         kernel_name,
-        positions=[
+        position=[
             [0.0, 0.0, 0.0],
             [0.7, 0.2, -0.1],
             [-0.2, 0.6, 0.3],
@@ -169,11 +169,11 @@ def test_stretching_rate_matches_velocity_gradient_form(
 
     gamma0 = solver.particles.vortex_strength_cpu().copy()
     solver.physics.compute_velocity_gradients(solver.particles)
-    grad_u = solver.particles.velocity_gradient_cpu()
+    velocity_gradient = solver.particles.velocity_gradient_cpu()
 
     mode_int = 0 if mode == "DIRECT" else 2
-    n_particles = len(gamma0)
-    solver.physics._resize_temp_fields(n_particles)
+    n_particles_total = len(gamma0)
+    solver.physics._resize_temp_fields(n_particles_total)
     solver.physics._zero_temp_fields()
     solver.physics.compute_stretching_rate_kernel(
         solver.particles.position,
@@ -181,14 +181,14 @@ def test_stretching_rate_matches_velocity_gradient_form(
         solver.particles.core_radius,
         solver.physics.dstr_dt_temp,
         mode_int,
-        n_particles,
+        n_particles_total,
     )
-    actual_rate = solver.physics.dstr_dt_temp.to_numpy()[:n_particles]
+    actual_rate = solver.physics.dstr_dt_temp.to_numpy()[:n_particles_total]
 
     if mode == "DIRECT":
-        expected_rate = np.einsum("nij,nj->ni", grad_u, gamma0)
+        expected_rate = np.einsum("nij,nj->ni", velocity_gradient, gamma0)
     else:
-        strain = 0.5 * (grad_u + np.swapaxes(grad_u, 1, 2))
+        strain = 0.5 * (velocity_gradient + np.swapaxes(velocity_gradient, 1, 2))
         expected_rate = np.einsum("nij,nj->ni", strain, gamma0)
 
     np.testing.assert_allclose(
@@ -205,7 +205,7 @@ def test_batched_direct_rate_matches_single_dispatch(backend, solver_for_backend
     solver = _solver_with_particles(
         solver_for_backend,
         "GAUSSIAN",
-        positions=[
+        position=[
             [0.0, 0.0, 0.0],
             [0.7, 0.2, -0.1],
             [-0.2, 0.6, 0.3],
@@ -220,16 +220,16 @@ def test_batched_direct_rate_matches_single_dispatch(backend, solver_for_backend
     )
     p = solver.physics
     particles = solver.particles
-    n_particles = len(particles)
-    p._resize_temp_fields(n_particles)
-    p._zero_temp_fields(n_particles)
+    n_particles_total = len(particles)
+    p._resize_temp_fields(n_particles_total)
+    p._zero_temp_fields(n_particles_total)
     p.compute_stretching_rate_kernel(
         particles.position,
         particles.vortex_strength,
         particles.core_radius,
         p.dstr_dt_temp,
         1,
-        n_particles,
+        n_particles_total,
     )
     p.compute_stretching_rate_batch_kernel(
         particles.position,
@@ -239,7 +239,7 @@ def test_batched_direct_rate_matches_single_dispatch(backend, solver_for_backend
         1,
         0,
         2,
-        n_particles,
+        n_particles_total,
     )
     p.compute_stretching_rate_batch_kernel(
         particles.position,
@@ -249,11 +249,11 @@ def test_batched_direct_rate_matches_single_dispatch(backend, solver_for_backend
         1,
         2,
         2,
-        n_particles,
+        n_particles_total,
     )
 
-    reference = p.dstr_dt_temp.to_numpy()[:n_particles]
-    batched = p.dstr_dt_temp2.to_numpy()[:n_particles]
+    reference = p.dstr_dt_temp.to_numpy()[:n_particles_total]
+    batched = p.dstr_dt_temp2.to_numpy()[:n_particles_total]
     np.testing.assert_array_equal(
         batched,
         reference,
@@ -275,7 +275,7 @@ def test_nonconservative_stretching_changes_circulation(
     solver = _solver_with_particles(
         solver_for_backend,
         kernel_name,
-        positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        position=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         circulations=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
     )
     sum_before = np.sum(solver.particles.vortex_strength_cpu(), axis=0)
@@ -303,7 +303,7 @@ def test_small_dt_scheme_convergence(kernel_name, mode, backend, solver_for_back
     solver = _solver_with_particles(
         solver_for_backend,
         kernel_name,
-        positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        position=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
         circulations=[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
     )
     time_step_size = 1e-6

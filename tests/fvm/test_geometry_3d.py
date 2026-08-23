@@ -1,6 +1,6 @@
 import numpy as np
 
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 
 class TestHandBuilt3DMesh:
@@ -19,15 +19,15 @@ class TestHandBuilt3DMesh:
         for f in hand_built_3d_mesh["faces"]:
             assert len(f) == 4
 
-    def test_cell_volumes_are_one(self, hand_built_3d_mesh):
+    def test_cell_volume_are_one(self, hand_built_3d_mesh):
         geo = compute_mesh_geometry(hand_built_3d_mesh)
-        vols = geo["cell_volumes"]
+        vols = geo["cell_volume"]
         assert vols.shape == (8,)
         assert np.allclose(vols, 1.0)
 
-    def test_cell_centroids(self, hand_built_3d_mesh):
+    def test_cell_centre(self, hand_built_3d_mesh):
         geo = compute_mesh_geometry(hand_built_3d_mesh)
-        cents = geo["cell_centroids"]
+        cents = geo["cell_centre"]
         assert cents.shape == (8, 3)
         expected = np.array(
             [
@@ -43,15 +43,15 @@ class TestHandBuilt3DMesh:
         )
         assert np.allclose(cents, expected)
 
-    def test_face_areas(self, hand_built_3d_mesh):
+    def test_face_area(self, hand_built_3d_mesh):
         geo = compute_mesh_geometry(hand_built_3d_mesh)
-        areas = geo["face_areas"]
+        areas = geo["face_area"]
         assert areas.shape[0] == hand_built_3d_mesh["n_faces"]
         assert np.allclose(areas, 1.0)
 
     def test_face_normals_axis_aligned(self, hand_built_3d_mesh):
         geo = compute_mesh_geometry(hand_built_3d_mesh)
-        sf = geo["face_sf"]
+        sf = geo["face_area_vector"]
         for i in range(sf.shape[0]):
             nz = np.count_nonzero(np.abs(sf[i]) > 1e-12)
             assert nz == 1, f"Face {i} normal {sf[i]} not axis-aligned"

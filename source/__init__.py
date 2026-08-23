@@ -12,8 +12,8 @@ Available modules:
 - coupler: Conservative native FVM-VPM coupling
 
 Usage:
-    from source.solvers.FVM import Solver
-    from source.solvers.VPM import Solver as VPMSolver
+    from source.solvers.fvm import Solver
+    from source.solvers.vpm import Solver as VPMSolver
 """
 
 from . import solvers

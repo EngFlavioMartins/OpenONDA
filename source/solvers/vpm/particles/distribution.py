@@ -1,0 +1,623 @@
+"""
+Seeds vortex particles over flow fields and regions (ParticleDistributor).
+
+Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
+Date: January 2026
+
+Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+"""
+
+import numpy as np
+from scipy.spatial import cKDTree
+
+from ..io.logging import Logging
+
+# =========================================================
+
+
+class ParticleDistributor:
+    """
+    A comprehensive class for generating and manipulating particle distributions
+    in 3D space for computational fluid dynamics and particle methods.
+
+    This class provides various distribution patterns (rectangular, hexagonal,
+    cylindrical) and utilities for particle manipulation (removal, splitting).
+    """
+
+    EPSILON = 1e-10
+
+    def __init__(self, default_radius: float = 1.5):
+        """
+        Initialize the ParticleDistributor class.
+
+        Args:
+              default_radius (float): Default particle radius. Defaults to 1.5.
+        """
+        self.default_radius = default_radius
+
+    @staticmethod
+    def compute_min_max(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> tuple[float, ...]:
+        """
+        Compute min and max for each axis.
+
+        Args:
+              x (np.ndarray): x-coordinates.
+              y (np.ndarray): y-coordinates.
+              z (np.ndarray): z-coordinates.
+
+        Returns:
+              Tuple[float, float, float, float, float, float]: xmin, xmax, ymin, ymax, zmin, zmax
+        """
+        xmin, xmax = np.min(x), np.max(x)
+        ymin, ymax = np.min(y), np.max(y)
+        zmin, zmax = np.min(z), np.max(z)
+        return xmin, xmax, ymin, ymax, zmin, zmax
+
+    @staticmethod
+    def gaussian(r: np.ndarray, omega_0: float, a: float) -> np.ndarray:
+        """
+        Gaussian function for fitting particle distributions.
+
+        Args:
+              r (np.ndarray): Radial distances.
+              omega_0 (float): Peak amplitude.
+              a (float): Characteristic length scale.
+
+        Returns:
+              np.ndarray: Gaussian values.
+        """
+        return omega_0 * np.exp(-(r**2) / a**2)
+
+    @staticmethod
+    def rectangular_distribution(
+        domain_bounds: list, spacing: float
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Generate a rectangular (box) distribution of particles.
+
+        Args:
+              domain_bounds (list): [xmin, xmax, ymin, ymax, zmin, zmax] bounds.
+              spacing (float): Average distance between particles.
+              radius (float, optional): Particle radius. Uses default if None.
+
+        Returns:
+              Tuple containing:
+              - position (np.ndarray): 3D coordinates of particles
+              - particle_volume (np.ndarray): Volume associated with each particle
+              - core_radius (np.ndarray): Radius of each particle
+        """
+        # particle radius is derived from spacing (single computation)
+        radius = 2 * spacing
+
+        numx = int(np.ceil((domain_bounds[1] - domain_bounds[0]) / spacing)) + 1
+        numy = int(np.ceil((domain_bounds[3] - domain_bounds[2]) / spacing)) + 1
+        numz = int(np.ceil((domain_bounds[5] - domain_bounds[4]) / spacing)) + 1
+
+        # Ensure odd number of position for symmetry
+        if numx % 2 == 0:
+            numx += 1
+        if numy % 2 == 0:
+            numy += 1
+        if numz % 2 == 0:
+            numz += 1
+
+        x = np.linspace(domain_bounds[0], domain_bounds[1], num=numx)
+        y = np.linspace(domain_bounds[2], domain_bounds[3], num=numy)
+        z = np.linspace(domain_bounds[4], domain_bounds[5], num=numz)
+
+        dx = x[1] - x[0] if len(x) > 1 else spacing
+        dy = y[1] - y[0] if len(y) > 1 else spacing
+        dz = z[1] - z[0] if len(z) > 1 else spacing
+
+        position = np.stack(np.meshgrid(x, y, z, indexing="ij"), axis=-1).reshape(-1, 3)
+        volume_per_point = dx * dy * dz
+        particle_volume = np.full(position.shape[0], volume_per_point)
+        core_radius = np.full(position.shape[0], radius)
+
+        return position, particle_volume, core_radius
+
+    @staticmethod
+    def noisy_distribution(
+        domain_bounds: list,
+        spacing: float,
+        noise_level: float = 0.3,
+        seed: int | None = None,
+        k_neighbors: int = 6,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Generate a noisy rectangular distribution of particles.
+
+        Particles are initially placed on a regular grid, then randomly displaced
+        within their grid cell. Radii are computed based on actual nearest neighbor
+        distances after randomization to ensure proper kernel support.
+
+        Args:
+              domain_bounds (list): [xmin, xmax, ymin, ymax, zmin, zmax] bounds.
+              spacing (float): Average distance between particles (grid spacing).
+              noise_level (float): Noise amplitude as fraction of spacing.
+                    Default is 0.3, meaning particles can move ±0.3*spacing/2
+                    from their grid position. Valid range: [0.0, 1.0].
+                    - 0.0: Regular grid (no noise)
+                    - 1.0: Maximum noise (particles can move to cell boundaries)
+              seed (int, optional): Random seed for reproducibility.
+              k_neighbors (int): Number of nearest neighbors to consider for
+                    radius computation. Default is 6 (typical for 3D grid).
+
+        Returns:
+              Tuple containing:
+              - position (np.ndarray): 3D coordinates of particles with noise
+              - particle_volume (np.ndarray): Volume associated with each particle
+              - core_radius (np.ndarray): Radius of each particle based on local spacing
+
+        Example:
+              >>> # 10 particles along 1m length with noise
+              >>> # Each particle at 0.1m ± noise*0.1m
+              >>> position, vols, core_radius = noisy_distribution(
+              ...     domain_bounds=[0, 1, 0, 1, 0, 1],
+              ...     spacing=0.1,
+              ...     noise_level=0.3
+              ... )
+        """
+        # Validate noise level
+        if not 0.0 <= noise_level <= 1.0:
+            raise ValueError(f"noise_level must be between 0.0 and 1.0, got {noise_level}")
+
+        # Set random seed if provided
+        if seed is not None:
+            np.random.seed(seed)
+
+        # Calculate number of particles in each direction
+        numx = int(np.ceil((domain_bounds[1] - domain_bounds[0]) / spacing)) + 1
+        numy = int(np.ceil((domain_bounds[3] - domain_bounds[2]) / spacing)) + 1
+        numz = int(np.ceil((domain_bounds[5] - domain_bounds[4]) / spacing)) + 1
+
+        # Ensure odd number of position for symmetry
+        if numx % 2 == 0:
+            numx += 1
+        if numy % 2 == 0:
+            numy += 1
+        if numz % 2 == 0:
+            numz += 1
+
+        # Create regular grid
+        x = np.linspace(domain_bounds[0], domain_bounds[1], num=numx)
+        y = np.linspace(domain_bounds[2], domain_bounds[3], num=numy)
+        z = np.linspace(domain_bounds[4], domain_bounds[5], num=numz)
+
+        # Calculate actual grid spacing
+        dx = x[1] - x[0] if len(x) > 1 else spacing
+        dy = y[1] - y[0] if len(y) > 1 else spacing
+        dz = z[1] - z[0] if len(z) > 1 else spacing
+
+        # Create meshgrid for regular position
+        position = np.stack(np.meshgrid(x, y, z, indexing="ij"), axis=-1).reshape(-1, 3)
+
+        # Add noise to each position
+        # Noise is uniformly distributed within ±noise_level * spacing/2
+        # This ensures particles stay within their grid cell
+        noise_x = (np.random.rand(position.shape[0]) - 0.5) * noise_level * dx
+        noise_y = (np.random.rand(position.shape[0]) - 0.5) * noise_level * dy
+        noise_z = (np.random.rand(position.shape[0]) - 0.5) * noise_level * dz
+
+        # Apply noise to position
+        position[:, 0] += noise_x
+        position[:, 1] += noise_y
+        position[:, 2] += noise_z
+
+        # Clamp position to domain bounds to handle edge cases
+        position[:, 0] = np.clip(position[:, 0], domain_bounds[0], domain_bounds[1])
+        position[:, 1] = np.clip(position[:, 1], domain_bounds[2], domain_bounds[3])
+        position[:, 2] = np.clip(position[:, 2], domain_bounds[4], domain_bounds[5])
+
+        # Calculate particle_volume (still based on nominal grid spacing)
+        volume_per_point = dx * dy * dz
+        particle_volume = np.full(position.shape[0], volume_per_point)
+
+        # Compute core_radius based on actual nearest neighbor distances
+        n_particles_total = position.shape[0]
+        core_radius = np.zeros(n_particles_total)
+
+        # For large particle counts, use a cell-based approach
+        # Divide domain into cells and only check nearby particles
+        tree = cKDTree(position)
+
+        for i in range(n_particles_total):
+            # Query k+1 neighbors (includes self)
+            distances, _ = tree.query(position[i], k=k_neighbors + 1)
+            # Skip the first element (self at distance 0)
+            k_nearest = distances[1:]
+
+            # Set radius based on mean of k nearest neighbors
+            mean_distance = np.mean(k_nearest)
+            core_radius[i] = 1.5 * mean_distance  # 0.8 * mean_distance**0.5
+
+        return position, particle_volume, core_radius
+
+    @staticmethod
+    def rectangular_2d_distribution(
+        domain_bounds: list,
+        spacing: float,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Generate a 2D rectangular distribution of particles (z=0)."""
+
+        # Calculate number of points to best match the spacing argument
+        numx = int(np.round((domain_bounds[1] - domain_bounds[0]) / spacing)) + 1
+        numy = int(np.round((domain_bounds[3] - domain_bounds[2]) / spacing)) + 1
+
+        # More direct approach - create coordinates directly
+        x_coords = np.linspace(domain_bounds[0], domain_bounds[1], numx)
+        y_coords = np.linspace(domain_bounds[2], domain_bounds[3], numy)
+
+        xx, yy = np.meshgrid(x_coords, y_coords, indexing="ij")
+        position = np.column_stack([xx.ravel(), yy.ravel(), np.zeros(xx.size)])
+
+        total_positions = len(position)
+        total_area = (domain_bounds[1] - domain_bounds[0]) * (domain_bounds[3] - domain_bounds[2])
+
+        # compute particle radius from spacing
+        radius = 2 * spacing
+        particle_volume = np.full(total_positions, total_area / total_positions)
+        core_radius = np.full(total_positions, radius)
+
+        return position, particle_volume, core_radius
+
+    @staticmethod
+    def hexagonal_distribution(
+        domain_bounds: list | None = None,
+        spacing: float = 0.1,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Generate a hexagonal lattice distribution of particles.
+
+        Args:
+              domain_bounds (list, optional): Domain bounds. Uses default if None.
+              spacing (float): Lattice spacing.
+              radius (float): Particle radius.
+
+        Returns:
+              Tuple containing position, particle_volume, and core_radius arrays.
+        """
+        if domain_bounds is None:
+            domain_bounds = [-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]
+
+        x_min, x_max, y_min, y_max, z_min, z_max = domain_bounds
+
+        x_range = np.arange(x_min, x_max + spacing / 2, spacing)
+        y_range = np.arange(y_min, y_max + spacing / 2, spacing * np.sqrt(3) / 2)
+        z_range = np.arange(z_min, z_max + spacing / 2, spacing)
+
+        # Ensure at least one point if bounds are singular
+        if len(x_range) == 0:
+            x_range = np.array([x_min])
+        if len(y_range) == 0:
+            y_range = np.array([y_min])
+        if len(z_range) == 0:
+            z_range = np.array([z_min])
+
+        positions_list: list[list[float]] = []
+        for z in z_range:
+            for i, y in enumerate(y_range):
+                x_offset = spacing / 2 if i % 2 == 1 else 0
+                for x in x_range:
+                    positions_list.append([x + x_offset, y, z])
+
+        position = np.array(positions_list)
+
+        # Determine effective particle_volume/area
+        # If one dimension is singular, it's 2D (Area); if two, it's 1D (Length).
+        singular_dims = (x_min == x_max) + (y_min == y_max) + (z_min == z_max)
+
+        if singular_dims == 0:
+            particle_volume = spacing**3 * np.sqrt(3) / 2
+        elif singular_dims == 1:
+            particle_volume = spacing**2 * np.sqrt(3) / 2  # Area * 1.0 thickness
+        else:
+            particle_volume = spacing  # Length * 1.0*1.0 area
+
+        # compute particle radius from spacing
+        radius = 2 * spacing
+        particle_volume = np.full(position.shape[0], particle_volume)
+        core_radius = np.full(position.shape[0], radius)
+
+        return position, particle_volume, core_radius
+
+    @staticmethod
+    def toroidal_distribution(
+        ring_radius: float,
+        tube_radius: float,
+        spacing: float,
+        centre_position: np.ndarray | None = None,
+        axis: str = "x",
+        widnall_amplitude: float = 0.0,
+        seed: int = 42,
+        n_widnall_modes: int = 24,
+        return_orbit_ids: bool = False,
+    ) -> (
+        tuple[np.ndarray, np.ndarray, np.ndarray]
+        | tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    ):
+        """Seed a periodic, particle_volume-weighted tube around a circular ring.
+
+        A two-dimensional triangular lattice discretises the tube cross-section.
+        Every cross-section point is swept through the same uniformly spaced
+        azimuthal angles.  Complete azimuthal loops avoid the symmetry loss and
+        non-zero vector vortex strength produced by pruning a Cartesian box around a
+        ring.  Particle particle_volume include the toroidal Jacobian ``rho dtheta``.
+
+        Args:
+            ring_radius: Radius from the ring axis to its centreline.
+            tube_radius: Radius of the seeded cross-section.
+            spacing: Target particle spacing.
+            centre_position: Ring centre; defaults to the origin.
+            axis: Ring axis (``"x"``, ``"y"``, or ``"z"``).
+            widnall_amplitude: Relative amplitude of the radial centreline perturbation.
+            seed: Random seed for the perturbation phases.
+            n_widnall_modes: Number of centreline Fourier modes.
+            return_orbit_ids: Also return one integer ID per cross-section
+                orbit. Particles with the same ID form one complete periodic
+                azimuthal loop and are contiguous in the returned arrays.
+
+        Returns:
+            Particle position, quadrature particle volume, and Gaussian core radius;
+            optionally followed by the azimuthal-orbit IDs.
+        """
+        if ring_radius <= 0.0:
+            raise ValueError("ring_radius must be positive")
+        if tube_radius <= 0.0:
+            raise ValueError("tube_radius must be positive")
+        if spacing <= 0.0:
+            raise ValueError("spacing must be positive")
+        if tube_radius >= ring_radius:
+            raise ValueError("tube_radius must be smaller than ring_radius")
+        if axis not in ("x", "y", "z"):
+            raise ValueError("axis must be 'x', 'y', or 'z'")
+        if widnall_amplitude < 0.0:
+            raise ValueError("widnall_amplitude must be non-negative")
+        if n_widnall_modes < 1:
+            raise ValueError("n_widnall_modes must be at least 1")
+
+        centre_position = (
+            np.zeros(3) if centre_position is None else np.asarray(centre_position, dtype=float)
+        )
+        if centre_position.shape != (3,):
+            raise ValueError("centre_position must contain exactly three coordinates")
+
+        row_spacing = np.sqrt(3.0) * spacing / 2.0
+        max_row = int(np.ceil(tube_radius / row_spacing))
+        max_column = int(np.ceil(tube_radius / spacing)) + max_row
+        cross_section: list[tuple[float, float]] = []
+        cutoff_sq = (tube_radius + 16.0 * np.finfo(float).eps) ** 2
+        for row in range(-max_row, max_row + 1):
+            radial_offset = row * row_spacing
+            for column in range(-max_column, max_column + 1):
+                axial_offset = spacing * (column + 0.5 * row)
+                if axial_offset**2 + radial_offset**2 <= cutoff_sq:
+                    cross_section.append((axial_offset, radial_offset))
+
+        offsets = np.asarray(cross_section, dtype=float)
+        outer_circumference = 2.0 * np.pi * (ring_radius + tube_radius)
+        azimuth_count = max(8, int(np.ceil(outer_circumference / spacing)))
+        # A multiple of four represents every coordinate reflection exactly.
+        azimuth_count += (-azimuth_count) % 4
+        theta = 2.0 * np.pi * np.arange(azimuth_count) / azimuth_count
+        from ..initial_conditions.flow_models import vortex_ring_centreline
+
+        centreline_radius, _ = vortex_ring_centreline(
+            theta,
+            ring_radius,
+            widnall_amplitude=widnall_amplitude,
+            seed=seed,
+            n_widnall_modes=n_widnall_modes,
+        )
+        cosine_theta = np.cos(theta)
+        sine_theta = np.sin(theta)
+
+        axial = np.repeat(offsets[:, 0], azimuth_count)
+        rho = (centreline_radius[None, :] + offsets[:, 1, None]).reshape(-1)
+        cosine = np.tile(cosine_theta, len(offsets))
+        sine = np.tile(sine_theta, len(offsets))
+
+        local = np.empty((len(axial), 3), dtype=float)
+        if axis == "x":
+            local[:, 0] = axial
+            local[:, 1] = rho * cosine
+            local[:, 2] = rho * sine
+        elif axis == "y":
+            local[:, 0] = rho * sine
+            local[:, 1] = axial
+            local[:, 2] = rho * cosine
+        else:
+            local[:, 0] = rho * cosine
+            local[:, 1] = rho * sine
+            local[:, 2] = axial
+
+        cell_area = np.sqrt(3.0) * spacing**2 / 2.0
+        dtheta = 2.0 * np.pi / azimuth_count
+        particle_volume = cell_area * rho * dtheta
+        core_radius = np.full(len(local), 2.0 * spacing)
+        result = (local + centre_position, particle_volume, core_radius)
+        if return_orbit_ids:
+            orbit_ids = np.repeat(np.arange(len(offsets), dtype=np.int32), azimuth_count)
+            return (*result, orbit_ids)
+        return result
+
+    @staticmethod
+    def cylindrical_distribution(
+        cyl_radius: float = 1.0,
+        height: float = 2.0,
+        centre_position: np.ndarray = np.array([0.0, 0.0, 0.0]),
+        axis: str = "z",
+        spacing: float = 0.1,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Generate a cylindrical distribution of particles.
+
+        Args:
+              radius (float): Cylinder radius.
+              height (float): Cylinder height.
+              centre_position (np.ndarray): Cylinder centre_position coordinates.
+              axis (str): Cylinder axis ('x', 'y', or 'z').
+              spacing (float): Average particle spacing.
+              radius (float): Particle radius.
+
+        Returns:
+              Tuple containing position, particle_volume, and core_radius arrays.
+        """
+        if axis not in ("x", "y", "z"):
+            raise ValueError("Invalid axis. Choose from 'x', 'y', or 'z'.")
+
+        num_r = int(cyl_radius / spacing)
+        num_z = int(height / spacing)
+        num_t = int(np.pi * cyl_radius / spacing)
+
+        dtheta = 2 * np.pi / num_t
+        dz = height / num_z
+        dr = cyl_radius / num_r
+
+        r = np.linspace(dr, cyl_radius, num=num_r)
+        z = np.linspace(-height / 2, height / 2, num=num_z + 1)
+        theta = np.linspace(0, 2 * np.pi, num=num_t)[:-1]
+
+        RR, ZZ, TT = np.meshgrid(r, z, theta, indexing="ij")
+        X = RR * np.cos(TT)
+        Y = RR * np.sin(TT)
+        VOLS = (RR * dtheta) * dr * dz
+
+        if axis == "x":
+            pts = np.stack(
+                [ZZ + centre_position[0], X + centre_position[1], Y + centre_position[2]], axis=-1
+            )
+            cax = np.stack(
+                [
+                    z + centre_position[0],
+                    np.full_like(z, centre_position[1]),
+                    np.full_like(z, centre_position[2]),
+                ],
+                axis=1,
+            )
+        elif axis == "y":
+            pts = np.stack(
+                [X + centre_position[0], ZZ + centre_position[1], Y + centre_position[2]], axis=-1
+            )
+            cax = np.stack(
+                [
+                    np.full_like(z, centre_position[0]),
+                    z + centre_position[1],
+                    np.full_like(z, centre_position[2]),
+                ],
+                axis=1,
+            )
+        else:
+            pts = np.stack(
+                [X + centre_position[0], Y + centre_position[1], ZZ + centre_position[2]], axis=-1
+            )
+            cax = np.stack(
+                [
+                    np.full_like(z, centre_position[0]),
+                    np.full_like(z, centre_position[1]),
+                    z + centre_position[2],
+                ],
+                axis=1,
+            )
+
+        position = np.concatenate([pts.reshape(-1, 3), cax])
+        centre_volume = np.pi * (cyl_radius**2) * dz / len(z)
+        particle_volume = np.concatenate([VOLS.reshape(-1), np.full(len(z), centre_volume)])
+        core_radius = np.full(position.shape[0], 2 * spacing)
+
+        return position, particle_volume, core_radius
+
+    def remove_weak_particles(
+        self,
+        psys,
+        mode: str,
+        weakest_percent: float,
+        conserve_vortex_strength_magnitude_sum: bool = False,
+    ) -> None:
+        """
+        Remove particles with low strength from the system.
+
+        Args:
+              psys: Particle system object.
+              mode (str): 'absolute' or 'relative' threshold mode.
+              weakest_percent (float): Threshold value (percentage or absolute).
+              conserve_vortex_strength_magnitude_sum (bool): Whether to conserve total vortex strength.
+        """
+        threshold = weakest_percent / 100
+        vortex_strength_magnitude = psys.get_particle_strength_magnitudes()
+        vortex_strength_magnitude_sum_before = np.sum(vortex_strength_magnitude)
+        num_particles_before = len(psys)
+
+        if len(vortex_strength_magnitude) == 0:
+            Logging.warning("component=particle_pruning status=skipped reason=empty_particle_field")
+            return
+
+        if mode == "absolute":
+            weak_particles_list = vortex_strength_magnitude < threshold
+        elif mode == "relative":
+            highest_strength = np.max(vortex_strength_magnitude)
+            if highest_strength == 0:
+                Logging.warning(
+                    "component=particle_pruning status=skipped reason=zero_strength_field"
+                )
+                weak_particles_list = np.ones_like(vortex_strength_magnitude, dtype=bool)
+            else:
+                weak_particles_list = vortex_strength_magnitude / highest_strength < threshold
+        else:
+            Logging.warning(
+                f"component=particle_pruning status=skipped reason=invalid_mode mode={mode!r}"
+            )
+            return
+
+        weak_particles = np.where(weak_particles_list)[0]
+        psys.remove_particles(weak_particles)
+
+        if conserve_vortex_strength_magnitude_sum:
+            vortex_strength_magnitude = psys.get_particle_strength_magnitudes()
+            vortex_strength_magnitude_sum_after = np.sum(vortex_strength_magnitude)
+            vortex_strength = psys.get_particle_strengths()
+            correction = vortex_strength_magnitude_sum_before / (
+                vortex_strength_magnitude_sum_after + self.EPSILON
+            )
+
+            for p, particle in enumerate(psys.particles):
+                particle.update_state(strength=vortex_strength[p] * correction)
+
+        psys._cache_particle_arrays()
+        Logging.message(
+            f"[VPM][Particles] operation=prune mode={mode} "
+            f"threshold={weakest_percent:.6g} removed={num_particles_before - len(psys)} "
+            f"count={len(psys)} vortex_strength_rescaled={str(conserve_vortex_strength_magnitude_sum).lower()}"
+        )
+
+    @staticmethod
+    def get_highest_nonzero_indices(
+        arr: np.ndarray, top_percentage: int | None = None, strength_threshold: float | None = None
+    ) -> np.ndarray:
+        """
+        Get indices of highest non-zero entries in an array.
+
+        Args:
+              arr (np.ndarray): Input array.
+              top_percentage (int, optional): Percentage of top entries to return.
+              strength_threshold (float, optional): Minimum threshold value.
+
+        Returns:
+              np.ndarray: Indices of selected entries.
+        """
+        non_zero_indices = np.nonzero(arr)[0]
+        selected_values = arr[non_zero_indices]
+        sorted_indices = np.argsort(selected_values)[::-1]
+
+        if top_percentage is not None:
+            top_n = max(int(top_percentage * len(non_zero_indices) / 100), 1)
+            highest_nonzero_indices = non_zero_indices[sorted_indices[:top_n]]
+        else:
+            if strength_threshold is not None:
+                valid_indices = selected_values > strength_threshold
+                selected_values = selected_values[valid_indices]
+                non_zero_indices = non_zero_indices[valid_indices]
+                sorted_indices = np.argsort(selected_values)[::-1]
+            highest_nonzero_indices = non_zero_indices[sorted_indices]
+
+        return highest_nonzero_indices

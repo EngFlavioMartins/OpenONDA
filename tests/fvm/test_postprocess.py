@@ -8,7 +8,7 @@ import io
 
 import pytest
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -19,7 +19,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.sampling.postprocess import PostProcess
+from source.solvers.fvm.sampling.postprocess import PostProcess
 
 from ._structured_mesh import structured_box
 
@@ -47,7 +47,7 @@ def _config(samplers):
 
 def _line_sampler():
     return LineSampler(
-        start=[0.1, 0.5, 0.5], end=[0.9, 0.5, 0.5], n_points=4, file_name="centerline"
+        start=[0.1, 0.5, 0.5], end=[0.9, 0.5, 0.5], n_points=4, file_name="centreline"
     )
 
 
@@ -78,11 +78,11 @@ def _make_post(tmp_path, samplers):
 def test_postprocess_replay_matches_live_sampling(tmp_path):
     samplers = (_line_sampler(),)
     _build_archive(tmp_path, samplers)
-    live = _rows(tmp_path / "samples" / "centerline.csv")
+    live = _rows(tmp_path / "samples" / "centreline.csv")
 
     with contextlib.redirect_stdout(io.StringIO()):
         _make_post(tmp_path, samplers).run()
-    offline = _rows(tmp_path / "samples" / "centerline.csv")
+    offline = _rows(tmp_path / "samples" / "centreline.csv")
 
     assert offline[0] == live[0]
     assert len(offline) == len(live)
@@ -94,11 +94,11 @@ def test_postprocess_rerun_is_idempotent(tmp_path):
     _build_archive(tmp_path, samplers)
     with contextlib.redirect_stdout(io.StringIO()):
         _make_post(tmp_path, samplers).run()
-    first = _rows(tmp_path / "samples" / "centerline.csv")
+    first = _rows(tmp_path / "samples" / "centreline.csv")
 
     with contextlib.redirect_stdout(io.StringIO()):
         _make_post(tmp_path, samplers).run()
-    second = _rows(tmp_path / "samples" / "centerline.csv")
+    second = _rows(tmp_path / "samples" / "centreline.csv")
 
     assert first == second
     assert len(second) == 1 + 4 * 4  # header + 4 points x 4 archived steps
@@ -106,7 +106,7 @@ def test_postprocess_rerun_is_idempotent(tmp_path):
 
 def test_postprocess_uses_diagnostics_dt_before_pvd_spacing(tmp_path, monkeypatch):
     """Accepted diagnostic dt is authoritative when PVD frame spacing differs."""
-    from source.solvers.FVM.sampling import postprocess as pp_module
+    from source.solvers.fvm.sampling import postprocess as pp_module
 
     samplers = (_line_sampler(),)
     _build_archive(tmp_path, samplers)
@@ -125,7 +125,7 @@ def test_postprocess_uses_diagnostics_dt_before_pvd_spacing(tmp_path, monkeypatc
     original_execute = pp_module.FVMSamplerExecutor.execute
 
     def recording_execute(context, *, strict=False):
-        recorded_time_step_size.append(float(context._current_time_step_size))
+        recorded_time_step_size.append(float(context._accepted_time_step_size))
         return original_execute(context, strict=strict)
 
     monkeypatch.setattr(pp_module.FVMSamplerExecutor, "execute", staticmethod(recording_execute))

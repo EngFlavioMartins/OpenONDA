@@ -7,9 +7,9 @@ function/method signatures, class names, and ``self.<attr> =`` assignments) in
 the setup/config/facade/core modules that make up the public and serialized
 surface -- not arbitrary source text, so it cannot flag a legitimate compact
 math variable (``nu``, ``dt``, ``U`` ...) used inside a numerical kernel, a
-VLM ``circulation`` (the true scalar bound-vortex Gamma, which is NOT
-renamed), an OpenFOAM on-disk contract string, or an archived migration
-reader. See docs/nomenclature.md for the full old-name -> new-name contract.
+VLM ``circulation`` (the true scalar bound-vortex quantity), or a required
+third-party on-disk contract string. See docs/nomenclature.md for the complete
+canonical contract.
 """
 
 from __future__ import annotations
@@ -25,26 +25,29 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # subsystem configs, the openonda facade, and the core solver/coupler modules
 # that own the renamed public methods and attributes.
 SCANNED_FILES = [
-    "source/solvers/FVM/config/types.py",
-    "source/solvers/FVM/core/solver.py",
-    "source/solvers/VPM/config/setup.py",
-    "source/solvers/VPM/config/types.py",
-    "source/solvers/VPM/config/advection.py",
-    "source/solvers/VPM/config/divergence_relaxation.py",
-    "source/solvers/VPM/config/filament_refinement.py",
-    "source/solvers/VPM/config/stabilization.py",
-    "source/solvers/VPM/config/state.py",
-    "source/solvers/VPM/config/stretching.py",
-    "source/solvers/VPM/config/turbulence.py",
-    "source/solvers/VPM/config/velocity.py",
-    "source/solvers/VPM/config/viscous.py",
-    "source/solvers/VPM/core/solver.py",
-    "source/solvers/VPM/diagnostics/conservation.py",
-    "source/solvers/VPM/diagnostics/offline.py",
-    "source/solvers/VPM/diagnostics/resolution.py",
-    "source/solvers/VPM/boundary_elements/vlm/config.py",
-    "source/solvers/VPM/boundary_elements/vlm/solver/diagnostics.py",
-    "source/solvers/VPM/boundary_elements/vlm/solver/vlm_solver.py",
+    "source/solvers/fvm/config/types.py",
+    "source/solvers/fvm/core/solver.py",
+    "source/solvers/vpm/config/setup.py",
+    "source/solvers/vpm/config/types.py",
+    "source/solvers/vpm/config/advection.py",
+    "source/solvers/vpm/config/divergence_relaxation.py",
+    "source/solvers/vpm/config/filament_refinement.py",
+    "source/solvers/vpm/config/stabilization.py",
+    "source/solvers/vpm/config/state.py",
+    "source/solvers/vpm/config/stretching.py",
+    "source/solvers/vpm/config/turbulence.py",
+    "source/solvers/vpm/config/velocity.py",
+    "source/solvers/vpm/config/viscous.py",
+    "source/solvers/vpm/initial_conditions/flow_models.py",
+    "source/solvers/vpm/particles/container.py",
+    "source/solvers/vpm/particles/distribution.py",
+    "source/solvers/vpm/core/solver.py",
+    "source/solvers/vpm/diagnostics/conservation.py",
+    "source/solvers/vpm/diagnostics/offline.py",
+    "source/solvers/vpm/diagnostics/resolution.py",
+    "source/solvers/vpm/boundary_elements/vlm/config.py",
+    "source/solvers/vpm/boundary_elements/vlm/solver/diagnostics.py",
+    "source/solvers/vpm/boundary_elements/vlm/solver/vlm_solver.py",
     "source/coupler/config/types.py",
     "source/coupler/solver.py",
     "source/coupler/boundary.py",
@@ -78,8 +81,7 @@ FORBIDDEN_EXACT = {
     # docs/nomenclature.md additions
     "vpm_domain_bounds",
     "dvh_rd_ratio",
-    "number_of_particles",
-    "num_sources",
+    "n_sources",
     "SetFlowModel",
     "CachedParticleProperty",
     "transfer_region_box",
@@ -115,6 +117,14 @@ FORBIDDEN_EXACT = {
     "circulation_total",
     "gamma_bound",
     "gamma_wake",
+    "avg_particle_radius",
+    "anti_diffuse_flag",
+    "epsilon_W",
+    "epsilon_w",
+    "ring_strength",
+    "ring_thickness",
+    "normalize_circulation",
+    "volume_cpu",
 }
 
 # `self.<attr> = ...` targets that must never appear: these are *stored

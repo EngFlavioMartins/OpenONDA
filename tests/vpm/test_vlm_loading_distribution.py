@@ -20,14 +20,14 @@ import math
 import numpy as np
 import pytest
 
-from source.solvers.VPM.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
-from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import (
+from source.solvers.vpm.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
+from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import (
     Aircraft,
     Wing,
     WingSegment,
 )
-from source.solvers.VPM.boundary_elements.vlm.solver import VLMLoadingDistribution
-from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from source.solvers.vpm.boundary_elements.vlm.solver import VLMLoadingDistribution
+from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
 DENSITY = 1.225
 ALPHA_DEG = 5.0
@@ -45,21 +45,21 @@ def _flat_plate_aircraft(uid="plate", n_chord=4, n_span=12, span=4.0, chord=0.5,
     """Rectangular flat plate in the z=0 plane, span along +y.
 
     WingSegment convention (see aircraft.py): a→b is the LEADING EDGE (span
-    direction), a→d is the chord direction — matches the flatPlate tutorial's
+    direction), a→d is the chord direction — matches the flat_plate tutorial's
     flat_plate_surface.json.
     """
     wing = Wing(uid=f"{uid}_wing", symmetry=symmetry)
     wing.add_segment(
         WingSegment(
             uid="seg1",
-            vertices={
+            vertex_position={
                 "a": np.array([0.0, 0.0, 0.0]),
                 "b": np.array([0.0, span, 0.0]),
                 "c": np.array([chord, span, 0.0]),
                 "d": np.array([chord, 0.0, 0.0]),
             },
-            panels_chord=n_chord,
-            panels_span=n_span,
+            n_chordwise_panels=n_chord,
+            n_spanwise_panels=n_span,
         )
     )
     aircraft = Aircraft(uid=uid)
@@ -69,7 +69,7 @@ def _flat_plate_aircraft(uid="plate", n_chord=4, n_span=12, span=4.0, chord=0.5,
 
 def _solve_static(vlm, reference_velocity):
     """One uncoupled steady solve + postprocess (computes panel forces)."""
-    n_p = vlm.lattice.num_panels
+    n_p = vlm.lattice.n_panels
     v_ext = np.tile(np.asarray(reference_velocity, dtype=float), (n_p, 1))
     vlm.solve(external_velocity=v_ext, time_step_size=None, coupled=False)
     vlm.compute_postprocess(
@@ -103,7 +103,7 @@ def test_spanwise_and_chordwise_sums_match_lattice_totals():
     vlm = VLMSolver(
         VLMSetup(
             surfaces=(VLMSurfaceSetup(aircraft, sample_forces=True),),
-            max_panels=256,
+            max_n_panels=256,
             linear_solver="SCIPY",
         )
     )
@@ -118,10 +118,10 @@ def test_spanwise_and_chordwise_sums_match_lattice_totals():
 
     f_total = vlm.lattice.get_forces().sum(axis=0)
 
-    f_span = sp[["Fx_sec", "Fy_sec", "Fz_sec"]].to_numpy().sum(axis=0)
+    f_span = sp[["section_force_x", "section_force_y", "section_force_z"]].to_numpy().sum(axis=0)
     np.testing.assert_allclose(f_span, f_total, rtol=1e-5, atol=1e-8)
 
-    f_chord = ch[["Fx", "Fy", "Fz"]].to_numpy().sum(axis=0)
+    f_chord = ch[["force_x", "force_y", "force_z"]].to_numpy().sum(axis=0)
     np.testing.assert_allclose(f_chord, f_total, rtol=1e-5, atol=1e-8)
 
     # L' integrates back to the projected total lift: Σ L'·dy == F_total·L̂
@@ -129,7 +129,7 @@ def test_spanwise_and_chordwise_sums_match_lattice_totals():
     l_hat = np.array([0.0, 0.0, 1.0]) - u_hat[2] * u_hat
     l_hat /= np.linalg.norm(l_hat)
     lift_total = float(f_total @ l_hat)
-    lift_integrated = float((sp["L_prime"] * sp["dy"]).sum())
+    lift_integrated = float((sp["lift_per_span"] * sp["spanwise_station_width"]).sum())
     assert lift_integrated == pytest.approx(lift_total, rel=1e-5)
 
 
@@ -139,7 +139,7 @@ def test_spanwise_stations_are_sane():
     vlm = VLMSolver(
         VLMSetup(
             surfaces=(VLMSurfaceSetup(aircraft, sample_forces=True),),
-            max_panels=256,
+            max_n_panels=256,
             linear_solver="SCIPY",
         )
     )
@@ -151,18 +151,18 @@ def test_spanwise_stations_are_sane():
     y = sp["y"].to_numpy()
     assert np.all(np.diff(y) > 0), "spanwise stations must be sorted and distinct"
     assert sp["y_over_b"].between(-1.0, 1.0, inclusive="neither").all()
-    np.testing.assert_allclose(sp["dy"], 4.0 / 12, rtol=1e-4)
-    np.testing.assert_allclose(sp["chord_local"], 0.5, rtol=1e-4)
+    np.testing.assert_allclose(sp["spanwise_station_width"], 4.0 / 12, rtol=1e-4)
+    np.testing.assert_allclose(sp["local_chord"], 0.5, rtol=1e-4)
 
     # Regression: the old exporter inferred b from the first and last cell
     # centres, incorrectly labelling them as the physical tips (±1).  The
     # one-sided 0..4 m plate has its mid-span at y=2 m and a physical span of
     # 4 m, so the cell-centred coordinates are 2*(y-2)/4.
     np.testing.assert_allclose(sp["y_over_b"], 2.0 * (y - 2.0) / 4.0, rtol=1e-5)
-    assert sp["span_edge_min"].min() == pytest.approx(0.0, abs=1e-6)
-    assert sp["span_edge_max"].max() == pytest.approx(4.0, abs=1e-6)
+    assert sp["min_span_edge"].min() == pytest.approx(0.0, abs=1e-6)
+    assert sp["max_span_edge"].max() == pytest.approx(4.0, abs=1e-6)
 
-    cl = sp["cl"].to_numpy()
+    cl = sp["section_lift_coefficient"].to_numpy()
     assert np.all(cl > 0.0), "flat plate at +5° must lift everywhere"
     # finite wing: mid-span carries more load than the tip stations
     assert cl[len(cl) // 2] > cl[0]
@@ -180,8 +180,8 @@ def test_rotated_surface_span_axis():
     # span +y → +z, plate normal +z → −y: sideslip onto the fin lifts in −y
     vlm = VLMSolver(
         VLMSetup(
-            surfaces=(VLMSurfaceSetup(aircraft, rotation_deg=(90.0, 0.0, 0.0)),),
-            max_panels=256,
+            surfaces=(VLMSurfaceSetup(aircraft, rotation_degrees=(90.0, 0.0, 0.0)),),
+            max_n_panels=256,
             linear_solver="SCIPY",
         )
     )
@@ -194,15 +194,17 @@ def test_rotated_surface_span_axis():
 
     assert len(sp) == 12
     # station width must be the true strip width, not the y-shadow (~0)
-    np.testing.assert_allclose(sp["dy"], 4.0 / 12, rtol=1e-4)
+    np.testing.assert_allclose(sp["spanwise_station_width"], 4.0 / 12, rtol=1e-4)
     # forces still sum to the lattice total
     f_total = vlm.lattice.get_forces().sum(axis=0)
-    f_span = sp[["Fx_sec", "Fy_sec", "Fz_sec"]].to_numpy().sum(axis=0)
+    f_span = sp[["section_force_x", "section_force_y", "section_force_z"]].to_numpy().sum(axis=0)
     np.testing.assert_allclose(f_span, f_total, rtol=1e-5, atol=1e-8)
     # the fin carries side force; per-station magnitudes must be physical
-    assert np.all(np.abs(sp["Fy_sec"]) < 1e3)
-    assert np.isfinite(sp["L_prime"]).all() and np.isfinite(sp["cl"]).all()
-    assert np.abs(sp["L_prime"]).max() < 1e3, "L_prime exploded → span axis broken"
+    assert np.all(np.abs(sp["section_force_y"]) < 1e3)
+    assert (
+        np.isfinite(sp["lift_per_span"]).all() and np.isfinite(sp["section_lift_coefficient"]).all()
+    )
+    assert np.abs(sp["lift_per_span"]).max() < 1e3, "L_prime exploded → span axis broken"
 
 
 def test_symmetry_surface_has_both_halves():
@@ -214,7 +216,7 @@ def test_symmetry_surface_has_both_halves():
     vlm = VLMSolver(
         VLMSetup(
             surfaces=(VLMSurfaceSetup(aircraft),),
-            max_panels=256,
+            max_n_panels=256,
             linear_solver="SCIPY",
         )
     )
@@ -233,11 +235,11 @@ def test_symmetry_surface_has_both_halves():
 
     # symmetric loading: cl(y) == cl(−y)
     sp_sorted = sp.sort_values("y")
-    cl = sp_sorted["cl"].to_numpy()
+    cl = sp_sorted["section_lift_coefficient"].to_numpy()
     np.testing.assert_allclose(cl, cl[::-1], rtol=1e-3)
 
     f_total = vlm.lattice.get_forces().sum(axis=0)
-    f_span = sp[["Fx_sec", "Fy_sec", "Fz_sec"]].to_numpy().sum(axis=0)
+    f_span = sp[["section_force_x", "section_force_y", "section_force_z"]].to_numpy().sum(axis=0)
     np.testing.assert_allclose(f_span, f_total, rtol=1e-5, atol=1e-8)
 
 
@@ -254,7 +256,7 @@ def test_sampling_flag_plumbing():
                 VLMSurfaceSetup(a2, sample_forces=False),
                 VLMSurfaceSetup(a3, sample_forces=True),
             ),
-            max_panels=64,
+            max_n_panels=64,
             sample_surface_forces=True,
         )
     )
@@ -269,13 +271,13 @@ def _outer_station_tip_to_root_ratio(vlm) -> float:
     outer-station total must show a finite-wing tip drop (an almost-constant
     spanwise loading with no tip drop is the regression this file guards).
     """
-    n = vlm.lattice.num_panels
-    gamma = vlm.lattice.circulation.to_numpy()[:n]
-    vortex = vlm.lattice.vortex_points.to_numpy()[:n]
+    n = vlm.lattice.n_panels
+    circulation = vlm.lattice.circulation.to_numpy()[:n]
+    vortex = vlm.lattice.vortex_point_position.to_numpy()[:n]
     y_mid = 0.5 * (vortex[:, 1, 1] + vortex[:, 2, 1])
     grouped = {}
     for k in range(n):
-        grouped.setdefault(round(y_mid[k], 6), []).append(gamma[k])
+        grouped.setdefault(round(y_mid[k], 6), []).append(circulation[k])
     stations = sorted(grouped)
     totals = np.array([sum(grouped[y]) for y in stations])
     root = np.abs(totals[np.argmax(np.abs(totals))])
@@ -306,14 +308,14 @@ def test_standalone_far_wake_lies_in_wing_plane_tip_taper():
     wing.add_segment(
         WingSegment(
             uid="segment_0",
-            vertices={
+            vertex_position={
                 "a": np.array([0.0, 0.0, 0.0]),
                 "b": np.array([0.0, 5.0, 0.0]),
                 "c": np.array([1.0, 5.0, 0.0]),
                 "d": np.array([1.0, 0.0, 0.0]),
             },
-            panels_chord=8,
-            panels_span=28,
+            n_chordwise_panels=8,
+            n_spanwise_panels=28,
         )
     )
     aircraft = Aircraft(uid="flat_plate")
@@ -325,12 +327,12 @@ def test_standalone_far_wake_lies_in_wing_plane_tip_taper():
             VLMSetup(
                 surfaces=(VLMSurfaceSetup(aircraft),),
                 mesh=VLMMeshSetup.geometric(ratio=4.0, region="end"),
-                max_panels=2048,
+                max_n_panels=2048,
                 linear_solver="SCIPY",
             )
         )
         vlm.generate_mesh()
-        n_p = vlm.lattice.num_panels
+        n_p = vlm.lattice.n_panels
         vlm.solve(
             external_velocity=np.tile(reference_velocity, (n_p, 1)),
             time_step_size=0.0125,
@@ -342,7 +344,7 @@ def test_standalone_far_wake_lies_in_wing_plane_tip_taper():
     _, standalone_lo = get[False]
 
     # Coupled mode is the validated reference (matches Prandtl lifting line in
-    # the flatPlate tutorial); standalone must agree with it, not exceed it by
+    # the flat_plate tutorial); standalone must agree with it, not exceed it by
     # the ~60% pre-fix overshoot (0.41 vs 0.25).
     assert standalone_lo <= coupled_lo * 1.25
     # Absolute guard: tip loading must actually drop below the root plateau.

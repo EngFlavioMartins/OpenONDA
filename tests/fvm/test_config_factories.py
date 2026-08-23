@@ -1,6 +1,6 @@
 import pytest
 
-from source.solvers.FVM.config.types import (
+from source.solvers.fvm.config.types import (
     BoundaryConfig,
     ComputeConfig,
     FVMSetup,
@@ -12,9 +12,9 @@ from source.solvers.FVM.config.types import (
     TransportConfig,
     TurbulenceConfig,
 )
-from source.solvers.FVM.factory import _runtime_setup
-from source.solvers.FVM.sampling.base import SamplingSchedule
-from source.solvers.FVM.sampling.forces import ForceSampler, YPlusSampler
+from source.solvers.fvm.factory import _runtime_setup
+from source.solvers.fvm.sampling.base import SamplingSchedule
+from source.solvers.fvm.sampling.forces import ForceSampler, YPlusSampler
 
 
 class TestConfigFactories:
@@ -80,16 +80,18 @@ class TestConfigFactories:
         assert tc.kinematic_viscosity == 1e-6
 
     def test_turbulence_config_smagorinsky(self):
-        tc = TurbulenceConfig.smagorinsky(c_s=0.17)
+        tc = TurbulenceConfig.smagorinsky(smagorinsky_coefficient=0.17)
         assert tc.model == "Smagorinsky"
-        assert tc.c_s == 0.17
+        assert tc.smagorinsky_coefficient == 0.17
 
     def test_turbulence_config_equilibrium_smagorinsky(self):
         tc = TurbulenceConfig.equilibrium_smagorinsky()
         assert tc.model == "EquilibriumSmagorinsky"
-        assert tc.c_k == pytest.approx(0.094)
-        assert tc.c_e == pytest.approx(1.048)
-        assert tc.c_s == pytest.approx(tc.c_k**0.75 / tc.c_e**0.25)
+        assert tc.subgrid_kinetic_energy_coefficient == pytest.approx(0.094)
+        assert tc.subgrid_dissipation_coefficient == pytest.approx(1.048)
+        assert tc.smagorinsky_coefficient == pytest.approx(
+            tc.subgrid_kinetic_energy_coefficient**0.75 / tc.subgrid_dissipation_coefficient**0.25
+        )
 
     def test_fvm_config_roundtrip_json(self, tmp_path):
         config = FVMSetup(
@@ -128,9 +130,9 @@ class TestConfigFactories:
                 ),
                 ForceSampler(
                     patch_names=["body"],
-                    ref_velocity=12.0,
-                    ref_area=3.0,
-                    ref_length=2.0,
+                    reference_velocity=12.0,
+                    reference_area=3.0,
+                    reference_length=2.0,
                     moment_centre=[1.0, 2.0, 3.0],
                     schedule=SamplingSchedule(every_n_steps=7),
                 ),
@@ -194,7 +196,7 @@ class TestConfigFactories:
             OutputConfig(**{keyword: value})
 
     def test_physics_first_name_is_canonical(self):
-        from source.solvers.FVM import FVMSetup
+        from source.solvers.fvm import FVMSetup
 
         setup = FVMSetup(case_name="named")
         assert type(setup).__name__ == "FVMSetup"

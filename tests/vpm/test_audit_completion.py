@@ -13,18 +13,18 @@ import h5py
 import numpy as np
 import pytest
 
-from source.solvers.VPM.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
-from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
-from source.solvers.VPM.config.types import VPMSetup
-from source.solvers.VPM.core.solver import VPMSolver
-from source.solvers.VPM.diagnostics.conservation import ConservationTracker
-from source.solvers.VPM.diagnostics.offline import FlowIntegrals, OfflineFlowDiagnostics
-from source.solvers.VPM.io.checkpoint import CheckpointManager
-from source.solvers.VPM.io.logging import Logging, _TeeLogStream
-from source.solvers.VPM.io.sampler import SamplerExecutor
-from source.solvers.VPM.io.sampling import SAMPLER_CSV_COLUMNS
-from source.solvers.VPM.particles.container import Particles
-from source.solvers.VPM.physics.base import PhysicsBase
+from source.solvers.vpm.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
+from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from source.solvers.vpm.config.types import VPMSetup
+from source.solvers.vpm.core.solver import VPMSolver
+from source.solvers.vpm.diagnostics.conservation import ConservationTracker
+from source.solvers.vpm.diagnostics.offline import FlowIntegrals, OfflineFlowDiagnostics
+from source.solvers.vpm.io.checkpoint import CheckpointManager
+from source.solvers.vpm.io.logging import Logging, _TeeLogStream
+from source.solvers.vpm.io.sampler import SamplerExecutor
+from source.solvers.vpm.io.sampling import SAMPLER_CSV_COLUMNS
+from source.solvers.vpm.particles.container import Particles
+from source.solvers.vpm.physics.base import PhysicsBase
 
 
 def test_output_and_target_configuration_round_trip():
@@ -57,7 +57,7 @@ def test_checkpoint_name_is_a_safe_infix(name):
 
 
 class _CheckpointParticles:
-    n_particles = 1
+    n_particles_total = 1
 
     def __getattr__(self, name):
         if not name.endswith("_cpu"):
@@ -69,7 +69,7 @@ class _CheckpointParticles:
             return lambda: np.zeros(1, dtype=np.int32)
         if field in {
             "core_radius",
-            "volume",
+            "particle_volume",
             "kinematic_viscosity",
             "eddy_viscosity",
             "effective_viscosity",
@@ -108,7 +108,7 @@ def test_vpm_snapshot_and_checkpoint_names_are_unambiguous(tmp_path):
     assert not (tmp_path / "checkpoint" / "vpm_000007.h5").exists()
 
 
-@pytest.mark.parametrize("field, value", [("max_evaluation_points", 0), ("max_particles", 0)])
+@pytest.mark.parametrize("field, value", [("max_evaluation_points", 0), ("max_n_particles", 0)])
 def test_fixed_capacity_configuration_rejects_nonpositive_values(field, value):
     with pytest.raises(ValueError, match=field):
         VPMSetup(**{field: value})
@@ -126,7 +126,7 @@ def test_particle_capacity_fails_instead_of_reallocating_taichi_fields():
     particles = SimpleNamespace(_max_particles=32)
 
     Particles._grow_capacity(particles, 32)
-    with pytest.raises(ValueError, match="max_particles=32"):
+    with pytest.raises(ValueError, match="max_n_particles=32"):
         Particles._grow_capacity(particles, 33)
 
 
@@ -142,7 +142,7 @@ def test_sampler_csv_appends_all_events_to_one_time_aware_file(tmp_path):
     sampler = _Sampler()
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=[(sampler, "probe")]),
-        particles=SimpleNamespace(n_particles=2),
+        particles=SimpleNamespace(n_particles_total=2),
         particle_vortex_strength=np.ones((2, 3)),
         case_dir=tmp_path,
         checkpoint_directory=str(tmp_path),
@@ -179,7 +179,7 @@ def test_sampler_executor_supports_csv_samplers_without_step_keyword(tmp_path):
 
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=[LegacyCSVSampler()]),
-        particles=SimpleNamespace(n_particles=2),
+        particles=SimpleNamespace(n_particles_total=2),
         particle_vortex_strength=np.ones((2, 3)),
         case_dir=tmp_path,
         checkpoint_directory=str(tmp_path),
@@ -208,7 +208,7 @@ def test_sampler_executor_appends_opted_in_csv_time_series(tmp_path):
 
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=[TimeSeriesSampler()]),
-        particles=SimpleNamespace(n_particles=2),
+        particles=SimpleNamespace(n_particles_total=2),
         particle_vortex_strength=np.ones((2, 3)),
         case_dir=tmp_path,
         checkpoint_directory=str(tmp_path),
@@ -252,7 +252,7 @@ def test_sampler_subdirectory_stays_below_the_root_samples_directory(tmp_path):
     sampler = _Sampler()
     solver = SimpleNamespace(
         setup=SimpleNamespace(samplers=[(sampler, "probe")], sample_subdirectory="dipole_cs"),
-        particles=SimpleNamespace(n_particles=2),
+        particles=SimpleNamespace(n_particles_total=2),
         particle_vortex_strength=np.ones((2, 3)),
         case_dir=tmp_path,
         checkpoint_directory=str(tmp_path / "solution"),
@@ -269,10 +269,10 @@ def test_sampler_subdirectory_stays_below_the_root_samples_directory(tmp_path):
 def test_vlm_diagnostics_use_the_same_sample_subdirectory(tmp_path):
     VLMDiagnostics.export_forces_csv(
         vlm_solver=None,
-        forces={"CL": 0.5},
+        forces={"lift_coefficient": 0.5},
         bound_vortex_strength=1.0,
         wake_vortex_strength=-1.0,
-        lesp_max=0.0,
+        max_leading_edge_suction_parameter=0.0,
         n_p=10,
         time=0.2,
         step=2,
@@ -305,7 +305,7 @@ def test_vlm_bound_vector_strength_includes_oriented_leg_length():
     solver = SimpleNamespace(
         _solved=True,
         lattice=SimpleNamespace(
-            num_panels=2,
+            n_panels=2,
             circulation=_ArrayField([2.0, 3.0]),
             vortex_points=_ArrayField(vortex_points),
         ),
@@ -321,15 +321,15 @@ def test_conservation_tracker_compares_dimensionally_equal_vector_strengths(tmp_
     vlm_solver = SimpleNamespace(
         _solved=True,
         compute_total_bound_vortex_strength=lambda: np.array([0.0, 8.0, 0.0]),
-        compute_forces=lambda **_kwargs: {"Fx": 1.0, "Fy": 2.0, "Fz": 3.0},
+        compute_forces=lambda **_kwargs: {"force_x": 1.0, "force_y": 2.0, "force_z": 3.0},
     )
     solver = SimpleNamespace(
         time=0.25,
-        total_vortex_strength=np.array([0.0, -8.0, 0.0]),
+        net_vortex_strength=np.array([0.0, -8.0, 0.0]),
         total_linear_impulse=np.array([1.0, 2.0, 3.0]),
         total_kinetic_energy=4.0,
-        kinetic_energy_dissipation_rate=-0.5,
-        particles=SimpleNamespace(n_particles=12),
+        kinetic_energy_rate=-0.5,
+        particles=SimpleNamespace(n_particles_total=12),
         vlm_solver=vlm_solver,
         freestream_velocity=np.array([1.0, 0.0, 0.0]),
     )
@@ -337,26 +337,26 @@ def test_conservation_tracker_compares_dimensionally_equal_vector_strengths(tmp_
 
     state = tracker.record_state(solver)
 
-    np.testing.assert_allclose(state.total_vortex_strength, 0.0)
+    np.testing.assert_allclose(state.net_vortex_strength, 0.0)
     np.testing.assert_allclose(state.impulse_wake, [2.0, 4.0, 6.0])
-    assert state.kinetic_energy == pytest.approx(8.0)
-    assert state.energy_dissipation_rate == pytest.approx(-1.0)
-    assert state.vortex_strength_error == pytest.approx(0.0)
+    assert state.total_kinetic_energy == pytest.approx(8.0)
+    assert state.viscous_kinetic_energy_rate == pytest.approx(-1.0)
+    assert state.vortex_strength_closure_error_percent == pytest.approx(0.0)
 
-    solver.total_vortex_strength = np.array([0.0, -6.0, 0.0])
+    solver.net_vortex_strength = np.array([0.0, -6.0, 0.0])
     nonclosing_state = tracker.record_state(solver)
-    np.testing.assert_allclose(nonclosing_state.total_vortex_strength, [0.0, 2.0, 0.0])
-    assert nonclosing_state.vortex_strength_error == pytest.approx(25.0)
+    np.testing.assert_allclose(nonclosing_state.net_vortex_strength, [0.0, 2.0, 0.0])
+    assert nonclosing_state.vortex_strength_closure_error_percent == pytest.approx(25.0)
 
     output = tracker.export_csv(tmp_path)
     assert output == tmp_path / "samples" / "vpm_conservation.csv"
     with output.open(newline="", encoding="utf-8") as stream:
         columns = next(csv.reader(stream))
     assert columns[1:5] == [
-        "bound_vortex_strength_mag",
-        "wake_vortex_strength_mag",
-        "total_vortex_strength_mag",
-        "vortex_strength_error_pct",
+        "bound_vortex_strength_magnitude",
+        "wake_vortex_strength_magnitude",
+        "net_vortex_strength_magnitude",
+        "vortex_strength_closure_error_percent",
     ]
     tracker.print_summary()
 
@@ -368,22 +368,22 @@ def test_offline_flow_integral_output_uses_vortex_strength_contract(tmp_path):
     diagnostics.results = [
         FlowIntegrals(
             time=0.0,
-            kinetic_energy=1.0,
-            helicity=2.0,
-            enstrophy=3.0,
-            vorticity_dissipation_rate=4.0,
-            vortex_strength_magnitude=5.0,
-            total_vortex_strength=np.array([1.0, 2.0, 3.0]),
+            total_kinetic_energy=1.0,
+            total_helicity=2.0,
+            total_enstrophy=3.0,
+            viscous_kinetic_energy_rate=4.0,
+            vortex_strength_magnitude_sum=5.0,
+            net_vortex_strength=np.array([1.0, 2.0, 3.0]),
             linear_impulse=np.array([4.0, 5.0, 6.0]),
             angular_impulse=np.array([7.0, 8.0, 9.0]),
-            n_particles=2,
+            n_particles_total=2,
         )
     ]
 
     output = diagnostics.save()
     contents = output.read_text(encoding="utf-8")
 
-    assert "vortex_strength_magnitude" in contents
+    assert "vortex_strength_magnitude_sum" in contents
     assert "Total circulation magnitude" not in contents
 
 
@@ -395,7 +395,7 @@ def test_offline_flow_integral_reader_uses_canonical_result_key(
     diagnostics = OfflineFlowDiagnostics.__new__(OfflineFlowDiagnostics)
     diagnostics._load_particle_data = lambda _path: {
         "time": 0.5,
-        "n_particles": 1,
+        "n_particles_total": 1,
         "position": np.zeros((1, 3)),
         "vortex_strength": np.array([[1.0, 2.0, 3.0]]),
         "core_radius": np.ones(1),
@@ -403,20 +403,20 @@ def test_offline_flow_integral_reader_uses_canonical_result_key(
     }
     diagnostics.evaluator = SimpleNamespace(
         compute_flow_integrals=lambda _particles, _time: {
-            "kinetic_energy": 1.0,
-            "helicity": 2.0,
-            "enstrophy": 3.0,
-            "vorticity_dissipation_rate": 4.0,
-            "vortex_strength_magnitude": 5.0,
+            "total_kinetic_energy": 1.0,
+            "total_helicity": 2.0,
+            "total_enstrophy": 3.0,
+            "viscous_kinetic_energy_rate": 4.0,
+            "vortex_strength_magnitude_sum": 5.0,
             "vortex_strength": np.array([1.0, 2.0, 3.0]),
             "linear_impulse": np.array([4.0, 5.0, 6.0]),
             "angular_impulse": np.array([7.0, 8.0, 9.0]),
         }
     )
 
-    result = diagnostics._compute_single_timestep(tmp_path / "vpm_000001.h5")
+    result = diagnostics._compute_single_time_step(tmp_path / "vpm_000001.h5")
 
-    np.testing.assert_allclose(result.total_vortex_strength, [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(result.net_vortex_strength, [1.0, 2.0, 3.0])
 
 
 def test_flow_integral_export_is_configurable(monkeypatch):

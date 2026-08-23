@@ -14,7 +14,7 @@ from source.coupler.vorticity_transfer import (
 def _scatter(lattice, result):
     field = np.zeros((len(lattice.positions), 3))
     index = {tuple(point): i for i, point in enumerate(lattice.positions)}
-    for point, strength in zip(result.pos, result.circ, strict=True):
+    for point, strength in zip(result.position, result.vortex_strength, strict=True):
         field[index[tuple(point)]] = strength
     return field
 
@@ -34,13 +34,13 @@ def test_solid_body_rotation_has_exact_constant_curl():
     rng = np.random.default_rng(4)
     points = rng.uniform(-1.0, 1.0, (100, 3))
     h = 0.05
-    omega = np.array([0.3, -0.2, 1.1])
+    vorticity = np.array([0.3, -0.2, 1.1])
     strength = vortex_strength_from_velocity_trace(
         points,
         h,
-        lambda query: 0.5 * np.cross(omega, np.asarray(query)),
+        lambda query: 0.5 * np.cross(vorticity, np.asarray(query)),
     )
-    np.testing.assert_allclose(strength, np.tile(omega * h**3, (len(points), 1)), atol=2.0e-18)
+    np.testing.assert_allclose(strength, np.tile(vorticity * h**3, (len(points), 1)), atol=2.0e-18)
 
 
 def test_quadratic_velocity_curl_is_exact_on_the_transfer_lattice():

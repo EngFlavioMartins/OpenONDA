@@ -16,7 +16,7 @@ import time
 from mpi4py import MPI
 import numpy as np
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     ComputeConfig,
     DiscretizationConfig,
@@ -27,7 +27,7 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.mesh.cartesian import structured_box
+from source.solvers.fvm.mesh.cartesian import structured_box
 
 
 def _peak_rss_bytes() -> int:
@@ -101,13 +101,13 @@ def main() -> None:
             linear = solver.last_diagnostics.linear_solves
             linear_samples.append(
                 {
-                    "setup_seconds_max": comm.allreduce(
+                    "max_setup_seconds": comm.allreduce(
                         sum(result.setup_seconds for result in linear), op=MPI.MAX
                     ),
-                    "solve_seconds_max": comm.allreduce(
+                    "max_solve_seconds": comm.allreduce(
                         sum(result.solve_seconds for result in linear), op=MPI.MAX
                     ),
-                    "iterations_max": comm.allreduce(
+                    "max_iterations": comm.allreduce(
                         sum(result.iterations for result in linear), op=MPI.MAX
                     ),
                 }
@@ -116,10 +116,10 @@ def main() -> None:
     report = {
         "schema_version": 2,
         "backend": "numpy-petsc-partitioned-float64",
-        "ranks": size,
+        "n_ranks": size,
         "cells_per_rank": args.cells_per_rank,
         "global_cells": args.cells_per_rank * size,
-        "initialization_seconds_max": comm.allreduce(initialization, op=MPI.MAX),
+        "max_initialization_seconds": comm.allreduce(initialization, op=MPI.MAX),
         "warmup_steps": args.warmup_steps,
         "measured_steps": args.measured_steps,
         "step_seconds_max_samples": samples,
@@ -127,8 +127,8 @@ def main() -> None:
         "step_seconds_max_minimum": float(np.min(samples)),
         "step_seconds_max_maximum": float(np.max(samples)),
         "linear_samples": linear_samples,
-        "peak_rss_bytes_max": comm.allreduce(_peak_rss_bytes(), op=MPI.MAX),
-        "continuity_max": solver.last_diagnostics.continuity_max,
+        "max_peak_resident_set_size_bytes": comm.allreduce(_peak_rss_bytes(), op=MPI.MAX),
+        "max_continuity_error": solver.last_diagnostics.max_continuity_error,
         "host": {
             "platform": platform.platform(),
             "machine": platform.machine(),

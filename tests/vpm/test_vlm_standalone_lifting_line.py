@@ -1,7 +1,7 @@
 """
 Standalone VLM spanwise loading vs Prandtl lifting-line certification.
 
-The flat-plate tutorial (tutorials/VPM/flatPlate, wind-frame static case at
+The flat-plate tutorial (tutorials/vpm/flat_plate, wind-frame static case at
 alpha = 8 deg, chordwise = 8, spanwise = 14) solves the VLM standalone and
 plots the spanwise circulation against ``theoretical_model.liftingline_circulation``.
 
@@ -13,7 +13,7 @@ the whole distribution tracks the Prandtl model.
 The comparison uses the *actual* VLM geometry:
 
   - every spanwise station is built from the bound-leg midpoints of the lattice
-    (sum of |gamma| over the chordwise panels in that station column);
+    (sum of |circulation| over the chordwise panels in that station column);
   - the strip edges are the real panel corner y-coordinates (geometric mesh,
     NOT an assumed uniform spacing), so the mesh-dependent spacing and the
     tip cells are handled exactly;
@@ -23,13 +23,13 @@ The comparison uses the *actual* VLM geometry:
     value of a strongly-varying distribution.
 
 Checks (values certified on the tutorial configuration):
-  - interior |y| < 0.8 * half-span L2 error (normalised by root gamma) <= 5%;
+  - interior |y| < 0.8 * half-span L2 error (normalised by root circulation) <= 5%;
   - interior max error <= 8%;
   - full-span L2 error <= 7%;
   - integrated CL within 6% of the lifting-line CL;
-  - the outer-station / root-gamma ratio decreases with NS (tip taper) and it
+  - the outer-station / root-circulation ratio decreases with NS (tip taper) and it
     must already be below the pre-fix plateau (~0.41 at NS=28) at NS=28;
-  - gamma(cl) symmetry: the two mirrored halves agree.
+  - circulation(cl) symmetry: the two mirrored halves agree.
 """
 
 from __future__ import annotations
@@ -41,13 +41,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from source.solvers.VPM.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
-from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import (
+from source.solvers.vpm.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
+from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import (
     Aircraft,
     Wing,
     WingSegment,
 )
-from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
 HALF_SPAN = 5.0
 CHORD = 1.0
@@ -64,7 +64,7 @@ _THEORY = (
     Path(__file__).resolve().parents[2]
     / "tutorials"
     / "VPM"
-    / "flatPlate"
+    / "flat_plate"
     / "assets"
     / "theoretical_model.py"
 )
@@ -90,21 +90,21 @@ def _lifting_line():
 def _flat_plate_aircraft(uid="plate", n_chord=8, n_span=14):
     """Rectangular plate, root at y=0, tip at y=+HALF_SPAN, mirrored (symmetry=2).
 
-    Matches the flatPlate tutorial: chord 1, full span 10, geometric spanwise
+    Matches the flat_plate tutorial: chord 1, full span 10, geometric spanwise
     mesh bunched at the tips.
     """
     wing = Wing(uid=f"{uid}_wing", symmetry=2)
     wing.add_segment(
         WingSegment(
             uid="segment_0",
-            vertices={
+            vertex_position={
                 "a": np.array([0.0, 0.0, 0.0]),
                 "b": np.array([0.0, HALF_SPAN, 0.0]),
                 "c": np.array([CHORD, HALF_SPAN, 0.0]),
                 "d": np.array([CHORD, 0.0, 0.0]),
             },
-            panels_chord=n_chord,
-            panels_span=n_span,
+            n_chordwise_panels=n_chord,
+            n_spanwise_panels=n_span,
         )
     )
     aircraft = Aircraft(uid=uid)
@@ -125,12 +125,12 @@ def _solve_standalone(aircraft, mesh: str = "geom") -> VLMSolver:
         VLMSetup(
             surfaces=(VLMSurfaceSetup(aircraft),),
             mesh=mesh_setup,
-            max_panels=2048,
+            max_n_panels=2048,
             linear_solver="SCIPY",
         )
     )
     vlm.generate_mesh()
-    n_p = vlm.lattice.num_panels
+    n_p = vlm.lattice.n_panels
     vlm.solve(external_velocity=np.tile(REF_VELOCITY, (n_p, 1)), time_step_size=None, coupled=False)
     return vlm
 
@@ -138,20 +138,20 @@ def _solve_standalone(aircraft, mesh: str = "geom") -> VLMSolver:
 def _spanwise_loading(vlm):
     """Per-station |total circulation| on the actual geometric strips.
 
-    Returns (y, gamma, dy, edge_min, edge_max) arrays where each station is a
-    chordwise panel column at a bound-leg midpoint y, gamma is the sum of the
+    Returns (y, circulation, dy, edge_min, edge_max) arrays where each station is a
+    chordwise panel column at a bound-leg midpoint y, circulation is the sum of the
     column's panel circulations, and dy is the width of the station's real cell
     derived from the panel corner y-coordinates.
     """
-    n = vlm.lattice.num_panels
-    gamma = np.abs(vlm.lattice.circulation.to_numpy()[:n])
-    vortex = vlm.lattice.vortex_points.to_numpy()[:n]
-    corners = vlm.lattice.corners.to_numpy()[:n]
+    n = vlm.lattice.n_panels
+    circulation = np.abs(vlm.lattice.circulation.to_numpy()[:n])
+    vortex = vlm.lattice.vortex_point_position.to_numpy()[:n]
+    corners = vlm.lattice.panel_corner_position.to_numpy()[:n]
 
     y_mid = 0.5 * (vortex[:, 1, 1] + vortex[:, 2, 1])
     grouped: dict[float, list[float]] = {}
     for k in range(n):
-        grouped.setdefault(round(y_mid[k], 6), []).append(gamma[k])
+        grouped.setdefault(round(y_mid[k], 6), []).append(circulation[k])
 
     edge_ys = np.unique(np.round(corners[:, :, 1].ravel(), 6))
     stations = sorted(grouped)
@@ -178,7 +178,7 @@ def _lifting_line_at(model, ys: np.ndarray):
     df = model.liftingline_circulation(
         ys, FULL_SPAN, CHORD, ALPHA, U_inf=U_INF, a0=2.0 * np.pi, n_terms=LL_N_TERMS
     )
-    return np.asarray(df["Gamma"])
+    return np.asarray(df["circulation"])
 
 
 def _lifting_line_cell_averaged(
@@ -200,8 +200,8 @@ def _lifting_line_cell_averaged(
     df = model.liftingline_circulation(
         ys.ravel(), FULL_SPAN, CHORD, ALPHA, U_inf=U_INF, a0=2.0 * np.pi, n_terms=LL_N_TERMS
     )
-    gamma = np.asarray(df["Gamma"]).reshape(-1, n_points)
-    return 0.5 * (gamma * weights[None, :]).sum(axis=1)
+    circulation = np.asarray(df["circulation"]).reshape(-1, n_points)
+    return 0.5 * (circulation * weights[None, :]).sum(axis=1)
 
 
 def _cl_model(model) -> float:
@@ -210,7 +210,7 @@ def _cl_model(model) -> float:
     df = model.liftingline_circulation(
         y_grid, FULL_SPAN, CHORD, ALPHA, U_inf=U_INF, a0=2.0 * np.pi, n_terms=LL_N_TERMS
     )
-    return float(2.0 * np.trapezoid(df["Gamma"].to_numpy(), y_grid) / (U_INF * REF_AREA))
+    return float(2.0 * np.trapezoid(df["circulation"].to_numpy(), y_grid) / (U_INF * REF_AREA))
 
 
 @pytest.mark.verification
@@ -222,14 +222,14 @@ def test_standalone_loading_matches_lifting_line_tutorial_resolution(_lifting_li
     """
     vlm = _solve_standalone(_flat_plate_aircraft(n_span=14))
     ys, totals, dy, edge_min, edge_max = _spanwise_loading(vlm)
-    gamma_ll = np.abs(_lifting_line_cell_averaged(_lifting_line, edge_min, edge_max))
+    circulation_ll = np.abs(_lifting_line_cell_averaged(_lifting_line, edge_min, edge_max))
 
     root = float(np.max(totals))
     interior = np.abs(ys) < 0.8 * HALF_SPAN
 
-    l2_int = float(np.sqrt(np.mean((totals - gamma_ll)[interior] ** 2)) / root)
-    max_int = float(np.max(np.abs((totals - gamma_ll)[interior])) / root)
-    l2_all = float(np.sqrt(np.mean((totals - gamma_ll) ** 2)) / root)
+    l2_int = float(np.sqrt(np.mean((totals - circulation_ll)[interior] ** 2)) / root)
+    max_int = float(np.max(np.abs((totals - circulation_ll)[interior])) / root)
+    l2_all = float(np.sqrt(np.mean((totals - circulation_ll) ** 2)) / root)
 
     cl_vlm = float(2.0 * np.trapezoid(totals, ys) / (U_INF * REF_AREA))
     cl_ll = _cl_model(_lifting_line)
@@ -246,7 +246,7 @@ def test_standalone_loading_matches_lifting_line_tutorial_resolution(_lifting_li
 def test_tip_taper_decreases_with_resolution(_lifting_line):
     """NS in {8, 14, 28, 56}: outer/root ratio decreases and LL peaks.
 
-    The near-constant-loading regression would pin the outer-station gamma to
+    The near-constant-loading regression would pin the outer-station circulation to
     its root plateau (~0.41 at NS=28).  A healthy finite wing must taper to the
     tips, track the lifting-line distribution at the interior, and approach the
     LL tip drop as the mesh bunches at the ends.
@@ -271,14 +271,16 @@ def test_tip_taper_decreases_with_resolution(_lifting_line):
 def test_loading_symmetry():
     """The mirror half must produce the mirror-image loading."""
     vlm = _solve_standalone(_flat_plate_aircraft(n_span=14))
-    n = vlm.lattice.num_panels
-    gamma = np.abs(vlm.lattice.circulation.to_numpy()[:n])
-    vortex = vlm.lattice.vortex_points.to_numpy()[:n]
+    n = vlm.lattice.n_panels
+    circulation = np.abs(vlm.lattice.circulation.to_numpy()[:n])
+    vortex = vlm.lattice.vortex_point_position.to_numpy()[:n]
     y_mid = 0.5 * (vortex[:, 1, 1] + vortex[:, 2, 1])
 
     pos, neg = {}, {}
     for k in range(n):
-        (pos if y_mid[k] >= 0 else neg).setdefault(round(abs(y_mid[k]), 6), []).append(gamma[k])
+        (pos if y_mid[k] >= 0 else neg).setdefault(round(abs(y_mid[k]), 6), []).append(
+            circulation[k]
+        )
 
     y_pos = np.array(sorted(pos))
     y_neg = np.array(sorted(neg))
@@ -291,7 +293,7 @@ def test_loading_symmetry():
 
 def _coupled_outer_ratio(vlm, time_step_size) -> float:
     """Outer-station Γ / root Γ for one coupled solve at the given dt."""
-    n_p = vlm.lattice.num_panels
+    n_p = vlm.lattice.n_panels
     vlm._last_reference_velocity = (
         REF_VELOCITY  # wake_offset = reference_velocity * time_step_size needs the cached ref
     )
@@ -300,13 +302,13 @@ def _coupled_outer_ratio(vlm, time_step_size) -> float:
         time_step_size=time_step_size,
         coupled=True,
     )
-    n = vlm.lattice.num_panels
-    gamma = np.abs(vlm.lattice.circulation.to_numpy()[:n])
-    vortex = vlm.lattice.vortex_points.to_numpy()[:n]
+    n = vlm.lattice.n_panels
+    circulation = np.abs(vlm.lattice.circulation.to_numpy()[:n])
+    vortex = vlm.lattice.vortex_point_position.to_numpy()[:n]
     y_mid = 0.5 * (vortex[:, 1, 1] + vortex[:, 2, 1])
     grouped: dict[float, float] = {}
     for k in range(n):
-        grouped[round(y_mid[k], 6)] = grouped.get(round(y_mid[k], 6), 0.0) + gamma[k]
+        grouped[round(y_mid[k], 6)] = grouped.get(round(y_mid[k], 6), 0.0) + circulation[k]
     ys = np.array(sorted(grouped))
     totals = np.array([grouped[round(y, 6)] for y in ys])
     root = float(np.max(totals))

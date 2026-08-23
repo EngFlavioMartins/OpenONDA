@@ -8,26 +8,26 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
-from source.solvers.VPM.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
-from source.solvers.VPM.boundary_elements.vlm.solver.lattice import VLMLattice
-from source.solvers.VPM.boundary_elements.vlm.solver.mesh import generate_vlm_mesh
-from source.solvers.VPM.boundary_elements.vlm.solver.vlm_solver import VLMSolver
-from source.solvers.VPM.core.validation import _validate_time_step_sizing
-from source.solvers.VPM.runtime.backend import reset_taichi_backend
+from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
+from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
+from source.solvers.vpm.boundary_elements.vlm.solver.lattice import VLMLattice
+from source.solvers.vpm.boundary_elements.vlm.solver.mesh import generate_vlm_mesh
+from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from source.solvers.vpm.core.validation import _validate_time_step_sizing
+from source.solvers.vpm.runtime.backend import reset_taichi_backend
 
 
-def _plate(*, chord: float = 2.0, panels_chord: int = 4) -> Aircraft:
+def _plate(*, chord: float = 2.0, n_chordwise_panels: int = 4) -> Aircraft:
     segment = WingSegment(
         uid="segment",
-        vertices={
+        vertex_position={
             "a": np.array([0.0, 0.0, 0.0]),
             "b": np.array([0.0, 1.0, 0.0]),
             "c": np.array([chord, 1.0, 0.0]),
             "d": np.array([chord, 0.0, 0.0]),
         },
-        panels_chord=panels_chord,
-        panels_span=1,
+        n_chordwise_panels=n_chordwise_panels,
+        n_spanwise_panels=1,
     )
     wing = Wing(uid="wing")
     wing.add_segment(segment)
@@ -54,7 +54,7 @@ def test_coupling_stability_reports_resolved_and_under_resolved_steps():
         "courant": pytest.approx(0.5),
         "max_dt": pytest.approx(0.5),
         "characteristic_speed": pytest.approx(1.0),
-        "minimum_panel_chord": pytest.approx(0.5),
+        "min_panel_chord": pytest.approx(0.5),
     }
 
     with pytest.warns(RuntimeWarning, match="under-resolved"):
@@ -66,14 +66,14 @@ def test_coupling_stability_reports_resolved_and_under_resolved_steps():
 def test_coupling_stability_uses_shortest_edge_of_tapered_panels():
     segment = WingSegment(
         uid="tapered",
-        vertices={
+        vertex_position={
             "a": np.array([0.0, 0.0, 0.0]),
             "b": np.array([0.0, 1.0, 0.0]),
             "c": np.array([1.0, 1.0, 0.0]),
             "d": np.array([2.0, 0.0, 0.0]),
         },
-        panels_chord=4,
-        panels_span=1,
+        n_chordwise_panels=4,
+        n_spanwise_panels=1,
     )
     wing = Wing(uid="wing")
     wing.add_segment(segment)
@@ -83,7 +83,7 @@ def test_coupling_stability_uses_shortest_edge_of_tapered_panels():
 
     result = vlm.check_coupling_stability(0.25, (1.0, 0.0, 0.0))
 
-    assert result["minimum_panel_chord"] == pytest.approx(0.25)
+    assert result["min_panel_chord"] == pytest.approx(0.25)
     assert result["courant"] == pytest.approx(1.0)
 
 
@@ -98,31 +98,31 @@ def test_f64_mesh_generation_preserves_input_precision(taichi_f64):
     x_offset = 1.00000002
     segment = WingSegment(
         uid="segment",
-        vertices={
+        vertex_position={
             "a": np.array([x_offset, 0.0, 0.0]),
             "b": np.array([x_offset, 1.0, 0.0]),
             "c": np.array([x_offset + 1.0, 1.0, 0.0]),
             "d": np.array([x_offset + 1.0, 0.0, 0.0]),
         },
-        panels_chord=1,
-        panels_span=1,
+        n_chordwise_panels=1,
+        n_spanwise_panels=1,
     )
     wing = Wing(uid="wing")
     wing.add_segment(segment)
     aircraft = Aircraft(uid="offset_plate")
     aircraft.add_wing(wing)
 
-    lattice = VLMLattice(max_panels=1, dtype=ti.f64)
+    lattice = VLMLattice(max_n_panels=1, dtype=ti.f64)
     generate_vlm_mesh(aircraft, lattice)
 
-    stored = lattice.corners.to_numpy()[0, 0, 0]
-    assert lattice.corners.dtype == ti.f64
+    stored = lattice.panel_corner_position.to_numpy()[0, 0, 0]
+    assert lattice.panel_corner_position.dtype == ti.f64
     assert stored == pytest.approx(x_offset, rel=0.0, abs=1e-14)
 
 
 def test_set_circulation_uploads_one_contiguous_array(taichi_f64):
-    lattice = VLMLattice(max_panels=3, dtype=ti.f64)
-    lattice.num_panels = 2
+    lattice = VLMLattice(max_n_panels=3, dtype=ti.f64)
+    lattice.n_panels = 2
 
     lattice.set_circulation(np.array([[1.25], [-0.5]], dtype=np.float64))
 
@@ -131,7 +131,7 @@ def test_set_circulation_uploads_one_contiguous_array(taichi_f64):
 
 def test_spacing_variation_warning_uses_min_over_max_ratio():
     class Particles:
-        n_particles = 2
+        n_particles_total = 2
 
         @staticmethod
         def position_cpu():

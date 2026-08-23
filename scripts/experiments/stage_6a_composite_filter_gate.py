@@ -31,7 +31,7 @@ os.environ.setdefault("XDG_CACHE_HOME", "/private/tmp/openonda_stage6a_cache")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from source.solvers.VPM.physics.diffusion.grid import _m4_prime_1d
+from source.solvers.vpm.physics.diffusion.grid import _m4_prime_1d
 
 INK = "#20252a"
 BLUE = "#286f9b"

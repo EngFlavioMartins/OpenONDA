@@ -1,4 +1,4 @@
-from source.solvers.VPM import VPMSetup, VPMSolver
+from source.solvers.vpm import VPMSetup, VPMSolver
 
 
 def test_vpm_solver_owns_its_setup_object():

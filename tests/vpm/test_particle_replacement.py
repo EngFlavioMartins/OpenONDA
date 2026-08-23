@@ -2,24 +2,24 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.acceleration import treecode_gpu
-from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.acceleration import treecode_gpu
+from source.solvers.vpm.acceleration.treecode_gpu import TaichiTreecode
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StabilizationConfig,
     StretchingConfig,
     ViscousConfig,
 )
-from source.solvers.VPM.io.logging import Logging
-from source.solvers.VPM.particles.container import Particles
-from source.solvers.VPM.runtime.backend import reset_taichi_backend
+from source.solvers.vpm.io.logging import Logging
+from source.solvers.vpm.particles.container import Particles
+from source.solvers.vpm.runtime.backend import reset_taichi_backend
 
 
 def test_population_log_reports_physical_operation_not_storage_type(monkeypatch):
     messages = []
     monkeypatch.setattr(Logging, "message", messages.append)
-    particles = type("Population", (), {"n_particles": 4, "capacity": 16})()
+    particles = type("Population", (), {"n_particles_total": 4, "capacity": 16})()
 
     Particles._log_population(particles, "previous_count=9")
 
@@ -41,19 +41,19 @@ def test_weak_particle_removal_uses_cloud_wide_maximum(tmp_path):
                 checkpoint_interval_steps=0,
                 logging_interval_steps=0,
                 checkpoint_directory=str(tmp_path),
-                max_particles=16,
+                max_n_particles=16,
             )
         )
-        strengths = np.array(
+        vortex_strength = np.array(
             [[0.0, 0.0, 10.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.2], [0.0, 0.0, 0.02]],
             dtype=np.float32,
         )
         solver.replace_vortex_particles(
             position=np.arange(12, dtype=np.float32).reshape(4, 3),
             velocity=np.zeros((4, 3), dtype=np.float32),
-            vortex_strength=strengths,
+            vortex_strength=vortex_strength,
             core_radius=np.ones(4, dtype=np.float32),
-            volume=np.ones(4, dtype=np.float32),
+            particle_volume=np.ones(4, dtype=np.float32),
             kinematic_viscosity=np.zeros(4, dtype=np.float32),
             group_id=np.array([0, 0, 1, 1], dtype=np.int32),
         )
@@ -61,7 +61,7 @@ def test_weak_particle_removal_uses_cloud_wide_maximum(tmp_path):
         removed = solver.remove_weak_particles(5.0)
 
         assert removed == 2
-        np.testing.assert_allclose(solver.particle_vortex_strength, strengths[:2])
+        np.testing.assert_allclose(solver.particle_vortex_strength, vortex_strength[:2])
         np.testing.assert_array_equal(solver.particles.group_id_cpu(), np.array([0, 0]))
     finally:
         reset_taichi_backend()
@@ -79,7 +79,7 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
                 checkpoint_interval_steps=0,
                 logging_interval_steps=0,
                 checkpoint_directory=str(tmp_path),
-                max_particles=16,
+                max_n_particles=16,
             )
         )
 
@@ -89,7 +89,7 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
             velocity=np.zeros((1, 3), dtype=np.float32),
             vortex_strength=np.array([[0.0, 0.0, 1.0]], dtype=np.float32),
             core_radius=np.array([0.1], dtype=np.float32),
-            volume=np.array([0.01], dtype=np.float32),
+            particle_volume=np.array([0.01], dtype=np.float32),
             kinematic_viscosity=np.zeros(1, dtype=np.float32),
         )
 
@@ -101,13 +101,13 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
             [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
             dtype=np.float32,
         )
-        circulation = np.array(
+        vortex_strength = np.array(
             [[0.01, 0.02, 0.03], [0.04, 0.05, 0.06], [0.07, 0.08, 0.09]],
             dtype=np.float32,
         )
-        radius = np.full(3, 0.15, dtype=np.float32)
-        volume = np.full(3, 0.02, dtype=np.float32)
-        viscosity = np.full(3, 1.0e-3, dtype=np.float32)
+        core_radius = np.full(3, 0.15, dtype=np.float32)
+        particle_volume = np.full(3, 0.02, dtype=np.float32)
+        kinematic_viscosity = np.full(3, 1.0e-3, dtype=np.float32)
         zone_id = np.array([1, 2, 3], dtype=np.int32)
         group_id = np.array([4, 5, 6], dtype=np.int32)
         velocity_gradient = np.arange(27, dtype=np.float32).reshape(3, 3, 3) * 0.01
@@ -116,25 +116,27 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
         solver.replace_vortex_particles(
             position=position,
             velocity=velocity,
-            vortex_strength=circulation,
-            core_radius=radius,
-            volume=volume,
-            kinematic_viscosity=viscosity,
+            vortex_strength=vortex_strength,
+            core_radius=core_radius,
+            particle_volume=particle_volume,
+            kinematic_viscosity=kinematic_viscosity,
             group_id=group_id,
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
             strain_rate=strain_rate,
         )
 
-        assert solver.particles.n_particles == 3
+        assert solver.particles.n_particles_total == 3
         assert solver.particles.device_n_particles[None] == 3
-        np.testing.assert_allclose(solver.particles_positions, position)
-        np.testing.assert_allclose(solver.particles_velocities, velocity)
-        np.testing.assert_allclose(solver.particle_vortex_strength, circulation)
-        np.testing.assert_allclose(solver.particle_core_radius, radius)
-        np.testing.assert_allclose(solver.particles_volumes, volume)
-        np.testing.assert_allclose(solver.particles_viscosities, viscosity)
-        np.testing.assert_allclose(solver.particles_vorticities, circulation / volume[:, None])
+        np.testing.assert_allclose(solver.particle_position, position)
+        np.testing.assert_allclose(solver.particle_velocity, velocity)
+        np.testing.assert_allclose(solver.particle_vortex_strength, vortex_strength)
+        np.testing.assert_allclose(solver.particle_core_radius, core_radius)
+        np.testing.assert_allclose(solver.particle_volume, particle_volume)
+        np.testing.assert_allclose(solver.particle_kinematic_viscosity, kinematic_viscosity)
+        np.testing.assert_allclose(
+            solver.particle_vorticity, vortex_strength / particle_volume[:, None]
+        )
         np.testing.assert_array_equal(solver.particles.group_id_cpu(), group_id)
         np.testing.assert_array_equal(solver.particles.zone_id_cpu(), zone_id)
         np.testing.assert_allclose(solver.particles.velocity_gradient_cpu(), velocity_gradient)
@@ -145,10 +147,10 @@ def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):
             velocity=np.empty((0, 3), dtype=np.float32),
             vortex_strength=np.empty((0, 3), dtype=np.float32),
             core_radius=np.empty(0, dtype=np.float32),
-            volume=np.empty(0, dtype=np.float32),
+            particle_volume=np.empty(0, dtype=np.float32),
             kinematic_viscosity=np.empty(0, dtype=np.float32),
         )
-        assert solver.particles.n_particles == 0
+        assert solver.particles.n_particles_total == 0
         assert solver.particles.device_n_particles[None] == 0
     finally:
         reset_taichi_backend()
@@ -166,7 +168,7 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
                 checkpoint_interval_steps=0,
                 logging_interval_steps=0,
                 checkpoint_directory=str(tmp_path),
-                max_particles=16,
+                max_n_particles=16,
             )
         )
 
@@ -175,14 +177,14 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
             dtype=np.float32,
         )
         velocity = np.zeros((3, 3), dtype=np.float32)
-        circulation = np.array(
+        vortex_strength = np.array(
             [[0.0, 0.0, 0.1], [0.0, 0.0, 0.2], [0.0, 0.0, 0.3]],
             dtype=np.float32,
         )
-        radius = np.full(3, 0.1, dtype=np.float32)
-        volume = np.full(3, 0.01, dtype=np.float32)
-        viscosity = np.full(3, 1.0e-5, dtype=np.float32)
-        viscosity_turbulent = np.array([0.0, 1.0e-5, 2.0e-5], dtype=np.float32)
+        core_radius = np.full(3, 0.1, dtype=np.float32)
+        particle_volume = np.full(3, 0.01, dtype=np.float32)
+        kinematic_viscosity = np.full(3, 1.0e-5, dtype=np.float32)
+        eddy_viscosity = np.array([0.0, 1.0e-5, 2.0e-5], dtype=np.float32)
         group_id = np.array([10, 11, 12], dtype=np.int32)
         zone_id = np.array([20, 21, 22], dtype=np.int32)
         velocity_gradient = np.arange(27, dtype=np.float32).reshape(3, 3, 3)
@@ -191,11 +193,11 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
         solver.replace_vortex_particles(
             position=position,
             velocity=velocity,
-            vortex_strength=circulation,
-            core_radius=radius,
-            volume=volume,
-            kinematic_viscosity=viscosity,
-            eddy_viscosity=viscosity_turbulent,
+            vortex_strength=vortex_strength,
+            core_radius=core_radius,
+            particle_volume=particle_volume,
+            kinematic_viscosity=kinematic_viscosity,
+            eddy_viscosity=eddy_viscosity,
             group_id=group_id,
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
@@ -205,9 +207,9 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
         removed = solver.particles.remove_particles_by_bounds([0.5, 1.5, -1.0, 1.0, -1.0, 1.0])
 
         assert removed == 1
-        assert solver.particles.n_particles == 2
+        assert solver.particles.n_particles_total == 2
         assert solver.particles.device_n_particles[None] == 2
-        np.testing.assert_allclose(solver.particles_positions, position[[0, 2]])
+        np.testing.assert_allclose(solver.particle_position, position[[0, 2]])
         np.testing.assert_array_equal(solver.particles.group_id_cpu(), group_id[[0, 2]])
         np.testing.assert_array_equal(solver.particles.zone_id_cpu(), zone_id[[0, 2]])
         np.testing.assert_allclose(
@@ -217,14 +219,14 @@ def test_bounds_removal_uses_compacted_replacement(tmp_path):
         np.testing.assert_allclose(solver.particles.strain_rate_cpu(), strain_rate[[0, 2]])
         np.testing.assert_allclose(
             solver.particles.effective_viscosity_cpu(),
-            viscosity[[0, 2]] + viscosity_turbulent[[0, 2]],
+            kinematic_viscosity[[0, 2]] + eddy_viscosity[[0, 2]],
         )
     finally:
         reset_taichi_backend()
 
 
 def test_bounds_removal_does_not_depend_on_device_tag_field(tmp_path):
-    """Retention must use the downloaded positions, not stale GPU tags."""
+    """Retention must use the downloaded position, not stale GPU tags."""
     reset_taichi_backend()
     try:
         solver = VPMSolver(
@@ -236,7 +238,7 @@ def test_bounds_removal_does_not_depend_on_device_tag_field(tmp_path):
                 checkpoint_interval_steps=0,
                 logging_interval_steps=0,
                 checkpoint_directory=str(tmp_path),
-                max_particles=16,
+                max_n_particles=16,
             )
         )
         position = np.array(
@@ -250,7 +252,7 @@ def test_bounds_removal_does_not_depend_on_device_tag_field(tmp_path):
             velocity=zeros,
             vortex_strength=zeros,
             core_radius=scalar,
-            volume=scalar,
+            particle_volume=scalar,
             kinematic_viscosity=scalar,
         )
 
@@ -279,7 +281,7 @@ def test_bounds_removal_noop_only_downloads_positions(tmp_path, monkeypatch):
                 checkpoint_interval_steps=0,
                 logging_interval_steps=0,
                 checkpoint_directory=str(tmp_path),
-                max_particles=16,
+                max_n_particles=16,
             )
         )
         position = np.array(
@@ -293,7 +295,7 @@ def test_bounds_removal_noop_only_downloads_positions(tmp_path, monkeypatch):
             velocity=zeros,
             vortex_strength=zeros,
             core_radius=scalar,
-            volume=scalar,
+            particle_volume=scalar,
             kinematic_viscosity=scalar,
         )
 
@@ -326,7 +328,7 @@ def test_bounds_removal_noop_only_downloads_positions(tmp_path, monkeypatch):
 
         assert removed == 0
         assert position_reads == 1
-        assert particles.n_particles == 3
+        assert particles.n_particles_total == 3
     finally:
         reset_taichi_backend()
 
@@ -345,24 +347,24 @@ def test_retention_compacts_vorticity_without_quadratic_reconstruction(tmp_path)
                 checkpoint_interval_steps=0,
                 logging_interval_steps=0,
                 checkpoint_directory=str(tmp_path),
-                max_particles=16,
+                max_n_particles=16,
             )
         )
         position = np.array(
             [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
             dtype=np.float32,
         )
-        circulation = np.array(
+        vortex_strength = np.array(
             [[0.0, 0.0, 0.1], [0.0, 0.0, 0.2], [0.0, 0.0, 0.3]],
             dtype=np.float32,
         )
-        volume = np.array([0.01, 0.02, 0.03], dtype=np.float32)
+        particle_volume = np.array([0.01, 0.02, 0.03], dtype=np.float32)
         solver.replace_vortex_particles(
             position=position,
             velocity=np.zeros((3, 3), dtype=np.float32),
-            vortex_strength=circulation,
+            vortex_strength=vortex_strength,
             core_radius=np.full(3, 0.1, dtype=np.float32),
-            volume=volume,
+            particle_volume=particle_volume,
             kinematic_viscosity=np.full(3, 1.0e-5, dtype=np.float32),
         )
 
@@ -376,7 +378,7 @@ def test_retention_compacts_vorticity_without_quadratic_reconstruction(tmp_path)
         np.testing.assert_array_equal(solver.particles.position_cpu(), position[kept])
         np.testing.assert_allclose(
             solver.particles.vorticity_cpu(),
-            circulation[kept] / volume[kept, None],
+            vortex_strength[kept] / particle_volume[kept, None],
         )
     finally:
         reset_taichi_backend()
@@ -397,34 +399,34 @@ def test_vulkan_chunked_replacement_preserves_distinct_reused_buffers(monkeypatc
         index = np.arange(n, dtype=np.float32)
         position = np.column_stack((index, index + 100.0, index + 200.0))
         velocity = -position
-        circulation = position * 1.0e-3
-        radius = 0.1 + index * 0.001
-        volume = 0.01 + index * 0.0001
-        viscosity = 1.0e-3 + index * 1.0e-6
-        viscosity_turbulent = index * 1.0e-5
+        vortex_strength = position * 1.0e-3
+        core_radius = 0.1 + index * 0.001
+        particle_volume = 0.01 + index * 0.0001
+        kinematic_viscosity = 1.0e-3 + index * 1.0e-6
+        eddy_viscosity = index * 1.0e-5
         group_id = np.arange(n, dtype=np.int32) + 10
         zone_id = np.arange(n, dtype=np.int32) + 20
 
-        particles = Particles(max_particles=32)
+        particles = Particles(max_n_particles=32)
         particles.replace_from_numpy(
             position=position,
             velocity=velocity,
-            vortex_strength=circulation,
-            core_radius=radius,
-            volume=volume,
-            kinematic_viscosity=viscosity,
-            eddy_viscosity=viscosity_turbulent,
+            vortex_strength=vortex_strength,
+            core_radius=core_radius,
+            particle_volume=particle_volume,
+            kinematic_viscosity=kinematic_viscosity,
+            eddy_viscosity=eddy_viscosity,
             group_id=group_id,
             zone_id=zone_id,
         )
 
         np.testing.assert_array_equal(particles.position_cpu(), position)
         np.testing.assert_array_equal(particles.velocity_cpu(), velocity)
-        np.testing.assert_array_equal(particles.vortex_strength_cpu(), circulation)
-        np.testing.assert_array_equal(particles.core_radius_cpu(), radius)
-        np.testing.assert_array_equal(particles.volume_cpu(), volume)
-        np.testing.assert_array_equal(particles.kinematic_viscosity_cpu(), viscosity)
-        np.testing.assert_array_equal(particles.eddy_viscosity_cpu(), viscosity_turbulent)
+        np.testing.assert_array_equal(particles.vortex_strength_cpu(), vortex_strength)
+        np.testing.assert_array_equal(particles.core_radius_cpu(), core_radius)
+        np.testing.assert_array_equal(particles.particle_volume_cpu(), particle_volume)
+        np.testing.assert_array_equal(particles.kinematic_viscosity_cpu(), kinematic_viscosity)
+        np.testing.assert_array_equal(particles.eddy_viscosity_cpu(), eddy_viscosity)
         np.testing.assert_array_equal(particles.group_id_cpu(), group_id)
         np.testing.assert_array_equal(particles.zone_id_cpu(), zone_id)
 
@@ -441,7 +443,7 @@ def test_vulkan_chunked_replacement_preserves_distinct_reused_buffers(monkeypatc
         assert position_download is not strength_download
         assert (
             particles._native_scalar_uploads[id(particles.core_radius)]
-            is not particles._native_scalar_uploads[id(particles.volume)]
+            is not particles._native_scalar_uploads[id(particles.particle_volume)]
         )
     finally:
         reset_taichi_backend()
@@ -461,21 +463,21 @@ def test_vulkan_treecode_traversal_uses_bounded_batches(monkeypatch):
         rng = np.random.default_rng(71)
         n = 11
         position = rng.uniform(-1.0, 1.0, size=(n, 3)).astype(np.float32)
-        circulation = rng.normal(0.0, 0.1, size=(n, 3)).astype(np.float32)
-        radius = np.full(n, 0.1, dtype=np.float32)
+        vortex_strength = rng.normal(0.0, 0.1, size=(n, 3)).astype(np.float32)
+        core_radius = np.full(n, 0.1, dtype=np.float32)
         tree = TaichiTreecode(
-            max_particles=16,
+            max_n_particles=16,
             max_nodes=32,
             theta=0.3,
             kernel_type="GAUSSIAN",
         )
-        tree.build(position, circulation, radius, force=True)
+        tree.build(position, vortex_strength, core_radius, force=True)
 
         velocity, gradient, strain = tree.compute_velocity_and_gradient(
             np.zeros(3, dtype=np.float32)
         )
-        target_velocity = tree.compute_target_velocities(position[:9])
-        target_gradient = tree.compute_target_velocity_gradients(position[:9])
+        target_velocity = tree.compute_target_velocity(position[:9])
+        target_gradient = tree.compute_target_velocity_gradient(position[:9])
 
         assert velocity.shape == (n, 3)
         assert gradient.shape == (n, 3, 3)

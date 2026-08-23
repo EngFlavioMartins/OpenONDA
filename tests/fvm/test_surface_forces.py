@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.fields.diagnostics import compute_surface_face_loads, compute_surface_forces
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.fields.diagnostics import compute_surface_face_loads, compute_surface_forces
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 
 class TestSurfaceForces:
@@ -12,27 +12,27 @@ class TestSurfaceForces:
     def setup(self, hand_built_3d_mesh):
         self.mesh = hand_built_3d_mesh
         self.geo = compute_mesh_geometry(hand_built_3d_mesh)
-        self.rho = 1.0
-        self.mu = 0.01
-        self.ref_U = 1.0
-        self.ref_area = 1.0
+        self.density = 1.0
+        self.dynamic_viscosity = 0.01
+        self.reference_velocity = 1.0
+        self.reference_area = 1.0
 
     def _add_bc_types(self):
         for b in self.mesh["boundary"]:
-            b["bc_type"] = "zeroGradient"
+            b["boundary_condition_type"] = "zeroGradient"
             b["velocity_type"] = "zeroGradient"
 
     def _build_full_field(self, interior, n_components=1):
         n_elem = self.mesh["n_cells"]
         n_bnd = self.mesh["n_faces"] - self.mesh["n_interior_faces"]
         if n_components == 1:
-            face_flux = np.zeros(n_elem + n_bnd)
-            face_flux[:n_elem] = interior
-            return face_flux
+            field_values = np.zeros(n_elem + n_bnd)
+            field_values[:n_elem] = interior
+            return field_values
         else:
-            face_flux = np.zeros((n_elem + n_bnd, n_components))
-            face_flux[:n_elem] = interior
-            return face_flux
+            field_values = np.zeros((n_elem + n_bnd, n_components))
+            field_values[:n_elem] = interior
+            return field_values
 
     def _all_patch_names(self):
         return [b["name"] for b in self.mesh["boundary"]]
@@ -52,14 +52,14 @@ class TestSurfaceForces:
         result = compute_surface_forces(
             velocity,
             p,
-            self.mu,
-            self.rho,
+            self.dynamic_viscosity,
+            self.density,
             self.mesh,
             self.geo,
             self.mesh["boundary"],
             patch_names=self._all_patch_names(),
         )
-        fp = self._sum_forces(result, "Fp")
+        fp = self._sum_forces(result, "pressure_force")
         assert np.allclose(fp, 0.0, atol=1e-12), f"uniform p on closed surface: Fp = {fp}"
 
     def test_pressure_on_xmax_face(self):
@@ -73,8 +73,8 @@ class TestSurfaceForces:
         result = compute_surface_forces(
             velocity,
             p,
-            self.mu,
-            self.rho,
+            self.dynamic_viscosity,
+            self.density,
             self.mesh,
             self.geo,
             self.mesh["boundary"],
@@ -82,12 +82,12 @@ class TestSurfaceForces:
         )
         # xmax has 4 faces, each Sf = (+1, 0, 0), p=1 → Fp = +p·∑Sf = (+4, 0, 0)
         assert "xmax" in result
-        assert np.allclose(result["xmax"]["Fp"], [4.0, 0.0, 0.0], atol=1e-12), (
-            f"xmax Fp = {result['xmax']['Fp']}"
+        assert np.allclose(result["xmax"]["pressure_force"], [4.0, 0.0, 0.0], atol=1e-12), (
+            f"xmax pressure_force = {result['xmax']['pressure_force']}"
         )
 
     def test_pressure_uses_boundary_face_value_and_kinematic_density(self):
-        """Kinematic pressure is sampled at the face and multiplied by rho."""
+        """Kinematic pressure is sampled at the face and multiplied by density."""
         self._add_bc_types()
         n_elem = self.mesh["n_cells"]
         n_int = self.mesh["n_interior_faces"]
@@ -109,8 +109,8 @@ class TestSurfaceForces:
             patch_names=["xmax"],
         )
 
-        # Four unit-area faces: rho * p_face * area = 3 * 2 * 4.
-        np.testing.assert_allclose(result["xmax"]["Fp"], [24.0, 0.0, 0.0], atol=1e-12)
+        # Four unit-area faces: density * p_face * area = 3 * 2 * 4.
+        np.testing.assert_allclose(result["xmax"]["pressure_force"], [24.0, 0.0, 0.0], atol=1e-12)
 
     def test_wall_shear_matches_boundary_diffusion_flux(self):
         """Wall traction uses the prescribed face-normal velocity gradient."""
@@ -127,8 +127,8 @@ class TestSurfaceForces:
         result = compute_surface_forces(
             velocity,
             p,
-            self.mu,
-            self.rho,
+            self.dynamic_viscosity,
+            self.density,
             self.mesh,
             self.geo,
             self.mesh["boundary"],
@@ -136,10 +136,12 @@ class TestSurfaceForces:
         )
 
         faces = np.arange(xmax["start_face"], xmax["start_face"] + xmax["n_faces"])
-        expected_shear = -self.mu * np.sum(
-            self.geo["face_areas"][faces] / self.geo["wall_dist"][faces]
+        expected_shear = -self.dynamic_viscosity * np.sum(
+            self.geo["face_area"][faces] / self.geo["wall_distance"][faces]
         )
-        np.testing.assert_allclose(result["xmax"]["Fv"], [0.0, expected_shear, 0.0], atol=1e-12)
+        np.testing.assert_allclose(
+            result["xmax"]["viscous_force"], [0.0, expected_shear, 0.0], atol=1e-12
+        )
 
     def test_total_force_is_pressure_plus_viscous(self):
         """Ftot = Fp + Fv (vector sum holds for any field)."""
@@ -152,16 +154,16 @@ class TestSurfaceForces:
         result = compute_surface_forces(
             velocity,
             p,
-            self.mu,
-            self.rho,
+            self.dynamic_viscosity,
+            self.density,
             self.mesh,
             self.geo,
             self.mesh["boundary"],
             patch_names=self._all_patch_names(),
         )
-        ftot = self._sum_forces(result, "Ftot")
-        fp = self._sum_forces(result, "Fp")
-        fv = self._sum_forces(result, "Fv")
+        ftot = self._sum_forces(result, "total_force")
+        fp = self._sum_forces(result, "pressure_force")
+        fv = self._sum_forces(result, "viscous_force")
         assert np.allclose(ftot, fp + fv, atol=1e-12), "Ftot != Fp + Fv"
 
     def test_face_load_api_integrates_to_surface_force(self):
@@ -172,14 +174,32 @@ class TestSurfaceForces:
         velocity = self._build_full_field(np.ones((n_elem, 3)), n_components=3)
         names = self._all_patch_names()
         faces = compute_surface_face_loads(
-            velocity, p, self.mu, self.rho, self.mesh, self.geo, self.mesh["boundary"], names
+            velocity,
+            p,
+            self.dynamic_viscosity,
+            self.density,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
+            names,
         )
         total = compute_surface_forces(
-            velocity, p, self.mu, self.rho, self.mesh, self.geo, self.mesh["boundary"], names
+            velocity,
+            p,
+            self.dynamic_viscosity,
+            self.density,
+            self.mesh,
+            self.geo,
+            self.mesh["boundary"],
+            names,
         )
         for name in names:
-            np.testing.assert_allclose(faces[name]["pressure_force"].sum(axis=0), total[name]["Fp"])
-            np.testing.assert_allclose(faces[name]["viscous_force"].sum(axis=0), total[name]["Fv"])
+            np.testing.assert_allclose(
+                faces[name]["pressure_force"].sum(axis=0), total[name]["pressure_force"]
+            )
+            np.testing.assert_allclose(
+                faces[name]["viscous_force"].sum(axis=0), total[name]["viscous_force"]
+            )
 
     def test_net_pressure_coefficient(self):
         """Net force over all patches with uniform p=1 is zero → net Cd=0."""
@@ -189,17 +209,17 @@ class TestSurfaceForces:
         result = compute_surface_forces(
             velocity,
             p,
-            self.mu,
-            self.rho,
+            self.dynamic_viscosity,
+            self.density,
             self.mesh,
             self.geo,
             self.mesh["boundary"],
             patch_names=self._all_patch_names(),
-            ref_U=self.ref_U,
-            ref_area=self.ref_area,
+            reference_velocity=self.reference_velocity,
+            reference_area=self.reference_area,
         )
-        fp = self._sum_forces(result, "Fp")
-        fv = self._sum_forces(result, "Fv")
+        fp = self._sum_forces(result, "pressure_force")
+        fv = self._sum_forces(result, "viscous_force")
         assert np.allclose(fp, 0.0, atol=1e-12), f"net Fp = {fp}"
         assert np.allclose(fv, 0.0, atol=1e-12), f"net Fv = {fv}"
 
@@ -215,14 +235,14 @@ class TestSurfaceForces:
             velocity,
             p,
             0.0,
-            self.rho,
+            self.density,
             self.mesh,
             self.geo,
             self.mesh["boundary"],
             patch_names=["xmax"],
-            ref_U=2.0,
-            ref_area=3.0,
-            ref_length=4.0,
+            reference_velocity=2.0,
+            reference_area=3.0,
+            reference_length=4.0,
             moment_centre=centre,
         )["xmax"]
 
@@ -230,11 +250,13 @@ class TestSurfaceForces:
         faces = np.arange(boundary["start_face"], boundary["start_face"] + boundary["n_faces"])
         expected_moment = np.sum(
             np.cross(
-                self.geo["face_centroids"][faces] - centre,
-                self.geo["face_sf"][faces],
+                self.geo["face_centre"][faces] - centre,
+                self.geo["face_area_vector"][faces],
             ),
             axis=0,
         )
-        np.testing.assert_allclose(result["Mtot"], expected_moment)
-        denominator = 0.5 * self.rho * 2.0**2 * 3.0 * 4.0
-        assert result["coeffs"]["Cm"] == pytest.approx(expected_moment[2] / denominator)
+        np.testing.assert_allclose(result["moment"], expected_moment)
+        denominator = 0.5 * self.density * 2.0**2 * 3.0 * 4.0
+        assert result["coeffs"]["pitching_moment_coefficient"] == pytest.approx(
+            expected_moment[2] / denominator
+        )

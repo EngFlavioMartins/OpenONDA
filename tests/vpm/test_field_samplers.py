@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.VPM.io.sampling.field_samplers import SurfaceSampler
+from source.solvers.vpm.io.sampling.field_samplers import SurfaceSampler
 
 
 def test_surface_sampler_can_skip_velocity_derivatives(tmp_path):
@@ -16,9 +16,9 @@ def test_surface_sampler_can_skip_velocity_derivatives(tmp_path):
     )
 
     class Solver:
-        particles = SimpleNamespace(n_particles=1)
+        particles = SimpleNamespace(n_particles_total=1)
 
-        def compute_complete_target_velocity_and_gradients(self, points, *, particle_spacing):
+        def compute_velocity_and_gradient_at_points(self, points, *, particle_spacing):
             assert particle_spacing == 0.1
             gradient = np.zeros((len(points), 3, 3))
             gradient[:, 2, 1] = 2.0
@@ -28,16 +28,16 @@ def test_surface_sampler_can_skip_velocity_derivatives(tmp_path):
 
     data = sampler.sample(Solver())
 
-    np.testing.assert_allclose(data["Ux"], 1.0)
-    np.testing.assert_allclose(data["omega_x"], 2.0)
-    np.testing.assert_allclose(data["omega_y"], 3.0)
-    np.testing.assert_allclose(data["omega_z"], 4.0)
-    np.testing.assert_allclose(data["dudx"], 0.0)
-    np.testing.assert_allclose(data["Sxx"], 0.0)
+    np.testing.assert_allclose(data["velocity_x"], 1.0)
+    np.testing.assert_allclose(data["vorticity_x"], 2.0)
+    np.testing.assert_allclose(data["vorticity_y"], 3.0)
+    np.testing.assert_allclose(data["vorticity_z"], 4.0)
+    np.testing.assert_allclose(data["velocity_gradient_xx"], 0.0)
+    np.testing.assert_allclose(data["strain_rate_xx"], 0.0)
 
     pyvista = pytest.importorskip("pyvista")
     output = sampler.save_vtp(Solver(), tmp_path / "surface.vts")
     fields = set(pyvista.read(output).point_data.keys())
-    assert {"Velocity", "VelocityMagnitude", "Vorticity", "VorticityMagnitude"} <= fields
-    assert "VelocityGradient" not in fields
-    assert "StrainRate" not in fields
+    assert {"velocity", "velocity_magnitude", "vorticity", "vorticity_magnitude"} <= fields
+    assert "velocity_gradient" not in fields
+    assert "strain_rate" not in fields

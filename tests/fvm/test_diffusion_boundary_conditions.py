@@ -2,9 +2,9 @@
 
 import numpy as np
 
-from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
-from source.solvers.FVM.fields.gradients import compute_gauss_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.assemble.diffusion import assemble_diffusion_term
+from source.solvers.fvm.fields.gradients import compute_gauss_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 from ._structured_mesh import structured_box
 
@@ -41,9 +41,9 @@ def test_inlet_outlet_diffusion_acts_only_on_inflow_faces():
         patch["velocity_type"] = "zeroGradient"
     patch = mesh["boundary"][0]
     patch["velocity_type"] = "inletOutlet"
-    face_flux = np.zeros(mesh["n_faces"])
+    volumetric_face_flux = np.zeros(mesh["n_faces"])
     indices = np.arange(patch["start_face"], patch["start_face"] + patch["n_faces"])
-    face_flux[indices] = -1.0
+    volumetric_face_flux[indices] = -1.0
 
     grad = compute_gauss_gradient(field, mesh, geo)
     inflow = assemble_diffusion_term(
@@ -53,11 +53,11 @@ def test_inlet_outlet_diffusion_acts_only_on_inflow_faces():
         mesh,
         geo,
         mesh["boundary"],
-        face_flux=face_flux,
+        volumetric_face_flux=volumetric_face_flux,
     )
     assert np.all(inflow["flux_cf"][indices] > 0.0)
 
-    face_flux[indices] = 1.0
+    volumetric_face_flux[indices] = 1.0
     outflow = assemble_diffusion_term(
         field,
         grad,
@@ -65,7 +65,7 @@ def test_inlet_outlet_diffusion_acts_only_on_inflow_faces():
         mesh,
         geo,
         mesh["boundary"],
-        face_flux=face_flux,
+        volumetric_face_flux=volumetric_face_flux,
     )
     assert np.allclose(outflow["flux_cf"][indices], 0.0)
     assert np.allclose(outflow["flux_vf"][indices], 0.0)

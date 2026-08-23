@@ -7,18 +7,18 @@ import pytest
 
 taichi = pytest.importorskip("taichi", reason="panel solver requires taichi")
 
-from source.solvers.VPM.boundary_elements.panels.solver.panel_solver import PanelSolver
+from source.solvers.vpm.boundary_elements.panels.solver.panel_solver import PanelSolver
 
 
 def _bare_solver():
     solver = PanelSolver.__new__(PanelSolver)
     solver._mesh_generated = True
     solver._current_time = 0.0
-    solver.coupling_scope = "vpm_bc"
-    solver.results = {"times": []}
+    solver.coupling_scope = "vpm_boundary_condition"
+    solver.results = {"time_history": []}
     solver.step = 0
     solver.logging_interval_steps = 1
-    solver.lattice = SimpleNamespace(save_old_strengths=lambda: None, bodies=[], num_panels=4)
+    solver.lattice = SimpleNamespace(save_old_doublet_strength=lambda: None, bodies=[], n_panels=4)
     return solver
 
 

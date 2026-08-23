@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.assemble.diffusion import assemble_diffusion_term
-from source.solvers.FVM.assemble.matrix_assembly import (
+from source.solvers.fvm.assemble.diffusion import assemble_diffusion_term
+from source.solvers.fvm.assemble.matrix_assembly import (
     assemble_matrix_from_fluxes_vectorized,
     assemble_rhs_from_fluxes_vectorized,
 )
-from source.solvers.FVM.fields.gradients import compute_gauss_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.fields.gradients import compute_gauss_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 
 @pytest.fixture
@@ -18,21 +18,27 @@ def diff_data(hand_built_3d_mesh):
     n_elem = mesh["n_cells"]
     n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
 
-    # Add bc_type to boundary patches
+    # Add boundary_condition_type to boundary patches
     for b in mesh["boundary"]:
-        b["bc_type"] = "zeroGradient"
+        b["boundary_condition_type"] = "zeroGradient"
 
     # Build full φ field (interior + ghost)
-    face_flux = np.zeros(n_elem + n_bnd)
-    face_flux[:n_elem] = 1.0  # φ=1 everywhere → zero gradient → no diffusion flux
+    scalar_field = np.zeros(n_elem + n_bnd)
+    scalar_field[:n_elem] = 1.0  # φ=1 everywhere → zero gradient → no diffusion flux
 
     # Compute gradient
-    grad_phi = compute_gauss_gradient(face_flux, mesh, geo)
+    scalar_field_gradient = compute_gauss_gradient(scalar_field, mesh, geo)
 
     # Diffusion coefficient = 1 everywhere
-    gamma = np.ones(n_elem)
+    diffusivity = np.ones(n_elem)
 
-    return {"mesh": mesh, "geo": geo, "phi": face_flux, "grad_phi": grad_phi, "gamma": gamma}
+    return {
+        "mesh": mesh,
+        "geo": geo,
+        "scalar_field": scalar_field,
+        "scalar_field_gradient": scalar_field_gradient,
+        "diffusivity": diffusivity,
+    }
 
 
 class TestDiffusionMatrixSPD:
@@ -40,9 +46,9 @@ class TestDiffusionMatrixSPD:
 
     def test_matrix_symmetric(self, diff_data):
         flux_data = assemble_diffusion_term(
-            diff_data["phi"],
-            diff_data["grad_phi"],
-            diff_data["gamma"],
+            diff_data["scalar_field"],
+            diff_data["scalar_field_gradient"],
+            diff_data["diffusivity"],
             diff_data["mesh"],
             diff_data["geo"],
             diff_data["mesh"]["boundary"],
@@ -53,9 +59,9 @@ class TestDiffusionMatrixSPD:
 
     def test_row_sum_zero(self, diff_data):
         flux_data = assemble_diffusion_term(
-            diff_data["phi"],
-            diff_data["grad_phi"],
-            diff_data["gamma"],
+            diff_data["scalar_field"],
+            diff_data["scalar_field_gradient"],
+            diff_data["diffusivity"],
             diff_data["mesh"],
             diff_data["geo"],
             diff_data["mesh"]["boundary"],
@@ -67,9 +73,9 @@ class TestDiffusionMatrixSPD:
     def test_positive_semi_definite(self, diff_data):
         """vᵀAv ≥ 0 for each standard basis vector (diffusion operator -∇·∇ is PSD)."""
         flux_data = assemble_diffusion_term(
-            diff_data["phi"],
-            diff_data["grad_phi"],
-            diff_data["gamma"],
+            diff_data["scalar_field"],
+            diff_data["scalar_field_gradient"],
+            diff_data["diffusivity"],
             diff_data["mesh"],
             diff_data["geo"],
             diff_data["mesh"]["boundary"],
@@ -85,16 +91,16 @@ class TestDiffusionMatrixSPD:
     def test_zero_residual_for_constant_field(self, diff_data):
         """If φ=1, diffusion matrix + RHS should produce zero residual."""
         flux_data = assemble_diffusion_term(
-            diff_data["phi"],
-            diff_data["grad_phi"],
-            diff_data["gamma"],
+            diff_data["scalar_field"],
+            diff_data["scalar_field_gradient"],
+            diff_data["diffusivity"],
             diff_data["mesh"],
             diff_data["geo"],
             diff_data["mesh"]["boundary"],
         )
         A = assemble_matrix_from_fluxes_vectorized(flux_data, diff_data["mesh"])
         b = assemble_rhs_from_fluxes_vectorized(flux_data, diff_data["mesh"])
-        residual = A @ diff_data["phi"][: diff_data["mesh"]["n_cells"]] - b
+        residual = A @ diff_data["scalar_field"][: diff_data["mesh"]["n_cells"]] - b
         assert np.allclose(residual, 0.0, atol=1e-12), (
             f"max residual = {np.max(np.abs(residual)):.2e}"
         )

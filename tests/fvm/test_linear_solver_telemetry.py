@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.sparse import diags
 
-from source.solvers.FVM.solve import linear_interface
+from source.solvers.fvm.solve import linear_interface
 
 
 def _system():

@@ -6,7 +6,7 @@ import logging
 
 import numpy as np
 
-from source.solvers.FVM.utils.cavity_utils import needs_pressure_reference
+from source.solvers.fvm.utils.cavity_utils import needs_pressure_reference
 
 logger = logging.getLogger("coupler")
 
@@ -22,7 +22,7 @@ class PressureReference:
         freestream_velocity: np.ndarray,
         particle_spacing: float,
         boundary_mode: str,
-        enabled: bool,
+        is_enabled: bool,
         is_master: bool,
         comm=None,
     ) -> None:
@@ -31,17 +31,17 @@ class PressureReference:
         self.freestream_velocity = np.asarray(freestream_velocity, dtype=np.float64)
         self.particle_spacing = float(particle_spacing)
         self.boundary_mode = boundary_mode
-        self.enabled = bool(enabled)
+        self.is_enabled = bool(is_enabled)
         self.is_master = bool(is_master)
         self.comm = comm
-        self.available = False
+        self.is_available = False
         self.cell_indices: np.ndarray | None = None
         self.last_shift = 0.0
 
     def prepare(self) -> None:
         """Determine whether the FVM pressure field has a free datum."""
-        self.available = False
-        if not self.enabled:
+        self.is_available = False
+        if not self.is_enabled:
             return
         if self.boundary_mode == "directional_outflow":
             if self.is_master:
@@ -51,7 +51,7 @@ class PressureReference:
             if self.is_master:
                 logger.info("[Coupler][PressureReference] source=dirichlet_boundary")
             return
-        self.available = True
+        self.is_available = True
         if self.is_master:
             logger.info("[Coupler][PressureReference] source=upstream_cells")
 
@@ -89,7 +89,7 @@ class PressureReference:
 
     def correct(self, velocity: np.ndarray) -> None:
         """Shift kinematic pressure without changing its gradient."""
-        if not self.available:
+        if not self.is_available:
             return
         pressure = np.asarray(self.fvm_solver.get_pressure_field(), dtype=np.float64).ravel()
         velocity = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)

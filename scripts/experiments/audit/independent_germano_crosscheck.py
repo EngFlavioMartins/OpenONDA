@@ -65,11 +65,11 @@ def m4_symbol(theta, phase):
     return np.sum(w[:, None] * np.exp(1j * d[:, None] * theta.reshape(1, -1)), axis=0)
 
 
-def particle_symbol(grid, h, sigma):
+def particle_symbol(grid, particle_spacing, core_radius):
     wave = np.fft.fftfreq(grid.n, d=1.0 / grid.n)
-    o = [np.abs(m4_symbol(wave * h, p)) ** 2 for p in PHASES]
+    o = [np.abs(m4_symbol(wave * particle_spacing, p)) ** 2 for p in PHASES]
     m4 = o[0][:, None, None] * o[1][None, :, None] * o[2][None, None, :]
-    return np.exp(-(sigma**2) * grid.k2 / 4.0) * m4
+    return np.exp(-(core_radius**2) * grid.k2 / 4.0) * m4
 
 
 def nonlinear_parts(grid, u, w):
@@ -103,9 +103,9 @@ grid = Grid(n)
 print(f"field {n}^3, u_rms={norm(vel[0]):.4f}")
 
 # ---------- particle-filtered resolved state ----------
-h = 2.0 * np.pi / LES_N
-sigma = SIGMA_OVER_H * h
-psym = particle_symbol(grid, h, sigma)
+particle_spacing = 2.0 * np.pi / LES_N
+core_radius = SIGMA_OVER_H * particle_spacing
+psym = particle_symbol(grid, particle_spacing, core_radius)
 
 
 def P(f):
@@ -118,14 +118,14 @@ conv_dns, stre_dns = nonlinear_parts(grid, vel, vort)
 conv_bar, stre_bar = nonlinear_parts(grid, u, w)
 g_exact = (-P(conv_dns) + conv_bar) + (P(stre_dns) - stre_bar)
 
-width = float((6.0 * 2.0**1.5 * math.sqrt(math.pi)) ** (1.0 / 3.0)) * sigma
-print(f"Delta_p/h = {width / h:.6f}   (doc: 7.774940)")
+width = float((6.0 * 2.0**1.5 * math.sqrt(math.pi)) ** (1.0 / 3.0)) * core_radius
+print(f"Delta_p/particle_spacing = {width / particle_spacing:.6f}   (doc: 7.774940)")
 
 tr_exact = float(np.mean(np.sum(w * g_exact, axis=0)))
 print(f"exact enstrophy transfer = {tr_exact:+.6f}   (doc: -0.443896)  <-- calibration check")
 
 # ---------- dynamic procedure ----------
-test_sigma = TEST_RATIO * sigma
+test_sigma = TEST_RATIO * core_radius
 
 
 def T(f):
@@ -163,8 +163,8 @@ ell_ok = variants["(b) Germano-consistent (correct)"]
 c2_ok = float(np.mean(np.sum(ell_ok * M, axis=0))) / den
 if c2_ok > 0:
     cr_ok = math.sqrt(c2_ok)
-    nu_t = (cr_ok * width) ** 2 * strain_magnitude(grid, u)
-    torque = -grid.curl(nu_t[None, ...] * grid.curl(w))
+    eddy_viscosity = (cr_ok * width) ** 2 * strain_magnitude(grid, u)
+    torque = -grid.curl(eddy_viscosity[None, ...] * grid.curl(w))
     tr_model = float(np.mean(np.sum(w * torque, axis=0)))
 
     corr = float(np.sum(g_exact * torque) / np.sqrt(np.sum(g_exact**2) * np.sum(torque**2)))

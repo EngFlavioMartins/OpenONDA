@@ -44,43 +44,45 @@ class DirectEvaluator:
     """Naive O(N²) Winckelmans self-induced velocity (the current DIRECT path)."""
 
     def __init__(self, max_n: int):
-        self.pos = ti.Vector.field(3, ti.f32, shape=max_n)
-        self.circ = ti.Vector.field(3, ti.f32, shape=max_n)
-        self.rad = ti.field(ti.f32, shape=max_n)
+        self.position = ti.Vector.field(3, ti.f32, shape=max_n)
+        self.vortex_strength = ti.Vector.field(3, ti.f32, shape=max_n)
+        self.core_radius = ti.field(ti.f32, shape=max_n)
         self.out = ti.Vector.field(3, ti.f32, shape=max_n)
 
-    def load(self, pos, circ, rad):
-        n = len(pos)
-        mx = self.pos.shape[0]
-        self.pos.from_numpy(np.pad(pos, ((0, mx - n), (0, 0))).astype(np.float32))
-        self.circ.from_numpy(np.pad(circ, ((0, mx - n), (0, 0))).astype(np.float32))
-        self.rad.from_numpy(np.pad(rad, ((0, mx - n),)).astype(np.float32))
+    def load(self, position, vortex_strength, core_radius):
+        n = len(position)
+        mx = self.position.shape[0]
+        self.position.from_numpy(np.pad(position, ((0, mx - n), (0, 0))).astype(np.float32))
+        self.vortex_strength.from_numpy(
+            np.pad(vortex_strength, ((0, mx - n), (0, 0))).astype(np.float32)
+        )
+        self.core_radius.from_numpy(np.pad(core_radius, ((0, mx - n),)).astype(np.float32))
 
     @ti.kernel
     def velocity(self, N: ti.i32):
         for i in range(N):
             vel = ti.Vector([0.0, 0.0, 0.0])
-            pi = self.pos[i]
-            ri = self.rad[i]
+            pi = self.position[i]
+            ri = self.core_radius[i]
             for j in range(N):
-                rij = pi - self.pos[j]
+                rij = pi - self.position[j]
                 r2 = rij.dot(rij)
                 rm = ti.sqrt(r2)
                 if rm > 1e-10:
-                    sigma = 0.5 * (ri + self.rad[j])
+                    sigma = 0.5 * (ri + self.core_radius[j])
                     rs = rm / sigma
                     rs2 = rs * rs
                     q = rs * rs * rs * (rs2 + 2.5) / ti.pow(rs2 + 1.0, 2.5) * ONE_OVER_FOUR_PI
-                    vel -= q * rij.cross(self.circ[j]) / (r2 * rm)
+                    vel -= q * rij.cross(self.vortex_strength[j]) / (r2 * rm)
             self.out[i] = vel
 
 
 def _seed(N, seed=1):
     rng = np.random.default_rng(seed)
-    pos = (rng.random((N, 3)) - 0.5).astype(np.float32)
-    circ = (rng.normal(size=(N, 3)) * 0.1).astype(np.float32)
-    rad = np.full(N, 0.05, dtype=np.float32)
-    return pos, circ, rad
+    position = (rng.random((N, 3)) - 0.5).astype(np.float32)
+    vortex_strength = (rng.normal(size=(N, 3)) * 0.1).astype(np.float32)
+    core_radius = np.full(N, 0.05, dtype=np.float32)
+    return position, vortex_strength, core_radius
 
 
 def _time(fn, repeats):
@@ -99,7 +101,7 @@ def run(arch_str, sizes, theta, repeats):
     # Initialise via the project backend (config/backend.py), exactly as the
     # solver does — a raw ``ti.init(arch=ti.vulkan)`` triggers Taichi's adaptive
     # arch probe, which can hang on some Vulkan setups.
-    from source.solvers.VPM.runtime.backend import initialize_taichi_backend
+    from source.solvers.vpm.runtime.backend import initialize_taichi_backend
 
     backend = {
         "auto": "AUTO",
@@ -110,7 +112,7 @@ def run(arch_str, sizes, theta, repeats):
     }[arch_str]
     chosen = initialize_taichi_backend(preferred_backend=backend, debug_mode=False, precision="f32")
     print(f"[backend] requested={backend} → using {chosen}")
-    from source.solvers.VPM.acceleration.treecode_gpu import TaichiTreecode
+    from source.solvers.vpm.acceleration.treecode_gpu import TaichiTreecode
 
     sizes = sorted(sizes)
     direct = DirectEvaluator(max(sizes) + 8)
@@ -126,20 +128,23 @@ def run(arch_str, sizes, theta, repeats):
     crossover = None
     prev_winner = None
     for N in sizes:
-        pos, circ, rad = _seed(N)
-        direct.load(pos, circ, rad)
+        position, vortex_strength, core_radius = _seed(N)
+        direct.load(position, vortex_strength, core_radius)
         t_direct = _time(lambda particle_count=N: direct.velocity(particle_count), repeats)
 
         tree = TaichiTreecode(
-            max_particles=N + 8, max_nodes=2 * (N + 8), theta=theta, kernel_type="WINCKELMANS"
+            max_n_particles=N + 8, max_nodes=2 * (N + 8), theta=theta, kernel_type="WINCKELMANS"
         )
         t_build = _time(
-            lambda evaluator=tree, positions=pos, circulation=circ, radii=rad: evaluator.build(
-                positions, circulation, radii, force=True
+            lambda evaluator=tree,
+            position=position,
+            vortex_strength=vortex_strength,
+            core_radii=core_radius: (
+                evaluator.build(position, vortex_strength, core_radii, force=True)
             ),
             repeats,
         )
-        tree.build(pos, circ, rad, force=True)
+        tree.build(position, vortex_strength, core_radius, force=True)
         t_eval = _time(lambda evaluator=tree: evaluator.compute_velocities_gpu(bg), repeats)
         t_tc = t_build + t_eval
 

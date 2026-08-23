@@ -113,7 +113,7 @@ def exact_sgs(grid: SpectralGrid, velocity: np.ndarray, delta: float) -> dict[st
     convection_bar, stretching_bar = nonlinear_parts(grid, u_bar, w_bar)
     g_c = -grid.gaussian(convection, delta) + convection_bar
     g_s = grid.gaussian(stretching, delta) - stretching_bar
-    return {"u": u_bar, "w": w_bar, "g": g_c + g_s}
+    return {"velocity": u_bar, "vorticity": w_bar, "subgrid_torque": g_c + g_s}
 
 
 def _correlation_lattice(
@@ -309,11 +309,11 @@ def metrics(
 ) -> dict[str, float]:
     exact_flat = exact.reshape(-1)
     model_flat = model.reshape(-1)
-    exact_centered = exact_flat - np.mean(exact_flat)
-    model_centered = model_flat - np.mean(model_flat)
+    exact_centred = exact_flat - np.mean(exact_flat)
+    model_centred = model_flat - np.mean(model_flat)
     correlation = float(
-        np.dot(exact_centered, model_centered)
-        / (np.linalg.norm(exact_centered) * np.linalg.norm(model_centered))
+        np.dot(exact_centred, model_centred)
+        / (np.linalg.norm(exact_centred) * np.linalg.norm(model_centred))
     )
     exact_transfer = float(np.mean(np.sum(vorticity * exact, axis=0)))
     model_transfer = float(np.mean(np.sum(vorticity * model, axis=0)))
@@ -337,7 +337,7 @@ def analyze_case(
     delta: float,
 ) -> dict[str, object]:
     exact = exact_sgs(grid, velocity, delta)
-    torques, diagnostics = model_torques(grid, exact["u"], delta)
+    torques, diagnostics = model_torques(grid, exact["velocity"], delta)
     return {
         "label": label,
         "group": group,
@@ -346,7 +346,8 @@ def analyze_case(
         "delta_over_dns_h": delta / (2.0 * np.pi / grid.n),
         "diagnostics": diagnostics,
         "models": {
-            name: metrics(grid, exact["w"], exact["g"], torque) for name, torque in torques.items()
+            name: metrics(grid, exact["vorticity"], exact["subgrid_torque"], torque)
+            for name, torque in torques.items()
         },
     }
 
@@ -477,10 +478,10 @@ def plot_evidence(cases: list[dict[str, object]], output: Path) -> None:
             selected = [case for case in cases if case["group"] == group]
             for model_index, model in enumerate(models):
                 values = np.asarray([case["models"][model][metric] for case in selected])
-                x_center = group_index + (model_index - 1) * 0.22
+                x_centre = group_index + (model_index - 1) * 0.22
                 jitter = rng.uniform(-0.035, 0.035, size=len(values))
                 axis.scatter(
-                    x_center + jitter,
+                    x_centre + jitter,
                     values,
                     s=18,
                     color=colors[model],
@@ -488,7 +489,7 @@ def plot_evidence(cases: list[dict[str, object]], output: Path) -> None:
                     linewidths=0,
                 )
                 axis.scatter(
-                    [x_center],
+                    [x_centre],
                     [np.mean(values)],
                     s=70,
                     color=colors[model],

@@ -3,9 +3,9 @@
 
 For a steadily translating, inviscid, axisymmetric flow without swirl,
 
-    q = omega_phi / r = F(psi),
+    vorticity_radius_ratio = omega_phi / r = F(streamfunction),
 
-where psi is the Stokes streamfunction in the translating frame.  The script
+where streamfunction is the Stokes streamfunction in the translating frame.  The script
 checks that numerical measurements recover an exact manufactured relation,
 reject a deliberately broken relation, and then measures the raw OpenONDA
 Gaussian-ring states on successively refined meridional grids.
@@ -27,8 +27,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from source.solvers.VPM import VPMSolver  # noqa: E402
-from source.solvers.VPM.io import CheckpointManager  # noqa: E402
+from source.solvers.vpm import VPMSolver  # noqa: E402
+from source.solvers.vpm.io import CheckpointManager  # noqa: E402
 
 RING_RADIUS = 1.0
 RING_CIRCULATION = 1.0
@@ -42,7 +42,7 @@ PRIMARY_CORE_FRACTION = 0.05
 QUANTILE_BINS = 32
 
 RUN_DIRECTORY = ROOT / (
-    "tutorials/VPM/vortexRing/solution/relaxed_reference_tail002_cs_h012_dt002_tstar02"
+    "tutorials/vpm/vortex_ring/solution/relaxed_reference_tail002_cs_h012_dt002_tstar02"
 )
 CHECKPOINT_PREFIX = "vpm_relaxed_reference_tail002_cs_h012_dt002_tstar02"
 FINAL_CHECKPOINT = RUN_DIRECTORY / f"{CHECKPOINT_PREFIX}_final"
@@ -62,47 +62,49 @@ def cumulative_streamfunction(
     radial_coordinate: np.ndarray,
     translation_speed: float,
 ) -> np.ndarray:
-    """Integrate d(psi)/dr = r (u_x - U), with psi=0 on the axis."""
+    """Integrate d(streamfunction)/dr = r (u_x - U), with streamfunction=0 on the axis."""
     relative_axial = axial_velocity - translation_speed
     integrand = relative_axial * radial_coordinate[None, :]
     increments = 0.5 * (integrand[:, 1:] + integrand[:, :-1]) * np.diff(radial_coordinate)[None, :]
-    psi = np.zeros_like(axial_velocity, dtype=np.float64)
-    psi[:, 1:] = np.cumsum(increments, axis=1)
-    return psi
+    streamfunction = np.zeros_like(axial_velocity, dtype=np.float64)
+    streamfunction[:, 1:] = np.cumsum(increments, axis=1)
+    return streamfunction
 
 
 def local_single_value_residual(
-    psi: np.ndarray,
-    q: np.ndarray,
+    streamfunction: np.ndarray,
+    vorticity_radius_ratio: np.ndarray,
     mask: np.ndarray,
     *,
     bins: int = QUANTILE_BINS,
 ) -> tuple[float, np.ndarray, np.ndarray]:
-    """Return normalized local-linear scatter about a single q=F(psi) curve."""
-    psi_values = np.asarray(psi[mask], dtype=np.float64)
-    q_values = np.asarray(q[mask], dtype=np.float64)
-    if len(psi_values) < 4 * bins:
-        raise ValueError("too few core samples for the requested q(psi) bins")
+    """Return normalized local-linear scatter about a single vorticity_radius_ratio=F(streamfunction) curve."""
+    streamfunction_values = np.asarray(streamfunction[mask], dtype=np.float64)
+    vorticity_radius_ratio_values = np.asarray(vorticity_radius_ratio[mask], dtype=np.float64)
+    if len(streamfunction_values) < 4 * bins:
+        raise ValueError(
+            "too few core samples for the requested vorticity_radius_ratio(streamfunction) bins"
+        )
 
-    order = np.argsort(psi_values)
+    order = np.argsort(streamfunction_values)
     groups = np.array_split(order, bins)
-    prediction = np.empty_like(q_values)
+    prediction = np.empty_like(vorticity_radius_ratio_values)
     curve_psi: list[float] = []
     curve_q: list[float] = []
     for group in groups:
-        p = psi_values[group]
-        values = q_values[group]
-        p_center = float(np.mean(p))
-        q_center = float(np.mean(values))
-        p_shift = p - p_center
+        p = streamfunction_values[group]
+        values = vorticity_radius_ratio_values[group]
+        p_centre = float(np.mean(p))
+        q_centre = float(np.mean(values))
+        p_shift = p - p_centre
         denominator = float(np.dot(p_shift, p_shift))
-        slope = float(np.dot(p_shift, values - q_center) / denominator) if denominator else 0.0
-        prediction[group] = q_center + slope * p_shift
-        curve_psi.append(p_center)
-        curve_q.append(q_center)
+        slope = float(np.dot(p_shift, values - q_centre) / denominator) if denominator else 0.0
+        prediction[group] = q_centre + slope * p_shift
+        curve_psi.append(p_centre)
+        curve_q.append(q_centre)
 
-    scale = float(np.sqrt(np.mean(q_values**2)))
-    residual = float(np.sqrt(np.mean((q_values - prediction) ** 2)) / scale)
+    scale = float(np.sqrt(np.mean(vorticity_radius_ratio_values**2)))
+    residual = float(np.sqrt(np.mean((vorticity_radius_ratio_values - prediction) ** 2)) / scale)
     return residual, np.asarray(curve_psi), np.asarray(curve_q)
 
 
@@ -118,12 +120,12 @@ def field_metrics(
     ring_radius: float = RING_RADIUS,
     circulation: float = RING_CIRCULATION,
 ) -> dict[str, object]:
-    """Measure q(psi) collapse and the translating-frame material residual."""
+    """Measure vorticity_radius_ratio(streamfunction) collapse and the translating-frame material residual."""
     ux = np.asarray(velocity[..., 0], dtype=np.float64)
     ur = np.asarray(velocity[..., 1], dtype=np.float64)
     omega_phi = np.asarray(omega_phi, dtype=np.float64)
     rr = r[None, :]
-    q = np.divide(
+    vorticity_radius_ratio = np.divide(
         omega_phi,
         rr,
         out=np.zeros_like(omega_phi, dtype=np.float64),
@@ -133,12 +135,14 @@ def field_metrics(
     mask = (rr > 0.0) & (omega_phi >= core_fraction * peak)
     mask[[0, -1], :] = False
     mask[:, [0, -1]] = False
-    psi = cumulative_streamfunction(ux, r, translation_speed)
+    streamfunction = cumulative_streamfunction(ux, r, translation_speed)
 
-    collapse, curve_psi, curve_q = local_single_value_residual(psi, q, mask, bins=bins)
-    dq_dx, dq_dr = np.gradient(q, x, r, edge_order=2)
+    collapse, curve_psi, curve_q = local_single_value_residual(
+        streamfunction, vorticity_radius_ratio, mask, bins=bins
+    )
+    dq_dx, dq_dr = np.gradient(vorticity_radius_ratio, x, r, edge_order=2)
     material_rate = (ux - translation_speed) * dq_dx + ur * dq_dr
-    q_rms = float(np.sqrt(np.mean(q[mask] ** 2)))
+    q_rms = float(np.sqrt(np.mean(vorticity_radius_ratio[mask] ** 2)))
     material_rms = float(np.sqrt(np.mean(material_rate[mask] ** 2)))
     advective_residual = material_rms * ring_radius**2 / (circulation * q_rms)
 
@@ -155,7 +159,7 @@ def field_metrics(
         float(np.sqrt(np.mean(fitted_rate[mask] ** 2))) * ring_radius**2 / (circulation * q_rms)
     )
 
-    dpsi_dx, dpsi_dr = np.gradient(psi, x, r, edge_order=2)
+    dpsi_dx, dpsi_dr = np.gradient(streamfunction, x, r, edge_order=2)
     recovered_ux = (
         np.divide(
             dpsi_dr,
@@ -189,9 +193,9 @@ def field_metrics(
         else None,
         "streamfunction_velocity_relative_error": streamfunction_velocity_error,
         "core_samples": int(np.count_nonzero(mask)),
-        "peak_omega_phi": peak,
-        "psi": psi,
-        "q": q,
+        "peak_azimuthal_vorticity": peak,
+        "streamfunction": streamfunction,
+        "vorticity_radius_ratio": vorticity_radius_ratio,
         "mask": mask,
         "curve_psi": curve_psi,
         "curve_q": curve_q,
@@ -199,16 +203,16 @@ def field_metrics(
 
 
 def manufactured_controls(grid_size: int) -> dict[str, dict[str, float]]:
-    """Exact q=F(psi) control and the same field with a broken relation."""
+    """Exact vorticity_radius_ratio=F(streamfunction) control and the same field with a broken relation."""
     x = np.linspace(-0.9, 0.9, grid_size)
     r = np.linspace(0.0, 1.4, grid_size)
     xx, rr = np.meshgrid(x, r, indexing="ij")
     exponential = np.exp(-(xx**2 + rr**2))
-    psi = rr**2 * exponential
+    streamfunction = rr**2 * exponential
     velocity = np.zeros((*xx.shape, 3), dtype=np.float64)
     velocity[..., 0] = 2.0 * exponential * (1.0 - rr**2)
     velocity[..., 1] = 2.0 * xx * rr * exponential
-    q_exact = 1.0 + 0.8 * psi
+    q_exact = 1.0 + 0.8 * streamfunction
     omega_exact = rr * q_exact
     q_broken = q_exact + 0.45 * xx
     omega_broken = rr * q_broken
@@ -251,17 +255,17 @@ def sample_solver(
     solver: VPMSolver,
     grid_size: int,
     *,
-    axial_center: float,
+    axial_centre: float,
     translation_speed: float,
 ) -> dict[str, object]:
-    x = axial_center + np.linspace(-0.85, 0.85, grid_size)
+    x = axial_centre + np.linspace(-0.85, 0.85, grid_size)
     r = np.linspace(0.0, 1.75, grid_size)
     xx, rr = np.meshgrid(x, r, indexing="ij")
     targets = np.column_stack((xx.ravel(), rr.ravel(), np.zeros(xx.size)))
-    velocity = solver.compute_target_velocities(targets, include_freestream=False).reshape(
+    velocity = solver.compute_velocity_at_points(targets, include_freestream=False).reshape(
         grid_size, grid_size, 3
     )
-    vorticity = solver.compute_target_vorticities(targets).reshape(grid_size, grid_size, 3)
+    vorticity = solver.compute_vorticity_at_points(targets).reshape(grid_size, grid_size, 3)
     sensitivity: dict[str, dict[str, object]] = {}
     for fraction in CORE_FRACTIONS:
         metrics = field_metrics(
@@ -277,7 +281,7 @@ def sample_solver(
 
 
 def serializable_metrics(metrics: dict[str, object]) -> dict[str, object]:
-    hidden = {"psi", "q", "mask", "curve_psi", "curve_q"}
+    hidden = {"streamfunction", "vorticity_radius_ratio", "mask", "curve_psi", "curve_q"}
     return {key: value for key, value in metrics.items() if key not in hidden}
 
 
@@ -327,7 +331,7 @@ def plot_results(
 ) -> None:
     fig, axes = plt.subplots(2, 2, figsize=(11.2, 7.7), constrained_layout=True)
     fig.suptitle(
-        r"Vortex-ring relaxation criterion: $q=\omega_\phi/r=F(\psi)$",
+        r"Vortex-ring relaxation criterion: $vorticity_radius_ratio=\omega_\phi/r=F(\streamfunction)$",
         color=INK,
         fontsize=13,
         fontweight="bold",
@@ -341,11 +345,11 @@ def plot_results(
         (final_metrics, BLUE, r"raw $t^*=0.2$", 0.32),
     ):
         mask = metrics["mask"]
-        psi_values = metrics["psi"][mask]
-        q_values = metrics["q"][mask]
+        streamfunction_values = metrics["streamfunction"][mask]
+        vorticity_radius_ratio_values = metrics["vorticity_radius_ratio"][mask]
         axis.scatter(
-            psi_values / np.max(np.abs(psi_values)),
-            q_values / np.max(np.abs(q_values)),
+            streamfunction_values / np.max(np.abs(streamfunction_values)),
+            vorticity_radius_ratio_values / np.max(np.abs(vorticity_radius_ratio_values)),
             s=3,
             color=color,
             alpha=alpha,
@@ -353,13 +357,13 @@ def plot_results(
             label=label,
         )
         axis.plot(
-            metrics["curve_psi"] / np.max(np.abs(psi_values)),
-            metrics["curve_q"] / np.max(np.abs(q_values)),
+            metrics["curve_psi"] / np.max(np.abs(streamfunction_values)),
+            metrics["curve_q"] / np.max(np.abs(vorticity_radius_ratio_values)),
             color=color,
             linewidth=2.0,
         )
-    axis.set_xlabel(r"translating-frame streamfunction $\psi/\max|\psi|$")
-    axis.set_ylabel(r"$q/\max|q|$")
+    axis.set_xlabel(r"translating-frame streamfunction $\streamfunction/\max|\streamfunction|$")
+    axis.set_ylabel(r"$vorticity_radius_ratio/\max|vorticity_radius_ratio|$")
     axis.set_title("A steady ring collapses onto one curve")
     axis.legend(frameon=False, fontsize=8)
 
@@ -371,8 +375,14 @@ def plot_results(
         metrics = final_samples[size]["sensitivity"][f"{PRIMARY_CORE_FRACTION:.2f}"]
         collapse.append(float(metrics["collapse_residual"]))
         advection.append(float(metrics["advective_residual"]))
-    axis.plot(sizes, collapse, "o-", color=BLUE, label=r"scatter about $F(\psi)$")
-    axis.plot(sizes, advection, "s-", color=GOLD, label=r"$\mathbf{u}_{rel}\cdot\nabla q$")
+    axis.plot(sizes, collapse, "o-", color=BLUE, label=r"scatter about $F(\streamfunction)$")
+    axis.plot(
+        sizes,
+        advection,
+        "s-",
+        color=GOLD,
+        label=r"$\mathbf{u}_{rel}\cdot\nabla vorticity_radius_ratio$",
+    )
     axis.axhline(0.0, color=INK, linewidth=1.0, linestyle="--", label="exact steady value")
     axis.set_xlabel("points in each meridional direction")
     axis.set_ylabel("dimensionless residual")
@@ -383,7 +393,7 @@ def plot_results(
     axis = axes[1, 0]
     exact = controls["exact_q_equals_one_plus_0p8_psi"]
     broken = controls["broken_q_adds_0p45_x"]
-    labels = [r"$q=1+0.8\psi$", r"same field $+0.45x$"]
+    labels = [r"$vorticity_radius_ratio=1+0.8\streamfunction$", r"same field $+0.45x$"]
     positions = np.arange(2)
     width = 0.34
     axis.bar(
@@ -391,7 +401,7 @@ def plot_results(
         [exact["collapse_residual"], broken["collapse_residual"]],
         width,
         color=BLUE,
-        label=r"$q(\psi)$ scatter",
+        label=r"$vorticity_radius_ratio(\streamfunction)$ scatter",
     )
     axis.bar(
         positions + width / 2,
@@ -441,7 +451,7 @@ def main() -> None:
         final_samples[size] = sample_solver(
             solver,
             size,
-            axial_center=0.03827257364187429,
+            axial_centre=0.03827257364187429,
             translation_speed=MEASURED_SPEED,
         )
 
@@ -449,7 +459,7 @@ def main() -> None:
     initial = sample_solver(
         solver,
         GRID_SIZES[-1],
-        axial_center=0.0,
+        axial_centre=0.0,
         translation_speed=MEASURED_SPEED,
     )
     gate = evaluate_gate(controls, final_samples)
@@ -459,7 +469,7 @@ def main() -> None:
         "status": gate["status"],
         "theory": (
             "A steadily translating axisymmetric no-swirl ring has "
-            "q=omega_phi/r=F(psi) in the translating frame."
+            "vorticity_radius_ratio=omega_phi/r=F(streamfunction) in the translating frame."
         ),
         "raw_states": {
             "initial": str(INITIAL_H5.relative_to(ROOT)),

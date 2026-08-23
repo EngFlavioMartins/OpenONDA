@@ -69,10 +69,10 @@ def mansfield_torque(
     coefficient: float,
     filter_width: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return g=-curl(nu_t curl(omega)) and the non-negative nu_t field."""
-    nu_t = (coefficient * filter_width) ** 2 * strain_magnitude(grid, velocity)
-    torque = -grid.curl(nu_t[None, ...] * grid.curl(vorticity))
-    return torque, nu_t
+    """Return g=-curl(eddy_viscosity curl(omega)) and the non-negative eddy_viscosity field."""
+    eddy_viscosity = (coefficient * filter_width) ** 2 * strain_magnitude(grid, velocity)
+    torque = -grid.curl(eddy_viscosity[None, ...] * grid.curl(vorticity))
+    return torque, eddy_viscosity
 
 
 def leonard_term(
@@ -175,11 +175,11 @@ def openonda_current_torque(
     velocity: np.ndarray,
     vorticity: np.ndarray,
     cs: float,
-    h: float,
+    particle_spacing: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Continuous analogue of current GBD: nu_t(x) times component Laplacian."""
-    nu_t = (cs * h) ** 2 * strain_magnitude(grid, velocity)
-    return nu_t[None, ...] * laplacian(grid, vorticity), nu_t
+    """Continuous analogue of current GBD: eddy_viscosity(x) times component Laplacian."""
+    eddy_viscosity = (cs * particle_spacing) ** 2 * strain_magnitude(grid, velocity)
+    return eddy_viscosity[None, ...] * laplacian(grid, vorticity), eddy_viscosity
 
 
 def divergence_relative(grid: SpectralGrid, vector: np.ndarray) -> float:
@@ -189,14 +189,14 @@ def divergence_relative(grid: SpectralGrid, vector: np.ndarray) -> float:
 
 
 def gaussian_energy_width_ratio() -> float:
-    """Box-filter width / sigma from equal kernel L2 energy in three dimensions."""
+    """Box-filter width / core_radius from equal kernel L2 energy in three dimensions."""
     return float((6.0 * 2.0**1.5 * math.sqrt(math.pi)) ** (1.0 / 3.0))
 
 
 def mansfield_gaussian_coefficient(skewness: float = -0.4) -> float:
-    """Mansfield Appendix-A estimate specialized to exp(-sigma^2 k^2/4)."""
+    """Mansfield Appendix-A estimate specialized to exp(-core_radius^2 k^2/4)."""
     c = gaussian_energy_width_ratio()
-    # With E(k)~k^-5/3 and |G|^2=exp(-sigma^2 k^2/2), I_2/I_4=3 sigma^2/4.
+    # With E(k)~k^-5/3 and |G|^2=exp(-core_radius^2 k^2/2), I_2/I_4=3 core_radius^2/4.
     spectral_ratio = 0.75 / c**2
     return float(math.sqrt(35.0 / (15.0**1.5) * abs(skewness) * spectral_ratio))
 
@@ -212,9 +212,9 @@ def evaluate(
 ) -> tuple[dict[str, object], dict[str, np.ndarray]]:
     velocity = load_agard(agard_path)
     grid = SpectralGrid(velocity.shape[-1])
-    h = 2.0 * np.pi / les_n
-    sigma = sigma_over_h * h
-    p_symbol = particle_symbol(grid, h, sigma, PHASES)
+    particle_spacing = 2.0 * np.pi / les_n
+    core_radius = sigma_over_h * particle_spacing
+    p_symbol = particle_symbol(grid, particle_spacing, core_radius, PHASES)
 
     def particle_filter(field):
         return apply_symbol(grid, field, p_symbol)
@@ -222,22 +222,24 @@ def evaluate(
     exact = exact_sgs_for_filter(grid, velocity, particle_filter)
 
     width_ratio = gaussian_energy_width_ratio()
-    particle_width = width_ratio * sigma
+    particle_width = width_ratio * core_radius
     cr_paper = 0.12
     cr_gaussian = mansfield_gaussian_coefficient()
 
-    current, current_nu_t = openonda_current_torque(grid, exact["u"], exact["w"], cs=0.17, h=h)
-    mansfield_paper, paper_nu_t = mansfield_torque(
-        grid, exact["u"], exact["w"], cr_paper, particle_width
+    current, current_eddy_viscosity = openonda_current_torque(
+        grid, exact["velocity"], exact["vorticity"], cs=0.17, particle_spacing=particle_spacing
     )
-    mansfield_gaussian, gaussian_nu_t = mansfield_torque(
-        grid, exact["u"], exact["w"], cr_gaussian, particle_width
+    mansfield_paper, paper_eddy_viscosity = mansfield_torque(
+        grid, exact["velocity"], exact["vorticity"], cr_paper, particle_width
+    )
+    mansfield_gaussian, gaussian_eddy_viscosity = mansfield_torque(
+        grid, exact["velocity"], exact["vorticity"], cr_gaussian, particle_width
     )
     cr_dynamic, dynamic_diagnostics = mansfield_dynamic_coefficient(
-        grid, exact["u"], exact["w"], particle_width, sigma
+        grid, exact["velocity"], exact["vorticity"], particle_width, core_radius
     )
-    mansfield_dynamic, dynamic_nu_t = mansfield_torque(
-        grid, exact["u"], exact["w"], cr_dynamic, particle_width
+    mansfield_dynamic, dynamic_eddy_viscosity = mansfield_torque(
+        grid, exact["velocity"], exact["vorticity"], cr_dynamic, particle_width
     )
 
     torques = {
@@ -247,21 +249,21 @@ def evaluate(
         "mansfield_dynamic": mansfield_dynamic,
     }
     viscosities = {
-        "openonda_current": current_nu_t,
-        "mansfield_paper_coefficient": paper_nu_t,
-        "mansfield_gaussian_adjusted": gaussian_nu_t,
-        "mansfield_dynamic": dynamic_nu_t,
+        "openonda_current": current_eddy_viscosity,
+        "mansfield_paper_coefficient": paper_eddy_viscosity,
+        "mansfield_gaussian_adjusted": gaussian_eddy_viscosity,
+        "mansfield_dynamic": dynamic_eddy_viscosity,
     }
-    exact_transfer = transfer(exact["w"], exact["g"])
+    exact_transfer = transfer(exact["vorticity"], exact["subgrid_torque"])
     model_records: dict[str, object] = {}
     for name, torque in torques.items():
-        record = metrics(grid, exact["w"], exact["g"], torque)
+        record = metrics(grid, exact["vorticity"], exact["subgrid_torque"], torque)
         record.update(
             {
-                "enstrophy_transfer": transfer(exact["w"], torque),
+                "enstrophy_transfer": transfer(exact["vorticity"], torque),
                 "divergence_relative": divergence_relative(grid, torque),
-                "nu_t_mean": float(np.mean(viscosities[name])),
-                "nu_t_max": float(np.max(viscosities[name])),
+                "mean_eddy_viscosity": float(np.mean(viscosities[name])),
+                "max_eddy_viscosity": float(np.max(viscosities[name])),
             }
         )
         if not np.isfinite(record["correlation"]):
@@ -288,7 +290,7 @@ def evaluate(
             "sigma_over_h": sigma_over_h,
             "explicit_auxiliary_filter": "none",
             "particle_filter": "Gaussian core plus M4' P2M/M2P symbol",
-            "particle_filter_energy_equivalent_width_over_h": particle_width / h,
+            "particle_filter_energy_equivalent_width_over_h": particle_width / particle_spacing,
             "paper_coefficient_for_third_order_gaussian": cr_paper,
             "appendix_A_coefficient_for_openonda_gaussian": cr_gaussian,
             "dynamic_coefficient_from_equation_31": cr_dynamic,
@@ -302,13 +304,16 @@ def evaluate(
             "distribution; pointwise correlation and L2 are reported but not gated."
         ),
         "implementation_warning": (
-            "OpenONDA current uses Delta=h and nu_t Laplacian(omega); Mansfield "
-            "uses the particle-filter width and -curl(nu_t curl(omega))."
+            "OpenONDA current uses Delta=particle_spacing and eddy_viscosity Laplacian(omega); Mansfield "
+            "uses the particle-filter width and -curl(eddy_viscosity curl(omega))."
         ),
     }
     arrays = {
-        "exact": shell_transfer(grid, exact["w"], exact["g"]),
-        **{name: shell_transfer(grid, exact["w"], torque) for name, torque in torques.items()},
+        "exact": shell_transfer(grid, exact["vorticity"], exact["subgrid_torque"]),
+        **{
+            name: shell_transfer(grid, exact["vorticity"], torque)
+            for name, torque in torques.items()
+        },
     }
     return result, arrays
 
@@ -372,7 +377,9 @@ def plot(result: dict[str, object], arrays: dict[str, np.ndarray], output: Path)
     for axis in axes:
         axis.grid(color=GRID, linewidth=0.6, alpha=0.7)
         axis.spines[["top", "right"]].set_visible(False)
-    fig.suptitle(r"Particle-filter closure gate: $\sigma/h=2.5$, no auxiliary LES filter")
+    fig.suptitle(
+        r"Particle-filter closure gate: $\core_radius/particle_spacing=2.5$, no auxiliary LES filter"
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=180, bbox_inches="tight", facecolor="white")
     plt.close(fig)

@@ -7,9 +7,9 @@ GBD (Cottet & Koumoutsakos 2000) — explicit FTCS Laplacian on an M4'-remesh:
   * exact conservation of total circulation (clamped-edge Neumann stencil
     telescopes to zero);
   * exact discrete diffusion rate: the second moment of the field grows by
-    6·nu·dt per step (the discrete identity Σ r²(∇²_h u) = 6 Σ u holds away
+    6·kinematic_viscosity·dt per step (the discrete identity Σ r²(∇²_h u) = 6 Σ u holds away
     from boundaries);
-  * the documented stability bound alpha = nu·dt/h² ≤ 1/6 (the checkerboard
+  * the documented stability bound alpha = kinematic_viscosity·dt/h² ≤ 1/6 (the checkerboard
     mode amplifies as |1 − 12·alpha|).
 
 GBD internally subdivides only the Laplacian when a macro-step exceeds the
@@ -18,9 +18,9 @@ forward-Euler bound; scatter and regeneration still occur once per macro-step.
 DVH (Durante et al. 2024) — heat-kernel scatter with Shepard normalization:
   * exact conservation of total circulation (Shepard weights sum to 1 per
     particle);
-  * the diffusive increment per application is FIXED at Δt_d = β·R_d²/(4·nu)
+  * the diffusive increment per application is FIXED at Δt_d = β·R_d²/(4·kinematic_viscosity)
     (the kernel width is β·R_d², independent of the dt argument) — verified
-    via the scattered cloud's second moment ⟨r²⟩ ≈ 6·nu·Δt_d.
+    via the scattered cloud's second moment ⟨r²⟩ ≈ 6·kinematic_viscosity·Δt_d.
 
 DVH therefore requires dt = Δt_d — the solver pins dt to Δt_d (one firing
 per step, the diffusion operator acting every step) and the coupler adopts
@@ -33,14 +33,14 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.VPM.config.types import ViscousConfig
-from source.solvers.VPM.physics.diffusion import _DVH_BETA, DiffusionPhysics
+from source.solvers.vpm.config.types import ViscousConfig
+from source.solvers.vpm.physics.diffusion import _DVH_BETA, DiffusionPhysics
 
 
 @pytest.fixture(scope="module")
 def physics():
     ti.init(arch=ti.cpu, default_fp=ti.f32)
-    return DiffusionPhysics(particle_kernel="GAUSSIAN", max_particles=10_000)
+    return DiffusionPhysics(particle_kernel="GAUSSIAN", max_n_particles=10_000)
 
 
 N = 32  # lattice nodes per axis
@@ -133,21 +133,21 @@ def test_gbd_box_mask_is_solid_free_and_zero_flux(physics):
 
 
 def test_gbd_moment_growth_equals_6_nu_dt(physics):
-    """Discrete identity: ⟨r²⟩ grows by exactly 6·alpha·h² = 6·nu·dt per step."""
-    nu, time_step_size = 1e-3, 0.3
-    alpha = nu * time_step_size / H**2  # 0.12 < 1/6
+    """Discrete identity: ⟨r²⟩ grows by exactly 6·alpha·h² = 6·kinematic_viscosity·dt per step."""
+    kinematic_viscosity, time_step_size = 1e-3, 0.3
+    alpha = kinematic_viscosity * time_step_size / H**2  # 0.12 < 1/6
     field = _gaussian_blob_grid()
     out = _laplacian_step(physics, field, alpha)
     growth = _second_moment(out) - _second_moment(field)
-    expected = 6.0 * nu * time_step_size
+    expected = 6.0 * kinematic_viscosity * time_step_size
     assert abs(growth - expected) < 0.01 * expected, (
-        f"moment growth {growth:.6e} vs 6·nu·dt = {expected:.6e}"
+        f"moment growth {growth:.6e} vs 6·kinematic_viscosity·dt = {expected:.6e}"
     )
 
 
 def test_gbd_stability_bound_alpha_one_sixth(physics):
     """Checkerboard mode amplifies by |1 − 12 alpha|: decays for alpha < 1/6,
-    explodes above — confirming dt ≤ h²/(6 nu) is the right (and only)
+    explodes above — confirming dt ≤ h²/(6 kinematic_viscosity) is the right (and only)
     time-step requirement for GBD."""
     ax = np.arange(N)
     gi, gj, gk = np.meshgrid(ax, ax, ax, indexing="ij")
@@ -233,11 +233,11 @@ def test_particle_cap_preserves_equal_vortex_groups(physics):
 
 
 def test_regenerated_group_ids_fill_empty_diffusion_nodes(physics):
-    positions = np.array([[0.0, 0.0, 0.0], [4.0, 0.0, 0.0]])
+    position = np.array([[0.0, 0.0, 0.0], [4.0, 0.0, 0.0]])
     circulations = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])
 
     labels = physics._scatter_id_field(
-        positions,
+        position,
         circulations,
         np.array([0, 1]),
         np.zeros(3),
@@ -273,7 +273,7 @@ def test_pruned_moment_redistribution_disables_compact_lattice_tree(monkeypatch)
     iy = np.array([0, 2, 1, 0])
     iz = np.array([0, 2, 1, 2])
 
-    from source.solvers.VPM.physics.diffusion.grid import _GridDiffusionMixin
+    from source.solvers.vpm.physics.diffusion.grid import _GridDiffusionMixin
 
     _GridDiffusionMixin._redistribute_pruned_moments(
         grid,
@@ -312,7 +312,7 @@ def _dvh_scatter(physics, pos, circ, rd_ratio=4):
         np.asarray(circ, dtype=np.float64),
         grid_min,
         H,
-        1e-3,  # nu   (unused by the kernel width — that is the point)
+        1e-3,  # kinematic_viscosity   (unused by the kernel width — that is the point)
         0.05,  # dt   (explicitly unused)
         nx,
         ny,
@@ -336,8 +336,8 @@ def test_dvh_scatter_conserves_total_circulation(physics):
 
 @pytest.mark.parametrize("rd_ratio", [3, 4, 5])
 def test_dvh_diffusive_width_is_fixed_at_dt_d(physics, rd_ratio):
-    """A single particle's scattered cloud has ⟨r²⟩ ≈ 6·nu·Δt_d with
-    Δt_d = β·R_d²/(4·nu) — i.e. the diffusion per application is set by
+    """A single particle's scattered cloud has ⟨r²⟩ ≈ 6·kinematic_viscosity·Δt_d with
+    Δt_d = β·R_d²/(4·kinematic_viscosity) — i.e. the diffusion per application is set by
     β·R_d², NOT by the dt argument.  This is why DVH dictates the time step
     while GBD merely bounds it."""
     pos = np.array([[0.0, 0.0, 0.0]])  # exactly on the lattice center node
@@ -349,7 +349,7 @@ def test_dvh_diffusive_width_is_fixed_at_dt_d(physics, rd_ratio):
     w = grid[..., 2].astype(np.float64)
     r2_mean = float(np.sum((X**2 + Y**2 + Z**2) * w) / np.sum(w))
 
-    # Continuous heat kernel e^{-r²/(4 nu Δt_d)} has ⟨r²⟩ = 6 nu Δt_d = 1.5 β R_d²
+    # Continuous heat kernel e^{-r²/(4 kinematic_viscosity Δt_d)} has ⟨r²⟩ = 6 kinematic_viscosity Δt_d = 1.5 β R_d²
     expected = 1.5 * _DVH_BETA * (rd_ratio * H) ** 2
     assert abs(r2_mean - expected) < 0.15 * expected, (
         f"rd_ratio={rd_ratio}: ⟨r²⟩={r2_mean:.4e} vs 1.5·β·R_d²={expected:.4e}"
@@ -362,7 +362,7 @@ def test_dvh_required_dt_formula():
     )
     expected = _DVH_BETA * (3 * 0.05) ** 2 / (4 * 0.001)
     assert np.isclose(vc.dvh_required_time_step_size(), expected)
-    # cubeFlow numbers: this is ≈ 0.433 s — far above the convective dt,
+    # cube_flow numbers: this is ≈ 0.433 s — far above the convective dt,
     # which is exactly why the coupler must adopt the VPM dt.
     assert 0.4 < expected < 0.45
 
@@ -370,8 +370,10 @@ def test_dvh_required_dt_formula():
 # ─────────────────────────────────────────────────────────────────────────────
 # DVH with per-particle effective viscosity (LES coupling)
 # ─────────────────────────────────────────────────────────────────────────────
-def _dvh_scatter_nu_eff(physics, pos, circ, nu, nu_eff, rd_ratio=4):
-    """Scatter through the production DVH kernel with per-particle nu_eff."""
+def _dvh_scatter_effective_viscosity(
+    physics, pos, circ, kinematic_viscosity, effective_viscosity, rd_ratio=4
+):
+    """Scatter through the production DVH kernel with per-particle effective_viscosity."""
     nx = ny = nz = N
     physics._ensure_grid_capacity(nx, ny, nz)
     grid_min = np.array([-(N - 1) / 2.0 * H] * 3)
@@ -380,42 +382,48 @@ def _dvh_scatter_nu_eff(physics, pos, circ, nu, nu_eff, rd_ratio=4):
         np.asarray(circ, dtype=np.float64),
         grid_min,
         H,
-        nu,
+        kinematic_viscosity,
         0.05,  # dt (explicitly unused)
         nx,
         ny,
         nz,
         rd_ratio=rd_ratio,
-        nu_eff_np=None if nu_eff is None else np.asarray(nu_eff, dtype=np.float64),
+        effective_viscosity_np=None
+        if effective_viscosity is None
+        else np.asarray(effective_viscosity, dtype=np.float64),
     )
     return physics._current_grid.to_numpy()[:nx, :ny, :nz, :]
 
 
-def test_dvh_nu_eff_uniform_equals_baseline(physics):
-    """nu_eff = nu for every particle must reproduce the constant-nu scatter."""
+def test_dvh_effective_viscosity_uniform_equals_baseline(physics):
+    """effective_viscosity = kinematic_viscosity for every particle must reproduce the constant-kinematic_viscosity scatter."""
     rng = np.random.default_rng(11)
     pos = (rng.random((30, 3)) - 0.5) * (N - 12) * H
     circ = rng.normal(size=(30, 3)) * 1e-3
-    nu = 1e-3
-    base = _dvh_scatter_nu_eff(physics, pos, circ, nu, None).copy()
-    les = _dvh_scatter_nu_eff(physics, pos, circ, nu, np.full(30, nu))
+    kinematic_viscosity = 1e-3
+    base = _dvh_scatter_effective_viscosity(physics, pos, circ, kinematic_viscosity, None).copy()
+    les = _dvh_scatter_effective_viscosity(
+        physics, pos, circ, kinematic_viscosity, np.full(30, kinematic_viscosity)
+    )
     np.testing.assert_allclose(les, base, atol=1e-12)
 
 
-def test_dvh_nu_eff_scales_diffusive_width(physics):
-    """A particle with nu_eff = q·nu must spread with ⟨r²⟩ = q·(1.5·β·R_d²).
+def test_dvh_effective_viscosity_scales_diffusive_width(physics):
+    """A particle with effective_viscosity = q·kinematic_viscosity must spread with ⟨r²⟩ = q·(1.5·β·R_d²).
 
     This is the exact split-step heat kernel for that particle's effective
-    viscosity — the mechanism by which the Smagorinsky nu_t acts in DVH runs.
+    viscosity — the mechanism by which the Smagorinsky eddy_viscosity acts in DVH runs.
     """
     pos = np.array([[0.0, 0.0, 0.0]])
     circ = np.array([[0.0, 0.0, 1e-3]])
-    nu = 1e-3
+    kinematic_viscosity = 1e-3
     ax = (np.arange(N) - (N - 1) / 2.0) * H
     X, Y, Z = np.meshgrid(ax, ax, ax, indexing="ij")
 
     for q in (1.0, 2.0, 3.0):
-        grid = _dvh_scatter_nu_eff(physics, pos, circ, nu, np.array([q * nu]))
+        grid = _dvh_scatter_effective_viscosity(
+            physics, pos, circ, kinematic_viscosity, np.array([q * kinematic_viscosity])
+        )
         w = grid[..., 2].astype(np.float64)
         r2_mean = float(np.sum((X**2 + Y**2 + Z**2) * w) / np.sum(w))
         expected = q * 1.5 * _DVH_BETA * (4 * H) ** 2
@@ -424,24 +432,30 @@ def test_dvh_nu_eff_scales_diffusive_width(physics):
         )
 
 
-def test_dvh_nu_eff_width_cap(physics):
-    """nu_eff/nu beyond q_max is clipped: width saturates at q_max·β·R_d²."""
+def test_dvh_effective_viscosity_width_cap(physics):
+    """effective_viscosity/kinematic_viscosity beyond q_max is clipped: width saturates at q_max·β·R_d²."""
     pos = np.array([[0.0, 0.0, 0.0]])
     circ = np.array([[0.0, 0.0, 1e-3]])
-    nu = 1e-3
-    capped = _dvh_scatter_nu_eff(physics, pos, circ, nu, np.array([100.0 * nu])).copy()
-    at_cap = _dvh_scatter_nu_eff(physics, pos, circ, nu, np.array([4.0 * nu]))
+    kinematic_viscosity = 1e-3
+    capped = _dvh_scatter_effective_viscosity(
+        physics, pos, circ, kinematic_viscosity, np.array([100.0 * kinematic_viscosity])
+    ).copy()
+    at_cap = _dvh_scatter_effective_viscosity(
+        physics, pos, circ, kinematic_viscosity, np.array([4.0 * kinematic_viscosity])
+    )
     np.testing.assert_allclose(capped, at_cap, atol=1e-12)
 
 
-def test_dvh_nu_eff_conserves_circulation(physics):
+def test_dvh_effective_viscosity_conserves_circulation(physics):
     """Shepard normalization keeps per-particle Γ conservation for any width."""
     rng = np.random.default_rng(13)
     pos = (rng.random((40, 3)) - 0.5) * (N - 12) * H
     circ = rng.normal(size=(40, 3)) * 1e-3
-    nu = 1e-3
-    nu_eff = nu * (1.0 + 3.0 * rng.random(40))
-    grid = _dvh_scatter_nu_eff(physics, pos, circ, nu, nu_eff)
+    kinematic_viscosity = 1e-3
+    effective_viscosity = kinematic_viscosity * (1.0 + 3.0 * rng.random(40))
+    grid = _dvh_scatter_effective_viscosity(
+        physics, pos, circ, kinematic_viscosity, effective_viscosity
+    )
     for c in range(3):
         g_in = circ[:, c].sum()
         g_out = float(grid[..., c].astype(np.float64).sum())
@@ -455,7 +469,7 @@ def test_regen_radius_respects_configured_ratio(physics):
     """DVH/GBD regen assigns σ = core_radius_ratio·h to every rebuilt particle.
 
     Regression: the ratio was a hardcoded 2.5, silently overriding the
-    coupler hand-off radii (vpm_core_radius_ratio·h) every step — the Beale
+    coupler hand-off core_radius (vpm_core_radius_ratio·h) every step — the Beale
     strength correction then deconvolved with the wrong kernel width
     (measured ~4× in-box velocity error at 2.5h vs the corrected-for 1.5h).
     """
@@ -495,8 +509,8 @@ def test_viscous_config_carries_core_radius_ratio():
 def test_regen_carries_viscosity_turbulent(physics):
     """``_build_diffusion_particle_arrays`` must emit and carry ν_t (Bug B).
 
-    Without ``nu_t_grid`` the regenerated particles get ν_t = 0 (molecular
-    fallback).  With a ``nu_t_grid`` the new particles inherit the |Γ|-weighted
+    Without ``eddy_viscosity_grid`` the regenerated particles get ν_t = 0 (molecular
+    fallback).  With a ``eddy_viscosity_grid`` the new particles inherit the |Γ|-weighted
     ν_t of their grid node, so ν_t survives the DVH/GBD rebuild and reaches
     backup instead of being silently wiped every step.
     """
@@ -508,17 +522,17 @@ def test_regen_carries_viscosity_turbulent(physics):
     zone = np.zeros((8, 8, 8), dtype=np.int32)
     group = np.zeros((8, 8, 8), dtype=np.int32)
 
-    # Without nu_t_grid → ν_t = 0 (backward-compatible default)
+    # Without eddy_viscosity_grid → ν_t = 0 (backward-compatible default)
     out_no_nut = physics._build_diffusion_particle_arrays(
         ix, iy, iz, grid_np, np.zeros(3), H, 1e-3, 0.01, None, 4, zone, group
     )
     assert "eddy_viscosity" in out_no_nut
     np.testing.assert_allclose(out_no_nut["eddy_viscosity"], 0.0, atol=1e-12)
 
-    # With nu_t_grid → ν_t carried from grid node
-    nu_t_grid = np.zeros((8, 8, 8), dtype=np.float32)
-    expected_nu_t = np.array([1e-4, 2e-4, 3e-4, 5e-4], dtype=np.float32)
-    nu_t_grid[ix, iy, iz] = expected_nu_t
+    # With eddy_viscosity_grid → ν_t carried from grid node
+    eddy_viscosity_grid = np.zeros((8, 8, 8), dtype=np.float32)
+    expected_eddy_viscosity = np.array([1e-4, 2e-4, 3e-4, 5e-4], dtype=np.float32)
+    eddy_viscosity_grid[ix, iy, iz] = expected_eddy_viscosity
     out_nut = physics._build_diffusion_particle_arrays(
         ix,
         iy,
@@ -532,9 +546,9 @@ def test_regen_carries_viscosity_turbulent(physics):
         4,
         zone,
         group,
-        nu_t_grid=nu_t_grid,
+        eddy_viscosity_grid=eddy_viscosity_grid,
     )
-    np.testing.assert_allclose(out_nut["eddy_viscosity"], expected_nu_t, rtol=1e-6)
+    np.testing.assert_allclose(out_nut["eddy_viscosity"], expected_eddy_viscosity, rtol=1e-6)
 
     # Molecular viscosity is still stamped unchanged
     np.testing.assert_allclose(out_nut["kinematic_viscosity"], 1e-3, rtol=1e-6)
@@ -558,7 +572,7 @@ def test_scatter_scalar_weighted_averages_by_circulation(physics):
     assert grid[0, 0, 0] == 0.0
 
 
-def _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, h):
+def _laplacian_step_variable(physics, field, effective_viscosity_field, time_step_size, h):
     """One variable-coefficient FTCS step through the production GPU kernel."""
     nx, ny, nz = field.shape[:3]
     enx, eny, enz = physics._ensure_grid_capacity(nx, ny, nz)
@@ -566,15 +580,15 @@ def _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, h):
     buf = np.zeros((*physics._grid_shape, 3), dtype=np.float32)
     buf[:nx, :ny, :nz, :] = field
     physics._current_grid.from_numpy(buf)
-    nu_eff_buf = np.zeros(physics._grid_shape, dtype=np.float32)
-    nu_eff_buf[:nx, :ny, :nz] = nu_eff_field
-    physics._nu_eff_grid.from_numpy(nu_eff_buf)
+    effective_viscosity_buf = np.zeros(physics._grid_shape, dtype=np.float32)
+    effective_viscosity_buf[:nx, :ny, :nz] = effective_viscosity_field
+    physics._effective_viscosity_grid.from_numpy(effective_viscosity_buf)
     physics._other_grid.fill(0.0)
     physics._body_mask_grid.fill(0)
     physics._laplacian_step_variable_gpu_kernel(
         physics._current_grid,
         physics._other_grid,
-        physics._nu_eff_grid,
+        physics._effective_viscosity_grid,
         physics._body_mask_grid,
         float(time_step_size),
         float(h),
@@ -586,18 +600,20 @@ def _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, h):
 
 
 @pytest.mark.parametrize(
-    ("alpha_max", "expected_substeps"),
+    ("max_diffusion_number", "expected_substeps"),
     [(0.0, 1), (0.08, 1), (0.15, 2), (1.0 / 6.0, 3), (0.425, 6), (1.179, 15)],
 )
-def test_gbd_substep_count_enforces_nonoscillatory_3d_bound(physics, alpha_max, expected_substeps):
+def test_gbd_substep_count_enforces_nonoscillatory_3d_bound(
+    physics, max_diffusion_number, expected_substeps
+):
     substeps, measured_alpha = physics._explicit_diffusion_substep_count(
-        diffusivity_max=alpha_max,
+        max_diffusivity=max_diffusion_number,
         time_step_size=1.0,
         particle_spacing=1.0,
     )
 
     assert substeps == expected_substeps
-    assert measured_alpha == pytest.approx(alpha_max)
+    assert measured_alpha == pytest.approx(max_diffusion_number)
     assert measured_alpha == 0.0 or measured_alpha / substeps < 1.0 / 12.0
 
 
@@ -646,8 +662,8 @@ def test_gbd_subcycling_stabilizes_repeated_production_kernel(physics):
     h = 0.03125
     macro_dt = 0.05
     target_alpha = 0.425
-    nu_eff_value = target_alpha * h**2 / macro_dt
-    nu_eff_grid = np.full(shape, nu_eff_value, dtype=np.float32)
+    effective_viscosity_value = target_alpha * h**2 / macro_dt
+    effective_viscosity_grid = np.full(shape, effective_viscosity_value, dtype=np.float32)
 
     substeps = None
     measured_alpha = None
@@ -658,8 +674,8 @@ def test_gbd_subcycling_stabilizes_repeated_production_kernel(physics):
             nz=nz,
             time_step_size=macro_dt,
             particle_spacing=h,
-            nu=1.0e-3,
-            nu_eff_grid=nu_eff_grid,
+            kinematic_viscosity=1.0e-3,
+            effective_viscosity_grid=effective_viscosity_grid,
         )
 
     assert substeps == 6
@@ -680,14 +696,14 @@ def test_gbd_subcycling_stabilizes_repeated_production_kernel(physics):
 
 def test_gbd_subcycling_runs_one_full_regeneration_at_1000_particles(physics):
     """Scatter, stable diffusion, and regeneration remain finite above the CFL limit."""
-    from source.solvers.VPM.particles.container import Particles
+    from source.solvers.vpm.particles.container import Particles
 
     side = 10
     h = 0.03125
     macro_dt = 0.05
     target_alpha = 0.425
-    nu = 1.0e-3
-    nu_eff_value = target_alpha * h**2 / macro_dt
+    kinematic_viscosity = 1.0e-3
+    effective_viscosity_value = target_alpha * h**2 / macro_dt
     axis = (np.arange(side, dtype=np.float32) - 0.5 * (side - 1)) * h
     x, y, z = np.meshgrid(axis, axis, axis, indexing="ij")
     position = np.column_stack((x.ravel(), y.ravel(), z.ravel())).astype(np.float32)
@@ -695,26 +711,28 @@ def test_gbd_subcycling_runs_one_full_regeneration_at_1000_particles(physics):
     circulation = np.zeros((side**3, 3), dtype=np.float32)
     circulation[:, 2] = (1.0e-3 * np.exp(-radius_sq / (2.0 * (2.0 * h) ** 2))).ravel()
 
-    particles = Particles(max_particles=30_000)
+    particles = Particles(max_n_particles=30_000)
     particles.add_vortex_particles(
         position=position,
         velocity=np.zeros_like(position),
         vortex_strength=circulation,
         core_radius=np.full(side**3, 1.1 * h, dtype=np.float32),
-        volume=np.full(side**3, h**3, dtype=np.float32),
-        kinematic_viscosity=np.full(side**3, nu, dtype=np.float32),
-        eddy_viscosity=np.full(side**3, nu_eff_value - nu, dtype=np.float32),
+        particle_volume=np.full(side**3, h**3, dtype=np.float32),
+        kinematic_viscosity=np.full(side**3, kinematic_viscosity, dtype=np.float32),
+        eddy_viscosity=np.full(
+            side**3, effective_viscosity_value - kinematic_viscosity, dtype=np.float32
+        ),
     )
 
     regenerated = physics.gbd_diffusion(
         particles,
         time_step_size=macro_dt,
         particle_spacing=h,
-        nu=nu,
+        kinematic_viscosity=kinematic_viscosity,
         domain_padding=3.0,
         regen_threshold=1.0e-10,
         regen_threshold_mode="absolute",
-        nu_eff=np.full(side**3, nu_eff_value, dtype=np.float32),
+        effective_viscosity=np.full(side**3, effective_viscosity_value, dtype=np.float32),
         max_nodes=30_000,
         cap_abs_fraction=0.99,
     )
@@ -730,24 +748,24 @@ def test_gbd_subcycling_runs_one_full_regeneration_at_1000_particles(physics):
     )
 
 
-def test_gbd_variable_laplacian_scales_moment_with_nu_eff(physics):
+def test_gbd_variable_laplacian_scales_moment_with_effective_viscosity(physics):
     """Per-node α (Bug A): ⟨r²⟩ grows by 6·ν_eff·dt, not 6·ν·dt.
 
     A uniform ν_eff = q·ν must produce q× the moment growth of the molecular
     scalar-α kernel — the mechanism by which Smagorinsky ν_t acts in GBD runs.
     """
-    nu, time_step_size = 1e-3, 0.3
+    kinematic_viscosity, time_step_size = 1e-3, 0.3
     field = _gaussian_blob_grid()
 
     # Molecular baseline (scalar kernel, α = ν·dt/h²)
-    alpha_mol = nu * time_step_size / H**2
+    alpha_mol = kinematic_viscosity * time_step_size / H**2
     out_mol = _laplacian_step(physics, field, alpha_mol)
     growth_mol = _second_moment(out_mol) - _second_moment(field)
 
     # Variable kernel with uniform ν_eff = 3·ν → 3× the growth
     q = 3.0
-    nu_eff_field = np.full((N, N, N), q * nu, dtype=np.float32)
-    out_var = _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, H)
+    effective_viscosity_field = np.full((N, N, N), q * kinematic_viscosity, dtype=np.float32)
+    out_var = _laplacian_step_variable(physics, field, effective_viscosity_field, time_step_size, H)
     growth_var = _second_moment(out_var) - _second_moment(field)
 
     assert abs(growth_var - q * growth_mol) < 0.02 * q * growth_mol, (
@@ -755,26 +773,28 @@ def test_gbd_variable_laplacian_scales_moment_with_nu_eff(physics):
     )
 
 
-def test_gbd_variable_laplacian_matches_scalar_when_nu_eff_equals_nu(physics):
+def test_gbd_variable_laplacian_matches_scalar_when_effective_viscosity_equals_nu(physics):
     """ν_eff = ν everywhere must reproduce the scalar-α kernel exactly."""
-    nu, time_step_size = 1e-3, 0.2
+    kinematic_viscosity, time_step_size = 1e-3, 0.2
     field = _gaussian_blob_grid()
 
-    alpha_mol = nu * time_step_size / H**2
+    alpha_mol = kinematic_viscosity * time_step_size / H**2
     out_scalar = _laplacian_step(physics, field, alpha_mol)
 
-    nu_eff_field = np.full((N, N, N), nu, dtype=np.float32)
-    out_variable = _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, H)
+    effective_viscosity_field = np.full((N, N, N), kinematic_viscosity, dtype=np.float32)
+    out_variable = _laplacian_step_variable(
+        physics, field, effective_viscosity_field, time_step_size, H
+    )
 
     np.testing.assert_allclose(out_variable, out_scalar, atol=1e-6)
 
 
 def test_gbd_variable_laplacian_conerves_total_circulation(physics):
     """Variable-coefficient Laplacian with Neumann BC still conserves Γ."""
-    nu, time_step_size = 1e-3, 0.15
+    kinematic_viscosity, time_step_size = 1e-3, 0.15
     field = _gaussian_blob_grid()
-    nu_eff_field = np.full((N, N, N), 3.0 * nu, dtype=np.float32)
-    out = _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, H)
+    effective_viscosity_field = np.full((N, N, N), 3.0 * kinematic_viscosity, dtype=np.float32)
+    out = _laplacian_step_variable(physics, field, effective_viscosity_field, time_step_size, H)
     g0 = field[..., 2].astype(np.float64).sum()
     g1 = out[..., 2].astype(np.float64).sum()
     assert abs(g1 - g0) < 1e-4 * abs(g0), f"Γ drift {abs(g1 - g0) / g0:.2e}"

@@ -25,10 +25,10 @@ import struct
 import numpy as np
 import pytest
 
-from source.solvers.FVM.mesh.adaptive_cartesian import (
+from source.solvers.fvm.mesh.adaptive_cartesian import (
     AdaptiveCartesianMesher,
 )
-from source.solvers.FVM.mesh.validation import MeshValidationError
+from source.solvers.fvm.mesh.validation import MeshValidationError
 
 DOMAIN = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 BACKGROUND = 0.0625
@@ -74,8 +74,8 @@ def write_box_stl(path, lo, hi) -> None:
 
 
 def cell_overlap_vs_body(mesh, body_bounds) -> np.ndarray:
-    points = np.asarray(mesh["points"], dtype=np.float64)
-    vertices = points[np.asarray(mesh["cell_vertices"], dtype=np.int64)]
+    points = np.asarray(mesh["vertex_position"], dtype=np.float64)
+    vertices = points[np.asarray(mesh["cell_vertex_indices"], dtype=np.int64)]
     lo = vertices.min(axis=1)
     hi = vertices.max(axis=1)
     body_min = np.asarray(body_bounds[::2], dtype=np.float64)
@@ -86,7 +86,7 @@ def cell_overlap_vs_body(mesh, body_bounds) -> np.ndarray:
 
 def wall_bounds(mesh, wall_patch_name=WALL_PATCH):
     faces = np.asarray(mesh["faces"])
-    points = np.asarray(mesh["points"], dtype=np.float64)
+    points = np.asarray(mesh["vertex_position"], dtype=np.float64)
     patch = next(p for p in mesh["boundary"] if p["name"] == wall_patch_name)
     vertices = points[
         np.unique(faces[patch["start_face"] : patch["start_face"] + patch["n_faces"]])
@@ -187,10 +187,10 @@ def test_wall_on_surface_postcondition_fires_on_shifted_solid():
     mesh whose wall is one fine cell off the STL face must be rejected."""
     import numpy as np
 
-    from source.solvers.FVM.mesh.adaptive_cartesian import _validate_wall_on_surface
+    from source.solvers.fvm.mesh.adaptive_cartesian import _validate_wall_on_surface
 
     fake_mesh = {
-        "points": np.array(
+        "vertex_position": np.array(
             [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]], dtype=float
         ),
         "faces": np.array([[0, 1, 2, 3]], dtype=np.int32),
@@ -204,7 +204,7 @@ def test_overlap_validator_catches_centroid_outside_volume_penetrating_cell():
     """A cell whose centroid sits outside the body but whose AABB crosses a
     body face must still be rejected: the check is on cell volume, not the
     centroid."""
-    from source.solvers.FVM.mesh.validation import validate_no_fluid_solid_overlap
+    from source.solvers.fvm.mesh.validation import validate_no_fluid_solid_overlap
 
     points = np.array(
         [
@@ -220,8 +220,8 @@ def test_overlap_validator_catches_centroid_outside_volume_penetrating_cell():
         dtype=np.float64,
     )
     mesh_data = {
-        "points": points,
-        "cell_vertices": np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.int64),
+        "vertex_position": points,
+        "cell_vertex_indices": np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.int64),
         "n_cells": 1,
     }
     # Cell centroid is (0.45, 0.5, 0.5), outside body_bounds on x alone; the
@@ -239,7 +239,7 @@ def test_overlap_validator_catches_centroid_outside_volume_penetrating_cell():
 
 
 def test_resolver_rejects_non_integer_cell_count():
-    from source.solvers.FVM.mesh.adaptive_cartesian import _resolve_preserved_lattice
+    from source.solvers.fvm.mesh.adaptive_cartesian import _resolve_preserved_lattice
 
     with pytest.raises(ValueError, match="cell counts"):
         _resolve_preserved_lattice(

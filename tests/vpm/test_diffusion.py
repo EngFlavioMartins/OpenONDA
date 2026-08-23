@@ -10,7 +10,7 @@ A Lamb-Oseen comparison requires many z-layers to approximate the 2-D line
 vortex as an O(N²) 3-D sum — impractical for fast unit tests.  Instead we
 use tests where the analytical answer is EXACT by construction:
 
-* Core radius growth rate: σ² += C_diff · nu · dt where C_diff = 4 for the
+* Core radius growth rate: σ² += C_diff · kinematic_viscosity · dt where C_diff = 4 for the
   Gaussian kernel.  Single particle, O(1).
 
 * Vorticity field post-diffusion: for a single particle CS only changes σ,
@@ -32,9 +32,9 @@ test_cs_vorticity_field_matches_grown_kernel
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
-from source.solvers.VPM.core.evolution import EvolutionStepper
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import AdvectionConfig, StretchingConfig, ViscousConfig
+from source.solvers.vpm.core.evolution import EvolutionStepper
 
 # ── Shared parameters ─────────────────────────────────────────────────────────
 _NU = 1e-3  # kinematic viscosity  [m²/s]
@@ -57,13 +57,13 @@ def _single_particle_cs_solver(tmp_path):
         checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
-    volume = (4.0 / 3.0) * np.pi * _SIGMA_0**3
+    particle_volume = (4.0 / 3.0) * np.pi * _SIGMA_0**3
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0]]),
         velocity=np.zeros((1, 3)),
         vortex_strength=np.array([[0.0, 0.0, _ALPHA_Z]]),
         core_radius=np.array([_SIGMA_0]),
-        volume=np.array([volume]),
+        particle_volume=np.array([particle_volume]),
         kinematic_viscosity=np.array([_NU]),
     )
     return solver
@@ -78,7 +78,7 @@ def test_cs_core_radius_grows_at_correct_rate(tmp_path):
     """
     After N Core Spreading steps the particle radius must satisfy:
 
-        σ_final² = σ₀² + C_diff · nu · N · dt,   C_diff = 4  (Gaussian kernel)
+        σ_final² = σ₀² + C_diff · kinematic_viscosity · N · dt,   C_diff = 4  (Gaussian kernel)
 
     Physical basis
     --------------
@@ -128,7 +128,7 @@ def test_cs_vorticity_field_matches_grown_kernel(tmp_path):
     This test fails when
     --------------------
     * The vorticity kernel normalisation constant 1/π^{3/2} has a typo.
-    * σ inside compute_target_vorticities is read before the CS update.
+    * σ inside compute_target_vorticity is read before the CS update.
     * CS changes α instead of (only) σ.
     """
     solver = _single_particle_cs_solver(tmp_path)
@@ -137,10 +137,10 @@ def test_cs_vorticity_field_matches_grown_kernel(tmp_path):
 
     sigma_final = float(solver.particle_core_radius[0])
 
-    # Probe at five radii spanning near- to far-field
+    # Probe at five core_radius spanning near- to far-field
     r_values = np.array([0.5, 1.0, 1.5, 2.0, 3.0]) * sigma_final
     probes = np.column_stack([r_values, np.zeros_like(r_values), np.zeros_like(r_values)])
-    omega_numerical = solver.compute_target_vorticities(probes)[:, 2]
+    omega_numerical = solver.compute_vorticity_at_points(probes)[:, 2]
 
     # Analytical 3-D Gaussian ζ_{σ}(r) = (1/π^{3/2} σ³) exp(−r²/σ²)
     one_over_pi_15 = 1.0 / (np.pi**1.5)  # ≈ 0.17959
@@ -165,8 +165,8 @@ def test_dvh_subcycling_applies_the_full_accumulated_diffusion_interval():
 
     class FakeSolver:
         viscous_scheme = "DVH"
-        _dvh_substeps = 3
-        _dvh_fire_counter = 0
+        _n_steps_per_dvh_diffusion = 3
+        _n_steps_since_dvh_diffusion = 0
         _viscous_config = object()
 
     solver = FakeSolver()
@@ -182,7 +182,7 @@ def test_dvh_subcycling_applies_the_full_accumulated_diffusion_interval():
 
     stepper._apply_viscous_diffusion(0.1)
     assert applied_intervals == pytest.approx([0.3])
-    assert solver._dvh_fire_counter == 0
+    assert solver._n_steps_since_dvh_diffusion == 0
 
 
 def test_external_mutation_regenerates_before_physical_gbd_diffusion(tmp_path, monkeypatch):
@@ -212,4 +212,4 @@ def test_external_mutation_regenerates_before_physical_gbd_diffusion(tmp_path, m
     solver.advance()
 
     assert applied_intervals == pytest.approx([0.0, 0.03])
-    assert solver._particle_regeneration_pending is False
+    assert solver._is_particle_regeneration_pending is False

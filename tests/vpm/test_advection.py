@@ -4,7 +4,7 @@ Advection tests for the VPM solver.
 Tests
 -----
 test_none_scheme_freezes_particle_positions
-    With advection scheme set to 'NONE', particle positions must remain exactly
+    With advection scheme set to 'NONE', particle position must remain exactly
     unchanged across every time step, regardless of the assigned velocity.
     Failure → the NONE guard is missing in _update_positions.
 
@@ -23,7 +23,7 @@ test_uniform_background_all_schemes_exact_translation
 test_velocity_method_is_consistent_across_all_rk_stages
     Every velocity evaluation inside an RK step must use the SAME configured
     method (direct OR treecode) — never a mix.  Instruments the two branches of
-    PhysicsBase.velocity_self and asserts that a single RK4 step performs all
+    PhysicsBase.compute_self_induced_velocity and asserts that a single RK4 step performs all
     four stage evaluations through one branch only.
     Failure → the old bug where the treecode was used at k1 but direct (or
     nothing) at the remaining stages, breaking accuracy/consistency.
@@ -37,8 +37,8 @@ test_velocity_method_is_consistent_at_arbitrary_targets
 import numpy as np
 import pytest
 
-from source.solvers.VPM import VPMSetup, VPMSolver
-from source.solvers.VPM.config.types import (
+from source.solvers.vpm import VPMSetup, VPMSolver
+from source.solvers.vpm.config.types import (
     AdvectionConfig,
     StretchingConfig,
     VelocityConfig,
@@ -74,13 +74,13 @@ def _advection_solver(tmp_path, *, scheme: str, background=None):
         checkpoint_directory=str(tmp_path),
     )
     solver = VPMSolver(setup=config)
-    volume = (4.0 / 3.0) * np.pi * _SIGMA**3
+    particle_volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=_X0.copy(),
         velocity=np.zeros((1, 3)),
         vortex_strength=np.zeros((1, 3)),  # zero → no Biot-Savart self-induction
         core_radius=np.array([_SIGMA]),
-        volume=np.array([volume]),
+        particle_volume=np.array([particle_volume]),
         kinematic_viscosity=np.array([1e-5]),
     )
     return solver
@@ -93,7 +93,7 @@ def _advection_solver(tmp_path, *, scheme: str, background=None):
 
 def test_none_scheme_freezes_particle_positions(tmp_path):
     """
-    Advection scheme 'NONE' must leave particle positions exactly unchanged.
+    Advection scheme 'NONE' must leave particle position exactly unchanged.
 
     Physical basis
     --------------
@@ -108,15 +108,15 @@ def test_none_scheme_freezes_particle_positions(tmp_path):
       as an unintended side-effect.
     """
     solver = _advection_solver(tmp_path, scheme="NONE", background=_U_BG)
-    pos_before = solver.particles_positions.copy()
+    pos_before = solver.particle_position.copy()
 
     for _ in range(_N_STEPS):
         solver.advance()
 
     np.testing.assert_array_equal(
-        solver.particles_positions,
+        solver.particle_position,
         pos_before,
-        err_msg="NONE advection scheme must not modify particle positions.",
+        err_msg="NONE advection scheme must not modify particle position.",
     )
 
 
@@ -141,7 +141,7 @@ def test_uniform_background_all_schemes_exact_translation(tmp_path, scheme):
     * Temporary position/velocity fields are not reset correctly between steps.
     """
     solver = _advection_solver(tmp_path, scheme=scheme, background=_U_BG)
-    x0 = solver.particles_positions.copy()
+    x0 = solver.particle_position.copy()
 
     for _ in range(_N_STEPS):
         solver.advance()
@@ -149,7 +149,7 @@ def test_uniform_background_all_schemes_exact_translation(tmp_path, scheme):
     x_expected = x0 + _N_STEPS * _TIME_STEP_SIZE * np.array(_U_BG)
 
     np.testing.assert_allclose(
-        solver.particles_positions,
+        solver.particle_position,
         x_expected,
         rtol=1e-5,
         err_msg=(
@@ -175,13 +175,13 @@ def _self_induced_solver(tmp_path, *, velocity_config):
     solver = VPMSolver(setup=config)
     rng = np.random.default_rng(0)
     n = 8
-    volume = (4.0 / 3.0) * np.pi * _SIGMA**3
+    particle_volume = (4.0 / 3.0) * np.pi * _SIGMA**3
     solver.add_vortex_particles(
         position=rng.uniform(-0.5, 0.5, size=(n, 3)),
         velocity=np.zeros((n, 3)),
         vortex_strength=rng.uniform(-1.0, 1.0, size=(n, 3)),  # finite → real self-induction
         core_radius=np.full(n, _SIGMA),
-        volume=np.full(n, volume),
+        particle_volume=np.full(n, particle_volume),
         kinematic_viscosity=np.full(n, 1e-5),
     )
     return solver
@@ -199,7 +199,7 @@ def test_velocity_method_is_consistent_across_all_rk_stages(
 ):
     """A single RK4 step must evaluate velocity through ONE method at every stage.
 
-    PhysicsBase.velocity_self is the single source of truth for direct-vs-treecode.
+    PhysicsBase.compute_self_induced_velocity is the single source of truth for direct-vs-treecode.
     Its two branches are instrumented with counters; one RK4 step makes four stage
     evaluations (k1..k4), so the configured branch must fire exactly four times and
     the other branch zero times.  This guards against the regression where the
@@ -259,7 +259,7 @@ def test_velocity_method_is_consistent_at_arbitrary_targets(
     counts = {"DIRECT": 0, "TREECODE": 0}
 
     direct_fn = physics.compute_target_velocity_kernel
-    treecode_fn = physics.compute_target_velocities_hierarchical
+    treecode_fn = physics.compute_target_velocity_hierarchical
 
     def counting_direct(*args, **kwargs):
         counts["DIRECT"] += 1
@@ -270,12 +270,12 @@ def test_velocity_method_is_consistent_at_arbitrary_targets(
         return treecode_fn(*args, **kwargs)
 
     physics.compute_target_velocity_kernel = counting_direct
-    physics.compute_target_velocities_hierarchical = counting_treecode
+    physics.compute_target_velocity_hierarchical = counting_treecode
     try:
-        velocity = solver.compute_target_velocities(targets, include_freestream=False)
+        velocity = solver.compute_velocity_at_points(targets, include_freestream=False)
     finally:
         physics.compute_target_velocity_kernel = direct_fn
-        physics.compute_target_velocities_hierarchical = treecode_fn
+        physics.compute_target_velocity_hierarchical = treecode_fn
 
     other_branch = "TREECODE" if expected_branch == "DIRECT" else "DIRECT"
     assert counts[expected_branch] == 1

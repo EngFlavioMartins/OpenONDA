@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from source.solvers.FVM.immersed_boundary import IBMForcing, ImmersedBody
-from source.solvers.FVM.immersed_boundary.forcing import roma_delta_1d
-from source.solvers.FVM.mesh import geometry
+from source.solvers.fvm.immersed_boundary import IBMForcing, ImmersedBody
+from source.solvers.fvm.immersed_boundary.forcing import roma_delta_1d
+from source.solvers.fvm.mesh import geometry
 
 from ._structured_mesh import structured_box
 
@@ -24,8 +24,8 @@ def _mesh_2d(nx=48, ny=48, lx=3.0, ly=3.0, lz=0.1):
 def cylinder_setup():
     m, geo = _mesh_2d()
     h = 3.0 / 48
-    body = ImmersedBody.cylinder_z(centre=[1.5, 1.5, 0.05], diameter=0.75, h=h)
-    ibm = IBMForcing(m, geo, [body], h=h)
+    body = ImmersedBody.cylinder_z(centre=[1.5, 1.5, 0.05], diameter=0.75, grid_spacing=h)
+    ibm = IBMForcing(m, geo, [body], grid_spacing=h)
     return m, geo, ibm
 
 
@@ -42,23 +42,23 @@ def test_immersed_body_rejects_invalid_marker_state():
     with pytest.raises(ValueError, match="markers must be finite"):
         ImmersedBody.from_points([[np.nan, 0.0, 0.0]])
     with pytest.raises(ValueError, match="target velocity must be finite"):
-        ImmersedBody.from_points([[0.0, 0.0, 0.0]], U_target=[np.inf, 0.0, 0.0])
+        ImmersedBody.from_points([[0.0, 0.0, 0.0]], prescribed_velocity=[np.inf, 0.0, 0.0])
     with pytest.raises(ValueError, match="diameter"):
-        ImmersedBody.sphere([0.0, 0.0, 0.0], diameter=0.0, h=0.1)
+        ImmersedBody.sphere([0.0, 0.0, 0.0], diameter=0.0, grid_spacing=0.1)
     with pytest.raises(ValueError, match="finite and positive"):
-        ImmersedBody.rectangle_z([0.0, 0.0, 0.0], 1.0, 1.0, h=-0.1)
+        ImmersedBody.rectangle_z([0.0, 0.0, 0.0], 1.0, 1.0, grid_spacing=-0.1)
 
 
 def test_rectangle_marker_factory_has_unique_perimeter_points():
-    body = ImmersedBody.rectangle_z([1.0, 2.0, 0.05], 1.0, 0.5, h=0.1)
-    assert len(np.unique(body.X, axis=0)) == body.n_markers
-    assert np.allclose(body.X[:, 2], 0.05)
-    offsets = np.abs(body.X[:, :2] - [1.0, 2.0])
+    body = ImmersedBody.rectangle_z([1.0, 2.0, 0.05], 1.0, 0.5, grid_spacing=0.1)
+    assert len(np.unique(body.position, axis=0)) == body.n_markers
+    assert np.allclose(body.position[:, 2], 0.05)
+    offsets = np.abs(body.position[:, :2] - [1.0, 2.0])
     assert np.all((np.isclose(offsets[:, 0], 0.5)) | (np.isclose(offsets[:, 1], 0.25)))
 
 
 def test_immersed_body_exact_solid_geometry():
-    cylinder = ImmersedBody.cylinder_z([0.0, 0.0, 0.05], diameter=1.0, h=0.1)
+    cylinder = ImmersedBody.cylinder_z([0.0, 0.0, 0.05], diameter=1.0, grid_spacing=0.1)
     query = np.array(
         [
             [0.0, 0.0, 0.05],
@@ -75,13 +75,13 @@ def test_immersed_body_exact_solid_geometry():
     polygon = ImmersedBody.extruded_polygon_z(
         [[-0.5, -0.25], [0.5, -0.25], [0.5, 0.25], [-0.5, 0.25]],
         [-0.5, 0.5],
-        h=0.1,
+        grid_spacing=0.1,
         name="foil",
     )
     assert polygon.has_solid_geometry
     assert polygon.n_markers > 0
     side_levels = int(np.ceil(1.0 / 0.1)) + 1
-    assert np.count_nonzero(np.isclose(polygon.X[:, 2], 0.0)) == 30
+    assert np.count_nonzero(np.isclose(polygon.position[:, 2], 0.0)) == 30
     assert polygon.n_markers >= 30 * side_levels
     np.testing.assert_array_equal(
         polygon.contains(
@@ -101,7 +101,7 @@ def test_extruded_cylinder_factory_has_exact_solid_geometry():
         centre=[0.0, 0.0, 0.0],
         diameter=1.0,
         z_bounds=[-1.0, 1.0],
-        h=0.2,
+        grid_spacing=0.2,
         caps=True,
     )
     query = np.array(
@@ -112,8 +112,8 @@ def test_extruded_cylinder_factory_has_exact_solid_geometry():
             [0.0, 0.0, 1.01],
         ]
     )
-    assert body.X[:, 2].min() == pytest.approx(-1.0)
-    assert body.X[:, 2].max() == pytest.approx(1.0)
+    assert body.position[:, 2].min() == pytest.approx(-1.0)
+    assert body.position[:, 2].max() == pytest.approx(1.0)
     assert body.contains(query).tolist() == [True, False, False, False]
     assert body.contains(query, include_boundary=True).tolist() == [True, True, False, False]
 
@@ -121,7 +121,7 @@ def test_extruded_cylinder_factory_has_exact_solid_geometry():
         centre=[0.0, 0.0, 0.0],
         diameter=1.0,
         z_bounds=[-1.0, 1.0],
-        h=0.2,
+        grid_spacing=0.2,
         caps=False,
     )
     assert through_domain.contains([[0.0, 0.0, 100.0]])[0]
@@ -130,7 +130,7 @@ def test_extruded_cylinder_factory_has_exact_solid_geometry():
 def test_interpolation_reproduces_constant_and_linear(cylinder_setup):
     m, geo, ibm = cylinder_setup
     n_tot = m["n_cells"] + m["n_faces"] - m["n_interior_faces"]
-    cc = geo["cell_centroids"]
+    cc = geo["cell_centre"]
 
     const = np.full((n_tot, 3), 2.5)
     err_const = np.abs(ibm.interpolate(const) - 2.5).max()
@@ -138,7 +138,7 @@ def test_interpolation_reproduces_constant_and_linear(cylinder_setup):
 
     lin = np.zeros((n_tot, 3))
     lin[: m["n_cells"], 0] = 1.0 + 0.7 * cc[:, 0] - 0.3 * cc[:, 1]
-    expect = 1.0 + 0.7 * ibm.X[:, 0] - 0.3 * ibm.X[:, 1]
+    expect = 1.0 + 0.7 * ibm.marker_position[:, 0] - 0.3 * ibm.marker_position[:, 1]
     err_lin = np.abs(ibm.interpolate(lin)[:, 0] - expect).max()
     assert err_lin < 5e-3  # O(h^2) with h = 1/16 of D
 
@@ -148,10 +148,10 @@ def test_pinelli_quadrature_consistency(cylinder_setup):
     # A eps = 1 solved exactly.
     diagnostics = ibm.diagnostics()
     assert diagnostics["quadrature_residual"] < 1e-10
-    assert diagnostics["eps_min"] >= 0.0
-    assert diagnostics["eps_max"] > 0.0
+    assert diagnostics["min_quadrature_weight"] >= 0.0
+    assert diagnostics["max_quadrature_weight"] > 0.0
     # Round trip: interpolate(spread(F)) ~ F for constant F.
-    F = np.tile([1.0, -2.0, 0.5], (ibm.X.shape[0], 1))
+    F = np.tile([1.0, -2.0, 0.5], (ibm.marker_position.shape[0], 1))
     round_trip = ibm.interpolate(ibm.spread(F))
     assert np.abs(round_trip - F).max() < 1e-8
 
@@ -159,7 +159,7 @@ def test_pinelli_quadrature_consistency(cylinder_setup):
 def test_forcing_kills_slip_in_one_application(cylinder_setup):
     m, geo, ibm = cylinder_setup
     n_tot = m["n_cells"] + m["n_faces"] - m["n_interior_faces"]
-    # Uniform flow through the (fixed) body: slip = |U_inf| initially.
+    # Uniform flow through the fixed body: slip initially equals freestream speed.
     velocity = np.zeros((n_tot, 3))
     velocity[:, 0] = 1.0
     time_step_size = 0.01
@@ -180,13 +180,13 @@ def test_multidirect_forcing_converges_slip(cylinder_setup):
     velocity = np.zeros((n_tot, 3))
     velocity[:, 0] = 1.0
     time_step_size = 0.01
-    ibm.compute_force(velocity, time_step_size)  # initialise last_F
-    F_before = ibm.last_F.copy()
-    ibm.multidirect_correct(velocity, time_step_size, n_iter=3)
+    ibm.compute_force(velocity, time_step_size)  # initialise last_marker_acceleration
+    F_before = ibm.last_marker_acceleration.copy()
+    ibm.multidirect_correct(velocity, time_step_size, n_iterations=3)
     # Slip driven far below the single-application level (test above: < 0.05).
     assert ibm.last_slip < 5e-3
     # Increments were accumulated into the logged Lagrangian force.
-    assert not np.allclose(ibm.last_F, F_before)
+    assert not np.allclose(ibm.last_marker_acceleration, F_before)
 
 
 def test_body_force_matches_eulerian_integral(cylinder_setup):
@@ -195,9 +195,9 @@ def test_body_force_matches_eulerian_integral(cylinder_setup):
     velocity = np.zeros((n_tot, 3))
     velocity[:, 0] = 1.0
     f = ibm.compute_force(velocity, time_step_size=0.02)
-    vol = geo["cell_volumes"]
+    vol = geo["cell_volume"]
     F_euler = -np.sum(f * vol[:, np.newaxis], axis=0)
-    F_body = ibm.body_forces(rho=1.0)["cylinder"]
+    F_body = ibm.body_forces(density=1.0)["cylinder"]
     assert np.allclose(F_body, F_euler, rtol=1e-10, atol=1e-12)
     # The forcing decelerates the fluid, so the reaction on the body is a
     # positive-x drag.
@@ -206,25 +206,25 @@ def test_body_force_matches_eulerian_integral(cylinder_setup):
 
 def test_body_force_removes_fictitious_solid_fluid_momentum():
     mesh, geo = _mesh_2d(nx=20, ny=16, lx=5.0, ly=4.0)
-    body = ImmersedBody.rectangle_z([2.0, 2.0, 0.05], 1.0, 1.0, h=0.25, name="square")
-    ibm = IBMForcing(mesh, geo, body, h=0.25)
+    body = ImmersedBody.rectangle_z([2.0, 2.0, 0.05], 1.0, 1.0, grid_spacing=0.25, name="square")
+    ibm = IBMForcing(mesh, geo, body, grid_spacing=0.25)
     n_total = mesh["n_cells"] + mesh["n_faces"] - mesh["n_interior_faces"]
     velocity_old = np.zeros((n_total, 3))
     velocity = np.zeros_like(velocity_old)
     velocity_old[:, 0] = 1.0
-    mask = body.contains(geo["cell_centroids"])
-    expected_rate = -np.sum(geo["cell_volumes"][mask]) / 0.5
+    mask = body.contains(geo["cell_centre"])
+    expected_rate = -np.sum(geo["cell_volume"][mask]) / 0.5
 
     ibm.update_fictitious_fluid_momentum_rate(velocity, velocity_old, 0.5)
 
-    force = ibm.body_forces(rho=1.0)["square"]
+    force = ibm.body_forces(density=1.0)["square"]
     np.testing.assert_allclose(force, [expected_rate, 0.0, 0.0], atol=1e-14)
 
 
 def test_cylinder_step_integration():
     """End-to-end: a few PIMPLE steps with IBM produce finite fields, positive
     drag, and a small no-slip error at the markers."""
-    from source.solvers.FVM import (
+    from source.solvers.fvm import (
         BoundaryConfig,
         DiscretizationConfig,
         FVMSetup,
@@ -270,27 +270,27 @@ def test_cylinder_step_integration():
         solver = FVMSolver(config, case_dir=tmp, mesh_data=m)
         solver.auto_write = False
         h = 6.0 / 60
-        body = ImmersedBody.cylinder_z(centre=[2.0, 2.0, 0.05], diameter=1.0, h=h)
-        ibm = solver.set_immersed_bodies(body, h=h)
+        body = ImmersedBody.cylinder_z(centre=[2.0, 2.0, 0.05], diameter=1.0, grid_spacing=h)
+        ibm = solver.set_immersed_bodies(body, grid_spacing=h)
 
         for _ in range(10):
             solver.advance()
 
         n = m["n_cells"]
         assert np.all(np.isfinite(solver.velocity[:n]))
-        # No-slip enforced at markers to a small fraction of U_inf.
+        # No-slip enforced at markers to a small fraction of freestream speed.
         assert ibm.slip_error(solver.velocity) < 0.05
         # Drag is positive (force on body along +x).
-        Fb = ibm.body_forces(rho=1.0)["cylinder"]
+        Fb = ibm.body_forces(density=1.0)["cylinder"]
         assert Fb[0] > 0.0
-        # Wake deficit exists: velocity behind the body below U_inf.
-        cc = solver.geo_data["cell_centroids"][:n]
+        # Wake deficit exists: velocity behind the body is below freestream speed.
+        cc = solver.geo_data["cell_centre"][:n]
         wake = (np.abs(cc[:, 1] - 2.0) < 0.2) & (cc[:, 0] > 2.6) & (cc[:, 0] < 3.5)
         assert solver.velocity[:n][wake, 0].mean() < 0.8
 
 
 def test_solver_rejects_unqualified_moving_body_support(tmp_path):
-    from source.solvers.FVM import (
+    from source.solvers.fvm import (
         BoundaryConfig,
         DiscretizationConfig,
         FVMSetup,
@@ -319,15 +319,17 @@ def test_solver_rejects_unqualified_moving_body_support(tmp_path):
         ],
     )
     solver = FVMSolver(config, case_dir=str(tmp_path), mesh_data=mesh)
-    moving = ImmersedBody.from_points([[1.5, 1.5, 0.05]], U_target=[0.1, 0.0, 0.0], name="moving")
+    moving = ImmersedBody.from_points(
+        [[1.5, 1.5, 0.05]], prescribed_velocity=[0.1, 0.0, 0.0], name="moving"
+    )
     with pytest.raises(NotImplementedError, match="energy accounting"):
-        solver.set_immersed_bodies(moving, h=0.15)
+        solver.set_immersed_bodies(moving, grid_spacing=0.15)
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("h", (0.25, 0.125, 0.0625))
 def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
-    from source.solvers.FVM import (
+    from source.solvers.fvm import (
         BoundaryConfig,
         DiscretizationConfig,
         FVMSetup,
@@ -337,7 +339,7 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
         TimeConfig,
         TransportConfig,
     )
-    from source.solvers.FVM.mesh.rectilinear import coupling_box_mesh
+    from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
 
     domain = (0.0, 6.0, 0.0, 4.0, 0.0, h)
     time_step_size = min(0.02, 0.16 * h)
@@ -365,14 +367,14 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
         pimple = PimpleControl(n_correctors=2, n_outer_correctors=8)
         samplers = []
         if with_square:
-            from source.solvers.FVM.sampling.base import SamplingSchedule
-            from source.solvers.FVM.sampling.forces import ForceSampler
+            from source.solvers.fvm.sampling.base import SamplingSchedule
+            from source.solvers.fvm.sampling.forces import ForceSampler
 
             samplers = [
                 ForceSampler(
                     patch_names=["square"],
-                    ref_velocity=1.0,
-                    ref_area=h,
+                    reference_velocity=1.0,
+                    reference_area=h,
                     schedule=SamplingSchedule(every_n_steps=1),
                 )
             ]
@@ -415,18 +417,18 @@ def test_ibm_square_force_and_wake_match_body_fitted_reference(tmp_path, h):
     immersed = FVMSolver(config(False), str(tmp_path / "immersed"), mesh_data=ibm_mesh)
     fitted.auto_write = False
     immersed.auto_write = False
-    body = ImmersedBody.rectangle_z([2.0, 2.0, 0.5 * h], 1.0, 1.0, h=h, name="square")
-    ibm = immersed.set_immersed_bodies(body, h=h)
+    body = ImmersedBody.rectangle_z([2.0, 2.0, 0.5 * h], 1.0, 1.0, grid_spacing=h, name="square")
+    ibm = immersed.set_immersed_bodies(body, grid_spacing=h)
     for _ in range(round(0.16 / time_step_size)):
         fitted.advance()
         immersed.advance()
 
-    fitted_drag = fitted.last_forces["square"]["Ftot"][0]
-    immersed_drag = ibm.body_forces(rho=1.0)["square"][0]
-    uncorrected_drag = ibm.forcing_reaction_forces(rho=1.0)["square"][0]
+    fitted_drag = fitted.last_forces["square"]["total_force"][0]
+    immersed_drag = ibm.body_forces(density=1.0)["square"][0]
+    uncorrected_drag = ibm.forcing_reaction_forces(density=1.0)["square"][0]
 
     def wake_velocity(solver):
-        centres = solver.geo_data["cell_centroids"]
+        centres = solver.geo_data["cell_centre"]
         wake = (np.abs(centres[:, 1] - 2.0) < 0.21) & (centres[:, 0] > 2.7) & (centres[:, 0] < 3.5)
         return float(np.mean(solver.velocity[: solver.mesh_data["n_cells"]][wake, 0]))
 

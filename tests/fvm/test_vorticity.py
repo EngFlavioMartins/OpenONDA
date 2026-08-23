@@ -1,8 +1,8 @@
 import numpy as np
 
-from source.solvers.FVM.fields.diagnostics import compute_vorticity
-from source.solvers.FVM.fields.gradients import compute_gauss_gradient
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.fields.diagnostics import compute_vorticity
+from source.solvers.fvm.fields.gradients import compute_gauss_gradient
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 
 
 class TestVorticity:
@@ -28,7 +28,7 @@ class TestVorticity:
         geo = compute_mesh_geometry(mesh)
         n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        cents = geo["cell_centroids"]
+        cents = geo["cell_centre"]
 
         # Build velocity field with proper ghost cells for gradient computation
         velocity = np.zeros((n_elem + n_bnd, 3))
@@ -38,7 +38,7 @@ class TestVorticity:
             boundary["velocity_type"] = "zeroGradient"
 
         # Set ghost cells to analytic velocity at face centroids
-        fc = geo["face_centroids"]
+        fc = geo["face_centre"]
         for b in mesh["boundary"]:
             start, nf = b["start_face"], b["n_faces"]
             for j in range(nf):
@@ -47,19 +47,20 @@ class TestVorticity:
                 velocity[gi, 0] = -fc[fi, 1]
                 velocity[gi, 1] = fc[fi, 0]
 
-        gradU = compute_gauss_gradient(velocity, mesh, geo)
-        # ω = ∇ × U = (∂w/∂y − ∂v/∂z, ∂u/∂z − ∂w/∂x, ∂v/∂x − ∂u/∂y)
-        # gradU[i, j, k] = ∂U_k/∂x_j
-        dUdx = gradU[:n_elem, 0, :]  # (n_elem, 3): ∂u/∂x, ∂v/∂x, ∂w/∂x
-        dUdy = gradU[:n_elem, 1, :]  # ∂u/∂y, ∂v/∂y, ∂w/∂y
-        dUdz = gradU[:n_elem, 2, :]  # ∂u/∂z, ∂v/∂z, ∂w/∂z
-        omega_x = dUdy[:, 2] - dUdz[:, 1]  # ∂w/∂y − ∂v/∂z
-        omega_y = dUdz[:, 0] - dUdx[:, 2]  # ∂u/∂z − ∂w/∂x
-        omega_z = dUdx[:, 1] - dUdy[:, 0]  # ∂v/∂x − ∂u/∂y
-        omega = np.column_stack([omega_x, omega_y, omega_z])
+        velocity_gradient = compute_gauss_gradient(velocity, mesh, geo)
+        # vorticity = curl(velocity)
+        velocity_derivative_x = velocity_gradient[:n_elem, 0, :]
+        velocity_derivative_y = velocity_gradient[:n_elem, 1, :]
+        velocity_derivative_z = velocity_gradient[:n_elem, 2, :]
+        vorticity_x = velocity_derivative_y[:, 2] - velocity_derivative_z[:, 1]
+        vorticity_y = velocity_derivative_z[:, 0] - velocity_derivative_x[:, 2]
+        vorticity_z = velocity_derivative_x[:, 1] - velocity_derivative_y[:, 0]
+        vorticity = np.column_stack([vorticity_x, vorticity_y, vorticity_z])
         expected = np.tile([0.0, 0.0, 2.0], (n_elem, 1))
-        err = np.max(np.abs(omega - expected))
-        assert err < 1e-10, f"max ω error = {err:.2e} (from analytic gradient)"
+        max_vorticity_error = np.max(np.abs(vorticity - expected))
+        assert max_vorticity_error < 1e-10, (
+            f"max vorticity error = {max_vorticity_error:.2e} (from analytic gradient)"
+        )
 
     def test_vorticity_function(self, hand_built_3d_mesh):
         """compute_vorticity() on solid-body rotation."""
@@ -67,7 +68,7 @@ class TestVorticity:
         geo = compute_mesh_geometry(mesh)
         n_elem = mesh["n_cells"]
         n_bnd = mesh["n_faces"] - mesh["n_interior_faces"]
-        cents = geo["cell_centroids"]
+        cents = geo["cell_centre"]
 
         velocity = np.zeros((n_elem + n_bnd, 3))
         velocity[:n_elem, 0] = -cents[:, 1]
@@ -75,7 +76,7 @@ class TestVorticity:
         for boundary in mesh["boundary"]:
             boundary["velocity_type"] = "zeroGradient"
 
-        fc = geo["face_centroids"]
+        fc = geo["face_centre"]
         for b in mesh["boundary"]:
             start, nf = b["start_face"], b["n_faces"]
             for j in range(nf):

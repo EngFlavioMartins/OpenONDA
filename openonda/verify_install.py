@@ -105,19 +105,19 @@ def _verify_native_fvm() -> dict[str, float | int]:
 
     if not np.all(np.isfinite(velocity)) or not np.all(np.isfinite(pressure)):
         raise RuntimeError("Native FVM installation smoke produced non-finite fields")
-    if diagnostics is None or diagnostics.nonfinite_count:
+    if diagnostics is None or diagnostics.n_nonfinite_values:
         raise RuntimeError("Native FVM installation smoke did not produce healthy diagnostics")
     if not diagnostics.linear_solves or not all(
         result.converged for result in diagnostics.linear_solves
     ):
         raise RuntimeError("Native FVM installation smoke had an unconverged linear solve")
     return {
-        "cells": int(mesh["n_cells"]),
-        "cfl_max": float(diagnostics.cfl_max),
-        "continuity_max": float(diagnostics.continuity_max),
-        "linear_solves": len(diagnostics.linear_solves),
-        "velocity_max": float(np.max(np.linalg.norm(velocity, axis=1))),
-        "pressure_max_abs": float(np.max(np.abs(pressure))),
+        "n_cells": int(mesh["n_cells"]),
+        "max_courant_number": float(diagnostics.max_courant_number),
+        "max_continuity_error": float(diagnostics.max_continuity_error),
+        "n_linear_solves": len(diagnostics.linear_solves),
+        "max_velocity_magnitude": float(np.max(np.linalg.norm(velocity, axis=1))),
+        "max_absolute_kinematic_pressure": float(np.max(np.abs(pressure))),
     }
 
 

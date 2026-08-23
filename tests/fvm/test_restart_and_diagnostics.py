@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from source.solvers.FVM import (
+from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -21,11 +21,11 @@ from source.solvers.FVM import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.FVM.io.storage import InsufficientStorageError
-from source.solvers.FVM.sampling.base import SamplingSchedule
-from source.solvers.FVM.sampling.forces import ForceSampler
-from source.solvers.FVM.solve.linear_interface import solve_linear_system
-from source.solvers.FVM.solve.simple_solver import SIMPLESolver
+from source.solvers.fvm.io.storage import InsufficientStorageError
+from source.solvers.fvm.sampling.base import SamplingSchedule
+from source.solvers.fvm.sampling.forces import ForceSampler
+from source.solvers.fvm.solve.linear_interface import solve_linear_system
+from source.solvers.fvm.solve.simple_solver import SIMPLESolver
 
 from ._structured_mesh import structured_box
 
@@ -88,16 +88,16 @@ def test_restart_matches_uninterrupted_bdf_integration(tmp_path, time_scheme):
     for name in (
         "velocity",
         "kinematic_pressure",
-        "face_flux",
-        "face_flux_old",
-        "face_flux_older",
+        "volumetric_face_flux",
+        "volumetric_face_flux_old",
+        "volumetric_face_flux_older",
         "velocity_old",
         "velocity_older",
     ):
         np.testing.assert_allclose(getattr(resumed, name), getattr(reference, name), atol=1e-13)
     assert resumed.time == pytest.approx(reference.time)
     assert resumed.step == reference.step
-    assert resumed._n_committed == reference._n_committed
+    assert resumed._n_committed_time_steps == reference._n_committed_time_steps
 
 
 def test_restart_rejects_incompatible_config_and_mesh(tmp_path):
@@ -135,9 +135,9 @@ def test_restart_allows_an_explicit_end_time_extension(tmp_path):
 def _force_sampler():
     return ForceSampler(
         patch_names=["___none__"],
-        ref_velocity=1.0,
-        ref_area=1.0,
-        ref_length=1.0,
+        reference_velocity=1.0,
+        reference_area=1.0,
+        reference_length=1.0,
         schedule=SamplingSchedule(every_n_steps=1),
     )
 
@@ -191,7 +191,7 @@ def test_checkpoint_capacity_preflight_preserves_previous_restart(tmp_path, monk
     checkpoint = tmp_path / "state.npz"
     checkpoint.write_bytes(b"known-good-prior-generation")
     usage = SimpleNamespace(total=100, used=99, free=1)
-    monkeypatch.setattr("source.solvers.FVM.io.storage.shutil.disk_usage", lambda _path: usage)
+    monkeypatch.setattr("source.solvers.fvm.io.storage.shutil.disk_usage", lambda _path: usage)
 
     with pytest.raises(InsufficientStorageError):
         solver.save_state(checkpoint)
@@ -211,7 +211,7 @@ def test_diagnostics_disk_full_preserves_step_and_disables_future_writes(tmp_pat
         calls += 1
         raise OSError(errno.ENOSPC, "test disk full")
 
-    monkeypatch.setattr("source.solvers.FVM.io.solver_io.append_line_recoverably", disk_full)
+    monkeypatch.setattr("source.solvers.fvm.io.solver_io.append_line_recoverably", disk_full)
     solver.io.write_step_diagnostics()
     solver.io.write_step_diagnostics()
 
@@ -247,15 +247,20 @@ def test_steady_simple_does_not_confuse_linear_and_nonlinear_convergence(monkeyp
     solver.residuals = []
     increments = iter((1.0, 0.1))
 
-    def step(velocity, p, face_flux, **kwargs):
-        solver.last_res_p = 1e-14
-        solver.last_res_u = 1e-14
-        solver.last_outer_diagnostics = (SimpleNamespace(continuity_max=1e-14),)
-        return velocity, p, face_flux, {"U_increment": next(increments)}
+    def step(velocity, kinematic_pressure, volumetric_face_flux, **kwargs):
+        solver.last_kinematic_pressure_residual = 1e-14
+        solver.last_velocity_residual = 1e-14
+        solver.last_outer_diagnostics = (SimpleNamespace(max_continuity_error=1e-14),)
+        return (
+            velocity,
+            kinematic_pressure,
+            volumetric_face_flux,
+            {"velocity_increment": next(increments)},
+        )
 
     solver.step = step
     monkeypatch.setattr(
-        "source.solvers.FVM.assemble.convection.compute_volumetric_face_flux",
+        "source.solvers.fvm.assemble.convection.compute_volumetric_face_flux",
         lambda *args: np.zeros(1),
     )
     with contextlib.redirect_stdout(io.StringIO()):
@@ -286,10 +291,10 @@ def test_pimple_step_exposes_structured_diagnostics_and_outer_stop(tmp_path):
     assert len(record.linear_solves) == 10
     assert all(result.converged for result in record.linear_solves)
     assert sum(result.solve_seconds > 0.0 for result in record.linear_solves[:3]) == 1
-    assert record.nonfinite_count == 0
-    assert np.isfinite(record.boundary_mass_balance)
-    assert np.isfinite(record.kinetic_energy) and record.kinetic_energy >= 0.0
-    assert np.isfinite(record.enstrophy) and record.enstrophy >= 0.0
+    assert record.n_nonfinite_values == 0
+    assert np.isfinite(record.net_boundary_volumetric_flux)
+    assert np.isfinite(record.total_kinetic_energy) and record.total_kinetic_energy >= 0.0
+    assert np.isfinite(record.total_enstrophy) and record.total_enstrophy >= 0.0
 
 
 def test_pimple_releases_previous_step_derived_fields_before_allocating(monkeypatch, tmp_path):
@@ -319,11 +324,19 @@ def test_pimple_releases_previous_step_derived_fields_before_allocating(monkeypa
 
 def test_acceptance_policy_uses_sustained_window(tmp_path):
     config = _config()
-    config.acceptance = RunAcceptancePolicy(residual_abort=0.5, sustained_steps=2)
+    config.acceptance = RunAcceptancePolicy(max_equation_residual_abort=0.5, sustained_steps=2)
     solver = _solver(config, tmp_path)
 
-    def unhealthy_step(velocity, p, face_flux, *args, **kwargs):
-        return velocity, p, face_flux, {"U": 1.0, "p": 1.0}
+    def unhealthy_step(velocity, kinematic_pressure, volumetric_face_flux, *args, **kwargs):
+        return (
+            velocity,
+            kinematic_pressure,
+            volumetric_face_flux,
+            {
+                "velocity": 1.0,
+                "kinematic_pressure": 1.0,
+            },
+        )
 
     solver.algorithm.step = unhealthy_step
     solver.algorithm.last_linear_results = ()
@@ -350,5 +363,5 @@ def test_run_manifest_records_reproducibility_identity(tmp_path):
     assert len(data["config_hash"]) == 64
     assert len(data["mesh_hash"]) == 64
     assert data["execution"]["operator_backend"] == "numpy"
-    assert data["mesh"]["cells"] == solver.mesh_data["n_cells"]
+    assert data["mesh"]["n_cells"] == solver.mesh_data["n_cells"]
     assert data["packages"]["numpy"]

@@ -43,9 +43,9 @@ LABELS = {
 class VorticitySolver:
     """Two-thirds dealiased Fourier discretization on [0, 2 pi)^3."""
 
-    def __init__(self, n: int, viscosity: float) -> None:
+    def __init__(self, n: int, kinematic_viscosity: float) -> None:
         self.grid = SpectralGrid(n)
-        self.viscosity = viscosity
+        self.kinematic_viscosity = kinematic_viscosity
         cutoff = n // 3
         self.mask = (
             (np.abs(self.grid.kx) < cutoff)
@@ -95,7 +95,7 @@ class VorticitySolver:
         convection = np.einsum("j...,ij...->i...", velocity, gradient_w)
         stretching = np.einsum("j...,ij...->i...", vorticity, gradient_u)
         laplacian = self.grid.ifft(-self.grid.k2 * self.grid.fft(vorticity))
-        result = -convection + stretching + self.viscosity * laplacian
+        result = -convection + stretching + self.kinematic_viscosity * laplacian
         if model != "no_sgs":
             result += model_torques(self.grid, velocity, gaussian_delta)[0][model]
         return self.project(self.dealias(result))
@@ -150,7 +150,7 @@ def projected_force_from_torque(solver: VorticitySolver, torque: np.ndarray) -> 
     return solver.velocity(torque)
 
 
-def energy_spectrum(solver: VorticitySolver, vorticity: np.ndarray) -> np.ndarray:
+def kinetic_energy_spectrum(solver: VorticitySolver, vorticity: np.ndarray) -> np.ndarray:
     velocity_hat = solver.grid.fft(solver.velocity(vorticity))
     density = 0.5 * np.sum(np.abs(velocity_hat) ** 2, axis=0) / solver.grid.n**6
     shell = np.rint(np.sqrt(solver.grid.k2)).astype(int)
@@ -164,8 +164,8 @@ def diagnostics(
     gaussian_delta: float,
 ) -> dict[str, float]:
     velocity = solver.velocity(vorticity)
-    energy = 0.5 * float(np.mean(np.sum(velocity * velocity, axis=0)))
-    enstrophy = 0.5 * float(np.mean(np.sum(vorticity * vorticity, axis=0)))
+    total_kinetic_energy = 0.5 * float(np.mean(np.sum(velocity * velocity, axis=0)))
+    total_enstrophy = 0.5 * float(np.mean(np.sum(vorticity * vorticity, axis=0)))
     velocity_hat = solver.grid.fft(velocity)
     modal_energy = 0.5 * np.sum(np.abs(velocity_hat) ** 2, axis=0) / solver.grid.n**6
     radius = np.sqrt(solver.grid.k2)
@@ -189,9 +189,9 @@ def diagnostics(
         }[model]
         condition = float(model_diagnostics["kkt_condition"])
     return {
-        "energy": energy,
-        "enstrophy": enstrophy,
-        "viscous_power": -2.0 * solver.viscosity * enstrophy,
+        "total_kinetic_energy": total_kinetic_energy,
+        "total_enstrophy": total_enstrophy,
+        "viscous_kinetic_energy_rate": -2.0 * solver.kinematic_viscosity * total_enstrophy,
         "sgs_power": sgs_power,
         "enstrophy_transfer": enstrophy_transfer,
         "high_k_energy_fraction": high_k / max(total, np.finfo(float).tiny),
@@ -210,10 +210,14 @@ def field_error(model: np.ndarray, reference: np.ndarray) -> float:
 
 def integrate_budget(records: list[dict[str, float]]) -> float:
     time = np.asarray([record["time"] for record in records])
-    power = np.asarray([record["viscous_power"] + record["sgs_power"] for record in records])
-    predicted = records[0]["energy"] + float(np.trapezoid(power, time))
-    scale = max(abs(records[0]["energy"] - records[-1]["energy"]), 1.0e-14)
-    return abs(records[-1]["energy"] - predicted) / scale
+    power = np.asarray(
+        [record["viscous_kinetic_energy_rate"] + record["sgs_power"] for record in records]
+    )
+    predicted = records[0]["total_kinetic_energy"] + float(np.trapezoid(power, time))
+    scale = max(
+        abs(records[0]["total_kinetic_energy"] - records[-1]["total_kinetic_energy"]), 1.0e-14
+    )
+    return abs(records[-1]["total_kinetic_energy"] - predicted) / scale
 
 
 def integrated_relative_error(
@@ -233,9 +237,9 @@ def plot_histories(result: dict[str, object], output: Path) -> None:
     histories = result["histories"]
     fig, axes = plt.subplots(1, 3, figsize=(13.2, 4.1), constrained_layout=True)
     quantities = (
-        ("energy", "Resolved kinetic energy"),
-        ("enstrophy", "Resolved enstrophy"),
-        ("high_k_energy_fraction", "High-k energy fraction"),
+        ("total_kinetic_energy", "Resolved kinetic total_kinetic_energy"),
+        ("total_enstrophy", "Resolved total_enstrophy"),
+        ("high_k_energy_fraction", "High-k total_kinetic_energy fraction"),
     )
     for axis, (quantity, title) in zip(axes, quantities, strict=True):
         for model in ("filtered_dns", *MODELS):
@@ -276,7 +280,7 @@ def plot_spectra(result: dict[str, object], output: Path) -> None:
         )
     axis.set_xlabel("Wavenumber shell k")
     axis.set_ylabel("E(k)")
-    axis.set_title("Final resolved energy spectra")
+    axis.set_title("Final resolved total_kinetic_energy spectra")
     axis.grid(color="#d8dde2", linewidth=0.7, which="both")
     axis.spines[["top", "right"]].set_visible(False)
     axis.legend(frameon=False, fontsize=8)
@@ -320,8 +324,8 @@ def plot_model_diagnostics(result: dict[str, object], output: Path) -> None:
 def run(args: argparse.Namespace) -> dict[str, object]:
     if args.dns_n != 2 * args.les_n:
         raise ValueError("the pilot currently requires dns_n = 2 * les_n")
-    dns = VorticitySolver(args.dns_n, args.viscosity)
-    les = VorticitySolver(args.les_n, args.viscosity)
+    dns = VorticitySolver(args.dns_n, args.kinematic_viscosity)
+    les = VorticitySolver(args.les_n, args.kinematic_viscosity)
     paper_width = 2.0 * (2.0 * np.pi / args.les_n)
     gaussian_delta = paper_width / np.sqrt(6.0)
     dns_vorticity = dns.project(dns.grid.curl(taylor_green(dns.grid)))
@@ -341,7 +345,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             time = step * args.time_step_size
             final_reference = coarse_reference(dns, dns_vorticity, args.les_n, gaussian_delta)
             reference_record = diagnostics(les, final_reference, "no_sgs", gaussian_delta)
-            reference_spectrum = energy_spectrum(les, final_reference)
+            reference_spectrum = kinetic_energy_spectrum(les, final_reference)
             reference_record.update(
                 {
                     "time": time,
@@ -352,7 +356,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             histories["filtered_dns"].append(reference_record)
             for model, state in states.items():
                 record = diagnostics(les, state, model, gaussian_delta)
-                model_spectrum = energy_spectrum(les, state)
+                model_spectrum = kinetic_energy_spectrum(les, state)
                 record.update(
                     {
                         "time": time,
@@ -369,19 +373,23 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             if not np.all(np.isfinite(states[model])):
                 raise FloatingPointError(f"non-finite state in {model} at step {step + 1}")
 
-    final_spectra = {"filtered_dns": energy_spectrum(les, final_reference).tolist()}
+    final_spectra = {"filtered_dns": kinetic_energy_spectrum(les, final_reference).tolist()}
     final_spectra.update(
-        {model: energy_spectrum(les, state).tolist() for model, state in states.items()}
+        {model: kinetic_energy_spectrum(les, state).tolist() for model, state in states.items()}
     )
     summary = {}
     reference_final = histories["filtered_dns"][-1]
     for model in MODELS:
         final = histories[model][-1]
         summary[model] = {
-            "final_energy_relative_error": abs(final["energy"] - reference_final["energy"])
-            / reference_final["energy"],
-            "final_enstrophy_relative_error": abs(final["enstrophy"] - reference_final["enstrophy"])
-            / reference_final["enstrophy"],
+            "final_total_kinetic_energy_relative_error": abs(
+                final["total_kinetic_energy"] - reference_final["total_kinetic_energy"]
+            )
+            / reference_final["total_kinetic_energy"],
+            "final_total_enstrophy_relative_error": abs(
+                final["total_enstrophy"] - reference_final["total_enstrophy"]
+            )
+            / reference_final["total_enstrophy"],
             "final_vorticity_relative_l2": final["relative_vorticity_error"],
             "max_high_k_energy_fraction": max(
                 record["high_k_energy_fraction"] for record in histories[model]
@@ -390,11 +398,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 record["divergence_relative"] for record in histories[model]
             ),
             "energy_budget_relative_residual": integrate_budget(histories[model]),
-            "time_integrated_energy_relative_error": integrated_relative_error(
-                histories[model], histories["filtered_dns"], "energy"
+            "time_integrated_total_kinetic_energy_relative_error": integrated_relative_error(
+                histories[model], histories["filtered_dns"], "total_kinetic_energy"
             ),
-            "time_integrated_enstrophy_relative_error": integrated_relative_error(
-                histories[model], histories["filtered_dns"], "enstrophy"
+            "time_integrated_total_enstrophy_relative_error": integrated_relative_error(
+                histories[model], histories["filtered_dns"], "total_enstrophy"
             ),
             "time_mean_spectral_relative_l2": float(
                 np.mean([record["spectral_relative_l2"] for record in histories[model]])
@@ -411,8 +419,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "flow": "Taylor-Green vortex",
             "dns_n": args.dns_n,
             "les_n": args.les_n,
-            "viscosity": args.viscosity,
-            "dt": args.time_step_size,
+            "kinematic_viscosity": args.kinematic_viscosity,
+            "time_step_size": args.time_step_size,
             "end_time": args.end_time,
             "integrator": "Heun RK2",
             "dealiasing": "strict two-thirds component cutoff",
@@ -429,7 +437,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dns-n", type=int, default=48)
     parser.add_argument("--les-n", type=int, default=24)
-    parser.add_argument("--viscosity", type=float, default=1.0 / 200.0)
+    parser.add_argument("--kinematic-viscosity", type=float, default=1.0 / 200.0)
     parser.add_argument("--time-step-size", dest="time_step_size", type=float, default=0.01)
     parser.add_argument("--end-time", type=float, default=0.5)
     parser.add_argument("--save-interval", type=float, default=0.05)

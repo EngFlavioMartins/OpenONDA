@@ -109,7 +109,7 @@ def split_prism_box(n, *, mixed=False):
         owners.extend(entry[1] for entry in entries)
 
     return {
-        "points": points,
+        "vertex_position": points,
         "faces": faces,
         "owners": np.asarray(owners, dtype=np.int32),
         "neighbours": np.asarray(neighbours, dtype=np.int32),
@@ -119,5 +119,5 @@ def split_prism_box(n, *, mixed=False):
         "n_interior_faces": n_internal,
         "n_points": len(points),
         "cell_families": np.asarray(families),
-        "cell_orders": np.ones(len(cells), dtype=np.int8),
+        "cell_order": np.ones(len(cells), dtype=np.int8),
     }

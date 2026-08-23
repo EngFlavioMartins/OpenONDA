@@ -2,10 +2,10 @@
 
 import numpy as np
 
-from source.solvers.FVM.assemble.convection import compute_volumetric_face_flux
-from source.solvers.FVM.assemble.momentum import assemble_momentum_equation
-from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
-from source.solvers.FVM.solve.simple_solver import (
+from source.solvers.fvm.assemble.convection import compute_volumetric_face_flux
+from source.solvers.fvm.assemble.momentum import assemble_momentum_equation
+from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from source.solvers.fvm.solve.simple_solver import (
     assemble_pressure_correction_equation_rhie_chow,
     correct_velocity_and_flux,
 )
@@ -33,9 +33,9 @@ def test_kinematic_momentum_operator_is_density_invariant():
     mesh, geometry, velocity, pressure, flux = _case()
     kwargs = {
         "velocity": velocity,
-        "p": pressure,
-        "face_flux": flux,
-        "nu": 0.02,
+        "kinematic_pressure": pressure,
+        "volumetric_face_flux": flux,
+        "kinematic_viscosity": 0.02,
         "mesh_data": mesh,
         "geo_data": geometry,
         "boundaries": mesh["boundary"],
@@ -44,8 +44,8 @@ def test_kinematic_momentum_operator_is_density_invariant():
         "velocity_old": velocity.copy(),
     }
 
-    reference = assemble_momentum_equation(rho=1.0, **kwargs)
-    denser = assemble_momentum_equation(rho=7.5, **kwargs)
+    reference = assemble_momentum_equation(density=1.0, **kwargs)
+    denser = assemble_momentum_equation(density=7.5, **kwargs)
 
     # The segregated components differ only in their RHS. Keeping three CSR
     # matrices/diagonals used to triple the dominant solver storage.
@@ -75,7 +75,7 @@ def test_pressure_correction_keeps_volumetric_flux_density_invariant():
     np.testing.assert_allclose(ref_flux, dense_flux)
 
     correction = np.linspace(-0.1, 0.1, mesh["n_cells"])
-    ref_velocity, corrected_ref_flux = correct_velocity_and_flux(
+    reference_velocity, corrected_ref_flux = correct_velocity_and_flux(
         velocity.copy(),
         ref_flux.copy(),
         correction,
@@ -83,7 +83,7 @@ def test_pressure_correction_keeps_volumetric_flux_density_invariant():
         mesh,
         geometry,
         mesh["boundary"],
-        rho=1.0,
+        density=1.0,
     )
     dense_velocity, corrected_dense_flux = correct_velocity_and_flux(
         velocity.copy(),
@@ -93,7 +93,7 @@ def test_pressure_correction_keeps_volumetric_flux_density_invariant():
         mesh,
         geometry,
         mesh["boundary"],
-        rho=7.5,
+        density=7.5,
     )
-    np.testing.assert_allclose(ref_velocity, dense_velocity)
+    np.testing.assert_allclose(reference_velocity, dense_velocity)
     np.testing.assert_allclose(corrected_ref_flux, corrected_dense_flux)

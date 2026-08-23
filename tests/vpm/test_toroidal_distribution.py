@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from source.solvers.VPM.initial_conditions import VortexRingVPM
-from source.solvers.VPM.particles.distribution import ParticleDistributor
+from source.solvers.vpm.initial_conditions import vortex_ring_vpm
+from source.solvers.vpm.particles.distribution import ParticleDistributor
 
 
 @pytest.mark.unit
@@ -12,27 +12,27 @@ def test_toroidal_distribution_has_periodic_symmetry_and_correct_measure():
     ring_radius = 1.0
     tube_radius = 0.18
     spacing = 0.04
-    positions, volumes, radii = ParticleDistributor.toroidal_distribution(
+    position, particle_volume, core_radius = ParticleDistributor.toroidal_distribution(
         ring_radius, tube_radius, spacing
     )
 
-    rho = np.linalg.norm(positions[:, 1:], axis=1)
+    rho = np.linalg.norm(position[:, 1:], axis=1)
     tangent = np.column_stack(
-        (np.zeros(len(positions)), -positions[:, 2] / rho, positions[:, 1] / rho)
+        (np.zeros(len(position)), -position[:, 2] / rho, position[:, 1] / rho)
     )
     exact_torus_volume = 2.0 * np.pi**2 * ring_radius * tube_radius**2
 
-    assert len(positions) > 0
-    assert np.all(volumes > 0.0)
-    assert np.all(radii == 2.0 * spacing)
-    assert np.linalg.norm((tangent * volumes[:, None]).sum(axis=0)) < 1.0e-13
-    assert volumes.sum() == pytest.approx(exact_torus_volume, rel=0.08)
-    assert np.max(np.sqrt(positions[:, 0] ** 2 + (rho - ring_radius) ** 2)) <= tube_radius
+    assert len(position) > 0
+    assert np.all(particle_volume > 0.0)
+    assert np.all(core_radius == 2.0 * spacing)
+    assert np.linalg.norm((tangent * particle_volume[:, None]).sum(axis=0)) < 1.0e-13
+    assert particle_volume.sum() == pytest.approx(exact_torus_volume, rel=0.08)
+    assert np.max(np.sqrt(position[:, 0] ** 2 + (rho - ring_radius) ** 2)) <= tube_radius
 
 
 @pytest.mark.unit
 def test_toroidal_distribution_returns_complete_contiguous_orbits():
-    positions, _, _, orbit_id = ParticleDistributor.toroidal_distribution(
+    position, _, _, orbit_id = ParticleDistributor.toroidal_distribution(
         1.0,
         0.18,
         0.04,
@@ -44,62 +44,65 @@ def test_toroidal_distribution_returns_complete_contiguous_orbits():
     assert np.array_equal(orbit_id, np.repeat(np.arange(len(counts)), counts[0]))
     for orbit in range(len(counts)):
         selected = orbit_id == orbit
-        assert np.ptp(positions[selected, 0]) < 1.0e-14
-        assert np.ptp(np.linalg.norm(positions[selected, 1:], axis=1)) < 1.0e-14
+        assert np.ptp(position[selected, 0]) < 1.0e-14
+        assert np.ptp(np.linalg.norm(position[selected, 1:], axis=1)) < 1.0e-14
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
-def test_toroidal_distribution_honors_axis_and_center(axis):
-    center = np.array([0.2, -0.3, 0.4])
-    positions, _, _ = ParticleDistributor.toroidal_distribution(
-        0.8, 0.12, 0.05, center=center, axis=axis
+def test_toroidal_distribution_honors_axis_and_centre(axis):
+    centre = np.array([0.2, -0.3, 0.4])
+    position, _, _ = ParticleDistributor.toroidal_distribution(
+        0.8, 0.12, 0.05, centre_position=centre, axis=axis
     )
 
     axis_index = {"x": 0, "y": 1, "z": 2}[axis]
-    assert positions[:, axis_index].mean() == pytest.approx(center[axis_index], abs=1.0e-14)
+    assert position[:, axis_index].mean() == pytest.approx(centre[axis_index], abs=1.0e-14)
 
 
 @pytest.mark.unit
 def test_perturbed_ring_seeding_preserves_zero_vector_circulation():
     spacing = 0.04
-    viscosity = np.pi / 3000.0
+    kinematic_viscosity = np.pi / 3000.0
     core_radius = 0.1
-    particle_radius = 2.0 * spacing
-    represented_core = np.sqrt(core_radius**2 - particle_radius**2)
+    particle_core_radius = 2.0 * spacing
+    represented_core = np.sqrt(core_radius**2 - particle_core_radius**2)
     tube_radius = represented_core * np.sqrt(-np.log(0.05))
-    positions, volumes, radii = ParticleDistributor.toroidal_distribution(
+    position, particle_volume, core_radius = ParticleDistributor.toroidal_distribution(
         1.0,
         tube_radius,
         spacing,
-        epsilon_w=0.025,
+        widnall_amplitude=0.025,
         seed=7,
-        max_modes=12,
+        n_widnall_modes=12,
     )
-    _, _, strengths = VortexRingVPM(
-        kinematic_viscosity=viscosity,
-        ring_center=np.zeros(3),
-        ring_strength=np.pi,
+    _, _, vortex_strength = vortex_ring_vpm(
+        kinematic_viscosity=kinematic_viscosity,
+        ring_centre=np.zeros(3),
+        tube_circulation=np.pi,
         ring_radius=1.0,
-        ring_thickness=core_radius,
-        avg_particle_radius=float(radii.mean()),
-        positions=positions,
-        volumes=volumes,
-        epsilon_W=0.025,
+        ring_core_radius=core_radius,
+        mean_core_radius=float(core_radius.mean()),
+        position=position,
+        particle_volume=particle_volume,
+        widnall_amplitude=0.025,
         seed=7,
-        max_modes=12,
-        anti_diffuse_flag=True,
-        normalize_circulation=True,
+        n_widnall_modes=12,
+        is_anti_diffusion_enabled=True,
+        is_circulation_normalization_enabled=True,
     )
 
-    rho = np.linalg.norm(positions[:, 1:], axis=1)
+    rho = np.linalg.norm(position[:, 1:], axis=1)
     tangent = np.column_stack(
-        (np.zeros(len(positions)), -positions[:, 2] / rho, positions[:, 1] / rho)
+        (np.zeros(len(position)), -position[:, 2] / rho, position[:, 1] / rho)
     )
-    represented_circulation = np.sum(np.einsum("ij,ij->i", strengths, tangent) / rho) / (
+    represented_circulation = np.sum(np.einsum("ij,ij->i", vortex_strength, tangent) / rho) / (
         2.0 * np.pi
     )
-    assert np.linalg.norm(strengths.sum(axis=0)) / np.linalg.norm(strengths, axis=1).sum() < 1.0e-14
+    assert (
+        np.linalg.norm(vortex_strength.sum(axis=0)) / np.linalg.norm(vortex_strength, axis=1).sum()
+        < 1.0e-14
+    )
     assert represented_circulation == pytest.approx(np.pi, rel=1.0e-14)
 
 

@@ -40,7 +40,7 @@ def _worker(case_dir: Path, compute_device: str) -> None:
         start=[-0.25, 0.0, 0.0],
         end=[0.25, 0.0, 0.0],
         n_points=3,
-        file_name="centerline",
+        file_name="centreline",
         schedule=fvm.SamplingSchedule(every_n_steps=1),
     )
     fvm_setup = fvm.FVMSetup(
@@ -76,7 +76,7 @@ def _worker(case_dir: Path, compute_device: str) -> None:
         setup = vpm.VPMSetup(
             time_step_size=vpm_dt,
             compute_device=compute_device,
-            max_particles=50_000,
+            max_n_particles=50_000,
             domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
             freestream_velocity=freestream,
             checkpoint_directory=str(case_dir / "solution"),
@@ -103,24 +103,27 @@ def _worker(case_dir: Path, compute_device: str) -> None:
     required = (
         solution / "fvm.log",
         solution / "coupler.log",
-        samples / "centerline.csv",
-        solution / "checkpoint" / "manifest.json",
+        samples / "centreline.csv",
+        solution / "checkpoints" / "manifest.json",
     )
     missing = [str(path.relative_to(case_dir)) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(f"missing tutorial outputs: {', '.join(missing)}")
 
-    checkpoint = solution / "checkpoint"
+    checkpoint = solution / "checkpoints"
     manifest = json.loads((checkpoint / "manifest.json").read_text(encoding="utf-8"))
     expected_artifacts = {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
-        "vpm_bc": "vpm_bc_000002.npz",
+        "vpm_xdmf": "vpm_000002.xdmf",
+        "vpm_boundary_condition": "vpm_boundary_condition_000002.npz",
     }
     if manifest.get("kind") != "openonda.coupled_checkpoint":
         raise RuntimeError(f"unexpected checkpoint kind: {manifest.get('kind')!r}")
     if manifest.get("artifacts") != expected_artifacts:
         raise RuntimeError(f"unexpected checkpoint filenames: {manifest.get('artifacts')!r}")
+    if set(manifest.get("artifact_sha256", {})) != set(expected_artifacts):
+        raise RuntimeError("checkpoint manifest has incomplete artifact hashes")
     if not all((checkpoint / name).is_file() for name in expected_artifacts.values()):
         raise RuntimeError("checkpoint manifest references a missing artifact")
     if list(checkpoint.glob("*_000001*")):
@@ -128,7 +131,7 @@ def _worker(case_dir: Path, compute_device: str) -> None:
 
     expected_u = fvm_solver.velocity.copy()
     expected_p = fvm_solver.kinematic_pressure.copy()
-    expected_phi = fvm_solver.face_flux.copy()
+    expected_flux = fvm_solver.volumetric_face_flux.copy()
     restored = coupling.create_coupler(make_fvm(), make_vpm(), coupler_setup)
     restored.initialize()
     restored_step = restored.load_state(checkpoint)
@@ -138,7 +141,9 @@ def _worker(case_dir: Path, compute_device: str) -> None:
     np.testing.assert_allclose(
         restored.fvm_solver.kinematic_pressure, expected_p, rtol=0.0, atol=1.0e-13
     )
-    np.testing.assert_allclose(restored.fvm_solver.face_flux, expected_phi, rtol=0.0, atol=1.0e-13)
+    np.testing.assert_allclose(
+        restored.fvm_solver.volumetric_face_flux, expected_flux, rtol=0.0, atol=1.0e-13
+    )
 
     if (case_dir / "constant").exists() or (case_dir / "system").exists():
         raise RuntimeError("legacy external-solver case artifacts were created")

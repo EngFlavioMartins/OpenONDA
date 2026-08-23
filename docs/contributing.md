@@ -2,6 +2,10 @@
 
 OpenONDA changes should preserve the scientific contracts, public namespaces,
 and case-rooted output layout described in [nomenclature.md](nomenclature.md).
+The complete naming migration is tracked in
+[nomenclature_project_todo.md](nomenclature_project_todo.md) and
+[rename-manifest.md](rename-manifest.md). Restartable state is called a
+checkpoint; copied historical runs are called archives.
 
 ## Development setup
 
@@ -26,10 +30,19 @@ pytest -q tests/coupler -m "not mpi"
 pytest -q tests/test_public_api_has_no_legacy_aliases.py tests/test_tutorial_contracts.py
 ```
 
-Run `pyrefly check` after changing Python under `source/solvers/FVM`,
+Run `pyrefly check` after changing Python under `source/solvers/fvm`,
 `source/coupler`, or `source/utilities`. The Taichi-based VPM tree is excluded
 from static type checking. Add focused regression coverage for every bug fix
 and run the nearest scientific validation before broad suites.
+
+Run `python scripts/check_nomenclature.py` before publishing a serializer,
+solver API, tutorial output, or checkpoint change. This is the repository gate
+for newly introduced legacy physical-field identifiers; historical archives
+and explicit migration adapters are intentionally excluded.
+
+During the staged filesystem migration, also run
+`python scripts/check_nomenclature.py --paths`; it reports legacy archive,
+checkpoint, tutorial, and launcher names without modifying them.
 
 Tutorial setup files use public namespace imports (`openonda.fvm as fvm`,
 `openonda.vpm as vpm`, and `openonda.coupler as coupling`), uppercase physical
