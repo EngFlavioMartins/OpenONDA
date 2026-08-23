@@ -41,8 +41,8 @@ class VPMSetup:
 
     # Evolution
     time_integration: Literal["FRACTIONAL", "COUPLED"] = "FRACTIONAL"
-    coupled_max_strain_increment: float = 0.08
-    coupled_max_advection_fraction: float = 0.25
+    coupled_max_strain_increment: float | None = 0.08
+    coupled_max_advection_fraction: float | None = 0.25
     coupled_max_substeps: int = 128
     axisymmetric_no_swirl_axis: Literal["x", "y", "z"] | None = None
 
@@ -233,9 +233,15 @@ class VPMSetup:
                     "with refinement or divergence relaxation"
                 )
 
-        if self.coupled_max_strain_increment <= 0.0:
+        if (
+            self.coupled_max_strain_increment is not None
+            and self.coupled_max_strain_increment <= 0.0
+        ):
             raise ValueError("coupled_max_strain_increment must be positive")
-        if self.coupled_max_advection_fraction <= 0.0:
+        if (
+            self.coupled_max_advection_fraction is not None
+            and self.coupled_max_advection_fraction <= 0.0
+        ):
             raise ValueError("coupled_max_advection_fraction must be positive")
         if self.coupled_max_substeps < 1:
             raise ValueError("coupled_max_substeps must be at least one")

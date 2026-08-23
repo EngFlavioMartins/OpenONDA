@@ -117,35 +117,56 @@ def test_cube_case_has_no_smoke_mode() -> None:
 def test_sampling_cadence_matches_reference(bench, reference):
     def schedules(samplers):
         return {
-            sampler.__class__.__name__: getattr(sampler.schedule, "every_time", None)
+            sampler.__class__.__name__: (
+                sampler.schedule.every_n_steps,
+                sampler.schedule.every_time,
+            )
             for sampler in samplers
         }
 
     hybrid_fvm = schedules(bench.FVM_SAMPLERS)
     reference_fvm = schedules(reference.SAMPLERS)
-    assert hybrid_fvm["ForceSampler"] == pytest.approx(reference_fvm["ForceSampler"])
-    assert hybrid_fvm["LineSampler"] == pytest.approx(reference_fvm["LineSampler"])
-    assert hybrid_fvm["SurfaceSampler"] == pytest.approx(reference_fvm["SurfaceSampler"])
+    assert hybrid_fvm["ForceSampler"] == reference_fvm["ForceSampler"]
+    assert hybrid_fvm["LineSampler"] == reference_fvm["LineSampler"]
+    assert hybrid_fvm["SurfaceSampler"] == reference_fvm["SurfaceSampler"]
+    assert hybrid_fvm["ForceSampler"] == (bench.LINE_SAMPLE_EVERY_FVM_STEPS, None)
+    assert hybrid_fvm["LineSampler"] == (bench.LINE_SAMPLE_EVERY_FVM_STEPS, None)
+    assert hybrid_fvm["SurfaceSampler"] == (bench.SLICE_SAMPLE_EVERY_FVM_STEPS, None)
 
     for sampler in bench.VPM_SAMPLERS:
         expected = (
-            bench.LINE_SAMPLE_INTERVAL_TIME
+            bench.LINE_SAMPLE_EVERY_COUPLING_STEPS
             if sampler.__class__.__name__ == "LineSampler"
-            else bench.SLICE_SAMPLE_INTERVAL_TIME
+            else bench.SLICE_SAMPLE_EVERY_COUPLING_STEPS
         )
-        assert sampler.schedule.every_time == pytest.approx(expected)
+        assert sampler.schedule.every_n_steps == expected
+        assert sampler.schedule.every_time is None
 
 
-def test_one_second_backup_schedule(bench):
-    assert bench.FVM_SETUP.time.output_interval_time == pytest.approx(1.0)
-    assert bench.VPM_SETUP.checkpoint_interval_steps == 0
-    assert bench.VPM_SETUP.checkpoint_interval_time == pytest.approx(1.0)
-    assert bench.COUPLER_SETUP.checkpoint_interval_steps == 0
-    assert bench.COUPLER_SETUP.checkpoint_interval_time == pytest.approx(1.0)
+def test_backup_schedule_uses_shared_accepted_steps(bench):
+    assert bench.FVM_SETUP.time.output_interval_steps == bench.BACKUP_EVERY_FVM_STEPS
+    assert bench.FVM_SETUP.time.output_interval_time is None
+    assert bench.VPM_SETUP.checkpoint_interval_steps == bench.BACKUP_EVERY_COUPLING_STEPS
+    assert bench.VPM_SETUP.checkpoint_interval_time is None
+    assert bench.COUPLER_SETUP.checkpoint_interval_steps == bench.BACKUP_EVERY_COUPLING_STEPS
+    assert bench.COUPLER_SETUP.checkpoint_interval_time is None
+
+
+def test_shared_cadence_lands_on_same_solver_states(bench, reference):
+    assert bench.FVM_STEPS_PER_COUPLING_STEP == 3
+    assert bench.LINE_SAMPLE_EVERY_FVM_STEPS == (
+        bench.LINE_SAMPLE_EVERY_COUPLING_STEPS * bench.FVM_STEPS_PER_COUPLING_STEP
+    )
+    assert bench.SLICE_SAMPLE_EVERY_FVM_STEPS == (
+        bench.SLICE_SAMPLE_EVERY_COUPLING_STEPS * bench.FVM_STEPS_PER_COUPLING_STEP
+    )
+    assert bench.BACKUP_EVERY_FVM_STEPS == (
+        bench.BACKUP_EVERY_COUPLING_STEPS * bench.FVM_STEPS_PER_COUPLING_STEP
+    )
+    assert reference.FVM_SETUP.time.output_interval_steps == bench.BACKUP_EVERY_FVM_STEPS
 
 
 def test_requested_end_uses_nearest_complete_coupling_step(bench):
-    assert pytest.approx(20.01) == bench.END_TIME
     assert pytest.approx(bench.COUPLING_STEPS * bench.VPM_TIME_STEP_SIZE) == bench.END_TIME
     assert abs(bench.END_TIME - bench.REQUESTED_END_TIME) <= bench.VPM_TIME_STEP_SIZE / 2
 
@@ -155,6 +176,21 @@ def test_production_particle_lattice_is_cube_wall_commensurate(bench):
     assert pytest.approx(32.0) == bench.CUBE_SIDE / bench.VPM_PARTICLE_SPACING
     assert pytest.approx(0.03) == bench.VPM_TIME_STEP_SIZE
     assert pytest.approx(0.01) == bench.FVM_TIME_STEP_SIZE
+
+
+def test_cube_vpm_uses_common_stage_advection_stretching(bench):
+    assert bench.VPM_SETUP.time_integration == "COUPLED"
+    assert bench.VPM_SETUP.advection.scheme == bench.VPM_SETUP.stretching.scheme == "RK2"
+    assert bench.VPM_SETUP.coupled_max_strain_increment is None
+    assert bench.VPM_SETUP.coupled_max_advection_fraction is None
+
+
+def test_hybrid_pressure_correction_matches_reference(bench, reference):
+    hybrid = bench.FVM_SETUP.pimple
+    monolithic = reference.FVM_SETUP.pimple
+    assert hybrid.n_correctors == monolithic.n_correctors
+    assert hybrid.n_outer_correctors == monolithic.n_outer_correctors
+    assert hybrid.n_orthogonal_correctors == monolithic.n_orthogonal_correctors
 
 
 def test_legitimate_differences_are_the_only_differences(bench, reference):

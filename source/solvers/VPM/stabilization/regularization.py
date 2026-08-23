@@ -294,9 +294,9 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
 
         if adaptive_core_used:
             Logging.message(
-                "[Conservative regularization] broadened regenerated core "
-                f"{configured_core_radius:.3e}->{float(new_radius.mean()):.3e} m "
-                "to prevent energy/enstrophy injection"
+                "[VPM][Regularization] adaptive_core=true "
+                f"configured_radius_m={configured_core_radius:.3e} "
+                f"selected_radius_m={float(new_radius.mean()):.3e}"
             )
 
         if projection_only or (

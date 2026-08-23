@@ -158,8 +158,7 @@ def _safe_device_memory_for_init(
             # Apple Silicon: GPU shares system RAM (unified memory).
             # Metal backend does NOT accept device_memory_GB / device_memory_fraction.
             print(
-                "[OpenONDA] Apple Silicon (Metal) detected — "
-                "Taichi memory pool managed automatically.",
+                "[VPM][Backend] name=METAL memory_pool=runtime_managed memory_architecture=unified",
                 file=sys.stderr,
             )
             return {}
@@ -195,9 +194,8 @@ def _safe_device_memory_for_init(
         budget_mb = budget_info[1] / (1 << 20) if budget_info else -1
 
         print(
-            f"[OpenONDA] Integrated GPU detected — "
-            f"Taichi pool: {pool_mb:.0f} MB  "
-            f"(Vulkan budget: {budget_mb:.0f} MB)",
+            f"[VPM][Backend] name={backend} memory_pool_mib={pool_mb:.0f} "
+            f"device_budget_mib={budget_mb:.0f} gpu_type=integrated",
             file=sys.stderr,
         )
         return {"device_memory_GB": pool_gb}
@@ -410,9 +408,9 @@ def initialize_taichi_backend(
     clamped_fraction = max(0.1, min(device_memory_fraction, 0.7))
     if clamped_fraction != device_memory_fraction:
         print(
-            f"[OpenONDA] device_memory_fraction={device_memory_fraction:.3g} is outside the "
-            f"safe GPU range [0.1, 0.7]; using {clamped_fraction:.3g} to avoid allocation "
-            f"failures.",
+            f"[VPM][Warning] component=backend requested_memory_fraction="
+            f"{device_memory_fraction:.3g} memory_fraction={clamped_fraction:.3g} "
+            "allowed_range=[0.1,0.7]",
             file=sys.stderr,
         )
     device_memory_fraction = clamped_fraction
@@ -461,7 +459,7 @@ def initialize_taichi_backend(
                 )
             _probe_taichi_backend()
             constants_module.TAICHI_BACKEND = name
-            _logger.info("Taichi initialized: backend=%s, precision=%s", name, precision)
+            _logger.info("[VPM][Backend] name=%s precision=%s status=initialized", name, precision)
             return name
         except Exception as exc:
             last_exc = exc

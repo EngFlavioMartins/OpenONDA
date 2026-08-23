@@ -352,8 +352,10 @@ def test_directional_outflow_vpm_bc_fixes_only_downstream_switch(tmp_path):
     )
 
 
-def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_path):
+def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_path, caplog):
     from source.coupler.solver import FVMVPMCoupler
+
+    caplog.set_level("INFO", logger="coupler")
 
     class FakeFVM:
         last_yplus = None
@@ -381,8 +383,12 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
 
     coupler = object.__new__(FVMVPMCoupler)
     coupler.fvm_solver = FakeFVM()
-    coupler.setup = _fvm_setup(tmp_path, boundary_condition_mode="characteristic")
-    target = np.array([[1.0, 0.1, 0.0], [0.8, -0.1, 0.0]])
+    coupler.setup = _fvm_setup(
+        tmp_path,
+        boundary_condition_mode="characteristic",
+        freestream_velocity=[0.0, 2.0, 0.0],
+    )
+    target = np.array([[10.0, 2.0, 0.0], [-10.0, 4.0, 0.0]])
     apply_fvm_boundary(coupler, "numericalBoundary", target)
 
     assert [call[0] for call in coupler.fvm_solver.calls] == [
@@ -392,6 +398,14 @@ def test_coupler_characteristic_step_uses_matching_velocity_and_pressure(tmp_pat
         "advance",
     ]
     np.testing.assert_array_equal(coupler.fvm_solver.calls[0][2], target)
+    message = next(
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("[Coupler][FVMSubstep]")
+    )
+    assert "u_stream_over_u_inf_min=1.000" in message
+    assert "u_stream_over_u_inf_mean=1.500" in message
+    assert "u_stream_over_u_inf_max=2.000" in message
 
 
 def test_coupler_directional_outflow_step_passes_freestream_direction(tmp_path):

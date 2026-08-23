@@ -8,6 +8,7 @@ Usage:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,9 @@ import openonda.fvm as fvm
 
 
 CASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(CASE_DIR.parent))
+import cube_flow_timing as timing  # noqa: E402
+
 CUBE_STL = CASE_DIR / "assets" / "cube.stl"
 
 # Physical problem
@@ -27,8 +31,8 @@ KINEMATIC_VISCOSITY = float(np.linalg.norm(FREESTREAM_VELOCITY)) * CUBE_SIDE / R
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_VELOCITY = (1.0, 0.0, 0.0)
-FVM_TIME_STEP_SIZE = 0.01
-END_TIME = 20.0
+FVM_TIME_STEP_SIZE = timing.FVM_TIME_STEP_SIZE
+END_TIME = timing.END_TIME
 FVM_CORES = 4
 FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
 WAKE_BOX = (-1.25, 4.25, -1.25, 1.25, -1.25, 1.25)
@@ -38,13 +42,13 @@ SAMPLE_SPACING = 0.04
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
 
-SAMPLE_INTERVAL_TIME = 0.05  # forces, line probes
+SAMPLE_INTERVAL_TIME = timing.LINE_SAMPLE_INTERVAL_TIME  # forces, line probes
 FACE_INTERVAL_TIME = FVM_TIME_STEP_SIZE
-SLICE_INTERVAL_TIME = 0.10  # full-domain field slices
-VOLUME_INTERVAL_TIME = 1.00  # complete .pvtu volume archive
+SLICE_INTERVAL_TIME = timing.SLICE_SAMPLE_INTERVAL_TIME  # full-domain field slices
+VOLUME_INTERVAL_TIME = timing.BACKUP_INTERVAL_TIME  # complete .pvtu volume archive
 
-SAMPLE_SCHEDULE = fvm.SamplingSchedule(every_time=SAMPLE_INTERVAL_TIME)
-SLICE_SCHEDULE = fvm.SamplingSchedule(every_time=SLICE_INTERVAL_TIME)
+SAMPLE_SCHEDULE = fvm.SamplingSchedule(every_n_steps=timing.LINE_SAMPLE_EVERY_FVM_STEPS)
+SLICE_SCHEDULE = fvm.SamplingSchedule(every_n_steps=timing.SLICE_SAMPLE_EVERY_FVM_STEPS)
 FACE_SCHEDULE = fvm.SamplingSchedule(every_time=FACE_INTERVAL_TIME)
 
 SAMPLERS = (
@@ -117,8 +121,8 @@ FVM_SETUP = fvm.FVMSetup(
         time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=END_TIME,
-        output_interval_steps=10**9,
-        output_interval_time=VOLUME_INTERVAL_TIME,
+        output_interval_steps=timing.BACKUP_EVERY_FVM_STEPS,
+        output_interval_time=None,
         adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(

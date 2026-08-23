@@ -253,14 +253,16 @@ def record_step(
 
         stats = coupler._step_transfer_stats or {}
         logger.info(
-            "     [Transfer] N_before=%d  N_after=%d  |Γ|_before=%.4e  |Γ|_after=%.4e",
+            "[Coupler][VPMState] step=%d particles=%d->%d gamma_abs_sum_m3_s=%.4e->%.4e",
+            step,
             int(stats.get("n_before", 0)),
             int(stats.get("n_after", 0)),
             float(stats.get("sum_before", 0.0)),
             float(stats.get("sum_after", 0.0)),
         )
         logger.info(
-            "[Timing step=%d] VPM=%.3fs vpm_bc=%.3fs FVM=%.3fs transfer=%.3fs total=%.3fs",
+            "[Coupler][Timing] step=%d vpm_s=%.3f boundary_s=%.3f "
+            "fvm_s=%.3f transfer_s=%.3f total_s=%.3f",
             step,
             timing_data["vpm"],
             timing_data["vpm_bc"],
@@ -268,13 +270,6 @@ def record_step(
             timing_data["transfer"],
             timing_data["total"],
         )
-        print()
-        print(f"[Step {step:4d}] t={time_end:.3f}s | Particles: {int(stats.get('n_after', 0))}")
-        print(
-            f"     Timing: VPM={t_vpm:.2f}s | BC={t_vpm_bc:.2f}s | "
-            f"FVM={t_fvm:.2f}s | Transfer={t_transfer:.2f}s"
-        )
-        sys.stdout.flush()
         flush_log(logger)
 
     if comm is not None and comm.Get_size() > 1:

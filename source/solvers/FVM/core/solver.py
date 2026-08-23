@@ -836,11 +836,11 @@ class FVMSolver(CouplerInterfaceMixin):
             self._default_ibm_sampler = IBMForceSampler()
         diag = self.ibm.diagnostics()
         self.logger.info(
-            f"Immersed boundary: {diag['n_markers']} markers, h={diag['h']:.4g}, "
-            f"alpha={ {k: round(v, 3) for k, v in diag['alpha'].items()} }, "
-            f"kernel sums [{diag['kernel_row_sum_min']:.3f}, "
-            f"{diag['kernel_row_sum_max']:.3f}], "
-            f"quadrature residual {diag['quadrature_residual']:.2e}"
+            f"component=immersed_boundary markers={diag['n_markers']} h_m={diag['h']:.4g} "
+            f"alpha={{{','.join(f'{key}:{value:.3f}' for key, value in diag['alpha'].items())}}} "
+            f"kernel_row_sum_min={diag['kernel_row_sum_min']:.3f} "
+            f"kernel_row_sum_max={diag['kernel_row_sum_max']:.3f} "
+            f"quadrature_residual={diag['quadrature_residual']:.2e}"
         )
         return self.ibm
 

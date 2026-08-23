@@ -98,8 +98,8 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     sol = tmp_path / "solution"
     assert (sol / "fvm.log").exists()
     coupler_log = (sol / "coupler.log").read_text()
-    assert "FVM-VPM COUPLED SOLVER" in coupler_log
-    assert coupler_log.count("[Transfer]") >= 2
+    assert "[Coupler][Run]" in coupler_log
+    assert coupler_log.count("[Coupler][Transfer]") >= 2
     assert "fvm_substeps=3" in coupler_log
     checkpoint = sol / "checkpoint"
     manifest = json.loads((checkpoint / "manifest.json").read_text())

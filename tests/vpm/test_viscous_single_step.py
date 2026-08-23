@@ -262,6 +262,47 @@ def test_gbd_one_step_cfl_stability(kernel_name, backend, solver_for_backend):
     )
 
 
+def test_gbd_full_solver_subcycles_1000_particles_above_cfl(backend, solver_for_backend):
+    """The complete GBD rebuild must remain finite at the archived cube failure alpha."""
+    side = 10
+    h = 0.1
+    time_step_size = 0.05
+    alpha = 0.425
+    nu = alpha * h**2 / time_step_size
+    solver = _viscous_solver(
+        solver_for_backend,
+        "GBD",
+        time_step_size=time_step_size,
+        domain_bounds=_GRID_DIFFUSION_BOUNDS,
+        gbd_grid_spacing=h,
+        gbd_threshold=1.0e-10,
+        gbd_threshold_mode="absolute",
+    )
+
+    axis = (np.arange(side, dtype=np.float32) - 0.5 * (side - 1)) * h
+    x, y, z = np.meshgrid(axis, axis, axis, indexing="ij")
+    positions = np.column_stack((x.ravel(), y.ravel(), z.ravel())).astype(np.float32)
+    radius_sq = x**2 + y**2 + z**2
+    circulations = np.zeros((side**3, 3), dtype=np.float32)
+    circulations[:, 2] = (1.0e-3 * np.exp(-radius_sq / (2.0 * (2.0 * h) ** 2))).ravel()
+    solver.add_vortex_particles(
+        position=positions,
+        velocity=np.zeros_like(positions),
+        vortex_strength=circulations,
+        core_radius=np.full(side**3, 1.1 * h, dtype=np.float32),
+        volume=np.full(side**3, h**3, dtype=np.float32),
+        kinematic_viscosity=np.full(side**3, nu, dtype=np.float32),
+    )
+
+    circulation_before = circulations.astype(np.float64).sum(axis=0)
+    solver.advance()
+
+    assert 0 < solver.particles.n_particles <= solver.particles.capacity
+    assert np.isfinite(solver.particle_vortex_strength).all()
+    circulation_after = solver.particle_vortex_strength.astype(np.float64).sum(axis=0)
+    np.testing.assert_allclose(circulation_after, circulation_before, rtol=2e-4, atol=1e-8)
+
+
 # ── Cross-backend consistency ─────────────────────────────────────────────────
 
 

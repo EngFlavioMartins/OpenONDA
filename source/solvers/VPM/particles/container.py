@@ -1025,16 +1025,17 @@ class Particles:
         capacity = self.capacity
         fraction = 100.0 * total / capacity if capacity else 0.0
         Logging.message(
-            f"   [Particles] {change} -> {total} total, {fraction:.1f}% of {capacity} capacity"
+            f"[VPM][Particles] {change} count={total} capacity={capacity} "
+            f"utilization_pct={fraction:.1f}"
         )
 
     def _log_particles_added(self, count: int) -> None:
         """Report the population after particles were appended."""
-        self._log_population(f"added {int(count)}")
+        self._log_population(f"added={int(count)}")
 
     def _log_particles_replaced(self, previous: int) -> None:
         """Report the population after the whole cloud was replaced."""
-        self._log_population(f"cloud size {int(previous)}")
+        self._log_population(f"previous_count={int(previous)}")
 
     def add_vortex_particle(
         self,
@@ -1564,7 +1565,10 @@ class Particles:
     def save_vortex_particles(self, particle_file_name: str) -> None:
         """Export the particle cloud to a VTP point cloud (field names match ``load_vortex_particles``)."""
         if not HAS_PYVISTA:
-            Logging.message(f"   [Particles] skipped {particle_file_name}: pyvista not available")
+            Logging.warning(
+                f"[Output] status=skipped format=vtk reason=pyvista_unavailable "
+                f"path={particle_file_name}"
+            )
             return
 
         n = int(self.n_particles)
@@ -1579,7 +1583,7 @@ class Particles:
         point_cloud.point_data["VelocityGradient"] = self.velocity_gradient_cpu().reshape(n, 9)
         point_cloud.save(particle_file_name)
 
-        Logging.message(f"   [Particles] wrote {n} to {particle_file_name}")
+        Logging.message(f"[VPM][Output] format=vtk particles={n} path={particle_file_name}")
 
     def load_vortex_particles(self, particle_file_name: str, remove_current_particles: bool = True):
         """
@@ -1617,45 +1621,17 @@ class Particles:
             velocity_gradient=grad_u,
         )
 
-        print(f"Loaded {len(self)} particles from {particle_file_name}")
+        Logging.message(
+            f"[VPM][ParticleField] status=loaded format=vtk particles={len(self)} "
+            f"path={particle_file_name!r}"
+        )
 
-    @staticmethod
-    def _per_group_removal_mask(
-        group_ids: np.ndarray, vortex_strength_magnitudes: np.ndarray, percent: float
-    ) -> np.ndarray:
-        N = len(vortex_strength_magnitudes)
-        unique_groups = np.unique(group_ids)
-        remove_mask = np.zeros(N, dtype=bool)
-        for gid in unique_groups:
-            group_mask = group_ids == gid
-            group_strengths = vortex_strength_magnitudes[group_mask]
-            if len(group_strengths) == 0:
-                continue
-            max_s = np.max(group_strengths)
-            if max_s == 0:
-                remove_mask[group_mask] = True
-            else:
-                cutoff = (percent / 100.0) * max_s
-                group_indices = np.where(group_mask)[0]
-                remove_mask[group_indices[group_strengths < cutoff]] = True
-        return remove_mask
-
-    # Optional: filter out weak particles by percentile
-    def _remove_weak_particles(self, percent: float = 0.0, per_group: bool = True):
-        """
-        Remove particles based on their strength magnitude and shrink Taichi field sizes.
+    def _remove_weak_particles(self, percent: float = 0.0) -> np.ndarray:
+        """Remove particles below a fraction of the global maximum strength.
 
         Args:
-            percent: Percentage threshold relative to maximum strength (0-100)
-            per_group: If True, apply threshold independently to each group to preserve
-                      relative distribution. If False, use global threshold across all particles.
-
-        Note:
-            - per_group=True (default): Ensures each group loses the same percentage of
-              particles based on their own maximum strength. This preserves the relative
-              structure of each vortex system.
-            - per_group=False: Uses global maximum across all particles. This can cause
-              uneven removal if groups have different strength scales.
+            percent: Percentage threshold relative to the cloud-wide maximum
+                vortex-strength magnitude, in the range 0-100.
         """
         N = self.n_particles
 
@@ -1666,30 +1642,22 @@ class Particles:
         vortex_strength = self.vortex_strength_cpu()
         vortex_strength_magnitudes = np.linalg.norm(vortex_strength, axis=1)
 
-        if per_group:
-            group_ids = self.group_id_cpu()
-            remove_mask = self._per_group_removal_mask(
-                group_ids, vortex_strength_magnitudes, percent
-            )
+        max_strength_global = np.max(vortex_strength_magnitudes)
+        if max_strength_global == 0:
+            Logging.warning("component=particle_pruning status=skipped reason=zero_strength_field")
+            return np.empty(0, dtype=np.int64)
         else:
-            # Use global threshold (original behavior - can cause uneven removal)
-            max_strength_global = np.max(vortex_strength_magnitudes)
-            if max_strength_global == 0:
-                print(
-                    "(Warning) _remove_weak_particles: all particle strengths are zero — skipping removal to avoid emptying the system."
-                )
-                return np.empty(0, dtype=np.int64)
-            else:
-                cutoff = (percent / 100.0) * max_strength_global
-                remove_mask = vortex_strength_magnitudes < cutoff
+            cutoff = (percent / 100.0) * max_strength_global
+            remove_mask = vortex_strength_magnitudes < cutoff
 
         indices_to_remove = np.where(remove_mask)[0]
 
         if len(indices_to_remove) > 0:
             # Safety cap: never remove ALL particles via weak-removal (keep at least 1)
             if len(indices_to_remove) >= N:
-                print(
-                    "(Warning) _remove_weak_particles would remove all particles — skipping to preserve at least one particle."
+                Logging.warning(
+                    "component=particle_pruning status=skipped "
+                    f"reason=all_particles_selected count={N}"
                 )
                 return np.empty(0, dtype=np.int64)
 
@@ -1959,7 +1927,10 @@ class Particles:
         metadata = f["Metadata"]
         step = metadata.attrs["time_step"]
         num_particles = metadata.attrs["num_particles"]
-        print(f"Loaded {num_particles} particles from {f.filename} (time step {step})")
+        Logging.message(
+            f"[VPM][ParticleField] status=loaded format=hdf5 particles={num_particles} "
+            f"step={step} path={f.filename!r}"
+        )
         if num_particles > 0:
             if len(grad_u) > 0:
                 grad_u = grad_u.reshape(num_particles, 3, 3)
@@ -1991,7 +1962,10 @@ class Particles:
             with h5py.File(h5_filename, "r") as f:
                 self._load_hdf5_particles(f)
         except Exception as e:
-            print(f"(Error) Failed to load HDF5 file {h5_filename}: {e}")
+            Logging.warning(
+                f"component=particle_field format=hdf5 status=load_failed "
+                f"path={h5_filename!r} error={e!r}"
+            )
             raise
 
     def add_vortex_particles_from_fields_grouped(

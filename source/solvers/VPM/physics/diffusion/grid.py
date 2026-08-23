@@ -14,6 +14,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from dataclasses import dataclass
 import logging
+import math
 
 from numba import njit
 import numpy as np
@@ -307,7 +308,7 @@ class _GridDiffusionMixin:
         finite_mask = np.isfinite(pos).all(axis=1)
         if not finite_mask.all():
             n_bad = int((~finite_mask).sum())
-            _logger.warning("DVH: filtered %d non-finite particle positions.", n_bad)
+            Logging.warning(f"component=diffusion_grid filtered_nonfinite_positions={n_bad}")
             pos = pos[finite_mask]
             if len(pos) == 0:
                 # Everything was NaN — return minimal grid
@@ -326,13 +327,10 @@ class _GridDiffusionMixin:
                 center = 0.5 * (lo[d] + hi[d])
                 lo[d] = center - 0.5 * max_extent
                 hi[d] = center + 0.5 * max_extent
-                _logger.warning(
-                    "DVH: axis %d extent %.1f m > cap %.1f m (%d cells); "
-                    "clamping to cap.  Stray particles outside will be ignored.",
-                    d,
-                    span,
-                    max_extent,
-                    self._MAX_CELLS_PER_DIM,
+                Logging.warning(
+                    f"component=diffusion_grid axis={d} requested_extent_m={span:.1f} "
+                    f"extent_limit_m={max_extent:.1f} cell_limit={self._MAX_CELLS_PER_DIM} "
+                    "status=clamped"
                 )
 
         nx = max(5, int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1)
@@ -399,16 +397,11 @@ class _GridDiffusionMixin:
         pool = self._device_pool_bytes()
         if not pool or total_bytes <= pool * self._GRID_POOL_SHARE:
             return
-        _logger.warning(
-            "Diffusion grid %dx%dx%d uses %.0f MB, %.0f%% of the %.0f MB device pool; "
-            "particles, treecode and staging buffers share what is left. "
-            "Reduce domain_bounds or coarsen the diffusion particle_spacing if allocation fails.",
-            nx,
-            ny,
-            nz,
-            total_bytes / (1 << 20),
-            100.0 * total_bytes / pool,
-            pool / (1 << 20),
+        Logging.warning(
+            f"component=diffusion_grid shape={nx}x{ny}x{nz} "
+            f"memory_mib={total_bytes / (1 << 20):.0f} "
+            f"device_pool_pct={100.0 * total_bytes / pool:.0f} "
+            f"device_pool_mib={pool / (1 << 20):.0f}"
         )
 
     def _ensure_grid_capacity(self, nx: int, ny: int, nz: int) -> tuple[int, int, int]:
@@ -451,12 +444,10 @@ class _GridDiffusionMixin:
 
             if self._grid_realloc_count >= self._MAX_GRID_REALLOCS:
                 clamped = (min(nx, alloc[0]), min(ny, alloc[1]), min(nz, alloc[2]))
-                _logger.warning(
-                    "DVH: grid re-allocation budget exhausted (%d/%d). Clamping to %s (needed %s).",
-                    self._grid_realloc_count,
-                    self._MAX_GRID_REALLOCS,
-                    clamped,
-                    (nx, ny, nz),
+                Logging.warning(
+                    f"component=diffusion_grid reallocations={self._grid_realloc_count} "
+                    f"limit={self._MAX_GRID_REALLOCS} status=clamped shape={clamped} "
+                    f"requested_shape={(nx, ny, nz)}"
                 )
                 return clamped
 
@@ -469,14 +460,10 @@ class _GridDiffusionMixin:
                 alloc_nx = int(nx * rh) if nx > alloc[0] else alloc[0]
                 alloc_ny = int(ny * rh) if ny > alloc[1] else alloc[1]
                 alloc_nz = int(nz * rh) if nz > alloc[2] else alloc[2]
-            _logger.warning(
-                "DVH: re-allocating grid (%d/%d): %s → (%d, %d, %d) (old fields leaked on GPU).",
-                self._grid_realloc_count,
-                self._MAX_GRID_REALLOCS,
-                alloc,
-                alloc_nx,
-                alloc_ny,
-                alloc_nz,
+            Logging.warning(
+                f"component=diffusion_grid reallocation={self._grid_realloc_count} "
+                f"limit={self._MAX_GRID_REALLOCS} old_shape={alloc} "
+                f"new_shape={(alloc_nx, alloc_ny, alloc_nz)} retained_device_fields=true"
             )
             self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
             self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(alloc_nx, alloc_ny, alloc_nz))
@@ -491,7 +478,8 @@ class _GridDiffusionMixin:
         alloc_nz = int(nz * self._ALLOC_HEADROOM)
 
         _logger.debug(
-            "DVH: allocating grid fields (%d×%d×%d) → (%d×%d×%d) with %.1f× headroom.",
+            "[VPM][DiffusionGrid] status=allocating requested_shape=%dx%dx%d "
+            "shape=%dx%dx%d headroom=%.1f",
             nx,
             ny,
             nz,
@@ -515,7 +503,7 @@ class _GridDiffusionMixin:
         particle_spacing: float,
         padding: float = 3.0,
     ) -> None:
-        """Set the maximum DVH grid dimensions from VPM domain bounds.
+        """Set maximum grid-diffusion dimensions from VPM domain bounds.
 
         When the VPM domain is known, this method computes the grid that
         would cover the full domain (with padding) and either:
@@ -564,12 +552,9 @@ class _GridDiffusionMixin:
         budget = self._grid_prealloc_budget_bytes()
         self._warn_if_grid_crowds_device_pool(total_bytes, nx, ny, nz)
         if total_bytes <= budget and self._grid_a is None:
-            _logger.info(
-                "DVH: pre-allocating grid to VPM domain size (%d×%d×%d, %.0f MB).",
-                nx,
-                ny,
-                nz,
-                total_mb,
+            Logging.message(
+                f"[VPM][DiffusionGrid] status=preallocated shape={nx}x{ny}x{nz} "
+                f"memory_mib={total_mb:.0f}"
             )
             self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(nx, ny, nz))
             self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(nx, ny, nz))
@@ -592,14 +577,11 @@ class _GridDiffusionMixin:
                     f"({self._GRID_POOL_SHARE:.0%} of {pool_txt})\n"
                     "Reduce domain_bounds, coarsen the diffusion particle_spacing, or use CUDA/CPU."
                 )
-            _logger.info(
-                "DVH: VPM domain grid (%d×%d×%d) = %.0f MB — %s. "
-                "Grid will grow on demand up to this cap.",
-                nx,
-                ny,
-                nz,
-                total_mb,
-                "already allocated" if self._grid_a is not None else "exceeds pre-alloc budget",
+            allocation = "retained" if self._grid_a is not None else "deferred"
+            reason = "existing_allocation" if self._grid_a is not None else "budget_exceeded"
+            Logging.message(
+                f"[VPM][DiffusionGrid] status={allocation} reason={reason} "
+                f"max_shape={nx}x{ny}x{nz} memory_mib={total_mb:.0f}"
             )
 
     def configure_grid_lattice_anchor(self, anchor, particle_spacing: float) -> None:
@@ -679,7 +661,7 @@ class _GridDiffusionMixin:
             nz,
         )
 
-    # ---- DVH: DVH orchestration ----
+    # ---- Grid-diffusion orchestration ----
 
     def _apply_body_mask_current_grid(self, nx: int, ny: int, nz: int) -> None:
         """Zero vorticity inside masked (solid) cells on the active grid."""
@@ -1245,6 +1227,125 @@ class _GridDiffusionMixin:
             "group_id": group_winner_grid[ix, iy, iz].astype(np.int32),
         }
 
+    @staticmethod
+    def _explicit_diffusion_substep_count(
+        diffusivity_max: float,
+        time_step_size: float,
+        particle_spacing: float,
+    ) -> tuple[int, float]:
+        """Return stable forward-Euler stages for the 3-D 7-point Laplacian."""
+        values = np.asarray([diffusivity_max, time_step_size, particle_spacing], dtype=np.float64)
+        if not np.isfinite(values).all():
+            raise FloatingPointError(
+                "GBD diffusion requires finite diffusivity, time step, and grid spacing."
+            )
+        if diffusivity_max < 0.0:
+            raise ValueError("GBD diffusion requires non-negative effective viscosity.")
+        if time_step_size < 0.0:
+            raise ValueError("GBD diffusion requires a non-negative time step.")
+        if particle_spacing <= 0.0:
+            raise ValueError("GBD diffusion requires a positive particle spacing.")
+
+        alpha_max = float(diffusivity_max * time_step_size / particle_spacing**2)
+        if not np.isfinite(alpha_max):
+            raise FloatingPointError("GBD diffusion produced a non-finite Fourier number.")
+        if alpha_max == 0.0:
+            return 1, 0.0
+
+        # The most negative eigenvalue of the dimensionless 3-D 7-point
+        # Laplacian is -12.  Requiring alpha < 1/12 keeps every modal
+        # amplification in (0, 1], so diffusion cannot reverse a grid mode.
+        scaled = 12.0 * alpha_max
+        if not np.isfinite(scaled):
+            raise FloatingPointError("GBD diffusion requires an unrepresentable stage count.")
+        substeps = max(1, math.floor(scaled) + 1)
+
+        # Kernels run in f32 in production.  Guard against a nominally safe
+        # host-side value rounding back onto or above the stability boundary.
+        diffusivity_f32 = np.float32(diffusivity_max)
+        spacing_f32 = np.float32(particle_spacing)
+        spacing_sq_f32 = np.float32(spacing_f32 * spacing_f32)
+        if not np.isfinite(diffusivity_f32) or not np.isfinite(spacing_sq_f32):
+            raise FloatingPointError("GBD diffusion inputs exceed the production precision.")
+        if spacing_sq_f32 == 0.0:
+            raise FloatingPointError("GBD grid spacing underflows the production precision.")
+        while True:
+            substep_f32 = np.float32(time_step_size / substeps)
+            variable_alpha_f32 = np.float32(
+                np.float32(diffusivity_f32 * substep_f32) / spacing_sq_f32
+            )
+            scalar_alpha_f32 = np.float32(
+                diffusivity_max * (time_step_size / substeps) / particle_spacing**2
+            )
+            if max(float(variable_alpha_f32), float(scalar_alpha_f32)) < 1.0 / 12.0:
+                break
+            substeps += 1
+        return substeps, alpha_max
+
+    def _advance_gbd_laplacian(
+        self,
+        *,
+        nx: int,
+        ny: int,
+        nz: int,
+        time_step_size: float,
+        particle_spacing: float,
+        nu: float,
+        nu_eff_grid: np.ndarray | None,
+    ) -> tuple[int, float]:
+        """Advance the frozen GBD grid operator with stable explicit stages."""
+        if nu_eff_grid is None:
+            diffusivity_max = float(nu)
+        else:
+            diffusivity_max = float(np.max(nu_eff_grid)) if nu_eff_grid.size else 0.0
+
+        substeps, alpha_max = self._explicit_diffusion_substep_count(
+            diffusivity_max,
+            time_step_size,
+            particle_spacing,
+        )
+        substep_size = float(time_step_size) / substeps
+        alpha_substep_max = alpha_max / substeps
+
+        if substeps > 1:
+            Logging.message(
+                f"[VPM][GBD] diffusion_substeps={substeps} "
+                f"alpha_max={alpha_max:.6f} alpha_substep_max={alpha_substep_max:.6f} "
+                f"substep_dt_s={substep_size:.6e}"
+            )
+
+        self._zero_grid_kernel(self._other_grid, nx, ny, nz)
+        if nu_eff_grid is not None:
+            self._upload_active_scalar_grid(self._nu_eff_grid, nu_eff_grid, nx, ny, nz)
+
+        for _ in range(substeps):
+            if nu_eff_grid is None:
+                alpha = float(nu * substep_size / particle_spacing**2)
+                self._laplacian_step_gpu_kernel(
+                    self._current_grid,
+                    self._other_grid,
+                    self._body_mask_grid,
+                    alpha,
+                    nx,
+                    ny,
+                    nz,
+                )
+            else:
+                self._laplacian_step_variable_gpu_kernel(
+                    self._current_grid,
+                    self._other_grid,
+                    self._nu_eff_grid,
+                    self._body_mask_grid,
+                    substep_size,
+                    particle_spacing,
+                    nx,
+                    ny,
+                    nz,
+                )
+            self._ping = not self._ping
+
+        return substeps, alpha_max
+
     def _gbd_diffusion_impl(
         self,
         particles,
@@ -1264,9 +1365,10 @@ class _GridDiffusionMixin:
         Algorithm
         ---------
         1. M4' scatter: particle vortex strength → grid (GPU Taichi kernel).
-        2. Explicit Laplacian: forward-Euler nu∇²ω    (GPU Taichi kernel).
+        2. Explicit Laplacian: stable forward-Euler substeps of nu∇²ω
+           (GPU Taichi kernel).
            When ``nu_eff`` (per-particle ν+ν_t) is given, the Laplacian uses a
-           per-node coefficient α_node = ν_eff·dt/particle_spacing² (Bug A) instead of the
+           per-node coefficient α_node = ν_eff·dt/particle_spacing² instead of the
            scalar molecular α = ν·dt/particle_spacing² — so the Smagorinsky SGS model acts in
            GBD runs just as it does in DVH/CS/RWM.
         3. Threshold pruning: discard weak grid nodes  (CPU NumPy — small).
@@ -1276,8 +1378,8 @@ class _GridDiffusionMixin:
         transfers.  Only positions are read to CPU for grid-bounds computation
         (cached), and the diffused grid is read back once for pruning.
 
-        The CFL stability condition dt ≤ particle_spacing²/(6·ν_eff_max) must be satisfied
-        externally; a warning is logged if α_node exceeds 1/6.
+        If the macro-step exceeds the 3-D explicit limit, only the Laplacian is
+        substepped. Scatter, thresholding, and regeneration still occur once.
         """
         N = particles.n_particles
         if N == 0:
@@ -1344,10 +1446,10 @@ class _GridDiffusionMixin:
         self._apply_body_mask_current_grid(nx, ny, nz)
 
         # -- Explicit Laplacian diffusion (GPU) --------------------------------
-        # Bug A: when ν_eff (ν+ν_t) is supplied, use a per-node coefficient
+        # When ν_eff (ν+ν_t) is supplied, use a per-node coefficient
         # α_node = ν_eff·dt/particle_spacing² so the SGS eddy viscosity acts in GBD runs.
         # Otherwise fall back to the scalar molecular α = ν·dt/particle_spacing².
-        self._zero_grid_kernel(self._other_grid, nx, ny, nz)
+        nu_eff_grid_np = None
         if nu_eff is not None:
             nu_eff_np = np.ascontiguousarray(nu_eff[:N], dtype=np.float32)
             # Clip negatives (defensive: Smagorinsky guards already, but the
@@ -1364,43 +1466,15 @@ class _GridDiffusionMixin:
                 nz,
                 mapping=node_mapping,
             )
-            alpha_max = (
-                float(nu_eff_grid_np.max()) * time_step_size / (particle_spacing * particle_spacing)
-                if nu_eff_grid_np.size
-                else 0.0
-            )
-            if alpha_max > 1.0 / 6.0:
-                _logger.warning(
-                    "[GBD] LES α_node_max=%.3f > 1/6 (ν_eff_max/ν=%.1f, dt/particle_spacing²=%.3e) — "
-                    "explicit Laplacian may go unstable; reduce dt.",
-                    alpha_max,
-                    float(nu_eff_grid_np.max()) / nu if nu > 0 else 0.0,
-                    time_step_size / (particle_spacing * particle_spacing),
-                )
-            self._upload_active_scalar_grid(self._nu_eff_grid, nu_eff_grid_np, nx, ny, nz)
-            self._laplacian_step_variable_gpu_kernel(
-                self._current_grid,
-                self._other_grid,
-                self._nu_eff_grid,
-                self._body_mask_grid,
-                float(time_step_size),
-                float(particle_spacing),
-                nx,
-                ny,
-                nz,
-            )
-        else:
-            alpha = float(nu * time_step_size / (particle_spacing * particle_spacing))
-            self._laplacian_step_gpu_kernel(
-                self._current_grid,
-                self._other_grid,
-                self._body_mask_grid,
-                alpha,
-                nx,
-                ny,
-                nz,
-            )
-        self._ping = not self._ping  # flip so _current_grid points to diffused field
+        self._advance_gbd_laplacian(
+            nx=nx,
+            ny=ny,
+            nz=nz,
+            time_step_size=float(time_step_size),
+            particle_spacing=float(particle_spacing),
+            nu=float(nu),
+            nu_eff_grid=nu_eff_grid_np,
+        )
 
         # -- Body mask (GPU, optional) -----------------------------------------
         self._apply_body_mask_current_grid(nx, ny, nz)
@@ -1417,7 +1491,7 @@ class _GridDiffusionMixin:
             nz,
             mapping=node_mapping,
         )
-        # ν_t scatter (Bug B): |Γ|-weighted average onto the grid so regenerated
+        # The |Γ|-weighted ν_t average is inherited by regenerated particles.
         # particles inherit the pre-regen turbulent viscosity.
         nu_t_grid = self._scatter_scalar_weighted(
             pos_np,
@@ -1438,7 +1512,9 @@ class _GridDiffusionMixin:
         max_circ = float(circ_mag.max())
 
         if max_circ < 1e-30:
-            _logger.warning("[GBD] Scattered grid is empty — keeping original particles.")
+            Logging.warning(
+                "component=GBD status=skipped reason=empty_scattered_grid particles_unchanged=true"
+            )
             self._ping = True
             return None
 
@@ -1453,9 +1529,9 @@ class _GridDiffusionMixin:
         )
         ix, iy, iz = np.where(circ_mag >= threshold)
         if len(ix) == 0:
-            _logger.warning(
-                "[GBD] No nodes above threshold %.2e — keeping originals.",
-                _threshold_scalar(threshold),
+            Logging.warning(
+                f"component=GBD status=skipped reason=no_nodes_above_threshold "
+                f"threshold={_threshold_scalar(threshold):.2e} particles_unchanged=true"
             )
             self._ping = True
             return None
@@ -1474,8 +1550,8 @@ class _GridDiffusionMixin:
         )
         threshold_retained = float(circ_mag[ix, iy, iz].sum()) / gamma_total
         Logging.message(
-            f"[GBD] Threshold retained {100.0 * threshold_retained:.4f}% "
-            f"of Σ|Γ| on {len(ix)} nodes."
+            f"[VPM][GBD] threshold={_threshold_scalar(threshold):.3e} nodes={len(ix)} "
+            f"gamma_abs_fraction={threshold_retained:.6f}"
         )
 
         # -- Particle-count cap ------------------------------------------------
@@ -1496,19 +1572,11 @@ class _GridDiffusionMixin:
             retained = float(circ_mag[ix, iy, iz].sum()) / survivor_abs
             retained_total = retained * threshold_retained
             Logging.message(
-                "[GBD] Capped surviving nodes: "
-                f"{old_count} → {len(ix)}, retained Σ|Γ|={100.0 * retained:.3f}% "
-                f"of candidates, {100.0 * retained_total:.3f}% total "
-                f"(minimum |Γ| {threshold:.2e})."
+                f"[VPM][GBD] population_cap={cap} nodes={old_count}->{len(ix)} "
+                f"candidate_gamma_abs_fraction={retained:.6f} "
+                f"total_gamma_abs_fraction={retained_total:.6f} "
+                f"threshold={_threshold_scalar(threshold):.3e}"
             )
-
-        _logger.info(
-            "[GBD] %d particles → %d grid nodes (particle_spacing=%.3e, threshold=%.2e).",
-            N,
-            len(ix),
-            particle_spacing,
-            _threshold_scalar(threshold),
-        )
 
         # Conservative prune: restore the pruned nodes' circulation/impulse on
         # the survivors so total Γ and linear impulse are preserved (else the
@@ -1526,8 +1594,8 @@ class _GridDiffusionMixin:
             )
             corrected_abs = float(np.linalg.norm(grid_np[ix, iy, iz], axis=1).sum())
             Logging.message(
-                f"[GBD] Moment recovery retained "
-                f"{100.0 * corrected_abs / gamma_total:.4f}% of pre-prune Σ|Γ|."
+                f"[VPM][GBD] moment_redistribution=true "
+                f"post_redistribution_gamma_abs_ratio={corrected_abs / gamma_total:.6f}"
             )
 
         result = self._build_diffusion_particle_arrays(
@@ -1567,9 +1635,9 @@ class _GridDiffusionMixin:
         CIC scatter → explicit 7-point Laplacian → threshold pruning → spawn.
 
         When ``nu_eff`` (per-particle ν+ν_t) is given, the Laplacian uses a
-        per-node coefficient so the SGS eddy viscosity acts (Bug A); otherwise
+        per-node coefficient so the SGS eddy viscosity acts; otherwise
         the molecular ν is used.  Regenerated particles carry the pre-regen ν_t
-        forward (Bug B).
+        forward.
         """
         return self._gbd_diffusion_impl(
             particles,
@@ -1668,11 +1736,9 @@ class _GridDiffusionMixin:
             widths *= q
             n_clipped = int(np.count_nonzero(np.asarray(nu_eff_np) / nu > q_max))
             if n_clipped > 0:
-                _logger.info(
-                    "[DVH] %d/%d particles hit the nu_eff/nu width cap q_max=%.1f.",
-                    n_clipped,
-                    N,
-                    q_max,
+                Logging.message(
+                    f"[VPM][DVH] nu_eff_width_cap_particles={n_clipped} "
+                    f"particles={N} q_max={q_max:.1f}"
                 )
 
         # Numba-compiled heat-kernel scatter.  This is the exact f64 algorithm
@@ -1811,7 +1877,9 @@ class _GridDiffusionMixin:
         max_circ = float(circ_mag.max())
 
         if max_circ < 1e-30:
-            _logger.warning("[DVH] Scattered grid is empty — keeping original particles.")
+            Logging.warning(
+                "component=DVH status=skipped reason=empty_scattered_grid particles_unchanged=true"
+            )
             return None
 
         gamma_total = float(circ_mag.sum())
@@ -1825,9 +1893,9 @@ class _GridDiffusionMixin:
         )
         ix, iy, iz = np.where(circ_mag >= threshold)
         if len(ix) == 0:
-            _logger.warning(
-                "[DVH] No nodes above threshold %.2e — keeping originals.",
-                _threshold_scalar(threshold),
+            Logging.warning(
+                f"component=DVH status=skipped reason=no_nodes_above_threshold "
+                f"threshold={_threshold_scalar(threshold):.2e} particles_unchanged=true"
             )
             return None
         group_winner_grid = self._scatter_id_field(
@@ -1842,6 +1910,11 @@ class _GridDiffusionMixin:
             default_id=0,
             propagate_to=np.where(circ_mag > 0.0),
             mapping=node_mapping,
+        )
+        threshold_retained = float(circ_mag[ix, iy, iz].sum()) / gamma_total
+        Logging.message(
+            f"[VPM][DVH] threshold={_threshold_scalar(threshold):.3e} nodes={len(ix)} "
+            f"gamma_abs_fraction={threshold_retained:.6f}"
         )
 
         # -- Particle-count cap ------------------------------------------------
@@ -1861,18 +1934,10 @@ class _GridDiffusionMixin:
             )
             retained = float(circ_mag[ix, iy, iz].sum()) / survivor_abs
             Logging.message(
-                "[DVH] Capped surviving nodes: "
-                f"{old_count} → {len(ix)}, retained Σ|Γ|={100.0 * retained:.3f}% "
-                f"(minimum |Γ| {threshold:.2e})."
+                f"[VPM][DVH] population_cap={cap} nodes={old_count}->{len(ix)} "
+                f"candidate_gamma_abs_fraction={retained:.6f} "
+                f"threshold={_threshold_scalar(threshold):.3e}"
             )
-
-        _logger.info(
-            "[DVH] %d particles → %d grid nodes (R_d/particle_spacing=%.1f, threshold=%.2e).",
-            N,
-            len(ix),
-            rd_ratio,
-            _threshold_scalar(threshold),
-        )
 
         # Conservative prune (see GBD path): restore pruned circulation/impulse.
         if self.conserve_pruned_moments:
@@ -1885,6 +1950,11 @@ class _GridDiffusionMixin:
                 grid_min_np,
                 particle_spacing,
                 labels=group_winner_grid,
+            )
+            corrected_abs = float(np.linalg.norm(grid_np[ix, iy, iz], axis=1).sum())
+            Logging.message(
+                f"[VPM][DVH] moment_redistribution=true "
+                f"post_redistribution_gamma_abs_ratio={corrected_abs / gamma_total:.6f}"
             )
 
         return self._build_diffusion_particle_arrays(
@@ -2060,7 +2130,7 @@ class _GridDiffusionMixin:
         ny: ti.i32,
         nz: ti.i32,
     ):
-        """GPU 7-point explicit Laplacian with a per-node ν_eff (Bug A).
+        """GPU 7-point explicit Laplacian with a per-node ν_eff.
 
         Computes dst = src + α_node·∇²src where
         α_node = ν_eff_grid[i,j,k]·dt/particle_spacing²  (ν + ν_t from the SGS model).

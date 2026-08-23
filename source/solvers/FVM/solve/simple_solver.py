@@ -1937,9 +1937,18 @@ class SIMPLESolver:
                 and continuity < self.params["tolerance"]
             ):
                 if logger is not None:
-                    logger.info(f"SIMPLE converged in {iteration} iterations")
+                    logger.info(
+                        f"component=SIMPLE status=converged iterations={iteration} "
+                        f"pressure_residual={residual_p:.3e} "
+                        f"velocity_increment={residual_u:.3e} continuity={continuity:.3e}"
+                    )
                 return velocity, p, face_flux, True
 
         if logger is not None:
-            logger.warning(f"SIMPLE did not converge in {self.params['max_iterations']} iterations")
+            logger.warning(
+                f"component=SIMPLE status=not_converged "
+                f"iterations={self.params['max_iterations']} "
+                f"pressure_residual={residual_p:.3e} "
+                f"velocity_increment={residual_u:.3e} continuity={continuity:.3e}"
+            )
         return velocity, p, face_flux, False

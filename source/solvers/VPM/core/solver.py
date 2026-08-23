@@ -112,11 +112,9 @@ class VPMSolver:
         ):
             rwm_max_time_step_size = vc.rwm_accuracy_time_step_size()
             if self.time_step_size > rwm_max_time_step_size * (1.0 + 1e-6):
-                Logging.message(
-                    f"[RWM] WARNING: user dt = {self.time_step_size:.4e} s "
-                    f"> accuracy limit particle_spacing²/(4nu) = {rwm_max_time_step_size:.4e} s — "
-                    f"random displacement √(2nuΔt) exceeds inter-particle spacing particle_spacing; "
-                    f"vorticity gradients will be artificially smoothed."
+                Logging.warning(
+                    f"component=RWM dt_s={self.time_step_size:.4e} "
+                    f"accuracy_limit_s={rwm_max_time_step_size:.4e} criterion=h2_over_4nu"
                 )
             self._rwm_time_step_size_info = (
                 f"RWM accuracy limit particle_spacing²/(4nu) = {rwm_max_time_step_size:.4e} s "
@@ -124,19 +122,12 @@ class VPMSolver:
                 f"nu = {vc.kinematic_viscosity:.3e} m²/s)."
             )
 
-        # GBD explicit-diffusion stability criterion.
+        # GBD substeps only its explicit grid Laplacian when this limit is exceeded.
         if vc.scheme == "GBD" and vc.kinematic_viscosity is not None and vc.kinematic_viscosity > 0:
             max_time_step_size = vc.gbd_max_time_step_size()
-            if self.time_step_size > max_time_step_size * (1.0 + 1e-6):
-                Logging.message(
-                    f"[GBD] WARNING: user dt = {self.time_step_size:.4e} s "
-                    f"> CFL limit particle_spacing²/(6nu) = {max_time_step_size:.4e} s — "
-                    f"explicit Laplacian may be UNSTABLE."
-                )
             self._gbd_time_step_size_info = (
-                f"GBD fires every step "
-                f"(Δt = {self.time_step_size:.4e} s, "
-                f"CFL max = {max_time_step_size:.4e} s)."
+                f"GBD macro-step = {self.time_step_size:.4e} s; "
+                f"molecular explicit stage limit = {max_time_step_size:.4e} s."
             )
 
         # Match the user step to an integer subdivision of the DVH increment.
@@ -160,11 +151,11 @@ class VPMSolver:
                 user_time_step_size, substep_size
             ):
                 Logging.message(
-                    f"[DVH] INFO: time step adjusted — "
-                    f"user dt = {user_time_step_size:.4e} s → dt = Δt_d/{n_sub} = {substep_size:.4e} s "
-                    f"(Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s, β={_DVH_BETA}, "
-                    f"R_d = {vc.dvh_support_radius_ratio}·particle_spacing = {vc.dvh_support_radius_ratio * vc.dvh_grid_spacing:.4e} m; "
-                    f"DVH fires every {n_sub} step(s))."
+                    f"[VPM][DVH] requested_dt_s={user_time_step_size:.4e} "
+                    f"dt_s={substep_size:.4e} diffusion_interval_s={diffusion_time_step_size:.4e} "
+                    f"steps_per_diffusion={n_sub} beta={_DVH_BETA:g} "
+                    f"support_radius_m="
+                    f"{vc.dvh_support_radius_ratio * vc.dvh_grid_spacing:.4e}"
                 )
                 self.time_step_size = substep_size
             self._dvh_substeps = n_sub
@@ -254,7 +245,7 @@ class VPMSolver:
             try:
                 self.physics.configure_body_mask(getattr(final_setup, "body_stl", None))
             except Exception as exc:
-                Logging.warning(f"Failed to configure DVH body mask: {exc}")
+                Logging.warning(f"component=body_mask status=configuration_failed error={exc!r}")
 
         # Grid diffusion on GPU uses a fixed workspace to avoid repeated allocation.
         vpm_bounds = final_setup.domain_bounds
@@ -377,7 +368,7 @@ class VPMSolver:
         )
         active = self.stabilization.active_mechanisms()
         if active:
-            Logging.message("Stabilization: " + ", ".join(active))
+            Logging.message(f"[VPM][Stabilization] mechanisms={','.join(active)}")
         self._init_optional_solvers(final_setup)
         # Detailed section timing forces a device barrier around every phase.
         # Make that diagnostic opt-in; the whole-step timer remains available in
@@ -397,7 +388,7 @@ class VPMSolver:
         """Configure VLM solver coupling: mesh generation, force config, stability check."""
         self.vlm_solver.ensure_mesh_generated()
         if getattr(self.vlm_solver, "lattice", None) is not None:
-            Logging.info(f"VLM solver coupled with {self.vlm_solver.lattice.num_panels} panels")
+            Logging.message(f"[VPM][VLM] panels={self.vlm_solver.lattice.num_panels}")
             self.vlm_solver.check_coupling_stability(
                 self.time_step_size, getattr(self.setup, "freestream_velocity", None)
             )
@@ -437,7 +428,7 @@ class VPMSolver:
             try:
                 self._setup_vlm_solver()
             except Exception as e:
-                Logging.warning(f"Failed to initialize VLM solver: {e}")
+                Logging.warning(f"component=VLM status=initialization_failed error={e!r}")
 
     @staticmethod
     def _require_consistent_molecular_viscosity(viscous_cfg, vlm_setup) -> None:
@@ -943,7 +934,9 @@ class VPMSolver:
         """Set regularized source particles used for body-blockage corrections."""
         self.n_sources = len(positions)
         if self.n_sources > MAX_SOURCES:
-            Logging.warning(f"Clipping {self.n_sources} sources to {MAX_SOURCES}")
+            Logging.warning(
+                f"component=sources requested={self.n_sources} limit={MAX_SOURCES} status=clipped"
+            )
             self.n_sources = MAX_SOURCES
 
         n = self.n_sources
@@ -1454,10 +1447,11 @@ class VPMSolver:
 
         property_names = list(properties)
         if len(property_names) == 1:
-            Logging.info(f"Updated particle property: {property_names[0]}")
+            Logging.message(f"[VPM][Particles] updated_fields={property_names[0]}")
         else:
-            Logging.info(
-                f"Updated {len(property_names)} particle properties: " + ", ".join(property_names)
+            Logging.message(
+                f"[VPM][Particles] updated_field_count={len(property_names)} "
+                f"updated_fields={','.join(property_names)}"
             )
 
     # State and restart
@@ -1474,10 +1468,10 @@ class VPMSolver:
         config_file = f"{filename}.config.json"
         CheckpointManager.write_configuration(self, config_file)
 
-        Logging.info(f"Complete state saved to: {filename}")
-        Logging.message(f"       - {filename}.h5 (numerical data)")
-        Logging.message(f"       - {filename}.xdmf (ParaView visualization)")
-        Logging.message(f"       - {config_file} (configuration)")
+        Logging.message(
+            f"[VPM][Checkpoint] status=saved base={filename} data={filename}.h5 "
+            f"visualization={filename}.xdmf configuration={config_file}"
+        )
 
     def save_numerical_state(self, filename: str) -> None:
         """Save numerical state for a caller that already owns configuration."""
@@ -1527,10 +1521,7 @@ class VPMSolver:
         if not CheckpointManager.validate_checkpoint(checkpoint_name):
             raise ValueError(f"Checkpoint validation failed for: {checkpoint_name}")
 
-        Logging.message(f"\n{'-' * 60}")
-        Logging.info("Resuming simulation from checkpoint:")
-        Logging.message(f"       Base filename: {checkpoint_name}")
-        Logging.message(f"{'-' * 60}\n")
+        Logging.message(f"[VPM][Checkpoint] status=loading base={checkpoint_name}")
 
         try:
             hdf5_file = f"{checkpoint_name}.h5"
@@ -1554,11 +1545,11 @@ class VPMSolver:
 
         restored_solver._update_all_flow_integrals()
 
-        Logging.message("Simulation successfully restored!")
-        Logging.message(f"Flow time: {restored_solver.time:.6f}")
-        Logging.message(f"Time step: {restored_solver.step}")
-        Logging.message(f"Particles: {restored_solver.particles.n_particles}")
-        Logging.message(f"Backend: {restored_solver.setup.compute_device}")
+        Logging.message(
+            f"[VPM][Checkpoint] status=loaded time_s={restored_solver.time:.6e} "
+            f"step={restored_solver.step} particles={restored_solver.particles.n_particles} "
+            f"backend={restored_solver.setup.compute_device}"
+        )
 
         return restored_solver
 
@@ -1628,19 +1619,15 @@ class VPMSolver:
         if n_removed > 0:
             self.stabilization.on_removal(keep_mask=keep_mask)
             action = "outside" if invert_selection else "inside"
-            Logging.info(
-                f"Removed {n_removed} particles {action} "
-                f"box [{xmin:.2f}, {xmax:.2f}] × [{ymin:.2f}, {ymax:.2f}] × [{zmin:.2f}, {zmax:.2f}]"
+            Logging.message(
+                f"[VPM][Particles] removed={n_removed} region={action}_box "
+                f"bounds_m=[{xmin:.6g},{xmax:.6g},{ymin:.6g},{ymax:.6g},{zmin:.6g},{zmax:.6g}]"
             )
 
         return n_removed
 
-    def remove_weak_particles(self, percent: float, per_group: bool = True) -> None:
-        """Remove particles below the requested relative-strength threshold.
-
-        When ``per_group=True``, the threshold is applied independently to each
-        particle group.
-        """
+    def remove_weak_particles(self, percent: float) -> int:
+        """Remove particles below a fraction of the global maximum strength."""
         if percent < 0 or percent > 100:
             raise ValueError("Percent must be between 0 and 100")
 
@@ -1651,7 +1638,6 @@ class VPMSolver:
 
         removed_indices = self.particles._remove_weak_particles(
             percent=percent,
-            per_group=per_group,
         )
         if removed_indices is not None and len(removed_indices) > 0:
             keep = np.ones(particles_before, dtype=bool)

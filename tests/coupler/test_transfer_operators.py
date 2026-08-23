@@ -17,7 +17,11 @@ from source.coupler.boundary import (
 )
 from source.coupler.reporting import compute_diagnostics
 from source.coupler.solver import FVMVPMCoupler
-from source.coupler.vorticity_transfer import TransferResult, vortex_strength_from_velocity_trace
+from source.coupler.vorticity_transfer import (
+    TransferResult,
+    _transfer_log_record,
+    vortex_strength_from_velocity_trace,
+)
 from source.solvers.FVM.fields.diagnostics import compute_vorticity
 from source.solvers.FVM.mesh.cartesian import structured_box
 from source.solvers.FVM.mesh.geometry import compute_mesh_geometry
@@ -46,7 +50,9 @@ class _Particles:
     n_particles = 0
 
 
-def test_constant_vpm_bc_is_reproduced_exactly_without_particles():
+def test_constant_vpm_bc_is_reproduced_exactly_without_particles(caplog):
+    caplog.set_level("INFO", logger="coupler")
+
     class _VPM:
         particles = _Particles()
 
@@ -68,6 +74,10 @@ def test_constant_vpm_bc_is_reproduced_exactly_without_particles():
     np.testing.assert_allclose(velocity, np.tile(freestream, (len(centres), 1)), atol=1e-15)
     assert diagnostics["raw_relative"] < 1.0e-14
     assert diagnostics["corrected_mismatch"] < 1.0e-14
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(message.startswith("[Coupler][BoundaryFlux]") for message in messages)
+    assert any(message.startswith("[Coupler][BoundaryOutflow]") for message in messages)
+    assert all("deficit" not in message.lower() for message in messages)
 
 
 def test_flux_projection_accepts_only_discretization_scale_residual():
@@ -298,6 +308,25 @@ def test_diagnostics_use_literal_transfer_and_boundary_names():
     assert set(diagnostics) >= {"vpm_bc_flux", "transfer", "vortex_line_closure"}
     assert diagnostics["transfer"]["n_added"] == 2
     assert "flux_ratio" not in str(diagnostics)
+
+
+def test_transfer_log_distinguishes_unmeasured_divergence_from_zero():
+    result = TransferResult(
+        pos=np.zeros((1, 3)),
+        circ=np.ones((1, 3)),
+        vol=np.ones(1),
+        rad=np.ones(1),
+        n_existing=2,
+        n_support=3,
+        correction_vortex_strength_l1=4.0,
+        correction_vortex_strength_net=np.array([1.0, 0.0, 0.0]),
+        diagnostics_evaluated=False,
+    )
+    assert "divergence_l2_rel=not_evaluated" in _transfer_log_record(4, result)
+
+    result.diagnostics_evaluated = True
+    result.divergence_correction_l2 = 2.5e-12
+    assert "divergence_l2_rel=2.500e-12" in _transfer_log_record(4, result)
 
 
 def test_restart_api_remains_available_for_transfer_round_trips():

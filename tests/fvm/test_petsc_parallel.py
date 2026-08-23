@@ -321,7 +321,7 @@ def test_partitioned_progress_and_shared_logs_are_root_owned(tmp_path):
         "TIME STEP  (step 1,",
         "Solver Convergence",
         "Conservation",
-        "Time for this step:",
+        "[FVM][Timing]",
     )
     for marker in markers:
         assert marker in outputs[0]

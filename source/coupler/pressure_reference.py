@@ -45,15 +45,15 @@ class PressureReference:
             return
         if self.boundary_mode == "directional_outflow":
             if self.is_master:
-                logger.info("[Init] The downstream pressure boundary fixes the pressure datum.")
+                logger.info("[Coupler][PressureReference] source=downstream_boundary")
             return
         if not needs_pressure_reference(self.fvm_solver.boundaries):
             if self.is_master:
-                logger.info("[Init] A Dirichlet pressure patch fixes the pressure datum.")
+                logger.info("[Coupler][PressureReference] source=dirichlet_boundary")
             return
         self.available = True
         if self.is_master:
-            logger.info("[Init] Pressure datum anchored in the undisturbed upstream stream.")
+            logger.info("[Coupler][PressureReference] source=upstream_cells")
 
     def _selection(self) -> np.ndarray | None:
         if self.cell_indices is not None:

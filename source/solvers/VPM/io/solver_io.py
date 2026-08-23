@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from source.utilities import nearest_time_event_due
 
 from .checkpoint import CheckpointManager
+from .logging import Logging
 from .sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
@@ -145,7 +146,7 @@ class SolverIO:
 
         fld = diagnostics_history
         if len(fld.get("time", [])) == 0:
-            print("[INFO] No diagnostics to export.")
+            Logging.info("component=diagnostics_export status=skipped reason=no_records")
             return
         with open(filename, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
@@ -187,7 +188,7 @@ class SolverIO:
                         centroid[2],
                     ]
                 )
-        print(f"[INFO] Diagnostics exported to {filename}")
+        Logging.info(f"component=diagnostics_export status=written path={filename!r}")
 
     def export_flow_integrals_csv(self, solver: "VPMSolver") -> None:
         """Append one row of flow integrals to ``<case_dir>/samples/flow_integrals.csv``.
@@ -262,12 +263,12 @@ class SolverIO:
         setup_dict = self.solver.setup.to_dict()
         with open(filename, "w") as f:
             json.dump(setup_dict, f, indent=4)
-        print(f"Configuration saved to {filename}")
+        Logging.info(f"component=configuration status=written path={filename!r}")
 
     def load_particle_field(self, filename: str, remove_current_particles: bool = False):
         """Load particle field from file."""
         self.solver.particles.load_particle_field(filename, remove_current_particles)
-        print(f"Particle field loaded from {filename}")
+        Logging.info(f"component=particle_field status=loaded path={filename!r}")
 
     def export_state(
         self,
@@ -360,8 +361,11 @@ class SolverIO:
             self._vlm_pvd_entries.append((time_val, f"{vlm_filename}.vtp"))
             # Write PVD collection file for ParaView time-series
             self._write_surface_pvd_file(self.vlm_prefix)
-        except Exception as e:
-            print(f"   (Warning) Could not save VLM VTK: {e}")
+        except Exception as exc:
+            Logging.warning(
+                f"component=vlm_output format=vtk status=write_failed path={vlm_base!r} "
+                f"error={exc!r}"
+            )
 
     def _write_surface_pvd_file(self, base_name: str):
         """Write ParaView Data (PVD) collection file for surface (VLM) time-series."""
@@ -378,11 +382,15 @@ class SolverIO:
 
                 f.write("  </Collection>\n")
                 f.write("</VTKFile>\n")
-            print(
-                f"   Updated surface PVD file: {pvd_path} ({len(self._vlm_pvd_entries)} timesteps)"
+            Logging.info(
+                f"component=vlm_output format=pvd status=written path={pvd_path!r} "
+                f"time_levels={len(self._vlm_pvd_entries)}"
             )
-        except Exception as e:
-            print(f"   (Warning) Could not write VLM PVD file: {e}")
+        except Exception as exc:
+            Logging.warning(
+                f"component=vlm_output format=pvd status=write_failed path={pvd_path!r} "
+                f"error={exc!r}"
+            )
 
 
 __all__ = ["SolverIO"]

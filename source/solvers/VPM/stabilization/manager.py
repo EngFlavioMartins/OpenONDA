@@ -201,9 +201,12 @@ class StabilizationManager:
         self.max_vorticity_growth = max(self.max_vorticity_growth, vorticity_growth)
 
         Logging.message(
-            f"[Stabilization] {mechanism}: {before.particles} -> {after.particles} particles, "
-            f"dSumGamma/S={vortex_strength_error:.2e}, dS/S={strength_growth:+.2e}, "
-            f"dOmegaMax/OmegaMax={vorticity_growth:+.2e}" + (f", {detail}" if detail else "")
+            f"[VPM][Stabilization] mechanism={mechanism} "
+            f"particles={before.particles}->{after.particles} "
+            f"circulation_closure_rel={vortex_strength_error:.2e} "
+            f"gamma_abs_sum_change_rel={strength_growth:+.2e} "
+            f"peak_vorticity_change_rel={vorticity_growth:+.2e}"
+            + (f" detail={detail}" if detail else "")
         )
 
         checks = []
@@ -496,8 +499,9 @@ class StabilizationManager:
             "divergence relaxation",
             before,
             detail=(
-                f"sweeps={result.projection_sweeps}, residual={result.final_residual_ratio:.2e}, "
-                f"|dGamma|/|Gamma|={result.correction_norm_relative:.2e}"
+                f"projection_sweeps={result.projection_sweeps},"
+                f"divergence_residual_ratio={result.final_residual_ratio:.2e},"
+                f"circulation_correction_l2_rel={result.correction_norm_relative:.2e}"
             ),
         )
 

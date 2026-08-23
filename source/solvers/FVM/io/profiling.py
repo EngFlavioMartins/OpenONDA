@@ -401,7 +401,8 @@ class PerformanceProfiler:
                     raise
                 self._output_disabled = True
                 self.logger.warning(
-                    f"Performance output disabled: no space left on {self.output_path}"
+                    f"component=performance_output status=disabled reason=no_space "
+                    f"path={str(self.output_path)!r}"
                 )
         self.logger.profile_report(record)
         return record

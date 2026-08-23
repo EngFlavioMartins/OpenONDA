@@ -21,10 +21,50 @@ def test_population_log_reports_physical_operation_not_storage_type(monkeypatch)
     monkeypatch.setattr(Logging, "message", messages.append)
     particles = type("Population", (), {"n_particles": 4, "capacity": 16})()
 
-    Particles._log_population(particles, "cloud size 9")
+    Particles._log_population(particles, "previous_count=9")
 
-    assert messages == ["   [Particles] cloud size 9 -> 4 total, 25.0% of 16 capacity"]
+    assert messages == [
+        "[VPM][Particles] previous_count=9 count=4 capacity=16 utilization_pct=25.0"
+    ]
     assert "array" not in messages[0].lower()
+
+
+def test_weak_particle_removal_uses_cloud_wide_maximum(tmp_path):
+    reset_taichi_backend()
+    try:
+        solver = VPMSolver(
+            VPMSetup(
+                compute_device="CPU",
+                stretching=StretchingConfig.disabled(),
+                viscous=ViscousConfig(scheme="NONE"),
+                advection=AdvectionConfig(scheme="NONE"),
+                checkpoint_interval_steps=0,
+                logging_interval_steps=0,
+                checkpoint_directory=str(tmp_path),
+                max_particles=16,
+            )
+        )
+        strengths = np.array(
+            [[0.0, 0.0, 10.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.2], [0.0, 0.0, 0.02]],
+            dtype=np.float32,
+        )
+        solver.replace_vortex_particles(
+            position=np.arange(12, dtype=np.float32).reshape(4, 3),
+            velocity=np.zeros((4, 3), dtype=np.float32),
+            vortex_strength=strengths,
+            core_radius=np.ones(4, dtype=np.float32),
+            volume=np.ones(4, dtype=np.float32),
+            kinematic_viscosity=np.zeros(4, dtype=np.float32),
+            group_id=np.array([0, 0, 1, 1], dtype=np.int32),
+        )
+
+        removed = solver.remove_weak_particles(5.0)
+
+        assert removed == 2
+        np.testing.assert_allclose(solver.particle_vortex_strength, strengths[:2])
+        np.testing.assert_array_equal(solver.particles.group_id_cpu(), np.array([0, 0]))
+    finally:
+        reset_taichi_backend()
 
 
 def test_replace_vortex_particles_matches_uploaded_cloud(tmp_path):

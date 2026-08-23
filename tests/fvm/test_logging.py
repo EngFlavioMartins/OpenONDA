@@ -82,7 +82,7 @@ def test_simple_mode_writes_one_row_per_step(tmp_path, monkeypatch):
         "MONITORING & I/O",
         "res(U)",
         "s/step",
-        "Simulation time:",
+        "[FVM][RunTiming]",
     ):
         assert marker in console
 
@@ -91,7 +91,7 @@ def test_simple_mode_writes_one_row_per_step(tmp_path, monkeypatch):
         "Solver Convergence",
         "Turbulence Diagnostics",
         "PERFORMANCE PROFILE",
-        "Time for this step:",
+        "[FVM][Timing]",
     ):
         assert verbose_marker not in console
 
@@ -112,8 +112,7 @@ def test_debug_mode_writes_the_block_and_the_profile(tmp_path, monkeypatch):
         "Solver Convergence",
         "Conservation",
         "Time Control",
-        "Time for this step:",
-        "Total simulation time:",
+        "[FVM][Timing]",
         "PERFORMANCE PROFILE",
         "Momentum Predictor",
         "Linear solvers",
@@ -209,4 +208,6 @@ def test_linear_fallback_warning_uses_fvm_sink(tmp_path, monkeypatch):
     logger.close()
 
     log_text = (tmp_path / "solution" / "fvm.log").read_text(encoding="utf-8")
-    assert "(Warning) cg did not converge, info=1" in log_text
+    assert (
+        "[FVM][Warning] component=linear_solver method=cg status=not_converged info=1" in log_text
+    )

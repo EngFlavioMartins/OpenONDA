@@ -101,4 +101,4 @@ class FVMSamplerExecutor:
         name = getattr(sampler, "file_name", None) or sampler.__class__.__name__
         if strict:
             raise RuntimeError(f"Sampler '{name}' failed: {exc}") from exc
-        solver.logger.warning(f"Sampler '{name}' failed: {exc}")
+        solver.logger.warning(f"component=sampler name={name!r} status=failed error={exc!r}")

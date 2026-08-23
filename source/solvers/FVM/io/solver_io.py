@@ -47,7 +47,9 @@ class SolverIO:
             if error.errno != errno.ENOSPC:
                 raise
             self._diagnostics_write_disabled = True
-            self.solver.logger.warning(f"Diagnostics output disabled: no space left on {path}")
+            self.solver.logger.warning(
+                f"component=diagnostics_output status=disabled reason=no_space path={path!r}"
+            )
 
     def rewind_histories(self, time: float) -> None:
         parallel = getattr(self.solver, "parallel", None)

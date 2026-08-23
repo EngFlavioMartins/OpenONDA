@@ -605,7 +605,8 @@ def _solve_pressure(
             raise LinearSolveError("AMG pressure solve requires pyamg") from error
         _emit_warning(
             log_sink,
-            "pyamg unavailable; using configured direct fallback",
+            "component=linear_solver method=pyamg status=fallback "
+            "reason=unavailable fallback=direct",
         )
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
@@ -681,7 +682,8 @@ def _solve_pressure(
             raise LinearSolveError("AMG pressure solve failed") from error
         _emit_warning(
             log_sink,
-            "AMG pressure solve failed; using configured direct fallback: %s",
+            "component=linear_solver method=amg status=fallback "
+            "reason=solve_failed fallback=direct error=%r",
             error,
         )
         fallback_start = time.perf_counter()
@@ -783,8 +785,9 @@ def _iterative_solve_with_M(
         if _FALLBACK_WARN_COUNT <= 3 or _FALLBACK_WARN_COUNT % 50 == 0:
             _emit_warning(
                 log_sink,
-                "%s (occurrence #%d)",
-                msg,
+                "component=linear_solver method=%s status=not_converged info=%s occurrence=%d",
+                method,
+                info,
                 _FALLBACK_WARN_COUNT,
             )
         if failure_policy == "raise":
@@ -793,7 +796,8 @@ def _iterative_solve_with_M(
             )
         _emit_warning(
             log_sink,
-            "Using configured direct fallback after %s failure",
+            "component=linear_solver method=%s status=fallback "
+            "reason=not_converged fallback=direct",
             method,
         )
         return spsolve(A, b), max(iterations, int(info) if info > 0 else 0), True, msg
@@ -885,7 +889,8 @@ def _solve_with_ilu(
             raise LinearSolveError(f"{method} ILU setup or solve failed") from e
         _emit_warning(
             log_sink,
-            "ILU setup failed; using configured direct fallback: %s",
+            "component=linear_solver preconditioner=ILU status=fallback "
+            "reason=setup_failed fallback=direct error=%r",
             e,
         )
         setup_seconds = time.perf_counter() - setup_start
@@ -1086,7 +1091,12 @@ def solve_linear_system(
     x, info, iterations = _run_krylov(A, b, method, None, tol, maxiter, x0)
     solve_seconds = time.perf_counter() - solve_start
     if info != 0:
-        _emit_warning(log_sink, "%s did not converge, info=%s", method, info)
+        _emit_warning(
+            log_sink,
+            "component=linear_solver method=%s status=not_converged info=%s",
+            method,
+            info,
+        )
 
     if info != 0:
         if failure_policy == "raise":

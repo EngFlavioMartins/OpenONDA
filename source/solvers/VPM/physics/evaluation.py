@@ -17,6 +17,7 @@ from ..config.constants import (
     EPSILON,
     MAX_PARTICLES,
 )
+from ..io.logging import Logging
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 _DIRECT_INTEGRAL_LIMIT = 50_000
@@ -616,7 +617,10 @@ class ParticleFieldEvaluation:
                     centroid = np.array([0.0, 0.0, 0.0])
             diagnostics_history["centroid"].append(tuple(centroid.tolist()))
         except Exception as exc:
-            print(f"(Warning) Failed to compute vortex-strength centroid: {exc}")
+            Logging.warning(
+                f"component=flow_diagnostics quantity=vortex_strength_centroid "
+                f"status=evaluation_failed error={exc!r}"
+            )
 
     def compute_centroid_of_vortex_strength(self, particles) -> np.ndarray:
         """

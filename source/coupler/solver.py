@@ -319,7 +319,6 @@ class FVMVPMCoupler:
                 )
             assert self.fvm_box is not None and self.kinematic_viscosity is not None
             self._validate_vpm(self.vpm_solver, cfg, self.fvm_box, self.kinematic_viscosity)
-            logger.info("[Init] Using injected VPM solver.")
 
         assert self.fvm_time_step_size is not None
         vpm_time_step_size = self.fvm_time_step_size
@@ -337,7 +336,7 @@ class FVMVPMCoupler:
         )
         if self._is_master:
             logger.info(
-                "[Init] Time steps: fvm_dt=%.4e s, vpm_dt=%.4e s, fvm_substeps=%d.",
+                "[Coupler][Time] fvm_dt_s=%.4e vpm_dt_s=%.4e fvm_substeps=%d",
                 self.fvm_time_step_size,
                 self.vpm_time_step_size,
                 self.fvm_substeps,
@@ -349,7 +348,7 @@ class FVMVPMCoupler:
             assert self.vpm_solver is not None
             self.vpm_solver.physics.configure_body_box(self.vorticity_transfer._body_bounds)
             logger.info(
-                "[Init] VPM grid diffusion body mask enabled for box %s.",
+                "[Coupler][VPMDiffusionGrid] solid_mask=box bounds_m=%s",
                 self.vorticity_transfer._body_bounds.tolist(),
             )
         if self._is_master:
@@ -365,7 +364,11 @@ class FVMVPMCoupler:
                 self.vpm_solver.physics.configure_grid_lattice_anchor(
                     anchor, self.setup.vpm_particle_spacing
                 )
-                logger.info("[Init] VPM diffusion lattice aligned with the transfer lattice.")
+                logger.info(
+                    "[Coupler][VPMDiffusionGrid] anchor_m=%s h_m=%.6g",
+                    np.asarray(anchor, dtype=np.float64).tolist(),
+                    self.setup.vpm_particle_spacing,
+                )
 
         assert self.fvm_box is not None
         self.pressure_reference = PressureReference(
@@ -381,12 +384,12 @@ class FVMVPMCoupler:
         self.pressure_reference.prepare()
 
         if self._is_master:
-            logger.info("[Init] Impulsive start: zero VPM particles.")
+            logger.info("[Coupler][InitialState] mode=impulsive particles=0")
             with self.vpm_redirector:
                 print(_vpm_solver_info(self.vpm_solver))
                 sys.stdout.flush()
             write_run_metadata(self)
-            print("Initialization complete.\n")
+            logger.info("[Coupler][Initialization] status=complete")
 
         self._initialize_run_state()
 
@@ -451,9 +454,13 @@ class FVMVPMCoupler:
         n_steps = self._derive_coupling_step_count(self.end_time, self.vpm_time_step_size)
         patch = self.setup.coupling_patch
         if self._is_master:
-            logger.info("=" * 60)
-            logger.info("FVM-VPM COUPLED SOLVER")
-            logger.info("=" * 60)
+            logger.info(
+                "[Coupler][Run] steps=%d end_time_s=%.6g boundary_mode=%s patch=%s",
+                n_steps,
+                self.end_time,
+                self.setup.boundary_condition_mode,
+                patch,
+            )
 
         face_centers = np.asarray(
             self.fvm_solver.get_boundary_face_centre_coordinates(patch), dtype=np.float64
@@ -473,9 +480,12 @@ class FVMVPMCoupler:
             assert self.vpm_solver is not None
             with self.vpm_redirector:
                 self.vpm_solver.set_freestream_velocity(self.setup.freestream_velocity)
-            print()
-            print("-" * 60)
-            print(f"STEP {step}/{self._n_steps}  (t={time_end:.3f}s)")
+            logger.info(
+                "[Coupler][Step] step=%d total_steps=%d time_s=%.6e",
+                step,
+                self._n_steps,
+                time_end,
+            )
 
             with self.vpm_redirector:
                 self.vpm_solver.advance()

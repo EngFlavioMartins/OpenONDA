@@ -10,6 +10,8 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 from scipy.spatial import cKDTree
 
+from ..io.logging import Logging
+
 # =========================================================
 
 
@@ -520,7 +522,7 @@ class ParticleDistributor:
         num_particles_before = len(psys)
 
         if len(particles_strength_mag) == 0:
-            print("(warning) No particles available to evaluate.")
+            Logging.warning("component=particle_pruning status=skipped reason=empty_particle_field")
             return
 
         if mode == "absolute":
@@ -528,12 +530,16 @@ class ParticleDistributor:
         elif mode == "relative":
             highest_strength = np.max(particles_strength_mag)
             if highest_strength == 0:
-                print("(warning) All particle strengths are zero.")
+                Logging.warning(
+                    "component=particle_pruning status=skipped reason=zero_strength_field"
+                )
                 weak_particles_list = np.ones_like(particles_strength_mag, dtype=bool)
             else:
                 weak_particles_list = particles_strength_mag / highest_strength < threshold
         else:
-            print(f"(error) Mode '{mode}' not recognized. Use 'absolute' or 'relative'.")
+            Logging.warning(
+                f"component=particle_pruning status=skipped reason=invalid_mode mode={mode!r}"
+            )
             return
 
         weak_particles = np.where(weak_particles_list)[0]
@@ -549,7 +555,11 @@ class ParticleDistributor:
                 particle.update_state(strength=particles_strength[p] * correction)
 
         psys._cache_particle_arrays()
-        print(f"\tRemoved {num_particles_before - len(psys)} particles from the system.")
+        Logging.message(
+            f"[VPM][Particles] operation=prune mode={mode} "
+            f"threshold={weakest_percent:.6g} removed={num_particles_before - len(psys)} "
+            f"count={len(psys)} circulation_rescaled={str(conserve_total_circulation).lower()}"
+        )
 
     @staticmethod
     def get_highest_nonzero_indices(

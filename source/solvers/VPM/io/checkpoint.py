@@ -18,6 +18,7 @@ import h5py
 import numpy as np
 
 from ..config.setup import VPMSetup
+from .logging import Logging
 
 _CHECKPOINT_FORMAT_VERSION = "4.0"
 
@@ -156,7 +157,11 @@ class CheckpointManager:
             )
 
             if verbose:
-                print(f"Checkpoint saved: {hdf5_file}")
+                Logging.message(
+                    f"[VPM][Checkpoint] status=written step={solver.step} "
+                    f"time_s={time_value:.6e} particles={solver.particles.n_particles} "
+                    f"path={hdf5_file!r}"
+                )
         except Exception as exc:
             raise RuntimeError(f"Checkpoint write failed: {exc}") from exc
 

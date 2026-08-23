@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
+from .logging import Logging
 from .sampling import SAMPLER_CSV_COLUMNS, resolve_samples_dir
 
 
@@ -166,7 +167,7 @@ class SamplerExecutor:
                     step,
                 )
         except Exception as exc:
-            print(f"(Warning) Sampler '{name_prefix}' failed: {exc}")
+            Logging.warning(f"component=sampler name={name_prefix!r} status=failed error={exc!r}")
 
     @staticmethod
     def _append_csv(
@@ -244,5 +245,7 @@ class SamplerExecutor:
                     entries.append((float(timestep), filename))
             return entries
         except (ET.ParseError, OSError, ValueError) as exc:
-            print(f"(Warning) Could not read sampler index '{pvd_path}': {exc}")
+            Logging.warning(
+                f"component=sampler_index path={str(pvd_path)!r} status=read_failed error={exc!r}"
+            )
             return []

@@ -249,13 +249,13 @@ class Logging:
 
     @staticmethod
     def info(text: str, *, flush: bool = False) -> None:
-        """Emit an informational message (prefixed with ``[INFO]``)."""
-        print(f"[INFO] {text}", flush=flush)
+        """Emit an informational VPM message."""
+        print(f"[VPM][Info] {text}", flush=flush)
 
     @staticmethod
     def warning(text: str, *, flush: bool = False) -> None:
-        """Emit a warning message (prefixed with ``(Warning)``)."""
-        print(f"(Warning) {text}", flush=flush)
+        """Emit a VPM warning."""
+        print(f"[VPM][Warning] {text}", flush=flush)
 
     @staticmethod
     def flow_diagnostics(system):
@@ -904,7 +904,7 @@ class Logging:
             print("-" * 60, flush=True)
 
         except Exception as e:
-            print(f"(warning) Failed to compute LES diagnostics: {e}", flush=True)
+            print(f"[VPM][Warning] LES diagnostics error={e}", flush=True)
 
     @staticmethod
     def vlm_forces(system):
@@ -939,12 +939,11 @@ class Logging:
                 print(f"  VLM: CL={forces['CL']:.3f} n={system.particles.n_particles}")
             except Exception:
                 pass
-            print(f"(warning) Failed to log VLM forces: {e}", flush=True)
+            print(f"[VPM][Warning] VLM force logging error={e}", flush=True)
 
     @staticmethod
     def particle_cleanup(percent, particles_before, particles_removed, particles_after):
-        """
-        Log particle cleanup information to console.
+        """Log one weak-particle-removal event.
 
         Args:
             percent: Percentage threshold used for removal
@@ -952,17 +951,12 @@ class Logging:
             particles_removed: Number of particles removed
             particles_after: Number of particles after cleanup
         """
-        print()
-        print("-" * 60)
-        print("PARTICLE CLEANUP: Removing Weak Particles")
-        print("-" * 60)
-        print(f"Threshold:         {percent:.2f}% of maximum strength")
-        print(f"Particles before:  {particles_before:,}")
-        print(f"Particles removed: {particles_removed:,}")
-        print(f"Particles after:   {particles_after:,}")
-        print(f"Removal ratio:     {100 * particles_removed / particles_before:.2f}%")
-        print("-" * 60)
-        print()
+        removal_fraction = particles_removed / particles_before if particles_before else 0.0
+        Logging.message(
+            f"[VPM][Particles] operation=weak_pruning threshold_percent={percent:.6g} "
+            f"count={particles_before}->{particles_after} removed={particles_removed} "
+            f"removed_fraction={removal_fraction:.6f}"
+        )
 
     @staticmethod
     def step_timing(step_elapsed, total_elapsed, detailed_timing=None):
@@ -974,31 +968,28 @@ class Logging:
             total_elapsed: Cumulative simulation time [s]
             detailed_timing: Optional dictionary with per-operation durations
         """
-        print(f"{'Time for this step:':<23}{step_elapsed:.3e} s")
-        print(f"{'Total simulation time:':<23}{total_elapsed:.3e} s", flush=True)
+        Logging.message(
+            f"[VPM][Timing] step_s={step_elapsed:.3e} cumulative_s={total_elapsed:.3e}",
+            flush=True,
+        )
 
         if detailed_timing and len(detailed_timing) > 0:
-            print("  └- Detailed breakdown:")
             for operation, duration in detailed_timing.items():
-                pct = 100.0 * duration / step_elapsed if step_elapsed > 0 else 0
-                print(f"     {operation:<24}: {duration:6.3f}s ({pct:5.1f}%)")
-            print()
+                fraction = duration / step_elapsed if step_elapsed > 0 else 0.0
+                Logging.message(
+                    f"[VPM][TimingPhase] name={operation!r} time_s={duration:.6f} "
+                    f"step_fraction={fraction:.6f}"
+                )
 
     @staticmethod
     def stretching_time_step_size_warning(
         time_step_size: float, recommended_time_step_size: float, sigma_max: float
     ) -> None:
-        """Warn that the vortex-stretching step exceeds its stability limit.
-
-        Mirrors the viscous ``*** EXCEEDS LIMIT ***`` warning in
-        :meth:`_format_viscous_dt_limits`, but for the explicit stretching
-        integration, whose limit ``dt_rec = C/σ_max`` is set by the resolved
-        strain rather than the grid. Printed when the integrator is the source
-        of a blow-up, so the user knows the time-step must be reduced.
-        """
-        print(
-            f"  WARNING: vortex-stretching Δt={time_step_size:.3e} s > recommended "
-            f"{recommended_time_step_size:.3e} s (σ_max={sigma_max:.2f} s⁻¹) — reduce time-step.",
+        """Record an explicit-stretching stability-limit violation."""
+        Logging.warning(
+            f"component=stretching dt_s={time_step_size:.3e} "
+            f"stability_limit_s={recommended_time_step_size:.3e} "
+            f"max_strain_rate_s_inv={sigma_max:.3e}",
             flush=True,
         )
 

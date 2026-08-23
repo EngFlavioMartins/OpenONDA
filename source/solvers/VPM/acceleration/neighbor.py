@@ -14,6 +14,7 @@ import taichi as ti
 
 # Import VPM constants
 from ..config.constants import MAX_PARTICLES
+from ..io.logging import Logging
 
 
 @ti.data_oriented
@@ -204,17 +205,23 @@ class TaichiNeighborSearch:
         """Dynamically resize neighbor storage if needed. Over-allocate by 10% for safety."""
         target_size = int(N * 1.5)  # Over-allocate by 50%
         if target_size > self.neighbors.shape[0]:
-            print(
-                f"(Info) Resizing neighbor storage from {self.neighbors.shape[0]} to {target_size} particles"
+            previous_capacity = self.neighbors.shape[0]
+            Logging.message(
+                f"[VPM][NeighborStorage] status=resizing previous_capacity={previous_capacity} "
+                f"capacity={target_size}"
             )
             try:
                 self.distances = ti.field(dtype=ti.f32, shape=(target_size, self.max_neighbors))
                 self.neighbors = ti.field(dtype=ti.i32, shape=(target_size, self.max_neighbors))
                 self.neighbor_counts = ti.field(dtype=ti.i32, shape=target_size)
                 self.max_particles = target_size
-                print(f"(Info) Neighbor storage resized successfully to {target_size} particles")
+                Logging.message(f"[VPM][NeighborStorage] status=resized capacity={target_size}")
             except Exception as e:
-                print(f"(error) Failed to resize neighbor storage: {e}")
+                Logging.warning(
+                    f"component=neighbor_storage status=resize_failed "
+                    f"previous_capacity={previous_capacity} requested_capacity={target_size} "
+                    f"error={e!r}"
+                )
                 raise RuntimeError(
                     f"Cannot resize neighbor storage from {self.neighbors.shape[0]} to {target_size} particles: {e}"
                 ) from e

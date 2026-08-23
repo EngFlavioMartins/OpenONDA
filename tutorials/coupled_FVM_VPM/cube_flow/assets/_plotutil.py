@@ -13,16 +13,26 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import matplotlib
+import os
 from pathlib import Path
 import re
 
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-SOLUTION = CASE_DIR / "solution"
-SAMPLES = CASE_DIR / "samples"
-REFERENCE_SAMPLES = CASE_DIR / "reference_flow" / "samples"
-FIGURES = CASE_DIR / "figures"
+
+
+def _configured_path(variable: str, default: Path) -> Path:
+    return Path(os.environ.get(variable, default)).expanduser().resolve()
+
+
+SOLUTION = _configured_path("OPENONDA_SOLUTION_DIR", CASE_DIR / "solution")
+SAMPLES = _configured_path("OPENONDA_SAMPLES_DIR", CASE_DIR / "samples")
+REFERENCE_SAMPLES = _configured_path(
+    "OPENONDA_REFERENCE_SAMPLES_DIR", CASE_DIR / "reference_flow" / "samples"
+)
+FIGURES = _configured_path("OPENONDA_FIGURES_DIR", CASE_DIR / "figures")
 
 # Keep one publication theme: reference and coupled figures are intended to be
 # visually interchangeable.
@@ -33,6 +43,38 @@ if _THEME_SPEC is None or _THEME_SPEC.loader is None:  # pragma: no cover
 _THEME = importlib.util.module_from_spec(_THEME_SPEC)
 _THEME_SPEC.loader.exec_module(_THEME)
 _THEME.set_style()
+
+# Publication canvas and export settings shared by every cube-flow figure.
+# Keep this width local: the cube-flow figures are intended for a 12.5 cm
+# manuscript column, while the general OpenONDA theme also offers wider sizes.
+CM = 1.0 / 2.54
+FIGURE_WIDTH_CM = 12.5
+FIGURE_WIDTH = FIGURE_WIDTH_CM * CM
+FIGURE_DPI = _THEME.DEFAULT_DPI
+EXPORT_FORMATS = _THEME.EXPORT_FORMATS
+
+# Use the bundled DejaVu Serif face for both normal text and MathText.  This
+# preserves the OpenONDA serif typography without launching an external LaTeX
+# process once per frame (a complete run can contain hundreds of figures).
+matplotlib.rcParams.update(
+    {
+        "text.usetex": False,
+        "mathtext.fontset": "dejavuserif",
+        "font.family": "serif",
+        "font.serif": ["DejaVu Serif"],
+        "font.size": _THEME.FONT_SIZE_PT,
+        "axes.labelsize": _THEME.FONT_SIZE_PT,
+        "axes.titlesize": _THEME.FONT_SIZE_PT,
+        "figure.titlesize": _THEME.FONT_SIZE_PT,
+        "legend.fontsize": 8,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "figure.dpi": FIGURE_DPI,
+        "savefig.dpi": FIGURE_DPI,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    }
+)
 
 COLORS = dict(_THEME.COLORS)
 COLORS.update(
@@ -53,16 +95,10 @@ SOURCES = {
     "vpm": {"dir": SAMPLES, "prefix": "vpm_", "label": "Coupled VPM"},
 }
 
-# FVM/reference samples land on their requested times. VPM samples use the
-# nearest accepted state, so matching allows half a coupling step.
-PLOT_TIME_STEP_SIZE = 0.10
-try:
-    _VPM_TIME_STEP_SIZE = float(
-        json.loads((SOLUTION / "run_metadata.json").read_text())["vpm_time_step_size"]
-    )
-except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-    _VPM_TIME_STEP_SIZE = 0.03
-TIME_TOL = 0.5 * _VPM_TIME_STEP_SIZE + 1e-9
+# Cross-solver comparisons require the same accepted physical time. This
+# tolerance covers floating-point accumulation only; it must never admit a
+# neighbouring VPM state.
+TIME_ATOL = 1.0e-9
 
 
 def label(source: str) -> str:
@@ -79,9 +115,17 @@ def _path(source: str, name: str, suffix: str) -> Path:
 
 
 def metadata() -> dict:
-    """Return ``run_metadata.json`` as a dict (empty if the run has not written it)."""
+    """Return the metadata belonging to the selected coupled samples."""
     path = SOLUTION / "run_metadata.json"
-    return json.loads(path.read_text()) if path.exists() else {}
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Missing run metadata for {SAMPLES}: expected {path}. "
+            "Refusing to infer plotting scales or timestep provenance."
+        )
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Run metadata must contain a JSON object: {path}")
+    return data
 
 
 def load_vpm_particles(path: Path) -> dict[str, np.ndarray]:
@@ -110,10 +154,10 @@ def load_vpm_particles(path: Path) -> dict[str, np.ndarray]:
 
 
 def run_constants() -> dict:
-    """Return plot scales, falling back to the tutorial defaults."""
+    """Return plot scales from the selected run metadata."""
     meta = metadata()
-    phys = meta.get("physics", {})
-    freestream_velocity = np.asarray(phys.get("freestream_velocity", [1.0, 0.0, 0.0]), dtype=float)
+    phys = meta["physics"]
+    freestream_velocity = np.asarray(phys["freestream_velocity"], dtype=float)
     box = meta.get("fvm_solver", {}).get("fvm_domain", {})
     frames = slice_frames("fvm")
     if frames:
@@ -132,7 +176,7 @@ def run_constants() -> dict:
         "freestream_speed": float(np.linalg.norm(freestream_velocity)) or 1.0,
         "freestream_velocity": freestream_velocity,
         "D": 1.0,  # cube side length (CUBE_SIDE in cube_flow_setup.py)
-        "kinematic_viscosity": float(phys.get("kinematic_viscosity", 1e-3)),
+        "kinematic_viscosity": float(phys["kinematic_viscosity"]),
         "box": box
         or {
             "xmin": -1.5,
@@ -145,11 +189,29 @@ def run_constants() -> dict:
     }
 
 
-def save(fig, name: str, fmt: str, dpi: int) -> Path:
+def figure_size(height_cm: float) -> tuple[float, float]:
+    """Return the fixed 12.5 cm publication width and ``height_cm`` in inches."""
+    return FIGURE_WIDTH, height_cm * CM
+
+
+def save(fig, name: str, fmt: str, dpi: int = FIGURE_DPI) -> Path:
+    """Save without auto-cropping so the exported width stays exactly 12.5 cm.
+
+    Every caller sets ``left``, ``right``, ``bottom``, ``top``, ``wspace`` and
+    ``hspace`` explicitly with :meth:`matplotlib.figure.Figure.subplots_adjust`.
+    Applying ``tight_layout`` or ``bbox_inches='tight'`` here would override
+    those controls and change the physical canvas size.
+    """
+    if fmt not in EXPORT_FORMATS:
+        raise ValueError(f"Unsupported figure format: {fmt!r}")
     FIGURES.mkdir(parents=True, exist_ok=True)
     out = FIGURES / f"{name}.{fmt}"
-    _THEME.save_fig(fig, out, figure_format=fmt, dpi=dpi)
-    print(f"  wrote {out.relative_to(CASE_DIR)}")
+    fig.savefig(out, format=fmt, dpi=dpi, bbox_inches=None, facecolor="white")
+    try:
+        display_path = out.relative_to(CASE_DIR)
+    except ValueError:
+        display_path = out
+    print(f"  wrote {display_path}")
     return out
 
 
@@ -174,6 +236,12 @@ def _read_line_csv(path: Path) -> dict[str, np.ndarray]:
     table = {name: np.asarray(rows[name]) for name in rows.dtype.names}
     if "flow_time" in table:
         return table
+    # Coupled FVM/VPM line histories use the canonical ``time`` column,
+    # whereas the reference data retains the legacy ``flow_time`` spelling.
+    # Normalize both formats for the plotting callers below.
+    if "time" in table:
+        table["flow_time"] = table["time"]
+        return table
     if match is None:
         raise ValueError(f"{path} has no flow_time column or metadata")
     table["flow_time"] = np.full(rows.size, float(match.group(1)))
@@ -189,7 +257,7 @@ def line_times(source: str, name: str) -> np.ndarray:
 
 
 def load_line(
-    source: str, name: str, time: float, tol: float = TIME_TOL
+    source: str, name: str, time: float, tol: float = TIME_ATOL
 ) -> dict[str, np.ndarray] | None:
     """Return the frame of one line sampler at ``time``, sorted by x.
 
@@ -205,7 +273,7 @@ def load_line(
     if times.size == 0:
         return None
     picked = times[np.argmin(np.abs(times - time))]
-    if abs(picked - time) > tol:
+    if not np.isclose(picked, time, rtol=0.0, atol=tol):
         return None
     mask = table["flow_time"] == picked
     frame = {key: values[mask] for key, values in table.items()}
@@ -232,7 +300,7 @@ def slice_times(source: str, name: str = "slice_z0") -> np.ndarray:
 
 
 def load_slice(
-    source: str, time: float, name: str = "slice_z0", tol: float = TIME_TOL
+    source: str, time: float, name: str = "slice_z0", tol: float = TIME_ATOL
 ) -> dict | None:
     """Return the slice snapshot at ``time`` as 2-D arrays on its grid.
 
@@ -245,7 +313,7 @@ def load_slice(
     if not frames:
         return None
     picked_time, path = min(frames, key=lambda item: abs(item[0] - time))
-    if abs(picked_time - time) > tol:
+    if not np.isclose(picked_time, time, rtol=0.0, atol=tol):
         return None
     grid = pv.read(path)
     ni, nj, _ = grid.dimensions
@@ -300,8 +368,8 @@ def load_vpm_forces() -> dict[str, np.ndarray] | None:
     return {name: np.asarray(rows[name]) for name in rows.dtype.names} if rows.size else None
 
 
-def common_times(*series: np.ndarray, tol: float = TIME_TOL) -> np.ndarray:
-    """Times present in every supplied sampler series."""
+def common_times(*series: np.ndarray, tol: float = TIME_ATOL) -> np.ndarray:
+    """Accepted physical times present in every supplied sampler series."""
     if not series or any(np.asarray(values).size == 0 for values in series):
         return np.empty(0)
     base = np.unique(np.asarray(series[0], dtype=float))
@@ -310,33 +378,89 @@ def common_times(*series: np.ndarray, tol: float = TIME_TOL) -> np.ndarray:
         for time in base
         if time > tol
         and all(
-            np.min(np.abs(np.asarray(values, dtype=float) - time)) <= tol for values in series[1:]
+            np.any(np.isclose(np.asarray(values, dtype=float), time, rtol=0.0, atol=tol))
+            for values in series[1:]
         )
     ]
     return np.asarray(matched)
 
 
-def comparison_times(time_step_size: float = PLOT_TIME_STEP_SIZE) -> np.ndarray:
-    """Canonical ``dt``-spaced grid that drives every per-frame figure.
+def _require_coincident_overlap(label: str, base: np.ndarray, *series: np.ndarray) -> np.ndarray:
+    """Return exact common sample times after every source has begun sampling."""
+    values = [np.unique(np.asarray(sample_times, dtype=float)) for sample_times in (base, *series)]
+    positive = [sample_times[sample_times > TIME_ATOL] for sample_times in values]
+    if any(sample_times.size == 0 for sample_times in positive):
+        raise ValueError(f"{label} sources must contain positive sample times")
 
-    Built from the union of every source's native sample times rather than
-    one file, so the grid still reaches its full extent if a single sampler
-    (e.g. an interrupted run) is short. Each requested time is independently
-    resolved against the file that actually claims to have it - see
-    :func:`load_line` / :func:`load_slice` - so a source missing a given frame
-    just leaves that panel empty rather than showing a mistimed one.
-    """
-    sources = [
-        line_times("reference", "centerline"),
+    overlap_start = max(sample_times[0] for sample_times in positive)
+    overlap_end = min(sample_times[-1] for sample_times in positive)
+    if overlap_end < overlap_start - TIME_ATOL:
+        raise ValueError(f"{label} sources have no overlapping sample interval")
+
+    base_overlap = positive[0][
+        (positive[0] >= overlap_start - TIME_ATOL) & (positive[0] <= overlap_end + TIME_ATOL)
+    ]
+    matched = common_times(base_overlap, *positive[1:])
+    if matched.size == 0:
+        raise ValueError(f"{label} sources have no exact common sample times")
+    return matched
+
+
+def validate_plot_inputs() -> dict[str, float]:
+    """Validate source provenance and exact cross-solver sample times."""
+    meta = metadata()
+    required_metadata = (
+        ("physics", "freestream_velocity"),
+        ("physics", "kinematic_viscosity"),
+        ("physics", "end_time"),
+    )
+    for section, key in required_metadata:
+        if key not in meta.get(section, {}):
+            raise ValueError(f"Run metadata is missing {section}.{key}")
+
+    required_files = [
+        SOURCES["fvm"]["dir"] / "forces_history.csv",
+        SOURCES["reference"]["dir"] / "forces_history.csv",
+        SOLUTION / "coupler_diagnostics.jsonl",
+    ]
+    for source in ("reference", "fvm", "vpm"):
+        required_files.extend(
+            [_path(source, name, ".csv") for name in ("centerline", "offaxis_y075")]
+        )
+    for source in ("reference", "fvm", "vpm"):
+        required_files.append(_path(source, "slice_z0", ".pvd"))
+    missing = [path for path in required_files if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Missing plotting input: {missing[0]}")
+
+    profile_times = _require_coincident_overlap(
+        "Profile",
         line_times("fvm", "centerline"),
         line_times("vpm", "centerline"),
-        slice_times("reference"),
+        line_times("reference", "centerline"),
+        line_times("fvm", "offaxis_y075"),
+        line_times("vpm", "offaxis_y075"),
+        line_times("reference", "offaxis_y075"),
+    )
+    field_times = _require_coincident_overlap(
+        "Field",
         slice_times("fvm"),
         slice_times("vpm"),
-    ]
-    available = [t for t in sources if t.size]
-    if not available:
-        return np.empty(0)
-    t_max = max(t.max() for t in available)
-    n_steps = int(round(t_max / time_step_size))
-    return np.arange(1, n_steps + 1) * time_step_size
+        slice_times("reference"),
+    )
+    fvm_forces = load_forces("fvm")
+    reference_forces = load_forces("reference")
+    if fvm_forces is None or reference_forces is None:
+        raise ValueError("Force histories must contain at least one row")
+    force_times = _require_coincident_overlap("Force", fvm_forces["time"], reference_forces["time"])
+
+    for source in ("reference", "fvm", "vpm"):
+        for _, path in slice_frames(source):
+            if not path.is_file():
+                raise FileNotFoundError(f"PVD index references a missing field sample: {path}")
+
+    return {
+        "latest_profile_time": float(profile_times[-1]),
+        "latest_field_time": float(field_times[-1]),
+        "latest_force_time": float(force_times[-1]),
+    }

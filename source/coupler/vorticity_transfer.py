@@ -235,6 +235,24 @@ class TransferResult:
         return self.n_existing + self.n_added
 
 
+def _transfer_log_record(step: int, result: TransferResult) -> str:
+    """Return one factual record for an FVM-to-VPM transfer."""
+    divergence = (
+        f"{result.divergence_correction_l2:.3e}"
+        if result.diagnostics_evaluated
+        else "not_evaluated"
+    )
+    return (
+        f"[Coupler][Transfer] step={step} existing={result.n_existing} "
+        f"updated={result.n_updated} added={result.n_added} "
+        f"support_nodes={result.n_support} "
+        f"gamma_correction_abs_sum_m3_s={result.correction_vortex_strength_l1:.3e} "
+        f"gamma_correction_net_norm_m3_s="
+        f"{float(np.linalg.norm(result.correction_vortex_strength_net)):.3e} "
+        f"divergence_l2_rel={divergence}"
+    )
+
+
 def solenoidal_velocity_correction(
     lattice: TransferLattice,
     particle_spacing: float,
@@ -579,8 +597,7 @@ class VorticityTransfer:
         )
         self._build_face_cell_index()
         logger.info(
-            "[Transfer] compatible velocity-defect curl ready: nodes=%d h=%.4g "
-            "ramp=%.4g vpm-only=%.4g",
+            "[Coupler][TransferGrid] nodes=%d h_m=%.4g authority_ramp_m=%.4g vpm_only_width_m=%.4g",
             len(self._lattice.positions),
             self.particle_spacing,
             self.authority_ramp_width,
@@ -740,18 +757,7 @@ class VorticityTransfer:
             "correction_divergence_l2": result.divergence_correction_l2,
             "correction_divergence_linf": result.divergence_correction_linf,
         }
-        logger.info(
-            "[Transfer step=%d] existing=%d updated=%d added=%d support=%d "
-            "Sum|dGamma|=%.3e |Sum dGamma|=%.3e div_h(domega) L2=%.3e",
-            self.step,
-            result.n_existing,
-            result.n_updated,
-            result.n_added,
-            result.n_support,
-            result.correction_vortex_strength_l1,
-            float(np.linalg.norm(result.correction_vortex_strength_net)),
-            result.divergence_correction_l2,
-        )
+        logger.info(_transfer_log_record(self.step, result))
         return result
 
 

@@ -332,11 +332,11 @@ class Logging:
 
     def info(self, text: str, *, flush: bool = False) -> None:
         """Emit an informational message."""
-        self.message(f"[INFO] {text}", flush=flush)
+        self.message(f"[FVM][Info] {text}", flush=flush)
 
     def warning(self, text: str, *, flush: bool = True) -> None:
         """Emit a warning message."""
-        self.message(f"(Warning) {text}", flush=flush)
+        self.message(f"[FVM][Warning] {text}", flush=flush)
 
     def debug_message(self, text: str, *, flush: bool = False) -> None:
         """Emit a message only in debug mode."""
@@ -463,8 +463,11 @@ class Logging:
         self._reported_steps += 1
         if self.debug:
             self._emit(self._debug_block(record))
-            self._emit(f"{'Time for this step:':<25}{record.elapsed:.3e} s")
-            self._emit(f"{'Total simulation time:':<25}{self._step_wall_time:.3e} s", flush=True)
+            self._emit(
+                f"[FVM][Timing] step={record.step} step_s={record.elapsed:.3e} "
+                f"cumulative_s={self._step_wall_time:.3e}",
+                flush=True,
+            )
         else:
             self._emit(self._simple_row(record), flush=True)
 
@@ -715,8 +718,8 @@ class Logging:
         mean = self._step_wall_time / self._steps
         self._emit("")
         self._emit(
-            f"Simulation time: {self._step_wall_time:.3e} s over {self._steps} steps "
-            f"({mean:.3f} s/step)",
+            f"[FVM][RunTiming] steps={self._steps} total_s={self._step_wall_time:.3e} "
+            f"mean_step_s={mean:.3f}",
             flush=True,
         )
 

@@ -1,5 +1,7 @@
 """Conservation tests for common-stage advection/stretching integration."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -11,6 +13,21 @@ from source.solvers.VPM.config.types import (
     VelocityConfig,
     ViscousConfig,
 )
+from source.solvers.VPM.core.evolution import EvolutionStepper
+
+
+def test_coupled_limits_can_be_disabled_for_one_common_stage():
+    stepper = EvolutionStepper(
+        SimpleNamespace(
+            particles_velocity_gradients=np.full((2, 3, 3), 1.0e6),
+            particles_velocities=np.full((2, 3), 1.0e6),
+            coupled_max_strain_increment=None,
+            coupled_max_advection_fraction=None,
+            _viscous_config=SimpleNamespace(particle_spacing=0.03125),
+        )
+    )
+
+    assert stepper._coupled_stable_time_step_size(0.03) == pytest.approx(0.03)
 
 
 def test_coupled_transposed_step_preserves_total_strength(tmp_path):

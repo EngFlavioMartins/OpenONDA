@@ -82,6 +82,7 @@ processor*/
 # Solution and data directories (results are never committed)
 **/solution/
 **/Solution/
+**/run_backups/
 # Fully-meshed reference setups are versioned; their solution/ data remain ignored above.
 Data/
 Raw/

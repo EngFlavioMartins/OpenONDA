@@ -207,7 +207,6 @@ class EvolutionStepper:
         if self.viscous_scheme != "GBD":
             self.solver._particle_regeneration_pending = False
             return
-        Logging.message("Applying global GBD population management after particle insertion.")
         self._apply_viscous_diffusion(0.0)
         self.solver._particle_regeneration_pending = False
 
@@ -247,15 +246,13 @@ class EvolutionStepper:
         self.solver.time = round(self.solver.time + self.time_step_size, 12)
 
         Logging.message(
-            f"\nTime-step: {self.step:d}   Flow time: {self.time:0.2E} s",
+            f"\n[VPM][Step] step={self.step:d} time_s={self.time:.6e}",
             flush=True,
         )
 
     def _update_velocities(self) -> None:
         """Evaluate self-induced particle velocity and optional body/source contributions."""
-        Logging.message(
-            f"Updating particles' velocities, u ({self.physics.velocity_method.lower()})"
-        )
+        Logging.message(f"[VPM][Velocity] method={self.physics.velocity_method.lower()}")
         self.physics.velocity_self(
             self.particles.position,
             self.particles.vortex_strength,
@@ -291,11 +288,11 @@ class EvolutionStepper:
 
         if use_treecode:
             if announce:
-                Logging.message(f"Updating velocity gradient tensor, ∇u (treecode, θ={theta})")
+                Logging.message(f"[VPM][VelocityGradient] method=treecode theta={theta:g}")
             self.physics.compute_velocity_gradients_hierarchical(self.particles, theta=theta)
         else:
             if announce:
-                Logging.message("Updating velocity gradient tensor, ∇u")
+                Logging.message("[VPM][VelocityGradient] method=direct")
             self.physics.compute_velocity_gradients(self.particles)
 
     def _update_velocity_and_gradients(self, announce: bool = True) -> None:
@@ -304,11 +301,13 @@ class EvolutionStepper:
         theta = self.setup.velocity.theta if self.setup.velocity else 0.5
         if use_treecode:
             if announce:
-                Logging.message(f"Updating fused u + ∇u (treecode, θ={theta})")
+                Logging.message(
+                    f"[VPM][Velocity] fields=velocity,gradient method=treecode theta={theta:g}"
+                )
             self.physics.compute_velocity_and_gradient_hierarchical(self.particles, theta=theta)
         else:
             if announce:
-                Logging.message("Updating fused u + ∇u (direct)")
+                Logging.message("[VPM][Velocity] fields=velocity,gradient method=direct")
             self.physics.compute_velocity_and_gradient(self.particles)
 
     def _update_LES_state(self, time_step_size: float | None = None) -> None:
@@ -346,12 +345,7 @@ class EvolutionStepper:
     def _announce_strength_update(self) -> None:
         """Log the stretching formulation used for this strength update."""
         effective_mode = self._effective_stretching_mode()
-        mode_eq = {
-            "DIRECT": "(ω·∇)u",
-            "TRANSPOSED": "(ω·∇')u",
-            "MIXED": "½((ω·∇)u + (∇u)ᵀ·ω)",
-        }.get(effective_mode, f"({effective_mode})")
-        Logging.message(f"Updating strengths via {mode_eq}")
+        Logging.message(f"[VPM][Stretching] formulation={effective_mode.lower()}")
 
     def _effective_stretching_mode(self) -> str:
         """Return the user-selected stretching formulation."""
@@ -460,7 +454,7 @@ class EvolutionStepper:
         """Return a strain- and displacement-limited coupled substep."""
         grad = self.particles_velocity_gradients
         stable_time_step_size = float(remaining_time_step_size)
-        if len(grad):
+        if len(grad) and self.coupled_max_strain_increment is not None:
             strain = 0.5 * (grad + np.swapaxes(grad, 1, 2))
             max_strain = float(np.max(np.abs(np.linalg.eigvalsh(strain))))
             if np.isfinite(max_strain) and max_strain > 0.0:
@@ -470,7 +464,11 @@ class EvolutionStepper:
                 )
 
         spacing = getattr(self._viscous_config, "particle_spacing", None)
-        if spacing is not None and spacing > 0.0:
+        if (
+            self.coupled_max_advection_fraction is not None
+            and spacing is not None
+            and spacing > 0.0
+        ):
             velocity = self.particles_velocities
             max_speed = float(np.linalg.norm(velocity, axis=1).max()) if len(velocity) else 0.0
             if np.isfinite(max_speed) and max_speed > 0.0:
@@ -525,9 +523,7 @@ class EvolutionStepper:
             reuse_velocity = self.viscous_scheme == "NONE"
 
         if substeps > 1:
-            Logging.message(
-                f"\t[CoupledSubcycling] {substeps} substeps for macro dt={time_step_size:.3e}"
-            )
+            Logging.message(f"[VPM][TimeIntegration] substeps={substeps} dt_s={time_step_size:.3e}")
 
         if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
             self._apply_viscous_diffusion(time_step_size)
@@ -718,10 +714,10 @@ class EvolutionStepper:
             return
 
         if self.viscous_scheme == "CS":
-            Logging.message("Performing viscous diffusion via Core Spreading.")
+            Logging.message(f"[VPM][Diffusion] scheme=CS dt_s={time_step_size:.3e}")
             self._apply_core_spreading_diffusion(time_step_size)
         elif self.viscous_scheme == "RWM":
-            Logging.message("Performing viscous diffusion via Random Walk Method.")
+            Logging.message(f"[VPM][Diffusion] scheme=RWM dt_s={time_step_size:.3e}")
             self.physics.random_walk_method_diffusion(self.particles, time_step_size=time_step_size)
         elif self.viscous_scheme in ("DVH", "GBD"):
             # DVH fires only when its fixed diffusion increment has accumulated.
@@ -864,12 +860,11 @@ class EvolutionStepper:
                     / angular_scale,
                 }
                 Logging.message(
-                    "\t[Grid diffusion audit] "
-                    f"N={len(old_position)}->{M}, "
-                    f"correction={correction_relative:.3e}, "
-                    f"dGamma={errors['circulation']:.3e}, "
-                    f"dI={errors['linear_impulse']:.3e}, "
-                    f"dA={errors['angular_impulse']:.3e}"
+                    f"[VPM][{self.viscous_scheme}] particles={len(old_position)}->{M} "
+                    f"moment_correction_l2_rel={correction_relative:.3e} "
+                    f"circulation_closure_rel={errors['circulation']:.3e} "
+                    f"linear_impulse_closure_rel={errors['linear_impulse']:.3e} "
+                    f"angular_impulse_closure_rel={errors['angular_impulse']:.3e}"
                 )
                 # Velocity is intentionally left stale; it is recomputed before the next consumer.
         ti.sync()
@@ -892,17 +887,14 @@ class EvolutionStepper:
                 N = self.particles.n_particles
                 if N > 0:
                     nu_eff = self.particles.effective_viscosity_cpu()
-            Logging.message(
-                f"\tPerforming DVH particle regeneration "
-                f"(particle_spacing={vc.dvh_grid_spacing:.3e}, nu={nu:.3e}, "
+            fields = (
+                f"[VPM][DVH] mode=diffusion dt_s={time_step_size:.3e} "
+                f"h_m={vc.dvh_grid_spacing:.3e} nu_m2_s={nu:.3e} "
                 f"threshold={vc.dvh_threshold:.2e}"
-                + (
-                    f", LES nu_eff/nu max={float(nu_eff.max()) / nu:.2f}"
-                    if nu_eff is not None and nu > 0.0
-                    else ""
-                )
-                + ")."
             )
+            if nu_eff is not None and nu > 0.0:
+                fields += f" nu_eff_max_over_nu={float(nu_eff.max()) / nu:.2f}"
+            Logging.message(fields)
             return self.physics.grid_based_diffusion(
                 self.particles,
                 time_step_size=time_step_size,
@@ -924,18 +916,15 @@ class EvolutionStepper:
                 N = self.particles.n_particles
                 if N > 0:
                     nu_eff = self.particles.effective_viscosity_cpu()
-            operation = "GBD particle regeneration" if time_step_size == 0.0 else "GBD diffusion"
-            Logging.message(
-                f"\tPerforming {operation}"
-                f"(particle_spacing={vc.gbd_grid_spacing:.3e}, nu={nu:.3e}, "
+            mode = "regeneration" if time_step_size == 0.0 else "diffusion"
+            fields = (
+                f"[VPM][GBD] mode={mode} dt_s={time_step_size:.3e} "
+                f"h_m={vc.gbd_grid_spacing:.3e} nu_m2_s={nu:.3e} "
                 f"threshold={vc.gbd_threshold:.2e}"
-                + (
-                    f", LES nu_eff/nu max={float(nu_eff.max()) / nu:.2f}"
-                    if nu_eff is not None and nu > 0.0
-                    else ""
-                )
-                + ")."
             )
+            if nu_eff is not None and nu > 0.0:
+                fields += f" nu_eff_max_over_nu={float(nu_eff.max()) / nu:.2f}"
+            Logging.message(fields)
             return self.physics.gbd_diffusion(
                 self.particles,
                 time_step_size=time_step_size,

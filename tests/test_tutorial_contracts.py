@@ -17,16 +17,20 @@ import openonda.vpm as vpm
 ROOT = Path(__file__).resolve().parents[1]
 SETUP_FILES = tuple(
     sorted(
-        {
+        path
+        for path in {
             *(ROOT / "tutorials").rglob("*_setup.py"),
             *(ROOT / "tutorials").rglob("setup_*.py"),
         }
+        if "run_backups" not in path.parts
     )
 )
 COUPLED_SETUPS = tuple(
     path
     for path in SETUP_FILES
-    if "coupled_FVM_VPM" in path.parts and "referenceFlow" not in path.parts
+    if "coupled_FVM_VPM" in path.parts
+    and "referenceFlow" not in path.parts
+    and "reference_flow" not in path.parts
 )
 PUBLIC_NAMESPACES = {
     "openonda.fvm": "fvm",
@@ -41,7 +45,6 @@ FORBIDDEN_TEXT = (
     "setup_fvm_solver",
     "setup_vpm_solver",
     "setup_coupler",
-    "backup",
     "SAMPLE_PERIOD",
 )
 FORBIDDEN_METADATA_KEYS = {
@@ -120,7 +123,7 @@ def test_tutorial_imports_solver_modules_as_namespaces(path: Path):
         node.module for node in tree.body if isinstance(node, ast.ImportFrom)
     }.intersection(PUBLIC_NAMESPACES)
 
-    if path.parts[-3] == "FVM" or "referenceFlow" in path.parts:
+    if path.parts[-3] == "FVM" or {"referenceFlow", "reference_flow"}.intersection(path.parts):
         expected = {"openonda.fvm": "fvm"}
     elif path.parts[-3] == "VPM":
         expected = {"openonda.vpm": "vpm"}

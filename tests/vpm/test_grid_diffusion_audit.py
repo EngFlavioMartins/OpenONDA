@@ -12,7 +12,8 @@ GBD (Cottet & Koumoutsakos 2000) — explicit FTCS Laplacian on an M4'-remesh:
   * the documented stability bound alpha = nu·dt/h² ≤ 1/6 (the checkerboard
     mode amplifies as |1 − 12·alpha|).
 
-GBD scales with dt directly → any dt below the CFL bound is valid.
+GBD internally subdivides only the Laplacian when a macro-step exceeds the
+forward-Euler bound; scatter and regeneration still occur once per macro-step.
 
 DVH (Durante et al. 2024) — heat-kernel scatter with Shepard normalization:
   * exact conservation of total circulation (Shepard weights sum to 1 per
@@ -582,6 +583,151 @@ def _laplacian_step_variable(physics, field, nu_eff_field, time_step_size, h):
         nz,
     )
     return physics._other_grid.to_numpy()[:nx, :ny, :nz, :]
+
+
+@pytest.mark.parametrize(
+    ("alpha_max", "expected_substeps"),
+    [(0.0, 1), (0.08, 1), (0.15, 2), (1.0 / 6.0, 3), (0.425, 6), (1.179, 15)],
+)
+def test_gbd_substep_count_enforces_nonoscillatory_3d_bound(physics, alpha_max, expected_substeps):
+    substeps, measured_alpha = physics._explicit_diffusion_substep_count(
+        diffusivity_max=alpha_max,
+        time_step_size=1.0,
+        particle_spacing=1.0,
+    )
+
+    assert substeps == expected_substeps
+    assert measured_alpha == pytest.approx(alpha_max)
+    assert measured_alpha == 0.0 or measured_alpha / substeps < 1.0 / 12.0
+
+
+@pytest.mark.parametrize("invalid", [np.nan, np.inf, -np.inf])
+def test_gbd_substep_count_rejects_nonfinite_diffusivity(physics, invalid):
+    with pytest.raises(FloatingPointError, match="finite diffusivity"):
+        physics._explicit_diffusion_substep_count(invalid, 0.05, 0.03125)
+
+
+def _neumann_mode(shape: tuple[int, int, int], wave_numbers: tuple[int, int, int]):
+    factors = []
+    for n, k in zip(shape, wave_numbers, strict=True):
+        index = np.arange(n, dtype=np.float64)
+        factors.append(np.cos(np.pi * k * (index + 0.5) / n))
+    return factors[0][:, None, None] * factors[1][None, :, None] * factors[2][None, None, :]
+
+
+def _neumann_laplacian_magnitude(
+    shape: tuple[int, int, int], wave_numbers: tuple[int, int, int]
+) -> float:
+    return float(
+        4.0
+        * sum(np.sin(np.pi * k / (2.0 * n)) ** 2 for n, k in zip(shape, wave_numbers, strict=True))
+    )
+
+
+def test_gbd_subcycling_stabilizes_repeated_production_kernel(physics):
+    """The previously failing alpha=0.425 state must decay without remeshing."""
+    shape = (10, 10, 10)
+    low_wave = (1, 0, 0)
+    high_wave = (9, 9, 9)
+    low_mode = _neumann_mode(shape, low_wave)
+    high_mode = _neumann_mode(shape, high_wave)
+    field = np.zeros((*shape, 3), dtype=np.float32)
+    field[..., 2] = low_mode + 1.0e-4 * high_mode
+
+    nx, ny, nz = shape
+    physics._ensure_grid_capacity(nx, ny, nz)
+    physics._ping = True
+    buffer = np.zeros((*physics._grid_shape, 3), dtype=np.float32)
+    buffer[:nx, :ny, :nz] = field
+    physics._current_grid.from_numpy(buffer)
+    physics._other_grid.fill(0.0)
+    physics._body_mask_grid.fill(0)
+
+    h = 0.03125
+    macro_dt = 0.05
+    target_alpha = 0.425
+    nu_eff_value = target_alpha * h**2 / macro_dt
+    nu_eff_grid = np.full(shape, nu_eff_value, dtype=np.float32)
+
+    substeps = None
+    measured_alpha = None
+    for _ in range(20):
+        substeps, measured_alpha = physics._advance_gbd_laplacian(
+            nx=nx,
+            ny=ny,
+            nz=nz,
+            time_step_size=macro_dt,
+            particle_spacing=h,
+            nu=1.0e-3,
+            nu_eff_grid=nu_eff_grid,
+        )
+
+    assert substeps == 6
+    assert measured_alpha == pytest.approx(target_alpha, rel=2e-7)
+    output = physics._current_grid.to_numpy()[:nx, :ny, :nz, 2].astype(np.float64)
+    assert np.isfinite(output).all()
+
+    low_coefficient = float(np.sum(output * low_mode) / np.sum(low_mode**2))
+    high_coefficient = float(np.sum(output * high_mode) / np.sum(high_mode**2))
+    low_stage_gain = 1.0 - (measured_alpha / substeps) * _neumann_laplacian_magnitude(
+        shape, low_wave
+    )
+    expected_low = low_stage_gain ** (20 * substeps)
+
+    assert low_coefficient == pytest.approx(expected_low, rel=2e-5, abs=2e-7)
+    assert abs(high_coefficient) < 2e-7
+
+
+def test_gbd_subcycling_runs_one_full_regeneration_at_1000_particles(physics):
+    """Scatter, stable diffusion, and regeneration remain finite above the CFL limit."""
+    from source.solvers.VPM.particles.container import Particles
+
+    side = 10
+    h = 0.03125
+    macro_dt = 0.05
+    target_alpha = 0.425
+    nu = 1.0e-3
+    nu_eff_value = target_alpha * h**2 / macro_dt
+    axis = (np.arange(side, dtype=np.float32) - 0.5 * (side - 1)) * h
+    x, y, z = np.meshgrid(axis, axis, axis, indexing="ij")
+    position = np.column_stack((x.ravel(), y.ravel(), z.ravel())).astype(np.float32)
+    radius_sq = x**2 + y**2 + z**2
+    circulation = np.zeros((side**3, 3), dtype=np.float32)
+    circulation[:, 2] = (1.0e-3 * np.exp(-radius_sq / (2.0 * (2.0 * h) ** 2))).ravel()
+
+    particles = Particles(max_particles=30_000)
+    particles.add_vortex_particles(
+        position=position,
+        velocity=np.zeros_like(position),
+        vortex_strength=circulation,
+        core_radius=np.full(side**3, 1.1 * h, dtype=np.float32),
+        volume=np.full(side**3, h**3, dtype=np.float32),
+        kinematic_viscosity=np.full(side**3, nu, dtype=np.float32),
+        eddy_viscosity=np.full(side**3, nu_eff_value - nu, dtype=np.float32),
+    )
+
+    regenerated = physics.gbd_diffusion(
+        particles,
+        time_step_size=macro_dt,
+        particle_spacing=h,
+        nu=nu,
+        domain_padding=3.0,
+        regen_threshold=1.0e-10,
+        regen_threshold_mode="absolute",
+        nu_eff=np.full(side**3, nu_eff_value, dtype=np.float32),
+        max_nodes=30_000,
+        cap_abs_fraction=0.99,
+    )
+
+    assert regenerated is not None
+    assert 0 < len(regenerated["position"]) < particles.capacity
+    assert all(np.isfinite(values).all() for values in regenerated.values())
+    initial_total = circulation.astype(np.float64).sum(axis=0)
+    regenerated_total = regenerated["vortex_strength"].astype(np.float64).sum(axis=0)
+    assert 0.9 < np.linalg.norm(regenerated_total) / np.linalg.norm(initial_total) <= 1.001
+    assert (
+        np.abs(regenerated["vortex_strength"][:, 2]).max() <= 1.01 * np.abs(circulation[:, 2]).max()
+    )
 
 
 def test_gbd_variable_laplacian_scales_moment_with_nu_eff(physics):

@@ -266,7 +266,7 @@ def run_case(
         group_id=0,
     )
     if particle_distribution == "hexagonal":
-        solver.remove_weak_particles(percent=0.1, per_group=True)
+        solver.remove_weak_particles(percent=0.1)
 
     initial_strength = np.abs(solver.particles.vortex_strength_cpu()).max()
     manifest = {

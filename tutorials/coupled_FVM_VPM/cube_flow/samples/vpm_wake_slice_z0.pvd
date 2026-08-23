@@ -2,5 +2,16 @@
 <VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
   <Collection>
     <DataSet timestep="0.09" file="vpm_wake_slice_z0_000003.vts"/>
+    <DataSet timestep="0.21" file="vpm_wake_slice_z0_000007.vts"/>
+    <DataSet timestep="0.3" file="vpm_wake_slice_z0_000010.vts"/>
+    <DataSet timestep="0.39" file="vpm_wake_slice_z0_000013.vts"/>
+    <DataSet timestep="0.51" file="vpm_wake_slice_z0_000017.vts"/>
+    <DataSet timestep="0.6" file="vpm_wake_slice_z0_000020.vts"/>
+    <DataSet timestep="0.69" file="vpm_wake_slice_z0_000023.vts"/>
+    <DataSet timestep="0.81" file="vpm_wake_slice_z0_000027.vts"/>
+    <DataSet timestep="0.9" file="vpm_wake_slice_z0_000030.vts"/>
+    <DataSet timestep="0.99" file="vpm_wake_slice_z0_000033.vts"/>
+    <DataSet timestep="1.11" file="vpm_wake_slice_z0_000037.vts"/>
+    <DataSet timestep="1.2" file="vpm_wake_slice_z0_000040.vts"/>
   </Collection>
 </VTKFile>
