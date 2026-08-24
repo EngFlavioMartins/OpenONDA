@@ -119,7 +119,10 @@ def write_surface_cp(fvm_solver, sol_dir: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--Re", type=float, default=1000.0, help="chord Reynolds number Re = U c / nu"
+        "--Re",
+        type=float,
+        default=1000.0,
+        help="chord Reynolds number based on freestream speed and kinematic viscosity",
     )
     parser.add_argument("--angle", type=float, default=0.0, help="angle of attack [deg]")
     parser.add_argument("--end-time", type=float, default=25.0, help="simulation end time [s]")

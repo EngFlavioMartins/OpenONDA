@@ -11,8 +11,6 @@ import numpy as np
 import vtk
 from vtk.util import numpy_support
 
-from source.schemas import SCHEMA_VERSION, validate_serialized_field_name
-
 # =========================================================
 
 
@@ -67,30 +65,22 @@ def export_panels_vtk(solver, filename: str, compression: bool = True):
 
     # Add cell data
     polydata.GetCellData().AddArray(numpy_support.numpy_to_vtk(normal, deep=True))
-    validate_serialized_field_name("normal")
     polydata.GetCellData().GetArray(0).SetName("normal")
 
     polydata.GetCellData().AddArray(numpy_support.numpy_to_vtk(area, deep=True))
-    validate_serialized_field_name("area")
     polydata.GetCellData().GetArray(1).SetName("area")
 
     polydata.GetCellData().AddArray(numpy_support.numpy_to_vtk(doublet_strength, deep=True))
-    validate_serialized_field_name("doublet_strength")
     polydata.GetCellData().GetArray(2).SetName("doublet_strength")
 
     pressure_coefficient = lattice.pressure_coefficient.to_numpy()[:n_panels]
     polydata.GetCellData().AddArray(numpy_support.numpy_to_vtk(pressure_coefficient, deep=True))
-    validate_serialized_field_name("pressure_coefficient")
     polydata.GetCellData().GetArray(3).SetName("pressure_coefficient")
 
     # Add time stamp
     time_array = numpy_support.numpy_to_vtk(np.array([solver.time]), deep=True)
-    validate_serialized_field_name("time")
     time_array.SetName("time")
     polydata.GetFieldData().AddArray(time_array)
-    schema_array = numpy_support.numpy_to_vtk(np.asarray([SCHEMA_VERSION]))
-    schema_array.SetName("physical_field_schema_version")
-    polydata.GetFieldData().AddArray(schema_array)
 
     _write_polydata_file(polydata, filename, compression)
 

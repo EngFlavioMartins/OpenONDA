@@ -145,7 +145,6 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             rd_ratio=4.0,
             effective_viscosity=None,
             max_nodes=cfg.regularization_max_particles,
-            cap_abs_fraction=0.995,
         )
     if proposal is None:
         raise RuntimeError("conservative regularization produced no particle field")
@@ -163,7 +162,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
 
     new_position = np.asarray(proposal["position"], dtype=np.float64)
     proposed_vortex_strength = np.asarray(proposal["vortex_strength"], dtype=np.float64)
-    new_radius = np.asarray(proposal["core_radius"], dtype=np.float64)
+    new_core_radius = np.asarray(proposal["core_radius"], dtype=np.float64)
     new_particle_volume = np.asarray(proposal["particle_volume"], dtype=np.float64)
     count = len(new_position)
     new_velocity = np.asarray(proposal.get("velocity", np.zeros((count, 3))), dtype=ctx.np_dtype)
@@ -181,12 +180,12 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         proposal.get("group_id", np.zeros(count, dtype=np.int32)), dtype=np.int32
     )
 
-    def upload_and_integrate(strength: np.ndarray) -> tuple[np.ndarray, dict]:
-        uploaded_strength = np.asarray(strength, dtype=ctx.np_dtype)
+    def upload_and_integrate(vortex_strength: np.ndarray) -> tuple[np.ndarray, dict]:
+        uploaded_vortex_strength = np.asarray(vortex_strength, dtype=ctx.np_dtype)
         ctx.replace_vortex_particles(
             position=np.asarray(proposal["position"], dtype=ctx.np_dtype),
             velocity=new_velocity,
-            vortex_strength=uploaded_strength,
+            vortex_strength=uploaded_vortex_strength,
             core_radius=np.asarray(proposal["core_radius"], dtype=ctx.np_dtype),
             particle_volume=np.asarray(proposal["particle_volume"], dtype=ctx.np_dtype),
             kinematic_viscosity=new_kinematic_viscosity,
@@ -199,7 +198,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             ctx.time(),
             record_history=False,
         )
-        return uploaded_strength, integrals
+        return uploaded_vortex_strength, integrals
 
     def restore_old_field() -> None:
         ctx.replace_vortex_particles(**old_state)
@@ -207,15 +206,15 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         ctx.set_vortex_strength_removed(vortex_strength_removed_before)
 
     def evaluate_moment_corrected_candidate():
-        candidate_radius = np.asarray(proposal["core_radius"], dtype=np.float64)
+        candidate_core_radius = np.asarray(proposal["core_radius"], dtype=np.float64)
         candidate_nullspace = _MomentNullspace(
-            gaussian_invariant_rows(new_position, candidate_radius),
+            gaussian_invariant_rows(new_position, candidate_core_radius),
             new_particle_volume,
         )
         proposed_moments = gaussian_particle_moments(
             new_position,
             proposed_vortex_strength,
-            candidate_radius,
+            candidate_core_radius,
         )
         moment_change = np.concatenate(
             (
@@ -240,7 +239,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             / max(np.linalg.norm(proposed_vortex_strength), np.finfo(float).tiny)
         )
         return (
-            candidate_radius,
+            candidate_core_radius,
             candidate_nullspace,
             corrected,
             candidate,
@@ -254,7 +253,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     adaptive_core_used = False
     try:
         (
-            new_radius,
+            new_core_radius,
             nullspace,
             moment_corrected,
             candidate,
@@ -277,7 +276,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                     dtype=ctx.np_dtype,
                 )
                 (
-                    new_radius,
+                    new_core_radius,
                     nullspace,
                     moment_corrected,
                     candidate,
@@ -289,7 +288,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             if candidate_energy_change > 1.0e-7 or candidate_enstrophy_change > 1.0e-7:
                 raise RuntimeError(
                     "regularization could not find a non-injecting Gaussian core: "
-                    f"core={float(new_radius.mean()):.3e}, "
+                    f"core_radius={float(new_core_radius.mean()):.3e}, "
                     f"dE/E={candidate_energy_change:.3e}, "
                     f"dZ/Z={candidate_enstrophy_change:.3e}"
                 )
@@ -297,8 +296,8 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         if adaptive_core_used:
             Logging.message(
                 "[VPM][Regularization] adaptive_core=true "
-                f"configured_radius_m={configured_core_radius:.3e} "
-                f"selected_radius_m={float(new_radius.mean()):.3e}"
+                f"configured_core_radius_m={configured_core_radius:.3e} "
+                f"selected_core_radius_m={float(new_core_radius.mean()):.3e}"
             )
 
         if projection_only or (
@@ -393,7 +392,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         preliminary_health = discretization_health(
             new_position,
             uploaded.astype(np.float64),
-            new_radius,
+            new_core_radius,
         )
         if (
             projection_only
@@ -403,7 +402,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             projection_result = constrained_divergence_relaxation(
                 new_position,
                 uploaded.astype(np.float64),
-                new_radius,
+                new_core_radius,
                 new_particle_volume,
                 grid_spacing=spacing,
                 max_correction_norm=cfg.regularization_projection_max_correction,
@@ -424,7 +423,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         raise
 
     audited = uploaded.astype(np.float64)
-    after_moments = gaussian_particle_moments(new_position, audited, new_radius)
+    after_moments = gaussian_particle_moments(new_position, audited, new_core_radius)
     energy_transfer = float(after_integrals["total_kinetic_energy"]) - float(
         before_integrals["total_kinetic_energy"]
     )

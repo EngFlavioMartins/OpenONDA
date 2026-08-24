@@ -48,44 +48,48 @@ ONE_OVER_FOUR_PI = 0.0795774715459
 TWO_OVER_SQRT_PI = 1.1283791671
 
 
-def _q_kernel(rho: np.ndarray) -> np.ndarray:
+def _q_kernel(normalized_distance: np.ndarray) -> np.ndarray:
     """Velocity kernel q(r/σ) - Gaussian regularized Biot-Savart.
 
     Args:
-        rho: Normalized distance r/σ (can be array)
+        normalized_distance: Normalized distance r/σ (can be array)
 
     Returns:
         Kernel values (same shape as input)
     """
-    rho = np.atleast_1d(rho)
-    result = np.zeros_like(rho, dtype=np.float64)
+    normalized_distance = np.atleast_1d(normalized_distance)
+    result = np.zeros_like(normalized_distance, dtype=np.float64)
 
-    # Small rho: series, since the closed form below cancels to nothing.
+    # Small normalized_distance: series, since the closed form below cancels to nothing.
     # The coefficient is 4/(3 sqrt(pi)); it read 4/(3 sqrt(pi^3)) here — a factor
     # of pi, the same defect that was in the treecode's copy of this kernel.
-    small = rho < 1e-4
-    result[small] = (4.0 / (3.0 * np.sqrt(np.pi))) * (rho[small] ** 3) * ONE_OVER_FOUR_PI
+    small = normalized_distance < 1e-4
+    result[small] = (
+        (4.0 / (3.0 * np.sqrt(np.pi))) * (normalized_distance[small] ** 3) * ONE_OVER_FOUR_PI
+    )
 
     # Normal case: erf-based formula
     large = ~small
-    erf_term = erf(rho[large])
-    exp_term = TWO_OVER_SQRT_PI * rho[large] * np.exp(-(rho[large] ** 2))
+    erf_term = erf(normalized_distance[large])
+    exp_term = (
+        TWO_OVER_SQRT_PI * normalized_distance[large] * np.exp(-(normalized_distance[large] ** 2))
+    )
     result[large] = (erf_term - exp_term) * ONE_OVER_FOUR_PI
 
     return result
 
 
-def _zeta_kernel(rho: np.ndarray) -> np.ndarray:
+def _zeta_kernel(normalized_distance: np.ndarray) -> np.ndarray:
     """Vorticity kernel ζ(r/σ) - Gaussian distribution.
 
     Args:
-        rho: Normalized distance r/σ
+        normalized_distance: Normalized distance r/σ
 
     Returns:
         Kernel values
     """
     ONE_OVER_PI_15 = 0.179587122125
-    return ONE_OVER_PI_15 * np.exp(-(rho**2))
+    return ONE_OVER_PI_15 * np.exp(-(normalized_distance**2))
 
 
 @ti.data_oriented
@@ -192,7 +196,7 @@ class PressurePhysics(PhysicsBase):
             kinematic_viscosity: Kinematic viscosity [m²/s]
             include_viscous: Include viscous term (default True)
             include_temporal: Include temporal term (default True)
-            laplacian_spacing: Step size for Laplacian. If None, uses average particle radius.
+            laplacian_spacing: Step size for Laplacian. If None, uses average particle core radius.
             include_freestream: Include background velocity in computations
             temporal_method: 'lagrangian' (default, particle-based with motion term) or
                            'eulerian' (fixed-point backward differences)
@@ -298,7 +302,7 @@ class PressurePhysics(PhysicsBase):
             kinematic_viscosity: Kinematic viscosity [m²/s]
             include_viscous: Include viscous term (default True)
             include_temporal: Include temporal term (default True)
-            laplacian_spacing: Step size for Laplacian. If None, uses average particle radius.
+            laplacian_spacing: Step size for Laplacian. If None, uses average particle core radius.
             include_freestream: Include background velocity in computations
             temporal_method: 'lagrangian' (default) or 'eulerian'
             velocity_previous: Previous velocity field for Eulerian method (M, 3)
@@ -346,7 +350,9 @@ class PressurePhysics(PhysicsBase):
         if include_temporal:
             if temporal_method == "eulerian":
                 if velocity_previous is None or time_step_size is None:
-                    raise ValueError("temporal_method='eulerian' requires velocity_previous and dt")
+                    raise ValueError(
+                        "temporal_method='eulerian' requires velocity_previous and time_step_size"
+                    )
                 temporal = (target_velocity - velocity_previous) / time_step_size
             else:
                 temporal = self._compute_temporal_term_with_particles(
@@ -406,7 +412,7 @@ class PressurePhysics(PhysicsBase):
             include_viscous: Include viscous term kinematic_viscosity∇²u (default True)
             include_temporal: Include temporal term ∂u/∂t (default True)
             laplacian_spacing: Step size for Laplacian finite difference.
-                        If None, uses average particle radius.
+                        If None, uses average particle core radius.
 
         Returns:
             np.ndarray: Pressure gradient at each particle [N, 3], units [Pa/m]
@@ -468,7 +474,7 @@ class PressurePhysics(PhysicsBase):
                 temporal_method='eulerian'
             time_step_size: Time step for Eulerian method. Required if temporal_method='eulerian'
             particle_spacing: Step size for the Laplacian finite difference. If None, uses average
-                particle radius
+                particle core radius
             return_velocity: If True, also return the internally computed velocity
             theta: Opening angle parameter for the treecode (smaller = more accurate)
             freestream_velocity: Freestream velocity [3] used when there are no
@@ -528,7 +534,9 @@ class PressurePhysics(PhysicsBase):
         temporal = np.zeros_like(velocity)
         if include_temporal:
             if velocity_previous is None or time_step_size is None:
-                raise ValueError("Treecode pressure gradients require velocity_previous and dt")
+                raise ValueError(
+                    "Treecode pressure gradients require velocity_previous and time_step_size"
+                )
             temporal = (velocity - velocity_previous) / float(time_step_size)
         viscous = np.zeros_like(velocity)
         if include_viscous and kinematic_viscosity > 0.0:
@@ -566,7 +574,9 @@ class PressurePhysics(PhysicsBase):
             return np.zeros((M, 3), dtype=np.float64)
         if temporal_method == "eulerian":
             if velocity_previous is None or time_step_size is None:
-                raise ValueError("temporal_method='eulerian' requires velocity_previous and dt")
+                raise ValueError(
+                    "temporal_method='eulerian' requires velocity_previous and time_step_size"
+                )
             return (target_velocity - velocity_previous) / time_step_size
         return self._compute_temporal_term_with_particles(
             particles, target_position, include_freestream
@@ -688,16 +698,18 @@ class PressurePhysics(PhysicsBase):
                 sigma = core_radius[i]
 
                 if r_mag > EPS:
-                    rho = r_mag / sigma
+                    normalized_distance = r_mag / sigma
 
-                    if rho > MIN_RHO:
+                    if normalized_distance > MIN_RHO:
                         # Compute kernel values
-                        # q(rho) = [erf(rho) - (2/√π) * rho * exp(-rho²)] / (4π)
-                        erf_val = self._erf_approx(rho)
-                        exp_val = ti.exp(-rho * rho)
-                        q_val = (erf_val - TWO_OVER_SQRT_PI * rho * exp_val) * ONE_OVER_FOUR_PI
+                        # q(normalized_distance) = [erf(normalized_distance) - (2/√π) * normalized_distance * exp(-normalized_distance²)] / (4π)
+                        erf_val = self._erf_approx(normalized_distance)
+                        exp_val = ti.exp(-normalized_distance * normalized_distance)
+                        q_val = (
+                            erf_val - TWO_OVER_SQRT_PI * normalized_distance * exp_val
+                        ) * ONE_OVER_FOUR_PI
 
-                        # zeta(rho) = exp(-rho²) / π^1.5
+                        # zeta(normalized_distance) = exp(-normalized_distance²) / π^1.5
                         zeta_val = ONE_OVER_PI_15 * exp_val
 
                         r_mag_cubed = r_mag * r_mag * r_mag
@@ -769,14 +781,14 @@ class PressurePhysics(PhysicsBase):
         a3 = 1.421413741
         a4 = -1.453152027
         a5 = 1.061405429
-        p = 0.327591100
+        approximation_coefficient = 0.327591100
 
         sign = 1.0
         x_abs = x
         if x < 0:
             sign = -1.0
             x_abs = -x
-        t = 1.0 / (1.0 + p * x_abs)
+        t = 1.0 / (1.0 + approximation_coefficient * x_abs)
         y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * ti.exp(-x_abs * x_abs))
         return sign * y
 

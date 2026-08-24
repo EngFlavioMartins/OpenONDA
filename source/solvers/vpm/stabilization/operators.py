@@ -130,14 +130,14 @@ class StabilizationOperators:
     @ti.kernel
     def _apply_pedrizzetti_relaxation_kernel(
         self,
-        strength: ti.template(),
+        vortex_strength_field: ti.template(),
         velocity_gradient: ti.template(),
         factor: ti.f32,
-        conserve_strength: ti.i32,
+        preserve_vortex_strength_magnitude: ti.i32,
         count: ti.i32,
     ):
         for i in range(count):
-            vortex_strength = strength[i]
+            vortex_strength = vortex_strength_field[i]
             gradient = velocity_gradient[i]
             vorticity = ti.Vector(
                 [
@@ -161,10 +161,10 @@ class StabilizationOperators:
                     factor * vortex_strength_norm / vorticity_norm
                 ) * vorticity
                 relaxed_norm = relaxed.norm()
-                if conserve_strength == 1 and relaxed_norm > tiny:
+                if preserve_vortex_strength_magnitude == 1 and relaxed_norm > tiny:
                     relaxed *= vortex_strength_norm / relaxed_norm
                     relaxed_norm = vortex_strength_norm
-                strength[i] = relaxed
+                vortex_strength_field[i] = relaxed
                 misalignment = ti.acos(cosine)
                 ti.atomic_add(
                     self._pedrizzetti_misalignment_sum[None], misalignment * vortex_strength_norm
@@ -179,7 +179,7 @@ class StabilizationOperators:
         particles,
         factor: float,
         *,
-        conserve_strength: bool = True,
+        preserve_vortex_strength_magnitude: bool = True,
     ) -> dict[str, float]:
         """Rotate every strength toward the vorticity direction it induces.
 
@@ -187,7 +187,7 @@ class StabilizationOperators:
         so this must be called while that gradient still describes the state
         being relaxed.  Each strength moves along the short arc between
         ``alpha_p`` and ``omega(x_p)``, which bounds the correction by the
-        misalignment itself; with ``conserve_strength`` the rotation is exact
+        misalignment itself; with ``preserve_vortex_strength_magnitude`` the rotation is exact
         and no particle strength is created or destroyed.
 
         Vector vortex strength, linear impulse, and angular impulse are *not*
@@ -212,7 +212,7 @@ class StabilizationOperators:
             particles.vortex_strength,
             particles.velocity_gradient,
             float(factor),
-            1 if conserve_strength else 0,
+            1 if preserve_vortex_strength_magnitude else 0,
             count,
         )
         ti.sync()

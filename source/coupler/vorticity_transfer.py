@@ -189,11 +189,11 @@ def normalized_divergence(
     particle_spacing: float,
 ) -> tuple[float, float]:
     """Return dimensionless L2 and Linf divergence of a lattice field."""
-    strength = np.asarray(vortex_strength, dtype=np.float64).reshape(*shape, 3)
-    divergence = discrete_divergence(strength, shape, particle_spacing)
+    lattice_vortex_strength = np.asarray(vortex_strength, dtype=np.float64).reshape(*shape, 3)
+    divergence = discrete_divergence(lattice_vortex_strength, shape, particle_spacing)
     if divergence.size == 0:
         return 0.0, 0.0
-    vorticity = strength[1:-1, 1:-1, 1:-1] / float(particle_spacing) ** 3
+    vorticity = lattice_vortex_strength[1:-1, 1:-1, 1:-1] / float(particle_spacing) ** 3
     scale_l2 = float(np.linalg.norm(vorticity)) / np.sqrt(max(vorticity.size // 3, 1))
     scale_max = float(np.max(np.linalg.norm(vorticity, axis=-1), initial=0.0))
     h = float(particle_spacing)
@@ -243,15 +243,15 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
         else "not_evaluated"
     )
     return (
-        f"[Coupler][Transfer] step={step} existing_particles={result.n_existing_particles} "
-        f"updated_particles={result.n_updated_particles} "
-        f"added_particles={result.n_added_particles} "
-        f"support_nodes={result.n_support_nodes} "
+        f"[Coupler][Transfer] step={step} n_existing_particles={result.n_existing_particles} "
+        f"n_updated_particles={result.n_updated_particles} "
+        f"n_added_particles={result.n_added_particles} "
+        f"n_support_nodes={result.n_support_nodes} "
         "vortex_strength_correction_magnitude_sum_m3_s="
         f"{result.correction_vortex_strength_l1:.3e} "
         f"net_vortex_strength_correction_magnitude_m3_s="
         f"{float(np.linalg.norm(result.correction_vortex_strength_net)):.3e} "
-        f"divergence_l2_rel={divergence}"
+        f"relative_vorticity_divergence_l2={divergence}"
     )
 
 
@@ -394,7 +394,7 @@ def solenoidal_velocity_correction(
 def coalesce_lattice_corrections(
     result: TransferResult,
     existing_position: np.ndarray,
-    existing_radius: np.ndarray,
+    existing_core_radius: np.ndarray,
     lattice: TransferLattice,
     particle_spacing: float,
     correction_radius: float,
@@ -408,9 +408,9 @@ def coalesce_lattice_corrections(
         return result
 
     position = np.asarray(existing_position, dtype=np.float64).reshape(-1, 3)
-    radius = np.asarray(existing_radius, dtype=np.float64).reshape(-1)
-    if len(position) != len(radius):
-        raise ValueError("existing particle position and radius counts must match")
+    core_radius = np.asarray(existing_core_radius, dtype=np.float64).reshape(-1)
+    if len(position) != len(core_radius):
+        raise ValueError("existing particle position and core_radius counts must match")
 
     h = float(particle_spacing)
     lattice_index = np.rint((position - lattice.origin) / h).astype(np.int64)
@@ -418,7 +418,7 @@ def coalesce_lattice_corrections(
     on_lattice = np.max(np.abs(position - reconstructed), axis=1) <= 1.0e-4 * h
     on_lattice &= np.all(lattice_index >= 0, axis=1)
     on_lattice &= np.all(lattice_index < np.asarray(lattice.shape), axis=1)
-    on_lattice &= np.isclose(radius, correction_radius, rtol=1.0e-5, atol=1.0e-7 * h)
+    on_lattice &= np.isclose(core_radius, correction_radius, rtol=1.0e-5, atol=1.0e-7 * h)
 
     existing_by_node: dict[tuple[int, int, int], int] = {}
     for particle_index in np.flatnonzero(on_lattice):

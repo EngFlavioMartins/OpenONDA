@@ -37,8 +37,8 @@ SPAN = 5.0
 DENSITY = 1.0
 REYNOLDS = 1000.0
 SPACING = float(os.environ.get("OPENONDA_SPACING", "0.20" if SMOKE else "0.04"))
-FVM_TIME_STEP_SIZE = float(os.environ.get("OPENONDA_FVM_DT", "0.01"))
-VPM_TIME_STEP_SIZE = float(os.environ.get("OPENONDA_VPM_DT", "0.04"))
+FVM_TIME_STEP_SIZE = float(os.environ.get("OPENONDA_FVM_TIME_STEP_SIZE", "0.01"))
+VPM_TIME_STEP_SIZE = float(os.environ.get("OPENONDA_VPM_TIME_STEP_SIZE", "0.04"))
 END_TIME = float(os.environ.get("OPENONDA_T_END", "0.12" if SMOKE else "12.0"))
 ANGLE = math.radians(ALPHA_DEG)
 FREESTREAM_VELOCITY = (math.cos(ANGLE), math.sin(ANGLE), 0.0)
@@ -59,7 +59,7 @@ def naca4_vertices(code: str, n_chord: int = 161) -> np.ndarray:
     if len(code) != 4 or not code.isdigit():
         raise ValueError("NACA code must contain four digits")
     m = int(code[0]) / 100.0
-    p = int(code[1]) / 10.0
+    max_camber_position = int(code[1]) / 10.0
     thickness = int(code[2:]) / 100.0
     beta = np.linspace(0.0, np.pi, n_chord)
     x = 0.5 * (1.0 - np.cos(beta))
@@ -69,14 +69,16 @@ def naca4_vertices(code: str, n_chord: int = 161) -> np.ndarray:
         * (0.2969 * np.sqrt(x) - 0.1260 * x - 0.3516 * x**2 + 0.2843 * x**3 - 0.1036 * x**4)
     )
     yc = np.where(
-        x < p,
-        m / p**2 * (2.0 * p * x - x**2),
-        m / (1.0 - p) ** 2 * ((1.0 - 2.0 * p) + 2.0 * p * x - x**2),
+        x < max_camber_position,
+        m / max_camber_position**2 * (2.0 * max_camber_position * x - x**2),
+        m
+        / (1.0 - max_camber_position) ** 2
+        * ((1.0 - 2.0 * max_camber_position) + 2.0 * max_camber_position * x - x**2),
     )
     slope = np.where(
-        x < p,
-        2.0 * m / p**2 * (p - x),
-        2.0 * m / (1.0 - p) ** 2 * (p - x),
+        x < max_camber_position,
+        2.0 * m / max_camber_position**2 * (max_camber_position - x),
+        2.0 * m / (1.0 - max_camber_position) ** 2 * (max_camber_position - x),
     )
     theta = np.arctan(slope)
     upper = np.column_stack((x - yt * np.sin(theta), yc + yt * np.cos(theta)))
@@ -226,8 +228,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--smoke", action="store_true", help="fast smoke-test settings")
     parser.add_argument("--end-time", type=float, help="simulation end time [s]")
     parser.add_argument("--spacing", type=float, help="core grid spacing [m]")
-    parser.add_argument("--fvm-dt", type=float, help="FVM time step [s]")
-    parser.add_argument("--vpm-dt", type=float, help="VPM time step [s]")
+    parser.add_argument("--fvm-time-step-size", type=float, help="FVM time step size [s]")
+    parser.add_argument("--vpm-time-step-size", type=float, help="VPM time step size [s]")
     parser.add_argument("--max-particles", type=int, help="particle budget")
     parser.add_argument("--marker-ratio", type=float, help="IBM marker spacing / grid spacing")
     return parser.parse_args(argv)
@@ -250,9 +252,9 @@ def _run_with_overrides(argv: list[str]) -> int:
     for flag, key in (
         ("end_time", "OPENONDA_T_END"),
         ("spacing", "OPENONDA_SPACING"),
-        ("fvm_dt", "OPENONDA_FVM_DT"),
-        ("vpm_dt", "OPENONDA_VPM_DT"),
-        ("max_n_particles", "OPENONDA_MAX_PARTICLES"),
+        ("fvm_time_step_size", "OPENONDA_FVM_TIME_STEP_SIZE"),
+        ("vpm_time_step_size", "OPENONDA_VPM_TIME_STEP_SIZE"),
+        ("max_particles", "OPENONDA_MAX_PARTICLES"),
         ("marker_ratio", "OPENONDA_IBM_MARKER_RATIO"),
     ):
         if getattr(args, flag) is not None:
@@ -273,7 +275,8 @@ def _run_with_overrides(argv: list[str]) -> int:
 def main() -> None:
     print("\n===== SIMULATION =====")
     print(
-        f"  FVM dt={FVM_TIME_STEP_SIZE}s / VPM dt={VPM_TIME_STEP_SIZE}s, "
+        f"  FVM time_step_size={FVM_TIME_STEP_SIZE}s / "
+        f"VPM time_step_size={VPM_TIME_STEP_SIZE}s, "
         f"spacing={SPACING}, particles<={MAX_N_PARTICLES}"
     )
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)

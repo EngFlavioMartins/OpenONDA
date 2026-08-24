@@ -3,7 +3,7 @@ Generate Single Blade Surface Geometry
 ==================
 Utilities for creating and exporting a single wind turbine blade for VLM.
 Wind Turbine Configuration:
-- Wind comes from -X direction (velocity = [-U, 0, 0])
+- Wind comes from the negative X direction.
 - Rotor rotates about X-axis with positive angular_velocity
 - Rotor plane is in YZ
 - Blade at azimuth=0 points in +Y direction
@@ -25,7 +25,7 @@ from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import Aircraft,
 
 
 def create_blade(
-    radius: float = 6.0,
+    rotor_radius: float = 6.0,
     hub_radius: float = 0.6,
     root_chord: float = 0.8,
     tip_chord: float = 0.3,
@@ -141,7 +141,7 @@ def create_blade(
             if pitch_schedule is not None
             else np.linspace(root_pitch_deg, tip_pitch_deg, len(r_s))
         )
-        chord = np.interp(r_s, [hub_radius, radius], [root_chord, tip_chord])
+        chord = np.interp(r_s, [hub_radius, rotor_radius], [root_chord, tip_chord])
 
         N = len(r_s) - 1  # number of segments
         total_span = r_s[-1] - r_s[0]
@@ -171,7 +171,7 @@ def create_blade(
             wing.add_segment(segment)
     else:
         # Original single-segment path (linear-beta root → tip)
-        r_inner, r_outer = hub_radius, radius
+        r_inner, r_outer = hub_radius, rotor_radius
         c_inner, c_outer = root_chord, tip_chord
         a = blade_to_global(r_inner, le_frac * c_inner, root_pitch_deg, beta_root_deg)
         d = blade_to_global(r_inner, te_frac * c_inner, root_pitch_deg, beta_root_deg)
@@ -189,8 +189,8 @@ def create_blade(
     aircraft.add_wing(wing)
 
     # Set reference values
-    aircraft.refs["area"] = np.pi * radius**2 / 3
-    aircraft.refs["span"] = radius - hub_radius
+    aircraft.refs["area"] = np.pi * rotor_radius**2 / 3
+    aircraft.refs["span"] = rotor_radius - hub_radius
     aircraft.refs["chord"] = (root_chord + tip_chord) / 2
 
     return aircraft
@@ -234,7 +234,7 @@ def save_surface(aircraft: Aircraft, filepath: str) -> str:
 
 if __name__ == "__main__":
     blade = create_blade(
-        radius=6.0,
+        rotor_radius=6.0,
         hub_radius=0.6,
         root_chord=0.8,
         tip_chord=0.3,

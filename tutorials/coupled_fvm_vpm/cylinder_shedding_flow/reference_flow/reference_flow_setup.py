@@ -208,11 +208,11 @@ FVM_SETUP = fvm.FVMSetup(
 def _apply_seed(fvm_solver) -> None:
     """Impose the same controlled, divergence-free perturbation as the hybrid."""
     n_cells = fvm_solver.mesh_data["n_cells"]
-    centroids = np.asarray(fvm_solver.geo_data["cell_centre"][:n_cells], dtype=np.float64)
-    if centroids.shape[0] != n_cells:
+    cell_centre = np.asarray(fvm_solver.geo_data["cell_centre"][:n_cells], dtype=np.float64)
+    if cell_centre.shape[0] != n_cells:
         raise RuntimeError("Seed requires the full cell-centroid array on every rank")
     velocity = build_seed_velocity(
-        centroids,
+        cell_centre,
         base_velocity=INITIAL_VELOCITY,
         epsilon=SEED_AMPLITUDE,
         freestream_speed=FREESTREAM_SPEED,
@@ -230,7 +230,8 @@ def main() -> None:
     print("\n===== SIMULATION (FVM reference) =====")
     print(
         f"  Re={REYNOLDS}, infinite cylinder D={DIAMETER}, "
-        f"dt={FVM_TIME_STEP_SIZE}s, body/wake cell size={FVM_BODY_CELL_SIZE}/{FVM_WAKE_CELL_SIZE}, "
+        f"time_step_size={FVM_TIME_STEP_SIZE}s, "
+        f"body/wake cell size={FVM_BODY_CELL_SIZE}/{FVM_WAKE_CELL_SIZE}, "
         f"seed={SEED_AMPLITUDE:g}"
     )
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)

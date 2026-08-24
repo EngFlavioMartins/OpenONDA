@@ -109,7 +109,7 @@ def plot_growth_fit(figure_format: str) -> None:
             continue
         result = analyse_series(series)
         colour = util.colour(source)
-        env = np.maximum(result.amp, 1e-8)
+        env = np.maximum(result.amplitude, 1e-8)
         ax.semilogy(
             result.envelope_time, env, color=colour, lw=1.0, label=f"{result.label} envelope"
         )
@@ -285,7 +285,7 @@ def plot_spanwise_coherence(figure_format: str) -> None:
         if frame is None:
             continue
         ax.plot(
-            frame["z"],
+            frame["position_z"],
             frame["velocity_y"],
             color=util.colour(source),
             lw=0.9,

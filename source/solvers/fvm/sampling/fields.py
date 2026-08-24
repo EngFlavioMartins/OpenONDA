@@ -3,9 +3,9 @@
 ``LineSampler`` probes a line segment into a growing time-aware CSV;
 ``SurfaceSampler`` probes an axis-aligned plane into per-event ``.vts``
 snapshots plus a PVD index.  Both interpolate solver cell fields at fixed
-probe points by inverse distance weighting over the nearest cell centroids.
+probe points by inverse distance weighting over the nearest cell cell_centre.
 
-Sampling is partition-aware: in a partitioned run the owned cell centroids and
+Sampling is partition-aware: in a partitioned run the owned cell cell_centre and
 the required owned fields are gathered to root whenever a sampler is due, so
 probes see the *global* field — never just one rank's subdomain.
 
@@ -82,14 +82,14 @@ class _PointProbe(Sampler):
         self._tree = None
         self._tree_key = None
 
-    def _interpolate(self, field, centroids) -> np.ndarray:
+    def _interpolate(self, field, cell_centre) -> np.ndarray:
         # The key is derived from content so the tree survives across events
-        # even when the (gathered) centroid array is rebuilt on every step.
-        key = (len(centroids), tuple(np.asarray(centroids[0], dtype=float)))
+        # even when the gathered cell-centre array is rebuilt on every step.
+        key = (len(cell_centre), tuple(np.asarray(cell_centre[0], dtype=float)))
         if self._tree is None or self._tree_key != key:
-            self._tree = cKDTree(centroids)
+            self._tree = cKDTree(cell_centre)
             self._tree_key = key
-        k = min(self.k, len(centroids))
+        k = min(self.k, len(cell_centre))
         dists, indices = self._tree.query(self.points, k=k)
         if k == 1:
             dists = dists[:, np.newaxis]
@@ -110,18 +110,18 @@ class _PointProbe(Sampler):
         basis = _global_owned_view(context)
         if basis is None:
             return None
-        centroids, velocity, kinematic_pressure, vorticity = basis
+        cell_centre, velocity, kinematic_pressure, vorticity = basis
         data = {
             "position_x": self.points[:, 0],
             "position_y": self.points[:, 1],
             "position_z": self.points[:, 2],
-            "velocity_x": self._interpolate(velocity[:, 0], centroids),
-            "velocity_y": self._interpolate(velocity[:, 1], centroids),
-            "velocity_z": self._interpolate(velocity[:, 2], centroids),
-            "vorticity_x": self._interpolate(vorticity[:, 0], centroids),
-            "vorticity_y": self._interpolate(vorticity[:, 1], centroids),
-            "vorticity_z": self._interpolate(vorticity[:, 2], centroids),
-            "kinematic_pressure": self._interpolate(kinematic_pressure, centroids),
+            "velocity_x": self._interpolate(velocity[:, 0], cell_centre),
+            "velocity_y": self._interpolate(velocity[:, 1], cell_centre),
+            "velocity_z": self._interpolate(velocity[:, 2], cell_centre),
+            "vorticity_x": self._interpolate(vorticity[:, 0], cell_centre),
+            "vorticity_y": self._interpolate(vorticity[:, 1], cell_centre),
+            "vorticity_z": self._interpolate(vorticity[:, 2], cell_centre),
+            "kinematic_pressure": self._interpolate(kinematic_pressure, cell_centre),
         }
         return data
 

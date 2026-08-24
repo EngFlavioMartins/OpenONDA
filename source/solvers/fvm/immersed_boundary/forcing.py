@@ -65,7 +65,7 @@ class IBMForcing:
 
     Args:
         mesh_data: Mesh dictionary (needs owners/boundary for 2D detection).
-        geo_data:  Geometry dictionary (centroids, volumes, face_area_vector).
+        geo_data:  Geometry dictionary (cell_centre, volumes, face_area_vector).
         bodies:    List of :class:`ImmersedBody`.
         grid_spacing: Eulerian grid spacing in the uniform region around the
                    bodies.  If ``None``, inferred from the median cell size of
@@ -98,7 +98,7 @@ class IBMForcing:
         self.geo_data = geo_data
 
         n_cells = mesh_data["n_cells"]
-        centroids = geo_data["cell_centre"][:n_cells]
+        cell_centre = geo_data["cell_centre"][:n_cells]
         volumes = geo_data["cell_volume"][:n_cells]
 
         # Marker bookkeeping: one global array, slices per body.
@@ -131,7 +131,7 @@ class IBMForcing:
             dv = volumes
 
         # Grid spacing h near the body.
-        tree = cKDTree(centroids)
+        tree = cKDTree(cell_centre)
         if grid_spacing is None:
             _, nearest = tree.query(self.marker_position, k=1)
             grid_spacing = float(np.median(dv[nearest] ** (1.0 / ndim)))
@@ -149,7 +149,7 @@ class IBMForcing:
             if not cells:
                 continue
             cells = np.asarray(cells, dtype=np.int64)
-            d = centroids[cells] - self.marker_position[s]
+            d = cell_centre[cells] - self.marker_position[s]
             kernel_weight = np.ones(len(cells))
             for a in axes:
                 kernel_weight *= roma_delta_1d(d[:, a] / self.grid_spacing)
@@ -218,7 +218,7 @@ class IBMForcing:
         self.last_slip = 0.0
         self._solid_cell_masks = [
             (
-                body.contains(centroids, include_boundary=False)
+                body.contains(cell_centre, include_boundary=False)
                 if body.has_solid_geometry
                 else np.zeros(n_cells, dtype=bool)
             )
@@ -233,7 +233,7 @@ class IBMForcing:
     # ------------------------------------------------------------------ #
 
     def interpolate(self, velocity: np.ndarray) -> np.ndarray:
-        """Interpolate a cell field to the markers: ``I[U]_s`` (Ns, ...)."""
+        """Interpolate a cell field to the marker positions."""
         n = self.mesh_data["n_cells"]
         return self._interpolation_matrix @ velocity[:n]
 
@@ -310,7 +310,8 @@ class IBMForcing:
         therefore be corrected by the momentum rate of the fictitious fluid
         inside the solid:
 
-        ``F_body = -density * integral(f_ibm dV) + density * d/dt integral(Vb, U dV)``.
+        The returned body force combines the reaction to immersed forcing with
+        the time rate of change of fictitious-fluid momentum inside the body.
 
         Bodies without exact solid geometry retain the uncorrected transfer
         force because their interior is undefined.

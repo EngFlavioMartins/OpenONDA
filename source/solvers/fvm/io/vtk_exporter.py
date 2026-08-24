@@ -6,8 +6,6 @@ from typing import Any
 
 import numpy as np
 
-from source.schemas import SCHEMA_VERSION, validate_serialized_field_name
-
 from ..config.types import OutputConfig
 
 try:
@@ -226,20 +224,22 @@ class VTKExporter:
 
     @staticmethod
     def _inverse_distance(points: np.ndarray, targets: np.ndarray) -> np.ndarray:
-        """Inverse point-to-centroid distance, guarded against coincidence."""
+        """Inverse point-to-centre distance, guarded against coincidence."""
         distances = np.linalg.norm(points - targets, axis=1)
         return 1.0 / np.maximum(distances, np.finfo(np.float64).tiny)
 
-    def _centroids(self, owner_ids: np.ndarray, node_ids: np.ndarray, count: int) -> np.ndarray:
-        """Average the given nodes into one centroid per owning entity."""
+    def _geometry_centres(
+        self, owner_ids: np.ndarray, node_ids: np.ndarray, count: int
+    ) -> np.ndarray:
+        """Average the given nodes into one geometric centre per owning entity."""
         points = np.asarray(self.mesh_data["vertex_position"], dtype=np.float64)
-        centroids = np.zeros((count, 3), dtype=np.float64)
+        geometry_centre = np.zeros((count, 3), dtype=np.float64)
         for axis in range(3):
-            centroids[:, axis] = np.bincount(
+            geometry_centre[:, axis] = np.bincount(
                 owner_ids, weights=points[node_ids, axis], minlength=count
             )
         occurrences = np.bincount(owner_ids, minlength=count)
-        return centroids / np.maximum(occurrences, 1)[:, None]
+        return geometry_centre / np.maximum(occurrences, 1)[:, None]
 
     def _point_interpolation_operator(self, use_boundary: bool) -> dict[str, np.ndarray]:
         """Build a linearly exact cell/boundary → point interpolation.
@@ -276,7 +276,7 @@ class VTKExporter:
         n_cells = int(self.mesh_data["n_cells"])
 
         cell_ids, cell_points = self._cell_vertex_incidence()
-        cell_centre = self._centroids(cell_ids, cell_points, n_cells)
+        cell_centre = self._geometry_centres(cell_ids, cell_points, n_cells)
 
         face_ids, face_points = self._boundary_face_incidence()
         n_boundary = int(self.mesh_data["n_faces"]) - int(self.mesh_data["n_interior_faces"])
@@ -286,7 +286,7 @@ class VTKExporter:
             # adjacent cells.  A linear fit is not biased by the extra
             # interior samples the way a plain average would be, and the
             # wider stencil keeps corner points full rank.
-            face_centre = self._centroids(face_ids, face_points, n_boundary)
+            face_centre = self._geometry_centres(face_ids, face_points, n_boundary)
             row = np.concatenate([cell_points, face_points])
             source = np.concatenate([cell_ids, n_cells + face_ids])
             origin = np.concatenate([cell_centre[cell_ids], face_centre[face_ids]])
@@ -295,7 +295,7 @@ class VTKExporter:
             source = cell_ids
             origin = cell_centre[cell_ids]
 
-        # Distance-weighted least squares for f(x) ~ a + b.(x - p); the
+        # Distance-weighted least squares about the reference point; the
         # interpolated value at the point is the constant term a.
         offset = origin - points[row]
         weight = self._inverse_distance(origin, points[row])
@@ -392,7 +392,6 @@ class VTKExporter:
 
         self._grid.cell_data.clear()
         for name, data in fields.items():
-            validate_serialized_field_name(name)
             values = self._field_array(data)
             n_cells = self.mesh_data["n_cells"]
             n_with_boundary = (
@@ -413,10 +412,8 @@ class VTKExporter:
 
         self._grid.point_data.clear()
         for name, values in interpolated.items():
-            validate_serialized_field_name(name)
             self._grid.point_data[name] = self._field_array(values)
         for name, data in (point_fields or {}).items():
-            validate_serialized_field_name(name)
             values = self._field_array(data)
             if values.shape[0] != self._grid.n_points:
                 raise ValueError(
@@ -424,8 +421,6 @@ class VTKExporter:
                     f"expected {self._grid.n_points} points"
                 )
             self._grid.point_data[name] = values
-
-        self._grid.field_data["physical_field_schema_version"] = np.asarray([SCHEMA_VERSION])
 
         if interpolate_to_points:
             # This allows ParaView to offer Point-based filters and smooth gradients
@@ -444,9 +439,7 @@ class VTKExporter:
         self._grid.cell_data.clear()
         self._grid.point_data.clear()
         grid = self._grid.extract_cells(ids)
-        grid.field_data["physical_field_schema_version"] = np.asarray([SCHEMA_VERSION])
         for name, data in fields.items():
-            validate_serialized_field_name(name)
             values = self._field_array(data)
             if values.shape[0] != len(ids):
                 raise ValueError(

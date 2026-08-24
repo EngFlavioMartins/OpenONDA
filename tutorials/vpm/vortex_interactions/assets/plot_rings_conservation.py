@@ -62,8 +62,11 @@ def main() -> None:
         imp_cols = [f"impulse_{axis}" for axis in "xyz"]
         strength_cols = [f"net_vortex_strength_{axis}" for axis in "xyz"]
         if all(col in df.columns for col in strength_cols):
-            strength = df[strength_cols].to_numpy(float)
-            drift = np.linalg.norm(strength - strength[0], axis=1) / RING_CIRCULATION
+            net_vortex_strength = df[strength_cols].to_numpy(float)
+            drift = (
+                np.linalg.norm(net_vortex_strength - net_vortex_strength[0], axis=1)
+                / RING_CIRCULATION
+            )
             ax_circ.plot(nondimensional_time, np.maximum(drift, 1e-12), **common)
 
         if all(col in df.columns for col in imp_cols):

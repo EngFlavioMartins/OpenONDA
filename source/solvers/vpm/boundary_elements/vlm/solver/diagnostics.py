@@ -205,7 +205,6 @@ class VLMDiagnostics:
             "max_leading_edge_suction_parameter": max_leading_edge_suction_parameter,
             "n_particles_total": n_p,
         }
-
         df = pd.DataFrame([row])
         if not csv_path.exists():
             df.to_csv(csv_path, index=False)

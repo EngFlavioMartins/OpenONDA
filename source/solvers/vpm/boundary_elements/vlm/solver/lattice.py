@@ -11,12 +11,9 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 import taichi as ti
 
-from source.schemas import SCHEMA_VERSION, validate_serialized_field_name
-
 
 def _set_vtk_array_name(array, field_name: str) -> None:
     """Assign a canonical physical-field name to a VTK array."""
-    validate_serialized_field_name(field_name)
     array.SetName(field_name)
 
 
@@ -523,7 +520,7 @@ class VLMLattice:
 
     @ti.kernel
     def compute_panel_centre(self):
-        """Compute panel centers (centroid of panel_corner_position)."""
+        """Compute each panel centre as the mean of its corner positions."""
         for i in range(self.n_panels):
             curr_pos = ti.Vector([0.0, 0.0, 0.0])
             for k in range(4):
@@ -548,7 +545,6 @@ class VLMLattice:
                 vtkPoints,
                 vtkPolyData,
                 vtkQuad,
-                vtkStringArray,
                 vtkXMLPolyDataWriter,
             )
             from vtk.util import numpy_support
@@ -602,7 +598,7 @@ class VLMLattice:
         normals_vtk.SetNumberOfComponents(3)
         polydata.GetCellData().AddArray(normals_vtk)
 
-        # Panel centroid (geometric average of the 4 quad panel_corner_position)
+        # Panel centre (geometric average of the four corner positions).
         pos_np = self.panel_centre.to_numpy()[:N]
         pos_vtk = numpy_support.numpy_to_vtk(pos_np)
         _set_vtk_array_name(pos_vtk, "panel_centre")
@@ -692,12 +688,6 @@ class VLMLattice:
         time_array.SetNumberOfTuples(1)
         time_array.SetValue(0, time)
         polydata.GetFieldData().AddArray(time_array)
-
-        schema_array = vtkStringArray()
-        _set_vtk_array_name(schema_array, "physical_field_schema_version")
-        schema_array.SetNumberOfValues(1)
-        schema_array.SetValue(0, SCHEMA_VERSION)
-        polydata.GetFieldData().AddArray(schema_array)
 
         # Write to file
         writer = vtkXMLPolyDataWriter()

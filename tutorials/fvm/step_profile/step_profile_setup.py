@@ -191,7 +191,10 @@ def create_fvm_setup(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--Re", type=float, default=100.0, help="Reynolds number Re = U_bulk h / nu"
+        "--Re",
+        type=float,
+        default=100.0,
+        help="Reynolds number based on bulk speed, step height, and kinematic viscosity",
     )
     parser.add_argument("--end-time", type=float, default=12.0, help="simulation end time [s]")
     args = parser.parse_args()

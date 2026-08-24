@@ -38,7 +38,7 @@ def _log_outflow_velocity(
         return
     streamwise_velocity = velocity[mask] @ (np.asarray(freestream_velocity) / freestream_speed)
     logger.info(
-        "[Coupler][BoundaryOutflow] axis=%s sign=%+d faces=%d "
+        "[Coupler][BoundaryOutflow] axis=%s sign=%+d n_faces=%d "
         "min_streamwise_velocity_ratio=%.3f mean_streamwise_velocity_ratio=%.3f "
         "max_streamwise_velocity_ratio=%.3f",
         "xyz"[axis],
@@ -143,8 +143,9 @@ def evaluate_vpm_velocity(
             velocity = velocity - correction * normal
         corrected_flux = float(np.dot(np.einsum("ij,ij->i", velocity, normal), areas))
         logger.info(
-            "[Coupler][BoundaryFlux] particles=%d raw_m3_s=%.3e relative=%.3e "
-            "limit=%.3e normal_correction_m_s=%.3e corrected_m3_s=%.3e",
+            "[Coupler][BoundaryFlux] n_particles=%d integrated_flux_m3_s=%.3e "
+            "integrated_flux_ratio=%.3e acceptance_limit_ratio=%.3e "
+            "normal_velocity_correction_m_s=%.3e corrected_integrated_flux_m3_s=%.3e",
             int(vpm.particles.n_particles_total),
             raw_flux,
             raw_relative,
@@ -569,8 +570,8 @@ def advance_fvm_substeps(
     next_kinematic_pressure_gradient: np.ndarray | None = None,
     previous_normal_velocity: np.ndarray | None = None,
     next_normal_velocity: np.ndarray | None = None,
-    tangential_gradient_old: np.ndarray | None = None,
-    tangential_gradient: np.ndarray | None = None,
+    previous_tangential_gradient: np.ndarray | None = None,
+    next_tangential_gradient: np.ndarray | None = None,
 ) -> None:
     """Advance FVM substeps with interpolated VPM boundary condition data."""
     n_substeps = coupler.n_fvm_substeps
@@ -583,8 +584,10 @@ def advance_fvm_substeps(
         is_large_boundary_velocity_difference = boundary_velocity_difference_ratio > 0.5
         logger.log(
             logging.WARNING if is_large_boundary_velocity_difference else logging.INFO,
-            "[Coupler][TimeInterpolation] severity=%s substeps=%d fvm_dt_s=%.3e "
-            "boundary_velocity_difference_magnitude_max_over_freestream_speed=%.3f warning_limit=%.3f",
+            "[Coupler][TimeInterpolation] severity=%s n_fvm_substeps=%d "
+            "fvm_time_step_size_s=%.3e "
+            "boundary_velocity_difference_magnitude_max_over_freestream_speed_ratio=%.3f "
+            "warning_limit_ratio=%.3f",
             "warning" if is_large_boundary_velocity_difference else "info",
             n_substeps,
             coupler.fvm_time_step_size,
@@ -604,26 +607,26 @@ def advance_fvm_substeps(
                 1.0 - alpha
             ) * previous_kinematic_pressure_gradient + alpha * next_kinematic_pressure_gradient
         normal_velocity = None
-        tangential_gradient = None
+        interpolated_tangential_gradient = None
         if coupler.setup.boundary_condition_mode == "vorticity_mixed":
             if (
                 previous_normal_velocity is None
                 or next_normal_velocity is None
-                or tangential_gradient_old is None
-                or tangential_gradient is None
+                or previous_tangential_gradient is None
+                or next_tangential_gradient is None
             ):
                 raise RuntimeError("vorticity_mixed subcycling received an incomplete trace")
             normal_velocity = (
                 1.0 - alpha
             ) * previous_normal_velocity + alpha * next_normal_velocity
-            tangential_gradient = (
+            interpolated_tangential_gradient = (
                 1.0 - alpha
-            ) * tangential_gradient_old + alpha * tangential_gradient
+            ) * previous_tangential_gradient + alpha * next_tangential_gradient
         apply_fvm_boundary(
             coupler,
             patch,
             interpolated_velocity,
             pressure_gradient,
             normal_velocity=normal_velocity,
-            tangential_gradient=tangential_gradient,
+            tangential_gradient=interpolated_tangential_gradient,
         )

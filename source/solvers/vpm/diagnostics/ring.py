@@ -68,15 +68,18 @@ class RingDiagnosticsSampler:
         position: np.ndarray,
         vortex_strength: np.ndarray,
     ) -> tuple[float, ...]:
-        strength = np.linalg.norm(vortex_strength, axis=1)
-        vortex_strength_magnitude_sum = float(strength.sum())
+        vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
+        vortex_strength_magnitude_sum = float(vortex_strength_magnitude.sum())
         if vortex_strength_magnitude_sum <= np.finfo(float).tiny:
             return (np.nan,) * (len(RING_DIAGNOSTIC_COLUMNS) - 3)
 
-        centroid = np.einsum("i,ij->j", strength, position) / vortex_strength_magnitude_sum
-        centred_position = position - centroid
+        vortex_centroid = (
+            np.einsum("i,ij->j", vortex_strength_magnitude, position)
+            / vortex_strength_magnitude_sum
+        )
+        centred_position = position - vortex_centroid
         covariance = (
-            (centred_position * strength[:, None]).T
+            (centred_position * vortex_strength_magnitude[:, None]).T
             @ centred_position
             / vortex_strength_magnitude_sum
         )
@@ -93,7 +96,7 @@ class RingDiagnosticsSampler:
         impulse_norm = float(np.linalg.norm(impulse))
         impulse_radius = 2.0 * impulse_norm / vortex_strength_magnitude_sum
         return (
-            *centroid,
+            *vortex_centroid,
             major_radius,
             tube_circulation,
             *impulse,
@@ -101,5 +104,5 @@ class RingDiagnosticsSampler:
             impulse_radius,
             vortex_strength_magnitude_sum,
             *net_vortex_strength,
-            float(strength.max(initial=0.0)),
+            float(vortex_strength_magnitude.max(initial=0.0)),
         )

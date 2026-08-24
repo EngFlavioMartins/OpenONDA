@@ -46,17 +46,14 @@ class PanelDiagnostics:
             force_history = panel_solver.results.get("force_history", [])
             last_forces = force_history[-1] if force_history else {}
 
-            diagnostics_history["panel_n_panels_total"].append(float(n_panels))
-            for gid, fvec in last_forces.items():
-                diagnostics_history.setdefault(f"panel_force_group_{gid}_x", []).append(
-                    float(fvec[0])
-                )
-                diagnostics_history.setdefault(f"panel_force_group_{gid}_y", []).append(
-                    float(fvec[1])
-                )
-                diagnostics_history.setdefault(f"panel_force_group_{gid}_z", []).append(
-                    float(fvec[2])
-                )
+            diagnostics_history.setdefault("n_panels", []).append(float(n_panels))
+            force_by_group = diagnostics_history.setdefault("panel_force_by_group", [])
+            force_by_group.append(
+                {
+                    int(group_id): tuple(float(value) for value in force)
+                    for group_id, force in last_forces.items()
+                }
+            )
 
             freq = max(1, int(getattr(panel_solver, "logging_interval_steps", 1)))
             if step % freq == 0:
@@ -78,16 +75,29 @@ class PanelDiagnostics:
 
         n_panels = panel_solver.lattice.n_panels if panel_solver.lattice else 0
 
-        row: list[float | int] = [time, step, n_panels]
-        headers = ["time", "step", "n_panels"]
-        for gid in sorted(forces.keys()):
-            fvec = forces[gid]
-            for comp, label in enumerate(["x", "y", "z"]):
-                headers.append(f"panel_force_group_{gid}_{label}")
-                row.append(float(fvec[comp]))
+        headers = [
+            "time",
+            "step",
+            "n_panels",
+            "group_id",
+            "panel_force_x",
+            "panel_force_y",
+            "panel_force_z",
+        ]
+        force_rows = forces.items() or [(-1, (0.0, 0.0, 0.0))]
 
         write_header = not csv_path.exists()
         with open(csv_path, "a") as f:
             if write_header:
                 f.write(",".join(headers) + "\n")
-            f.write(",".join(str(v) for v in row) + "\n")
+            for group_id, panel_force in sorted(force_rows):
+                row: list[float | int] = [
+                    time,
+                    step,
+                    n_panels,
+                    int(group_id),
+                    float(panel_force[0]),
+                    float(panel_force[1]),
+                    float(panel_force[2]),
+                ]
+                f.write(",".join(str(value) for value in row) + "\n")

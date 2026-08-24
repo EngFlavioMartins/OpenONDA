@@ -10,8 +10,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import numpy as np
 from scipy.spatial import cKDTree
 
-from ..io.logging import Logging
-
 # =========================================================
 
 
@@ -26,14 +24,14 @@ class ParticleDistributor:
 
     EPSILON = 1e-10
 
-    def __init__(self, default_radius: float = 1.5):
+    def __init__(self, default_core_radius: float = 1.5):
         """
         Initialize the ParticleDistributor class.
 
         Args:
-              default_radius (float): Default particle radius. Defaults to 1.5.
+              default_core_radius (float): Default particle core radius. Defaults to 1.5.
         """
-        self.default_radius = default_radius
+        self.default_core_radius = default_core_radius
 
     @staticmethod
     def compute_min_max(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> tuple[float, ...]:
@@ -54,19 +52,23 @@ class ParticleDistributor:
         return xmin, xmax, ymin, ymax, zmin, zmax
 
     @staticmethod
-    def gaussian(r: np.ndarray, omega_0: float, a: float) -> np.ndarray:
+    def gaussian(
+        radial_distance: np.ndarray,
+        peak_vorticity: float,
+        core_radius: float,
+    ) -> np.ndarray:
         """
         Gaussian function for fitting particle distributions.
 
         Args:
-              r (np.ndarray): Radial distances.
-              omega_0 (float): Peak amplitude.
-              a (float): Characteristic length scale.
+              radial_distance (np.ndarray): Radial distances.
+              peak_vorticity (float): Peak vorticity.
+              core_radius (float): Characteristic core radius.
 
         Returns:
               np.ndarray: Gaussian values.
         """
-        return omega_0 * np.exp(-(r**2) / a**2)
+        return peak_vorticity * np.exp(-(radial_distance**2) / core_radius**2)
 
     @staticmethod
     def rectangular_distribution(
@@ -78,16 +80,14 @@ class ParticleDistributor:
         Args:
               domain_bounds (list): [xmin, xmax, ymin, ymax, zmin, zmax] bounds.
               spacing (float): Average distance between particles.
-              radius (float, optional): Particle radius. Uses default if None.
-
         Returns:
               Tuple containing:
               - position (np.ndarray): 3D coordinates of particles
               - particle_volume (np.ndarray): Volume associated with each particle
               - core_radius (np.ndarray): Radius of each particle
         """
-        # particle radius is derived from spacing (single computation)
-        radius = 2 * spacing
+        # Particle core radius is derived from spacing.
+        core_radius_value = 2 * spacing
 
         numx = int(np.ceil((domain_bounds[1] - domain_bounds[0]) / spacing)) + 1
         numy = int(np.ceil((domain_bounds[3] - domain_bounds[2]) / spacing)) + 1
@@ -112,7 +112,7 @@ class ParticleDistributor:
         position = np.stack(np.meshgrid(x, y, z, indexing="ij"), axis=-1).reshape(-1, 3)
         volume_per_point = dx * dy * dz
         particle_volume = np.full(position.shape[0], volume_per_point)
-        core_radius = np.full(position.shape[0], radius)
+        core_radius = np.full(position.shape[0], core_radius_value)
 
         return position, particle_volume, core_radius
 
@@ -254,10 +254,10 @@ class ParticleDistributor:
         total_positions = len(position)
         total_area = (domain_bounds[1] - domain_bounds[0]) * (domain_bounds[3] - domain_bounds[2])
 
-        # compute particle radius from spacing
-        radius = 2 * spacing
+        # Compute particle core radius from spacing.
+        core_radius_value = 2 * spacing
         particle_volume = np.full(total_positions, total_area / total_positions)
-        core_radius = np.full(total_positions, radius)
+        core_radius = np.full(total_positions, core_radius_value)
 
         return position, particle_volume, core_radius
 
@@ -272,8 +272,6 @@ class ParticleDistributor:
         Args:
               domain_bounds (list, optional): Domain bounds. Uses default if None.
               spacing (float): Lattice spacing.
-              radius (float): Particle radius.
-
         Returns:
               Tuple containing position, particle_volume, and core_radius arrays.
         """
@@ -314,10 +312,10 @@ class ParticleDistributor:
         else:
             particle_volume = spacing  # Length * 1.0*1.0 area
 
-        # compute particle radius from spacing
-        radius = 2 * spacing
+        # Compute particle core radius from spacing.
+        core_radius_value = 2 * spacing
         particle_volume = np.full(position.shape[0], particle_volume)
-        core_radius = np.full(position.shape[0], radius)
+        core_radius = np.full(position.shape[0], core_radius_value)
 
         return position, particle_volume, core_radius
 
@@ -342,7 +340,7 @@ class ParticleDistributor:
         Every cross-section point is swept through the same uniformly spaced
         azimuthal angles.  Complete azimuthal loops avoid the symmetry loss and
         non-zero vector vortex strength produced by pruning a Cartesian box around a
-        ring.  Particle particle_volume include the toroidal Jacobian ``rho dtheta``.
+        ring. Particle volumes include the toroidal Jacobian.
 
         Args:
             ring_radius: Radius from the ring axis to its centreline.
@@ -413,27 +411,27 @@ class ParticleDistributor:
         sine_theta = np.sin(theta)
 
         axial = np.repeat(offsets[:, 0], azimuth_count)
-        rho = (centreline_radius[None, :] + offsets[:, 1, None]).reshape(-1)
+        radial_position = (centreline_radius[None, :] + offsets[:, 1, None]).reshape(-1)
         cosine = np.tile(cosine_theta, len(offsets))
         sine = np.tile(sine_theta, len(offsets))
 
         local = np.empty((len(axial), 3), dtype=float)
         if axis == "x":
             local[:, 0] = axial
-            local[:, 1] = rho * cosine
-            local[:, 2] = rho * sine
+            local[:, 1] = radial_position * cosine
+            local[:, 2] = radial_position * sine
         elif axis == "y":
-            local[:, 0] = rho * sine
+            local[:, 0] = radial_position * sine
             local[:, 1] = axial
-            local[:, 2] = rho * cosine
+            local[:, 2] = radial_position * cosine
         else:
-            local[:, 0] = rho * cosine
-            local[:, 1] = rho * sine
+            local[:, 0] = radial_position * cosine
+            local[:, 1] = radial_position * sine
             local[:, 2] = axial
 
         cell_area = np.sqrt(3.0) * spacing**2 / 2.0
         dtheta = 2.0 * np.pi / azimuth_count
-        particle_volume = cell_area * rho * dtheta
+        particle_volume = cell_area * radial_position * dtheta
         core_radius = np.full(len(local), 2.0 * spacing)
         result = (local + centre_position, particle_volume, core_radius)
         if return_orbit_ids:
@@ -453,13 +451,11 @@ class ParticleDistributor:
         Generate a cylindrical distribution of particles.
 
         Args:
-              radius (float): Cylinder radius.
+              cyl_radius (float): Cylinder radius.
               height (float): Cylinder height.
               centre_position (np.ndarray): Cylinder centre_position coordinates.
               axis (str): Cylinder axis ('x', 'y', or 'z').
               spacing (float): Average particle spacing.
-              radius (float): Particle radius.
-
         Returns:
               Tuple containing position, particle_volume, and core_radius arrays.
         """
@@ -526,69 +522,6 @@ class ParticleDistributor:
         core_radius = np.full(position.shape[0], 2 * spacing)
 
         return position, particle_volume, core_radius
-
-    def remove_weak_particles(
-        self,
-        psys,
-        mode: str,
-        weakest_percent: float,
-        conserve_vortex_strength_magnitude_sum: bool = False,
-    ) -> None:
-        """
-        Remove particles with low strength from the system.
-
-        Args:
-              psys: Particle system object.
-              mode (str): 'absolute' or 'relative' threshold mode.
-              weakest_percent (float): Threshold value (percentage or absolute).
-              conserve_vortex_strength_magnitude_sum (bool): Whether to conserve total vortex strength.
-        """
-        threshold = weakest_percent / 100
-        vortex_strength_magnitude = psys.get_particle_strength_magnitudes()
-        vortex_strength_magnitude_sum_before = np.sum(vortex_strength_magnitude)
-        num_particles_before = len(psys)
-
-        if len(vortex_strength_magnitude) == 0:
-            Logging.warning("component=particle_pruning status=skipped reason=empty_particle_field")
-            return
-
-        if mode == "absolute":
-            weak_particles_list = vortex_strength_magnitude < threshold
-        elif mode == "relative":
-            highest_strength = np.max(vortex_strength_magnitude)
-            if highest_strength == 0:
-                Logging.warning(
-                    "component=particle_pruning status=skipped reason=zero_strength_field"
-                )
-                weak_particles_list = np.ones_like(vortex_strength_magnitude, dtype=bool)
-            else:
-                weak_particles_list = vortex_strength_magnitude / highest_strength < threshold
-        else:
-            Logging.warning(
-                f"component=particle_pruning status=skipped reason=invalid_mode mode={mode!r}"
-            )
-            return
-
-        weak_particles = np.where(weak_particles_list)[0]
-        psys.remove_particles(weak_particles)
-
-        if conserve_vortex_strength_magnitude_sum:
-            vortex_strength_magnitude = psys.get_particle_strength_magnitudes()
-            vortex_strength_magnitude_sum_after = np.sum(vortex_strength_magnitude)
-            vortex_strength = psys.get_particle_strengths()
-            correction = vortex_strength_magnitude_sum_before / (
-                vortex_strength_magnitude_sum_after + self.EPSILON
-            )
-
-            for p, particle in enumerate(psys.particles):
-                particle.update_state(strength=vortex_strength[p] * correction)
-
-        psys._cache_particle_arrays()
-        Logging.message(
-            f"[VPM][Particles] operation=prune mode={mode} "
-            f"threshold={weakest_percent:.6g} removed={num_particles_before - len(psys)} "
-            f"count={len(psys)} vortex_strength_rescaled={str(conserve_vortex_strength_magnitude_sum).lower()}"
-        )
 
     @staticmethod
     def get_highest_nonzero_indices(

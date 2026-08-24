@@ -90,8 +90,8 @@ def compute_source_induced_velocity_kernel(
             v2 = ti.Vector(
                 [vertex_position[j, 2, 0], vertex_position[j, 2, 1], vertex_position[j, 2, 2]]
             )
-            normal = ti.Vector([normal[j, 0], normal[j, 1], normal[j, 2]])
-            value += doublet_strength[j] * compute_source_velocity(point, v0, v1, v2, normal)
+            panel_normal = ti.Vector([normal[j, 0], normal[j, 1], normal[j, 2]])
+            value += doublet_strength[j] * compute_source_velocity(point, v0, v1, v2, panel_normal)
         velocity[i, 0] = value[0]
         velocity[i, 1] = value[1]
         velocity[i, 2] = value[2]

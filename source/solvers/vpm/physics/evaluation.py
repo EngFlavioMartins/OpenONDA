@@ -32,7 +32,7 @@ class ParticleFieldEvaluation:
     - Energy metrics: kinetic energy and dissipation rates
     - Vorticity metrics: helicity, enstrophy, dissipation
     - Conservation quantities: total strength, impulses
-    - Group analysis: centroids of vortex strength
+    - Group analysis: vortex_centroids of vortex strength
 
     All computations use unbounded domain definitions and are optimized for GPU execution.
     Results are kept on GPU and only transferred to CPU when accessed.
@@ -120,9 +120,9 @@ class ParticleFieldEvaluation:
         self.particle_helicity = ti.field(dtype=ti.f32, shape=self.max_n_particles)
         self.particle_enstrophy = ti.field(dtype=ti.f32, shape=self.max_n_particles)
 
-        # Cached centroid result fields (to avoid memory leak from repeated allocations)
+        # Cached vortex_centroid result fields (to avoid memory leak from repeated allocations)
         # CRITICAL: Taichi fields cannot be garbage collected, so we cache and reuse
-        self._centroid_result = ti.field(dtype=self.accumulator_dtype, shape=3)
+        self._vortex_centroid_result = ti.field(dtype=self.accumulator_dtype, shape=3)
 
     def _resize_fields(self, required_size: int):
         """Validate that diagnostics fit the startup particle allocation."""
@@ -182,7 +182,7 @@ class ParticleFieldEvaluation:
         # Define all kernels
         self._define_flow_integral_kernels(kernel_functions, kernel_dict)
         self._define_per_particle_kernels(kernel_functions)
-        self._define_centroid_kernels(kernel_functions)
+        self._define_vortex_centroid_kernels(kernel_functions)
 
     def _define_flow_integral_kernels(self, kernel_functions, kernel_dict):
         """Define kernels for computing total flow integrals."""
@@ -216,7 +216,7 @@ class ParticleFieldEvaluation:
                     - (2/9) C Σ σ_i² Γ_i
 
             The correction must remain inside the sum when core radii vary.
-            Replacing it by a mean radius times ``Σalpha`` is only equivalent for
+            Replacing it by a mean core radius times ``Σalpha`` is only equivalent for
             uniform cores and gives a false angular-impulse drift as soon as
             core spreading changes individual core_radius.
             """
@@ -492,7 +492,7 @@ class ParticleFieldEvaluation:
                     # This is a pointwise field reconstruction, not a
                     # quadratic two-blob integral: source j contributes its
                     # own blob zeta_{sigma_j}(x_i-x_j).  A target/source mean
-                    # radius gives the wrong field as soon as core spreading
+                    # core radius gives the wrong field as soon as core spreading
                     # makes core_radius nonuniform and makes vortex_strength--omega alignment
                     # depend on the arbitrary target core.
                     sigma = core_radius[j]
@@ -511,11 +511,11 @@ class ParticleFieldEvaluation:
         self._define_enstrophy_kernel(kernel_functions["zeta_sigma"])
         self._define_vorticity_reconstruction_kernel(kernel_functions["zeta_sigma"])
 
-    def _define_group_centroid_kernel(self):
-        """Define and store the group-centroid kernel."""
+    def _define_group_vortex_centroid_kernel(self):
+        """Define and store the group-vortex_centroid kernel."""
 
         @ti.kernel
-        def compute_group_centroid_kernel(
+        def compute_group_vortex_centroid_kernel(
             position: ti.template(),
             vortex_strength: ti.template(),
             group_id: ti.template(),
@@ -524,7 +524,7 @@ class ParticleFieldEvaluation:
             result: ti.template(),
         ):  # type: ignore
             """
-            Compute centroid of vortex strength for a specific group.
+            Compute vortex_centroid of vortex strength for a specific group.
 
             Centroid = Σ(r × Γ) / Σ|Γ| for particles in the group
             """
@@ -549,20 +549,20 @@ class ParticleFieldEvaluation:
                 result[1] = 0.0
                 result[2] = 0.0
 
-        self.compute_group_centroid_kernel = compute_group_centroid_kernel
+        self.compute_group_vortex_centroid_kernel = compute_group_vortex_centroid_kernel
 
-    def _define_global_centroid_kernel(self):
-        """Define and store the global-centroid kernel."""
+    def _define_global_vortex_centroid_kernel(self):
+        """Define and store the global-vortex_centroid kernel."""
 
         @ti.kernel
-        def compute_global_centroid_kernel(
+        def compute_global_vortex_centroid_kernel(
             position: ti.template(),
             vortex_strength: ti.template(),
             n_particles_total: ti.i32,
             result: ti.template(),
         ):  # type: ignore
             """
-            Compute centroid of vortex strength for the entire particle set.
+            Compute vortex_centroid of vortex strength for the entire particle set.
 
             Centroid = Σ(r * |Γ|) / Σ|Γ| over all particles
             """
@@ -586,52 +586,52 @@ class ParticleFieldEvaluation:
                 result[1] = 0.0
                 result[2] = 0.0
 
-        self.compute_global_centroid_kernel = compute_global_centroid_kernel
+        self.compute_global_vortex_centroid_kernel = compute_global_vortex_centroid_kernel
 
-    def _define_centroid_kernels(self, kernel_functions):
-        """Define kernels for vortex-strength-magnitude-weighted centroids."""
-        self._define_group_centroid_kernel()
-        self._define_global_centroid_kernel()
+    def _define_vortex_centroid_kernels(self, kernel_functions):
+        """Define kernels for vortex-strength-magnitude-weighted vortex_centroids."""
+        self._define_group_vortex_centroid_kernel()
+        self._define_global_vortex_centroid_kernel()
 
     # PUBLIC API METHODS
 
     @staticmethod
-    def record_centroid_history(
+    def record_vortex_centroid_history(
         diagnostics_history: dict,
         position: np.ndarray,
         vortex_strength: np.ndarray,
     ) -> None:
-        """Append the vortex-strength-magnitude-weighted particle centroid.
+        """Append the vortex-strength-magnitude-weighted particle vortex_centroid.
 
         Args:
             diagnostics_history: Solver's ``_diagnostics_history`` dict (mutated in-place).
             position: Particle position array of shape (N, 3).
             vortex_strength: Particle vortex-strength array of shape (N, 3) [m³/s].
         """
-        if "centroid" not in diagnostics_history:
+        if "vortex_centroid" not in diagnostics_history:
             return
         try:
             if position.size == 0 or vortex_strength.size == 0:
-                centroid = np.array([0.0, 0.0, 0.0])
+                vortex_centroid = np.array([0.0, 0.0, 0.0])
             else:
                 vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
                 total_magnitude = vortex_strength_magnitude.sum()
                 if total_magnitude > 0:
-                    centroid = (position * vortex_strength_magnitude[:, np.newaxis]).sum(
+                    vortex_centroid = (position * vortex_strength_magnitude[:, np.newaxis]).sum(
                         axis=0
                     ) / total_magnitude
                 else:
-                    centroid = np.array([0.0, 0.0, 0.0])
-            diagnostics_history["centroid"].append(tuple(centroid.tolist()))
+                    vortex_centroid = np.array([0.0, 0.0, 0.0])
+            diagnostics_history["vortex_centroid"].append(tuple(vortex_centroid.tolist()))
         except Exception as exc:
             Logging.warning(
                 f"component=flow_diagnostics quantity=vortex_strength_centroid "
                 f"status=evaluation_failed error={exc!r}"
             )
 
-    def compute_centroid_of_vortex_strength(self, particles) -> np.ndarray:
+    def compute_vortex_centroid(self, particles) -> np.ndarray:
         """
-        Compute the vortex-strength-magnitude-weighted particle centroid.
+        Compute the vortex-strength-magnitude-weighted particle vortex_centroid.
 
         Returns:
             np.ndarray: Centroid position [x, y, z], or zeros if no particles.
@@ -644,19 +644,19 @@ class ParticleFieldEvaluation:
 
         # Use cached result field (avoids memory leak from repeated Taichi allocations)
         # CRITICAL: Taichi fields cannot be garbage collected
-        self._centroid_result.fill(0)
+        self._vortex_centroid_result.fill(0)
 
         # Call kernel
-        self.compute_global_centroid_kernel(
+        self.compute_global_vortex_centroid_kernel(
             particles.position,
             particles.vortex_strength,
             N,
-            self._centroid_result,
+            self._vortex_centroid_result,
         )
 
         # Extract result
-        centroid = self._centroid_result.to_numpy()
-        return centroid
+        vortex_centroid = self._vortex_centroid_result.to_numpy()
+        return vortex_centroid
 
     def compute_flow_integrals(self, particles, time: float, record_history: bool = True):
         """
@@ -739,13 +739,13 @@ class ParticleFieldEvaluation:
 
         position = particles.position_cpu().astype(np.float64)
         vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
-        radius = particles.core_radius_cpu().astype(np.float64)
+        core_radius = particles.core_radius_cpu().astype(np.float64)
         particle_volume = particles.particle_volume_cpu().astype(np.float64)
         effective_viscosity = particles.effective_viscosity_cpu().astype(np.float64)
         spectral = gaussian_fourier_integrals(
             position,
             vortex_strength,
-            radius,
+            core_radius,
             particle_volume,
             effective_viscosity=effective_viscosity,
         )
@@ -759,7 +759,7 @@ class ParticleFieldEvaluation:
         impulse = 0.5 * np.cross(position, vortex_strength).sum(axis=0, dtype=np.float64)
         angular = np.cross(position, np.cross(position, vortex_strength)).sum(
             axis=0, dtype=np.float64
-        ) / 3.0 - (1.0 / 3.0) * (radius[:, None] ** 2 * vortex_strength).sum(axis=0)
+        ) / 3.0 - (1.0 / 3.0) * (core_radius[:, None] ** 2 * vortex_strength).sum(axis=0)
         return {
             "total_kinetic_energy": total_kinetic_energy,
             "total_helicity": spectral.total_helicity,
@@ -871,15 +871,15 @@ class ParticleFieldEvaluation:
             particles.position, particles.vortex_strength, particles.core_radius, out_field, N
         )
 
-    def compute_centroids_of_vortex_strength(self, particles) -> dict[int, np.ndarray]:
+    def compute_vortex_centroids_by_group(self, particles) -> dict[int, np.ndarray]:
         """
-        Compute vortex-strength-magnitude-weighted centroids by particle group.
+        Compute vortex-strength-magnitude-weighted vortex_centroids by particle group.
 
         Args:
             particles: Particles object
 
         Returns:
-            Dict[int, np.ndarray]: Dictionary mapping group_id to centroid position [x, y, z]
+            Dict[int, np.ndarray]: Dictionary mapping group_id to vortex_centroid position [x, y, z]
         """
         N = len(particles)
         if N == 0:
@@ -895,26 +895,26 @@ class ParticleFieldEvaluation:
         group_ids_np = particles.group_id_cpu()
         unique_groups = np.unique(group_ids_np)
 
-        centroids = {}
+        vortex_centroids = {}
         for group_id in unique_groups:
             # Use cached result field (avoids memory leak from repeated Taichi allocations)
             # CRITICAL: Taichi fields cannot be garbage collected
-            self._centroid_result.fill(0)
+            self._vortex_centroid_result.fill(0)
 
-            # Compute centroid
-            self.compute_group_centroid_kernel(
+            # Compute vortex_centroid
+            self.compute_group_vortex_centroid_kernel(
                 particles.position,
                 particles.vortex_strength,
                 particles.group_id,
                 N,
                 int(group_id),
-                self._centroid_result,
+                self._vortex_centroid_result,
             )
 
             # Extract result (copy before reusing field)
-            centroids[int(group_id)] = self._centroid_result.to_numpy().copy()
+            vortex_centroids[int(group_id)] = self._vortex_centroid_result.to_numpy().copy()
 
-        return centroids
+        return vortex_centroids
 
     # ENERGY DISSIPATION RATE COMPUTATION
 

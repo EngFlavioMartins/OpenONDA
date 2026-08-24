@@ -314,10 +314,10 @@ class CouplerInterfaceMixin:
 
     # ── getters: cell fields ─────────────────────────────────────────────────
     def get_cell_centre_coordinates(self):
-        """Return cell-centroid coordinates ``(nCells, 3)``, C-contiguous.
+        """Return cell-centre coordinates ``(nCells, 3)``, C-contiguous.
 
         Returns:
-            Array of interior-cell centroids in physical space.
+            Array of interior-cell centres in physical space.
         """
         n = self.mesh_data["n_cells"]
         return self._gather_owned_cells(self.geo_data["cell_centre"][:n], trailing_shape=(3,))
@@ -463,13 +463,13 @@ class CouplerInterfaceMixin:
 
     # ── getters: boundary-face geometry (per patch) ──────────────────────────
     def get_boundary_face_centre_coordinates(self, patch_name):
-        """Return face-centroid coordinates ``(nFaces, 3)`` for a patch.
+        """Return face-centre coordinates ``(nFaces, 3)`` for a patch.
 
         Args:
             patch_name: Name of the boundary patch.
 
         Returns:
-            Face-centroid coordinates on the patch.
+            Face-centre coordinates on the patch.
         """
         if self.parallel.is_partitioned:
             _, _, face_slice = self._local_patch_face_ids(patch_name)
@@ -611,7 +611,7 @@ class CouplerInterfaceMixin:
     def set_normal_velocity_tangential_gradient_boundary_condition(
         self, normal_velocity, tangential_gradient, patch_name
     ):
-        """Prescribe ``U.n`` and the tangential part of ``dU/dn`` per face."""
+        """Prescribe normal velocity and the tangential velocity gradient per face."""
         normal_field = self._scatter_patch_values(patch_name, normal_velocity)
         gradient_field = self._scatter_patch_values(
             patch_name, tangential_gradient, trailing_shape=(3,)

@@ -27,7 +27,7 @@ def validate_topology(mesh_data):
     connectivity.  Importers should normalize their data before this boundary.
     """
     required = {
-        "points",
+        "vertex_position",
         "faces",
         "owners",
         "neighbours",
@@ -154,14 +154,14 @@ def validate_geometry(mesh_data, geo_data):
     _require(areas.shape == (n_faces,), "Face-area array has the wrong shape")
     owners = mesh_data["owners"]
     neighbours = mesh_data["neighbours"]
-    centroids = np.asarray(geo_data["cell_centre"])
+    cell_centre = np.asarray(geo_data["cell_centre"])
     face_centre = np.asarray(geo_data["face_centre"])
 
     # Mesh validation used to allocate all quality vectors for all faces at
     # once, briefly adding several hundred megabytes to rank zero's global
     # geometry.  Accumulate extrema and sums in blocks instead.
     _require(np.all(np.isfinite(volumes)), "Mesh cell volumes contain non-finite values")
-    _require(np.all(np.isfinite(centroids)), "Mesh cell centroids contain non-finite values")
+    _require(np.all(np.isfinite(cell_centre)), "Mesh cell cell_centre contain non-finite values")
     _require(np.all(volumes > 0.0), "Mesh contains non-positive cell volumes")
     min_distance = np.full(n_cells, np.inf, dtype=np.float64)
     max_distance = np.zeros(n_cells, dtype=np.float64)
@@ -202,7 +202,7 @@ def validate_geometry(mesh_data, geo_data):
         sum_non_orthogonality += float(np.sum(non_orthogonality))
 
         owner_block = owners[face_slice]
-        owner_distance = np.linalg.norm(face_centres_block - centroids[owner_block], axis=1)
+        owner_distance = np.linalg.norm(face_centres_block - cell_centre[owner_block], axis=1)
         np.minimum.at(min_distance, owner_block, owner_distance)
         np.maximum.at(max_distance, owner_block, owner_distance)
 
@@ -216,18 +216,18 @@ def validate_geometry(mesh_data, geo_data):
             out_of_bounds_weights += int(
                 np.count_nonzero((weight_internal < 0.0) | (weight_internal > 1.0))
             )
-            interpolation = (1.0 - weight_internal[:, np.newaxis]) * centroids[
+            interpolation = (1.0 - weight_internal[:, np.newaxis]) * cell_centre[
                 owner_internal
-            ] + weight_internal[:, np.newaxis] * centroids[neighbour_block]
+            ] + weight_internal[:, np.newaxis] * cell_centre[neighbour_block]
             centre_distance = np.linalg.norm(
-                centroids[neighbour_block] - centroids[owner_internal], axis=1
+                cell_centre[neighbour_block] - cell_centre[owner_internal], axis=1
             )
             skewness = np.linalg.norm(face_centres_block[local] - interpolation, axis=1) / (
                 centre_distance + 1e-30
             )
             max_skewness = max(max_skewness, float(np.max(skewness, initial=0.0)))
             neighbour_distance = np.linalg.norm(
-                face_centres_block[local] - centroids[neighbour_block], axis=1
+                face_centres_block[local] - cell_centre[neighbour_block], axis=1
             )
             np.minimum.at(min_distance, neighbour_block, neighbour_distance)
             np.maximum.at(max_distance, neighbour_block, neighbour_distance)
@@ -296,7 +296,7 @@ def validate_no_fluid_solid_overlap(mesh_data, solid_bounds, *, tolerance: float
     """Reject any ordinary fluid cell whose volume overlaps the solid AABB.
 
     Cells derive their axis-aligned bounds from their *actual vertices*, never
-    from a centroid test, so a cell whose centroid lies outside the body but
+    from a cell-centre test, so a cell whose centre lies outside the body but
     whose volume crosses a body face is caught here.  Touching the solid with
     zero volume is valid (wall-adjacent fluid).
 

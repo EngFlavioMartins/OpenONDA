@@ -80,7 +80,6 @@ class SolverState(BaseModel):
         default=0,
         ge=0,
     )
-    checkpoint_interval_time: float | None = Field(default=None, gt=0.0)
     wall_time: float | None = Field(
         default=0.0,
         ge=0.0,
@@ -127,7 +126,6 @@ class SolverState(BaseModel):
             logging_interval_steps=solver.logging_interval_steps,
             timing_interval_steps=solver.timing_interval_steps,
             checkpoint_interval_steps=solver.checkpoint_interval_steps,
-            checkpoint_interval_time=solver.checkpoint_interval_time,
             wall_time=solver.wall_time,
             cache_step=getattr(solver, "_cache_step", 0),
         )

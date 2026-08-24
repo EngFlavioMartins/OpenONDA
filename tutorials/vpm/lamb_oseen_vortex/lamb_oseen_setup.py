@@ -77,14 +77,12 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             threshold=DVH_THRESHOLD,
             threshold_mode="budget",
             max_nodes=DVH_MAX_NODES,
-            cap_absolute_fraction=0.99,
             core_radius_ratio=CORE_RADIUS_RATIO,
         )
     return vpm.ViscousConfig.gbd(
         particle_spacing=spacing,
         kinematic_viscosity=kinematic_viscosity,
         max_nodes=GBD_MAX_NODES,
-        cap_absolute_fraction=0.99,
         core_radius_ratio=CORE_RADIUS_RATIO,
     )
 
@@ -279,8 +277,8 @@ def run_case(
             vortex_age=vortex_age,
             is_anti_diffusion_enabled=True,
         )
-        strength = np.linalg.norm(particle_vortex_strength, axis=1)
-        keep = strength >= 0.01 * strength.max()
+        vortex_strength_magnitude = np.linalg.norm(particle_vortex_strength, axis=1)
+        keep = vortex_strength_magnitude >= 0.01 * vortex_strength_magnitude.max()
         retained_vortex_strength, _, _ = normalize_retained_circulation(
             particle_vortex_strength,
             keep,

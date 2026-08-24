@@ -85,7 +85,7 @@ def run() -> None:
                 kinematics=vpm.RotatingVLM(
                     angular_speed=ANGULAR_VELOCITY * direction,
                     axis=[0.0, 0.0, 1.0],
-                    centre_position=position,
+                    rotation_centre=position,
                 ),
                 translation=tuple(position),
                 rotation_degrees=(0.0, 0.0, 360.0 / NUMBER_OF_BLADES * blade_index),

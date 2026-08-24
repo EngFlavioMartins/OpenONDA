@@ -11,11 +11,9 @@ import tempfile
 
 import numpy as np
 
-from source.schemas import SCHEMA_VERSION
-
 from .storage import require_free_space
 
-FORMAT_VERSION = 6
+FORMAT_VERSION = 7
 
 
 def _update_digest(digest, value) -> None:
@@ -24,7 +22,7 @@ def _update_digest(digest, value) -> None:
         digest.update(b"array")
         digest.update(str(array.dtype).encode())
         digest.update(json.dumps(array.shape).encode())
-        digest.update(memoryview(array).cast("B"))
+        digest.update(array.tobytes(order="C"))
     elif isinstance(value, dict):
         digest.update(b"dict")
         for key in sorted(value, key=str):
@@ -92,7 +90,6 @@ def save_checkpoint(solver, path) -> Path:
 
     metadata = {
         "format_version": FORMAT_VERSION,
-        "physical_field_schema_version": SCHEMA_VERSION,
         "config_hash": config_hash(solver.setup),
         "mesh_hash": mesh_hash(solver.mesh_data),
     }
@@ -172,15 +169,27 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
         "n_consecutive_accepted_steps",
     }
     with np.load(source, allow_pickle=False) as archive:
+        archive_keys = set(archive.files)
+        if archive_keys != required:
+            missing = sorted(required - archive_keys)
+            unexpected = sorted(archive_keys - required)
+            raise ValueError(
+                f"Invalid FVM checkpoint fields; missing={missing}, unexpected={unexpected}"
+            )
         metadata = json.loads(str(archive["metadata"]))
+        metadata_keys = set(metadata)
+        expected_metadata = {"format_version", "config_hash", "mesh_hash"}
+        if metadata_keys != expected_metadata:
+            raise ValueError(
+                "Invalid FVM checkpoint metadata; "
+                f"missing={sorted(expected_metadata - metadata_keys)}, "
+                f"unexpected={sorted(metadata_keys - expected_metadata)}"
+            )
         version = int(metadata.get("format_version", -1))
         if version != FORMAT_VERSION:
             raise ValueError(
                 f"Unsupported FVM checkpoint version {version!r}; expected {FORMAT_VERSION}"
             )
-        schema_version = metadata.get("physical_field_schema_version")
-        if schema_version != SCHEMA_VERSION:
-            raise ValueError(f"Unsupported physical-field schema version {schema_version!r}")
         if metadata.get("mesh_hash") != mesh_hash(solver.mesh_data):
             raise ValueError("FVM checkpoint mesh hash does not match the active mesh")
         if not allow_config_change and metadata.get("config_hash") != config_hash(solver.setup):

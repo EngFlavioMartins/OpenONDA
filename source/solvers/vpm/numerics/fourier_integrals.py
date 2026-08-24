@@ -118,7 +118,7 @@ def _wave_numbers(
 def gaussian_fourier_integrals(
     position: np.ndarray,
     vortex_strength: np.ndarray,
-    radius: np.ndarray,
+    core_radius: np.ndarray,
     particle_volume: np.ndarray,
     effective_viscosity: np.ndarray | None = None,
     *,
@@ -128,14 +128,14 @@ def gaussian_fourier_integrals(
 ) -> FourierIntegrals:
     """Audit Gaussian-blob quadratic integrals on a padded Fourier grid.
 
-    Each particle keeps its own core radius.  For a fixed reference variance
+    Each particle keeps its own core radius. For a fixed reference variance
     ``s0`` the exact blob multiplier is expanded as
 
     ``exp(-sigma_p^2 k^2/4) = exp(-s0 k^2/4)
        sum_n [-(sigma_p^2-s0) k^2/4]^n / n!``.
 
-    The midpoint of the radius-variance range minimizes the largest expansion
-    argument and, unlike a vortex strength-weighted effective radius, is unchanged
+    The midpoint of the core-radius variance range minimizes the largest expansion
+    argument and, unlike a vortex-strength-weighted effective core radius, is unchanged
     when a relaxation candidate changes particle vortex_strength.  The resulting
     energy is therefore a genuine quadratic form in vortex strength. Integrals
     from the penultimate order are returned so transfer convergence can be
@@ -146,18 +146,18 @@ def gaussian_fourier_integrals(
         raise ValueError("radius_expansion_order must be at least one")
     position = np.asarray(position, dtype=np.float64)
     vortex_strength = np.asarray(vortex_strength, dtype=np.float64)
-    radius = np.asarray(radius, dtype=np.float64)
+    core_radius = np.asarray(core_radius, dtype=np.float64)
     particle_volume = np.asarray(particle_volume, dtype=np.float64)
     if effective_viscosity is not None:
         effective_viscosity = np.asarray(effective_viscosity, dtype=np.float64)
     if position.shape != vortex_strength.shape or position.ndim != 2 or position.shape[1] != 3:
         raise ValueError("position and vortex_strength must both have shape (N, 3)")
-    if radius.shape != (len(position),) or particle_volume.shape != (len(position),):
-        raise ValueError("radius and particle_volume must have shape (N,)")
+    if core_radius.shape != (len(position),) or particle_volume.shape != (len(position),):
+        raise ValueError("core_radius and particle_volume must have shape (N,)")
     if effective_viscosity is not None and effective_viscosity.shape != (len(position),):
         raise ValueError("effective_viscosity must have shape (N,)")
-    if np.any(radius <= 0.0) or np.any(particle_volume <= 0.0):
-        raise ValueError("all particle core_radius and particle_volume must be positive")
+    if np.any(core_radius <= 0.0) or np.any(particle_volume <= 0.0):
+        raise ValueError("all particle core_radius and particle_volume values must be positive")
     if effective_viscosity is not None and (
         not np.isfinite(effective_viscosity).all() or np.any(effective_viscosity < 0.0)
     ):
@@ -169,14 +169,14 @@ def gaussian_fourier_integrals(
     elif spacing is None:
         spacing = float(np.median(np.cbrt(particle_volume)))
     if spacing <= 0.0:
-        raise ValueError("particle spacing and Gaussian radius must be positive")
+        raise ValueError("particle spacing and Gaussian core radius must be positive")
 
     if grid is None:
         grid = _grid_for_particles(position, spacing)
     padded_shape = tuple(2 * size for size in grid.shape)
     kx, ky, kz = _wave_numbers(padded_shape, spacing)
     norm_sq = kx * kx + ky * ky + kz * kz
-    radius_sq = radius * radius
+    radius_sq = core_radius * core_radius
     reference_variance = 0.5 * (float(radius_sq.min()) + float(radius_sq.max()))
     variance_offset = radius_sq - reference_variance
     reference_gaussian = np.exp(-0.25 * reference_variance * norm_sq)

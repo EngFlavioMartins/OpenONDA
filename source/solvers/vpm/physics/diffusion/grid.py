@@ -36,7 +36,6 @@ _M4_SCATTER_BATCH_SIZE = 4096
 
 # Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * particle_spacing
 _REGEN_RADIUS_RATIO = 2.5
-_LOCAL_THRESHOLD_FLOOR = 1e-6
 
 
 @dataclass(frozen=True)
@@ -73,11 +72,6 @@ def _nearest_node_mapping(
     linear_index = selected[:, 0] * (ny * nz) + selected[:, 1] * nz + selected[:, 2]
     vortex_strength_weight = np.abs(np.asarray(vortex_strength)[valid]).sum(axis=1)
     return _NearestNodeMapping(valid, linear_index, vortex_strength_weight)
-
-
-def _threshold_scalar(threshold: float | np.ndarray) -> float:
-    """Representative scalar for logging a possibly per-node threshold."""
-    return float(np.median(threshold)) if isinstance(threshold, np.ndarray) else float(threshold)
 
 
 def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
@@ -223,12 +217,6 @@ class _GridDiffusionMixin:
     # Share of the device pool the diffusion workspace may claim.  The rest is
     # for particles, the treecode, evaluation fields and ndarray staging.
     _GRID_POOL_SHARE: float = 0.45
-
-    # Conservative prune: redistribute the vortex strength of pruned (sub-threshold
-    # / count-capped) grid nodes onto the survivors so the regeneration step
-    # preserves the 0th moment (total vortex strength) and 1st moment (linear
-    # impulse) exactly.
-    conserve_pruned_moments: bool = True
 
     def _init_grid_diffusion(self):
         """Initialize grid-based diffusion state."""
@@ -822,62 +810,8 @@ class _GridDiffusionMixin:
         regen_threshold: float,
         max_vortex_strength_magnitude: float,
         vortex_strength_post_diffusion: float,
-        regen_threshold_window: int = 3,
-    ) -> float | np.ndarray:
-        """Determine the magnitude threshold for grid-node survival.
-
-        Supports four modes.  The first three compare every node against a
-        SINGLE number derived from the whole grid; ``'relative_local'`` compares
-        each node against its own neighbourhood.
-
-        * ``'budget'``       — keep the top-(1-threshold) fraction of total |Γ| sum.
-        * ``'relative_max'`` — keep nodes above threshold × global max|Γ|.
-        * ``'absolute'``     — keep nodes above the absolute vortex strength value
-                               ``regen_threshold`` (units [m³/s]).  This is the
-                               preferred mode for controlling particle count when
-                               the dynamic range of vortex strength spans many orders
-                               of magnitude (e.g. coupled FVM-VPM simulations).
-        * ``'relative_local'`` — keep nodes above threshold × the MEAN |Γ| over a
-                               (2w+1)³ window centred on the node.
-
-        Why ``'relative_local'`` exists
-        -------------------------------
-        Every global-reference mode cuts the field along a single iso-|Γ|
-        surface.  That is harmless when |Γ| has a narrow dynamic range, but a
-        coupled FVM-VPM field spans four decades: the maximum sits in the wall
-        vortex sheet on the body while the wake one body-length downstream is
-        ~10⁻³ of it.  A global cut then deletes the *entire* far wake to keep
-        the boundary layer — measured on the cube_flow hybrid case, one GBD regen
-        at ``relative_max=5e-3`` removed every particle below |ω| = 0.243 s⁻¹,
-        i.e. 67% of the cloud (128193 → 42766 in ONE step), slicing continuous
-        vortical structures along an
-        iso-surface and leaving disconnected fragments.  Because the reference
-        (global max) lives on the body, any change in the near-wall solution
-        moves the cut level in the far wake, so the amputation jitters from step
-        to step and feeds straight back through the coupling boundary condition.
-
-        Referencing each node to the |Γ| level of its OWN neighbourhood removes
-        the coupling between unrelated regions: every structure is thresholded
-        against itself, so a weak far-wake structure keeps the same fraction of
-        its content as a strong near-body one.  No cut level then exists below
-        which survival drops to zero — measured on the same field, no |ω| decade
-        falls below 64% survival at a matched particle budget, whereas every
-        global mode still zeroes its lowest decade completely.
-
-        The reference is the local MEAN, not the local maximum: a maximum
-        reference thresholds the skirt of a strong structure against that
-        structure's peak and so over-prunes the shear-layer flanks (measured at
-        a matched ~105k-particle budget, worst-decade survival 64% with the mean
-        vs 57% with the maximum).
-
-        A floor at ``_LOCAL_THRESHOLD_FLOOR × max|Γ|`` keeps the empty part of
-        the padded grid from surviving: there the local mean is round-off, and a
-        purely relative test would promote numerical dust to particles.  This is
-        the one place the global maximum still enters, and only as a noise gate.
-
-        Returns a scalar for the global modes and a per-node array for
-        ``'relative_local'``; both broadcast against ``vortex_strength_magnitude``.
-        """
+    ) -> float:
+        """Return one cloud-wide magnitude threshold for regenerated nodes."""
         if regen_threshold_mode == "budget":
             vortex_strength_magnitude_sum = vortex_strength_post_diffusion
             if vortex_strength_magnitude_sum > 1e-30:
@@ -893,30 +827,19 @@ class _GridDiffusionMixin:
             threshold = regen_threshold * max_vortex_strength_magnitude
         elif regen_threshold_mode == "absolute":
             threshold = regen_threshold
-        elif regen_threshold_mode == "relative_local":
-            from scipy.ndimage import uniform_filter
-
-            w = max(int(regen_threshold_window), 1)
-            local_level = uniform_filter(vortex_strength_magnitude, size=2 * w + 1, mode="nearest")
-            return np.maximum(
-                regen_threshold * local_level,
-                max(_LOCAL_THRESHOLD_FLOOR * max_vortex_strength_magnitude, 1e-10),
-            )
         else:
             raise ValueError(
                 f"Unknown regen_threshold_mode: {regen_threshold_mode!r}. Must be "
-                f"'budget', 'relative_max', 'absolute', or 'relative_local'."
+                "'budget', 'relative_max', or 'absolute'."
             )
         return max(threshold, 1e-10)
 
     @staticmethod
     def _regeneration_cap(particles, n_before: int, max_nodes: int | None) -> int:
-        """Regeneration ceiling from the container's own capacity.
-
-        The module ``MAX_N_PARTICLES`` default pinned cube_flow at 490k.
-        """
+        """Return the declared global particle limit for regeneration."""
+        del n_before
         capacity = int(getattr(particles, "capacity", 0) or MAX_N_PARTICLES)
-        cap = min(max(int(3.0 * n_before), n_before + 50_000), max(capacity - 10_000, 1))
+        cap = capacity
         if max_nodes is not None:
             cap = min(cap, int(max_nodes))
         return max(int(cap), 1)
@@ -928,270 +851,22 @@ class _GridDiffusionMixin:
         iy: np.ndarray,
         iz: np.ndarray,
         cap: int,
-        importance: np.ndarray | None = None,
-        min_abs_fraction: float = 0.99,
-        labels: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, int]:
+        """Apply a cloud-wide strongest-node cap to regenerated particles."""
         n_survivors = len(ix)
         if cap <= 0:
             raise ValueError("Diffusion regeneration cap must be positive.")
-        if not 0.0 < min_abs_fraction <= 1.0:
-            raise ValueError("min_abs_fraction must be in (0, 1].")
         if n_survivors <= cap:
             threshold = float(vortex_strength_magnitude[ix, iy, iz].min()) if n_survivors else 0.0
             return ix, iy, iz, threshold, n_survivors
 
-        values = vortex_strength_magnitude[ix, iy, iz].astype(np.float64)
-        scores = values if importance is None else importance[ix, iy, iz].astype(np.float64)
-
-        def select(candidates: np.ndarray, quota: int) -> np.ndarray:
-            if len(candidates) <= quota:
-                return candidates
-
-            candidate_values = values[candidates]
-            strongest = np.argsort(-candidate_values, kind="stable")
-            protected_count = int(
-                np.searchsorted(
-                    np.cumsum(candidate_values[strongest]),
-                    min_abs_fraction * float(candidate_values.sum()),
-                )
-                + 1
-            )
-            if protected_count >= quota:
-                return candidates[strongest[:quota]]
-
-            protected = strongest[:protected_count]
-            available = np.ones(len(candidates), dtype=bool)
-            available[protected] = False
-            coverage = np.flatnonzero(available)
-            coverage_quota = quota - protected_count
-            if coverage_quota == 1:
-                best = coverage[np.argmax(scores[candidates[coverage]])]
-                return candidates[np.concatenate((protected, np.array([best])))]
-
-            coordinates = np.column_stack(
-                (ix[candidates[coverage]], iy[candidates[coverage]], iz[candidates[coverage]])
-            )
-            strides = np.ones(3, dtype=np.int64)
-            bin_count = len(coverage)
-            while bin_count > coverage_quota:
-                trials: list[tuple[int, int, np.ndarray]] = []
-                for axis in range(3):
-                    trial = strides.copy()
-                    trial[axis] += 1
-                    count = len(np.unique(coordinates // trial, axis=0))
-                    if count < bin_count:
-                        trials.append((count, axis, trial))
-                if not trials:
-                    break
-                above = [trial for trial in trials if trial[0] >= coverage_quota]
-                if above:
-                    bin_count, _, strides = min(above, key=lambda item: item[0])
-                else:
-                    bin_count, _, strides = max(trials, key=lambda item: item[0])
-
-            keys = coordinates // strides
-            order = np.lexsort(
-                (
-                    -values[candidates[coverage]],
-                    keys[:, 2],
-                    keys[:, 1],
-                    keys[:, 0],
-                )
-            )
-            sorted_keys = keys[order]
-            first = np.ones(len(order), dtype=bool)
-            first[1:] = np.any(sorted_keys[1:] != sorted_keys[:-1], axis=1)
-            representatives = order[first]
-
-            if len(representatives) > coverage_quota:
-                strongest_representatives = np.argsort(
-                    -values[candidates[coverage[representatives]]], kind="stable"
-                )[:coverage_quota]
-                representatives = representatives[strongest_representatives]
-            elif len(representatives) < coverage_quota:
-                unused = np.ones(len(coverage), dtype=bool)
-                unused[representatives] = False
-                remaining = np.flatnonzero(unused)
-                fill_count = coverage_quota - len(representatives)
-                fill = remaining[
-                    np.argpartition(-scores[candidates[coverage[remaining]]], fill_count - 1)[
-                        :fill_count
-                    ]
-                ]
-                representatives = np.concatenate((representatives, fill))
-            selected = np.concatenate((protected, coverage[representatives]))
-            return candidates[selected]
-
-        candidate_labels = None if labels is None else labels[ix, iy, iz]
-        unique_labels = np.unique(candidate_labels) if candidate_labels is not None else []
-        if len(unique_labels) <= 1:
-            keep_local = select(np.arange(n_survivors), cap)
-        else:
-            groups = [np.flatnonzero(candidate_labels == label) for label in unique_labels]
-            totals = np.array([values[group].sum() for group in groups], dtype=np.float64)
-            capacities = np.array([len(group) for group in groups], dtype=np.int64)
-            ideal = cap * totals / totals.sum()
-            quotas = np.minimum(np.floor(ideal).astype(np.int64), capacities)
-
-            if cap >= len(groups):
-                quotas = np.maximum(quotas, 1)
-
-            while quotas.sum() < cap:
-                available = quotas < capacities
-                priority = np.where(available, ideal - quotas, -np.inf)
-                quotas[int(np.argmax(priority))] += 1
-            while quotas.sum() > cap:
-                minimum = 1 if cap >= len(groups) else 0
-                removable = quotas > minimum
-                priority = np.where(removable, quotas - ideal, -np.inf)
-                quotas[int(np.argmax(priority))] -= 1
-
-            keep_local = np.concatenate(
-                [select(group, int(quota)) for group, quota in zip(groups, quotas, strict=True)]
-            )
-
-        keep_local = keep_local[np.argsort(-scores[keep_local], kind="stable")]
-        ix_keep = ix[keep_local]
-        iy_keep = iy[keep_local]
-        iz_keep = iz[keep_local]
+        values = vortex_strength_magnitude[ix, iy, iz]
+        keep = np.argsort(-values, kind="stable")[:cap]
+        ix_keep = ix[keep]
+        iy_keep = iy[keep]
+        iz_keep = iz[keep]
         threshold = float(vortex_strength_magnitude[ix_keep, iy_keep, iz_keep].min())
         return ix_keep, iy_keep, iz_keep, threshold, n_survivors
-
-    @staticmethod
-    def _redistribute_pruned_moments(
-        grid_np: np.ndarray,
-        vortex_strength_magnitude: np.ndarray,
-        ix: np.ndarray,
-        iy: np.ndarray,
-        iz: np.ndarray,
-        grid_min_np: np.ndarray,
-        particle_spacing: float,
-        labels: np.ndarray | None = None,
-    ) -> np.ndarray:
-        """Redistribute pruned vortex strength without suppressing diffusion.
-
-        The correction preserves total vortex strength, linear impulse, and angular
-        impulse of the complete diffused grid.  The last constraint is essential
-        when a particle-count cap removes weak outer nodes: merely putting their
-        vortex strength back into the strong core conserves vortex strength but reverses
-        the transverse second-moment growth produced by diffusion.
-
-        A weighted minimum-norm solve applies the nine constraints to the
-        surviving vortex-strength vectors. Coordinates and moments are scaled by
-        the survivor-cloud length to keep the small dense solve well-conditioned.
-        """
-        retained_vortex_strength = grid_np[ix, iy, iz].astype(
-            np.float64
-        )  # (Mk, 3) survivor vortex_strength
-        retained_position = np.stack(
-            [
-                grid_min_np[0] + ix * particle_spacing,
-                grid_min_np[1] + iy * particle_spacing,
-                grid_min_np[2] + iz * particle_spacing,
-            ],
-            axis=1,
-        ).astype(np.float64)
-        nzi, nzj, nzk = np.where(vortex_strength_magnitude > 0.0)
-        all_vortex_strength = grid_np[nzi, nzj, nzk].astype(np.float64)
-        all_position = np.stack(
-            [
-                grid_min_np[0] + nzi * particle_spacing,
-                grid_min_np[1] + nzj * particle_spacing,
-                grid_min_np[2] + nzk * particle_spacing,
-            ],
-            axis=1,
-        ).astype(np.float64)
-
-        def redistribute(
-            retained_position: np.ndarray,
-            retained_vortex_strength: np.ndarray,
-            all_position: np.ndarray,
-            all_vortex_strength: np.ndarray,
-        ) -> np.ndarray:
-            wmag = np.linalg.norm(retained_vortex_strength, axis=1)
-            wsum = float(wmag.sum())
-            if wsum <= 0.0 or len(retained_position) < 4:
-                return retained_vortex_strength
-
-            # Coarsen locally before applying the small global correction. This
-            # keeps capped tail vortex strength near its original physical location.
-            from scipy.spatial import cKDTree
-
-            nearest = cKDTree(retained_position, compact_nodes=False).query(
-                all_position, k=1, workers=-1
-            )[1]
-            corrected = np.zeros_like(retained_vortex_strength)
-            np.add.at(corrected, nearest, all_vortex_strength)
-            weights = wmag / wsum
-            dG = all_vortex_strength.sum(axis=0) - corrected.sum(axis=0)
-            dL = np.cross(all_position, all_vortex_strength).sum(axis=0) - np.cross(
-                retained_position, corrected
-            ).sum(axis=0)
-            angular_all = (
-                np.cross(all_position, np.cross(all_position, all_vortex_strength)).sum(axis=0)
-                / 3.0
-            )
-            angular_keep = (
-                np.cross(retained_position, np.cross(retained_position, corrected)).sum(axis=0)
-                / 3.0
-            )
-            dA = angular_all - angular_keep
-            if not (np.any(np.abs(dG) > 0) or np.any(np.abs(dL) > 0) or np.any(np.abs(dA) > 0)):
-                return corrected
-
-            length_scale = max(
-                float(
-                    np.sqrt(
-                        np.sum(
-                            weights * np.einsum("ij,ij->i", retained_position, retained_position)
-                        )
-                    )
-                ),
-                float(particle_spacing),
-            )
-            scaled_x = retained_position / length_scale
-            scaled_q = np.einsum("ij,ij->i", scaled_x, scaled_x)
-            rows = np.zeros((len(retained_position), 9, 3), dtype=np.float64)
-            rows[:, :3, :] = np.eye(3)
-            rows[:, 3, 1] = -scaled_x[:, 2]
-            rows[:, 3, 2] = scaled_x[:, 1]
-            rows[:, 4, 0] = scaled_x[:, 2]
-            rows[:, 4, 2] = -scaled_x[:, 0]
-            rows[:, 5, 0] = -scaled_x[:, 1]
-            rows[:, 5, 1] = scaled_x[:, 0]
-            rows[:, 6:, :] = (
-                np.einsum("ij,ik->ijk", scaled_x, scaled_x) - scaled_q[:, None, None] * np.eye(3)
-            ) / 3.0
-
-            rhs = np.concatenate((dG, dL / length_scale, dA / length_scale**2))
-            gram = np.einsum("i,ijk,ilk->jl", weights, rows, rows)
-            multipliers = np.linalg.lstsq(gram, rhs, rcond=1e-12)[0]
-            vortex_strength_correction = np.einsum("i,ijk,j->ik", weights, rows, multipliers)
-            return corrected + vortex_strength_correction
-
-        if labels is None:
-            return redistribute(
-                retained_position, retained_vortex_strength, all_position, all_vortex_strength
-            ).astype(np.float32)
-
-        survivor_labels = labels[ix, iy, iz]
-        all_labels = labels[nzi, nzj, nzk]
-        corrected = np.zeros_like(retained_vortex_strength)
-        for label in np.unique(all_labels):
-            survivor_selection = survivor_labels == label
-            all_selection = all_labels == label
-            if not survivor_selection.any():
-                return redistribute(
-                    retained_position, retained_vortex_strength, all_position, all_vortex_strength
-                ).astype(np.float32)
-            corrected[survivor_selection] = redistribute(
-                retained_position[survivor_selection],
-                retained_vortex_strength[survivor_selection],
-                all_position[all_selection],
-                all_vortex_strength[all_selection],
-            )
-        return corrected.astype(np.float32)
 
     def _build_diffusion_particle_arrays(
         self,
@@ -1374,10 +1049,8 @@ class _GridDiffusionMixin:
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
-        regen_threshold_window: int = 3,
         effective_viscosity: np.ndarray | None = None,
         max_nodes: int | None = None,
-        cap_abs_fraction: float = 0.99,
     ) -> dict[str, np.ndarray] | None:
         """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
 
@@ -1544,13 +1217,12 @@ class _GridDiffusionMixin:
             regen_threshold,
             max_vortex_strength_magnitude,
             vortex_strength_total,
-            regen_threshold_window,
         )
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
             Logging.warning(
                 f"component=GBD status=skipped reason=no_nodes_above_threshold "
-                f"threshold={_threshold_scalar(threshold):.2e} particles_unchanged=true"
+                f"threshold={threshold:.2e} particles_unchanged=true"
             )
             self._ping = True
             return None
@@ -1571,7 +1243,7 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum()) / vortex_strength_total
         )
         Logging.message(
-            f"[VPM][GBD] threshold={_threshold_scalar(threshold):.3e} nodes={len(ix)} "
+            f"[VPM][GBD] threshold={threshold:.3e} nodes={len(ix)} "
             f"vortex_strength_magnitude_fraction={threshold_retained:.6f}"
         )
 
@@ -1579,18 +1251,12 @@ class _GridDiffusionMixin:
         cap = self._regeneration_cap(particles, N, max_nodes)
         if len(ix) > cap:
             survivor_abs = float(vortex_strength_magnitude[ix, iy, iz].sum())
-            importance = (
-                vortex_strength_magnitude / threshold if isinstance(threshold, np.ndarray) else None
-            )
             ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
                 vortex_strength_magnitude,
                 ix,
                 iy,
                 iz,
                 cap,
-                importance=importance,
-                min_abs_fraction=cap_abs_fraction,
-                labels=group_winner_grid,
             )
             retained = float(vortex_strength_magnitude[ix, iy, iz].sum()) / survivor_abs
             retained_total = retained * threshold_retained
@@ -1598,28 +1264,7 @@ class _GridDiffusionMixin:
                 f"[VPM][GBD] population_cap={cap} nodes={old_count}->{len(ix)} "
                 f"candidate_vortex_strength_magnitude_fraction={retained:.6f} "
                 f"net_vortex_strength_magnitude_fraction={retained_total:.6f} "
-                f"threshold={_threshold_scalar(threshold):.3e}"
-            )
-
-        # Conservative prune: restore the pruned nodes' vortex strength/impulse on
-        # the survivors so total Γ and linear impulse are preserved (else the
-        # threshold silently deletes vortex strength — non-physical wake decay).
-        if self.conserve_pruned_moments:
-            grid_np[ix, iy, iz] = self._redistribute_pruned_moments(
-                grid_np,
-                vortex_strength_magnitude,
-                ix,
-                iy,
-                iz,
-                grid_min_np,
-                particle_spacing,
-                labels=group_winner_grid,
-            )
-            corrected_abs = float(np.linalg.norm(grid_np[ix, iy, iz], axis=1).sum())
-            Logging.message(
-                f"[VPM][GBD] moment_redistribution=true "
-                "post_redistribution_vortex_strength_magnitude_ratio="
-                f"{corrected_abs / vortex_strength_total:.6f}"
+                f"threshold={threshold:.3e}"
             )
 
         result = self._build_diffusion_particle_arrays(
@@ -1649,10 +1294,8 @@ class _GridDiffusionMixin:
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
-        regen_threshold_window: int = 3,
         effective_viscosity: np.ndarray | None = None,
         max_nodes: int | None = None,
-        cap_abs_fraction: float = 0.99,
     ) -> dict[str, np.ndarray] | None:
         """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
 
@@ -1671,10 +1314,8 @@ class _GridDiffusionMixin:
             domain_padding,
             regen_threshold,
             regen_threshold_mode,
-            regen_threshold_window=regen_threshold_window,
             effective_viscosity=effective_viscosity,
             max_nodes=max_nodes,
-            cap_abs_fraction=cap_abs_fraction,
         )
 
     def _dvh_scatter_vortex_strength(
@@ -1804,11 +1445,9 @@ class _GridDiffusionMixin:
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
-        regen_threshold_window: int = 3,
         rd_ratio: float = 4.0,
         effective_viscosity: np.ndarray | None = None,
         max_nodes: int | None = None,
-        cap_abs_fraction: float = 0.99,
     ) -> dict[str, np.ndarray] | None:
         """DVH diffusion + particle regeneration (Durante et al. 2024).
 
@@ -1919,13 +1558,12 @@ class _GridDiffusionMixin:
             regen_threshold,
             max_vortex_strength_magnitude,
             vortex_strength_total,
-            regen_threshold_window,
         )
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
             Logging.warning(
                 f"component=DVH status=skipped reason=no_nodes_above_threshold "
-                f"threshold={_threshold_scalar(threshold):.2e} particles_unchanged=true"
+                f"threshold={threshold:.2e} particles_unchanged=true"
             )
             return None
         group_winner_grid = self._scatter_id_field(
@@ -1945,7 +1583,7 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum()) / vortex_strength_total
         )
         Logging.message(
-            f"[VPM][DVH] threshold={_threshold_scalar(threshold):.3e} nodes={len(ix)} "
+            f"[VPM][DVH] threshold={threshold:.3e} nodes={len(ix)} "
             f"vortex_strength_magnitude_fraction={threshold_retained:.6f}"
         )
 
@@ -1953,43 +1591,18 @@ class _GridDiffusionMixin:
         cap = self._regeneration_cap(particles, N, max_nodes)
         if len(ix) > cap:
             survivor_abs = float(vortex_strength_magnitude[ix, iy, iz].sum())
-            importance = (
-                vortex_strength_magnitude / threshold if isinstance(threshold, np.ndarray) else None
-            )
             ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
                 vortex_strength_magnitude,
                 ix,
                 iy,
                 iz,
                 cap,
-                importance=importance,
-                min_abs_fraction=cap_abs_fraction,
-                labels=group_winner_grid,
             )
             retained = float(vortex_strength_magnitude[ix, iy, iz].sum()) / survivor_abs
             Logging.message(
                 f"[VPM][DVH] population_cap={cap} nodes={old_count}->{len(ix)} "
                 f"candidate_vortex_strength_magnitude_fraction={retained:.6f} "
-                f"threshold={_threshold_scalar(threshold):.3e}"
-            )
-
-        # Conservative prune (see GBD path): restore pruned vortex strength/impulse.
-        if self.conserve_pruned_moments:
-            grid_np[ix, iy, iz] = self._redistribute_pruned_moments(
-                grid_np,
-                vortex_strength_magnitude,
-                ix,
-                iy,
-                iz,
-                grid_min_np,
-                particle_spacing,
-                labels=group_winner_grid,
-            )
-            corrected_abs = float(np.linalg.norm(grid_np[ix, iy, iz], axis=1).sum())
-            Logging.message(
-                f"[VPM][DVH] moment_redistribution=true "
-                "post_redistribution_vortex_strength_magnitude_ratio="
-                f"{corrected_abs / vortex_strength_total:.6f}"
+                f"threshold={threshold:.3e}"
             )
 
         return self._build_diffusion_particle_arrays(
@@ -2017,11 +1630,9 @@ class _GridDiffusionMixin:
         domain_padding: float = 3.0,
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
-        regen_threshold_window: int = 3,
         rd_ratio: float = 4.0,
         effective_viscosity: np.ndarray | None = None,
         max_nodes: int | None = None,
-        cap_abs_fraction: float = 0.99,
     ) -> dict[str, np.ndarray] | None:
         """DVH (Durante 2024) diffusion step with particle regeneration.
 
@@ -2041,11 +1652,9 @@ class _GridDiffusionMixin:
             domain_padding,
             regen_threshold,
             regen_threshold_mode,
-            regen_threshold_window=regen_threshold_window,
             rd_ratio=rd_ratio,
             effective_viscosity=effective_viscosity,
             max_nodes=max_nodes,
-            cap_abs_fraction=cap_abs_fraction,
         )
 
     # ---- Taichi Kernels ----
@@ -2077,7 +1686,7 @@ class _GridDiffusionMixin:
         for local_particle in range(count):
             p = start_particle + local_particle
             pos = position[p]
-            vortex_strength = vortex_strength[p]
+            particle_vortex_strength = vortex_strength[p]
 
             # Fractional grid coordinates
             fx = (pos[0] - gmin_x) / particle_spacing
@@ -2106,9 +1715,9 @@ class _GridDiffusionMixin:
                         kk = iz0 + dk
 
                         if 0 <= ii < nx and 0 <= jj < ny and 0 <= kk < nz:
-                            ti.atomic_add(grid[ii, jj, kk][0], w * vortex_strength[0])
-                            ti.atomic_add(grid[ii, jj, kk][1], w * vortex_strength[1])
-                            ti.atomic_add(grid[ii, jj, kk][2], w * vortex_strength[2])
+                            ti.atomic_add(grid[ii, jj, kk][0], w * particle_vortex_strength[0])
+                            ti.atomic_add(grid[ii, jj, kk][1], w * particle_vortex_strength[1])
+                            ti.atomic_add(grid[ii, jj, kk][2], w * particle_vortex_strength[2])
 
     @ti.kernel
     def _laplacian_step_gpu_kernel(

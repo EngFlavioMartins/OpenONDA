@@ -95,7 +95,7 @@ RUNS = (
         "Core Spreading",
     ),
     RunSpec(
-        "CS h=0.10, dt=0.01",
+        "CS h=0.10, time_step_size=0.01",
         ROOT / "tutorials/vpm/vortex_ring/solution/relaxed_reference_cs_h010_tstar02",
         0.10,
         0.01,
@@ -155,11 +155,11 @@ def archer_moments(state: dict[str, np.ndarray | float | int]) -> dict[str, floa
         2.0 * (second_radius - ring_radius**2) + blob_width_sq,
         0.0,
     )
-    axial_centroid = float(np.sum(weight * position[:, 0]) / total_weight)
+    axial_vortex_centroid = float(np.sum(weight * position[:, 0]) / total_weight)
     tube_circulation = total_weight / (2.0 * np.pi)
     impulse = 0.5 * np.sum(np.cross(position, vortex_strength), axis=0)
     return {
-        "axial_centroid": axial_centroid,
+        "axial_vortex_centroid": axial_vortex_centroid,
         "ring_radius_theta": ring_radius,
         "ring_radius_second_moment": float(np.sqrt(max(second_radius, 0.0))),
         "core_radius_theta": float(np.sqrt(core_radius_sq)),
@@ -195,15 +195,15 @@ def modal_metrics(state: dict[str, np.ndarray | float | int]) -> dict[str, float
     }
 
 
-def gaussian_speed(circulation: float, radius: float, core_radius: float) -> float:
-    epsilon = core_radius / radius
-    return circulation / (4.0 * np.pi * radius) * (np.log(8.0 / epsilon) - 0.558)
+def gaussian_speed(circulation: float, ring_radius: float, core_radius: float) -> float:
+    epsilon = core_radius / ring_radius
+    return circulation / (4.0 * np.pi * ring_radius) * (np.log(8.0 / epsilon) - 0.558)
 
 
-def relaxed_empirical_speed(circulation: float, radius: float, core_radius: float) -> float:
-    epsilon = core_radius / radius
+def relaxed_empirical_speed(circulation: float, ring_radius: float, core_radius: float) -> float:
+    epsilon = core_radius / ring_radius
     correction = -0.558 - 1.12 * epsilon**2 - 5.0 * epsilon**4
-    return circulation / (4.0 * np.pi * radius) * (np.log(8.0 / epsilon) + correction)
+    return circulation / (4.0 * np.pi * ring_radius) * (np.log(8.0 / epsilon) + correction)
 
 
 def analyze_run(run: RunSpec) -> dict[str, object]:
@@ -256,7 +256,8 @@ def analyze_run(run: RunSpec) -> dict[str, object]:
         "initial_n_particles_total": int(initial_state["n_particles_total"]),
         "final_n_particles_total": int(final_state["n_particles_total"]),
         "duration": duration,
-        "measured_speed": (final["axial_centroid"] - initial["axial_centroid"]) / duration,
+        "measured_speed": (final["axial_vortex_centroid"] - initial["axial_vortex_centroid"])
+        / duration,
         "gaussian_speed_reference": mean_gaussian_speed,
         "relaxed_empirical_speed_reference": mean_relaxed_speed,
         "initial": initial,
@@ -290,7 +291,7 @@ def evaluate_gates(results: list[dict[str, object]]) -> dict[str, object]:
     by_name = {str(result["name"]): result for result in results}
     cs_primary = [by_name[f"CS h={spacing:.2f}"] for spacing in (0.15, 0.12, 0.10, 0.08)]
     time_coarse = by_name["CS h=0.10"]
-    time_fine = by_name["CS h=0.10, dt=0.01"]
+    time_fine = by_name["CS h=0.10, time_step_size=0.01"]
     spatial_coarse = by_name["CS h=0.10"]
     spatial_fine = by_name["CS h=0.08"]
 
@@ -446,7 +447,7 @@ def plot(results: list[dict[str, object]], output: Path) -> None:
             zorder=3,
         )
         axis.annotate(
-            str(result["name"]).replace(", dt=0.01", ""),
+            str(result["name"]).replace(", time_step_size=0.01", ""),
             (
                 float(result["molecular_dissipation_rate"]),
                 float(result["measured_energy_decay_rate"]),

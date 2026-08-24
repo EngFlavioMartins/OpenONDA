@@ -307,5 +307,5 @@ def compute_forces_kutta_joukowski(
         edge_norm = l_bound.norm()
         if edge_norm < PANEL_EPSILON:
             l_bound = normal[i] * ti.sqrt(ti.max(area[i], PANEL_EPSILON))
-        doublet_strength = doublet_strength[i]
-        forces[i] = density * doublet_strength * surface_velocity[i].cross(l_bound)
+        panel_doublet_strength = doublet_strength[i]
+        forces[i] = density * panel_doublet_strength * surface_velocity[i].cross(l_bound)

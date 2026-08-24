@@ -224,7 +224,7 @@ class EvolutionStepper:
         n_bad_radii = int(np.count_nonzero(invalid_radii))
         n_bad_volumes = int(np.count_nonzero(invalid_volumes))
         Logging.message(
-            f"[Integrity:{stage}] N={n} radius=[{np.nanmin(core_radius):.6e}, "
+            f"[Integrity:{stage}] N={n} core_radius=[{np.nanmin(core_radius):.6e}, "
             f"{np.nanmax(core_radius):.6e}] bad={n_bad_radii}; "
             f"particle_volume=[{np.nanmin(particle_volume):.6e}, {np.nanmax(particle_volume):.6e}] "
             f"bad={n_bad_volumes}"
@@ -497,7 +497,8 @@ class EvolutionStepper:
                 raise RuntimeError(
                     "Coupled VPM step exceeded coupled_max_substeps. "
                     "The particle field is no longer temporally admissible at the "
-                    "requested macro dt; reduce dt or refine the particle spacing."
+                    "requested macro time_step_size; reduce time_step_size or refine the "
+                    "particle spacing."
                 )
 
             if self.viscous_scheme == "CS":
@@ -557,13 +558,13 @@ class EvolutionStepper:
 
         position = self.particles.position_cpu(use_cache=False).astype(np.float64)
         vortex_strength = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
-        radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
+        core_radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
         particle_volume = self.particles.particle_volume_cpu(use_cache=False).astype(np.float64)
         core_coefficient = self.physics._angular_core_coefficient
         current = particle_moments(
             position,
             vortex_strength,
-            radius,
+            core_radius,
             angular_core_coefficient=core_coefficient,
         )
         moment_change = np.concatenate(
@@ -576,7 +577,7 @@ class EvolutionStepper:
         nullspace = _MomentNullspace(
             invariant_rows(
                 position,
-                radius,
+                core_radius,
                 angular_core_coefficient=core_coefficient,
             ),
             particle_volume,
@@ -598,7 +599,7 @@ class EvolutionStepper:
         restored = particle_moments(
             position,
             uploaded,
-            radius,
+            core_radius,
             angular_core_coefficient=core_coefficient,
         )
         scale = max(target_moments[1], np.finfo(float).tiny)
@@ -608,7 +609,7 @@ class EvolutionStepper:
         )
         angular_terms = (
             np.cross(position, np.cross(position, vortex_strength)) / 3.0
-            - core_coefficient * radius[:, None] ** 2 * vortex_strength
+            - core_coefficient * core_radius[:, None] ** 2 * vortex_strength
         )
         angular_scale = max(
             float(np.linalg.norm(angular_terms, axis=1).sum()),
@@ -642,22 +643,22 @@ class EvolutionStepper:
 
         position = self.particles.position_cpu(use_cache=False).astype(np.float64)
         vortex_strength = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
-        radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
+        core_radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
         particle_volume = self.particles.particle_volume_cpu(use_cache=False).astype(np.float64)
         core_coefficient = self.physics._angular_core_coefficient
         before = particle_moments(
             position,
             vortex_strength,
-            radius,
+            core_radius,
             angular_core_coefficient=core_coefficient,
         )
 
         self.physics.core_spreading_diffusion(self.particles, time_step_size)
-        new_radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
+        new_core_radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
         uncorrected = particle_moments(
             position,
             vortex_strength,
-            new_radius,
+            new_core_radius,
             angular_core_coefficient=core_coefficient,
         )
         moment_change = np.concatenate(
@@ -666,7 +667,7 @@ class EvolutionStepper:
         nullspace = _MomentNullspace(
             invariant_rows(
                 position,
-                new_radius,
+                new_core_radius,
                 angular_core_coefficient=core_coefficient,
             ),
             particle_volume,
@@ -684,7 +685,7 @@ class EvolutionStepper:
         after = particle_moments(
             position,
             uploaded,
-            new_radius,
+            new_core_radius,
             angular_core_coefficient=core_coefficient,
         )
         impulse_scale = max(
@@ -693,7 +694,7 @@ class EvolutionStepper:
         )
         angular_terms = (
             np.cross(position, np.cross(position, vortex_strength)) / 3.0
-            - core_coefficient * radius[:, None] ** 2 * vortex_strength
+            - core_coefficient * core_radius[:, None] ** 2 * vortex_strength
         )
         angular_scale = max(
             float(np.linalg.norm(angular_terms, axis=1).sum()),
@@ -737,57 +738,7 @@ class EvolutionStepper:
                 diffusion_time_step_size = time_step_size * self._n_steps_per_dvh_diffusion
             new_p = self._apply_grid_diffusion(self._viscous_config, diffusion_time_step_size)
             if new_p is not None:
-                from ..stabilization.divergence_relaxation import (
-                    _MomentNullspace,
-                    gaussian_invariant_rows,
-                )
-                from ..stabilization.filament_refinement import gaussian_particle_moments
-
-                old_position = self.particles.position_cpu().astype(np.float64)
-                old_vortex_strength = self.particles.vortex_strength_cpu().astype(np.float64)
-                old_radius = self.particles.core_radius_cpu().astype(np.float64)
-                old_moments = gaussian_particle_moments(
-                    old_position,
-                    old_vortex_strength,
-                    old_radius,
-                )
                 M = len(new_p["position"])
-                new_position = np.asarray(new_p["position"], dtype=np.float64)
-                proposed_vortex_strength = np.asarray(
-                    new_p["vortex_strength"],
-                    dtype=np.float64,
-                )
-                new_radius = np.asarray(new_p["core_radius"], dtype=np.float64)
-                new_particle_volume = np.asarray(new_p["particle_volume"], dtype=np.float64)
-                proposed_moments = gaussian_particle_moments(
-                    new_position,
-                    proposed_vortex_strength,
-                    new_radius,
-                )
-                # Preserve vortex_strength and linear impulse without undoing diffusive core growth.
-                target_moments = (
-                    old_moments[0],
-                    old_moments[2],
-                    proposed_moments[3],
-                )
-                moment_change = np.concatenate(
-                    (
-                        target_moments[0] - proposed_moments[0],
-                        target_moments[1] - proposed_moments[2],
-                        np.zeros(3, dtype=np.float64),
-                    )
-                )
-                nullspace = _MomentNullspace(
-                    gaussian_invariant_rows(new_position, new_radius),
-                    new_particle_volume,
-                )
-                moment_correction = nullspace.correction_for_moment_change(moment_change)
-                corrected_vortex_strength = proposed_vortex_strength + moment_correction
-                new_p["vortex_strength"] = corrected_vortex_strength.astype(self.np_dtype)
-                correction_relative = float(
-                    np.linalg.norm(moment_correction)
-                    / max(np.linalg.norm(proposed_vortex_strength), np.finfo(float).tiny)
-                )
                 retention_bounds = self.stabilization_config.remove_particles_by_bounds
                 if retention_bounds is not None and M > 0:
                     position = np.asarray(new_p["position"])
@@ -825,50 +776,6 @@ class EvolutionStepper:
                     zone_id=new_p.get("zone_id", np.zeros(M, dtype=np.int32)),
                     group_id=new_p.get("group_id", np.zeros(M, dtype=np.int32)),
                     report_removal=False,
-                )
-                new_vortex_strength = np.asarray(new_p["vortex_strength"], dtype=np.float64)
-                new_moments = gaussian_particle_moments(
-                    new_position,
-                    new_vortex_strength,
-                    new_radius,
-                )
-                strength_scale = max(old_moments[1], np.finfo(float).tiny)
-                impulse_scale = max(
-                    0.5
-                    * float(
-                        np.linalg.norm(
-                            np.cross(old_position, old_vortex_strength),
-                            axis=1,
-                        ).sum(dtype=np.float64)
-                    ),
-                    np.finfo(float).tiny,
-                )
-                angular_terms = (
-                    np.cross(
-                        old_position,
-                        np.cross(old_position, old_vortex_strength),
-                    )
-                    / 3.0
-                    - old_radius[:, None] ** 2 * old_vortex_strength / 3.0
-                )
-                angular_scale = max(
-                    float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
-                    np.finfo(float).tiny,
-                )
-                errors = {
-                    "vortex_strength": float(np.linalg.norm(new_moments[0] - target_moments[0]))
-                    / strength_scale,
-                    "linear_impulse": float(np.linalg.norm(new_moments[2] - target_moments[1]))
-                    / impulse_scale,
-                    "angular_impulse": float(np.linalg.norm(new_moments[3] - target_moments[2]))
-                    / angular_scale,
-                }
-                Logging.message(
-                    f"[VPM][{self.viscous_scheme}] particles={len(old_position)}->{M} "
-                    f"moment_correction_l2_rel={correction_relative:.3e} "
-                    f"vortex_strength_closure_relative={errors['vortex_strength']:.3e} "
-                    f"linear_impulse_closure_rel={errors['linear_impulse']:.3e} "
-                    f"angular_impulse_closure_rel={errors['angular_impulse']:.3e}"
                 )
                 # Velocity is intentionally left stale; it is recomputed before the next consumer.
         ti.sync()
@@ -911,11 +818,9 @@ class EvolutionStepper:
                 domain_padding=vc.dvh_domain_padding,
                 regen_threshold=vc.dvh_threshold,
                 regen_threshold_mode=vc.dvh_threshold_mode,
-                regen_threshold_window=vc.regeneration_threshold_window,
                 rd_ratio=vc.dvh_support_radius_ratio,
                 effective_viscosity=effective_viscosity,
                 max_nodes=getattr(vc, "dvh_max_nodes", None),
-                cap_abs_fraction=vc.regeneration_cap_absolute_fraction,
             )
         else:
             # LES uses per-particle effective viscosity in the grid Laplacian.
@@ -945,10 +850,8 @@ class EvolutionStepper:
                 domain_padding=vc.gbd_domain_padding,
                 regen_threshold=vc.gbd_threshold,
                 regen_threshold_mode=vc.gbd_threshold_mode,
-                regen_threshold_window=vc.regeneration_threshold_window,
                 effective_viscosity=effective_viscosity,
                 max_nodes=getattr(vc, "gbd_max_nodes", None),
-                cap_abs_fraction=vc.regeneration_cap_absolute_fraction,
             )
 
     def _update_positions(

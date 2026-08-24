@@ -177,7 +177,7 @@ def ring_particles(
     represented_core = np.sqrt(CORE_RADIUS**2 - PARTICLE_RADIUS**2)
     tube_radius = represented_core * np.sqrt(-np.log(TAIL_FRACTION))
     centre = np.array([centre_x, 0.0, 0.0])
-    position, particle_volume, radius = vpm.ParticleDistributor.toroidal_distribution(
+    position, particle_volume, core_radius = vpm.ParticleDistributor.toroidal_distribution(
         RING_RADIUS,
         tube_radius,
         PARTICLE_SPACING,
@@ -186,14 +186,14 @@ def ring_particles(
         seed=seed,
         n_widnall_modes=WIDNALL_MODES,
     )
-    radius.fill(PARTICLE_RADIUS)
-    _, kinematic_viscosity, strength = vpm.vortex_ring_vpm(
+    core_radius.fill(PARTICLE_RADIUS)
+    _, kinematic_viscosity, vortex_strength = vpm.vortex_ring_vpm(
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         ring_centre=centre,
         tube_circulation=circulation,
         ring_radius=RING_RADIUS,
         ring_core_radius=CORE_RADIUS,
-        mean_core_radius=float(radius.mean()),
+        mean_core_radius=float(core_radius.mean()),
         position=position,
         particle_volume=particle_volume,
         widnall_amplitude=WIDNALL_AMPLITUDE,
@@ -202,7 +202,7 @@ def ring_particles(
         is_anti_diffusion_enabled=True,
         is_circulation_normalization_enabled=True,
     )
-    return position, particle_volume, radius, kinematic_viscosity, strength
+    return position, particle_volume, core_radius, kinematic_viscosity, vortex_strength
 
 
 def run_case(case_name: str, *, n_steps: int = NUM_STEPS) -> None:
@@ -220,14 +220,14 @@ def run_case(case_name: str, *, n_steps: int = NUM_STEPS) -> None:
     for group, (centre, circulation, seed) in enumerate(
         zip(centres, circulations, RING_SEEDS, strict=True)
     ):
-        position, particle_volume, radius, kinematic_viscosity, strength = ring_particles(
-            centre, circulation, seed
+        position, particle_volume, core_radius, kinematic_viscosity, vortex_strength = (
+            ring_particles(centre, circulation, seed)
         )
         solver.add_vortex_particles(
             position=position,
             velocity=np.zeros_like(position),
-            vortex_strength=strength,
-            core_radius=radius,
+            vortex_strength=vortex_strength,
+            core_radius=core_radius,
             particle_volume=particle_volume,
             kinematic_viscosity=kinematic_viscosity,
             group_id=np.full(len(position), group, dtype=np.int32),

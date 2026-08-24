@@ -66,7 +66,7 @@ def _try_load_stl_with_library(filepath: str) -> tuple[np.ndarray, np.ndarray] |
         stl_mesh = importlib.import_module("stl.mesh")
         mesh = stl_mesh.Mesh.from_file(filepath)
         vertex_position = np.asarray(mesh.vectors, dtype=np.float64)
-        normal = np.asarray(mesh.normal, dtype=np.float64)
+        normal = np.asarray(mesh.normals, dtype=np.float64)
         if vertex_position.ndim != 3 or vertex_position.shape[1:] != (3, 3):
             raise ValueError(f"Unexpected STL triangle array shape: {vertex_position.shape}")
         zero_normals = np.linalg.norm(normal, axis=1) <= 0.0
@@ -238,7 +238,7 @@ def save_stl(filepath: str, vertex_position: np.ndarray, normal: np.ndarray | No
         stl_mesh = importlib.import_module("stl.mesh")
         mesh = stl_mesh.Mesh(np.zeros(panel_count, dtype=stl_mesh.Mesh.dtype))
         mesh.vectors = triangles.astype(np.float32)
-        mesh.normal = normals_arr.astype(np.float32)
+        mesh.normals = normals_arr.astype(np.float32)
         mesh.save(filepath)
         logger.debug(f"Saved STL '{filepath}' using numpy-stl: {panel_count} panels.")
         return
@@ -401,7 +401,7 @@ def build_mesh_topology(
 
     Identifies panel neighbours by shared edges, marks trailing-edge (open
     boundary) panels, and marks leading-edge panels based on the x-coordinate
-    of each triangle centroid.
+    of each triangle centre.
 
     Parameters
     ----------

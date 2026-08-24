@@ -215,7 +215,7 @@ missing-argument = "ignore"
 
 # ── Pyrefly (fast type checker, used in the agentic type-check loop) ──────────
 # `pyrefly check` at the repo root type-checks the actively-maintained Python:
-# the FVM solver, the coupler, and shared utilities. The VPM subtree is
+# the FVM solver and the coupler. The VPM subtree is
 # intentionally excluded because its Taichi DSL is not statically typeable — the
 # same reason [tool.ty] / [tool.mypy] suppress it. See AGENTS.md for how agents
 # (Claude Code, Codex/ChatGPT) are expected to use this.
@@ -223,7 +223,6 @@ missing-argument = "ignore"
 project-includes = [
     "source/solvers/fvm",
     "source/coupler",
-    "source/utilities",
 ]
 project-excludes = [
     "**/__pycache__",

@@ -724,7 +724,7 @@ class AdaptiveCartesianMesher:
                 # above by ``solid.contains``.  Any remaining positive-volume
                 # overlap means a body plane is not an exact leaf lattice
                 # plane, which preserved mode must reject rather than silently
-                # keep or remove on a centroid test.
+                # keep or remove on a cell-centre test.
                 overlap_x = min(x1, solid.x1) - max(x0, solid.x0)
                 overlap_y = min(y1, solid.y1) - max(y0, solid.y0)
                 overlap_z = min(z1, solid.z1) - max(z0, solid.z0)

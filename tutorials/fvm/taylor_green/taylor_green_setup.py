@@ -69,10 +69,13 @@ def main() -> None:
         or args.time_step_size <= 0.0
         or args.end_time <= 0.0
     ):
-        raise ValueError("n must be at least 4 and nu, dt, and end-time must be positive")
+        raise ValueError(
+            "n must be at least 4 and kinematic_viscosity, time_step_size, and end_time "
+            "must be positive"
+        )
     nsteps = int(round(args.end_time / args.time_step_size))
     if nsteps < 1 or not np.isclose(nsteps * args.time_step_size, args.end_time):
-        raise ValueError("end-time must be a positive integer multiple of dt")
+        raise ValueError("end_time must be a positive integer multiple of time_step_size")
 
     print("\n===== MESH =====")
     print("---- Generating the periodic square mesh ----")

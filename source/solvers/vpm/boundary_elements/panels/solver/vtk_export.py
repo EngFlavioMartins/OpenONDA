@@ -20,8 +20,6 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-from source.schemas import SCHEMA_VERSION, validate_serialized_field_name
-
 
 def panel_mesh_to_vtp(
     vertex_position: np.ndarray,
@@ -89,7 +87,6 @@ def panel_mesh_to_vtp(
         ("panel_centre", panel_centre, "Float64", 3),
     ]
     for name, data, dtype, nc in arrays:
-        validate_serialized_field_name(name)
         da = ET.SubElement(
             celldata, "DataArray", type=dtype, Name=name, NumberOfComponents=str(nc), format="ascii"
         )
@@ -100,21 +97,10 @@ def panel_mesh_to_vtp(
 
     # Time
     field = ET.SubElement(celldata, "FieldData")
-    validate_serialized_field_name("time")
     ft = ET.SubElement(
         field, "DataArray", type="Float64", Name="time", NumberOfComponents="1", format="ascii"
     )
     ft.text = str(time)
-    validate_serialized_field_name("physical_field_schema_version")
-    schema = ET.SubElement(
-        field,
-        "DataArray",
-        type="String",
-        Name="physical_field_schema_version",
-        NumberOfComponents="1",
-        format="ascii",
-    )
-    schema.text = SCHEMA_VERSION
 
     # Write pretty-printed XML
     xml_str = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")  # nosec B318

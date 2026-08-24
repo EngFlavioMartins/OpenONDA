@@ -89,7 +89,12 @@ def create_fvm_setup(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--Re", type=float, default=30.0, help="Reynolds number Re = U D / nu")
+    parser.add_argument(
+        "--Re",
+        type=float,
+        default=30.0,
+        help="Reynolds number based on freestream speed, diameter, and kinematic viscosity",
+    )
     parser.add_argument("--end-time", type=float, default=60.0, help="simulation end time [s]")
     args = parser.parse_args()
 
@@ -104,7 +109,8 @@ def main() -> None:
     fourier_time_step_size_limit = MAX_FORCING_FOURIER * SPACING**2 / kinematic_viscosity
     if fourier_time_step_size_limit < max_time_step_size:
         print(
-            f"  [IBM] capping max dt to {fourier_time_step_size_limit:.4g} s (Fo = nu*dt/h^2 <= {MAX_FORCING_FOURIER})"
+            f"  [IBM] capping max time_step_size to {fourier_time_step_size_limit:.4g} s "
+            f"(forcing Fourier number <= {MAX_FORCING_FOURIER})"
         )
         max_time_step_size = fourier_time_step_size_limit
         time_step_size = min(time_step_size, fourier_time_step_size_limit)

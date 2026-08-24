@@ -99,7 +99,7 @@ def build_solver() -> VPMSolver:
     )
     return VPMSolver(
         setup=VPMSetup.les_simulation(
-            cs=0.30,
+            smagorinsky_coefficient=0.30,
             time_step_size=TIME_STEP_SIZE,
             vlm=vlm,
             viscous=ViscousConfig.cs(kinematic_viscosity=1.0e-2),

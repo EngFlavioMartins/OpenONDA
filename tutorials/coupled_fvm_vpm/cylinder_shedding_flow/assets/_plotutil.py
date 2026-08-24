@@ -200,7 +200,7 @@ def line_times(source: str, name: str) -> np.ndarray:
 def load_line(
     source: str, name: str, time: float, tol: float = TIME_TOL
 ) -> dict[str, np.ndarray] | None:
-    """Return the frame of one line sampler at ``time``, sorted by x."""
+    """Return the frame of one line sampler at ``time``, sorted by position_x."""
     path = _path(source, name, ".csv")
     if not path.exists():
         return None
@@ -213,7 +213,7 @@ def load_line(
         return None
     mask = table["time"] == picked
     frame = {key: values[mask] for key, values in table.items()}
-    order = np.argsort(frame["x"])
+    order = np.argsort(frame["position_x"])
     frame = {key: values[order] for key, values in frame.items()}
     frame["time"] = picked
     return frame
@@ -288,7 +288,7 @@ def common_times(*series: np.ndarray, tol: float = TIME_TOL) -> np.ndarray:
 def comparison_times(
     time_step_size: float, names: tuple[str, ...] = ("midspan_probe",)
 ) -> np.ndarray:
-    """Canonical ``dt``-spaced grid that drives every per-frame figure."""
+    """Canonical time-step-size-spaced grid that drives every per-frame figure."""
     sources = []
     for source in ("reference", "fvm", "vpm"):
         for name in names:

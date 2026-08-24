@@ -257,17 +257,17 @@ class PhysicsBase:
     def _reduce_rate_moments(
         self,
         position: ti.template(),
-        strength: ti.template(),
+        vortex_strength: ti.template(),
         core_radius: ti.template(),
         velocity: ti.template(),
-        strength_rate: ti.template(),
+        vortex_strength_rate: ti.template(),
         count: ti.i32,
     ):
         for i in range(count):
             x = position[i]
-            vortex_strength = strength[i]
+            particle_vortex_strength = vortex_strength[i]
             u = velocity[i]
-            rate = strength_rate[i]
+            rate = vortex_strength_rate[i]
             ti.atomic_add(self._rate_projection_original_norm_sq[None], rate.dot(rate))
             rows = ti.Matrix.zero(self.accumulator_dtype, 10, 3)
             for component in ti.static(range(3)):
@@ -277,18 +277,21 @@ class PhysicsBase:
             rows[4, 0], rows[4, 2] = 0.5 * x[2], -0.5 * x[0]
             rows[5, 0], rows[5, 1] = -0.5 * x[1], 0.5 * x[0]
 
-            radius = core_radius[i]
-            core_term = ti.cast(self._angular_core_coefficient, self.accumulator_dtype) * radius**2
+            particle_core_radius = core_radius[i]
+            core_term = (
+                ti.cast(self._angular_core_coefficient, self.accumulator_dtype)
+                * particle_core_radius**2
+            )
             x_sq = x.dot(x)
             for row, column in ti.static(ti.ndrange(3, 3)):
                 rows[6 + row, column] = x[row] * x[column] / 3.0
                 if ti.static(row == column):
                     rows[6 + row, column] -= x_sq / 3.0 + core_term
 
-            impulse_rate = 0.5 * (u.cross(vortex_strength) + x.cross(rate))
+            impulse_rate = 0.5 * (u.cross(particle_vortex_strength) + x.cross(rate))
             angular_rate = (
-                u.cross(x.cross(vortex_strength))
-                + x.cross(u.cross(vortex_strength))
+                u.cross(x.cross(particle_vortex_strength))
+                + x.cross(u.cross(particle_vortex_strength))
                 + x.cross(x.cross(rate))
             ) / 3.0 - core_term * rate
             for component in ti.static(range(3)):
@@ -308,15 +311,15 @@ class PhysicsBase:
         @ti.kernel
         def reduce_rate_energy(
             position: ti.template(),
-            strength: ti.template(),
+            vortex_strength: ti.template(),
             core_radius: ti.template(),
             velocity: ti.template(),
-            strength_rate: ti.template(),
+            vortex_strength_rate: ti.template(),
             count: ti.i32,
         ):
             for i in range(count):
                 x_i = position[i]
-                vortex_strength_i = strength[i]
+                vortex_strength_i = vortex_strength[i]
                 vector_potential = ti.Vector.zero(self.accumulator_dtype, 3)
                 energy_position_gradient = ti.Vector.zero(self.accumulator_dtype, 3)
                 for j in range(count):
@@ -325,20 +328,22 @@ class PhysicsBase:
                     pair_radius = 0.5 * (core_radius[i] + core_radius[j])
                     if distance / pair_radius < DEFAULT_CUTOFF_RADIUS_FACTOR:
                         convolved_radius = ti.sqrt(core_radius[i] ** 2 + core_radius[j] ** 2)
-                        rho = distance / convolved_radius
-                        vector_potential += g_(rho) / convolved_radius * strength[j]
+                        normalized_distance = distance / convolved_radius
+                        vector_potential += (
+                            g_(normalized_distance) / convolved_radius * vortex_strength[j]
+                        )
                         if distance > EPSILON:
                             energy_position_gradient -= (
-                                q_(rho)
-                                * vortex_strength_i.dot(strength[j])
+                                q_(normalized_distance)
+                                * vortex_strength_i.dot(vortex_strength[j])
                                 / distance**3
                                 * displacement
                             )
 
                 self._rate_energy_gradient[i] = vector_potential
-                energy_rate = vector_potential.dot(strength_rate[i]) + energy_position_gradient.dot(
-                    velocity[i]
-                )
+                energy_rate = vector_potential.dot(
+                    vortex_strength_rate[i]
+                ) + energy_position_gradient.dot(velocity[i])
                 ti.atomic_add(self._rate_constraint_defect[9], energy_rate)
 
                 rows = ti.Matrix.zero(self.accumulator_dtype, 9, 3)
@@ -374,7 +379,7 @@ class PhysicsBase:
         self,
         position: ti.template(),
         core_radius: ti.template(),
-        strength_rate: ti.template(),
+        vortex_strength_rate: ti.template(),
         count: ti.i32,
     ):
         for i in range(count):
@@ -385,8 +390,11 @@ class PhysicsBase:
             rows[3, 1], rows[3, 2] = -0.5 * x[2], 0.5 * x[1]
             rows[4, 0], rows[4, 2] = 0.5 * x[2], -0.5 * x[0]
             rows[5, 0], rows[5, 1] = -0.5 * x[1], 0.5 * x[0]
-            radius = core_radius[i]
-            core_term = ti.cast(self._angular_core_coefficient, self.accumulator_dtype) * radius**2
+            particle_core_radius = core_radius[i]
+            core_term = (
+                ti.cast(self._angular_core_coefficient, self.accumulator_dtype)
+                * particle_core_radius**2
+            )
             x_sq = x.dot(x)
             for row, column in ti.static(ti.ndrange(3, 3)):
                 rows[6 + row, column] = x[row] * x[column] / 3.0
@@ -401,15 +409,15 @@ class PhysicsBase:
                 correction[component] += (
                     self._rate_constraint_multiplier[row] * rows[row, component]
                 )
-            strength_rate[i] += correction
+            vortex_strength_rate[i] += correction
 
     def conserve_rate_moments(
         self,
         position,
-        strength,
-        radius,
+        vortex_strength,
+        core_radius,
         velocity,
-        strength_rate,
+        vortex_strength_rate,
         count: int,
         *,
         conserve_energy: bool = False,
@@ -433,9 +441,23 @@ class PhysicsBase:
         if count <= 0:
             return
         self._reset_rate_moments()
-        self._reduce_rate_moments(position, strength, radius, velocity, strength_rate, count)
+        self._reduce_rate_moments(
+            position,
+            vortex_strength,
+            core_radius,
+            velocity,
+            vortex_strength_rate,
+            count,
+        )
         if conserve_energy:
-            self._reduce_rate_energy(position, strength, radius, velocity, strength_rate, count)
+            self._reduce_rate_energy(
+                position,
+                vortex_strength,
+                core_radius,
+                velocity,
+                vortex_strength_rate,
+                count,
+            )
         ti.sync()
 
         defect = self._rate_constraint_defect.to_numpy().astype(np.float64)
@@ -454,7 +476,7 @@ class PhysicsBase:
         )
 
         self._rate_constraint_multiplier.from_numpy(multipliers.astype(self.np_dtype))
-        self._apply_rate_moment_correction(position, radius, strength_rate, count)
+        self._apply_rate_moment_correction(position, core_radius, vortex_strength_rate, count)
 
     @ti.kernel
     def _reset_axisymmetric_accumulators(self, count: ti.i32):
@@ -468,8 +490,8 @@ class PhysicsBase:
     def _cylindrical_components(self, position, value, axis: ti.i32):
         b = ti.cast((axis + 1) % 3, ti.i32)
         c = ti.cast((axis + 2) % 3, ti.i32)
-        radius = ti.sqrt(position[b] ** 2 + position[c] ** 2)
-        inverse_radius = 1.0 / ti.max(radius, ti.cast(1.0e-20, self.accumulator_dtype))
+        cylindrical_radius = ti.sqrt(position[b] ** 2 + position[c] ** 2)
+        inverse_radius = 1.0 / ti.max(cylindrical_radius, ti.cast(1.0e-20, self.accumulator_dtype))
         return ti.Vector(
             [
                 value[axis],
@@ -482,8 +504,8 @@ class PhysicsBase:
     def _cartesian_from_cylindrical(self, position, value, axis: ti.i32):
         b = ti.cast((axis + 1) % 3, ti.i32)
         c = ti.cast((axis + 2) % 3, ti.i32)
-        radius = ti.sqrt(position[b] ** 2 + position[c] ** 2)
-        inverse_radius = 1.0 / ti.max(radius, ti.cast(1.0e-20, self.accumulator_dtype))
+        cylindrical_radius = ti.sqrt(position[b] ** 2 + position[c] ** 2)
+        inverse_radius = 1.0 / ti.max(cylindrical_radius, ti.cast(1.0e-20, self.accumulator_dtype))
         result = ti.Vector.zero(self.accumulator_dtype, 3)
         result[axis] = value[0]
         result[b] = (value[1] * position[b] - value[2] * position[c]) * inverse_radius

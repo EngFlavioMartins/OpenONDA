@@ -100,8 +100,8 @@ def run() -> None:
                 str(surface_file),
                 name=name,
                 kinematics=vpm.ManeuverVLM(
-                    velocity_fn=heave_velocity(phase),
-                    angular_velocity_fn=pitch_velocity(phase),
+                    velocity_function=heave_velocity(phase),
+                    angular_velocity_function=pitch_velocity(phase),
                     rotation_centre=[x_position + PITCH_PIVOT, 0.0, 0.0],
                 ),
                 translation=(x_position, 0.0, 0.0),

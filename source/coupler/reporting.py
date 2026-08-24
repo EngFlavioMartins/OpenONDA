@@ -10,8 +10,6 @@ import sys
 import numpy as np
 
 from source.coupler.checkpoint import CHECKPOINT_DIRECTORY
-from source.schemas.serialization import schema_metadata
-from source.utilities import nearest_time_event_due
 
 _REAL_STDOUT = sys.stdout
 
@@ -116,7 +114,6 @@ def write_run_metadata(coupler) -> None:
             "fvm_time_step_size": coupler.fvm_time_step_size,
             "end_time": coupler.end_time,
             "checkpoint_interval_steps": coupler.setup.checkpoint_interval_steps,
-            "checkpoint_interval_time": coupler.setup.checkpoint_interval_time,
         },
         "fvm_solver": {
             "coupling_patch": coupler.setup.coupling_patch,
@@ -132,7 +129,6 @@ def write_run_metadata(coupler) -> None:
         "vpm_time_step_size": coupler.vpm_time_step_size,
         "n_fvm_substeps": coupler.n_fvm_substeps,
     }
-    metadata = schema_metadata(**metadata)
     (coupler.solution_dir / "run_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
     )
@@ -212,15 +208,15 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     pressure_shift = (
         0.0 if coupler.pressure_reference is None else coupler.pressure_reference.last_shift
     )
-    return schema_metadata(
-        vpm_boundary_condition_flux=boundary_flux,
-        transfer=transfer,
-        boundary_normal_velocity=interface,
-        vortex_line_closure=closure,
-        pressure_reference_shift=float(pressure_shift),
-        n_fvm_substeps=int(coupler.n_fvm_substeps),
-        n_transfer_particles=int(particle_count),
-    )
+    return {
+        "vpm_boundary_condition_flux": boundary_flux,
+        "transfer": transfer,
+        "boundary_normal_velocity": interface,
+        "vortex_line_closure": closure,
+        "pressure_reference_shift": float(pressure_shift),
+        "n_fvm_substeps": int(coupler.n_fvm_substeps),
+        "n_transfer_particles": int(particle_count),
+    }
 
 
 def record_step(
@@ -255,7 +251,7 @@ def record_step(
 
         stats = coupler._step_transfer_stats or {}
         logger.info(
-            "[Coupler][VPMState] step=%d particles=%d->%d "
+            "[Coupler][VPMState] step=%d n_particles=%d->%d "
             "vortex_strength_magnitude_sum_m3_s=%.4e->%.4e",
             step,
             int(stats.get("n_before", 0)),
@@ -278,15 +274,7 @@ def record_step(
     if comm is not None and comm.Get_size() > 1:
         comm.Barrier()
     checkpoint_due = (
-        coupler.setup.checkpoint_interval_time is not None
-        and nearest_time_event_due(
-            time_end,
-            coupler.vpm_time_step_size,
-            coupler.setup.checkpoint_interval_time,
-        )
-    ) or (
-        coupler.setup.checkpoint_interval_time is None
-        and coupler.setup.checkpoint_interval_steps > 0
+        coupler.setup.checkpoint_interval_steps > 0
         and step % coupler.setup.checkpoint_interval_steps == 0
     )
     if checkpoint_due:

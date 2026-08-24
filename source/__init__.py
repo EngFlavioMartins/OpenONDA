@@ -19,13 +19,6 @@ Usage:
 from . import solvers
 from .version import __version__, __version_info__
 
-# Don't eagerly import utilities to avoid blocking FVM import when VPM fails
-# Users can import from utilities explicitly if needed:
-#   from source.utilities import OfflineFlowDiagnosticsVPM
-#   from source.utilities import LambOseenFVM
-# or
-#   from source import utilities
-
 __all__ = [
     "__version__",
     "__version_info__",

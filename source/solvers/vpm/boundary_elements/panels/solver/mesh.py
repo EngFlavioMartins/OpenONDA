@@ -48,8 +48,8 @@ def add_body_from_mesh_stl(
     lattice.update_geometry(0.0)
 
     if fix_normal_orientation and count > 0:
-        # Flip normal away from centroid
+        # Flip normals away from the body's geometric centre.
         panel_centre = lattice.panel_centre.to_numpy()[start : start + count]
-        centroid = np.mean(panel_centre, axis=0)
-        lattice.flip_normal(start, count, centroid)
-        logger.debug(f"Fixed normal for '{uid}' using centroid: {centroid}.")
+        geometry_centre = np.mean(panel_centre, axis=0)
+        lattice.flip_normal(start, count, geometry_centre)
+        logger.debug(f"Fixed normal for '{uid}' using geometry_centre: {geometry_centre}.")

@@ -203,8 +203,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
         for outer in range(n_outer):
             final_iteration = final_iteration or outer == n_outer - 1
-            alpha_u_outer = 1.0 if final_iteration else velocity_relaxation
-            alpha_p_outer = 1.0 if final_iteration else pressure_relaxation
+            outer_velocity_relaxation = 1.0 if final_iteration else velocity_relaxation
+            outer_pressure_relaxation = 1.0 if final_iteration else pressure_relaxation
             momentum_tolerance, momentum_relative_tolerance = _linear_tolerances(
                 "momentum", final=final_iteration
             )
@@ -212,7 +212,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             def _solve_predictor(
                 src_explicit,
                 volumetric_face_flux=volumetric_face_flux,
-                velocity_relaxation=alpha_u_outer,
+                velocity_relaxation=outer_velocity_relaxation,
                 momentum_tolerance=momentum_tolerance,
                 momentum_relative_tolerance=momentum_relative_tolerance,
             ) -> Any:
@@ -334,7 +334,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         self.mesh_data,
                         self.geo_data,
                         self.boundaries,
-                        velocity_relaxation=alpha_u_outer,
+                        velocity_relaxation=outer_velocity_relaxation,
                         pressure_constraint=pressure_constraint,
                         matrix_workspace=self._pressure_matrix_workspace,
                         operator_backend=self.params.get("_operator_backend", "numpy"),
@@ -415,8 +415,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             self.geo_data,
                             self.boundaries,
                             density=density,
-                            velocity_relaxation=alpha_u_outer,
-                            pressure_relaxation=alpha_p_outer,
+                            velocity_relaxation=outer_velocity_relaxation,
+                            pressure_relaxation=outer_pressure_relaxation,
                             workspace=pressure_workspace,
                         )
                     )
@@ -428,7 +428,9 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         sink=logger,
                     )
 
-                    kinematic_pressure[:n_elem] += alpha_p_outer * kinematic_pressure_correction
+                    kinematic_pressure[:n_elem] += (
+                        outer_pressure_relaxation * kinematic_pressure_correction
+                    )
                     simple_solver.update_scalar_boundaries(
                         kinematic_pressure,
                         self.mesh_data,

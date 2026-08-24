@@ -5,7 +5,6 @@ OpenONDA is a CFD library. The Python sources are:
 - `source/solvers/fvm` — native incompressible finite-volume solver
 - `source/solvers/vpm` — vortex-particle solver (Taichi/GPU DSL)
 - `source/coupler` — FVM↔VPM coupler
-- `source/utilities` — shared helpers
 
 This file is the single source of truth for how automated coding agents
 (Claude Code, Codex/ChatGPT, and others) should work in this repo. `CLAUDE.md`
@@ -14,7 +13,7 @@ imports it.
 ## Type checking with Pyrefly — required for Python changes
 
 Before completing any task that **creates or modifies Python files** under
-`source/solvers/fvm`, `source/coupler`, or `source/utilities`, you MUST:
+`source/solvers/fvm` or `source/coupler`, you MUST:
 
 1. Run `pyrefly check` at the repo root — or `pyrefly check <the files you
    changed>` to focus on your edit.

@@ -73,12 +73,12 @@ class _Step:
         return self
 
     def __exit__(self, *exc) -> bool:
-        p = self._profiler
-        if p.enabled:
-            p._synchronize()
-        p.step_time = time.perf_counter() - self._t0
-        p.wall_time += p.step_time
-        p.n_steps += 1
+        profiler = self._profiler
+        if profiler.enabled:
+            profiler._synchronize()
+        profiler.step_time = time.perf_counter() - self._t0
+        profiler.wall_time += profiler.step_time
+        profiler.n_steps += 1
         return False
 
 

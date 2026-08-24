@@ -9,8 +9,6 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from source.schemas.serialization import schema_metadata
-
 from .storage import append_line_recoverably
 
 
@@ -42,7 +40,7 @@ class SolverIO:
             return
         output_dir = os.path.join(self.case_dir, "solution")
         path = os.path.join(output_dir, "diagnostics.jsonl")
-        line = json.dumps(schema_metadata(**asdict(record)), sort_keys=True, allow_nan=False) + "\n"
+        line = json.dumps(asdict(record), sort_keys=True, allow_nan=False) + "\n"
         try:
             append_line_recoverably(path, line)
         except OSError as error:

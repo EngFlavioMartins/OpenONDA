@@ -51,7 +51,7 @@ def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
     """Infer the pseudo-2D mesh thickness from an ``empty`` boundary patch.
 
     The thickness is computed as twice the normal distance from the first
-    empty-patch face centroid to its owner element centroid.
+    empty-patch face centre to its owner cell centre.
 
     Args:
         mesh_data: Mesh dictionary.
@@ -93,7 +93,7 @@ def _compute_filter_width(cell_volume: np.ndarray, mesh_data: dict, geo_data: di
 
 
 def _symmetric_velocity_gradient(velocity, mesh_data: dict, geo_data: dict) -> np.ndarray:
-    """Return ``D = symm(grad(U))`` for the interior cells.
+    """Return the symmetric velocity-gradient tensor for the interior cells.
 
     The native gradient layout is ``grad[c, j, i] = d(U_i)/d(x_j)``.  A
     transpose only changes the storage convention, not the symmetric tensor,
@@ -220,7 +220,8 @@ class EquilibriumSmagorinsky:
        k &= \left(\frac{-b + \sqrt{b^2 + 4ac}}{2a}\right)^2, \\
        \nu_t &= C_k \Delta \sqrt{k},
 
-    where ``D = symm(grad(U))`` and the ``cubeRootVol`` filter is
+    where ``D`` is the symmetric velocity-gradient tensor and the cube-root
+    cell-volume filter is
     ``Delta = V^(1/3)``.  For exactly incompressible flow this reduces to the
     classical model with ``C_s^2 = C_k sqrt(C_k/C_e)``.  Keeping the full
     algebraic expression remains valid when the discrete velocity field has a
@@ -352,7 +353,7 @@ class EquilibriumSmagorinsky:
 
         Parameters
         ----------
-        U:
+        velocity:
             Velocity values for interior and boundary-ghost cells, shaped
             ``(n_cells_with_ghosts, 3)``.
         mesh_data, geo_data:

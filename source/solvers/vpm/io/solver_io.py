@@ -11,8 +11,6 @@ import json
 import os
 from typing import TYPE_CHECKING
 
-from source.utilities import nearest_time_event_due
-
 from .checkpoint import CheckpointManager
 from .logging import Logging
 from .sampling import resolve_samples_dir
@@ -53,10 +51,6 @@ class SolverIO:
         return self.solver.checkpoint_interval_steps
 
     @property
-    def checkpoint_interval_time(self) -> float | None:
-        return self.solver.checkpoint_interval_time
-
-    @property
     def checkpoint_name(self) -> str:
         return (self.solver.checkpoint_name or "").strip()
 
@@ -87,17 +81,6 @@ class SolverIO:
             True if a checkpoint should be written
         """
         ts = step if step is not None else self.step
-        if self.checkpoint_interval_time is not None:
-            time = (
-                float(self.time)
-                if step is None
-                else float(self.time) + (ts - self.step) * float(self.solver.time_step_size)
-            )
-            return nearest_time_event_due(
-                time,
-                float(self.solver.time_step_size),
-                self.checkpoint_interval_time,
-            )
         return self.checkpoint_interval_steps > 0 and ts % self.checkpoint_interval_steps == 0
 
     def write_checkpoint(self, verbose: bool = True):
@@ -156,8 +139,8 @@ class SolverIO:
                     "vpm_vortex_strength_magnitude_sum",
                     "fvm_vortex_strength_magnitude_sum",
                     "interpolated_vortex_strength_magnitude_sum",
-                    "n_injected",
-                    "n_candidates",
+                    "n_particles_injected",
+                    "n_particle_candidates",
                     "observed_time_step_size",
                     "vortex_centroid_x",
                     "vortex_centroid_y",
@@ -165,7 +148,11 @@ class SolverIO:
                 ]
             )
             for i in range(len(fld["time"])):
-                centroid = fld["centroid"][i] if i < len(fld["centroid"]) else (0.0, 0.0, 0.0)
+                vortex_centroid = (
+                    fld["vortex_centroid"][i]
+                    if i < len(fld["vortex_centroid"])
+                    else (0.0, 0.0, 0.0)
+                )
                 writer.writerow(
                     [
                         fld["time"][i],
@@ -178,14 +165,18 @@ class SolverIO:
                         fld["interpolated_vortex_strength_magnitude_sum"][i]
                         if i < len(fld["interpolated_vortex_strength_magnitude_sum"])
                         else 0.0,
-                        fld["n_injected"][i] if i < len(fld["n_injected"]) else 0,
-                        fld["n_candidates"][i] if i < len(fld["n_candidates"]) else 0,
+                        fld["n_particles_injected"][i]
+                        if i < len(fld["n_particles_injected"])
+                        else 0,
+                        fld["n_particle_candidates"][i]
+                        if i < len(fld["n_particle_candidates"])
+                        else 0,
                         fld["observed_time_step_size"][i]
                         if i < len(fld["observed_time_step_size"])
                         else 0.0,
-                        centroid[0],
-                        centroid[1],
-                        centroid[2],
+                        vortex_centroid[0],
+                        vortex_centroid[1],
+                        vortex_centroid[2],
                     ]
                 )
         Logging.info(f"component=diagnostics_export status=written path={filename!r}")

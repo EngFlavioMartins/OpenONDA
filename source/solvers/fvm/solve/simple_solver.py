@@ -527,9 +527,9 @@ def _process_boundary_faces_jit(
             e2 = CF2 / (mag_CF + 1e-10)
 
             (
-                pressure_velocity_coefficient_x,
-                pressure_velocity_coefficient_y,
-                pressure_velocity_coefficient_z,
+                owner_pressure_velocity_coefficient_x,
+                owner_pressure_velocity_coefficient_y,
+                owner_pressure_velocity_coefficient_z,
             ) = (
                 pressure_velocity_coefficient_x[own],
                 pressure_velocity_coefficient_y[own],
@@ -558,9 +558,9 @@ def _process_boundary_faces_jit(
 
                 # Interpolated gradient flux
                 term_interp = (
-                    pressure_velocity_coefficient_x * gp0 * Sf0
-                    + pressure_velocity_coefficient_y * gp1 * Sf1
-                    + pressure_velocity_coefficient_z * gp2 * Sf2
+                    owner_pressure_velocity_coefficient_x * gp0 * Sf0
+                    + owner_pressure_velocity_coefficient_y * gp1 * Sf1
+                    + owner_pressure_velocity_coefficient_z * gp2 * Sf2
                 )
 
                 # Compact pressure drive
@@ -574,9 +574,9 @@ def _process_boundary_faces_jit(
                 k_norm = (k0 * k0 + k1 * k1 + k2 * k2) ** 0.5
                 if k_norm > 1e-12:
                     flux_nonortho = (
-                        k0 * pressure_velocity_coefficient_x * gp0
-                        + k1 * pressure_velocity_coefficient_y * gp1
-                        + k2 * pressure_velocity_coefficient_z * gp2
+                        k0 * owner_pressure_velocity_coefficient_x * gp0
+                        + k1 * owner_pressure_velocity_coefficient_y * gp1
+                        + k2 * owner_pressure_velocity_coefficient_z * gp2
                     )
                 else:
                     flux_nonortho = 0.0
@@ -985,7 +985,7 @@ def assemble_pressure_correction_equation_rhie_chow(
         mesh_data: Mesh connectivity
         geo_data: Geometric data
         boundaries: Boundary conditions
-        alpha_u: Velocity under-relaxation factor
+        velocity_relaxation: Velocity under-relaxation factor
 
     Returns:
         tuple: (pressure_matrix, pressure_right_hand_side, f_vf) where f_vf is the Rhie-Chow corrected flux (volumetric_face_flux_star).
@@ -1614,17 +1614,21 @@ def correct_velocity_and_flux(
     """
     Apply pressure correction to velocity and persistent flux.
 
-    velocity = velocity* - alpha_p * pressure_velocity_coefficient * grad(kinematic_pressure')
+    velocity = velocity* - pressure_relaxation * pressure_velocity_coefficient
+    * grad(kinematic_pressure')
     volumetric_face_flux = volumetric_face_flux* - DU_f * (grad(kinematic_pressure') . S)
 
-    Uses UN-RELAXED diagonal for pressure_velocity_coefficient consistency: pressure_velocity_coefficient = V / (momentum_diagonal * alpha_u).
+    Uses the unrelaxed diagonal for pressure-velocity-coefficient consistency:
+    pressure_velocity_coefficient = cell_volume /
+    (momentum_diagonal * velocity_relaxation).
     This matches the Rhie-Chow assembly which also uses the un-relaxed momentum_diagonal.
 
     ``pressure_relaxation`` scales the **cell-velocity** correction only, never the face
     flux. The pressure equation corrects ``volumetric_face_flux`` with the full flux correction
     (so mass conservation never depends on a relaxation factor), then rebuilds
     the cell velocity from the relaxed pressure. Passing the full
-    correction to ``velocity`` while the caller stores only ``alpha_p * kinematic_pressure_correction``
+    correction to ``velocity`` while the caller stores only
+    ``pressure_relaxation * kinematic_pressure_correction``
     leaves velocity and pressure describing different states, and the outer
     loop then converges to a fixed point that depends on ``pressure_relaxation`` instead of
     the pressure-relaxation-independent solution.

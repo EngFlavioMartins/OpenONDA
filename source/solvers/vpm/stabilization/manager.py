@@ -361,7 +361,9 @@ class StabilizationManager:
         statistics = self.operators.apply_pedrizzetti_relaxation(
             self.ctx.particles,
             cfg.pedrizzetti_relaxation_factor,
-            conserve_strength=cfg.pedrizzetti_relaxation_preserve_vortex_strength,
+            preserve_vortex_strength_magnitude=(
+                cfg.pedrizzetti_relaxation_preserve_vortex_strength
+            ),
         )
         self.accept(
             "Pedrizzetti relaxation",
@@ -418,7 +420,7 @@ class StabilizationManager:
             position=result.position.astype(ctx.np_dtype),
             velocity=particles.velocity_cpu()[source],
             vortex_strength=result.vortex_strength.astype(ctx.np_dtype),
-            core_radius=result.radius.astype(ctx.np_dtype),
+            core_radius=result.core_radius.astype(ctx.np_dtype),
             particle_volume=result.particle_volume.astype(ctx.np_dtype),
             kinematic_viscosity=particles.kinematic_viscosity_cpu()[source],
             eddy_viscosity=particles.eddy_viscosity_cpu()[source],
@@ -454,7 +456,7 @@ class StabilizationManager:
         particles = ctx.particles
         position = particles.position_cpu().astype(np.float64)
         vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
-        radius = particles.core_radius_cpu().astype(np.float64)
+        core_radius = particles.core_radius_cpu().astype(np.float64)
         particle_volume = particles.particle_volume_cpu().astype(np.float64)
         reference_scales = (
             cfg.vortex_strength_reference_scale,
@@ -466,7 +468,7 @@ class StabilizationManager:
         result = constrained_divergence_relaxation(
             position,
             vortex_strength,
-            radius,
+            core_radius,
             particle_volume,
             grid_spacing=cfg.grid_spacing,
             regularization=cfg.regularization,

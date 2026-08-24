@@ -1,4 +1,4 @@
-"""docs/nomenclature.md + docs/rename-manifest.md: the public/setup/serialization
+"""docs/nomenclature.md + docs/rename_manifest.md: the public/setup/serialization
 surface must not contain pre-rename names, and obsolete top-level public names
 must fail rather than silently resolve to the renamed target.
 
@@ -6,9 +6,10 @@ The AST sweep below is deliberately scoped to *definitions* (dataclass fields,
 function/method signatures, class names, and ``self.<attr> =`` assignments) in
 the setup/config/facade/core modules that make up the public and serialized
 surface -- not arbitrary source text, so it cannot flag a legitimate compact
-math variable (``nu``, ``dt``, ``U`` ...) used inside a numerical kernel, a
-VLM ``circulation`` (the true scalar bound-vortex quantity), or a required
-third-party on-disk contract string. See docs/nomenclature.md for the complete
+math variable (``nu``, ``dt``, ``U`` ...) used inside a numerical kernel or a
+VLM ``circulation`` (the true scalar bound-vortex quantity). External formats
+are translated at their boundary and receive no physical-name exception. See
+docs/nomenclature.md for the complete
 canonical contract.
 """
 

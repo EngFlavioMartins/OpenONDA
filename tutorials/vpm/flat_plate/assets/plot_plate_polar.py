@@ -71,11 +71,15 @@ def lifting_line_polar(
     two_dimensional_lift_curve_slope = 2.0 * np.pi
     mu = two_dimensional_lift_curve_slope * chord / (4.0 * b)
 
-    n_odd = 2 * np.arange(1, n_terms + 1) - 1
-    theta_k = np.linspace(np.pi / (2 * n_terms + 2), np.pi - np.pi / (2 * n_terms + 2), n_terms)
+    n_odd = 2 * np.arange(1, n_fourier_terms + 1) - 1
+    theta_k = np.linspace(
+        np.pi / (2 * n_fourier_terms + 2),
+        np.pi - np.pi / (2 * n_fourier_terms + 2),
+        n_fourier_terms,
+    )
     sin_theta = np.sin(theta_k)
 
-    coefficient_matrix = np.zeros((n_terms, n_terms))
+    coefficient_matrix = np.zeros((n_fourier_terms, n_fourier_terms))
     for j, n in enumerate(n_odd):
         coefficient_matrix[:, j] = np.sin(n * theta_k) * (sin_theta + mu * n)
     rhs = mu * alpha * sin_theta

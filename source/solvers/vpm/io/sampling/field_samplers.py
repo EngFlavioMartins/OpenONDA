@@ -238,14 +238,14 @@ class SurfaceSampler:
         body_stl, case_dir = _extract_stl_config_from_solver(solver)
         if not body_stl:
             return None
-        p = Path(body_stl)
-        if p.is_absolute():
-            return p if p.exists() else None
+        body_stl_path = Path(body_stl)
+        if body_stl_path.is_absolute():
+            return body_stl_path if body_stl_path.exists() else None
         if case_dir is not None:
-            p_case = case_dir / body_stl
-            if p_case.exists():
-                return p_case
-        return p if p.exists() else None
+            case_body_stl_path = case_dir / body_stl
+            if case_body_stl_path.exists():
+                return case_body_stl_path
+        return body_stl_path if body_stl_path.exists() else None
 
     def _ensure_body_geometry(self, solver) -> None:
         """Load/caches STL and surface KDTree once."""
@@ -693,14 +693,14 @@ class LineSampler:
         body_stl, case_dir = _extract_stl_config_from_solver(solver)
         if not body_stl:
             return None
-        p = Path(body_stl)
-        if p.is_absolute():
-            return p if p.exists() else None
+        body_stl_path = Path(body_stl)
+        if body_stl_path.is_absolute():
+            return body_stl_path if body_stl_path.exists() else None
         if case_dir is not None:
-            p_case = case_dir / body_stl
-            if p_case.exists():
-                return p_case
-        return p if p.exists() else None
+            case_body_stl_path = case_dir / body_stl
+            if case_body_stl_path.exists():
+                return case_body_stl_path
+        return body_stl_path if body_stl_path.exists() else None
 
     def _ensure_body_geometry(self, solver) -> None:
         if self._body_loaded:

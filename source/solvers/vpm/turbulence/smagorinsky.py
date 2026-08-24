@@ -85,8 +85,10 @@ class SmagorinskyModel:
         n_particles_total: ti.i32,
     ):
         for i in range(n_particles_total):
-            particle_volume = particle_volume[i]
-            filter_width[i] = ti.pow(particle_volume, 1.0 / 3.0) if particle_volume > 0.0 else 0.0
+            local_particle_volume = particle_volume[i]
+            filter_width[i] = (
+                ti.pow(local_particle_volume, 1.0 / 3.0) if local_particle_volume > 0.0 else 0.0
+            )
 
     @ti.kernel
     def _compute_strain_rate_magnitude(

@@ -15,7 +15,7 @@ def _readonly(values):
 class MeshGeometry:
     """Immutable geometric quantities computed from a static mesh.
 
-    Holds the cell centroids, volumes, face centroids, area vectors,
+    Holds the cell centres, volumes, face centres, area vectors,
     interpolation weights, wall distance, and optional least-squares
     condition numbers.  All arrays are read-only and should be constructed
     once through the :meth:`from_data` factory.
@@ -172,7 +172,7 @@ def compute_geometry(
         local_centre = np.sum(face_coords * valid_nodes[:, :, np.newaxis], axis=1)
         local_centre /= count_block[:, np.newaxis]
 
-        centroid_sum = np.zeros((stop - start, 3), dtype=np.float64)
+        face_centre_sum = np.zeros((stop - start, 3), dtype=np.float64)
         sf_sum = np.zeros((stop - start, 3), dtype=np.float64)
         area_sum = np.zeros(stop - start, dtype=np.float64)
         for index in range(max_nodes):
@@ -185,7 +185,7 @@ def compute_geometry(
             valid_triangle = (index < count_block)[:, np.newaxis]
             local_sf = 0.5 * np.cross(point1 - local_centre, point2 - local_centre)
             local_area = np.linalg.norm(local_sf, axis=1)
-            centroid_sum += (
+            face_centre_sum += (
                 ((local_centre + point1 + point2) / 3.0)
                 * local_area[:, np.newaxis]
                 * valid_triangle
@@ -194,7 +194,7 @@ def compute_geometry(
             area_sum += local_area * valid_triangle[:, 0]
 
         safe_area = np.where(area_sum == 0.0, 1.0, area_sum)
-        face_centre[start:stop] = centroid_sum / safe_area[:, np.newaxis]
+        face_centre[start:stop] = face_centre_sum / safe_area[:, np.newaxis]
         face_area_vector[start:stop] = sf_sum
         face_area[start:stop] = area_sum
 
@@ -241,7 +241,7 @@ def compute_geometry(
         safe_faces[safe_faces < 0] = 0
         valid = padded >= 0
         cell_face_centre = face_centre[safe_faces]
-        cell_centre = (
+        provisional_cell_centre = (
             np.sum(cell_face_centre * valid[:, :, np.newaxis], axis=1) / count_block[:, np.newaxis]
         )
         cell_face_area_vector = face_area_vector[safe_faces]
@@ -252,15 +252,17 @@ def compute_geometry(
             np.sum(
                 cell_face_area_vector
                 * signs[:, :, np.newaxis]
-                * (cell_face_centre - cell_centre[:, np.newaxis, :]),
+                * (cell_face_centre - provisional_cell_centre[:, np.newaxis, :]),
                 axis=2,
             )
             / 3.0
         )
         local_volumes *= valid
         local_sum = np.sum(local_volumes, axis=1)
-        local_centroids = 0.75 * cell_face_centre + 0.25 * cell_centre[:, np.newaxis, :]
-        weighted = np.sum(local_centroids * local_volumes[:, :, np.newaxis], axis=1)
+        local_cell_centres = (
+            0.75 * cell_face_centre + 0.25 * provisional_cell_centre[:, np.newaxis, :]
+        )
+        weighted = np.sum(local_cell_centres * local_volumes[:, :, np.newaxis], axis=1)
         safe_volume = np.where(local_sum == 0.0, 1.0, local_sum)
         cell_centre[start:stop] = weighted / safe_volume[:, np.newaxis]
         cell_volume[start:stop] = local_sum
@@ -299,7 +301,7 @@ def compute_geometry(
         )
         face_interpolation_weight[face_slice] = weights
 
-    # Boundary faces use a virtual neighbour at the face centroid.
+    # Boundary faces use a virtual neighbour at the face centre.
     for start in range(n_interior_faces, n_faces, secondary_chunk):
         stop = min(start + secondary_chunk, n_faces)
         face_slice = slice(start, stop)

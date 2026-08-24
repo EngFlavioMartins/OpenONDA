@@ -11,8 +11,6 @@ except ImportError:
     pv = None
 import taichi as ti
 
-from source.schemas import SCHEMA_VERSION, validate_serialized_field_name
-
 # Import VPM constants
 from ..config.constants import MAX_N_PARTICLES
 from ..config.state import cached_particle_property
@@ -1011,7 +1009,7 @@ class Particles:
         return {
             "position": self.position_cpu()[index],
             "velocity": self.velocity_cpu()[index],
-            "strength": self.vortex_strength_cpu()[index],
+            "vortex_strength": self.vortex_strength_cpu()[index],
             "core_radius": self.core_radius_cpu()[index],
             "particle_volume": self.particle_volume_cpu()[index],
             "kinematic_viscosity": self.kinematic_viscosity_cpu()[index],
@@ -1360,11 +1358,11 @@ class Particles:
             count: Number of particles to copy from input fields
             position: Source position field (Vector)
             velocity: Source velocity field (Vector)
-            strength: Source strength field (Vector)
-            radius: Source radius field (Scalar)
+            vortex_strength: Source vortex-strength field (Vector)
+            core_radius: Source core-radius field (Scalar)
             particle_volume: Source particle-volume field (scalar)
             group_id: Group ID to assign to new particles
-            viscosity: Molecular viscosity to assign
+            kinematic_viscosity: Molecular kinematic viscosity to assign
 
         Returns:
             bool: True if successful, False if container is full
@@ -1587,24 +1585,6 @@ class Particles:
         n = int(self.n_particles_total)
         position = self.position_cpu()
         vortex_strength = self.vortex_strength_cpu()
-        for field_name in (
-            "position",
-            "velocity",
-            "vortex_strength",
-            "vortex_strength_magnitude",
-            "core_radius",
-            "particle_volume",
-            "kinematic_viscosity",
-            "eddy_viscosity",
-            "effective_viscosity",
-            "group_id",
-            "zone_id",
-            "vorticity",
-            "velocity_gradient",
-            "strain_rate",
-            "physical_field_schema_version",
-        ):
-            validate_serialized_field_name(field_name)
         point_cloud = pv.PolyData(position)
         point_cloud.point_data["position"] = position
         point_cloud.point_data["velocity"] = self.velocity_cpu()
@@ -1622,7 +1602,6 @@ class Particles:
         point_cloud.point_data["vorticity"] = self.vorticity_cpu()
         point_cloud.point_data["velocity_gradient"] = self.velocity_gradient_cpu().reshape(n, 9)
         point_cloud.point_data["strain_rate"] = self.strain_rate_cpu().reshape(n, 9)
-        point_cloud.field_data["physical_field_schema_version"] = np.asarray([SCHEMA_VERSION])
         point_cloud.save(particle_file_name)
 
         Logging.message(f"[VPM][Output] format=vtk particles={n} path={particle_file_name}")
@@ -1638,12 +1617,6 @@ class Particles:
             self.n_particles_total = 0
 
         point_cloud = pv.read(particle_file_name)
-        schema_values = point_cloud.field_data.get("physical_field_schema_version")
-        if schema_values is None or str(np.asarray(schema_values).reshape(-1)[0]) != SCHEMA_VERSION:
-            raise ValueError(
-                f"Particle file {particle_file_name!r} has no supported physical-field schema"
-            )
-
         position = np.array(point_cloud.points, dtype=np.float32)
         point_data = point_cloud.point_data
 

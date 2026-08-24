@@ -251,11 +251,11 @@ COUPLER_SETUP = coupling.CouplerSetup(
 def _apply_seed(fvm_solver) -> None:
     """Impose the controlled, divergence-free perturbation on the initial field."""
     n_cells = fvm_solver.mesh_data["n_cells"]
-    centroids = np.asarray(fvm_solver.geo_data["cell_centre"][:n_cells], dtype=np.float64)
-    if centroids.shape[0] != n_cells:
+    cell_centre = np.asarray(fvm_solver.geo_data["cell_centre"][:n_cells], dtype=np.float64)
+    if cell_centre.shape[0] != n_cells:
         raise RuntimeError("Seed requires the full cell-centroid array on every rank")
     velocity = build_seed_velocity(
-        centroids,
+        cell_centre,
         base_velocity=INITIAL_VELOCITY,
         epsilon=SEED_AMPLITUDE,
         freestream_speed=FREESTREAM_SPEED,
@@ -306,7 +306,6 @@ VPM_SETUP = vpm.VPMSetup(
         threshold_mode="absolute",
         threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
         max_nodes=PARTICLE_LIMIT,
-        cap_absolute_fraction=0.95,
         core_radius_ratio=VPM_CORE_RADIUS_RATIO,
     ),
     stretching=vpm.StretchingConfig.transposed(scheme=VPM_SCHEME),
@@ -334,7 +333,8 @@ def main() -> None:
     print("\n===== SIMULATION (hybrid) =====")
     print(
         f"  Re={REYNOLDS}, infinite cylinder D={DIAMETER}, "
-        f"FVM dt={FVM_TIME_STEP_SIZE}s / VPM dt={VPM_TIME_STEP_SIZE}s, "
+        f"FVM time_step_size={FVM_TIME_STEP_SIZE}s / "
+        f"VPM time_step_size={VPM_TIME_STEP_SIZE}s, "
         f"body/wake cell size={FVM_BODY_CELL_SIZE}/{FVM_WAKE_CELL_SIZE}, "
         f"particles<={PARTICLE_LIMIT}, seed={SEED_AMPLITUDE:g}"
     )

@@ -205,8 +205,9 @@ class FVMVPMCoupler:
         if not np.isclose(ratio, n_fvm_substeps, rtol=1e-9, atol=1e-12):
             raise ValueError(
                 "The VPM time step must be an integer multiple of the FVM time "
-                f"step for sub-cycling. Got vpm_dt={vpm_time_step_size:.12g}, "
-                f"fvm_dt={fvm_time_step_size:.12g}, ratio={ratio:.12g}."
+                "step for sub-cycling. Got "
+                f"vpm_time_step_size={vpm_time_step_size:.12g}, "
+                f"fvm_time_step_size={fvm_time_step_size:.12g}, ratio={ratio:.12g}."
             )
         return n_fvm_substeps
 
@@ -220,7 +221,7 @@ class FVMVPMCoupler:
 
         Args:
             end_time: Requested simulation end time.
-            vpm_dt:   VPM (coupling) time-step size.
+            vpm_time_step_size: VPM (coupling) time-step size.
 
         Returns:
             Integer number of coupling steps.
@@ -235,7 +236,7 @@ class FVMVPMCoupler:
         """Bounds of the coupling patch, from the injected solver's geometry.
 
         The patch faces lie exactly on the six box planes, so the per-axis
-        min/max of the face centroids reproduce the box bounds to round-off.
+        min/max of the face centres reproduce the box bounds to round-off.
         Collective (all ranks) — the face-geometry getter gathers globally.
         """
         assert self.fvm_solver is not None
@@ -287,7 +288,8 @@ class FVMVPMCoupler:
         The injected FVM solver's configuration owns the FVM step; the
         injected VPM solver's ``time_step_size`` configures the
         coupling/VPM step.  After both are known, the coupler derives
-        ``n_fvm_substeps = round(vpm_dt / fvm_dt)`` internally.
+        ``n_fvm_substeps = round(vpm_time_step_size / fvm_time_step_size)``
+        internally.
 
         Idempotent: a second call is a no-op (the coupling components are built
         exactly once), so ``initialize`` then ``run``/``solve`` is safe.

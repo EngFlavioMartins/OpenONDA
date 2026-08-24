@@ -57,10 +57,10 @@ def main() -> None:
         if not trajectory:
             continue
         st = case_style(case_dir.name, include_family=False)
-        for axial, radius in trajectory.values():
+        for axial_position, ring_radius in trajectory.values():
             ax.plot(
-                axial,
-                radius,
+                axial_position,
+                ring_radius,
                 color=st["color"],
                 linestyle=st["linestyle"],
                 lw=st["linewidth"],

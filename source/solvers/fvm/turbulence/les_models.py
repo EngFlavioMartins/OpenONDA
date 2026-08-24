@@ -49,7 +49,7 @@ def _velocity_gradient_tensor(velocity, mesh_data, geo_data):
     ``grad[c, k, i] = ∂U_i/∂x_k``, so we transpose the last two axes.
 
     Args:
-        U:        Velocity field ``(n_elements + n_boundary, 3)``.
+        velocity: Velocity field ``(n_elements + n_boundary, 3)``.
         mesh_data: Mesh dictionary.
         geo_data:  Geometry dictionary.
 
@@ -190,7 +190,7 @@ class Sigma:
         """Compute the subgrid-scale turbulent viscosity (sigma model).
 
         Args:
-            U:        Velocity field ``(n_elements + n_boundary, 3)``.
+            velocity: Velocity field ``(n_elements + n_boundary, 3)``.
             mesh_data: Optional override mesh dictionary.
             geo_data:  Optional override geometry dictionary.
 
@@ -287,7 +287,7 @@ class DynamicSmagorinsky:
         filter and a global (volume-averaged) Lilly least-squares contraction.
 
         Args:
-            U:        Velocity field ``(n_elements + n_boundary, 3)``.
+            velocity: Velocity field ``(n_elements + n_boundary, 3)``.
             mesh_data: Optional override mesh dictionary.
             geo_data:  Optional override geometry dictionary.
 
@@ -368,7 +368,7 @@ def create_model(config, mesh_data, geo_data):
         geo_data:  Geometry dictionary.
 
     Returns:
-        An LES model instance with a ``compute_eddy_viscosity(U)`` interface,
+        An LES model instance with a ``compute_eddy_viscosity(velocity)`` interface,
         or ``None`` for no-model (ILES/DNS).
 
     Raises:

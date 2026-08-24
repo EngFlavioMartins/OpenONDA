@@ -10,7 +10,6 @@ _THRESHOLD_MODES = {
     "budget",
     "relative_max",
     "absolute",
-    "relative_local",
 }
 
 
@@ -54,12 +53,6 @@ class ViscousConfig:
 
     gbd_threshold_mode: str = "budget"
     """GBD pruning mode."""
-
-    regeneration_threshold_window: int = 3
-    """Half-width of the local regeneration-threshold window [grid cells]."""
-
-    regeneration_cap_absolute_fraction: float = 0.99
-    """Minimum fraction of surviving absolute vortex strength protected by a cap."""
 
     gbd_max_nodes: int | None = None
     """Optional cap on surviving GBD grid nodes."""
@@ -106,10 +99,6 @@ class ViscousConfig:
             raise ValueError(f"dvh_threshold_mode must be one of {sorted(_THRESHOLD_MODES)}")
         if self.gbd_threshold_mode not in _THRESHOLD_MODES:
             raise ValueError(f"gbd_threshold_mode must be one of {sorted(_THRESHOLD_MODES)}")
-        if self.regeneration_threshold_window < 0:
-            raise ValueError("regeneration_threshold_window must be non-negative")
-        if not 0.0 < self.regeneration_cap_absolute_fraction <= 1.0:
-            raise ValueError("regeneration_cap_absolute_fraction must be in (0, 1]")
         if self.gbd_max_nodes is not None and self.gbd_max_nodes < 1:
             raise ValueError("gbd_max_nodes must be positive when set")
         if self.dvh_max_nodes is not None and self.dvh_max_nodes < 1:
@@ -178,11 +167,9 @@ class ViscousConfig:
         padding: float = 20.0,
         threshold: float = 1e-5,
         threshold_mode: str = "budget",
-        threshold_window: int = 3,
         dvh_support_radius_ratio: int = 4,
         kinematic_viscosity: float | None = None,
         max_nodes: int | None = None,
-        cap_absolute_fraction: float = 0.99,
         core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
         """Return Diffused Vortex Hydrodynamics configuration."""
@@ -193,11 +180,9 @@ class ViscousConfig:
             dvh_domain_padding=padding,
             dvh_threshold=threshold,
             dvh_threshold_mode=threshold_mode,
-            regeneration_threshold_window=threshold_window,
             dvh_support_radius_ratio=dvh_support_radius_ratio,
             kinematic_viscosity=kinematic_viscosity,
             dvh_max_nodes=max_nodes,
-            regeneration_cap_absolute_fraction=cap_absolute_fraction,
             core_radius_ratio=core_radius_ratio,
         )
 
@@ -207,10 +192,8 @@ class ViscousConfig:
         padding: float = 20.0,
         threshold: float = 1e-5,
         threshold_mode: str = "budget",
-        threshold_window: int = 3,
         kinematic_viscosity: float | None = None,
         max_nodes: int | None = None,
-        cap_absolute_fraction: float = 0.99,
         core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
         """Return Grid-Based Diffusion configuration."""
@@ -221,9 +204,7 @@ class ViscousConfig:
             gbd_domain_padding=padding,
             gbd_threshold=threshold,
             gbd_threshold_mode=threshold_mode,
-            regeneration_threshold_window=threshold_window,
             kinematic_viscosity=kinematic_viscosity,
             gbd_max_nodes=max_nodes,
-            regeneration_cap_absolute_fraction=cap_absolute_fraction,
             core_radius_ratio=core_radius_ratio,
         )

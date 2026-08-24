@@ -246,7 +246,7 @@ def _compute_face_viscous_forces(
         boundary_idx: Indices into *velocity* for the boundary-face values.
         n_vec: Unit face normal vectors ``(nf, 3)``.
         mag_Sf: Face area magnitudes ``(nf,)``.
-        wall_distance: Owner-centroid to face distance normal to the face.
+        wall_distance: Owner-cell-centre to face distance normal to the face.
         dynamic_viscosity: Dynamic viscosity — scalar ``float`` or per-element array
             ``(n_elements,)``.
         nf: Number of boundary faces (``int``).

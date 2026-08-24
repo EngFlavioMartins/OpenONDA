@@ -24,8 +24,8 @@ def _worker(case_dir: Path, compute_device: str) -> None:
     import openonda.fvm as fvm
     import openonda.vpm as vpm
 
-    fvm_dt = 0.05
-    vpm_dt = 0.15
+    fvm_time_step_size = 0.05
+    vpm_time_step_size = 0.15
     spacing = 0.125
     freestream = [1.0, 0.0, 0.0]
 
@@ -46,8 +46,8 @@ def _worker(case_dir: Path, compute_device: str) -> None:
     fvm_setup = fvm.FVMSetup(
         case_name="native_tutorial_validation",
         time=fvm.TimeConfig(
-            time_step_size=fvm_dt,
-            end_time=2.0 * vpm_dt,
+            time_step_size=fvm_time_step_size,
+            end_time=2.0 * vpm_time_step_size,
             output_interval_steps=10**9,
         ),
         transport=fvm.TransportConfig(kinematic_viscosity=0.01),
@@ -74,7 +74,7 @@ def _worker(case_dir: Path, compute_device: str) -> None:
 
     def make_vpm():
         setup = vpm.VPMSetup(
-            time_step_size=vpm_dt,
+            time_step_size=vpm_time_step_size,
             compute_device=compute_device,
             max_n_particles=50_000,
             domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],

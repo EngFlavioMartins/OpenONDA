@@ -44,9 +44,11 @@ def stability_indicators(case_name: str, through_time: float) -> dict[str, float
     selected = time <= through_time + 32.0 * np.finfo(float).eps * max(1.0, through_time)
     if not np.any(selected):
         raise ValueError(f"{case_name} has no diagnostic sample through t={through_time:.6g}")
-    strength = column(rows, "vortex_strength_magnitude_sum")[selected]
+    vortex_strength_magnitude_sum = column(rows, "vortex_strength_magnitude_sum")[selected]
     return {
-        "vortex_strength_magnitude_sum_growth": float(np.max(strength) / strength[0]),
+        "vortex_strength_magnitude_sum_growth": float(
+            np.max(vortex_strength_magnitude_sum) / vortex_strength_magnitude_sum[0]
+        ),
         "max_vorticity_divergence_error": float(
             np.max(column(rows, "vorticity_divergence_error")[selected])
         ),

@@ -11,10 +11,8 @@ import shutil
 
 import numpy as np
 
-from source.schemas import SCHEMA_VERSION
-
 CHECKPOINT_DIRECTORY = "checkpoints"
-CHECKPOINT_FORMAT_VERSION = 8
+CHECKPOINT_FORMAT_VERSION = 9
 
 
 def config_digest(config) -> str:
@@ -100,7 +98,6 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
         with open(boundary_temporary, "wb") as stream:
             np.savez_compressed(
                 stream,
-                physical_field_schema_version=np.asarray(SCHEMA_VERSION),
                 boundary_schema_version=np.asarray(1, dtype=np.int64),
                 has_velocity=np.asarray(coupler._velocity_boundary_condition_old is not None),
                 velocity=np.empty((0, 3))
@@ -131,7 +128,6 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
 
     manifest = {
         "format_version": CHECKPOINT_FORMAT_VERSION,
-        "physical_field_schema_version": SCHEMA_VERSION,
         "kind": "openonda.coupled_checkpoint",
         "created_utc": datetime.now(UTC).isoformat(),
         "backend": "fvm",
@@ -196,12 +192,27 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
             error = "Coupled checkpoint manifest must be a JSON object"
         if error is None:
             assert isinstance(manifest, dict)
+            expected_manifest_keys = {
+                "format_version",
+                "kind",
+                "created_utc",
+                "backend",
+                "config_sha256",
+                "config",
+                "coupling_step",
+                "time",
+                "fvm_step",
+                "vpm_step",
+                "n_fvm_substeps",
+                "artifacts",
+                "artifact_sha256",
+            }
             version = manifest.get("format_version")
-            schema_version = manifest.get("physical_field_schema_version")
             if (
-                version != CHECKPOINT_FORMAT_VERSION
+                set(manifest) != expected_manifest_keys
+                or version != CHECKPOINT_FORMAT_VERSION
+                or manifest.get("kind") != "openonda.coupled_checkpoint"
                 or manifest.get("backend") != "fvm"
-                or schema_version != SCHEMA_VERSION
             ):
                 error = "Unsupported coupled checkpoint format or backend"
             else:
@@ -227,7 +238,7 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
                     not isinstance(artifact_hashes, dict) or set(artifact_hashes) != set(artifacts)
                 ):
                     error = (
-                        "Coupled checkpoint format 8 requires one SHA-256 digest "
+                        "Coupled checkpoint format 9 requires one SHA-256 digest "
                         "for every declared artifact"
                     )
                 if error is None and artifact_hashes:
@@ -286,13 +297,17 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
         assert coupler.vpm_solver is not None
         coupler.vpm_solver.load_numerical_state(str(target / artifacts["vpm"]))
         with np.load(target / artifacts["vpm_boundary_condition"], allow_pickle=False) as boundary:
-            if (
-                "physical_field_schema_version" not in boundary.files
-                or str(boundary["physical_field_schema_version"]) != SCHEMA_VERSION
-            ):
-                raise ValueError(
-                    "Coupled boundary checkpoint has an unsupported physical-field schema"
-                )
+            expected_boundary_keys = {
+                "boundary_schema_version",
+                "has_velocity",
+                "velocity",
+                "has_normal_velocity",
+                "normal_velocity",
+                "has_tangential_gradient",
+                "tangential_gradient",
+            }
+            if set(boundary.files) != expected_boundary_keys:
+                raise ValueError("Coupled boundary checkpoint has invalid fields")
             if (
                 "boundary_schema_version" not in boundary.files
                 or int(boundary["boundary_schema_version"]) != 1

@@ -831,11 +831,11 @@ def _create_stretching_kernels(kernel_functions):
     }
 
 
-def _create_utility_kernels(kernel_functions):
-    """Create utility kernels for circulation centroids."""
+def _create_vortex_centroid_kernels(kernel_functions):
+    """Create utility kernels for weighted vortex centroids."""
 
     @ti.kernel
-    def compute_circulation_centroids_kernel(
+    def compute_vortex_centroid_kernel(
         position: ti.template(), vortex_strength: ti.template(), n_particles_total: ti.i32
     ) -> ti.types.vector(3, ti.f32):  # type: ignore
         total_strength_scalar = 0.0
@@ -851,13 +851,13 @@ def _create_utility_kernels(kernel_functions):
                     total_strength_vector += strength_vec
                     pos = position[i]
                     weighted_position += pos * vortex_strength_magnitude
-        centroid = ti.Vector([0.0, 0.0, 0.0])
+        vortex_centroid = ti.Vector([0.0, 0.0, 0.0])
         if total_strength_scalar > EPSILON:
-            centroid = weighted_position / total_strength_scalar
-        return centroid
+            vortex_centroid = weighted_position / total_strength_scalar
+        return vortex_centroid
 
     return {
-        "compute_circulation_centroids_kernel": compute_circulation_centroids_kernel,
+        "compute_vortex_centroid_kernel": compute_vortex_centroid_kernel,
     }
 
 
@@ -876,6 +876,6 @@ def create_kernels(kernel_functions):
     kernels.update(_create_target_eval_kernels(kernel_functions))
     kernels.update(_create_diffusion_kernels(kernel_functions))
     kernels.update(_create_stretching_kernels(kernel_functions))
-    kernels.update(_create_utility_kernels(kernel_functions))
+    kernels.update(_create_vortex_centroid_kernels(kernel_functions))
 
     return kernels

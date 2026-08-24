@@ -100,9 +100,9 @@ def create_fvm_setup(reynolds: float, end_time: float, kinematic_viscosity: floa
 def write_profiles(fvm_solver, sol_dir: str, kinematic_viscosity: float) -> None:
     """Sample u(y) at the stations and Cf(x) along the plate into CSV files."""
     n = fvm_solver.mesh_data["n_cells"]
-    centroids = fvm_solver.geo_data["cell_centre"][:n]
+    cell_centre = fvm_solver.geo_data["cell_centre"][:n]
     u = fvm_solver.velocity[:n]
-    xc, yc = centroids[:, 0], centroids[:, 1]
+    xc, yc = cell_centre[:, 0], cell_centre[:, 1]
 
     # The plate uses a uniform x grid, so the column width is easy to find.
     plate_x = np.unique(np.round(xc[xc > 0], 12))
@@ -121,7 +121,7 @@ def write_profiles(fvm_solver, sol_dir: str, kinematic_viscosity: float) -> None
                 writer.writerow([station, x_col, y_i, u_i, v_i])
 
     # Skin friction from the wall-adjacent cell row: tau_w ~ mu * u1 / y1.
-    p = fvm_solver.kinematic_pressure[:n]
+    kinematic_pressure = fvm_solver.kinematic_pressure[:n]
     y1 = yc.min()
     y_top = yc.max()
     wall = (np.abs(yc - y1) < 1e-12) & (xc > 0.0)
@@ -129,7 +129,7 @@ def write_profiles(fvm_solver, sol_dir: str, kinematic_viscosity: float) -> None
     order = np.argsort(xc[wall])
     x_w = xc[wall][order]
     u_w = u[wall, 0][order]
-    p_w = p[wall][order]
+    kinematic_pressure_wall = kinematic_pressure[wall][order]
     u_e = np.interp(x_w, np.sort(xc[top]), u[top, 0][np.argsort(xc[top])])
     cf = 2.0 * kinematic_viscosity * u_w / (y1 * FREESTREAM_VELOCITY**2)
     rex = FREESTREAM_VELOCITY * x_w / kinematic_viscosity
@@ -146,7 +146,15 @@ def write_profiles(fvm_solver, sol_dir: str, kinematic_viscosity: float) -> None
                 "velocity_x_top",
             ]
         )
-        for row in zip(x_w, rex, cf, 0.664 / np.sqrt(rex), p_w, u_e, strict=True):
+        for row in zip(
+            x_w,
+            rex,
+            cf,
+            0.664 / np.sqrt(rex),
+            kinematic_pressure_wall,
+            u_e,
+            strict=True,
+        ):
             writer.writerow(row)
 
     print(f"  Profiles written: {os.path.join(sol_dir, 'profiles.csv')}")
@@ -155,7 +163,12 @@ def write_profiles(fvm_solver, sol_dir: str, kinematic_viscosity: float) -> None
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--Re", type=float, default=1e4, help="plate Reynolds number Re = U L / nu")
+    parser.add_argument(
+        "--Re",
+        type=float,
+        default=1e4,
+        help="plate Reynolds number based on freestream speed and kinematic viscosity",
+    )
     parser.add_argument("--end-time", type=float, default=8.0, help="simulation end time [s]")
     args = parser.parse_args()
 

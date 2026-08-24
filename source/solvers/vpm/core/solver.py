@@ -161,7 +161,8 @@ class VPMSolver:
                 self.time_step_size = substep_size
             self._n_steps_per_dvh_diffusion = n_sub
             self._dvh_time_step_size_info = (
-                f"DVH fires every {n_sub} step(s) (dt = Δt_d/{n_sub} = {substep_size:.4e} s, "
+                f"DVH fires every {n_sub} step(s) (time_step_size = "
+                f"Δt_d/{n_sub} = {substep_size:.4e} s, "
                 f"Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s)."
             )
 
@@ -180,7 +181,6 @@ class VPMSolver:
         self.stabilization_config: StabilizationConfig = final_setup.stabilization
         self.particle_kernel = final_setup.particle_kernel.upper()
         self.checkpoint_interval_steps = final_setup.checkpoint_interval_steps
-        self.checkpoint_interval_time = final_setup.checkpoint_interval_time
         self.logging_interval_steps = final_setup.logging_interval_steps
         self.timing_interval_steps = final_setup.timing_interval_steps
         self.checkpoint_name = final_setup.checkpoint_name
@@ -327,9 +327,9 @@ class VPMSolver:
             "fvm_vortex_strength_magnitude_sum": [],
             "interpolated_net_vortex_strength": [],
             "interpolated_vortex_strength_magnitude_sum": [],
-            "centroid": [],
-            "n_injected": [],
-            "n_candidates": [],
+            "vortex_centroid": [],
+            "n_particles_injected": [],
+            "n_particle_candidates": [],
             "observed_time_step_size": [],
             "vlm_lift_coefficient": [],
             "vlm_drag_coefficient": [],
@@ -660,7 +660,7 @@ class VPMSolver:
             self.particles, self.time
         )
         self._update_discretization_health()
-        self._record_centroid_history()
+        self._record_vortex_centroid_history()
         self._record_time_history()
         self._record_vlm_diagnostics()
 
@@ -677,9 +677,9 @@ class VPMSolver:
             self.particle_core_radius,
         )
 
-    def _record_centroid_history(self) -> None:
+    def _record_vortex_centroid_history(self) -> None:
         """Record the vortex-strength-magnitude-weighted particle centroid."""
-        ParticleFieldEvaluation.record_centroid_history(
+        ParticleFieldEvaluation.record_vortex_centroid_history(
             self._diagnostics_history,
             self.particle_position,
             self.particle_vortex_strength,
@@ -784,14 +784,14 @@ class VPMSolver:
         return self._flow_integrals.get("angular_impulse", np.array([0.0, 0.0, 0.0]))
 
     @property
-    def centroids_of_vortex_strength(self) -> dict[int, np.ndarray]:
+    def vortex_centroids_by_group(self) -> dict[int, np.ndarray]:
         """Vortex-strength-magnitude-weighted centroid for each particle group."""
-        return self.field_diagnostics.compute_centroids_of_vortex_strength(self.particles)
+        return self.field_diagnostics.compute_vortex_centroids_by_group(self.particles)
 
     @property
-    def centroid_of_vortex_strength(self) -> np.ndarray:
+    def vortex_centroid(self) -> np.ndarray:
         """Global vortex-strength-magnitude-weighted particle centroid."""
-        return self.field_diagnostics.compute_centroid_of_vortex_strength(self.particles)
+        return self.field_diagnostics.compute_vortex_centroid(self.particles)
 
     def compute_forces(
         self, density: float = 1.225, reference_speed: float | None = None

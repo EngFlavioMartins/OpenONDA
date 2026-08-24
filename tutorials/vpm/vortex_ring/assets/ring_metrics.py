@@ -92,16 +92,16 @@ def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndar
 
     t_arr = np.array(times) / REFERENCE_TIME
     c_arr = np.array(vortex_strength_magnitude_sums)
-    circulation0 = c_arr[0]  # normalise by the actual initial total strength
+    initial_vortex_strength_magnitude_sum = c_arr[0]
 
-    blow_up = c_arr > 500.0 * circulation0
+    blow_up = c_arr > 500.0 * initial_vortex_strength_magnitude_sum
     if blow_up.any():
         idx = int(blow_up.argmax())
         print(f"Stopping at {Path(h5_files[idx]).name}: blow-up detected.")
         t_arr = t_arr[:idx]
         c_arr = c_arr[:idx]
 
-    return t_arr, c_arr / circulation0
+    return t_arr, c_arr / initial_vortex_strength_magnitude_sum
 
 
 def load_ring_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
@@ -157,10 +157,10 @@ def load_vector_circulation_error(h5_files: list) -> tuple[np.ndarray, np.ndarra
 
     t_arr = np.array([d["time"] for d in entries]) / REFERENCE_TIME
     sum_vec = np.array([d["net_vortex_strength"] for d in entries])
-    strength0 = float(entries[0]["vortex_strength_magnitude_sum"])
-    if strength0 <= 0.0:
+    initial_vortex_strength_magnitude_sum = float(entries[0]["vortex_strength_magnitude_sum"])
+    if initial_vortex_strength_magnitude_sum <= 0.0:
         return np.array([]), np.array([])
-    err = np.linalg.norm(sum_vec - sum_vec[0], axis=1) / strength0
+    err = np.linalg.norm(sum_vec - sum_vec[0], axis=1) / initial_vortex_strength_magnitude_sum
     return t_arr, err
 
 
@@ -170,7 +170,7 @@ def _ring_props_from_h5(path) -> dict | None:
         with h5py.File(path, "r") as f:
             position = f["particles/position"][:]
             gid = f["particles/group_id"][:]
-            strength = _checkpoint_vortex_strength(f)
+            vortex_strength = _checkpoint_vortex_strength(f)
             t = _checkpoint_time(f)
     except Exception as e:
         print(f"Error reading {path}: {e}")
@@ -180,14 +180,14 @@ def _ring_props_from_h5(path) -> dict | None:
     for rid in np.unique(gid):
         m_ = gid == rid
         pc = position[m_]
-        alpha = strength[m_]
+        alpha = vortex_strength[m_]
         amag = np.linalg.norm(alpha, axis=1)
         total_length_strength = float(amag.sum())
         if total_length_strength <= 1e-30:
             continue
         net_vortex_strength = alpha.sum(axis=0)
-        centroid = np.einsum("i,ij->j", amag, pc) / total_length_strength
-        xc = float(centroid[0])
+        vortex_centroid = np.einsum("i,ij->j", amag, pc) / total_length_strength
+        xc = float(vortex_centroid[0])
 
         impulse = 0.5 * np.sum(np.cross(pc, alpha), axis=0)
         linear_impulse_x = float(impulse[0])
@@ -197,7 +197,7 @@ def _ring_props_from_h5(path) -> dict | None:
         # A circular ring has covariance eigenvalues (R^2/2, R^2/2, 0).
         # Summing the two dominant eigenvalues therefore recovers R^2, while
         # remaining independent of the ring normal direction.
-        centred_position = pc - centroid
+        centred_position = pc - vortex_centroid
         cov = (centred_position * amag[:, None]).T @ centred_position / total_length_strength
         eig = np.linalg.eigvalsh(cov)
         major_radius = float(np.sqrt(max(eig[-1] + eig[-2], 0.0)))
@@ -250,7 +250,7 @@ def load_ring_speed(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     """Return (nondimensional_time, nondimensional_velocity) for a single vortex ring.
 
     Computes the self-induced velocity from a local least-squares slope of the
-    strength-weighted centroid.  It is normalised by the analytical REFERENCE_VELOCITY,
+    strength-weighted vortex_centroid.  It is normalised by the analytical REFERENCE_VELOCITY,
     rather than by its own first noisy finite difference.
     Reuses load_ring_data so blow-up detection is inherited.
     """
@@ -291,7 +291,7 @@ def load_sampled_ring_data(csv_path: Path) -> pd.DataFrame | None:
 
 
 def load_sampled_ring_speed(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Return sampled normalized time and centroid speed."""
+    """Return sampled normalized time and vortex_centroid speed."""
     data = load_sampled_ring_data(csv_path)
     if data is None or len(data) < 2:
         return np.array([]), np.array([])

@@ -20,15 +20,12 @@ samples remain in `samples_archive/`; the fully meshed reference samples are in
 The production case uses four partitioned FVM ranks. Its coupled MPI smoke
 test includes the body-wall geometry gathers used during transfer setup.
 
-Production inputs use the wall-commensurate particle spacing `h=0.03125`, FVM
-time step `0.01`, and VPM/coupling interval `0.03` (three FVM substeps). The
-end time is rounded to its nearest complete coupling step. Shared samples and
-backups are configured only in
-`cube_flow_timing.py`: edit the two time steps and the three desired output
-intervals there. The file rounds each interval to the closest coupling step
-and derives the matching FVM step count, so the coupled FVM, VPM, and
-`reference_flow` always write the same accepted states. After changing it,
-rerun both `reference_flow/allrun.sh` and `./allrun.sh` before plotting. The
-coupled and reference FVMs use the same pressure corrector counts. Particle
-diffusion, global thresholding, and population control are performed only by
-VPM GBD.
+Production inputs use the wall-commensurate particle spacing `h=0.03125`, an
+FVM time-step size of `0.005 s`, and a VPM/coupling time-step size of `0.010 s`.
+The coupler therefore advances two FVM substeps per VPM step. All force, line,
+and surface samplers use the single `SAMPLING_INTERVAL_TIME` defined in
+`cube_flow_setup.py`; FVM and VPM checkpoints are written every `1 s`. The
+unchanged fully meshed reference uses its original `0.010 s` time step and the
+same `0.050 s` sampling interval. The coupled and reference FVMs use the same
+pressure corrector counts. Particle diffusion, global thresholding, and
+population control are performed only by VPM GBD.

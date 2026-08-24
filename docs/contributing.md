@@ -3,8 +3,8 @@
 OpenONDA changes should preserve the scientific contracts, public namespaces,
 and case-rooted output layout described in [nomenclature.md](nomenclature.md).
 The complete naming migration is tracked in
-[nomenclature_project_todo.md](nomenclature_project_todo.md) and
-[rename-manifest.md](rename-manifest.md). Restartable state is called a
+[rename_project.md](rename_project.md) and
+[rename_manifest.md](rename_manifest.md). Restartable state is called a
 checkpoint; copied historical runs are called archives.
 
 ## Development setup
@@ -29,7 +29,7 @@ pytest -q tests
 ```
 
 Run `pyrefly check` after changing Python under `source/solvers/fvm`,
-`source/coupler`, or `source/utilities`. The Taichi-based VPM tree is excluded
+or `source/coupler`. The Taichi-based VPM tree is excluded
 from static type checking. Keep repository coverage to the four maintained
 contracts; run case-specific scientific validation outside this test suite.
 

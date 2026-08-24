@@ -250,7 +250,7 @@ def line_times(source: str, name: str) -> np.ndarray:
 def load_line(
     source: str, name: str, time: float, tol: float = TIME_ATOL
 ) -> dict[str, np.ndarray] | None:
-    """Return the frame of one line sampler at ``time``, sorted by x.
+    """Return the frame of one line sampler at ``time``, sorted by position_x.
 
     ``None`` if this source has no sample within ``tol`` of ``time`` - callers
     must treat that as "no data for this panel", never substitute the nearest
@@ -268,7 +268,7 @@ def load_line(
         return None
     mask = table["time"] == picked
     frame = {key: values[mask] for key, values in table.items()}
-    order = np.argsort(frame["x"])
+    order = np.argsort(frame["position_x"])
     frame = {key: values[order] for key, values in frame.items()}
     frame["time"] = picked
     return frame

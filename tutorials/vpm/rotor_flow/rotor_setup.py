@@ -134,8 +134,8 @@ def enforce_wake_admissibility(solver: vpm.VPMSolver, max_particle_strength: flo
     if np.any(fields["particle_volume"] <= 0.0):
         failures.append("non-positive particle_volume")
 
-    strength = np.linalg.norm(fields["vortex_strength"], axis=1)
-    maximum = float(strength.max())
+    vortex_strength_magnitude = np.linalg.norm(fields["vortex_strength"], axis=1)
+    maximum = float(vortex_strength_magnitude.max())
     if not np.isfinite(maximum) or maximum > max_particle_strength:
         failures.append(f"max|vortex_strength|={maximum:.4g} > {max_particle_strength:.4g}")
     if failures:
@@ -212,7 +212,7 @@ def main() -> int:
         return np.array([-ANGULAR_VELOCITY * factor, 0.0, 0.0])
 
     rotation_kinematics = vpm.ManeuverVLM(
-        angular_velocity_fn=rotor_angular_velocity,
+        angular_velocity_function=rotor_angular_velocity,
         rotation_centre=np.zeros(3),
     )
 
@@ -253,18 +253,18 @@ def main() -> int:
         vlm_setup=vlm_setup,
         samplers=plane_samplers,
     )
-    vpm = vpm.VPMSolver(setup=solver_config, case_dir=TUTORIAL_DIR)
-    write_manifest(vpm)
-    vpm.info()
+    solver = vpm.VPMSolver(setup=solver_config, case_dir=TUTORIAL_DIR)
+    write_manifest(solver)
+    solver.info()
 
     print("\n===== SIMULATION =====")
     try:
         for step in range(N_STEPS):
-            vpm.advance()
+            solver.advance()
             if (step + 1) % GUARD_INTERVAL_STEPS == 0:
-                enforce_wake_admissibility(vpm, MAX_PARTICLE_STRENGTH)
+                enforce_wake_admissibility(solver, MAX_PARTICLE_STRENGTH)
     except RuntimeError:
-        vpm.save_state(str(SOLUTION_DIR / "rejected_state"))
+        solver.save_state(str(SOLUTION_DIR / "rejected_state"))
         raise
     print("\n===== DONE =====")
     print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")

@@ -172,15 +172,18 @@ def main() -> int:
     if files:
         with h5py.File(files[-1], "r") as h5:
             particles = h5["particles"]
-            alpha = particles["vortex_strength"][:]
-            radius = particles["core_radius"][:]
-        max_strength = float(np.linalg.norm(alpha, axis=1).max())
+            vortex_strength = particles["vortex_strength"][:]
+            core_radius = particles["core_radius"][:]
+        max_vortex_strength_magnitude = float(np.linalg.norm(vortex_strength, axis=1).max())
         print(
-            f"Final particles={len(alpha)}, max|alpha|={max_strength:.4g}, "
-            f"max radius={radius.max():.4g}"
+            f"Final particles={len(vortex_strength)}, "
+            f"max_vortex_strength_magnitude={max_vortex_strength_magnitude:.4g}, "
+            f"max_core_radius={core_radius.max():.4g}"
         )
-        if not np.isfinite(alpha).all() or max_strength > 10.0:
-            failures.append(f"unbounded final wake strength: {max_strength:.4g}")
+        if not np.isfinite(vortex_strength).all() or max_vortex_strength_magnitude > 10.0:
+            failures.append(
+                f"unbounded final wake vortex_strength: {max_vortex_strength_magnitude:.4g}"
+            )
 
     # -- 2. Wake impulse budget ------------------------------------------------
     ratio = _impulse_ratio(

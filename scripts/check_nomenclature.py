@@ -118,7 +118,6 @@ LEGACY_IDENTIFIERS = frozenset(
         "r_ref",
         "Cp_min",
         "Cp_max",
-        "n_particles",
         "gamma",
         "Gamma",
         "nu",
@@ -176,6 +175,13 @@ LEGACY_IDENTIFIERS = frozenset(
         "freestream_velocity_mag",
         "bc_type",
         "viscosity_t",
+        "strength",
+        "centroid",
+        "n_injected",
+        "n_candidates",
+        "panel_n_panels_total",
+        "fvm_dt",
+        "vpm_dt",
     }
 )
 
@@ -187,7 +193,8 @@ LEGACY_QUOTED = re.compile(
 LEGACY_API_TEXT = re.compile(
     r"(?:\bself\.face_flux\b|\b_current_time_step_size\b|\bU_target\b|\bu_target\b|"
     r"\bget_boundary_face_normals\b|\bbound_velocity\b|\brotation_deg\b|"
-    r"\bvalue_p_field\b|\bglobal_n_cells\b|\b(?:LambOseenVPM|VortexRingVPM|"
+    r"\bvalue_p_field\b|\bglobal_n_cells\b|\bBACKUP_[A-Z_]+\b|"
+    r"\bsource[./]schemas\b|\b(?:LambOseenVPM|VortexRingVPM|"
     r"DoubletFlowVPM|TaylorGreenVortexVPM|IsotropicTurbulenceVPM|"
     r"ComputeOfflineDiagnostics|LinearSolveInfo)\b)"
 )
@@ -225,6 +232,7 @@ LEGACY_PATH_COMPONENTS = frozenset(
         "lambossen_setup.py",
         "quad_setup.py",
         "allplot.sh",
+        "schemas",
     }
 )
 
@@ -249,7 +257,6 @@ COMPACT_API_NAMES = frozenset(
         "nu",
         "rho",
         "mdot",
-        "n_particles",
         "time_step",
         "viscosity",
         "processing_unit",
@@ -302,6 +309,18 @@ FORBIDDEN_EXACT_PYTHON_NAMES = frozenset(
         "freestream_velocity_mag",
         "bc_type",
         "viscosity_t",
+        "fvm_dt",
+        "vpm_dt",
+        "alpha_u_outer",
+        "alpha_p_outer",
+        "centroid_of_vortex_strength",
+        "centroids_of_vortex_strength",
+        "compute_centroid_of_vortex_strength",
+        "compute_centroids_of_vortex_strength",
+        "compute_circulation_centroids_kernel",
+        "default_radius",
+        "existing_radius",
+        "record_centroid_history",
     }
 )
 
@@ -332,6 +351,7 @@ CSV_LEGACY_HEADERS = LEGACY_IDENTIFIERS | frozenset(
 # absence; they are not runtime compatibility fixtures.
 NEGATIVE_ASSERTION_FILES = frozenset(
     {
+        "docs/rename_project.md",
         "scripts/check_nomenclature.py",
         "tests/test_public_api_has_no_legacy_aliases.py",
     }
@@ -623,8 +643,9 @@ def main() -> int:
     findings.extend(scan_csv_headers(args.root, include_generated=args.generated))
     findings.extend(scan_python_apis(args.root))
     findings.extend(scan_xml_field_names(args.root, include_generated=args.generated))
-    if args.paths:
-        findings.extend(scan_paths(args.root))
+    # Paths are part of the naming contract, so they are always scanned. The
+    # retained flag is a no-op for command-line compatibility.
+    findings.extend(scan_paths(args.root))
     if args.generated:
         findings.extend(scan_generated_binary_schemas(args.root))
     if findings:

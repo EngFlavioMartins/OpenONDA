@@ -10,9 +10,9 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from ..config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
 from .diagnostics import VLMDiagnostics
+from .forces import VLMForceEvaluator
 from .lattice import VLMLattice
 from .loading_distribution import VLMLoadingDistribution
-from .panel_force import VLMForceEvaluator
 from .vlm_solver import VLMSolver
 
 __all__ = [

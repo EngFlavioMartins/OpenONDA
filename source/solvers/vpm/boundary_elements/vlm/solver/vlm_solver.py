@@ -821,7 +821,8 @@ class VLMSolver:
         if not stable:
             warnings.warn(
                 "VLM-VPM wake convection is under-resolved: "
-                f"C_wake={courant:.3g} > 1. Reduce dt to <= {max_time_step_size:.3g} s.",
+                f"wake_courant_number={courant:.3g} > 1. Reduce time_step_size to "
+                f"<= {max_time_step_size:.3g} s.",
                 RuntimeWarning,
                 stacklevel=2,
             )

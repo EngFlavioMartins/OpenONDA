@@ -1,7 +1,7 @@
 """Checkpoint/restart I/O for VPM simulations.
 
 Checkpoints use the same canonical names as the live VPM state. Readers reject
-every format or field schema other than the current canonical contract.
+every checkpoint format other than the current canonical contract.
 """
 
 from __future__ import annotations
@@ -16,12 +16,10 @@ from typing import Any
 import h5py
 import numpy as np
 
-from source.schemas import SCHEMA_VERSION, validate_serialized_field_name
-
 from ..config.setup import VPMSetup
 from .logging import Logging
 
-_CHECKPOINT_FORMAT_VERSION = "6.0"
+_CHECKPOINT_FORMAT_VERSION = "7.0"
 _STABILIZATION_DIAGNOSTIC_NAMES = (
     "n_stabilization_events",
     "last_stabilization_mechanism",
@@ -202,8 +200,6 @@ class CheckpointManager:
             and len(reference_vortex_strength) == n_particles_total
             and len(reference_lengths) == n_particles_total
         ):
-            validate_serialized_field_name("filament_reference_vortex_strength")
-            validate_serialized_field_name("filament_reference_length")
             particles_group.create_dataset(
                 "filament_reference_vortex_strength",
                 data=np.asarray(reference_vortex_strength, dtype=np.float64),
@@ -213,7 +209,6 @@ class CheckpointManager:
                 data=np.asarray(reference_lengths, dtype=np.float64),
             )
 
-        validate_serialized_field_name("zone_id")
         particles_group.create_dataset(
             "zone_id",
             data=solver.particles.zone_id_cpu(),
@@ -225,7 +220,6 @@ class CheckpointManager:
                 "velocity_gradient particle count does not match "
                 f"n_particles_total ({velocity_gradient.shape[0]} != {n_particles_total})"
             )
-        validate_serialized_field_name("velocity_gradient")
         particles_group.create_dataset(
             "velocity_gradient",
             data=velocity_gradient.reshape(n_particles_total, 9),
@@ -237,7 +231,6 @@ class CheckpointManager:
                 "strain_rate particle count does not match "
                 f"n_particles_total ({strain_rate.shape[0]} != {n_particles_total})"
             )
-        validate_serialized_field_name("strain_rate")
         particles_group.create_dataset(
             "strain_rate",
             data=strain_rate.reshape(n_particles_total, 9),
@@ -247,7 +240,6 @@ class CheckpointManager:
             solver.freestream_velocity,
             dtype=solver.np_dtype,
         )
-        validate_serialized_field_name("freestream_velocity")
         particles_group.create_dataset(
             "freestream_velocity",
             data=np.tile(freestream_velocity, (n_particles_total, 1)),
@@ -259,7 +251,6 @@ class CheckpointManager:
                 solver.particles.vortex_strength_cpu(),
                 solver.particles.core_radius_cpu(),
             )
-            validate_serialized_field_name("total_enstrophy")
             particles_group.create_dataset(
                 "total_enstrophy",
                 data=total_enstrophy,
@@ -275,7 +266,6 @@ class CheckpointManager:
         with h5py.File(hdf5_file, "w") as file:
             solver_group = file.create_group("solver")
             solver_group.attrs["checkpoint_format_version"] = _CHECKPOINT_FORMAT_VERSION
-            solver_group.attrs["physical_field_schema_version"] = SCHEMA_VERSION
             solver_group.attrs["time"] = time
             solver_group.attrs["step"] = int(solver.step)
             solver_group.attrs["time_step_size"] = float(solver.time_step_size)
@@ -295,7 +285,6 @@ class CheckpointManager:
             ).items():
                 if name not in _STABILIZATION_DIAGNOSTIC_NAMES:
                     raise ValueError(f"Unknown stabilization diagnostic {name!r}")
-                validate_serialized_field_name(name)
                 solver_group.attrs[name] = value
 
             reference_moments = getattr(
@@ -334,7 +323,6 @@ class CheckpointManager:
                 "group_id",
                 "vorticity",
             ):
-                validate_serialized_field_name(name)
                 particles_group.create_dataset(
                     name,
                     data=getattr(
@@ -343,7 +331,6 @@ class CheckpointManager:
                     )(),
                 )
 
-            validate_serialized_field_name("vortex_strength_magnitude")
             particles_group.create_dataset(
                 "vortex_strength_magnitude",
                 data=np.linalg.norm(solver.particles.vortex_strength_cpu(), axis=1),
@@ -390,31 +377,8 @@ class CheckpointManager:
     ) -> None:
         """Write an XDMF descriptor using canonical field names."""
         n_particles_total = int(solver.particles.n_particles_total)
-        if n_particles_total == 0:
-            if os.path.exists(xdmf_file):
-                os.remove(xdmf_file)
-            return
-
         hdf5_basename = os.path.basename(f"{checkpoint_base}.h5")
         float_precision = 8 if solver.precision == "f64" else 4
-        for field_name in (
-            "velocity",
-            "freestream_velocity",
-            "vortex_strength",
-            "vortex_strength_magnitude",
-            "vorticity",
-            "core_radius",
-            "particle_volume",
-            "kinematic_viscosity",
-            "eddy_viscosity",
-            "effective_viscosity",
-            "group_id",
-            "zone_id",
-            "velocity_gradient",
-            "strain_rate",
-        ):
-            validate_serialized_field_name(field_name)
-
         optional = f"""
       <Attribute Name="zone_id" AttributeType="Scalar" Center="Node">
         <DataItem Dimensions="{n_particles_total}" NumberType="Int" Format="HDF">
@@ -448,8 +412,6 @@ class CheckpointManager:
       </Geometry>
 
       <Time Value="{time:.17g}"/>
-      <Information Name="physical_field_schema_version" Value="{SCHEMA_VERSION}"/>
-
       <Attribute Name="velocity" AttributeType="Vector" Center="Node">
         <DataItem Dimensions="{n_particles_total} 3" NumberType="Float" Precision="{float_precision}" Format="HDF">
           {hdf5_basename}:/particles/velocity
@@ -613,7 +575,6 @@ class CheckpointManager:
           {data_item("position", f"{n_particles_total} 3")}
         </Geometry>
         <Time Value="{time:.17g}"/>
-        <Information Name="physical_field_schema_version" Value="{SCHEMA_VERSION}"/>
         <Attribute Name="velocity" AttributeType="Vector" Center="Node">
           {data_item("velocity", f"{n_particles_total} 3")}
         </Attribute>
@@ -848,36 +809,40 @@ class CheckpointManager:
         """Return whether a checkpoint has the minimum restart structure."""
         try:
             with h5py.File(hdf5_file, "r") as file:
-                if "solver" not in file or "particles" not in file:
+                if set(file.keys()) != {"solver", "particles"}:
                     return False
 
                 solver_group = file["solver"]
-                format_version = str(solver_group.attrs.get("checkpoint_format_version", ""))
-                if format_version != _CHECKPOINT_FORMAT_VERSION:
-                    return False
-                schema_version = solver_group.attrs.get("physical_field_schema_version")
-                if str(schema_version) != SCHEMA_VERSION:
-                    return False
-                for canonical_name in (
+                required_solver_attributes = {
+                    "checkpoint_format_version",
                     "time",
                     "step",
                     "time_step_size",
                     "n_steps_since_dvh_diffusion",
                     "is_particle_regeneration_pending",
+                    "n_particles_total",
+                }
+                solver_attribute_names = set(solver_group.attrs.keys())
+                if not required_solver_attributes <= solver_attribute_names:
+                    return False
+                if not solver_attribute_names <= (
+                    required_solver_attributes | set(_STABILIZATION_DIAGNOSTIC_NAMES)
                 ):
-                    if canonical_name not in solver_group.attrs:
-                        return False
-                if "n_particles_total" not in solver_group.attrs:
+                    return False
+                if set(solver_group.keys()) - {"divergence_relaxation_reference_moments"}:
+                    return False
+                format_version = str(solver_group.attrs.get("checkpoint_format_version", ""))
+                if format_version != _CHECKPOINT_FORMAT_VERSION:
                     return False
 
                 n_particles_total = _read_particle_count(solver_group)
                 if n_particles_total < 0:
                     return False
-                if n_particles_total == 0:
-                    return True
-
                 particles_group = file["particles"]
-                required = (
+                if n_particles_total == 0:
+                    return len(particles_group) == 0
+
+                required = {
                     "position",
                     "velocity",
                     "vortex_strength",
@@ -893,8 +858,22 @@ class CheckpointManager:
                     "freestream_velocity",
                     "velocity_gradient",
                     "strain_rate",
-                )
-                if not all(name in particles_group for name in required):
+                }
+                optional = {
+                    "filament_reference_vortex_strength",
+                    "filament_reference_length",
+                    "total_enstrophy",
+                }
+                particle_field_names = set(particles_group.keys())
+                if not required <= particle_field_names:
+                    return False
+                if not particle_field_names <= required | optional:
+                    return False
+                filament_fields = {
+                    "filament_reference_vortex_strength",
+                    "filament_reference_length",
+                }
+                if len(particle_field_names & filament_fields) == 1:
                     return False
                 vector_fields = (
                     "position",

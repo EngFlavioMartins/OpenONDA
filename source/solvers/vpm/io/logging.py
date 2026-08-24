@@ -337,16 +337,23 @@ class Logging:
 
         # Vortex Geometry
         try:
-            centre = getattr(system, "centroid_of_vortex_strength", None)
-            centroids = system.centroids_of_vortex_strength
+            vortex_centroid = getattr(system, "vortex_centroid", None)
+            vortex_centroids_by_group = system.vortex_centroids_by_group
             geo_items = []
-            if centre is not None:
+            if vortex_centroid is not None:
                 geo_items.append(
-                    ("Centre of Vorticity", f"({centre[0]:.3e}, {centre[1]:.3e}, {centre[2]:.3e})")
+                    (
+                        "Vortex centroid",
+                        f"({vortex_centroid[0]:.3e}, {vortex_centroid[1]:.3e}, "
+                        f"{vortex_centroid[2]:.3e})",
+                    )
                 )
-            for g, cg in centroids.items():
+            for g, cg in vortex_centroids_by_group.items():
                 geo_items.append(
-                    (f"Group {g} centroid", f"({cg[0]:.3e}, {cg[1]:.3e}, {cg[2]:.3e})")
+                    (
+                        f"Group {g} vortex centroid",
+                        f"({cg[0]:.3e}, {cg[1]:.3e}, {cg[2]:.3e})",
+                    )
                 )
             if geo_items:
                 for label, _ in geo_items:
@@ -595,12 +602,7 @@ class Logging:
         lines.append("\n" + "-" * 60)
         lines.append("MONITORING & I/O")
         lines.append("-" * 60)
-        checkpoint_time = getattr(system, "checkpoint_interval_time", None)
-        checkpoint_frequency = (
-            f"{checkpoint_time:g} s"
-            if checkpoint_time is not None
-            else f"{system.checkpoint_interval_steps} steps"
-        )
+        checkpoint_frequency = f"{system.checkpoint_interval_steps} steps"
         lines.append(f"  Snapshot Frequency       : {checkpoint_frequency}")
         lines.append(f"  Snapshot Prefix          : {prefix}")
         logging_freq = system.setup.logging_interval_steps
@@ -853,12 +855,7 @@ class Logging:
         prefix = f"vpm_{name}" if name else "vpm"
         lines.append("")
         lines.append("MONITORING & I/O:")
-        checkpoint_time = getattr(system, "checkpoint_interval_time", None)
-        checkpoint_frequency = (
-            f"{checkpoint_time:g} s"
-            if checkpoint_time is not None
-            else f"{system.checkpoint_interval_steps} steps"
-        )
+        checkpoint_frequency = f"{system.checkpoint_interval_steps} steps"
         lines.append(f"  Snapshot Frequency       : {checkpoint_frequency}")
         lines.append(f"  Snapshot Prefix          : {prefix}")
 

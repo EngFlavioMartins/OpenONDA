@@ -18,7 +18,6 @@ from .core_spreading import apply_core_spreading
 from .grid import (
     _DVH_BETA,
     _GRID_TRANSFER_CHUNK,
-    _LOCAL_THRESHOLD_FLOOR,
     _M4_SCATTER_BATCH_SIZE,
     _REGEN_RADIUS_RATIO,
     _GridDiffusionMixin,
@@ -31,7 +30,6 @@ __all__ = [
     "_DVH_BETA",
     "_GRID_TRANSFER_CHUNK",
     "_GridDiffusionMixin",
-    "_LOCAL_THRESHOLD_FLOOR",
     "_M4_SCATTER_BATCH_SIZE",
     "_REGEN_RADIUS_RATIO",
     "apply_core_spreading",

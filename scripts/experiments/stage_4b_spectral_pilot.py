@@ -334,7 +334,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     save_every = max(1, int(round(args.save_interval / args.time_step_size)))
     steps = int(round(args.end_time / args.time_step_size))
     if abs(steps * args.time_step_size - args.end_time) > 1.0e-12:
-        raise ValueError("end_time must be an integer multiple of dt")
+        raise ValueError("end_time must be an integer multiple of time_step_size")
 
     histories: dict[str, list[dict[str, float]]] = {
         model: [] for model in ("filtered_dns", *MODELS)

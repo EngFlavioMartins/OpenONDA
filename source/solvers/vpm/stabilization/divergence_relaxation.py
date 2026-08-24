@@ -117,7 +117,7 @@ class GaussianParticleGridOperator:
     def __init__(
         self,
         position: np.ndarray,
-        radius: np.ndarray,
+        core_radius: np.ndarray,
         vortex_strength_weight: np.ndarray,
         *,
         spacing: float,
@@ -125,34 +125,34 @@ class GaussianParticleGridOperator:
         max_grid_nodes: int = 8_000_000,
     ) -> None:
         position = np.asarray(position, dtype=np.float64)
-        radius = np.asarray(radius, dtype=np.float64)
+        core_radius = np.asarray(core_radius, dtype=np.float64)
         vortex_strength_weight = np.asarray(vortex_strength_weight, dtype=np.float64)
         if position.ndim != 2 or position.shape[1] != 3 or len(position) == 0:
             raise ValueError("position must have shape (N, 3) with N > 0")
-        if radius.shape != (len(position),):
-            raise ValueError("radius must have shape (N,)")
+        if core_radius.shape != (len(position),):
+            raise ValueError("core_radius must have shape (N,)")
         if vortex_strength_weight.shape != (len(position),):
             raise ValueError("vortex_strength_weight must have shape (N,)")
-        if spacing <= 0.0 or np.any(radius <= 0.0):
+        if spacing <= 0.0 or np.any(core_radius <= 0.0):
             raise ValueError("spacing and all core_radius must be positive")
         if support_radius_multiplier < 3.0:
             raise ValueError("support_radius_multiplier must be at least three")
-        radius_scale = max(float(radius.mean()), np.finfo(float).tiny)
-        self.radius_spread = float(np.ptp(radius)) / radius_scale
+        core_radius_scale = max(float(core_radius.mean()), np.finfo(float).tiny)
+        self.core_radius_spread = float(np.ptp(core_radius)) / core_radius_scale
 
         weight_sum = float(vortex_strength_weight.sum(dtype=np.float64))
         self.smoothing_radius = (
             float(
                 np.sqrt(
                     np.sum(
-                        vortex_strength_weight * radius * radius,
+                        vortex_strength_weight * core_radius * core_radius,
                         dtype=np.float64,
                     )
                     / weight_sum
                 )
             )
             if weight_sum > 0.0
-            else float(np.sqrt(np.mean(radius * radius)))
+            else float(np.sqrt(np.mean(core_radius * core_radius)))
         )
         self.spacing = float(spacing)
         self.support_radius_multiplier = float(support_radius_multiplier)
@@ -325,14 +325,14 @@ class GaussianParticleGridOperator:
 
 def invariant_rows(
     position: np.ndarray,
-    radius: np.ndarray,
+    core_radius: np.ndarray,
     *,
     angular_core_coefficient: float,
 ) -> np.ndarray:
     """Rows for vortex_strength and both impulses for a supported blob kernel."""
 
     position = np.asarray(position, dtype=np.float64)
-    radius = np.asarray(radius, dtype=np.float64)
+    core_radius = np.asarray(core_radius, dtype=np.float64)
     n = len(position)
     rows = np.zeros((9, n, 3), dtype=np.float64)
     identity = np.eye(3)
@@ -348,19 +348,21 @@ def invariant_rows(
         np.einsum("pa,pb->pab", position, position)
         - np.einsum("pa,pa->p", position, position)[:, None, None] * identity
     )
-    angular = skew_sq / 3.0 - (angular_core_coefficient * radius[:, None, None] ** 2 * identity)
+    angular = skew_sq / 3.0 - (
+        angular_core_coefficient * core_radius[:, None, None] ** 2 * identity
+    )
     rows[6:9] = np.transpose(angular, (1, 0, 2))
     return rows
 
 
 def gaussian_invariant_rows(
     position: np.ndarray,
-    radius: np.ndarray,
+    core_radius: np.ndarray,
 ) -> np.ndarray:
     """Rows for vector strength, linear impulse, and Gaussian angular impulse."""
     return invariant_rows(
         position,
-        radius,
+        core_radius,
         angular_core_coefficient=1.0 / 3.0,
     )
 
@@ -394,7 +396,7 @@ class _MomentNullspace:
 def _constrained_divergence_relaxation_once(
     position: np.ndarray,
     vortex_strength: np.ndarray,
-    radius: np.ndarray,
+    core_radius: np.ndarray,
     particle_volume: np.ndarray,
     *,
     grid_spacing: float,
@@ -419,12 +421,12 @@ def _constrained_divergence_relaxation_once(
 
     position = np.asarray(position, dtype=np.float64)
     vortex_strength = np.asarray(vortex_strength, dtype=np.float64)
-    radius = np.asarray(radius, dtype=np.float64)
+    core_radius = np.asarray(core_radius, dtype=np.float64)
     particle_volume = np.asarray(particle_volume, dtype=np.float64)
     if position.shape != vortex_strength.shape or position.ndim != 2 or position.shape[1] != 3:
         raise ValueError("position and vortex_strength must both have shape (N, 3)")
-    if radius.shape != (len(position),) or particle_volume.shape != (len(position),):
-        raise ValueError("radius and particle_volume must have shape (N,)")
+    if core_radius.shape != (len(position),) or particle_volume.shape != (len(position),):
+        raise ValueError("core_radius and particle_volume must have shape (N,)")
     if np.any(particle_volume <= 0.0):
         raise ValueError("all particle volume must be positive")
     if regularization <= 0.0:
@@ -442,7 +444,7 @@ def _constrained_divergence_relaxation_once(
     ):
         raise ValueError("reference_scales must contain three positive values")
 
-    before_moments = gaussian_particle_moments(position, vortex_strength, radius)
+    before_moments = gaussian_particle_moments(position, vortex_strength, core_radius)
     if target_moments is None:
         target_total = before_moments[0]
         target_impulse = before_moments[2]
@@ -462,18 +464,18 @@ def _constrained_divergence_relaxation_once(
         ):
             raise ValueError("target moments must be finite")
 
-    strength = np.linalg.norm(vortex_strength, axis=1)
+    vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
     operator = GaussianParticleGridOperator(
         position,
-        radius,
-        strength,
+        core_radius,
+        vortex_strength_magnitude,
         spacing=grid_spacing,
         max_grid_nodes=max_grid_nodes,
     )
     residual, grid_divergence_before, _ = operator.relaxation_residual(vortex_strength)
     initial_residual_norm = float(np.linalg.norm(residual))
     blob_norm = float(np.linalg.norm(operator.apply(vortex_strength)))
-    rows = gaussian_invariant_rows(position, radius)
+    rows = gaussian_invariant_rows(position, core_radius)
     nullspace = _MomentNullspace(rows, particle_volume)
     full_moment_change = np.concatenate(
         (
@@ -639,49 +641,49 @@ def _constrained_divergence_relaxation_once(
     before_integrals = gaussian_fourier_integrals(
         position,
         vortex_strength,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
     candidate_integrals = gaussian_fourier_integrals(
         position,
         candidate,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
     plus_energy = gaussian_fourier_integrals(
         position,
         candidate + energy_direction,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
     minus_energy = gaussian_fourier_integrals(
         position,
         candidate - energy_direction,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
     plus_enstrophy = gaussian_fourier_integrals(
         position,
         candidate + enstrophy_direction,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
     minus_enstrophy = gaussian_fourier_integrals(
         position,
         candidate - enstrophy_direction,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
     plus_both = gaussian_fourier_integrals(
         position,
         candidate + energy_direction + enstrophy_direction,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
@@ -799,12 +801,12 @@ def _constrained_divergence_relaxation_once(
     after_integrals = gaussian_fourier_integrals(
         position,
         relaxed,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
 
-    after_moments = gaussian_particle_moments(position, relaxed, radius)
+    after_moments = gaussian_particle_moments(position, relaxed, core_radius)
     vortex_strength_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
     linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
     angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
@@ -883,7 +885,7 @@ def _constrained_divergence_relaxation_once(
     )
     angular_terms = (
         np.cross(position, np.cross(position, vortex_strength)) / 3.0
-        - radius[:, None] ** 2 * vortex_strength / 3.0
+        - core_radius[:, None] ** 2 * vortex_strength / 3.0
     )
     angular_scale = max(
         float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
@@ -991,7 +993,7 @@ def _constrained_divergence_relaxation_once(
 def _constrained_divergence_relaxation_sweep(
     position: np.ndarray,
     vortex_strength: np.ndarray,
-    radius: np.ndarray,
+    core_radius: np.ndarray,
     particle_volume: np.ndarray,
     *,
     grid_spacing: float,
@@ -1036,7 +1038,7 @@ def _constrained_divergence_relaxation_sweep(
                 return _constrained_divergence_relaxation_once(
                     position,
                     vortex_strength,
-                    radius,
+                    core_radius,
                     particle_volume,
                     grid_spacing=grid_spacing,
                     regularization=regularization,
@@ -1076,7 +1078,7 @@ def _constrained_divergence_relaxation_sweep(
 def _combine_projection_sweeps(
     position: np.ndarray,
     vortex_strength: np.ndarray,
-    radius: np.ndarray,
+    core_radius: np.ndarray,
     particle_volume: np.ndarray,
     sweeps: list[DivergenceRelaxationResult],
     *,
@@ -1098,8 +1100,8 @@ def _combine_projection_sweeps(
 
     relaxed = sweeps[-1].vortex_strength
     correction = relaxed - vortex_strength
-    before_moments = gaussian_particle_moments(position, vortex_strength, radius)
-    after_moments = gaussian_particle_moments(position, relaxed, radius)
+    before_moments = gaussian_particle_moments(position, vortex_strength, core_radius)
+    after_moments = gaussian_particle_moments(position, relaxed, core_radius)
     if target_moments is None:
         target_total = before_moments[0]
         target_impulse = before_moments[2]
@@ -1132,14 +1134,14 @@ def _combine_projection_sweeps(
     before_integrals = gaussian_fourier_integrals(
         position,
         vortex_strength,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
     after_integrals = gaussian_fourier_integrals(
         position,
         relaxed,
-        radius,
+        core_radius,
         particle_volume,
         spacing=grid_spacing,
     )
@@ -1192,7 +1194,7 @@ def _combine_projection_sweeps(
     correction_norm_relative = float(np.linalg.norm(correction) / vortex_strength_norm)
     operator = GaussianParticleGridOperator(
         position,
-        radius,
+        core_radius,
         np.linalg.norm(vortex_strength, axis=1),
         spacing=grid_spacing,
         max_grid_nodes=max_grid_nodes,
@@ -1214,7 +1216,7 @@ def _combine_projection_sweeps(
     )
     angular_terms = (
         np.cross(position, np.cross(position, vortex_strength)) / 3.0
-        - radius[:, None] ** 2 * vortex_strength / 3.0
+        - core_radius[:, None] ** 2 * vortex_strength / 3.0
     )
     angular_scale = max(
         float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
@@ -1326,7 +1328,7 @@ def _combine_projection_sweeps(
 def constrained_divergence_relaxation(
     position: np.ndarray,
     vortex_strength: np.ndarray,
-    radius: np.ndarray,
+    core_radius: np.ndarray,
     particle_volume: np.ndarray,
     *,
     grid_spacing: float,
@@ -1373,7 +1375,7 @@ def constrained_divergence_relaxation(
                 candidate = _constrained_divergence_relaxation_sweep(
                     position,
                     working_vortex_strength,
-                    radius,
+                    core_radius,
                     particle_volume,
                     grid_spacing=grid_spacing,
                     regularization=regularization,
@@ -1411,7 +1413,7 @@ def constrained_divergence_relaxation(
                 return _combine_projection_sweeps(
                     position,
                     vortex_strength,
-                    radius,
+                    core_radius,
                     particle_volume,
                     candidate_sweeps,
                     grid_spacing=grid_spacing,

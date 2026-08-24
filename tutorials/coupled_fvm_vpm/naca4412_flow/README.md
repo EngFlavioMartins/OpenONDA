@@ -24,7 +24,8 @@ OPENONDA_SMOKE=1 ./allrun.sh
 GPU is available. Generated fields are written below `solution/`, sampling
 histories below `samples/`, and plots below `figures/`.
 
-`OPENONDA_FVM_DT`, `OPENONDA_VPM_DT`, `OPENONDA_T_END`, `OPENONDA_SPACING`,
+`OPENONDA_FVM_TIME_STEP_SIZE`, `OPENONDA_VPM_TIME_STEP_SIZE`,
+`OPENONDA_T_END`, `OPENONDA_SPACING`,
 `OPENONDA_IBM_MARKER_RATIO`, and `OPENONDA_MAX_PARTICLES` provide explicit
 resolution/study overrides. The default 2.5-cell marker separation avoids an
 ill-conditioned direct-forcing quadrature where the thin section meets the

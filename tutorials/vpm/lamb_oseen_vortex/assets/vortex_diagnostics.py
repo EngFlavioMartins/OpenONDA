@@ -204,13 +204,6 @@ def read_surface_field(path: Path) -> dict:
 # =============================================================
 
 
-def _weighted_centroid(x: np.ndarray, y: np.ndarray, weight: np.ndarray):
-    total = float(weight.sum())
-    if total <= np.finfo(float).tiny:
-        return np.array([np.nan, np.nan])
-    return np.array([float(np.dot(weight, x)) / total, float(np.dot(weight, y)) / total])
-
-
 def _subgrid_peak_centre(
     x: np.ndarray,
     y: np.ndarray,
@@ -246,7 +239,7 @@ def _peak_candidates(values: np.ndarray, min_relative_peak: float = 0.20):
     maximum = float(np.nanmax(values))
     if maximum <= 0.0:
         return []
-    local_max = values == ndimage.max_filter(values, size=3, mode="nearest")
+    local_max = values == ndimage.maximum_filter(values, size=3, mode="nearest")
     local_max &= values >= min_relative_peak * maximum
     local_max[[0, -1], :] = False
     local_max[:, [0, -1]] = False

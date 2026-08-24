@@ -191,7 +191,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
     states = [load_state(path) for path in paths]
     moments = [archer_moments(state) for state in states]
     times = np.asarray([float(state["time"]) for state in states])
-    vortex_centre_position = np.asarray([item["axial_centroid"] for item in moments])
+    vortex_centre_position = np.asarray([item["axial_vortex_centroid"] for item in moments])
     speeds = local_speeds(times, vortex_centre_position)
     energy_residuals = cumulative_energy_residuals(run_directory, times)
     projection_ratios = projection_correction_history(run_directory, times)
@@ -215,7 +215,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
         sample = sample_solver(
             solver,
             grid_size,
-            axial_centre=float(moment["axial_centroid"]),
+            axial_centre=float(moment["axial_vortex_centroid"]),
             translation_speed=float(speed),
         )
         metrics = sample["sensitivity"][f"{PRIMARY_CORE_FRACTION:.2f}"]

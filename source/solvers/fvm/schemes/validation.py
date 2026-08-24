@@ -145,7 +145,7 @@ def validate_solver_params(solver, time=None) -> None:
         )
     if time is not None:
         if not float(time.time_step_size) > 0.0:
-            errors.append(f"  dt={time.time_step_size!r} must be > 0")
+            errors.append(f"  time_step_size={time.time_step_size!r} must be > 0")
         if not float(time.end_time) > float(time.start_time):
             errors.append(
                 f"  end_time={time.end_time!r} must be greater than start_time={time.start_time!r}"

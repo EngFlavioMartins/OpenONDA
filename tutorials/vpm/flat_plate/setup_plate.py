@@ -183,7 +183,7 @@ def run_case(
 
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup.les_simulation(
-            cs=SMAGORINSKY_COEFFICIENT,
+            smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP_SIZE,
             compute_device="AUTO",
             advection=vpm.AdvectionConfig(scheme="RK3"),

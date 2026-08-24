@@ -11,13 +11,11 @@ from uuid import uuid4
 
 import numpy as np
 
-from source.schemas import SCHEMA_VERSION
-
 from ..config.types import OutputConfig
 from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter, atomic_write_text
 
-PARTITIONED_CHECKPOINT_VERSION = 4
+PARTITIONED_CHECKPOINT_VERSION = 5
 
 
 def _resolve_checkpoint_file(target: Path, name: str) -> Path:
@@ -157,7 +155,6 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
     if solver.parallel.is_root:
         manifest = {
             "format_version": PARTITIONED_CHECKPOINT_VERSION,
-            "physical_field_schema_version": SCHEMA_VERSION,
             "generation": generation,
             "config_hash": config_hash(solver.setup),
             "mesh_hash": solver.mesh_data["global_mesh_hash"],
@@ -193,12 +190,20 @@ def load_partitioned_solver_checkpoint(
     if solver.parallel.is_root:
         manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
     manifest = solver.parallel.bcast(manifest, root=0)
+    expected_manifest_keys = {
+        "format_version",
+        "generation",
+        "config_hash",
+        "mesh_hash",
+        "n_global_cells",
+        "n_ranks",
+        "files",
+    }
+    if not isinstance(manifest, dict) or set(manifest) != expected_manifest_keys:
+        raise ValueError("Partitioned checkpoint manifest has invalid fields")
     version = manifest.get("format_version")
     if version != PARTITIONED_CHECKPOINT_VERSION:
         raise ValueError("Unsupported partitioned FVM checkpoint version")
-    schema_version = manifest.get("physical_field_schema_version")
-    if schema_version != SCHEMA_VERSION:
-        raise ValueError(f"Unsupported physical-field schema version {schema_version!r}")
     if manifest.get("n_ranks") != solver.parallel.size:
         raise ValueError("Partitioned checkpoint communicator size does not match")
     if manifest.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
@@ -243,9 +248,12 @@ def load_partitioned_solver_checkpoint(
         "time_since_last_write",
         "n_consecutive_accepted_steps",
     }
+    unexpected = sorted(set(state) - required_state)
     missing = sorted(required_state - set(state))
-    if missing:
-        raise ValueError("Incomplete partitioned checkpoint; missing: " + ", ".join(missing))
+    if missing or unexpected:
+        raise ValueError(
+            f"Invalid partitioned checkpoint fields; missing={missing}, unexpected={unexpected}"
+        )
 
     partition = solver.parallel.partition
     if not np.array_equal(state.pop("global_cell_id"), partition.local_global_ids):
@@ -306,8 +314,7 @@ def write_partition_checkpoint(directory, partition, fields: dict[str, np.ndarra
     comm.Barrier()
     if partition.rank == 0:
         manifest = {
-            "schema_version": 2,
-            "physical_field_schema_version": SCHEMA_VERSION,
+            "format_version": 3,
             "n_global_cells": partition.n_global_cells,
             "n_ranks": partition.size,
             "files": [f"rank-{rank:05d}.npz" for rank in range(partition.size)],
@@ -321,6 +328,17 @@ def reconstruct_partition_checkpoint(directory) -> dict[str, np.ndarray]:
     """Reconstruct globally ordered fields for visualization or comparison."""
     target = Path(directory)
     manifest = json.loads((target / "manifest.json").read_text())
+    expected_manifest_keys = {
+        "format_version",
+        "n_global_cells",
+        "n_ranks",
+        "files",
+        "fields",
+    }
+    if not isinstance(manifest, dict) or set(manifest) != expected_manifest_keys:
+        raise ValueError("Partition reconstruction manifest has invalid fields")
+    if manifest["format_version"] != 3:
+        raise ValueError("Unsupported partition reconstruction format")
     fields: dict[str, np.ndarray] = {}
     for filename in manifest["files"]:
         with np.load(target / filename, allow_pickle=False) as archive:

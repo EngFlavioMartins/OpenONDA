@@ -90,7 +90,7 @@ def normalise_seed(
 
 
 def build_seed_velocity(
-    centroids: np.ndarray,
+    cell_centre: np.ndarray,
     *,
     base_velocity,
     epsilon: float,
@@ -102,12 +102,12 @@ def build_seed_velocity(
     ``base_velocity`` is broadcast to ``(N, 3)``.  When ``epsilon <= 0`` the
     unperturbed base field is returned unchanged (no seed applied).
     """
-    n = centroids.shape[0]
+    n = cell_centre.shape[0]
     base = np.broadcast_to(np.asarray(base_velocity, dtype=np.float64), (n, 3)).copy()
     if epsilon is None or float(epsilon) <= 0.0:
         return base
     raw = streamfunction_perturbation(
-        centroids,
+        cell_centre,
         epsilon=float(epsilon),
         freestream_speed=freestream_speed,
         diameter=diameter,

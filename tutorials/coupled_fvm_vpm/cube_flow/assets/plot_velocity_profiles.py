@@ -102,7 +102,7 @@ def _profile(ax, name: str, time: float, consts: dict, title: str, ylim: tuple[f
         if frame is None:
             raise RuntimeError(f"Missing exact {source} {name} sample at t={time:.12g} s")
         ax.plot(
-            frame["x"] / reference_length,
+            frame["position_x"] / reference_length,
             frame["velocity_x"] / freestream_speed,
             zorder=2,
             **styles[source],
