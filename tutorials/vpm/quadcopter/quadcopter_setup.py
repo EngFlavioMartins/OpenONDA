@@ -13,6 +13,8 @@ Usage:
 from __future__ import annotations
 
 from pathlib import Path
+import json
+import os
 
 import numpy as np
 
@@ -98,13 +100,15 @@ def run() -> None:
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sigma_factor=2.5,
+        sample_surface_forces=True,
+        logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME),
     )
 
     sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="AUTO",
+            compute_device=os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper(),
             vlm=vlm_setup,
             stretching=vpm.StretchingConfig.disabled(),
             viscous=vpm.ViscousConfig.cs(
@@ -139,8 +143,44 @@ def run() -> None:
         case_dir=TUTORIAL_DIR,
     )
 
-    for _ in range(N_STEPS):
-        solver.advance()
+    samples_dir = TUTORIAL_DIR / "samples" / CASE_NAME
+    samples_dir.mkdir(parents=True, exist_ok=True)
+    (samples_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "case": CASE_NAME,
+                "n_steps": N_STEPS,
+                "number_of_revolutions": NUMBER_OF_REVOLUTIONS,
+                "time_step_size": TIME_STEP_SIZE,
+                "compute_device": solver.compute_device,
+                "precision": solver.precision,
+                "turbulence_model": "DNS",
+                "smagorinsky_coefficient": 0.0,
+                "treecode_theta": 0.35,
+                "number_of_rotors": len(rotors),
+                "number_of_blades_per_rotor": NUMBER_OF_BLADES,
+                "sample_interval_time": SAMPLE_INTERVAL_TIME,
+                "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    manifest_path = samples_dir / "run_manifest.json"
+    try:
+        for _ in range(N_STEPS):
+            solver.advance()
+    except BaseException:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["status"] = "failed"
+        manifest["completed"] = False
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        raise
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.update(status="complete", completed=True, final_time=solver.time)
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> int:

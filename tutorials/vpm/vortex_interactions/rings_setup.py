@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -58,11 +59,17 @@ RING_SEEDS = (7, 19)
 # The classical coefficient resolves the sustained leapfrogging deformation;
 # the more violent head-on collision needs the stronger coarse-LES filter.
 LES_COEFFICIENT = {"leapfrog": 0.16, "collide": 0.32}
-STABILIZATION_COEFFICIENT = 0.5
+STABILIZATION_COEFFICIENT = float(
+    os.environ.get("OPENONDA_INTERACTIONS_STABILIZATION_COEFFICIENT", "0.5")
+)
 REGULARIZATION_INTERVAL_STEPS = 20
 REGULARIZATION_START_STEP = 380
-REGULARIZATION_SPACING = 0.084
-REGULARIZATION_CAPACITY_SPACING = 0.13
+REGULARIZATION_SPACING = float(
+    os.environ.get("OPENONDA_INTERACTIONS_REGULARIZATION_SPACING", "0.084")
+)
+REGULARIZATION_CAPACITY_SPACING = float(
+    os.environ.get("OPENONDA_INTERACTIONS_CAPACITY_SPACING", "0.13")
+)
 REGULARIZATION_CORE_RADIUS = {"leapfrog": 0.23, "collide": 0.195}
 REGULARIZATION_CAPACITY_CORE_RADIUS = 0.195
 REGULARIZATION_TAIL_BUDGET = 0.003
@@ -79,6 +86,16 @@ REGULARIZATION_PROJECTION_TRIGGER = 0.12
 REGULARIZATION_PROJECTION_LIMIT = {"leapfrog": 0.05, "collide": 0.10}
 STABILIZED_MAX_PARTICLES = 20_000
 BASELINE_MAX_PARTICLES = 8_000
+
+COMPUTE_DEVICE = os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper()
+# Metal does not expose f64 kernels in Taichi.  Keep the historical f64 path
+# for CPU diagnostics, while making the canonical GPU campaign explicit and
+# recording the reduced precision in each run manifest.
+PRECISION = "f32" if COMPUTE_DEVICE == "METAL" else "f64"
+NUM_STEPS = int(os.environ.get("OPENONDA_INTERACTIONS_NUM_STEPS", str(NUM_STEPS)))
+END_TIME = NUM_STEPS * TIME_STEP_SIZE
+VELOCITY_METHOD = os.environ.get("OPENONDA_INTERACTIONS_VELOCITY_METHOD", "treecode")
+TREECODE_THETA = float(os.environ.get("OPENONDA_INTERACTIONS_TREECODE_THETA", "0.30"))
 
 CASES = {
     "leapfrog_dns": ("leapfrog", "dns"),
@@ -150,10 +167,18 @@ def solver_setup(case_name: str, output_dir: Path) -> vpm.VPMSetup:
         viscous=viscous_diffusion(),
         turbulence=turbulence(family, variant),
         stabilization=stabilization(family, variant),
-        velocity=vpm.VelocityConfig.direct(),
+        velocity=(
+            vpm.VelocityConfig.treecode(
+                theta=TREECODE_THETA,
+                sort_particle_targets=True,
+                traversal_block_dim=128,
+            )
+            if VELOCITY_METHOD == "treecode"
+            else vpm.VelocityConfig.direct()
+        ),
         particle_kernel="GAUSSIAN",
-        precision="f64",
-        compute_device="CPU",
+        precision=PRECISION,
+        compute_device=COMPUTE_DEVICE,
         max_n_particles=(
             STABILIZED_MAX_PARTICLES if variant == "les_stabilized" else BASELINE_MAX_PARTICLES
         ),
@@ -247,7 +272,10 @@ def run_case(case_name: str, *, n_steps: int = NUM_STEPS) -> None:
         "particle_spacing": PARTICLE_SPACING,
         "particle_core_radius": PARTICLE_RADIUS,
         "initial_n_particles_total": len(solver.particles),
-        "precision": "f64",
+        "precision": PRECISION,
+        "compute_device": COMPUTE_DEVICE,
+        "velocity_method": VELOCITY_METHOD,
+        "treecode_theta": TREECODE_THETA if VELOCITY_METHOD == "treecode" else None,
         "widnall_amplitude": WIDNALL_AMPLITUDE,
         "widnall_modes": WIDNALL_MODES,
         "smagorinsky_coefficient": 0.0 if variant == "dns" else LES_COEFFICIENT[family],

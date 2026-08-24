@@ -43,6 +43,11 @@ class CouplerSetup:
     """(xmin, xmax, ymin, ymax, zmin, zmax) region over which FVM vorticity is
     transferred to VPM particles; must lie inside the FVM domain; None uses the
     full FVM domain."""
+    vorticity_transfer_mode: Literal["velocity_defect", "vorticity_defect"] = "velocity_defect"
+    """Source of the FVM-to-VPM correction: the compatible curl of the velocity
+    defect, which is discretely solenoidal but blind to the grid-scale band, or
+    the FVM vorticity defect scaled by the particle control volume, which
+    reaches that band but carries the divergence of the donor field."""
     transfer_diagnostic_interval_steps: int = 1
     """Coupling steps between transfer diagnostics; at least one."""
 
@@ -84,6 +89,11 @@ class CouplerSetup:
             raise ValueError(
                 "boundary_condition_mode must be 'dirichlet', 'characteristic', "
                 "'directional_outflow', 'pressure_gradient', or 'vorticity_mixed'"
+            )
+
+        if self.vorticity_transfer_mode not in {"velocity_defect", "vorticity_defect"}:
+            raise ValueError(
+                "vorticity_transfer_mode must be 'velocity_defect' or 'vorticity_defect'"
             )
 
         if self.transfer_region_bounds is not None:
@@ -152,6 +162,7 @@ class CouplerSetup:
                 "authority_ramp_width": self.authority_ramp_width,
                 "vpm_only_width": self.vpm_only_width,
                 "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
+                "vorticity_transfer_mode": self.vorticity_transfer_mode,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
                 "is_boundary_condition_resynchronized_after_transfer": self.is_boundary_condition_resynchronized_after_transfer,
                 "is_pressure_anchored_to_freestream": self.is_pressure_anchored_to_freestream,

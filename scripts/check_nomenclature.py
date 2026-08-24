@@ -380,7 +380,9 @@ TEXT_SUFFIXES = frozenset(
         ".log",
     }
 )
-GENERATED_COMPONENTS = frozenset({"samples_archive", "solution", "samples", "grid_study"})
+GENERATED_COMPONENTS = frozenset(
+    {"samples_archive", "solution", "samples", "grid_study", "artifacts"}
+)
 XML_FIELD_SUFFIXES = frozenset(
     {".xdmf", ".xmf", ".vtu", ".vtp", ".vts", ".vtk", ".pvd", ".pvtu", ".pvts", ".pvsm"}
 )
@@ -508,7 +510,7 @@ def scan_paths(root: Path) -> list[str]:
         for component in relative_parts:
             if component in LEGACY_PATH_COMPONENTS or "centerline" in component.lower():
                 findings.append(f"path:{relative}:noncanonical path component {component!r}")
-            is_timestamp = bool(re.fullmatch(r"\d{8}T\d{6}Z", component))
+            is_timestamp = bool(re.fullmatch(r"\d{8}T\d{6}Z(_[0-9a-f]{7,40})?", component))
             is_documentation_name = component in {
                 "AGENTS.md",
                 "CFMESH_ATTRIBUTION.md",

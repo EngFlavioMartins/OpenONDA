@@ -21,7 +21,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import math
+import os
 from pathlib import Path
 
 import numpy as np
@@ -185,7 +187,7 @@ def run_case(
         setup=vpm.VPMSetup.les_simulation(
             smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP_SIZE,
-            compute_device="AUTO",
+            compute_device=os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper(),
             advection=vpm.AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
@@ -206,6 +208,32 @@ def run_case(
             final_samplers=final_samplers,
         ),
         case_dir=TUTORIAL_DIR,
+    )
+
+    (samples_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "case": name,
+                "frame": frame,
+                "kinematics": kinematics,
+                "angle_of_attack_degrees": angle_of_attack,
+                "time_step_size": TIME_STEP_SIZE,
+                "n_steps": n_steps,
+                "smagorinsky_coefficient": SMAGORINSKY_COEFFICIENT,
+                "compute_device": solver.compute_device,
+                "precision": solver.precision,
+                "panel_resolution": {
+                    "chordwise": CHORDWISE_PANELS,
+                    "spanwise": SPANWISE_PANELS,
+                },
+                "treecode_theta": 0.35,
+                "sample_interval_time": SAMPLE_INTERVAL_TIME,
+                "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
     )
 
     for _ in range(n_steps):

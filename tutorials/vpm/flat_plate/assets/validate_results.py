@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import argparse
 
 AOA_TAGS = [
     "aoan10",
@@ -22,6 +23,9 @@ AOA_TAGS = [
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--pre-plot", action="store_true")
+    args = parser.parse_args()
     case_dir = Path(__file__).resolve().parents[1]
     root = case_dir / "samples"
     figs = case_dir / "figures"
@@ -66,14 +70,17 @@ def main() -> int:
         if closure > 1e-4:
             failures.append(f"Kelvin closure {closure:.3e} > 1e-4")
 
-    for name in [
-        "plate_polar.png",
-        "plate_staticvsmoving.png",
-        "plate_spanwise.png",
-        "flat_plate_kelvin.png",
-    ]:
-        if not (figs / name).exists():
-            failures.append(f"missing figure {name}")
+    if not args.pre_plot:
+        for extension in ("png", "pdf"):
+            for name in (
+                "plate_polar",
+                "plate_staticvsmoving",
+                "plate_spanwise",
+                "flat_plate_kelvin",
+            ):
+                figure = figs / f"{name}.{extension}"
+                if not figure.is_file() or figure.stat().st_size == 0:
+                    failures.append(f"missing or empty figure {figure.name}")
 
     if failures:
         print("\n".join(f"[FAIL] {x}" for x in failures))

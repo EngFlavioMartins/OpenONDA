@@ -139,6 +139,8 @@ def run_level(root: Path, spacing_ratio: float, args: argparse.Namespace) -> dic
         "--compute-device",
         args.compute_device,
     ]
+    if args.disable_anti_diffusion:
+        command.append("--disable-anti-diffusion")
     print(f"  [grid] run {level_name(spacing_ratio)} (CS only)")
     subprocess.run(command, cwd=SCRIPT_DIR, check=True)  # noqa: S603
     metadata = completed_metadata(root, spacing_ratio, args)
@@ -347,6 +349,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.25,
         help="sampling plane z/L (default: 0.25, matching the production figures)",
+    )
+    parser.add_argument(
+        "--disable-anti-diffusion",
+        action="store_true",
+        help="use the grid-only initialization protocol without particle-core correction",
     )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument(

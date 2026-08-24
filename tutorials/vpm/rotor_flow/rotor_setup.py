@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -38,6 +39,7 @@ COUPLED_MAX_SUBSTEPS = 128
 TREECODE_THETA = 0.20
 TIME_STEP_SIZE = 0.006
 N_STEPS = 2400
+DEFAULT_SMAGORINSKY_COEFFICIENT = 0.17
 RAMP_ROTATIONS = 1.0
 GUARD_INTERVAL_STEPS = 20
 MAX_PARTICLE_STRENGTH = 10.0
@@ -68,12 +70,14 @@ def build_solver_config(
     *,
     vlm_setup: vpm.VLMSetup | None = None,
     samplers: tuple[vpm.SurfaceSampler, ...] | list[vpm.SurfaceSampler] = (),
+    time_step_size: float = TIME_STEP_SIZE,
+    smagorinsky_coefficient: float = DEFAULT_SMAGORINSKY_COEFFICIENT,
 ) -> vpm.VPMSetup:
     """Build the rotor VPM configuration."""
-    wake_spacing = nominal_wake_spacing(TIME_STEP_SIZE)
+    wake_spacing = nominal_wake_spacing(time_step_size)
     return vpm.VPMSetup(
-        time_step_size=TIME_STEP_SIZE,
-        compute_device="AUTO",
+        time_step_size=time_step_size,
+        compute_device=os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper(),
         time_integration="COUPLED",
         coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
         coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
@@ -81,7 +85,9 @@ def build_solver_config(
         advection=vpm.AdvectionConfig(scheme="RK2"),
         vlm=vlm_setup,
         freestream_velocity=[FREESTREAM_SPEED, 0.0, 0.0],
-        turbulence=vpm.TurbulenceConfig.les_smagorinsky(),
+        turbulence=vpm.TurbulenceConfig.les_smagorinsky(
+            smagorinsky_coefficient=smagorinsky_coefficient
+        ),
         stretching=vpm.StretchingConfig.transposed(
             scheme="RK2",
             use_treecode=True,
@@ -111,8 +117,8 @@ def build_solver_config(
         checkpoint_name=CASE_NAME,
         checkpoint_directory=str(SOLUTION_DIR),
         sample_subdirectory=CASE_NAME,
-        checkpoint_interval_steps=cadence_steps(checkpoint_interval_time, TIME_STEP_SIZE),
-        logging_interval_steps=cadence_steps(sample_interval_time, TIME_STEP_SIZE),
+        checkpoint_interval_steps=cadence_steps(checkpoint_interval_time, time_step_size),
+        logging_interval_steps=cadence_steps(sample_interval_time, time_step_size),
         export_flow_integrals=True,
     )
 
@@ -147,17 +153,23 @@ def enforce_wake_admissibility(solver: vpm.VPMSolver, max_particle_strength: flo
         )
 
 
-def write_manifest(solver: vpm.VPMSolver) -> None:
+def write_manifest(
+    solver: vpm.VPMSolver,
+    *,
+    n_steps: int,
+    time_step_size: float,
+    smagorinsky_coefficient: float,
+) -> None:
     """Store the numerical settings beside the sampled results."""
     cfg = solver.setup
     output_dir = TUTORIAL_DIR / "samples" / CASE_NAME
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "case": "rotor_flow",
-        "time_step_size": TIME_STEP_SIZE,
-        "n_steps": N_STEPS,
-        "sampling_interval_time": cfg.logging_interval_steps * TIME_STEP_SIZE,
-        "checkpoint_interval_time": cfg.checkpoint_interval_steps * TIME_STEP_SIZE,
+        "time_step_size": time_step_size,
+        "n_steps": n_steps,
+        "sampling_interval_time": cfg.logging_interval_steps * time_step_size,
+        "checkpoint_interval_time": cfg.checkpoint_interval_steps * time_step_size,
         "treecode_theta": cfg.velocity.theta,
         "kernel": cfg.particle_kernel,
         "kinematic_viscosity": cfg.viscous.kinematic_viscosity,
@@ -166,6 +178,11 @@ def write_manifest(solver: vpm.VPMSolver) -> None:
         "coupled_max_advection_fraction": cfg.coupled_max_advection_fraction,
         "coupled_max_substeps": cfg.coupled_max_substeps,
         "retention_bounds": cfg.stabilization.remove_particles_by_bounds,
+        # Record both the requested and resolved numerical controls so that a
+        # plot/backup can be traced to the exact LES/backend configuration.
+        "smagorinsky_coefficient": smagorinsky_coefficient,
+        "compute_device": solver.compute_device,
+        "precision": solver.precision,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
@@ -176,6 +193,13 @@ def main() -> int:
 
     sample_interval_time = SAMPLE_INTERVAL_TIME
     checkpoint_interval_time = CHECKPOINT_INTERVAL_TIME
+    n_steps = int(os.environ.get("OPENONDA_ROTOR_N_STEPS", N_STEPS))
+    time_step_size = float(os.environ.get("OPENONDA_ROTOR_DT", TIME_STEP_SIZE))
+    smagorinsky_coefficient = float(
+        os.environ.get("OPENONDA_ROTOR_CS", DEFAULT_SMAGORINSKY_COEFFICIENT)
+    )
+    if n_steps < 1 or time_step_size <= 0.0 or smagorinsky_coefficient < 0.0:
+        raise ValueError("invalid rotor override: n_steps, dt, and C_s must be positive")
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
 
@@ -252,14 +276,21 @@ def main() -> int:
         checkpoint_interval_time,
         vlm_setup=vlm_setup,
         samplers=plane_samplers,
+        time_step_size=time_step_size,
+        smagorinsky_coefficient=smagorinsky_coefficient,
     )
     solver = vpm.VPMSolver(setup=solver_config, case_dir=TUTORIAL_DIR)
-    write_manifest(solver)
+    write_manifest(
+        solver,
+        n_steps=n_steps,
+        time_step_size=time_step_size,
+        smagorinsky_coefficient=smagorinsky_coefficient,
+    )
     solver.info()
 
     print("\n===== SIMULATION =====")
     try:
-        for step in range(N_STEPS):
+        for step in range(n_steps):
             solver.advance()
             if (step + 1) % GUARD_INTERVAL_STEPS == 0:
                 enforce_wake_admissibility(solver, MAX_PARTICLE_STRENGTH)

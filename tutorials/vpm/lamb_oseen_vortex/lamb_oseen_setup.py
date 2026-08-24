@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -73,16 +74,18 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             particle_spacing=spacing,
             padding=DVH_PADDING,
             kinematic_viscosity=kinematic_viscosity,
-            dvh_support_radius_ratio=DVH_RD_RATIO,
-            threshold=DVH_THRESHOLD,
+            dvh_support_radius_ratio=float(
+                os.environ.get("OPENONDA_LAMB_DVH_RD_RATIO", DVH_RD_RATIO)
+            ),
+            threshold=float(os.environ.get("OPENONDA_LAMB_DVH_THRESHOLD", DVH_THRESHOLD)),
             threshold_mode="budget",
-            max_nodes=DVH_MAX_NODES,
+            max_nodes=int(os.environ.get("OPENONDA_LAMB_DVH_MAX_NODES", DVH_MAX_NODES)),
             core_radius_ratio=CORE_RADIUS_RATIO,
         )
     return vpm.ViscousConfig.gbd(
         particle_spacing=spacing,
         kinematic_viscosity=kinematic_viscosity,
-        max_nodes=GBD_MAX_NODES,
+        max_nodes=int(os.environ.get("OPENONDA_LAMB_GBD_MAX_NODES", GBD_MAX_NODES)),
         core_radius_ratio=CORE_RADIUS_RATIO,
     )
 
@@ -142,6 +145,7 @@ def run_case(
     sample_plane_fraction: float = 0.25,
     case_dir: Path = TUTORIAL_DIR,
     compute_device: str = "AUTO",
+    anti_diffusion: bool = True,
 ) -> None:
     """Run one benchmark case."""
     spacing = spacing_ratio * CORE_RADIUS
@@ -252,6 +256,9 @@ def run_case(
         "sample_plane_fraction": sample_plane_fraction,
         "sample_plane_z": sample_plane_fraction * COLUMN_LENGTH,
         "compute_device": compute_device,
+        "precision": solver.precision,
+        "smagorinsky_coefficient": 0.0,
+        "anti_diffusion_enabled": anti_diffusion,
         "advection_scheme": ADVECTION_SCHEME,
         "treecode_theta": TREECODE_THETA,
         "treecode_multipole_order": TREECODE_MULTIPOLE_ORDER,
@@ -275,7 +282,7 @@ def run_case(
             vortex_centre_position=np.array([0.0, y_position, 0.0]),
             circulation=circulation,
             vortex_age=vortex_age,
-            is_anti_diffusion_enabled=True,
+            is_anti_diffusion_enabled=anti_diffusion,
         )
         vortex_strength_magnitude = np.linalg.norm(particle_vortex_strength, axis=1)
         keep = vortex_strength_magnitude >= 0.01 * vortex_strength_magnitude.max()
@@ -338,6 +345,11 @@ def parse_args() -> argparse.Namespace:
         choices=("AUTO", "CPU", "VULKAN", "CUDA", "METAL"),
         default="AUTO",
     )
+    parser.add_argument(
+        "--disable-anti-diffusion",
+        action="store_true",
+        help="disable particle-core initialization correction for grid studies",
+    )
     return parser.parse_args()
 
 
@@ -362,6 +374,7 @@ def main() -> int:
         sample_plane_fraction=args.sample_plane_fraction,
         case_dir=args.case_dir,
         compute_device=args.compute_device,
+        anti_diffusion=not args.disable_anti_diffusion,
     )
     return 0
 

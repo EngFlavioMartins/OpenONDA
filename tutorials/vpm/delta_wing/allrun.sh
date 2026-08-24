@@ -4,6 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+export OPENONDA_COMPUTE_DEVICE="${OPENONDA_COMPUTE_DEVICE:-METAL}"
 
 echo
 echo "===== CLEAN ====="
@@ -14,12 +15,19 @@ echo
 echo "===== SIMULATE ====="
 echo
 mkdir -p solution
-python delta_wing_setup.py 2>&1 | tee solution/delta_wing.log
+python delta_wing_setup.py > solution/delta_wing.log 2>&1
 
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+python assets/validate_results.py --pre-plot
+./plot_all.sh png
+./plot_all.sh pdf
+
+echo
+echo "===== VALIDATE ====="
+echo
+python assets/validate_results.py
 
 echo
 echo "===== DONE ====="

@@ -1,0 +1,18 @@
+{
+  "case": "quadcopter",
+  "n_steps": 288,
+  "number_of_revolutions": 6,
+  "time_step_size": 0.0062499999999999995,
+  "compute_device": "METAL",
+  "precision": "f32",
+  "turbulence_model": "DNS",
+  "smagorinsky_coefficient": 0.0,
+  "treecode_theta": 0.35,
+  "number_of_rotors": 4,
+  "number_of_blades_per_rotor": 2,
+  "sample_interval_time": 0.0375,
+  "checkpoint_interval_time": 0.0125,
+  "status": "complete",
+  "completed": true,
+  "final_time": 1.8
+}

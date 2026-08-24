@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +38,7 @@ REYNOLDS_NUMBER = 3000.0
 CORE_RADIUS = 0.1
 
 # ---- Numerics ------------------------------------------------------------
-PARTICLE_SPACING = 0.035
+PARTICLE_SPACING = float(os.environ.get("OPENONDA_RING_PARTICLE_SPACING", "0.035"))
 TIME_STEP_SIZE = 0.02
 N_STEPS = 600
 DOMAIN_BOUNDS = (-0.15, 0.15, -1.5, 1.5, -1.5, 1.5)
@@ -48,6 +49,8 @@ DEFAULT_WIDNALL_AMPLITUDE = 0.05
 TOROIDAL_TAIL_FRACTION = 0.05
 RESOLUTION_DIVERGENCE_LIMIT = 0.12
 RESOLUTION_MISALIGNMENT_LIMIT_DEG = 45.0
+MAX_N_PARTICLES = int(os.environ.get("OPENONDA_RING_MAX_N_PARTICLES", "100000"))
+ENABLE_STABILIZATION = os.environ.get("OPENONDA_RING_ENABLE_STABILIZATION", "0") == "1"
 
 
 def cadence_steps(period: float, time_step_size: float = TIME_STEP_SIZE) -> int:
@@ -223,6 +226,29 @@ def run_case(
             f"unseeded_noise={initial_unseeded_to_seeded_rms:.3%}"
         )
 
+    stabilization = vpm.StabilizationConfig.disabled()
+    if ENABLE_STABILIZATION:
+        stabilization = vpm.StabilizationConfig.conservative_filter(
+            coefficient=0.25,
+            interval_steps=20,
+            start_step=20,
+            grid_spacing=0.084,
+            max_n_particles=MAX_N_PARTICLES,
+            tail_budget=0.003,
+            total_kinetic_energy_dissipation_limit=0.10,
+            total_enstrophy_dissipation_limit=0.10,
+            divergence_trigger=0.12,
+            misalignment_trigger=25.0,
+            capacity_divergence_trigger=0.20,
+            capacity_misalignment_trigger=35.0,
+            capacity_fraction=0.70,
+            capacity_grid_spacing=0.13,
+            core_radius=0.15,
+            capacity_core_radius=0.15,
+            projection_trigger=0.12,
+            projection_max_correction=0.10,
+        )
+
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup(
             time_step_size=time_step_size,
@@ -235,7 +261,7 @@ def run_case(
                 else vpm.TurbulenceConfig.les_smagorinsky(smagorinsky_coefficient=0.20)
             ),
             stretching=stretching_setup(stretching),
-            stabilization=vpm.StabilizationConfig.disabled(),
+            stabilization=stabilization,
             velocity=(
                 vpm.VelocityConfig.direct()
                 if velocity_method == "DIRECT"
@@ -252,7 +278,7 @@ def run_case(
             checkpoint_directory=str(output_directory),
             sample_subdirectory=sample_subdirectory,
             samplers=(RingDiagnosticsSampler(), mode_sampler),
-            max_n_particles=100_000,
+            max_n_particles=MAX_N_PARTICLES,
         ),
         case_dir=output_directory.parent if sample_subdirectory else output_directory,
     )
@@ -278,7 +304,8 @@ def run_case(
         "time_integration": time_integration,
         "velocity_method": velocity_method,
         "treecode_theta": treecode_theta if velocity_method == "TREECODE" else None,
-        "compute_device": compute_device,
+        "compute_device": solver.compute_device,
+        "precision": solver.precision,
         "ring_radius": RING_RADIUS,
         "core_radius": CORE_RADIUS,
         "ring_circulation": RING_STRENGTH,
@@ -303,7 +330,9 @@ def run_case(
         "resolution_misalignment_limit_deg": RESOLUTION_MISALIGNMENT_LIMIT_DEG,
         "molecular_diffusion": "core_spreading",
         "sgs_model": "none" if mode == "dns" else "smagorinsky",
+        "smagorinsky_coefficient": 0.0 if mode == "dns" else 0.20,
         "claim_scope": "VPM Widnall challenge; structural DIAD is not active",
+        "stabilization_enabled": ENABLE_STABILIZATION,
     }
     manifest_path = output_directory / f"run_manifest_{label}.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

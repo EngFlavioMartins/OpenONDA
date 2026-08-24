@@ -55,6 +55,7 @@ def _transfer(velocity_at, *, vpm_only_width=0.0):
     transfer.authority_ramp_width = 4.0 * PARTICLE_SPACING
     transfer.vpm_only_width = vpm_only_width
     transfer.core_radius_ratio = 1.0
+    transfer.transfer_mode = "velocity_defect"
     transfer.kinematic_viscosity = 1.0e-3
     transfer.last_interface_flow = {}
     transfer.last_vortex_line_closure = {}

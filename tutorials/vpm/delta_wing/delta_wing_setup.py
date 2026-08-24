@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -75,6 +76,13 @@ def pitch_velocity(phase: float):
 
 
 def run() -> None:
+    treecode_theta = float(os.environ.get("OPENONDA_DELTA_TREECODE_THETA", "0.35"))
+    smagorinsky_coefficient = float(os.environ.get("OPENONDA_DELTA_CS", "0.30"))
+    n_steps = int(os.environ.get("OPENONDA_DELTA_N_STEPS", N_STEPS))
+    if not 0.1 <= treecode_theta < 1.5:
+        raise ValueError("OPENONDA_DELTA_TREECODE_THETA must be in [0.1, 1.5)")
+    if n_steps < 1 or n_steps > N_STEPS:
+        raise ValueError(f"OPENONDA_DELTA_N_STEPS must be in [1, {N_STEPS}]")
     sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
     checkpoint_interval_steps = cadence_steps(CHECKPOINT_INTERVAL_TIME)
     surface_file = TUTORIAL_DIR / "delta_wing_surface.json"
@@ -130,14 +138,16 @@ def run() -> None:
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="AUTO",
-            turbulence=vpm.TurbulenceConfig.les_smagorinsky(smagorinsky_coefficient=0.3),
+            compute_device=os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper(),
+            turbulence=vpm.TurbulenceConfig.les_smagorinsky(
+                smagorinsky_coefficient=smagorinsky_coefficient
+            ),
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
             velocity=vpm.VelocityConfig.treecode(
-                theta=0.35,
+                theta=treecode_theta,
                 sort_particle_targets=True,
                 traversal_block_dim=128,
             ),
@@ -165,21 +175,43 @@ def run() -> None:
     samples_dir = TUTORIAL_DIR / "samples" / CASE_NAME
     samples_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
+        "case": CASE_NAME,
         "heave_amplitude": HEAVE_AMPLITUDE,
         "angular_frequency": ANGULAR_FREQUENCY,
         "time_step_size": TIME_STEP_SIZE,
-        "n_steps": N_STEPS,
+        "n_steps": n_steps,
         "separation": WING_SEPARATION,
         "half_span": HALF_SPAN,
         "wings": {"front_wing": 0.0, "rear_wing": np.pi},
+        "compute_device": solver.compute_device,
+        "treecode_theta": treecode_theta,
+        "smagorinsky_coefficient": smagorinsky_coefficient,
+        "precision": solver.precision,
+        "smagorinsky_coefficient": 0.3,
+        "panel_resolution": {"chordwise": 8, "spanwise": 18},
+        "sample_interval_time": SAMPLE_INTERVAL_TIME,
+        "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,
+        "status": "running",
+        "completed": False,
     }
-    (samples_dir / "motion_params.json").write_text(
+    metadata_path = samples_dir / "motion_params.json"
+    metadata_path.write_text(
         json.dumps(metadata, indent=2),
         encoding="utf-8",
     )
 
-    for _ in range(N_STEPS):
-        solver.advance()
+    try:
+        for _ in range(n_steps):
+            solver.advance()
+    except BaseException:
+        metadata["status"] = "failed"
+        metadata["completed"] = False
+        metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        raise
+    metadata["status"] = "complete"
+    metadata["completed"] = True
+    metadata["final_time"] = solver.time
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
 
 def main() -> int:

@@ -5,13 +5,20 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+export OPENONDA_COMPUTE_DEVICE="${OPENONDA_COMPUTE_DEVICE:-METAL}"
 
 CASES="leapfrog_dns leapfrog_les leapfrog_les_stabilized collide_dns collide_les collide_les_stabilized"
 
 echo
 echo "===== CLEAN ====="
 echo
-./allclean.sh --all
+if [[ $# -eq 0 ]]; then
+    ./allclean.sh --all
+else
+    for case_name in "$@"; do
+        ./allclean.sh "$case_name"
+    done
+fi
 
 echo
 echo "===== SIMULATE ====="
@@ -30,7 +37,15 @@ python assets/check_run.py "$@"
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+if [[ $# -eq 0 ]]; then
+    ./plot_all.sh png
+    ./plot_all.sh pdf
+else
+    # Keep subset diagnostics separate from the canonical six-case figures;
+    # this avoids silently overwriting a previously validated full campaign.
+    VPM_INTERACTIONS_FIGURES_DIR="figures/partial" ./plot_all.sh png --allow-partial
+    VPM_INTERACTIONS_FIGURES_DIR="figures/partial" ./plot_all.sh pdf --allow-partial
+fi
 
 echo
 echo "===== DONE ====="

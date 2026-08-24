@@ -1,0 +1,25 @@
+{
+  "case": "rotor_flow",
+  "time_step_size": 0.006,
+  "n_steps": 700,
+  "sampling_interval_time": 0.12,
+  "checkpoint_interval_time": 0.03,
+  "treecode_theta": 0.2,
+  "kernel": "WINCKELMANS",
+  "kinematic_viscosity": 1.5e-05,
+  "wake_particle_spacing": 0.22727272727272727,
+  "coupled_max_strain_increment": 0.08,
+  "coupled_max_advection_fraction": 0.25,
+  "coupled_max_substeps": 128,
+  "retention_bounds": [
+    -12.0,
+    120.0,
+    -12.0,
+    12.0,
+    -12.0,
+    12.0
+  ],
+  "smagorinsky_coefficient": 0.5,
+  "compute_device": "METAL",
+  "precision": "f32"
+}

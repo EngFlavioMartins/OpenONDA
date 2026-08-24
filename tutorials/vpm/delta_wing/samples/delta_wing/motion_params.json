@@ -1,0 +1,26 @@
+{
+  "case": "delta_wing",
+  "heave_amplitude": 0.2,
+  "angular_frequency": 6.283185307179586,
+  "time_step_size": 0.0025,
+  "n_steps": 800,
+  "separation": 2.5,
+  "half_span": 0.5,
+  "wings": {
+    "front_wing": 0.0,
+    "rear_wing": 3.141592653589793
+  },
+  "compute_device": "METAL",
+  "treecode_theta": 0.35,
+  "smagorinsky_coefficient": 0.3,
+  "precision": "f32",
+  "panel_resolution": {
+    "chordwise": 8,
+    "spanwise": 18
+  },
+  "sample_interval_time": 0.08,
+  "checkpoint_interval_time": 0.04,
+  "status": "complete",
+  "completed": true,
+  "final_time": 2.0
+}

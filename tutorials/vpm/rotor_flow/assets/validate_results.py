@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 import sys
+import argparse
 from pathlib import Path
 
 import h5py
@@ -152,6 +153,9 @@ def _plane_drifts(
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--pre-plot", action="store_true")
+    args = parser.parse_args()
     expected_step = 2400
     bem_tolerance = 0.25
     impulse_tolerance = 0.10
@@ -273,13 +277,16 @@ def main() -> int:
         print("  (BEM reference unavailable — skipping BEM comparison)")
 
     # -- 6. Figure outputs -----------------------------------------------------
-    for name in (
-        "rotor_performance.png",
-        "rotor_wake_planes.png",
-        "rotor_loading_validation.png",
-    ):
-        if not (FIGURES_DIR / name).exists():
-            failures.append(f"missing figure {name}")
+    if not args.pre_plot:
+        for extension in ("png", "pdf"):
+            for name in (
+                "rotor_performance",
+                "rotor_wake_planes",
+                "rotor_loading_validation",
+            ):
+                figure = FIGURES_DIR / f"{name}.{extension}"
+                if not figure.is_file() or figure.stat().st_size == 0:
+                    failures.append(f"missing or empty figure {figure.name}")
 
     if failures:
         print("\n".join(f"[FAIL] {x}" for x in failures))

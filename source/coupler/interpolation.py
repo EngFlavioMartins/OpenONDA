@@ -83,5 +83,34 @@ class FVMVelocityInterpolator:
             )
         return sampled
 
+    def sample_cell_field(
+        self,
+        evaluation_position: np.ndarray,
+        field: np.ndarray,
+        chunk_size: int = 100_000,
+    ) -> np.ndarray:
+        """Interpolate a cell-centred vector field without donor gradients.
+
+        Constant fields are reproduced exactly. The donor value is taken as it
+        stands, so a field the FVM already differentiated is not differentiated
+        a second time on the coupling lattice.
+        """
+        evaluation_position = np.ascontiguousarray(evaluation_position, dtype=np.float64).reshape(
+            -1, 3
+        )
+        field = np.asarray(field, dtype=np.float64).reshape(-1, 3)
+        indices, weights = self._stencil(evaluation_position)
+        sampled = np.empty((len(evaluation_position), 3), dtype=np.float64)
+
+        for start in range(0, len(evaluation_position), chunk_size):
+            stop = min(start + chunk_size, len(evaluation_position))
+            sampled[start:stop] = np.einsum(
+                "mk,mkj->mj",
+                weights[start:stop],
+                field[indices[start:stop]],
+                optimize=True,
+            )
+        return sampled
+
 
 __all__ = ["FVMVelocityInterpolator"]

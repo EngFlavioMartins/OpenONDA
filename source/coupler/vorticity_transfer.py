@@ -1,4 +1,4 @@
-"""Solenoidal velocity-defect transfer from FVM to VPM."""
+"""Velocity-defect and vorticity-defect transfer from FVM to VPM."""
 
 from __future__ import annotations
 
@@ -394,6 +394,91 @@ def solenoidal_velocity_correction(
     )
 
 
+def vorticity_defect_correction(
+    lattice: TransferLattice,
+    particle_spacing: float,
+    *,
+    fvm_vorticity_at: VelocityEvaluator,
+    vpm_vorticity_at: VelocityEvaluator,
+    authority_at: Callable[[np.ndarray], np.ndarray],
+    identity_authority_at: Callable[[np.ndarray], np.ndarray] | None = None,
+    core_radius_ratio: float,
+    n_existing_particles: int = 0,
+    compute_diagnostics: bool = True,
+) -> TransferResult:
+    r"""Return the FVM vorticity defect as correction particles.
+
+    The control volume of one lattice cell carries ``h**3 eta (w_F - w_V)``,
+    the vortex strength that makes the particle at that node hold the donor
+    vorticity the FVM computed with its own operator on its own mesh.  No
+    difference is taken on the coupling lattice, so a donor field resolved
+    below the lattice spacing is transferred rather than re-derived from a
+    velocity trace.
+
+    Unlike the compatible curl, this correction is not discretely solenoidal:
+    it inherits ``div_h(w_F)`` from the donor field and from the interpolation
+    onto the lattice.  ``divergence_correction_l2`` reports what it carries.
+    """
+    h = float(particle_spacing)
+    shape = lattice.shape
+    authority = np.asarray(authority_at(lattice.position), dtype=np.float64).reshape(-1)
+    if authority.shape != (len(lattice.position),):
+        raise ValueError("authority_at returned the wrong number of values")
+    if np.any(~np.isfinite(authority)) or np.any((authority < 0.0) | (authority > 1.0)):
+        raise ValueError("authority_at must return finite values in [0, 1]")
+
+    correction = np.zeros((len(lattice.position), 3), dtype=np.float64)
+    active = authority > 0.0
+    if active.any():
+        fvm_vorticity = np.asarray(
+            fvm_vorticity_at(lattice.position[active]), dtype=np.float64
+        ).reshape(-1, 3)
+        vpm_vorticity = np.asarray(
+            vpm_vorticity_at(lattice.position[active]), dtype=np.float64
+        ).reshape(-1, 3)
+        if fvm_vorticity.shape != vpm_vorticity.shape or fvm_vorticity.shape != (
+            int(active.sum()),
+            3,
+        ):
+            raise ValueError("vorticity evaluators returned incompatible shapes")
+        if not np.all(np.isfinite(fvm_vorticity)) or not np.all(np.isfinite(vpm_vorticity)):
+            raise RuntimeError("vorticity-defect evaluation returned non-finite values")
+        correction[active] = h**3 * authority[active, None] * (fvm_vorticity - vpm_vorticity)
+
+    identity_authority = np.asarray(
+        (authority_at if identity_authority_at is None else identity_authority_at)(
+            lattice.position
+        ),
+        dtype=np.float64,
+    ).reshape(-1)
+    if identity_authority.shape != (len(lattice.position),):
+        raise ValueError("identity_authority_at returned the wrong number of values")
+
+    support = (identity_authority > 0.0) & ~lattice.interior_nodes
+    correction[~support] = 0.0
+    nonzero = support & np.any(correction != 0.0, axis=1)
+    position = lattice.position[nonzero]
+    vortex_strength = correction[nonzero]
+    particle_volume = np.full(len(position), h**3, dtype=np.float64)
+    core_radius = np.full(len(position), h * float(core_radius_ratio), dtype=np.float64)
+    divergence_l2, divergence_linf = (0.0, 0.0)
+    if compute_diagnostics:
+        divergence_l2, divergence_linf = normalized_divergence(correction, shape, h)
+    return TransferResult(
+        position=position,
+        vortex_strength=vortex_strength,
+        particle_volume=particle_volume,
+        core_radius=core_radius,
+        n_existing_particles=int(n_existing_particles),
+        n_support_nodes=int(support.sum()),
+        correction_vortex_strength_l1=float(np.linalg.norm(vortex_strength, axis=1).sum()),
+        correction_vortex_strength_net=np.sum(vortex_strength, axis=0),
+        divergence_correction_l2=divergence_l2,
+        divergence_correction_linf=divergence_linf,
+        diagnostics_evaluated=compute_diagnostics,
+    )
+
+
 def coalesce_lattice_corrections(
     result: TransferResult,
     existing_position: np.ndarray,
@@ -462,6 +547,7 @@ class VorticityTransfer:
         self.authority_ramp_width = float(cfg.authority_ramp_width)
         self.vpm_only_width = float(cfg.vpm_only_width)
         self.core_radius_ratio = float(cfg.vpm_core_radius_ratio)
+        self.transfer_mode = str(cfg.vorticity_transfer_mode)
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
         self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
         self._box: np.ndarray | None = None
@@ -611,6 +697,7 @@ class VorticityTransfer:
                 f"{len(self._lattice.position):,} nodes | spacing {self.particle_spacing:.4g} m",
                 f"authority  ramp {self.authority_ramp_width:.4g} m"
                 f" | VPM-only width {self.vpm_only_width:.4g} m",
+                f"correction  {self.transfer_mode}",
             )
         )
 
@@ -657,6 +744,9 @@ class VorticityTransfer:
             ),
         )
 
+    def _sample_vpm_vorticity(self, vpm, points: np.ndarray) -> np.ndarray:
+        return self._chunked_evaluate(points, vpm.compute_vorticity_at_points)
+
     def _fluid_authority(self, points: np.ndarray) -> np.ndarray:
         """Velocity-blend authority with solid and identity guards."""
         assert self._box is not None
@@ -699,22 +789,39 @@ class VorticityTransfer:
         self.last_interface_flow = self.check_interface_flow(velocity_values)
         self.last_vortex_line_closure = self.check_vortex_line_closure(gradient_values)
         evaluate_diagnostics = self.step % self.diagnostic_interval == 0
-        result = solenoidal_velocity_correction(
-            self._lattice,
-            self.particle_spacing,
-            fvm_velocity_at=lambda points: self._velocity_trace.sample(
-                points,
-                velocity_values,
-                gradient_values,
-            ),
-            vpm_velocity_at=lambda points: self._sample_vpm_velocity(vpm, points),
-            authority_at=self._fluid_authority,
-            identity_authority_at=self._identity_authority,
-            core_radius_ratio=self.core_radius_ratio,
-            blob_second_moment=_BLOB_SECOND_MOMENT[getattr(vpm, "particle_kernel", "GAUSSIAN")],
-            n_existing_particles=int(vpm.particles.n_particles_total),
-            compute_diagnostics=evaluate_diagnostics,
-        )
+        if self.transfer_mode == "vorticity_defect":
+            donor_vorticity = self._vorticity_from_gradient(gradient_values)
+            result = vorticity_defect_correction(
+                self._lattice,
+                self.particle_spacing,
+                fvm_vorticity_at=lambda points: self._velocity_trace.sample_cell_field(
+                    points,
+                    donor_vorticity,
+                ),
+                vpm_vorticity_at=lambda points: self._sample_vpm_vorticity(vpm, points),
+                authority_at=self._fluid_authority,
+                identity_authority_at=self._identity_authority,
+                core_radius_ratio=self.core_radius_ratio,
+                n_existing_particles=int(vpm.particles.n_particles_total),
+                compute_diagnostics=evaluate_diagnostics,
+            )
+        else:
+            result = solenoidal_velocity_correction(
+                self._lattice,
+                self.particle_spacing,
+                fvm_velocity_at=lambda points: self._velocity_trace.sample(
+                    points,
+                    velocity_values,
+                    gradient_values,
+                ),
+                vpm_velocity_at=lambda points: self._sample_vpm_velocity(vpm, points),
+                authority_at=self._fluid_authority,
+                identity_authority_at=self._identity_authority,
+                core_radius_ratio=self.core_radius_ratio,
+                blob_second_moment=_BLOB_SECOND_MOMENT[getattr(vpm, "particle_kernel", "GAUSSIAN")],
+                n_existing_particles=int(vpm.particles.n_particles_total),
+                compute_diagnostics=evaluate_diagnostics,
+            )
 
         can_coalesce = all(
             hasattr(vpm.particles, name) for name in ("position_cpu", "core_radius_cpu")
@@ -784,4 +891,5 @@ __all__ = [
     "normalized_divergence",
     "solenoidal_velocity_correction",
     "vortex_strength_from_velocity_trace",
+    "vorticity_defect_correction",
 ]

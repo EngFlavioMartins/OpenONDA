@@ -4,6 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+export OPENONDA_COMPUTE_DEVICE="${OPENONDA_COMPUTE_DEVICE:-METAL}"
 
 echo
 echo "===== CLEAN ====="
@@ -19,7 +20,14 @@ python quadcopter_setup.py 2>&1 | tee solution/quadcopter.log
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+python assets/validate_results.py --pre-plot
+./plot_all.sh png
+./plot_all.sh pdf
+
+echo
+echo "===== VALIDATE ====="
+echo
+python assets/validate_results.py
 
 echo
 echo "===== DONE ====="
