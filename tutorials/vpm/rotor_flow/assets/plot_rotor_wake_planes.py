@@ -287,7 +287,7 @@ def plot_wake_planes(args) -> int:
     )
 
     ax.axvspan(
-        HUB_RADIUS / R,
+        HUB_RADIUS / rotor_radius,
         1.0,
         color=colors["background_light"],
         alpha=0.5,

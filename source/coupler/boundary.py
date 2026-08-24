@@ -7,6 +7,8 @@ import time
 
 import numpy as np
 
+from source.coupler.reporting import format_coupler_log
+
 logger = logging.getLogger("coupler")
 
 
@@ -37,16 +39,16 @@ def _log_outflow_velocity(
     if not mask.any():
         return
     streamwise_velocity = velocity[mask] @ (np.asarray(freestream_velocity) / freestream_speed)
+    face_name = f"{'xyz'[axis]}{'+' if sign >= 0.0 else '-'}"
     logger.info(
-        "[Coupler][BoundaryOutflow] axis=%s sign=%+d n_faces=%d "
-        "min_streamwise_velocity_ratio=%.3f mean_streamwise_velocity_ratio=%.3f "
-        "max_streamwise_velocity_ratio=%.3f",
-        "xyz"[axis],
-        int(sign),
-        int(mask.sum()),
-        streamwise_velocity.min() / freestream_speed,
-        streamwise_velocity.mean() / freestream_speed,
-        streamwise_velocity.max() / freestream_speed,
+        format_coupler_log(
+            "BoundaryOutflow",
+            f"face {face_name} | {int(mask.sum()):,} faces",
+            "streamwise velocity / freestream speed  "
+            f"min {streamwise_velocity.min() / freestream_speed:.3f}"
+            f" | mean {streamwise_velocity.mean() / freestream_speed:.3f}"
+            f" | max {streamwise_velocity.max() / freestream_speed:.3f}",
+        )
     )
 
 
@@ -143,15 +145,14 @@ def evaluate_vpm_velocity(
             velocity = velocity - correction * normal
         corrected_flux = float(np.dot(np.einsum("ij,ij->i", velocity, normal), areas))
         logger.info(
-            "[Coupler][BoundaryFlux] n_particles=%d integrated_flux_m3_s=%.3e "
-            "integrated_flux_ratio=%.3e acceptance_limit_ratio=%.3e "
-            "normal_velocity_correction_m_s=%.3e corrected_integrated_flux_m3_s=%.3e",
-            int(vpm.particles.n_particles_total),
-            raw_flux,
-            raw_relative,
-            tolerance,
-            correction,
-            corrected_flux,
+            format_coupler_log(
+                "BoundaryFlux",
+                f"{int(vpm.particles.n_particles_total):,} particles",
+                f"flux        raw {raw_flux:.3e} m^3/s"
+                f" | relative {raw_relative:.3e} | limit {tolerance:.3e}",
+                f"correction  normal velocity {correction:.3e} m/s"
+                f" | residual flux {corrected_flux:.3e} m^3/s",
+            )
         )
 
     _log_outflow_velocity(
@@ -265,10 +266,14 @@ def evaluate_vpm_boundary(
             vpm_boundary_condition_velocity = pressure_velocity
             pressure_norm = np.linalg.norm(pressure_gradient, axis=1)
             logger.info(
-                "[Coupler][BoundaryPressureGradient] rms_m_s2=%.3e max_m_s2=%.3e temporal_term=%s",
-                float(np.sqrt(np.mean(pressure_norm**2))) if len(pressure_norm) else 0.0,
-                float(np.max(pressure_norm)) if len(pressure_norm) else 0.0,
-                coupler._pressure_velocity_snapshot is not None,
+                format_coupler_log(
+                    "BoundaryPressureGradient",
+                    "temporal term "
+                    f"{'active' if coupler._pressure_velocity_snapshot is not None else 'inactive'}",
+                    "acceleration  "
+                    f"RMS {float(np.sqrt(np.mean(pressure_norm**2))) if len(pressure_norm) else 0.0:.3e} m/s^2"
+                    f" | max {float(np.max(pressure_norm)) if len(pressure_norm) else 0.0:.3e} m/s^2",
+                )
             )
             coupler._pressure_velocity_snapshot = pressure_velocity.copy()
             coupler._kinematic_pressure_gradient_boundary_condition = pressure_gradient
@@ -348,7 +353,7 @@ def initialize_vpm_boundary_history(
     if coupler._velocity_boundary_condition_old is not None:
         return
     evaluate_vpm_boundary(coupler, face_centre, face_normal, face_area)
-    logger.info("[Coupler][BoundaryHistory] time_level=initial")
+    logger.info(format_coupler_log("BoundaryHistory", "initial time level stored"))
 
 
 def advance_fvm(
@@ -468,8 +473,11 @@ def resynchronize_vpm_boundary(
         )
         coupler._tangential_gradient_boundary_condition_old = tangential_normal_gradient
     logger.info(
-        "[Coupler][BoundaryUpdate] post_transfer_velocity_difference_magnitude_max_over_freestream_speed=%.3e",
-        drift,
+        format_coupler_log(
+            "BoundaryUpdate",
+            "post-transfer trace",
+            f"maximum velocity difference / freestream speed  {drift:.3e}",
+        )
     )
 
 
@@ -541,12 +549,14 @@ def apply_fvm_boundary(
     if prescribed_velocity.shape[0] > 0:
         streamwise = prescribed_velocity @ (freestream_velocity / freestream_speed)
         logger.info(
-            "[Coupler][FVMSubstep] fvm_step=%d min_streamwise_velocity_ratio=%.3f "
-            "mean_streamwise_velocity_ratio=%.3f max_streamwise_velocity_ratio=%.3f",
-            int(coupler.fvm_solver.step),
-            streamwise.min() / freestream_speed,
-            streamwise.mean() / freestream_speed,
-            streamwise.max() / freestream_speed,
+            format_coupler_log(
+                "FVMSubstep",
+                f"step {int(coupler.fvm_solver.step):,}",
+                "streamwise velocity / freestream speed  "
+                f"min {streamwise.min() / freestream_speed:.3f}"
+                f" | mean {streamwise.mean() / freestream_speed:.3f}"
+                f" | max {streamwise.max() / freestream_speed:.3f}",
+            )
         )
     y_plus = coupler.fvm_solver.last_y_plus
     if y_plus:
@@ -582,17 +592,16 @@ def advance_fvm_substeps(
             / freestream_speed
         )
         is_large_boundary_velocity_difference = boundary_velocity_difference_ratio > 0.5
+        severity = "WARNING | " if is_large_boundary_velocity_difference else ""
         logger.log(
             logging.WARNING if is_large_boundary_velocity_difference else logging.INFO,
-            "[Coupler][TimeInterpolation] severity=%s n_fvm_substeps=%d "
-            "fvm_time_step_size_s=%.3e "
-            "boundary_velocity_difference_magnitude_max_over_freestream_speed_ratio=%.3f "
-            "warning_limit_ratio=%.3f",
-            "warning" if is_large_boundary_velocity_difference else "info",
-            n_substeps,
-            coupler.fvm_time_step_size,
-            boundary_velocity_difference_ratio,
-            0.5,
+            format_coupler_log(
+                "TimeInterpolation",
+                f"{severity}{n_substeps} FVM substeps"
+                f" | FVM step {coupler.fvm_time_step_size:.3e} s",
+                "boundary velocity change / freestream speed  "
+                f"{boundary_velocity_difference_ratio:.3f} | warning limit 0.500",
+            ),
         )
 
     for substep in range(n_substeps):

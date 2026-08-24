@@ -14,25 +14,16 @@ from __future__ import annotations
 import importlib.util
 import json
 import matplotlib
-import os
 from pathlib import Path
 import re
 
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-
-
-def _configured_path(variable: str, default: Path) -> Path:
-    return Path(os.environ.get(variable, default)).expanduser().resolve()
-
-
-SOLUTION = _configured_path("OPENONDA_SOLUTION_DIR", CASE_DIR / "solution")
-SAMPLES = _configured_path("OPENONDA_SAMPLES_DIR", CASE_DIR / "samples")
-REFERENCE_SAMPLES = _configured_path(
-    "OPENONDA_REFERENCE_SAMPLES_DIR", CASE_DIR / "reference_flow" / "samples"
-)
-FIGURES = _configured_path("OPENONDA_FIGURES_DIR", CASE_DIR / "figures")
+SOLUTION = CASE_DIR / "solution"
+SAMPLES = CASE_DIR / "samples"
+REFERENCE_SAMPLES = CASE_DIR / "reference_flow" / "samples"
+FIGURES = CASE_DIR / "figures"
 
 # Keep one publication theme: reference and coupled figures are intended to be
 # visually interchangeable.

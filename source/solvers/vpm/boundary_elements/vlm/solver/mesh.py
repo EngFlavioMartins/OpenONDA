@@ -244,8 +244,8 @@ def _fill_panel_geometry(
     idx,
     panel_corner_position,
     colloc,
-    normal,
-    area,
+    normal_out,
+    area_out,
     trail,
     vortex,
     bound,
@@ -263,12 +263,14 @@ def _fill_panel_geometry(
     colloc[idx] = _bilinear_interp(alpha, s_coll, c_coll)
     diag1, diag2 = R - P, Q - S
     normal_raw = np.cross(diag1, diag2)
-    area = 0.5 * np.linalg.norm(normal_raw)
-    normal = normal_raw / (2 * area) if area > 1e-12 else np.array([0.0, 0.0, 1.0])
+    panel_area = 0.5 * np.linalg.norm(normal_raw)
+    panel_normal = (
+        normal_raw / (2 * panel_area) if panel_area > 1e-12 else np.array([0.0, 0.0, 1.0])
+    )
     if is_mirrored:
-        normal = -normal
-    normal[idx] = normal
-    area[idx] = area
+        panel_normal = -panel_normal
+    normal_out[idx] = panel_normal
+    area_out[idx] = panel_area
     trail_dir = 0.5 * (R + S) - 0.5 * (P + Q)
     trail_mag = np.linalg.norm(trail_dir)
     trail_dir = trail_dir / trail_mag if trail_mag > 1e-12 else np.array([1.0, 0.0, 0.0])

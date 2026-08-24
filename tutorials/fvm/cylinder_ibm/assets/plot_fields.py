@@ -22,7 +22,7 @@ def main():
     final = vtu_files[-1]
     print(f"  Reading: {final.name}")
     mesh = pv.read(str(final))
-    cc = mesh.cell_centres().points
+    cell_centre = mesh.cell_centers().points
     u = mesh.cell_data.get("velocity")
     vort = mesh.cell_data.get("vorticity")
     if u is None:
@@ -40,7 +40,15 @@ def main():
 
     for label, f, cmap, clim in fields:
         fig, ax = plt.subplots(figsize=figure_size("wide"))
-        sc = ax.scatter(cc[:, 0], cc[:, 1], c=f, s=2.5, cmap=cmap, marker="s", linewidths=0)
+        sc = ax.scatter(
+            cell_centre[:, 0],
+            cell_centre[:, 1],
+            c=f,
+            s=2.5,
+            cmap=cmap,
+            marker="s",
+            linewidths=0,
+        )
         if clim is not None:
             sc.set_clim(*clim)
         if markers is not None:

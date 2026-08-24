@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Discrete bound/wake vortex-strength closure for the flat-plate case.
 
-VPM particles store vector vortex strength ``alpha = integral(angular_frequency dV)``
+VPM particles store vector vortex strength ``alpha = integral(vorticity dV)``
 [m^3/s].  The comparable VLM quantity is therefore not peak sectional
 circulation [m^2/s], but the oriented bound-vortex strength
 ``sum(Gamma_TE * bound_leg)``.  For the complete bound+wake vortex system,

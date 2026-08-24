@@ -24,7 +24,7 @@ def main() -> None:
 
     fig, axes = plt.subplots(2, 1, figsize=(7.0, 7.2), sharex=True)
     axes[0].plot(time, data["total_kinetic_energy"], "o-", label="PIMPLE")
-    axes[0].plot(time, data["analytic_energy"], "k--", label="analytic")
+    axes[0].plot(time, data["analytic_total_kinetic_energy"], "k--", label="analytic")
     axes[0].set_ylabel("kinetic energy")
     axes[0].legend()
     axes[0].grid(alpha=0.25)

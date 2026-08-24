@@ -94,6 +94,5 @@ serializers, adapters, or migration readers.
 | VTK-family output | canonical arrays owned by each exporter |
 | CSV/JSON/JSONL output | canonical headers and keys |
 
-The canonical package and tutorial path trees are complete. The tracked cube
-run archives live under `tutorials/coupled_fvm_vpm/cube_flow/run_archives/`,
-and restart-qualified coupled state lives under `solution/checkpoints/`.
+The canonical package and tutorial path trees are complete. Restart-qualified
+coupled state lives under `solution/checkpoints/`.

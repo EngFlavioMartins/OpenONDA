@@ -45,15 +45,15 @@ class PressureReference:
             return
         if self.boundary_mode == "directional_outflow":
             if self.is_master:
-                logger.info("[Coupler][PressureReference] source=downstream_boundary")
+                logger.info("[Coupler][PressureReference] downstream boundary")
             return
         if not needs_pressure_reference(self.fvm_solver.boundaries):
             if self.is_master:
-                logger.info("[Coupler][PressureReference] source=dirichlet_boundary")
+                logger.info("[Coupler][PressureReference] Dirichlet boundary")
             return
         self.is_available = True
         if self.is_master:
-            logger.info("[Coupler][PressureReference] source=upstream_cells")
+            logger.info("[Coupler][PressureReference] upstream cells")
 
     def _selection(self) -> np.ndarray | None:
         if self.cell_indices is not None:

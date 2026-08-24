@@ -315,7 +315,6 @@ Explicitly include:
 
 Verified state:
 
-- [x] Rename `run_backups` → `run_archives`.
 - [x] Rename `samples_backup` → `samples_archive`.
 - [x] Preserve tracked cube reference data in its canonical archive directories.
 - [x] Scan archive text plus NPZ/HDF5 field names without rewriting historical results in place.
@@ -483,6 +482,15 @@ Migration fixtures are intentionally unsupported; old formats must be rejected i
 - [x] README files.
 - [x] ParaView `.pvsm` state files.
 - [x] Versioned CSV, JSON, VTS, VTU, VTP, PVD, PVTU, HDF5, XDMF, and NPZ files.
+- [x] Smoke-executed representative FVM (`cylinder_ibm`, `airfoil_flow`) and VPM (`rotor_flow`, `quadcopter`) tutorials and every associated plotting script after the rename.
+- [x] Reconciled plot readers with canonical `body_id` and cell-data `velocity` output while retaining PyVista's required external `cell_centers()` API spelling.
+- [x] Removed the VLM panel-geometry output/local-name collision and added a regression contract for its normal, area, and collocation outputs.
+- [x] Replaced the stale rotor-wake plot radius identifier with `rotor_radius` without changing the plot's presentation.
+- [x] Swept every tutorial other than the explicitly deferred `cube_flow` directories with isolated execution and plotting checks.
+- [x] Reconciled Taylor--Green and coupled-cylinder plot readers with canonical `analytic_total_kinetic_energy` and `position_z` output fields.
+- [x] Corrected line-sampler coordinate ordering and per-frame spanwise plotting without changing the established plot style.
+- [x] Repaired mechanically renamed LaTeX commands in flat-plate and rotor plotting/ParaView assets while preserving their intended mathematical symbols.
+- [x] Reconciled vortex-interaction validators with canonical step-interval metadata and the solver's scheduled-checkpoint contract.
 
 Verified one-way path mappings:
 

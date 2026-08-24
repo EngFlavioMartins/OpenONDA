@@ -514,7 +514,7 @@ norm_vorticityLUTColorBar.Set(
     Orientation="Horizontal",
     WindowLocation="Any Location",
     Position=[0.8323699421965318, 0.02054794520547945],
-    Title="$ \\| \\mathbf{\\angular_velocity}\\|c  / \\| \\mathbf{u} \\|_\\infty $",
+    Title="$ \\| \\mathbf{\\omega}\\|c  / \\| \\mathbf{u} \\|_\\infty $",
     ComponentTitle="",
     TitleFontFamily="Times",
     TitleFontSize=37,

@@ -91,6 +91,14 @@ def flush_log(logger: logging.Logger) -> None:
         handler.flush()
 
 
+def format_coupler_log(section: str, headline: str = "", *rows: str) -> str:
+    """Return one searchable coupler record with indented detail rows."""
+    header = f"[Coupler][{section}]"
+    if headline:
+        header = f"{header} {headline}"
+    return "\n".join((header, *(f"  {row}" for row in rows)))
+
+
 def _domain_dict(box: np.ndarray) -> dict[str, float]:
     return dict(
         zip(
@@ -251,23 +259,26 @@ def record_step(
 
         stats = coupler._step_transfer_stats or {}
         logger.info(
-            "[Coupler][VPMState] step=%d n_particles=%d->%d "
-            "vortex_strength_magnitude_sum_m3_s=%.4e->%.4e",
-            step,
-            int(stats.get("n_before", 0)),
-            int(stats.get("n_after", 0)),
-            float(stats.get("sum_before", 0.0)),
-            float(stats.get("sum_after", 0.0)),
+            format_coupler_log(
+                "VPMState",
+                f"step {step:,}",
+                "particles        "
+                f"{int(stats.get('n_before', 0)):,} -> "
+                f"{int(stats.get('n_after', 0)):,}",
+                "vortex strength  sum of magnitudes "
+                f"{float(stats.get('sum_before', 0.0)):.4e} -> "
+                f"{float(stats.get('sum_after', 0.0)):.4e} m^3/s",
+            )
         )
         logger.info(
-            "[Coupler][Timing] step=%d vpm_s=%.3f boundary_s=%.3f "
-            "fvm_s=%.3f transfer_s=%.3f total_s=%.3f",
-            step,
-            timing_data["vpm"],
-            timing_data["vpm_boundary_condition"],
-            timing_data["fvm"],
-            timing_data["transfer"],
-            timing_data["total"],
+            format_coupler_log(
+                "Timing",
+                f"step {step:,} | total {timing_data['total']:.3f} s",
+                f"stages  VPM {timing_data['vpm']:.3f} s"
+                f" | boundary {timing_data['vpm_boundary_condition']:.3f} s"
+                f" | FVM {timing_data['fvm']:.3f} s"
+                f" | transfer {timing_data['transfer']:.3f} s",
+            )
         )
         flush_log(logger)
 
@@ -286,6 +297,7 @@ __all__ = [
     "compute_diagnostics",
     "configure_logging",
     "flush_log",
+    "format_coupler_log",
     "record_step",
     "write_run_metadata",
 ]

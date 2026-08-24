@@ -56,7 +56,7 @@ def build_arg_parser():
 
 
 def load_ibm_forces_csv(solution_dir):
-    """Load samples/ibm_forces_history.csv -> {body: {column: array}}.
+    """Load samples/ibm_forces_history.csv -> {body_id: {column: array}}.
 
     Sampled output lives in samples/ at the case root, alongside solution/.
     """
@@ -68,11 +68,11 @@ def load_ibm_forces_csv(solution_dir):
     with open(csv_path) as f:
         reader = csv.DictReader(f)
         for row in reader:
-            name = row["body"]
+            name = row["body_id"]
             if name not in data:
-                data[name] = {k: [] for k in row.keys() if k != "body"}
+                data[name] = {k: [] for k in row.keys() if k != "body_id"}
             for k, v in row.items():
-                if k != "body":
+                if k != "body_id":
                     try:
                         data[name][k].append(float(v) if v else 0.0)
                     except ValueError:

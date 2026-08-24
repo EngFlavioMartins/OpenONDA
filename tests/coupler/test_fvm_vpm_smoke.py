@@ -99,7 +99,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     coupler_log = (sol / "coupler.log").read_text()
     assert "[Coupler][Run]" in coupler_log
     assert coupler_log.count("[Coupler][Transfer]") >= 2
-    assert "n_fvm_substeps=3" in coupler_log
+    assert "3 FVM substeps" in coupler_log
     checkpoint = sol / "checkpoints"
     manifest = json.loads((checkpoint / "manifest.json").read_text())
     assert manifest["format_version"] == 9

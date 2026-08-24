@@ -100,11 +100,11 @@ def inspect_case(case_name: str) -> dict[str, float]:
     status = manifest.get("status")
     completed_steps = manifest.get("completed_steps")
     requested_steps = manifest.get("requested_steps")
-    diagnostic_frequency = manifest.get("diagnostic_frequency")
-    snapshot_frequency = manifest.get("snapshot_frequency")
-    if not isinstance(diagnostic_frequency, int) or not 1 <= diagnostic_frequency <= 5:
+    diagnostic_interval_steps = manifest.get("diagnostic_interval_steps")
+    checkpoint_interval_steps = manifest.get("checkpoint_interval_steps")
+    if not isinstance(diagnostic_interval_steps, int) or not 1 <= diagnostic_interval_steps <= 5:
         raise ValueError("flow diagnostics are not sampled at least every five steps")
-    if not isinstance(snapshot_frequency, int) or not 1 <= snapshot_frequency <= 10:
+    if not isinstance(checkpoint_interval_steps, int) or not 1 <= checkpoint_interval_steps <= 10:
         raise ValueError("particle states are not saved at least every ten steps")
     if float(manifest.get("particle_spacing", np.inf)) > 0.04:
         raise ValueError("initial vortex-ring particle spacing is too coarse")
@@ -238,7 +238,7 @@ def inspect_case(case_name: str) -> dict[str, float]:
     )
     if not np.isfinite(required_values).all():
         raise ValueError("a required flow diagnostic is non-finite")
-    expected_steps = np.arange(0, completed_steps + 1, diagnostic_frequency, dtype=float)
+    expected_steps = np.arange(0, completed_steps + 1, diagnostic_interval_steps, dtype=float)
     if expected_steps[-1] != completed_steps:
         expected_steps = np.append(expected_steps, completed_steps)
     if not np.array_equal(step, expected_steps):
@@ -314,7 +314,9 @@ def inspect_case(case_name: str) -> dict[str, float]:
         for path in case_dir.glob(f"vpm_{case_name}_*.h5")
         if (match := re.search(r"_(\d{6})\.h5$", path.name))
     }
-    expected_snapshots = set(range(0, completed_steps + 1, snapshot_frequency))
+    expected_snapshots = set(
+        range(checkpoint_interval_steps, completed_steps + 1, checkpoint_interval_steps)
+    )
     if numbered_snapshots != expected_snapshots:
         raise ValueError("scheduled particle-state snapshots are missing or duplicated")
     if any(

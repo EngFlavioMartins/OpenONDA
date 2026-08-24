@@ -138,7 +138,7 @@ ax1.set_title(r"Lift and drag buildup, $\alpha = 5°$")
 ax1.legend()
 ax1.set_ylim(bottom=0)
 
-ax2.set_xlabel(r"Chord-lengths traveled, $\nondimensional_time$")
+ax2.set_xlabel(r"Chord-lengths traveled, $\tau$")
 ax2.set_ylabel(r"Drag coefficient, $C_D$")
 ax2.legend()
 ax2.set_ylim(bottom=0)

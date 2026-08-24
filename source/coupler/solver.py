@@ -34,6 +34,7 @@ from source.coupler.reporting import (
     OutputRedirector,
     configure_logging,
     flush_log,
+    format_coupler_log,
     record_step,
     write_run_metadata,
 )
@@ -342,10 +343,12 @@ class FVMVPMCoupler:
         )
         if self._is_master:
             logger.info(
-                "[Coupler][Time] fvm_time_step_size=%.4e vpm_time_step_size=%.4e n_fvm_substeps=%d",
-                self.fvm_time_step_size,
-                self.vpm_time_step_size,
-                self.n_fvm_substeps,
+                format_coupler_log(
+                    "Time",
+                    f"FVM step {self.fvm_time_step_size:.4e} s"
+                    f" | VPM step {self.vpm_time_step_size:.4e} s"
+                    f" | {self.n_fvm_substeps} FVM substeps",
+                )
             )
 
         self.vorticity_transfer = VorticityTransfer(self)
@@ -353,9 +356,15 @@ class FVMVPMCoupler:
         if self._is_master and self.vorticity_transfer._body_bounds is not None:
             assert self.vpm_solver is not None
             self.vpm_solver.physics.configure_body_box(self.vorticity_transfer._body_bounds)
+            bounds = np.asarray(self.vorticity_transfer._body_bounds, dtype=np.float64)
             logger.info(
-                "[Coupler][VPMDiffusionGrid] solid_mask=box bounds_m=%s",
-                self.vorticity_transfer._body_bounds.tolist(),
+                format_coupler_log(
+                    "VPMDiffusionGrid",
+                    "solid mask: box",
+                    f"bounds  x [{bounds[0]:.6g}, {bounds[1]:.6g}] m"
+                    f" | y [{bounds[2]:.6g}, {bounds[3]:.6g}] m"
+                    f" | z [{bounds[4]:.6g}, {bounds[5]:.6g}] m",
+                )
             )
         if self._is_master:
             anchor = self.vorticity_transfer._lattice_anchor
@@ -370,10 +379,15 @@ class FVMVPMCoupler:
                 self.vpm_solver.physics.configure_grid_lattice_anchor(
                     anchor, self.setup.vpm_particle_spacing
                 )
+                anchor_text = ", ".join(
+                    f"{value:.6g}" for value in np.asarray(anchor, dtype=np.float64)
+                )
                 logger.info(
-                    "[Coupler][VPMDiffusionGrid] anchor_m=%s h_m=%.6g",
-                    np.asarray(anchor, dtype=np.float64).tolist(),
-                    self.setup.vpm_particle_spacing,
+                    format_coupler_log(
+                        "VPMDiffusionGrid",
+                        f"lattice anchor [{anchor_text}] m"
+                        f" | spacing {self.setup.vpm_particle_spacing:.6g} m",
+                    )
                 )
 
         assert self.fvm_box is not None
@@ -390,12 +404,12 @@ class FVMVPMCoupler:
         self.pressure_reference.prepare()
 
         if self._is_master:
-            logger.info("[Coupler][InitialState] mode=impulsive particles=0")
+            logger.info(format_coupler_log("InitialState", "impulsive start | 0 particles"))
             with self.vpm_redirector:
                 print(_vpm_solver_info(self.vpm_solver))
                 sys.stdout.flush()
             write_run_metadata(self)
-            logger.info("[Coupler][Initialization] status=complete")
+            logger.info(format_coupler_log("Initialization", "complete"))
 
         self._initialize_run_state()
 
@@ -465,11 +479,11 @@ class FVMVPMCoupler:
         patch = self.setup.coupling_patch
         if self._is_master:
             logger.info(
-                "[Coupler][Run] steps=%d end_time_s=%.6g boundary_mode=%s patch=%s",
-                n_steps,
-                self.end_time,
-                self.setup.boundary_condition_mode,
-                patch,
+                format_coupler_log(
+                    "Run",
+                    f"{n_steps:,} steps | end time {self.end_time:.6g} s",
+                    f"boundary  {self.setup.boundary_condition_mode} | patch {patch}",
+                )
             )
 
         face_centre = np.asarray(
@@ -491,10 +505,10 @@ class FVMVPMCoupler:
             with self.vpm_redirector:
                 self.vpm_solver.set_freestream_velocity(self.setup.freestream_velocity)
             logger.info(
-                "[Coupler][Step] step=%d total_steps=%d time_s=%.6e",
-                step,
-                self._n_steps,
-                time_end,
+                format_coupler_log(
+                    "Step",
+                    f"{step:,}/{self._n_steps:,} | physical time {time_end:.6f} s",
+                )
             )
 
             with self.vpm_redirector:

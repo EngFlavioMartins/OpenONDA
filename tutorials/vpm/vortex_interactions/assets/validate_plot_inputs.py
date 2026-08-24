@@ -78,11 +78,17 @@ def validate(solution_dir: Path, *, allow_partial: bool) -> list[str]:
         }
         if manifest is not None and isinstance(manifest.get("completed_steps"), int):
             completed_steps = int(manifest["completed_steps"])
-            snapshot_frequency = int(manifest.get("snapshot_frequency", 0))
-            if snapshot_frequency <= 0:
-                failures.append(f"{name}: invalid snapshot frequency")
+            checkpoint_interval_steps = int(manifest.get("checkpoint_interval_steps", 0))
+            if checkpoint_interval_steps <= 0:
+                failures.append(f"{name}: invalid checkpoint interval")
             else:
-                expected = set(range(0, completed_steps + 1, snapshot_frequency))
+                expected = set(
+                    range(
+                        checkpoint_interval_steps,
+                        completed_steps + 1,
+                        checkpoint_interval_steps,
+                    )
+                )
                 missing_snapshots = sorted(expected - numbered_steps)
                 if missing_snapshots:
                     failures.append(

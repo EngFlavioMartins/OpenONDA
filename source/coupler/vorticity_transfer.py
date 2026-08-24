@@ -9,6 +9,7 @@ import logging
 import numpy as np
 
 from source.coupler.interpolation import FVMVelocityInterpolator
+from source.coupler.reporting import format_coupler_log
 
 logger = logging.getLogger("coupler")
 
@@ -240,18 +241,20 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
     divergence = (
         f"{result.divergence_correction_l2:.3e}"
         if result.diagnostics_evaluated
-        else "not_evaluated"
+        else "not evaluated"
     )
-    return (
-        f"[Coupler][Transfer] step={step} n_existing_particles={result.n_existing_particles} "
-        f"n_updated_particles={result.n_updated_particles} "
-        f"n_added_particles={result.n_added_particles} "
-        f"n_support_nodes={result.n_support_nodes} "
-        "vortex_strength_correction_magnitude_sum_m3_s="
-        f"{result.correction_vortex_strength_l1:.3e} "
-        f"net_vortex_strength_correction_magnitude_m3_s="
-        f"{float(np.linalg.norm(result.correction_vortex_strength_net)):.3e} "
-        f"relative_vorticity_divergence_l2={divergence}"
+    return format_coupler_log(
+        "Transfer",
+        f"step {step:,}",
+        f"particles   existing {result.n_existing_particles:,}"
+        f" | updated {result.n_updated_particles:,}"
+        f" | added {result.n_added_particles:,}"
+        f" | total {result.n_total_particles:,}",
+        f"support     {result.n_support_nodes:,} lattice nodes",
+        "correction  vortex-strength magnitude sum "
+        f"{result.correction_vortex_strength_l1:.3e} m^3/s"
+        f" | net magnitude {float(np.linalg.norm(result.correction_vortex_strength_net)):.3e} m^3/s",
+        f"divergence  relative vorticity L2 {divergence}",
     )
 
 
@@ -603,11 +606,12 @@ class VorticityTransfer:
         )
         self._build_face_cell_index()
         logger.info(
-            "[Coupler][TransferGrid] nodes=%d h_m=%.4g authority_ramp_m=%.4g vpm_only_width_m=%.4g",
-            len(self._lattice.position),
-            self.particle_spacing,
-            self.authority_ramp_width,
-            self.vpm_only_width,
+            format_coupler_log(
+                "TransferGrid",
+                f"{len(self._lattice.position):,} nodes | spacing {self.particle_spacing:.4g} m",
+                f"authority  ramp {self.authority_ramp_width:.4g} m"
+                f" | VPM-only width {self.vpm_only_width:.4g} m",
+            )
         )
 
     def _points_in_solid(self, points, *, include_boundary: bool) -> np.ndarray:

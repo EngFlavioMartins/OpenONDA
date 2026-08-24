@@ -33,6 +33,9 @@ def main():
     mesh = pv.read(final)
 
     u = mesh.point_data.get("velocity")
+    if u is None and "velocity" in mesh.cell_data:
+        mesh = mesh.cell_data_to_point_data()
+        u = mesh.point_data.get("velocity")
     if u is None:
         print("  No velocity data in VTU.")
         return

@@ -56,7 +56,7 @@ def main():
     final = vtu_files[-1]
     print(f"  Reading: {final.name}")
     mesh = pv.read(str(final))
-    cc = mesh.cell_centres().points
+    cell_centre = mesh.cell_centers().points
     u = mesh.cell_data.get("velocity")
     if u is None:
         mesh = mesh.point_data_to_cell_data()
@@ -66,10 +66,10 @@ def main():
         return
 
     # Centreline: cells nearest to y = 0 (one row on this rectilinear mesh).
-    y_vals = np.unique(np.round(cc[:, 1], 10))
+    y_vals = np.unique(np.round(cell_centre[:, 1], 10))
     y_row = y_vals[np.argmin(np.abs(y_vals))]
-    mask = np.isclose(cc[:, 1], y_row)
-    x_cl = cc[mask, 0]
+    mask = np.isclose(cell_centre[:, 1], y_row)
+    x_cl = cell_centre[mask, 0]
     u_cl = u[mask, 0]
     order = np.argsort(x_cl)
     x_cl, u_cl = x_cl[order], u_cl[order]

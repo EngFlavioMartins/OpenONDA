@@ -301,17 +301,20 @@ def plot_spanwise_coherence(figure_format: str) -> None:
         if table is None or table["time"].size == 0:
             continue
         t_late = table["time"] > 35.0
-        z = table["z"][t_late]
         uy = table["velocity_y"][t_late]
         rms = np.sqrt(np.mean(uy**2))
-        ax.plot(
-            z,
-            table["velocity_y"][t_late] / (rms + 1e-30),
-            color=util.colour(source),
-            lw=0.5,
-            alpha=0.35,
-            label=None,
-        )
+        for sample_time in np.unique(table["time"][t_late]):
+            frame = util.load_line(source, "spanwise_line", sample_time)
+            if frame is None:
+                continue
+            ax.plot(
+                frame["position_z"],
+                frame["velocity_y"] / (rms + 1e-30),
+                color=util.colour(source),
+                lw=0.5,
+                alpha=0.35,
+                label=None,
+            )
     ax.set(
         xlabel=r"$z/D$",
         ylabel=r"$u_y/\mathrm{rms}(u_y)$",

@@ -681,10 +681,10 @@ animationScene1.GoToPrevious()
 SetActiveSource(calculator4)
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = "$\\mathbs{\\angular_velocity} / \\text{TSR} U_\\infty / R$"
+omega_normLUTColorBar.Title = "$\\mathbf{\\omega} / \\text{TSR} U_\\infty / R$"
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = """\\angular_velocity = \\frac{\\text{TSR} \\cdot U_\\infty}{R}
+omega_normLUTColorBar.Title = """\\omega = \\frac{\\text{TSR} \\cdot U_\\infty}{R}
 """
 
 # Properties modified on omega_normLUTColorBar
@@ -706,18 +706,18 @@ omega_normLUTColorBar.ScalarBarLength = 0.2
 omega_normLUTColorBar.WindowLocation = "Upper Left Corner"
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = """$\\angular_velocity = \\frac{\\text{TSR} \\cdot U_\\infty}{R}
+omega_normLUTColorBar.Title = """$\\omega = \\frac{\\text{TSR} \\cdot U_\\infty}{R}
 $"""
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = """$\\bm{\\angular_velocity} / \\text{TSR} = U_\\infty / R
+omega_normLUTColorBar.Title = """$\\bm{\\omega} / \\text{TSR} = U_\\infty / R
 $"""
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = "$\\bm{\\angular_velocity} R / U_\\infty \\text{TSR}$"
+omega_normLUTColorBar.Title = "$\\bm{\\omega} R / U_\\infty \\text{TSR}$"
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = "$\\mathbf{\\angular_velocity} R / U_\\infty \\text{TSR}$"
+omega_normLUTColorBar.Title = "$\\mathbf{\\omega} R / U_\\infty \\text{TSR}$"
 
 # set active source
 SetActiveSource(vlm_rotorpvd)
@@ -750,10 +750,10 @@ animationScene1.GoToLast()
 SetActiveSource(calculator4)
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = "$\\mathbf{\\angular_velocity} R / U_\\infty \\mathrm{TSR}$"
+omega_normLUTColorBar.Title = "$\\mathbf{\\omega} R / U_\\infty \\mathrm{TSR}$"
 
 # Properties modified on omega_normLUTColorBar
-omega_normLUTColorBar.Title = "$\\mathbf{\\angular_velocity} R / \\mathrm{TSR} U_\\infty$"
+omega_normLUTColorBar.Title = "$\\mathbf{\\omega} R / \\mathrm{TSR} U_\\infty$"
 
 # change scalar bar placement
 omega_normLUTColorBar.Position = [0.04103150406504065, 0.7452330508474576]

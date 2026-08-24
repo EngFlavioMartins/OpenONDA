@@ -20,23 +20,66 @@ def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
     assert not (CASE_DIR / "cube_flow_timing.py").exists()
     setup = _load_setup(CASE_DIR / "cube_flow_setup.py", "cube_flow_setup_contract")
 
+    assert pytest.approx(0.005) == setup.FVM_TIME_STEP_SIZE
+    assert pytest.approx(0.010) == setup.VPM_TIME_STEP_SIZE
     assert setup.VPM_TIME_STEP_SIZE / setup.FVM_TIME_STEP_SIZE == 2
-    assert setup.SAMPLING_INTERVAL_TIME / setup.VPM_TIME_STEP_SIZE == 5
-    assert setup.CHECKPOINT_INTERVAL_TIME / setup.VPM_TIME_STEP_SIZE == 100
+    assert pytest.approx(0.5) == setup.WRITE_SOLUTION_BACKUP
+    assert setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS == 100
+    assert setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS == 50
+    assert setup.FVM_SAMPLING_INTERVAL_STEPS == 10
+    assert setup.VPM_SAMPLING_INTERVAL_STEPS == 5
+    assert (
+        pytest.approx(setup.WRITE_SOLUTION_BACKUP)
+        == setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS * setup.FVM_TIME_STEP_SIZE
+    )
+    assert (
+        pytest.approx(setup.WRITE_SOLUTION_BACKUP)
+        == setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS * setup.VPM_TIME_STEP_SIZE
+    )
+    assert (
+        pytest.approx(setup.SAMPLING_INTERVAL_TIME)
+        == setup.FVM_SAMPLING_INTERVAL_STEPS * setup.FVM_TIME_STEP_SIZE
+    )
+    assert (
+        pytest.approx(setup.SAMPLING_INTERVAL_TIME)
+        == setup.VPM_SAMPLING_INTERVAL_STEPS * setup.VPM_TIME_STEP_SIZE
+    )
     assert setup.END_TIME / setup.VPM_TIME_STEP_SIZE == 2000
 
     assert all(
-        sampler.schedule.every_time == setup.SAMPLING_INTERVAL_TIME
-        and sampler.schedule.every_n_steps is None
+        sampler.schedule.every_n_steps == setup.FVM_SAMPLING_INTERVAL_STEPS
+        and sampler.schedule.every_time is None
         for sampler in setup.FVM_SAMPLERS
     )
     assert all(
         sampler.schedule.every_n_steps == setup.VPM_SAMPLING_INTERVAL_STEPS
         for sampler in setup.VPM_SAMPLERS
     )
-    assert setup.FVM_SETUP.time.output_interval_time == setup.CHECKPOINT_INTERVAL_TIME
-    assert setup.VPM_SETUP.checkpoint_interval_steps == setup.VPM_CHECKPOINT_INTERVAL_STEPS
-    assert setup.COUPLER_SETUP.checkpoint_interval_steps == setup.VPM_CHECKPOINT_INTERVAL_STEPS
+    assert (
+        setup.FVM_SETUP.time.output_interval_steps == setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
+    )
+    assert setup.FVM_SETUP.time.output_interval_time is None
+    assert (
+        setup.VPM_SETUP.checkpoint_interval_steps == setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
+    )
+    assert (
+        setup.COUPLER_SETUP.checkpoint_interval_steps
+        == setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
+    )
+
+
+def test_cube_flow_timing_resolver_adjusts_steps_without_shifting_outputs():
+    setup = _load_setup(CASE_DIR / "cube_flow_setup.py", "cube_flow_timing_resolver")
+
+    fvm_step, vpm_step, fvm_backup, vpm_backup, fvm_sample, vpm_sample = setup.resolve_case_timing(
+        0.005, 3, 0.5, 0.05
+    )
+
+    assert vpm_step / fvm_step == pytest.approx(3)
+    assert fvm_backup * fvm_step == pytest.approx(0.5)
+    assert vpm_backup * vpm_step == pytest.approx(0.5)
+    assert fvm_sample * fvm_step == pytest.approx(0.05)
+    assert vpm_sample * vpm_step == pytest.approx(0.05)
 
 
 def test_reference_flow_uses_the_same_sampling_and_checkpoint_cadence():

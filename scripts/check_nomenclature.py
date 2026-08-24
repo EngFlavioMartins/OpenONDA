@@ -231,7 +231,6 @@ LEGACY_PATH_COMPONENTS = frozenset(
         "cylinderSheddingFlow_setup.py",
         "lambossen_setup.py",
         "quad_setup.py",
-        "allplot.sh",
         "schemas",
     }
 )
@@ -356,7 +355,7 @@ NEGATIVE_ASSERTION_FILES = frozenset(
         "tests/test_public_api_has_no_legacy_aliases.py",
     }
 )
-EXTERNAL_AMERICAN_API_NAMES = frozenset({"CenterOfRotation", "getCenterOfMass"})
+EXTERNAL_AMERICAN_API_NAMES = frozenset({"CenterOfRotation", "getCenterOfMass", "cell_centers"})
 TEXT_SUFFIXES = frozenset(
     {
         ".py",
@@ -381,9 +380,7 @@ TEXT_SUFFIXES = frozenset(
         ".log",
     }
 )
-GENERATED_COMPONENTS = frozenset(
-    {"run_archives", "samples_archive", "solution", "samples", "grid_study"}
-)
+GENERATED_COMPONENTS = frozenset({"samples_archive", "solution", "samples", "grid_study"})
 XML_FIELD_SUFFIXES = frozenset(
     {".xdmf", ".xmf", ".vtu", ".vtp", ".vts", ".vtk", ".pvd", ".pvtu", ".pvts", ".pvsm"}
 )

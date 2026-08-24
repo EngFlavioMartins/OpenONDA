@@ -21,6 +21,44 @@ import openonda.fvm as fvm
 import openonda.coupler as coupling
 import openonda.vpm as vpm
 
+
+def resolve_case_timing(
+    fvm_time_step_size: float,
+    vpm_time_step_multiplier: int,
+    write_solution_backup: float,
+    sampling_period: float,
+) -> tuple[float, float, int, int, int, int]:
+    """Resolve compatible solver steps and exact integer output intervals."""
+    if (
+        fvm_time_step_size <= 0.0
+        or vpm_time_step_multiplier < 1
+        or int(vpm_time_step_multiplier) != vpm_time_step_multiplier
+    ):
+        raise ValueError("time-step size must be positive and VPM multiplier must be an integer")
+    if write_solution_backup <= 0.0 or sampling_period <= 0.0:
+        raise ValueError("backup and sampling periods must be positive")
+
+    vpm_steps_per_sample = max(
+        1, round(sampling_period / (vpm_time_step_multiplier * fvm_time_step_size))
+    )
+    vpm_time_step_size = sampling_period / vpm_steps_per_sample
+    fvm_time_step_size = vpm_time_step_size / vpm_time_step_multiplier
+    intervals = (
+        round(write_solution_backup / fvm_time_step_size),
+        round(write_solution_backup / vpm_time_step_size),
+        round(sampling_period / fvm_time_step_size),
+        round(sampling_period / vpm_time_step_size),
+    )
+    periods = (write_solution_backup, write_solution_backup, sampling_period, sampling_period)
+    steps = (fvm_time_step_size, vpm_time_step_size) * 2
+    if any(
+        not np.isclose(interval * step, period, rtol=0.0, atol=1.0e-12)
+        for interval, step, period in zip(intervals, steps, periods, strict=True)
+    ):
+        raise ValueError("backup and sampling periods must be mutually compatible")
+    return fvm_time_step_size, vpm_time_step_size, *intervals
+
+
 # Physical problem
 CUBE_SIDE = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
@@ -43,8 +81,8 @@ PIMPLE_CORRECTORS = 2
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
 PARTICLE_LIMIT = 1_500_000
-VPM_CORE_RADIUS_RATIO = 1.1
-GBD_VORTICITY_FLOOR = 0.05
+VPM_CORE_RADIUS_RATIO = 1.0
+GBD_VORTICITY_FLOOR = 0.02  # Tested 0.05
 VPM_PARTICLE_SPACING = 2 * SURFACE_CELL_SIZE
 AUTHORITY_RAMP_WIDTH = 2 * VPM_PARTICLE_SPACING
 
@@ -52,13 +90,23 @@ AUTHORITY_RAMP_WIDTH = 2 * VPM_PARTICLE_SPACING
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
 
 # Time and output
-FVM_TIME_STEP_SIZE = 0.005
-VPM_TIME_STEP_SIZE = 0.010
 END_TIME = 20.0
 SAMPLING_INTERVAL_TIME = 0.050
-CHECKPOINT_INTERVAL_TIME = 1.0
-VPM_SAMPLING_INTERVAL_STEPS = round(SAMPLING_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
-VPM_CHECKPOINT_INTERVAL_STEPS = round(CHECKPOINT_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
+WRITE_SOLUTION_BACKUP = 0.5
+VPM_TIME_STEP_MULTIPLIER = 2
+(
+    FVM_TIME_STEP_SIZE,
+    VPM_TIME_STEP_SIZE,
+    FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
+    VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
+    FVM_SAMPLING_INTERVAL_STEPS,
+    VPM_SAMPLING_INTERVAL_STEPS,
+) = resolve_case_timing(
+    fvm_time_step_size=0.005,
+    vpm_time_step_multiplier=VPM_TIME_STEP_MULTIPLIER,
+    write_solution_backup=WRITE_SOLUTION_BACKUP,
+    sampling_period=SAMPLING_INTERVAL_TIME,
+)
 VPM_LOGGING_INTERVAL_STEPS = 20
 SAMPLE_SPACING = VPM_PARTICLE_SPACING
 TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 10
@@ -81,7 +129,7 @@ FVM_MESH = fvm.AdaptiveCartesianMesher(
     merge_outer_patch="numericalBoundary",
 )
 
-FVM_SAMPLING_SCHEDULE = fvm.SamplingSchedule(every_time=SAMPLING_INTERVAL_TIME)
+FVM_SAMPLING_SCHEDULE = fvm.SamplingSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
 VPM_SAMPLING_SCHEDULE = vpm.SamplingSchedule(every_n_steps=VPM_SAMPLING_INTERVAL_STEPS)
 
 FVM_SAMPLERS = (
@@ -135,7 +183,7 @@ FVM_SETUP = fvm.FVMSetup(
         time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=END_TIME,
-        output_interval_time=CHECKPOINT_INTERVAL_TIME,
+        output_interval_steps=FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
         adjust_time_step=False,
     ),
     schemes=fvm.DiscretizationConfig(
@@ -188,7 +236,7 @@ COUPLER_SETUP = coupling.CouplerSetup(
     transfer_region_bounds=TRANSFER_REGION_BOX,
     is_boundary_condition_resynchronized_after_transfer=True,
     is_pressure_anchored_to_freestream=False,
-    checkpoint_interval_steps=VPM_CHECKPOINT_INTERVAL_STEPS,
+    checkpoint_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     vpm_particle_spacing=VPM_PARTICLE_SPACING,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
@@ -249,7 +297,7 @@ VPM_SETUP = vpm.VPMSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
     viscous=vpm.ViscousConfig.gbd(
         particle_spacing=VPM_PARTICLE_SPACING,
-        padding=3.0,
+        padding=5.0,
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         threshold_mode="absolute",
         threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
@@ -273,7 +321,7 @@ VPM_SETUP = vpm.VPMSetup(
     log_mode="file",
     logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
     timing_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
-    checkpoint_interval_steps=VPM_CHECKPOINT_INTERVAL_STEPS,
+    checkpoint_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
     checkpoint_directory=str(CASE_DIR / "solution"),
     export_flow_integrals=False,
     samplers=VPM_SAMPLERS,
