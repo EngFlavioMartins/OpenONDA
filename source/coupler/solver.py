@@ -22,14 +22,13 @@ from source.coupler.boundary import (
     advance_fvm,
     evaluate_vpm_boundary,
     initialize_vpm_boundary_history,
-    resynchronize_vpm_boundary,
+    update_boundary_history_after_replacement,
 )
 from source.coupler.checkpoint import (
     load_coupled_state,
     save_coupled_state,
 )
 from source.coupler.config.types import CouplerSetup
-from source.coupler.pressure_reference import PressureReference
 from source.coupler.reporting import (
     OutputRedirector,
     configure_logging,
@@ -129,7 +128,6 @@ class FVMVPMCoupler:
             "applied_correction": 0.0,
             "corrected_mismatch": 0.0,
         }
-        self.pressure_reference: PressureReference | None = None
         self.coupling_diagnostics: list[dict] = []
         self._last_transfer_result = None
 
@@ -139,6 +137,8 @@ class FVMVPMCoupler:
         self.kinematic_viscosity: float | None = None
         self.density: float | None = None
         self.fvm_box: np.ndarray | None = None
+        self.vpm_particle_spacing = float("nan")
+        self.vpm_core_radius_ratio = float("nan")
         self.n_fvm_substeps = 1
         self.freestream_velocity = np.array(coupler_setup.freestream_velocity, dtype=np.float64)
 
@@ -146,15 +146,10 @@ class FVMVPMCoupler:
     def _validate_vpm(vpm, cfg: CouplerSetup, box: np.ndarray, kinematic_viscosity: float) -> None:
         """Validate the injected VPM against the coupling discretization."""
         vsc = vpm.setup.viscous
-        scheme = vsc.scheme.upper()
-        regen = vsc.core_radius_ratio
-        if (
-            scheme in {"DVH", "GBD"}
-            and regen is not None
-            and abs(float(regen) - float(cfg.vpm_core_radius_ratio)) > 1e-9
-        ):
+        if vsc.particle_spacing is None:
             raise ValueError(
-                "VPM regen core_radius_ratio must match the coupler vpm_core_radius_ratio"
+                "Coupled VPM runs require viscous.particle_spacing so injected FVM "
+                "cell particles and boundary derivatives use the VPM discretization."
             )
         dom = vpm.setup.domain_bounds
         if dom is not None:
@@ -328,6 +323,22 @@ class FVMVPMCoupler:
             self._validate_vpm(self.vpm_solver, cfg, self.fvm_box, self.kinematic_viscosity)
 
         assert self.fvm_time_step_size is not None
+        vpm_particle_spacing = self.fvm_time_step_size
+        vpm_core_radius_ratio = 1.0
+        if self._is_master:
+            assert self.vpm_solver is not None
+            viscous = self.vpm_solver.setup.viscous
+            assert viscous.particle_spacing is not None
+            vpm_particle_spacing = float(viscous.particle_spacing)
+            vpm_core_radius_ratio = float(viscous.core_radius_ratio)
+        if _mpi4py_comm is not None and _mpi4py_comm.Get_size() > 1:
+            vpm_particle_spacing, vpm_core_radius_ratio = _mpi4py_comm.bcast(
+                (vpm_particle_spacing, vpm_core_radius_ratio) if self._is_master else None,
+                root=0,
+            )
+        self.vpm_particle_spacing = float(vpm_particle_spacing)
+        self.vpm_core_radius_ratio = float(vpm_core_radius_ratio)
+
         vpm_time_step_size = self.fvm_time_step_size
         if self._is_master:
             assert self.vpm_solver is not None
@@ -377,7 +388,7 @@ class FVMVPMCoupler:
             if anchor is not None:
                 assert self.vpm_solver is not None
                 self.vpm_solver.physics.configure_grid_lattice_anchor(
-                    anchor, self.setup.vpm_particle_spacing
+                    anchor, self.vpm_particle_spacing
                 )
                 anchor_text = ", ".join(
                     f"{value:.6g}" for value in np.asarray(anchor, dtype=np.float64)
@@ -386,22 +397,9 @@ class FVMVPMCoupler:
                     format_coupler_log(
                         "VPMDiffusionGrid",
                         f"lattice anchor [{anchor_text}] m"
-                        f" | spacing {self.setup.vpm_particle_spacing:.6g} m",
+                        f" | spacing {self.vpm_particle_spacing:.6g} m",
                     )
                 )
-
-        assert self.fvm_box is not None
-        self.pressure_reference = PressureReference(
-            self.fvm_solver,
-            fvm_box=self.fvm_box,
-            freestream_velocity=self.freestream_velocity,
-            particle_spacing=self.setup.vpm_particle_spacing,
-            boundary_mode=self.setup.boundary_condition_mode,
-            is_enabled=self.setup.is_pressure_anchored_to_freestream,
-            is_master=self._is_master,
-            comm=_mpi4py_comm,
-        )
-        self.pressure_reference.prepare()
 
         if self._is_master:
             logger.info(format_coupler_log("InitialState", "impulsive start | 0 particles"))
@@ -453,7 +451,7 @@ class FVMVPMCoupler:
             # native null-space datum in the numerical loop; presentation code
             # can apply a reported offset to an output copy when needed.
             transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
-            resynchronize_vpm_boundary(self, *face_geometry)
+            update_boundary_history_after_replacement(self, *face_geometry)
             if self._is_master:
                 assert self.vpm_solver is not None
                 self.vpm_solver.execute_scheduled_samplers()

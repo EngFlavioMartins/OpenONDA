@@ -26,12 +26,11 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         TransportConfig,
     )
     from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
-    from source.solvers.vpm import VPMSetup, VPMSolver
+    from source.solvers.vpm import ViscousConfig, VPMSetup, VPMSolver
 
     # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
     setup = CouplerSetup(
         freestream_velocity=[1.0, 0.0, 0.0],
-        vpm_particle_spacing=H,
         eta_blend_width=0.0,
     )
 
@@ -41,6 +40,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         max_n_particles=50_000,
         domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
         freestream_velocity=[1.0, 0.0, 0.0],
+        viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
     )
     vpm = VPMSolver(vpm_setup)
 
@@ -124,6 +124,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             max_n_particles=50_000,
             domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
             freestream_velocity=[1.0, 0.0, 0.0],
+            viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
         )
     )
     restored_fvm, _ = make_fvm()

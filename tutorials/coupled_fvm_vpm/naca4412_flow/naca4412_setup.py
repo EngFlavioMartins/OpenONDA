@@ -207,16 +207,15 @@ VPM_SETUP = vpm.VPMSetup(
     domain_bounds=list(VPM_DOMAIN),
     log_mode="file",
     logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
-    checkpoint_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
+    # Coupled restart state is written atomically by COUPLER_SETUP.
+    checkpoint_interval_steps=0,
     checkpoint_directory=str(CASE_DIR / "solution"),
     samplers=VPM_SAMPLERS,
 )
 
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
-    vpm_particle_spacing=SPACING,
     eta_blend_width=0.0,
-    vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
     checkpoint_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
 )
 

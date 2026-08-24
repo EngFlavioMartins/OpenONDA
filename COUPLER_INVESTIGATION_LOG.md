@@ -45,10 +45,10 @@ history so they are not repeated.
 | VPM/coupling step | `0.010` s | Two exact FVM substeps |
 | Boundary mode | `vorticity_mixed` | Dirichlet replacement control changed Cd error 6.145% to 6.150%; no benefit, reverted |
 | `eta_blend_width` | `0.0` m | Hard replacement/blending off is the validated baseline; on/off and partition behavior are unit tested |
-| Core-radius ratio | `1.0` | Literal cell-state replacement baseline |
+| VPM spacing/core ratio | `h=0.03125`, ratio `1.0`, owned by `ViscousConfig.gbd` | The coupler derives both runtime values from the VPM diffusion configuration; its duplicate knobs were deleted |
 | GBD threshold | `0.02*h^3`, absolute | Existing physical VPM diffusion; not retuned during replacement validation |
-| Pressure anchoring | off | Pressure datum cannot alter a closed-body pressure force |
-| Post-transfer boundary resync | on | Required so the next FVM interval starts from the replaced current state |
+| Pressure anchoring | no coupler implementation or option | The dead no-op pressure-reference code and option were deleted |
+| Boundary history after replacement | mandatory internal update | The next FVM interval must start from the replaced current state; the hallucinated optional resynchronization flag was deleted |
 
 ## Root causes established by evidence
 
@@ -110,6 +110,31 @@ Reference: `/private/tmp/openonda_reference_dt0005_t1_20260824`
 
 All measured Cd and velocity-profile metrics at both validated sample times are
 below the 5% acceptance limit.
+
+## 2026-08-24 cleanup and calibration preflight
+
+This audit changed no `vorticity_mixed` numerical formula and added no
+remeshing/regeneration call.
+
+| Item inspected | Finding / controlled change | Disposition |
+|---|---|---|
+| Coupler particle spacing and core-radius-ratio options | Duplicated values already owned by the VPM viscous/GBD setup and could drift apart | Deleted from `CouplerSetup`; resolved once from the initialized VPM setup |
+| Optional post-transfer resynchronization flag | Allowed a required boundary-history update to be disabled and had no defensible algorithmic meaning | Flag deleted; required update renamed to describe its actual purpose |
+| Coupler pressure reference | No-op dead implementation; closed-body force is pressure-datum invariant | File, state, reporting field, and option deleted |
+| Boundary-only panel stepping | A pre-evolution panel solve was immediately superseded by the evidence-backed fixed-time solve before the boundary trace | Redundant solve skipped only for `vpm_boundary_condition`; the retained fixed-time panel solve remains active |
+| Native VPM checkpoints in coupled tutorials | Duplicated the atomic FVM+VPM checkpoint and could produce ambiguous restart artifacts | Disabled in coupled cube/cylinder/NACA setups; atomic coupler checkpoint retained |
+| Trial output selection | Previous helper defaulted to the production case and could append/mix samples | `--case-directory` is mandatory and a fresh trial refuses existing `solution/` or `samples/` |
+| Restarted line samples | CSV readers previously treated appended/restarted segments as one history | Readers now retain only the latest monotonically increasing step segment |
+| Plot provenance | Stale/mixed checked-in results could be plotted without proving algorithm or time-step identity | Metadata schema/method and accepted FVM timestep are now required |
+| Acceptance gate | The integrity script allowed 15% drag and 35% profile errors | Replaced by a strict 5% gate for every coincident Cd and FVM/VPM line-profile maximum |
+| Calibration cost metric | Fixed injection-lattice size cannot measure GBD pruning | Matrix uses the next step's pre-replacement VPM cloud plus median step/VPM time |
+| Concurrent timing | Reference contention would bias the baseline relative to restart variants | All timing trials run sequentially |
+
+Preflight verification: 18 focused tests passed; Ruff passed; Pyrefly reported
+zero errors for the changed coupler, VPM stepper, validation, and calibration
+code. The long-run matrix and its disposition are defined in
+`COUPLER_CALIBRATION_PLAN.md`; results will be appended here rather than
+changing the retained production baseline in place.
 
 ## Verification commands
 

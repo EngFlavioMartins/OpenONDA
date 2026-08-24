@@ -187,7 +187,7 @@ def evaluate_vpm_boundary(
         if coupler.setup.boundary_condition_mode == "vorticity_mixed":
             vpm_boundary_condition_velocity, tangential_normal_gradient = (
                 coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
-                    face_centre, face_normal, particle_spacing=coupler.setup.vpm_particle_spacing
+                    face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
                 )
             )
             vpm_boundary_condition_velocity = np.asarray(
@@ -236,7 +236,7 @@ def evaluate_vpm_boundary(
                     include_temporal=coupler._pressure_velocity_snapshot is not None,
                     include_freestream=True,
                     include_body=True,
-                    particle_spacing=coupler.setup.vpm_particle_spacing,
+                    particle_spacing=coupler.vpm_particle_spacing,
                     temporal_method="eulerian",
                     velocity_previous=coupler._pressure_velocity_snapshot,
                     time_step_size=coupler.vpm_time_step_size,
@@ -290,7 +290,7 @@ def evaluate_vpm_boundary(
                 face_area,
                 freestream_velocity=coupler.freestream_velocity,
                 fvm_box=coupler.fvm_box,
-                particle_spacing=coupler.setup.vpm_particle_spacing,
+                particle_spacing=coupler.vpm_particle_spacing,
                 evaluated_velocity=vpm_boundary_condition_velocity,
             )
         )
@@ -398,7 +398,7 @@ def advance_fvm(
     return time.perf_counter() - fvm_wall_time_start
 
 
-def resynchronize_vpm_boundary(
+def update_boundary_history_after_replacement(
     coupler,
     face_centre: np.ndarray,
     face_normal: np.ndarray,
@@ -409,8 +409,6 @@ def resynchronize_vpm_boundary(
     Otherwise each interval starts from a stale prediction. Not a Picard
     sweep: the FVM is not re-solved.
     """
-    if not coupler.setup.is_boundary_condition_resynchronized_after_transfer:
-        return
     if not coupler._is_master:
         return
 
@@ -420,7 +418,7 @@ def resynchronize_vpm_boundary(
     if coupler.setup.boundary_condition_mode == "vorticity_mixed":
         corrected_boundary, tangential_normal_gradient = (
             coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
-                face_centre, face_normal, particle_spacing=coupler.setup.vpm_particle_spacing
+                face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
             )
         )
         corrected_boundary = np.asarray(corrected_boundary, dtype=np.float64).reshape(-1, 3)
@@ -443,7 +441,7 @@ def resynchronize_vpm_boundary(
             face_area,
             freestream_velocity=coupler.freestream_velocity,
             fvm_box=coupler.fvm_box,
-            particle_spacing=coupler.setup.vpm_particle_spacing,
+            particle_spacing=coupler.vpm_particle_spacing,
             evaluated_velocity=corrected_boundary,
         )
     )

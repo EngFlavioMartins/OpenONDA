@@ -235,12 +235,8 @@ FVM_SETUP = fvm.FVMSetup(
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
     transfer_region_bounds=TRANSFER_REGION_BOX,
-    is_boundary_condition_resynchronized_after_transfer=True,
-    is_pressure_anchored_to_freestream=False,
     checkpoint_interval_steps=COUPLER_CHECKPOINT_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
-    vpm_particle_spacing=VPM_PARTICLE_SPACING,
-    vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
     eta_blend_width=0.0,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
@@ -320,7 +316,8 @@ VPM_SETUP = vpm.VPMSetup(
     log_mode="file",
     logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
     timing_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
-    checkpoint_interval_steps=int(VPM_CHECKPOINT_INTERVAL_TIME / VPM_TIME_STEP_SIZE),
+    # Coupled restart state is written atomically by COUPLER_SETUP.
+    checkpoint_interval_steps=0,
     checkpoint_directory=str(CASE_DIR / "solution"),
     export_flow_integrals=False,
     samplers=VPM_SAMPLERS,

@@ -239,7 +239,9 @@ class VorticityTransfer:
         if coupler.kinematic_viscosity is None or coupler.fvm_box is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM state")
         self.config = cfg
-        self.core_radius_ratio = float(cfg.vpm_core_radius_ratio)
+        if not np.isfinite(coupler.vpm_core_radius_ratio):
+            raise RuntimeError("VorticityTransfer requires the resolved VPM core-radius ratio")
+        self.core_radius_ratio = float(coupler.vpm_core_radius_ratio)
         self.eta_blend_width = float(cfg.eta_blend_width)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
@@ -253,7 +255,6 @@ class VorticityTransfer:
         self._lattice_anchor: np.ndarray | None = None
         self._face_cells: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self.step = 0
-        self.last_transfer_diagnostics: dict[str, float] = {}
         self.last_interface_flow: dict[str, float] = {}
         self.last_vortex_line_closure: dict[str, float] = {}
 
@@ -430,13 +431,6 @@ class VorticityTransfer:
             kinematic_viscosity=self.kinematic_viscosity,
             fvm_solid_mask=self._fvm_solid_mask,
         )
-        self.last_transfer_diagnostics = {
-            "injected_vortex_strength_l1": result.injected_vortex_strength_l1,
-            "replaced_vortex_strength_l1": result.replaced_vortex_strength_l1,
-            "state_change_vortex_strength_net": float(
-                np.linalg.norm(result.state_change_vortex_strength_net)
-            ),
-        }
         if self.step % self.diagnostic_interval == 0:
             logger.info(_transfer_log_record(self.step, result))
         return result

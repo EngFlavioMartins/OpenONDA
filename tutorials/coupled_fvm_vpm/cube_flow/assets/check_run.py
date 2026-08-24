@@ -8,6 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
+from measure_trial_errors import frame, load_table, profile_record
+
 CASE_DIR = Path(__file__).resolve().parents[1]
 
 
@@ -75,29 +77,55 @@ def _check_coupling_history(coupling: list[dict]) -> None:
             raise SystemExit("FAIL: non-finite overlap-replacement circulation budget")
 
 
-def _check_reference_drag(forces: np.ndarray) -> str:
-    reference_path = CASE_DIR / "reference_flow" / "samples" / "forces_history.csv"
-    with reference_path.open(newline="") as stream:
-        rows = list(csv.DictReader(stream))
-    reference = np.asarray([[float(row["time"]), float(row["drag_coefficient"])] for row in rows])
-    overlap = (forces[:, 0] >= reference[0, 0]) & (forces[:, 0] <= reference[-1, 0])
-    if np.count_nonzero(overlap) < 10:
-        raise SystemExit("FAIL: production run has too few samples for reference comparison")
-    time = forces[overlap, 0]
-    candidate = forces[overlap, 4]
-    expected = np.interp(time, reference[:, 0], reference[:, 1])
-    relative_error = np.abs(candidate - expected) / np.maximum(np.abs(expected), 0.25)
-    mean_bias = abs(float(np.mean(candidate) - np.mean(expected))) / abs(float(np.mean(expected)))
-    if float(np.mean(relative_error)) > 0.15 or float(np.max(relative_error)) > 0.35:
-        raise SystemExit(
-            "FAIL: cube drag does not track the fully meshed FVM reference "
-            f"(mean/max relative error {np.mean(relative_error):.1%}/{np.max(relative_error):.1%})"
+def _check_reference_accuracy() -> str:
+    """Require every sampled Cd and line-profile maximum to remain within 5%."""
+    samples = CASE_DIR / "samples"
+    reference_samples = CASE_DIR / "reference_flow" / "samples"
+    candidate_force = load_table(samples / "forces_history.csv")
+    reference_force = load_table(reference_samples / "forces_history.csv")
+    measurements: list[tuple[str, float]] = []
+
+    for time, drag in zip(
+        candidate_force["time"], candidate_force["drag_coefficient"], strict=True
+    ):
+        if time < reference_force["time"].min() or time > reference_force["time"].max():
+            continue
+        expected = float(
+            np.interp(time, reference_force["time"], reference_force["drag_coefficient"])
         )
-    if mean_bias > 0.10:
-        raise SystemExit(f"FAIL: cube mean-drag bias versus the reference is {mean_bias:.1%}")
-    return (
-        f" reference drag mean/max error {np.mean(relative_error):.1%}/{np.max(relative_error):.1%}"
-    )
+        measurements.append((f"Cd@{time:g}", abs(float(drag) - expected) / abs(expected)))
+
+    for name in ("centreline", "offaxis_y075"):
+        reference = load_table(reference_samples / f"{name}.csv")
+        for source in ("fvm", "vpm"):
+            candidate = load_table(samples / f"{source}_{name}.csv")
+            for time in np.unique(candidate["time"]):
+                candidate_frame = frame(candidate, float(time))
+                reference_frame = frame(reference, float(time))
+                if candidate_frame is None or reference_frame is None:
+                    continue
+                record = profile_record(
+                    source,
+                    name,
+                    float(time),
+                    candidate_frame,
+                    reference_frame,
+                )
+                measurements.append(
+                    (
+                        f"{source}-{name}@{time:g}",
+                        float(record["max_abs_over_u_inf"]),
+                    )
+                )
+
+    if not measurements:
+        raise SystemExit("FAIL: no coincident reference metrics were available")
+    failed = [(name, value) for name, value in measurements if value > 0.05]
+    if failed:
+        detail = ", ".join(f"{name}={value:.2%}" for name, value in failed[:8])
+        raise SystemExit(f"FAIL: reference errors exceed 5%: {detail}")
+    worst_name, worst_value = max(measurements, key=lambda item: item[1])
+    return f" worst reference error {worst_name}={worst_value:.2%}"
 
 
 def main() -> None:
@@ -142,9 +170,7 @@ def main() -> None:
     coupling = _json_lines(CASE_DIR / "solution" / "coupler_diagnostics.jsonl")
     _check_coupling_history(coupling)
 
-    physics_summary = ""
-    if expected_end >= 3.0:
-        physics_summary = _check_reference_drag(forces)
+    physics_summary = _check_reference_accuracy()
 
     print(
         "PASS: native cube run completed with converged FVM solves, "

@@ -112,7 +112,10 @@ def _domain_dict(box: np.ndarray) -> dict[str, float]:
 def write_run_metadata(coupler) -> None:
     """Write the resolved solver and coupling state used by post-processing."""
     assert coupler.fvm_box is not None
+    assert coupler.vpm_solver is not None
     metadata = {
+        "schema_version": 2,
+        "coupling_method": "absolute_fvm_state_replacement",
         "generated_utc": datetime.now(UTC).isoformat(),
         "case_dir": str(coupler.case_dir),
         "physics": {
@@ -129,8 +132,17 @@ def write_run_metadata(coupler) -> None:
             "fvm_domain": _domain_dict(coupler.fvm_box),
         },
         "vpm_solver": {
-            "vpm_particle_spacing": coupler.setup.vpm_particle_spacing,
+            "vpm_particle_spacing": coupler.vpm_particle_spacing,
+            "vpm_core_radius_ratio": coupler.vpm_core_radius_ratio,
             "eta_blend_width": coupler.setup.eta_blend_width,
+            "viscous_scheme": coupler.vpm_solver.setup.viscous.scheme,
+            "gbd_threshold": coupler.vpm_solver.setup.viscous.gbd_threshold,
+            "gbd_threshold_mode": coupler.vpm_solver.setup.viscous.gbd_threshold_mode,
+            "panel_coupling_scope": (
+                None
+                if coupler.vpm_solver.panel_solver is None
+                else coupler.vpm_solver.panel_solver.coupling_scope
+            ),
         },
         **coupler.setup.to_dict(),
         "vpm_time_step_size": coupler.vpm_time_step_size,
@@ -224,15 +236,11 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             str(name): float(value)
             for name, value in coupler.vorticity_transfer.last_vortex_line_closure.items()
         }
-    pressure_shift = (
-        0.0 if coupler.pressure_reference is None else coupler.pressure_reference.last_shift
-    )
     return {
         "vpm_boundary_condition_flux": boundary_flux,
         "transfer": transfer,
         "boundary_normal_velocity": interface,
         "vortex_line_closure": closure,
-        "pressure_reference_shift": float(pressure_shift),
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
         "n_transfer_particles": int(particle_count),
     }

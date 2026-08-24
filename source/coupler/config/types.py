@@ -23,13 +23,6 @@ class CouplerSetup:
     freestream_velocity: list[float] = field(default_factory=lambda: [1.0, 0.0, 0.0])
     """Freestream velocity (u, v, w) in m/s; must be a finite three-component vector."""
 
-    # ---- VPM DISCRETIZATION ----
-    vpm_particle_spacing: float = 0.05
-    """VPM particle spacing (m); sets the lattice spacing and particle core size."""
-    vpm_core_radius_ratio: float = 1.0
-    """Particle core radius sigma as a ratio of the particle spacing; must match
-    the VPM regeneration radius ratio and be at least one."""
-
     # ---- VORTICITY TRANSFER (FVM -> VPM) ----
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
     """FVM-authoritative replacement region ``(xmin, xmax, ymin, ymax, zmin,
@@ -52,13 +45,6 @@ class CouplerSetup:
     ] = "dirichlet"
     """VPM boundary-condition mode: dirichlet, characteristic, directional_outflow,
     pressure_gradient, or vorticity_mixed."""
-    is_boundary_condition_resynchronized_after_transfer: bool = True
-    """Re-synchronize the VPM boundary trace after each vorticity transfer."""
-
-    # ---- PRESSURE REFERENCE ----
-    is_pressure_anchored_to_freestream: bool = True
-    """Anchor the mean upstream total-pressure reference to the freestream value."""
-
     # ---- RUN-LEVEL OPERATIONAL ----
     checkpoint_interval_steps: int = 1
     """Coupling steps between automatic checkpoints; non-negative (0 disables checkpoints)."""
@@ -91,23 +77,12 @@ class CouplerSetup:
                     "Each transfer_region_bounds upper bound must exceed its lower bound"
                 )
 
-        positive = {
-            "vpm_particle_spacing": self.vpm_particle_spacing,
-            "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
-        }
-        invalid = [
-            name for name, value in positive.items() if not np.isfinite(value) or value <= 0.0
-        ]
-        if invalid:
-            raise ValueError(f"Coupling values must be positive: {', '.join(invalid)}")
         if self.checkpoint_interval_steps < 0:
             raise ValueError("checkpoint_interval_steps must be non-negative")
         if not np.isfinite(self.eta_blend_width) or self.eta_blend_width < 0.0:
             raise ValueError("eta_blend_width must be finite and non-negative")
         if self.transfer_diagnostic_interval_steps < 1:
             raise ValueError("transfer_diagnostic_interval must be at least one")
-        if self.vpm_core_radius_ratio < 1.0:
-            raise ValueError("vpm_core_radius_ratio must be at least one")
 
     @property
     def freestream_velocity_vector(self) -> np.ndarray:
@@ -139,11 +114,7 @@ class CouplerSetup:
                 "coupling_patch": self.coupling_patch,
                 "boundary_condition_mode": self.boundary_condition_mode,
                 "transfer_region_bounds": transfer_region_bounds,
-                "vpm_particle_spacing": self.vpm_particle_spacing,
                 "eta_blend_width": self.eta_blend_width,
-                "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
-                "is_boundary_condition_resynchronized_after_transfer": self.is_boundary_condition_resynchronized_after_transfer,
-                "is_pressure_anchored_to_freestream": self.is_pressure_anchored_to_freestream,
             }
         }

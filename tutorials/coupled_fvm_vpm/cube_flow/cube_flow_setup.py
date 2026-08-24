@@ -235,12 +235,8 @@ FVM_SETUP = fvm.FVMSetup(
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
     transfer_region_bounds=TRANSFER_REGION_BOX,
-    is_boundary_condition_resynchronized_after_transfer=True,
-    is_pressure_anchored_to_freestream=False,
     checkpoint_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
-    vpm_particle_spacing=VPM_PARTICLE_SPACING,
-    vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
     eta_blend_width=ETA_BLEND_WIDTH,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
@@ -321,7 +317,8 @@ VPM_SETUP = vpm.VPMSetup(
     log_mode="file",
     logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
     timing_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
-    checkpoint_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
+    # Coupled runs use the atomic FVM+VPM checkpoint owned by COUPLER_SETUP.
+    checkpoint_interval_steps=0,
     checkpoint_directory=str(CASE_DIR / "solution"),
     export_flow_integrals=False,
     samplers=VPM_SAMPLERS,
@@ -330,12 +327,12 @@ VPM_SETUP = vpm.VPMSetup(
 )
 
 
-def main() -> None:
+def main(*, restart_from: Path | None = None) -> None:
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.write_vtk()
     vpm_solver = vpm.create_vpm_solver(VPM_SETUP, case_dir=CASE_DIR)
     coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
-    coupled_solver.run()
+    coupled_solver.run(restart_from=restart_from)
 
 
 if __name__ == "__main__":

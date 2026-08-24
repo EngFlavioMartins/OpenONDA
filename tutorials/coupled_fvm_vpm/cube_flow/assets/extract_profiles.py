@@ -25,11 +25,15 @@ def _frame(pvd: Path, time: float) -> tuple[float, Path]:
 
 def _particles(solution: Path, time: float) -> dict:
     snapshots = []
-    for path in solution.glob("vpm_*.h5"):
+    for path in (*solution.glob("vpm_*.h5"), *(solution / "checkpoints").glob("vpm_*.h5")):
         with h5py.File(path, "r") as handle:
             attrs = handle["solver"].attrs
             snapshots.append((float(attrs["time"]), path))
-    path = min(snapshots, key=lambda item: abs(item[0] - time))[1]
+    if not snapshots:
+        raise FileNotFoundError(f"no coupled VPM checkpoint found below {solution}")
+    snapshot_time, path = min(snapshots, key=lambda item: abs(item[0] - time))
+    if not np.isclose(snapshot_time, time, rtol=0.0, atol=1.0e-10):
+        raise ValueError(f"closest VPM checkpoint is at t={snapshot_time:g}, requested t={time:g}")
     return load_vpm_particles(path)
 
 

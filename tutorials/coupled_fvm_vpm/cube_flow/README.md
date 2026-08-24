@@ -24,7 +24,9 @@ The coupler therefore advances two FVM substeps per VPM step. All force, line,
 and surface samplers use the single `SAMPLING_INTERVAL_TIME` defined in
 `cube_flow_setup.py`; FVM and VPM backups are written every `0.5 s`. The
 fully meshed reference uses the same `0.005 s` FVM time step and `0.050 s`
-sampling interval. Matching the transient time discretization is required for
+sampling interval. FVM visualization and the atomic coupled restart checkpoint
+are written every `0.5 s`; the native VPM checkpoint writer is disabled because
+it would capture the pre-replacement state. Matching the transient time discretization is required for
 the reference comparison. The coupled and reference FVMs use the same pressure
 corrector counts. Particle diffusion, global thresholding, and population
 control are performed only by VPM GBD.

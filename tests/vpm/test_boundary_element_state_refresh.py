@@ -8,6 +8,7 @@ import numpy as np
 
 from source.solvers.vpm.boundary_elements.panels.solver.panel_solver import PanelSolver
 from source.solvers.vpm.core.solver import VPMSolver
+from source.solvers.vpm.coupling.stepper import CouplingStepper
 
 
 def test_panel_refresh_resolves_current_state_without_advancing_history():
@@ -74,3 +75,16 @@ def test_vpm_refresh_is_limited_to_boundary_only_panel_scope():
     panel.coupling_scope = "full"
     VPMSolver.refresh_boundary_element_solution(solver)
     assert len(calls) == 1
+
+
+def test_boundary_only_panel_is_not_advanced_before_particle_evolution():
+    calls: list[dict] = []
+    panel = SimpleNamespace(
+        coupling_scope="vpm_boundary_condition",
+        advance=lambda **kwargs: calls.append(kwargs),
+    )
+    solver = SimpleNamespace(panel_solver=panel)
+
+    CouplingStepper.advance_panel(SimpleNamespace(solver=solver, panel_solver=panel))
+
+    assert calls == []

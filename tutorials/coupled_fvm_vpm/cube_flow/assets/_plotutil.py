@@ -221,7 +221,15 @@ def _read_line_csv(path: Path) -> dict[str, np.ndarray]:
             skip_header=1 if time_comment else 0,
         )
     )
-    table = {name: np.asarray(rows[name]) for name in rows.dtype.names}
+    names = rows.dtype.names
+    if names is None:
+        raise ValueError(f"{path} does not contain a named CSV table")
+    table = {name: np.asarray(rows[name]) for name in names}
+    if "step" in table and table["step"].size:
+        reset = np.flatnonzero(np.diff(table["step"].astype(int)) < 0)
+        if reset.size:
+            start = int(reset[-1] + 1)
+            table = {name: values[start:] for name, values in table.items()}
     if "time" in table:
         return table
     if time_comment is None:
@@ -335,10 +343,13 @@ def load_forces(source: str) -> dict[str, np.ndarray] | None:
     )
     if rows.size == 0:
         return None
-    if "step" in rows.dtype.names:
+    names = rows.dtype.names
+    if names is None:
+        raise ValueError(f"{path} does not contain a named CSV table")
+    if "step" in names:
         resets = np.flatnonzero(np.diff(rows["step"].astype(int)) <= 0)
         rows = rows[resets[-1] + 1 :] if resets.size else rows
-    return {name: np.asarray(rows[name]) for name in rows.dtype.names}
+    return {name: np.asarray(rows[name]) for name in names}
 
 
 def load_vpm_forces() -> dict[str, np.ndarray] | None:
@@ -349,7 +360,10 @@ def load_vpm_forces() -> dict[str, np.ndarray] | None:
     rows = np.atleast_1d(
         np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
     )
-    return {name: np.asarray(rows[name]) for name in rows.dtype.names} if rows.size else None
+    names = rows.dtype.names
+    if names is None:
+        raise ValueError(f"{path} does not contain a named CSV table")
+    return {name: np.asarray(rows[name]) for name in names} if rows.size else None
 
 
 def common_times(*series: np.ndarray, tol: float = TIME_ATOL) -> np.ndarray:
@@ -393,6 +407,10 @@ def _require_coincident_overlap(label: str, base: np.ndarray, *series: np.ndarra
 def validate_plot_inputs() -> dict[str, float]:
     """Validate source provenance and exact cross-solver sample times."""
     meta = metadata()
+    if meta.get("schema_version") != 2:
+        raise ValueError("Run metadata is stale; expected schema_version=2")
+    if meta.get("coupling_method") != "absolute_fvm_state_replacement":
+        raise ValueError("Samples do not belong to the absolute FVM-state replacement method")
     required_metadata = (
         ("physics", "freestream_velocity"),
         ("physics", "kinematic_viscosity"),
@@ -437,6 +455,13 @@ def validate_plot_inputs() -> dict[str, float]:
     if fvm_forces is None or reference_forces is None:
         raise ValueError("Force histories must contain at least one row")
     force_times = _require_coincident_overlap("Force", fvm_forces["time"], reference_forces["time"])
+    expected_step = float(meta["physics"]["fvm_time_step_size"])
+    for source, forces in (("coupled", fvm_forces), ("reference", reference_forces)):
+        accepted = forces.get("accepted_time_step_size")
+        if accepted is None or not np.allclose(accepted, expected_step, rtol=0.0, atol=1.0e-12):
+            raise ValueError(
+                f"{source} force samples use a stale time step; expected {expected_step:g} s"
+            )
 
     for source in ("reference", "fvm", "vpm"):
         for _, path in slice_frames(source):

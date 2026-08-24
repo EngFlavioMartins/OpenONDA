@@ -15,9 +15,13 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from typing import Literal
 
 
-def _worker(case_dir: Path, compute_device: str) -> None:
+def _worker(
+    case_dir: Path,
+    compute_device: Literal["AUTO", "CPU", "CUDA", "METAL", "VULKAN"],
+) -> None:
     import numpy as np
 
     import openonda.coupler as coupling
@@ -28,10 +32,10 @@ def _worker(case_dir: Path, compute_device: str) -> None:
     vpm_time_step_size = 0.15
     spacing = 0.125
     freestream = [1.0, 0.0, 0.0]
+    vpm_freestream = (1.0, 0.0, 0.0)
 
     coupler_setup = coupling.CouplerSetup(
         freestream_velocity=freestream,
-        vpm_particle_spacing=spacing,
         eta_blend_width=0.0,
         checkpoint_interval_steps=1,
     )
@@ -76,8 +80,12 @@ def _worker(case_dir: Path, compute_device: str) -> None:
             time_step_size=vpm_time_step_size,
             compute_device=compute_device,
             max_n_particles=50_000,
-            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-            freestream_velocity=freestream,
+            domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
+            freestream_velocity=vpm_freestream,
+            viscous=vpm.ViscousConfig.cs(
+                kinematic_viscosity=0.01,
+                particle_spacing=spacing,
+            ),
             checkpoint_directory=str(case_dir / "solution"),
         )
         return vpm.create_vpm_solver(setup, case_dir=case_dir)
@@ -92,10 +100,11 @@ def _worker(case_dir: Path, compute_device: str) -> None:
         raise RuntimeError("coupled tutorial produced non-finite FVM velocity")
     if not np.allclose(velocity.mean(axis=0), freestream, atol=1.0e-6):
         raise RuntimeError("uniform freestream was not preserved")
-    if (fvm_solver.step, vpm_solver.step) != (6, 2):
-        raise RuntimeError(
-            f"unexpected subcycling result: FVM={fvm_solver.step}, VPM={vpm_solver.step}"
-        )
+    if not hasattr(vpm_solver, "step"):
+        raise RuntimeError("VPM solver is inactive on the validation rank")
+    vpm_step = vpm_solver.step
+    if (fvm_solver.step, vpm_step) != (6, 2):
+        raise RuntimeError(f"unexpected subcycling result: FVM={fvm_solver.step}, VPM={vpm_step}")
 
     solution = case_dir / "solution"
     samples = case_dir / "samples"
@@ -136,6 +145,7 @@ def _worker(case_dir: Path, compute_device: str) -> None:
     restored_step = restored.load_state(checkpoint)
     if restored_step != 2:
         raise RuntimeError(f"restart restored coupled step {restored_step}, expected 2")
+    assert restored.fvm_solver is not None
     np.testing.assert_allclose(restored.fvm_solver.velocity, expected_u, rtol=0.0, atol=1.0e-13)
     np.testing.assert_allclose(
         restored.fvm_solver.kinematic_pressure, expected_p, rtol=0.0, atol=1.0e-13

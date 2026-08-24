@@ -59,12 +59,16 @@ def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
         setup.FVM_SETUP.time.output_interval_steps == setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
     )
     assert setup.FVM_SETUP.time.output_interval_time is None
-    assert (
-        setup.VPM_SETUP.checkpoint_interval_steps == setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
-    )
+    assert setup.VPM_SETUP.checkpoint_interval_steps == 0
     assert (
         setup.COUPLER_SETUP.checkpoint_interval_steps
         == setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
+    )
+    assert not hasattr(setup.COUPLER_SETUP, "vpm_particle_spacing")
+    assert not hasattr(setup.COUPLER_SETUP, "vpm_core_radius_ratio")
+    assert not hasattr(
+        setup.COUPLER_SETUP,
+        "is_boundary_condition_resynchronized_after_transfer",
     )
 
 
