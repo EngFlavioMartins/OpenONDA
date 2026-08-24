@@ -78,20 +78,21 @@ def _check_solver_history(diagnostics: list[dict], label: str) -> tuple[float, f
 
 
 def _check_coupling_history(coupling: list[dict]) -> None:
-    vortex_strength_error = max(
-        np.linalg.norm(
-            [float(record["transfer"][f"correction_vortex_strength_net_{axis}"]) for axis in "xyz"]
-        )
-        for record in coupling
+    replacement_values = np.asarray(
+        [
+            [
+                float(record["transfer"][f"state_change_vortex_strength_net_{axis}"])
+                for axis in "xyz"
+            ]
+            for record in coupling
+        ]
     )
     vpm_boundary_condition_error = max(
         abs(float(record["vpm_boundary_condition_flux"]["corrected_mismatch"]))
         for record in coupling
     )
-    if vortex_strength_error > 1e-8:
-        raise SystemExit(
-            f"FAIL: corrected transfer vortex-strength mismatch is {vortex_strength_error:.3g}"
-        )
+    if not np.all(np.isfinite(replacement_values)):
+        raise SystemExit("FAIL: state-replacement circulation budget is non-finite")
     if vpm_boundary_condition_error > 1e-8:
         raise SystemExit(
             "FAIL: corrected VPM boundary-condition flux mismatch is "

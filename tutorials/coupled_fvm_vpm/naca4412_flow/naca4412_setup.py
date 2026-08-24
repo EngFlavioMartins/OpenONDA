@@ -215,8 +215,7 @@ VPM_SETUP = vpm.VPMSetup(
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
     vpm_particle_spacing=SPACING,
-    authority_ramp_width=6 * SPACING,
-    vpm_only_width=3.0 * SPACING,
+    eta_blend_width=0.0,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
     checkpoint_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
 )

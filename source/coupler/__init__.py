@@ -3,8 +3,8 @@ FVM-VPM Coupler module for OpenONDA.
 ====================================
 Hybrid near-field (FVM) / far-field (VPM) simulations: the native FVM
 resolves the body and near wake inside a box whose boundary is driven by the
-particle field; a compatible curl of the near-field velocity defect is handed
-back to the particles every step.
+particle field; the FVM-authoritative part of the overlap is replaced from the
+absolute FVM cell circulation every step while the outer wake is retained.
 
 The public driver follows the physical coupling sequence. Boundary sampling,
 vorticity transfer, checkpointing, and reporting live in focused modules

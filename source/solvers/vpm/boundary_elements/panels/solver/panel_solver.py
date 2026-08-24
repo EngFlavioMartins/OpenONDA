@@ -639,20 +639,7 @@ class PanelSolver:
 
         # 3. Compute VPM-induced velocity at collocation points (if coupled)
         if particles is not None and physics is not None:
-            # NumPy targets follow PhysicsBase's configured TREECODE route.
-            # Passing the Taichi field directly bypassed that branch and launched
-            # a direct M-by-N target kernel at every panel centre.
-            n_panels = self.lattice.n_panels
-            centres = self.lattice.panel_centre.to_numpy()[:n_panels]
-            induced = physics.compute_target_velocity(
-                particles,
-                centres,
-                include_freestream=False,  # Freestream added separately
-            )
-            lattice_velocity = self.lattice.velocity.to_numpy()
-            lattice_velocity[:n_panels] = np.asarray(induced, dtype=lattice_velocity.dtype)
-            self.lattice.velocity.from_numpy(lattice_velocity)
-            wake_velocity = self.lattice.velocity
+            wake_velocity = self._set_coupled_wake_velocity(particles, physics)
 
         # 4. Solve potential flow
         self.solve(freestream_velocity, wake_velocity, time)
@@ -684,6 +671,43 @@ class PanelSolver:
 
         self.step += 1
         return None
+
+    def _set_coupled_wake_velocity(self, particles: Any, physics: Any) -> Any:
+        """Update panel collocation velocity from the current particle state."""
+        # NumPy targets follow PhysicsBase's configured TREECODE route. Passing
+        # the Taichi field directly would bypass that branch and launch a direct
+        # M-by-N target kernel at every panel centre.
+        lattice = self.lattice
+        if lattice is None:
+            raise RuntimeError("panel lattice is not initialized")
+        n_panels = lattice.n_panels
+        centres = lattice.panel_centre.to_numpy()[:n_panels]
+        induced = physics.compute_target_velocity(
+            particles,
+            centres,
+            include_freestream=False,
+        )
+        lattice_velocity = lattice.velocity.to_numpy()
+        lattice_velocity[:n_panels] = np.asarray(induced, dtype=lattice_velocity.dtype)
+        lattice.velocity.from_numpy(lattice_velocity)
+        return lattice.velocity
+
+    def refresh_coupled_solution(
+        self,
+        *,
+        particles: Any,
+        physics: Any,
+        freestream_velocity: np.ndarray,
+        time: float,
+    ) -> None:
+        """Resolve the body potential for a replaced particle state at fixed time.
+
+        This is a state refresh, not a time advance: panel history, kinematics,
+        force history, step counters, and wake shedding are left untouched.
+        """
+        self.ensure_mesh_generated()
+        wake_velocity = self._set_coupled_wake_velocity(particles, physics)
+        self.solve(freestream_velocity, wake_velocity, time)
 
     def advance_time(self, time_step_size: float, current_time: float) -> None:
         """Advance kinematics state and geometry for all surfaces (VLM-compatible API)."""

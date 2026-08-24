@@ -47,12 +47,14 @@ class EvolutionStepper:
     def __getattr__(self, name: str):
         return getattr(self.solver, name)
 
-    def advance(self) -> None:
+    def advance(self, *, defer_output: bool = False) -> None:
         """Advance the VPM solution by one time step.
 
         The inviscid update advances particle motion and, when enabled, vortex
         stretching. Viscous diffusion is then applied by operator splitting. Core
         spreading uses symmetric Strang splitting in the coupled integrator.
+        ``defer_output`` lets an external coupler synchronize the particle state
+        before scheduled samples and checkpoints are written.
         """
 
         self.solver._domain_bounds_enforced_this_step = False
@@ -181,15 +183,17 @@ class EvolutionStepper:
             self.stabilization.run_phase("post_step", profiler=self.profiler)
             self._debug_validate_particle_geometry("particle retention")
 
-            with self.profiler.section("Checkpoint / IO"):
-                self._write_checkpoint()
+            if not defer_output:
+                with self.profiler.section("Checkpoint / IO"):
+                    self._write_checkpoint()
 
         # The evolution kernels mutate particle source fields directly on the
         # device.  Publish one new source revision after the complete physical
         # state (including any topology-changing stabilization) is committed so
         # post-step boundary/panel queries cannot reuse the previous tree.
         self.particles.touch_state()
-        self.solver._execute_scheduled_samplers()
+        if not defer_output:
+            self.solver.execute_scheduled_samplers()
         self.profiler.report_step()
         self.solver.wall_time = self.profiler.wall_time
 

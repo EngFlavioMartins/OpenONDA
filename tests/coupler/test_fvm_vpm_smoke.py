@@ -32,8 +32,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     setup = CouplerSetup(
         freestream_velocity=[1.0, 0.0, 0.0],
         vpm_particle_spacing=H,
-        authority_ramp_width=2 * H,
-        vpm_only_width=H,
+        eta_blend_width=0.0,
     )
 
     vpm_setup = VPMSetup(
@@ -98,7 +97,8 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert (sol / "fvm.log").exists()
     coupler_log = (sol / "coupler.log").read_text()
     assert "[Coupler][Run]" in coupler_log
-    assert coupler_log.count("[Coupler][Transfer]") >= 2
+    # Initial synchronization plus one absolute replacement after each FVM interval.
+    assert coupler_log.count("[Coupler][StateReplacement]") == 3
     assert "3 FVM substeps" in coupler_log
     checkpoint = sol / "checkpoints"
     manifest = json.loads((checkpoint / "manifest.json").read_text())

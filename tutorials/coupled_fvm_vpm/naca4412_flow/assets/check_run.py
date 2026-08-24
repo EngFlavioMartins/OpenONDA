@@ -103,16 +103,17 @@ def main() -> None:
         raise SystemExit(f"FAIL: final IBM slip_error is excessive ({values[-1, 5]:.3g})")
 
     coupling = _json_lines(CASE_DIR / "solution" / "coupler_diagnostics.jsonl")
-    vortex_strength_error = max(
-        np.linalg.norm(
-            [float(record["transfer"][f"correction_vortex_strength_net_{axis}"]) for axis in "xyz"]
-        )
-        for record in coupling
+    replacement_values = np.asarray(
+        [
+            [
+                float(record["transfer"][f"state_change_vortex_strength_net_{axis}"])
+                for axis in "xyz"
+            ]
+            for record in coupling
+        ]
     )
-    if vortex_strength_error > 1e-8:
-        raise SystemExit(
-            f"FAIL: corrected handoff vortex-strength mismatch is {vortex_strength_error:.3g}"
-        )
+    if not np.all(np.isfinite(replacement_values)):
+        raise SystemExit("FAIL: state-replacement circulation budget is non-finite")
     vpm_boundary_condition_error = max(
         abs(float(record["vpm_boundary_condition_flux"]["corrected_mismatch"]))
         for record in coupling

@@ -30,26 +30,15 @@ class CouplerSetup:
     """Particle core radius sigma as a ratio of the particle spacing; must match
     the VPM regeneration radius ratio and be at least one."""
 
-    # ---- OVERLAP ZONE (FVM/VPM authority profile) ----
-    authority_ramp_width: float = 0.30
-    """Width (m) of the C1 ramp over which FVM authority rises from zero to one
-    inside the overlap zone; must exceed ``vpm_only_width``."""
-    vpm_only_width: float = 0.15
-    """Width (m) of the band just inside the overlap-zone faces where FVM
-    authority is exactly zero; must be non-negative."""
-
     # ---- VORTICITY TRANSFER (FVM -> VPM) ----
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
-    """(xmin, xmax, ymin, ymax, zmin, zmax) region over which FVM vorticity is
-    transferred to VPM particles; must lie inside the FVM domain; None uses the
-    full FVM domain."""
-    vorticity_transfer_mode: Literal["velocity_defect", "vorticity_defect"] = "velocity_defect"
-    """Source of the FVM-to-VPM correction: the compatible curl of the velocity
-    defect, which is discretely solenoidal but blind to the grid-scale band, or
-    the FVM vorticity defect scaled by the particle control volume, which
-    reaches that band but carries the divergence of the donor field."""
+    """FVM-authoritative replacement region ``(xmin, xmax, ymin, ymax, zmin,
+    zmax)``. It must lie inside the FVM domain; ``None`` uses the full domain."""
+    eta_blend_width: float = 0.0
+    """Width (m) of the C1 state-blending ramp inside the replacement-region
+    faces. Zero disables eta blending and performs hard delete/reinjection."""
     transfer_diagnostic_interval_steps: int = 1
-    """Coupling steps between transfer diagnostics; at least one."""
+    """Replacement steps between transfer diagnostics; at least one."""
 
     # ---- VPM BOUNDARY-CONDITION TRACE ON THE FVM ----
     coupling_patch: str = "numericalBoundary"
@@ -91,11 +80,6 @@ class CouplerSetup:
                 "'directional_outflow', 'pressure_gradient', or 'vorticity_mixed'"
             )
 
-        if self.vorticity_transfer_mode not in {"velocity_defect", "vorticity_defect"}:
-            raise ValueError(
-                "vorticity_transfer_mode must be 'velocity_defect' or 'vorticity_defect'"
-            )
-
         if self.transfer_region_bounds is not None:
             transfer_region_bounds = np.asarray(self.transfer_region_bounds, dtype=np.float64)
             if transfer_region_bounds.shape != (6,) or not np.all(
@@ -109,7 +93,6 @@ class CouplerSetup:
 
         positive = {
             "vpm_particle_spacing": self.vpm_particle_spacing,
-            "authority_ramp_width": self.authority_ramp_width,
             "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
         }
         invalid = [
@@ -119,12 +102,10 @@ class CouplerSetup:
             raise ValueError(f"Coupling values must be positive: {', '.join(invalid)}")
         if self.checkpoint_interval_steps < 0:
             raise ValueError("checkpoint_interval_steps must be non-negative")
-        if self.vpm_only_width < 0.0:
-            raise ValueError("vpm_only_width must be non-negative")
+        if not np.isfinite(self.eta_blend_width) or self.eta_blend_width < 0.0:
+            raise ValueError("eta_blend_width must be finite and non-negative")
         if self.transfer_diagnostic_interval_steps < 1:
             raise ValueError("transfer_diagnostic_interval must be at least one")
-        if self.authority_ramp_width <= self.vpm_only_width:
-            raise ValueError("authority_ramp_width must exceed vpm_only_width")
         if self.vpm_core_radius_ratio < 1.0:
             raise ValueError("vpm_core_radius_ratio must be at least one")
 
@@ -159,10 +140,8 @@ class CouplerSetup:
                 "boundary_condition_mode": self.boundary_condition_mode,
                 "transfer_region_bounds": transfer_region_bounds,
                 "vpm_particle_spacing": self.vpm_particle_spacing,
-                "authority_ramp_width": self.authority_ramp_width,
-                "vpm_only_width": self.vpm_only_width,
+                "eta_blend_width": self.eta_blend_width,
                 "vpm_core_radius_ratio": self.vpm_core_radius_ratio,
-                "vorticity_transfer_mode": self.vorticity_transfer_mode,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
                 "is_boundary_condition_resynchronized_after_transfer": self.is_boundary_condition_resynchronized_after_transfer,
                 "is_pressure_anchored_to_freestream": self.is_pressure_anchored_to_freestream,

@@ -1,4 +1,4 @@
-"""Hybrid LES FVM–VPM simulation of flow past a cube at Re = 1000.
+"""Coupled LES FVM–VPM simulation of flow past a cube at Re = 1000.
 
 The FVM mesh is generated directly as solver-native data by OpenONDA's
 adaptive Cartesian mesher. No external solver case is used. Both solvers use
@@ -72,19 +72,20 @@ VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
 FVM_CORES = 4
-FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
+FVM_BOX = (-3.0, 3.0, -3.0, 3.0, -3.0, 3.0)
 FVM_WAKE_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
 TRANSFER_REGION_BOX = FVM_WAKE_BOX
 SURFACE_CELL_SIZE = 0.015625
+FVM_MAX_CELL_SIZE = 0.25
 PIMPLE_CORRECTORS = 2
 
 # VPM domain and resolution
 VPM_DOMAIN = (-4.5, 12.0, -3.0, 3.0, -3.0, 3.0)
 PARTICLE_LIMIT = 1_500_000
 VPM_CORE_RADIUS_RATIO = 1.0
-GBD_VORTICITY_FLOOR = 0.02  # Tested 0.05
+GBD_VORTICITY_FLOOR = 0.02
 VPM_PARTICLE_SPACING = 2 * SURFACE_CELL_SIZE
-AUTHORITY_RAMP_WIDTH = 2 * VPM_PARTICLE_SPACING
+ETA_BLEND_WIDTH = 0.0
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
@@ -121,7 +122,7 @@ WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
 
 FVM_MESH = fvm.AdaptiveCartesianMesher(
     domain=FVM_BOX,
-    max_cell_size=SURFACE_CELL_SIZE * 4,
+    max_cell_size=FVM_MAX_CELL_SIZE,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
     surface_cell_size=SURFACE_CELL_SIZE,
@@ -167,7 +168,7 @@ FVM_SAMPLERS = (
 )
 
 FVM_SETUP = fvm.FVMSetup(
-    case_name="coupled_hybrid_flow",
+    case_name="coupled_replacement_flow",
     cores=FVM_CORES,
     execution=fvm.ComputeConfig(operator_backend="numba"),
     output=fvm.OutputConfig(
@@ -240,8 +241,7 @@ COUPLER_SETUP = coupling.CouplerSetup(
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     vpm_particle_spacing=VPM_PARTICLE_SPACING,
     vpm_core_radius_ratio=VPM_CORE_RADIUS_RATIO,
-    authority_ramp_width=AUTHORITY_RAMP_WIDTH,
-    vpm_only_width=0.0,
+    eta_blend_width=ETA_BLEND_WIDTH,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 

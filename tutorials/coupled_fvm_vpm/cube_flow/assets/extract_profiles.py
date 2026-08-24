@@ -44,7 +44,7 @@ def _hybrid_velocity(vtu: Path, particles: dict, points: np.ndarray, box: dict):
 
 
 def extract_hybrid(solution: Path, output: Path, time: float = TIME) -> None:
-    actual_time, vtu = _frame(solution / "coupled_hybrid_flow.pvd", time)
+    actual_time, vtu = _frame(solution / "coupled_replacement_flow.pvd", time)
     particles = _particles(solution, actual_time)
     metadata = json.loads((solution / "run_metadata.json").read_text())
     box = metadata["fvm_solver"]["fvm_domain"]

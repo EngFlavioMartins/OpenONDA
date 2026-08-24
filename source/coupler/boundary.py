@@ -178,10 +178,12 @@ def evaluate_vpm_boundary(
     face_area: np.ndarray,
 ):
     """Construct the next VPM boundary-condition trace."""
+    boundary_condition_wall_time = time.perf_counter()
     vpm_boundary_condition_velocity = None
     tangential_normal_gradient: np.ndarray | None = None
     if coupler._is_master:
         assert coupler.vpm_solver is not None
+        coupler.vpm_solver.refresh_boundary_element_solution()
         if coupler.setup.boundary_condition_mode == "vorticity_mixed":
             vpm_boundary_condition_velocity, tangential_normal_gradient = (
                 coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
@@ -219,8 +221,6 @@ def evaluate_vpm_boundary(
                 "VPM target evaluation returned an identically zero field despite a "
                 "nonzero freestream; aborting before the corrupted VPM boundary-condition data reaches the FVM"
             )
-
-    boundary_condition_wall_time = time.perf_counter()
     if coupler._is_master:
         if coupler.setup.boundary_condition_mode == "pressure_gradient":
             assert coupler.vpm_solver is not None
@@ -415,6 +415,7 @@ def resynchronize_vpm_boundary(
         return
 
     assert coupler.vpm_solver is not None
+    coupler.vpm_solver.refresh_boundary_element_solution()
     tangential_normal_gradient: np.ndarray | None = None
     if coupler.setup.boundary_condition_mode == "vorticity_mixed":
         corrected_boundary, tangential_normal_gradient = (

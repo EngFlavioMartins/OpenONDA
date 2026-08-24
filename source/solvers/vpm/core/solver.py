@@ -501,16 +501,18 @@ class VPMSolver:
         self.profiler.set_particle_count(self.particles.n_particles_total)
         self.profiler.report()
 
-    def advance(self) -> None:
+    def advance(self, *, defer_output: bool = False) -> None:
         """Advance the VPM solution by one time step.
 
         The step algorithm (velocity/gradient preparation, advection,
         stretching, coupled inviscid integration, viscous diffusion, operator
         splitting, and the in-step stabilization phases) is owned by the
         :class:`~source.solvers.vpm.core.evolution.EvolutionStepper`; this
-        facade method delegates to it.
+        facade method delegates to it. Coupled drivers may set
+        ``defer_output=True`` and write scheduled output after synchronizing
+        the particle state at the new time level.
         """
-        self.stepper.advance()
+        self.stepper.advance(defer_output=defer_output)
 
     def record_diagnostics(self, *, refresh_fields: bool = False) -> None:
         """Evaluate and log diagnostics for the current particle state.
@@ -550,7 +552,7 @@ class VPMSolver:
         """Execute samplers without an explicit schedule at logging cadence."""
         SamplerExecutor.execute(self)
 
-    def _execute_scheduled_samplers(self) -> None:
+    def execute_scheduled_samplers(self) -> None:
         """Execute due time- or step-scheduled field samplers."""
         SamplerExecutor.execute(self, scheduled_only=True)
 
@@ -934,6 +936,24 @@ class VPMSolver:
         """
         self._body_induced_fn = fn
         self.physics.body_velocity = fn
+
+    def refresh_boundary_element_solution(self) -> None:
+        """Make a boundary-only panel solution consistent with current particles.
+
+        A ``vpm_boundary_condition`` panel does not participate in particle
+        evolution. External couplers may replace the particle cloud at fixed
+        physical time, so its harmonic/body correction must be re-solved before
+        the next boundary trace is evaluated.
+        """
+        panel = self.panel_solver
+        if panel is None or getattr(panel, "coupling_scope", "full") != "vpm_boundary_condition":
+            return
+        panel.refresh_coupled_solution(
+            particles=self.particles,
+            physics=self.physics,
+            freestream_velocity=self.freestream_velocity,
+            time=self.time,
+        )
 
     def set_surface_sources(
         self, position: np.ndarray, vortex_strength: np.ndarray, core_radius: np.ndarray

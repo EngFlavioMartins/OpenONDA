@@ -58,13 +58,6 @@ def _values(records: list[dict], section: str, key: str) -> np.ndarray:
     )
 
 
-def _evaluated(records: list[dict]) -> np.ndarray:
-    """Steps on which the on-cadence transfer diagnostics were actually computed."""
-    return np.asarray(
-        [bool(row.get("transfer", {}).get("diagnostics_evaluated", True)) for row in records]
-    )
-
-
 def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
     records = _records()
     if not records:
@@ -118,8 +111,8 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
         label="total",
     )
     for key, label, style in (
-        ("n_existing_particles", "existing", "-"),
-        ("n_added_particles", "correction", "--"),
+        ("n_particles_retained", "retained", "-"),
+        ("n_particles_injected", "injected", "--"),
     ):
         population.plot(
             time,
@@ -137,29 +130,40 @@ def plot(figure_format: str, dpi: int = FIGURE_DPI) -> None:
     )
 
     fidelity = axes[1, 0]
-    sampled = _evaluated(records)
-    t_sampled = time[sampled]
-    marker = "o" if t_sampled.size < 60 else None
-    fidelity.semilogy(
-        t_sampled,
-        np.maximum(_values(records, "transfer", "divergence_correction_l2")[sampled], 1e-16),
-        color=util.COLORS["fvm"],
-        marker=marker,
-        markersize=3,
+    state_change = np.sqrt(
+        sum(
+            _values(records, "transfer", f"state_change_vortex_strength_net_{axis}") ** 2
+            for axis in "xyz"
+        )
     )
-    fidelity.set(xlabel="flow time [s]", ylabel=r"$L_2$", title=r"$\nabla\cdot\omega$")
+    fidelity.semilogy(
+        time,
+        np.maximum(state_change, 1e-30),
+        color=util.COLORS["fvm"],
+    )
+    fidelity.set(
+        xlabel="flow time [s]",
+        ylabel=r"$|\Delta\Gamma|$ [m$^3$/s]",
+        title="Net state change",
+    )
 
     quality = axes[1, 1]
-    quality.semilogy(
-        time,
-        np.maximum(_values(records, "transfer", "correction_vortex_strength_l1"), 1e-30),
-        color=util.COLORS["accent"],
-    )
+    for key, label, color in (
+        ("replaced_vortex_strength_l1", "replaced", util.COLORS["fvm"]),
+        ("injected_vortex_strength_l1", "injected", util.COLORS["accent"]),
+    ):
+        quality.semilogy(
+            time,
+            np.maximum(_values(records, "transfer", key), 1e-30),
+            color=color,
+            label=label,
+        )
     quality.set(
         xlabel="flow time [s]",
-        ylabel=r"$\|\Delta\Gamma\|_1$ [m$^3$/s]",
-        title="Transfer correction",
+        ylabel=r"$\|\Gamma\|_1$ [m$^3$/s]",
+        title="State replacement",
     )
+    quality.legend(loc="upper left", fontsize=LEGEND_FONT_SIZE)
 
     util.save(fig, "coupling_diagnostics", figure_format, dpi)
     plt.close(fig)

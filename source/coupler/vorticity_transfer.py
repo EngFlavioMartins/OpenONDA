@@ -1,59 +1,37 @@
-"""Velocity-defect and vorticity-defect transfer from FVM to VPM."""
+"""Absolute FVM-state replacement inside the FVM--VPM overlap."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 import logging
 
 import numpy as np
 
-from source.coupler.interpolation import FVMVelocityInterpolator
 from source.coupler.reporting import format_coupler_log
 
 logger = logging.getLogger("coupler")
 
 
-VelocityEvaluator = Callable[[np.ndarray], np.ndarray]
-
-_BLOB_SECOND_MOMENT = {
-    "GAUSSIAN": 1.5,
-    "WINCKELMANS": 1.5,
-    "HIGH_ORDER_GAUSSIAN": 0.0,
-    "SUPER_GAUSSIAN": 0.0,
-}
-
-
-def vortex_strength_from_velocity_trace(
-    position: np.ndarray,
-    particle_spacing: float,
-    velocity_at: VelocityEvaluator,
-) -> np.ndarray:
-    """Integrate ``normal x velocity`` over each cubic particle control volume."""
-    position = np.asarray(position, dtype=np.float64).reshape(-1, 3)
-    vortex_strength = np.zeros_like(position)
-    offset = np.zeros(3, dtype=np.float64)
-    for axis in range(3):
-        offset.fill(0.0)
-        offset[axis] = 0.5 * particle_spacing
-        velocity_difference = np.asarray(
-            velocity_at(position + offset), dtype=np.float64
-        ) - np.asarray(velocity_at(position - offset), dtype=np.float64)
-        normal = np.zeros(3, dtype=np.float64)
-        normal[axis] = 1.0
-        vortex_strength += particle_spacing**2 * np.cross(normal, velocity_difference)
-    return vortex_strength
-
-
-def cosine_eta(
+def replacement_eta(
     points: np.ndarray,
-    box: np.ndarray,
-    authority_ramp_width: float,
-    vpm_only_width: float,
+    box: np.ndarray | list[float] | tuple[float, ...],
+    blend_width: float,
 ) -> np.ndarray:
-    """Return the C1 FVM-authority partition on points inside ``box``."""
+    """Return the FVM state-replacement weight at ``points``.
+
+    ``blend_width == 0`` selects a hard ownership boundary: every point inside
+    ``box`` has ``eta = 1`` and every point outside has ``eta = 0``. A positive
+    width replaces the hard jump by a C1 cosine ramp measured inward from the
+    six box faces. This is a state partition, not an additive correction.
+    """
     position = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     bounds = np.asarray(box, dtype=np.float64).reshape(6)
+    width = float(blend_width)
+    if not np.all(np.isfinite(bounds)) or np.any(bounds[1::2] <= bounds[::2]):
+        raise ValueError("replacement box must contain six finite increasing bounds")
+    if not np.isfinite(width) or width < 0.0:
+        raise ValueError("eta_blend_width must be finite and non-negative")
+
     distance = np.minimum.reduce(
         [
             position[:, 0] - bounds[0],
@@ -64,537 +42,220 @@ def cosine_eta(
             bounds[5] - position[:, 2],
         ]
     )
-    authority = np.zeros(len(position), dtype=np.float64)
-    dead_zone = max(float(vpm_only_width), 0.0)
-    ramp_end = float(authority_ramp_width)
-    if ramp_end <= dead_zone:
-        authority[distance > dead_zone] = 1.0
-        return authority
-    authority[distance >= ramp_end] = 1.0
-    ramp = (distance > dead_zone) & (distance < ramp_end)
-    phase = (distance[ramp] - dead_zone) / (ramp_end - dead_zone)
-    authority[ramp] = 0.5 * (1.0 - np.cos(np.pi * phase))
-    return authority
+    eta = np.zeros(len(position), dtype=np.float64)
+    inside = distance >= 0.0
+    if width == 0.0:
+        eta[inside] = 1.0
+        return eta
 
-
-def _aligned_axis(
-    lower: float,
-    upper: float,
-    particle_spacing: float,
-    anchor: float | None,
-) -> np.ndarray:
-    """Cell centres whose half-cell faces remain inside one transfer bound."""
-    h = float(particle_spacing)
-    first_allowed = float(lower) + 0.5 * h
-    last_allowed = float(upper) - 0.5 * h
-    if last_allowed < first_allowed:
-        raise ValueError("transfer region is narrower than one particle cell")
-    if anchor is None:
-        first = first_allowed
-    else:
-        first = float(anchor) + np.ceil((first_allowed - float(anchor)) / h) * h
-    count = int(np.floor((last_allowed - first) / h + 64.0 * np.finfo(float).eps)) + 1
-    if count < 1:
-        raise ValueError("transfer lattice contains no cells")
-    return first + h * np.arange(count, dtype=np.float64)
+    eta[distance >= width] = 1.0
+    ramp = inside & (distance < width)
+    eta[ramp] = 0.5 * (1.0 - np.cos(np.pi * distance[ramp] / width))
+    return eta
 
 
 @dataclass(frozen=True)
-class TransferLattice:
-    """Regular correction lattice contained by the FVM transfer box."""
-
-    origin: np.ndarray
-    shape: tuple[int, int, int]
-    position: np.ndarray
-    interior_nodes: np.ndarray
-
-
-def build_transfer_lattice(
-    box: np.ndarray | list[float],
-    particle_spacing: float,
-    *,
-    lattice_anchor: np.ndarray | None = None,
-    interior_at_node: Callable[[np.ndarray], np.ndarray] | None = None,
-) -> TransferLattice:
-    """Build the fixed lattice used by the compatible velocity-curl transfer."""
-    bounds = np.asarray(box, dtype=np.float64).reshape(6)
-    anchor = None if lattice_anchor is None else np.asarray(lattice_anchor, dtype=np.float64)
-    axes = tuple(
-        _aligned_axis(
-            bounds[2 * axis],
-            bounds[2 * axis + 1],
-            particle_spacing,
-            None if anchor is None else float(anchor[axis]),
-        )
-        for axis in range(3)
-    )
-    grid = np.meshgrid(*axes, indexing="ij")
-    position = np.column_stack([component.ravel() for component in grid])
-    shape = (len(axes[0]), len(axes[1]), len(axes[2]))
-    interior = (
-        np.zeros(len(position), dtype=bool)
-        if interior_at_node is None
-        else np.asarray(interior_at_node(position), dtype=bool).reshape(-1)
-    )
-    if interior.shape != (len(position),):
-        raise ValueError("interior_at_node returned the wrong number of values")
-    return TransferLattice(
-        origin=np.array([axis[0] for axis in axes], dtype=np.float64),
-        shape=shape,
-        position=position,
-        interior_nodes=interior,
-    )
-
-
-def _extended_positions(
-    lattice: TransferLattice,
-    particle_spacing: float,
-    *,
-    guard_layers: int = 1,
-) -> tuple[np.ndarray, tuple[int, int, int]]:
-    """Return the collocated lattice with the requested guard layers."""
-    h = float(particle_spacing)
-    if guard_layers < 0:
-        raise ValueError("guard_layers must be non-negative")
-    axes: list[np.ndarray] = []
-    for component, count in enumerate(lattice.shape):
-        axes.append(
-            lattice.origin[component] - guard_layers * h + h * np.arange(count + 2 * guard_layers)
-        )
-    extended_shape = (len(axes[0]), len(axes[1]), len(axes[2]))
-    mesh = np.meshgrid(*axes, indexing="ij")
-    return np.column_stack([component.ravel() for component in mesh]), extended_shape
-
-
-def discrete_divergence(
-    vortex_strength: np.ndarray,
-    shape: tuple[int, int, int],
-    particle_spacing: float,
-) -> np.ndarray:
-    """Return centred ``div_h(vorticity)`` on lattice interior nodes."""
-    field = np.asarray(vortex_strength, dtype=np.float64).reshape(*shape, 3)
-    h = float(particle_spacing)
-    if min(shape) < 3:
-        return np.zeros((0, 0, 0), dtype=np.float64)
-    vorticity = field / h**3
-    return (
-        (vorticity[2:, 1:-1, 1:-1, 0] - vorticity[:-2, 1:-1, 1:-1, 0])
-        + (vorticity[1:-1, 2:, 1:-1, 1] - vorticity[1:-1, :-2, 1:-1, 1])
-        + (vorticity[1:-1, 1:-1, 2:, 2] - vorticity[1:-1, 1:-1, :-2, 2])
-    ) / (2.0 * h)
-
-
-def normalized_divergence(
-    vortex_strength: np.ndarray,
-    shape: tuple[int, int, int],
-    particle_spacing: float,
-) -> tuple[float, float]:
-    """Return dimensionless L2 and Linf divergence of a lattice field."""
-    lattice_vortex_strength = np.asarray(vortex_strength, dtype=np.float64).reshape(*shape, 3)
-    divergence = discrete_divergence(lattice_vortex_strength, shape, particle_spacing)
-    if divergence.size == 0:
-        return 0.0, 0.0
-    vorticity = lattice_vortex_strength[1:-1, 1:-1, 1:-1] / float(particle_spacing) ** 3
-    scale_l2 = float(np.linalg.norm(vorticity)) / np.sqrt(max(vorticity.size // 3, 1))
-    scale_max = float(np.max(np.linalg.norm(vorticity, axis=-1), initial=0.0))
-    h = float(particle_spacing)
-    l2 = h * float(np.linalg.norm(divergence)) / np.sqrt(divergence.size)
-    linf = h * float(np.max(np.abs(divergence), initial=0.0))
-    return l2 / (scale_l2 + np.finfo(float).tiny), linf / (scale_max + np.finfo(float).tiny)
-
-
-@dataclass
 class TransferResult:
-    """Correction particles and diagnostics from one FVM-to-VPM handoff."""
+    """Particle and circulation budget for one absolute state replacement."""
 
-    position: np.ndarray
-    vortex_strength: np.ndarray
-    particle_volume: np.ndarray
-    core_radius: np.ndarray
-    updated_indices: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=np.int64))
-    updated_vortex_strength: np.ndarray = field(
-        default_factory=lambda: np.empty((0, 3), dtype=np.float64)
+    n_particles_before: int
+    n_particles_retained: int
+    n_particles_removed: int
+    n_particles_blended: int
+    n_particles_injected: int
+    n_particles_after: int
+    injected_vortex_strength_l1: float
+    injected_vortex_strength_net: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
-    n_existing_particles: int = 0
-    n_support_nodes: int = 0
-    correction_vortex_strength_l1: float = 0.0
-    correction_vortex_strength_net: np.ndarray = field(default_factory=lambda: np.zeros(3))
-    divergence_correction_l2: float = 0.0
-    divergence_correction_linf: float = 0.0
-    diagnostics_evaluated: bool = True
+    replaced_vortex_strength_l1: float = 0.0
+    replaced_vortex_strength_net: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    state_change_vortex_strength_net: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    eta_blending_enabled: bool = False
 
-    @property
-    def n_added_particles(self) -> int:
-        return len(self.position)
 
-    @property
-    def n_updated_particles(self) -> int:
-        return len(self.updated_indices)
+def _validate_particle_sources(
+    position: np.ndarray,
+    cell_volume: np.ndarray,
+    vorticity: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    source_position = np.asarray(position, dtype=np.float64).reshape(-1, 3)
+    volume = np.asarray(cell_volume, dtype=np.float64).reshape(-1)
+    source_vorticity = np.asarray(vorticity, dtype=np.float64).reshape(-1, 3)
+    if len(source_position) != len(volume) or len(source_position) != len(source_vorticity):
+        raise ValueError("FVM position, volume, and vorticity counts must match")
+    if not np.all(np.isfinite(source_position)):
+        raise RuntimeError("FVM cell positions contain non-finite values")
+    if not np.all(np.isfinite(volume)) or np.any(volume <= 0.0):
+        raise RuntimeError("FVM cell volumes must be finite and positive")
+    if not np.all(np.isfinite(source_vorticity)):
+        raise RuntimeError("FVM cell vorticity contains non-finite values")
+    return source_position, volume, source_vorticity
 
-    @property
-    def n_total_particles(self) -> int:
-        return self.n_existing_particles + self.n_added_particles
+
+def replace_particles_from_fvm(
+    vpm,
+    *,
+    transfer_box: np.ndarray | list[float] | tuple[float, ...],
+    eta_blend_width: float,
+    fvm_position: np.ndarray,
+    fvm_cell_volume: np.ndarray,
+    fvm_vorticity: np.ndarray,
+    core_radius_ratio: float,
+    kinematic_viscosity: float,
+    fvm_solid_mask: np.ndarray | None = None,
+) -> TransferResult:
+    r"""Replace the overlap state with literal FVM cell circulation.
+
+    Existing particles are attenuated by ``1 - eta`` and FVM cell particles
+    carry ``eta * V_cell * omega_F``. Consequently ``eta = 1`` is a hard
+    delete/reinject operation, ``eta = 0`` leaves the VPM state untouched, and
+    intermediate values form a partition-of-unity state blend. Particles
+    outside ``transfer_box`` are never mutated.
+    """
+    ratio = float(core_radius_ratio)
+    viscosity = float(kinematic_viscosity)
+    if not np.isfinite(ratio) or ratio <= 0.0:
+        raise ValueError("core_radius_ratio must be finite and positive")
+    if not np.isfinite(viscosity) or viscosity < 0.0:
+        raise ValueError("kinematic_viscosity must be finite and non-negative")
+
+    source_position, source_volume, source_vorticity = _validate_particle_sources(
+        fvm_position,
+        fvm_cell_volume,
+        fvm_vorticity,
+    )
+    source_eta = replacement_eta(source_position, transfer_box, eta_blend_width)
+    if fvm_solid_mask is not None:
+        solid = np.asarray(fvm_solid_mask, dtype=bool).reshape(-1)
+        if len(solid) != len(source_position):
+            raise ValueError("fvm_solid_mask must match the FVM cell count")
+        source_eta[solid] = 0.0
+
+    source_strength = source_volume[:, None] * source_vorticity
+    inject = (source_eta > 0.0) & np.any(source_strength != 0.0, axis=1)
+    injected_position = source_position[inject]
+    injected_volume = source_volume[inject]
+    injected_strength = source_eta[inject, None] * source_strength[inject]
+    injected_core_radius = ratio * np.cbrt(injected_volume)
+
+    particles = vpm.particles
+    n_before = int(particles.n_particles_total)
+    existing_position = np.asarray(particles.position_cpu(), dtype=np.float64).reshape(-1, 3)
+    existing_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64).reshape(-1, 3)
+    if len(existing_position) != n_before or len(existing_strength) != n_before:
+        raise RuntimeError("VPM particle arrays do not match the active particle count")
+    if not np.all(np.isfinite(existing_position)) or not np.all(np.isfinite(existing_strength)):
+        raise RuntimeError("VPM particle state contains non-finite values")
+
+    existing_eta = replacement_eta(existing_position, transfer_box, eta_blend_width)
+    tolerance = 32.0 * np.finfo(np.float64).eps
+    remove = existing_eta >= 1.0 - tolerance
+    blend = (existing_eta > tolerance) & ~remove
+    remove_index = np.flatnonzero(remove)
+    n_removed = int(len(remove_index))
+    n_blended = int(np.count_nonzero(blend))
+    n_injected = int(len(injected_position))
+    n_after = n_before - n_removed + n_injected
+    capacity = int(particles.capacity)
+    if n_after > capacity:
+        raise RuntimeError(
+            "FVM overlap replacement requires "
+            f"{n_after:,} particles ({n_before:,} before, {n_removed:,} removed, "
+            f"{n_injected:,} injected), exceeding the VPM capacity {capacity:,}."
+        )
+
+    replaced_strength = existing_eta[:, None] * existing_strength
+    replaced_net = replaced_strength.sum(axis=0)
+    injected_net = injected_strength.sum(axis=0)
+
+    # Complete every validation and capacity check before the first mutation.
+    if n_blended:
+        vpm.update_particle_vortex_strength(
+            blend,
+            -existing_eta[blend, None] * existing_strength[blend],
+        )
+    if n_removed:
+        vpm.remove_particles(particle_indices=remove_index.tolist())
+    if n_injected:
+        dtype = vpm.np_dtype
+        vpm.add_vortex_particles(
+            position=np.ascontiguousarray(injected_position, dtype=dtype),
+            velocity=np.zeros((n_injected, 3), dtype=dtype),
+            vortex_strength=np.ascontiguousarray(injected_strength, dtype=dtype),
+            core_radius=np.ascontiguousarray(injected_core_radius, dtype=dtype),
+            particle_volume=np.ascontiguousarray(injected_volume, dtype=dtype),
+            kinematic_viscosity=np.full(n_injected, viscosity, dtype=dtype),
+            eddy_viscosity=np.zeros(n_injected, dtype=dtype),
+            group_id=np.zeros(n_injected, dtype=np.int32),
+            zone_id=np.zeros(n_injected, dtype=np.int32),
+        )
+
+    actual_after = int(particles.n_particles_total)
+    if actual_after != n_after:
+        raise RuntimeError(
+            f"VPM particle count after replacement is {actual_after}, expected {n_after}"
+        )
+    return TransferResult(
+        n_particles_before=n_before,
+        n_particles_retained=n_before - n_removed,
+        n_particles_removed=n_removed,
+        n_particles_blended=n_blended,
+        n_particles_injected=n_injected,
+        n_particles_after=n_after,
+        injected_vortex_strength_l1=float(np.linalg.norm(injected_strength, axis=1).sum()),
+        injected_vortex_strength_net=injected_net,
+        replaced_vortex_strength_l1=float(np.linalg.norm(replaced_strength, axis=1).sum()),
+        replaced_vortex_strength_net=replaced_net,
+        state_change_vortex_strength_net=injected_net - replaced_net,
+        eta_blending_enabled=float(eta_blend_width) > 0.0,
+    )
 
 
 def _transfer_log_record(step: int, result: TransferResult) -> str:
-    """Return one factual record for an FVM-to-VPM transfer."""
-    divergence = (
-        f"{result.divergence_correction_l2:.3e}"
-        if result.diagnostics_evaluated
-        else "not evaluated"
-    )
     return format_coupler_log(
-        "Transfer",
-        f"step {step:,}",
-        f"particles   existing {result.n_existing_particles:,}"
-        f" | updated {result.n_updated_particles:,}"
-        f" | added {result.n_added_particles:,}"
-        f" | total {result.n_total_particles:,}",
-        f"support     {result.n_support_nodes:,} lattice nodes",
-        "correction  vortex-strength magnitude sum "
-        f"{result.correction_vortex_strength_l1:.3e} m^3/s"
-        f" | net magnitude {float(np.linalg.norm(result.correction_vortex_strength_net)):.3e} m^3/s",
-        f"divergence  relative vorticity L2 {divergence}",
+        "StateReplacement",
+        f"step {step:,} | eta blend {'on' if result.eta_blending_enabled else 'off'}",
+        "particles  "
+        f"before {result.n_particles_before:,} | removed {result.n_particles_removed:,}"
+        f" | blended {result.n_particles_blended:,} | injected {result.n_particles_injected:,}"
+        f" | after {result.n_particles_after:,}",
+        "vortex strength  "
+        f"replaced L1 {result.replaced_vortex_strength_l1:.3e}"
+        f" | injected L1 {result.injected_vortex_strength_l1:.3e} m^3/s"
+        f" | net state change {float(np.linalg.norm(result.state_change_vortex_strength_net)):.3e} m^3/s",
     )
-
-
-def solenoidal_velocity_correction(
-    lattice: TransferLattice,
-    particle_spacing: float,
-    *,
-    fvm_velocity_at: VelocityEvaluator,
-    vpm_velocity_at: VelocityEvaluator,
-    authority_at: Callable[[np.ndarray], np.ndarray],
-    identity_authority_at: Callable[[np.ndarray], np.ndarray] | None = None,
-    core_radius_ratio: float,
-    blob_second_moment: float = 1.5,
-    n_existing_particles: int = 0,
-    compute_diagnostics: bool = True,
-) -> TransferResult:
-    r"""Return a blob-consistent compatible curl as correction particles.
-
-    The leading convolution error of an isotropic blob with second moment
-    ``m2`` is removed from the velocity defect before taking the curl:
-    ``curl_h[(I - m2*sigma**2/6 Laplacian_h) eta (u_F-u_V)]``.  The correction
-    is used only where the complete Laplacian stencil exists.
-    """
-    h = float(particle_spacing)
-    shape = lattice.shape
-    sigma = h * float(core_radius_ratio)
-    m2 = float(blob_second_moment)
-    if not np.isfinite(m2) or m2 < 0.0:
-        raise ValueError("blob_second_moment must be finite and non-negative")
-    extended_position, extended_shape = _extended_positions(lattice, h, guard_layers=2)
-    authority = np.asarray(authority_at(extended_position), dtype=np.float64).reshape(-1)
-    if authority.shape != (len(extended_position),):
-        raise ValueError("authority_at returned the wrong number of values")
-    if np.any(~np.isfinite(authority)) or np.any((authority < 0.0) | (authority > 1.0)):
-        raise ValueError("authority_at must return finite values in [0, 1]")
-
-    defect = np.zeros((len(extended_position), 3), dtype=np.float64)
-    active = authority > 0.0
-    if active.any():
-        fvm_velocity = np.asarray(
-            fvm_velocity_at(extended_position[active]), dtype=np.float64
-        ).reshape(-1, 3)
-        vpm_velocity = np.asarray(
-            vpm_velocity_at(extended_position[active]), dtype=np.float64
-        ).reshape(-1, 3)
-        if fvm_velocity.shape != vpm_velocity.shape or fvm_velocity.shape != (
-            int(active.sum()),
-            3,
-        ):
-            raise ValueError("velocity evaluators returned incompatible shapes")
-        if not np.all(np.isfinite(fvm_velocity)) or not np.all(np.isfinite(vpm_velocity)):
-            raise RuntimeError("velocity-defect evaluation returned non-finite values")
-        defect[active] = authority[active, None] * (fvm_velocity - vpm_velocity)
-
-    twice_guarded_defect = defect.reshape(*extended_shape, 3)
-    velocity_defect = twice_guarded_defect[1:-1, 1:-1, 1:-1].copy()
-    if m2 > 0.0:
-        laplacian = (
-            twice_guarded_defect[2:, 1:-1, 1:-1]
-            + twice_guarded_defect[:-2, 1:-1, 1:-1]
-            + twice_guarded_defect[1:-1, 2:, 1:-1]
-            + twice_guarded_defect[1:-1, :-2, 1:-1]
-            + twice_guarded_defect[1:-1, 1:-1, 2:]
-            + twice_guarded_defect[1:-1, 1:-1, :-2]
-            - 6.0 * velocity_defect
-        ) / h**2
-        active_grid = active.reshape(extended_shape)
-        complete_stencil = active_grid[1:-1, 1:-1, 1:-1].copy()
-        complete_stencil &= active_grid[2:, 1:-1, 1:-1]
-        complete_stencil &= active_grid[:-2, 1:-1, 1:-1]
-        complete_stencil &= active_grid[1:-1, 2:, 1:-1]
-        complete_stencil &= active_grid[1:-1, :-2, 1:-1]
-        complete_stencil &= active_grid[1:-1, 1:-1, 2:]
-        complete_stencil &= active_grid[1:-1, 1:-1, :-2]
-        velocity_defect[complete_stencil] -= (m2 * sigma**2 / 6.0) * laplacian[complete_stencil]
-    d_dx = (velocity_defect[2:, 1:-1, 1:-1] - velocity_defect[:-2, 1:-1, 1:-1]) / (2.0 * h)
-    d_dy = (velocity_defect[1:-1, 2:, 1:-1] - velocity_defect[1:-1, :-2, 1:-1]) / (2.0 * h)
-    d_dz = (velocity_defect[1:-1, 1:-1, 2:] - velocity_defect[1:-1, 1:-1, :-2]) / (2.0 * h)
-    correction = h**3 * np.stack(
-        [
-            d_dy[..., 2] - d_dz[..., 1],
-            d_dz[..., 0] - d_dx[..., 2],
-            d_dx[..., 1] - d_dy[..., 0],
-        ],
-        axis=-1,
-    )
-
-    identity_authority = np.asarray(
-        (authority_at if identity_authority_at is None else identity_authority_at)(
-            lattice.position
-        ),
-        dtype=np.float64,
-    ).reshape(-1)
-    if identity_authority.shape != (len(lattice.position),):
-        raise ValueError("identity_authority_at returned the wrong number of values")
-    identity_active = identity_authority.reshape(shape) > 0.0
-    outside_identity = ~identity_active & np.any(correction != 0.0, axis=-1)
-    if np.any(outside_identity):
-        raise RuntimeError(
-            "compatible curl reached an eta=0 particle node; reserve one velocity-stencil "
-            "guard layer inside the declared correction authority"
-        )
-
-    authority_grid = authority.reshape(extended_shape)[1:-1, 1:-1, 1:-1]
-    support = authority_grid[1:-1, 1:-1, 1:-1] > 0.0
-    support |= authority_grid[2:, 1:-1, 1:-1] > 0.0
-    support |= authority_grid[:-2, 1:-1, 1:-1] > 0.0
-    support |= authority_grid[1:-1, 2:, 1:-1] > 0.0
-    support |= authority_grid[1:-1, :-2, 1:-1] > 0.0
-    support |= authority_grid[1:-1, 1:-1, 2:] > 0.0
-    support |= authority_grid[1:-1, 1:-1, :-2] > 0.0
-
-    support &= ~lattice.interior_nodes.reshape(shape)
-    support &= identity_active
-    correction[~support] = 0.0
-    flat = correction.reshape(-1, 3)
-    nonzero = support.reshape(-1) & np.any(flat != 0.0, axis=1)
-    position = lattice.position[nonzero]
-    vortex_strength = flat[nonzero]
-    particle_volume = np.full(len(position), h**3, dtype=np.float64)
-    core_radius = np.full(len(position), h * float(core_radius_ratio), dtype=np.float64)
-    divergence_l2, divergence_linf = (0.0, 0.0)
-    if compute_diagnostics:
-        divergence_l2, divergence_linf = normalized_divergence(flat, shape, h)
-    return TransferResult(
-        position=position,
-        vortex_strength=vortex_strength,
-        particle_volume=particle_volume,
-        core_radius=core_radius,
-        n_existing_particles=int(n_existing_particles),
-        n_support_nodes=int(support.sum()),
-        correction_vortex_strength_l1=float(np.linalg.norm(vortex_strength, axis=1).sum()),
-        correction_vortex_strength_net=np.sum(vortex_strength, axis=0),
-        divergence_correction_l2=divergence_l2,
-        divergence_correction_linf=divergence_linf,
-        diagnostics_evaluated=compute_diagnostics,
-    )
-
-
-def vorticity_defect_correction(
-    lattice: TransferLattice,
-    particle_spacing: float,
-    *,
-    fvm_vorticity_at: VelocityEvaluator,
-    vpm_vorticity_at: VelocityEvaluator,
-    authority_at: Callable[[np.ndarray], np.ndarray],
-    identity_authority_at: Callable[[np.ndarray], np.ndarray] | None = None,
-    core_radius_ratio: float,
-    n_existing_particles: int = 0,
-    compute_diagnostics: bool = True,
-) -> TransferResult:
-    r"""Return the FVM vorticity defect as correction particles.
-
-    The control volume of one lattice cell carries ``h**3 eta (w_F - w_V)``,
-    the vortex strength that makes the particle at that node hold the donor
-    vorticity the FVM computed with its own operator on its own mesh.  No
-    difference is taken on the coupling lattice, so a donor field resolved
-    below the lattice spacing is transferred rather than re-derived from a
-    velocity trace.
-
-    Unlike the compatible curl, this correction is not discretely solenoidal:
-    it inherits ``div_h(w_F)`` from the donor field and from the interpolation
-    onto the lattice.  ``divergence_correction_l2`` reports what it carries.
-    """
-    h = float(particle_spacing)
-    shape = lattice.shape
-    authority = np.asarray(authority_at(lattice.position), dtype=np.float64).reshape(-1)
-    if authority.shape != (len(lattice.position),):
-        raise ValueError("authority_at returned the wrong number of values")
-    if np.any(~np.isfinite(authority)) or np.any((authority < 0.0) | (authority > 1.0)):
-        raise ValueError("authority_at must return finite values in [0, 1]")
-
-    correction = np.zeros((len(lattice.position), 3), dtype=np.float64)
-    active = authority > 0.0
-    if active.any():
-        fvm_vorticity = np.asarray(
-            fvm_vorticity_at(lattice.position[active]), dtype=np.float64
-        ).reshape(-1, 3)
-        vpm_vorticity = np.asarray(
-            vpm_vorticity_at(lattice.position[active]), dtype=np.float64
-        ).reshape(-1, 3)
-        if fvm_vorticity.shape != vpm_vorticity.shape or fvm_vorticity.shape != (
-            int(active.sum()),
-            3,
-        ):
-            raise ValueError("vorticity evaluators returned incompatible shapes")
-        if not np.all(np.isfinite(fvm_vorticity)) or not np.all(np.isfinite(vpm_vorticity)):
-            raise RuntimeError("vorticity-defect evaluation returned non-finite values")
-        correction[active] = h**3 * authority[active, None] * (fvm_vorticity - vpm_vorticity)
-
-    identity_authority = np.asarray(
-        (authority_at if identity_authority_at is None else identity_authority_at)(
-            lattice.position
-        ),
-        dtype=np.float64,
-    ).reshape(-1)
-    if identity_authority.shape != (len(lattice.position),):
-        raise ValueError("identity_authority_at returned the wrong number of values")
-
-    support = (identity_authority > 0.0) & ~lattice.interior_nodes
-    correction[~support] = 0.0
-    nonzero = support & np.any(correction != 0.0, axis=1)
-    position = lattice.position[nonzero]
-    vortex_strength = correction[nonzero]
-    particle_volume = np.full(len(position), h**3, dtype=np.float64)
-    core_radius = np.full(len(position), h * float(core_radius_ratio), dtype=np.float64)
-    divergence_l2, divergence_linf = (0.0, 0.0)
-    if compute_diagnostics:
-        divergence_l2, divergence_linf = normalized_divergence(correction, shape, h)
-    return TransferResult(
-        position=position,
-        vortex_strength=vortex_strength,
-        particle_volume=particle_volume,
-        core_radius=core_radius,
-        n_existing_particles=int(n_existing_particles),
-        n_support_nodes=int(support.sum()),
-        correction_vortex_strength_l1=float(np.linalg.norm(vortex_strength, axis=1).sum()),
-        correction_vortex_strength_net=np.sum(vortex_strength, axis=0),
-        divergence_correction_l2=divergence_l2,
-        divergence_correction_linf=divergence_linf,
-        diagnostics_evaluated=compute_diagnostics,
-    )
-
-
-def coalesce_lattice_corrections(
-    result: TransferResult,
-    existing_position: np.ndarray,
-    existing_core_radius: np.ndarray,
-    lattice: TransferLattice,
-    particle_spacing: float,
-    correction_radius: float,
-) -> TransferResult:
-    """Add coincident same-kernel corrections through existing particles.
-
-    Only vortex strength is updated. Position, core radius, particle volume,
-    kinematic viscosity, IDs, and all other persistent fields remain untouched.
-    """
-    if result.n_added_particles == 0 or len(existing_position) == 0:
-        return result
-
-    position = np.asarray(existing_position, dtype=np.float64).reshape(-1, 3)
-    core_radius = np.asarray(existing_core_radius, dtype=np.float64).reshape(-1)
-    if len(position) != len(core_radius):
-        raise ValueError("existing particle position and core_radius counts must match")
-
-    h = float(particle_spacing)
-    lattice_index = np.rint((position - lattice.origin) / h).astype(np.int64)
-    reconstructed = lattice.origin + h * lattice_index
-    on_lattice = np.max(np.abs(position - reconstructed), axis=1) <= 1.0e-4 * h
-    on_lattice &= np.all(lattice_index >= 0, axis=1)
-    on_lattice &= np.all(lattice_index < np.asarray(lattice.shape), axis=1)
-    on_lattice &= np.isclose(core_radius, correction_radius, rtol=1.0e-5, atol=1.0e-7 * h)
-
-    existing_by_node: dict[tuple[int, int, int], int] = {}
-    for particle_index in np.flatnonzero(on_lattice):
-        existing_by_node.setdefault(tuple(lattice_index[particle_index]), int(particle_index))
-
-    correction_index = np.rint((result.position - lattice.origin) / h).astype(np.int64)
-    matched_particle = np.array(
-        [existing_by_node.get(tuple(index), -1) for index in correction_index], dtype=np.int64
-    )
-    matched = matched_particle >= 0
-    if not matched.any():
-        return result
-
-    order = np.argsort(matched_particle[matched])
-    result.updated_indices = matched_particle[matched][order]
-    result.updated_vortex_strength = result.vortex_strength[matched][order]
-    result.position = result.position[~matched]
-    result.vortex_strength = result.vortex_strength[~matched]
-    result.particle_volume = result.particle_volume[~matched]
-    result.core_radius = result.core_radius[~matched]
-    return result
 
 
 class VorticityTransfer:
-    """Apply one compatible velocity-defect curl without rebuilding the VPM."""
+    """Synchronize the inner VPM cloud with the absolute FVM vorticity state."""
 
     def __init__(self, coupler):
         cfg = coupler.setup
-        if (
-            coupler.kinematic_viscosity is None
-            or coupler.vpm_time_step_size is None
-            or coupler.fvm_box is None
-        ):
+        if coupler.kinematic_viscosity is None or coupler.fvm_box is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM state")
         self.config = cfg
-        self.particle_spacing = float(cfg.vpm_particle_spacing)
-        self.kinematic_viscosity = float(coupler.kinematic_viscosity)
-        self.authority_ramp_width = float(cfg.authority_ramp_width)
-        self.vpm_only_width = float(cfg.vpm_only_width)
         self.core_radius_ratio = float(cfg.vpm_core_radius_ratio)
-        self.transfer_mode = str(cfg.vorticity_transfer_mode)
+        self.eta_blend_width = float(cfg.eta_blend_width)
+        self.kinematic_viscosity = float(coupler.kinematic_viscosity)
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
         self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
         self._box: np.ndarray | None = None
         self._cell_centre: np.ndarray | None = None
-        self._cell_tree = None
-        self._velocity_trace: FVMVelocityInterpolator | None = None
+        self._cell_volume: np.ndarray | None = None
+        self._fvm_solid_mask: np.ndarray | None = None
         self._body_bounds: np.ndarray | None = None
         self._solid_bodies: tuple = ()
         self._lattice_anchor: np.ndarray | None = None
-        self._lattice: TransferLattice | None = None
         self._face_cells: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self.step = 0
         self.last_transfer_diagnostics: dict[str, float] = {}
         self.last_interface_flow: dict[str, float] = {}
         self.last_vortex_line_closure: dict[str, float] = {}
-
-    def _build_face_cell_index(self) -> None:
-        self._face_cells = {}
-        if self._cell_centre is None or self._box is None:
-            return
-        centres = self._cell_centre
-        for axis in range(3):
-            for side, (bound, sign) in enumerate(
-                ((self._box[2 * axis], -1.0), (self._box[2 * axis + 1], 1.0))
-            ):
-                inside = np.ones(len(centres), dtype=bool)
-                for other in range(3):
-                    if other != axis:
-                        inside &= (centres[:, other] >= self._box[2 * other]) & (
-                            centres[:, other] <= self._box[2 * other + 1]
-                        )
-                index = np.flatnonzero(
-                    inside & (np.abs(centres[:, axis] - bound) <= self.particle_spacing)
-                )
-                if index.size:
-                    normal = np.zeros(3)
-                    normal[axis] = sign
-                    name = f"{'xyz'[axis]}{'min' if side == 0 else 'max'}"
-                    self._face_cells[name] = (index, normal)
-
-    def check_interface_flow(self, velocity: np.ndarray) -> dict[str, float]:
-        values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
-        return {
-            name: float(np.mean(values[index] @ normal))
-            for name, (index, normal) in self._face_cells.items()
-            if index.max(initial=-1) < len(values)
-        }
 
     @staticmethod
     def _vorticity_from_gradient(gradient: np.ndarray) -> np.ndarray:
@@ -609,6 +270,55 @@ class VorticityTransfer:
             axis=1,
         )
 
+    def _points_in_solid(self, points, *, include_boundary: bool) -> np.ndarray:
+        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        inside = np.zeros(len(query), dtype=bool)
+        for body in self._solid_bodies:
+            inside |= np.asarray(
+                body.contains(query, include_boundary=include_boundary), dtype=bool
+            ).reshape(-1)
+        if self._body_bounds is not None:
+            lower = self._body_bounds[[0, 2, 4]]
+            upper = self._body_bounds[[1, 3, 5]]
+            comparison = (query >= lower) & (query <= upper)
+            if not include_boundary:
+                comparison = (query > lower) & (query < upper)
+            inside |= np.all(comparison, axis=1)
+        return inside
+
+    def _build_face_cell_index(self) -> None:
+        self._face_cells = {}
+        if self._cell_centre is None or self._box is None:
+            return
+        centres = self._cell_centre
+        scale = (
+            np.cbrt(self._cell_volume) if self._cell_volume is not None else np.zeros(len(centres))
+        )
+        for axis in range(3):
+            for side, (bound, sign) in enumerate(
+                ((self._box[2 * axis], -1.0), (self._box[2 * axis + 1], 1.0))
+            ):
+                inside = np.ones(len(centres), dtype=bool)
+                for other in range(3):
+                    if other != axis:
+                        inside &= (centres[:, other] >= self._box[2 * other]) & (
+                            centres[:, other] <= self._box[2 * other + 1]
+                        )
+                index = np.flatnonzero(inside & (np.abs(centres[:, axis] - bound) <= scale))
+                if index.size:
+                    normal = np.zeros(3)
+                    normal[axis] = sign
+                    name = f"{'xyz'[axis]}{'min' if side == 0 else 'max'}"
+                    self._face_cells[name] = (index, normal)
+
+    def check_interface_flow(self, velocity: np.ndarray) -> dict[str, float]:
+        values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
+        return {
+            name: float(np.mean(values[index] @ normal))
+            for name, (index, normal) in self._face_cells.items()
+            if index.max(initial=-1) < len(values)
+        }
+
     def check_vortex_line_closure(self, velocity_gradient: np.ndarray) -> dict[str, float]:
         vorticity = self._vorticity_from_gradient(velocity_gradient)
         scale = float(np.linalg.norm(vorticity, axis=1).mean()) + np.finfo(float).tiny
@@ -619,14 +329,16 @@ class VorticityTransfer:
         }
 
     def setup(self, fvm) -> None:
-        transfer_box = self.config.transfer_region_bounds or self._fvm_box
-        self._box = np.asarray(transfer_box, dtype=np.float64)
-        from scipy.spatial import cKDTree  # type: ignore[attr-defined]
+        self._box = np.asarray(
+            self.config.transfer_region_bounds or self._fvm_box, dtype=np.float64
+        )
+        self._cell_centre = np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64).reshape(
+            -1, 3
+        )
+        self._cell_volume = np.asarray(fvm.get_cell_volume(), dtype=np.float64).reshape(-1)
 
-        self._cell_centre = np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64)
-
-        # Partitioned FVM getters are collective even though only rank zero
-        # receives assembled arrays. Keep their order identical on all ranks.
+        # These partitioned getters are collective, even though only rank zero
+        # receives the assembled arrays. Keep their call order identical.
         wall_patches = [
             boundary_condition.name
             for boundary_condition in fvm.setup.boundaries
@@ -641,11 +353,12 @@ class VorticityTransfer:
         if len(self._cell_centre) == 0:
             self._build_face_cell_index()
             return
-        self._cell_tree = cKDTree(self._cell_centre)
-        self._velocity_trace = FVMVelocityInterpolator(
+        if len(self._cell_volume) != len(self._cell_centre):
+            raise RuntimeError("FVM cell-centre and cell-volume counts do not match")
+        _validate_particle_sources(
             self._cell_centre,
-            self._cell_tree,
-            neighbour_count=4,
+            self._cell_volume,
+            np.zeros_like(self._cell_centre),
         )
 
         if wall_faces is not None and len(wall_faces):
@@ -661,20 +374,10 @@ class VorticityTransfer:
             )
             on_planes = np.zeros(len(wall_faces), dtype=bool)
             for axis in range(3):
-                on_planes |= np.isclose(wall_faces[:, axis], bounds[2 * axis], atol=1e-9)
-                on_planes |= np.isclose(wall_faces[:, axis], bounds[2 * axis + 1], atol=1e-9)
+                on_planes |= np.isclose(wall_faces[:, axis], bounds[2 * axis], atol=1.0e-9)
+                on_planes |= np.isclose(wall_faces[:, axis], bounds[2 * axis + 1], atol=1.0e-9)
             if on_planes.all():
-                wall_cells = (bounds[[1, 3, 5]] - bounds[[0, 2, 4]]) / self.particle_spacing
-                if not np.allclose(wall_cells, np.rint(wall_cells), rtol=0.0, atol=1.0e-10):
-                    raise ValueError(
-                        "VPM particle spacing must divide every axis-aligned body extent; "
-                        f"got body cells {wall_cells.tolist()} at h={self.particle_spacing:.12g}. "
-                        "Use a wall-commensurate transfer/GBD lattice."
-                    )
                 self._body_bounds = bounds
-                # Put lattice nodes on the exact wall planes. With a zero
-                # velocity defect on/in the solid, curl support then lies
-                # on the wall and fluid nodes, never in the open interior.
                 self._lattice_anchor = bounds[[0, 2, 4]]
 
         ibm = getattr(fvm, "ibm", None)
@@ -684,212 +387,64 @@ class VorticityTransfer:
             self._body_bounds = None
             self._lattice_anchor = self._cell_centre[0].copy()
 
-        self._lattice = build_transfer_lattice(
-            self._box,
-            self.particle_spacing,
-            lattice_anchor=self._lattice_anchor,
-            interior_at_node=lambda points: self._points_in_solid(points, include_boundary=False),
+        self._fvm_solid_mask = self._points_in_solid(
+            self._cell_centre,
+            include_boundary=True,
         )
+        donor_eta = replacement_eta(self._cell_centre, self._box, self.eta_blend_width)
+        donor_count = int(np.count_nonzero((donor_eta > 0.0) & ~self._fvm_solid_mask))
+        if donor_count == 0:
+            raise ValueError("FVM transfer region contains no fluid cell centres")
         self._build_face_cell_index()
         logger.info(
             format_coupler_log(
-                "TransferGrid",
-                f"{len(self._lattice.position):,} nodes | spacing {self.particle_spacing:.4g} m",
-                f"authority  ramp {self.authority_ramp_width:.4g} m"
-                f" | VPM-only width {self.vpm_only_width:.4g} m",
-                f"correction  {self.transfer_mode}",
+                "ReplacementRegion",
+                f"{donor_count:,} FVM fluid cells",
+                f"eta blend {'off' if self.eta_blend_width == 0.0 else f'{self.eta_blend_width:.4g} m'}",
+                "state  Gamma = cell volume * FVM vorticity",
             )
-        )
-
-    def _points_in_solid(self, points, *, include_boundary: bool) -> np.ndarray:
-        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-        inside = np.zeros(len(query), dtype=bool)
-        for body in self._solid_bodies:
-            inside |= np.asarray(
-                body.contains(query, include_boundary=include_boundary), dtype=bool
-            ).reshape(-1)
-        if self._body_bounds is not None:
-            lower = self._body_bounds[[0, 2, 4]]
-            upper = self._body_bounds[[1, 3, 5]]
-            if include_boundary:
-                inside |= np.all((query >= lower) & (query <= upper), axis=1)
-            else:
-                inside |= np.all((query > lower) & (query < upper), axis=1)
-        return inside
-
-    @staticmethod
-    def _chunked_evaluate(
-        points: np.ndarray,
-        evaluator: VelocityEvaluator,
-        *,
-        chunk_size: int = 100_000,
-    ) -> np.ndarray:
-        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-        result = np.empty_like(query)
-        for start in range(0, len(query), chunk_size):
-            stop = min(start + chunk_size, len(query))
-            result[start:stop] = np.asarray(evaluator(query[start:stop]), dtype=np.float64).reshape(
-                -1, 3
-            )
-        return result
-
-    def _sample_vpm_velocity(self, vpm, points: np.ndarray) -> np.ndarray:
-        return self._chunked_evaluate(
-            points,
-            lambda query: vpm.compute_velocity_at_points(
-                query,
-                include_freestream=True,
-                zone_mask=None,
-                include_body=True,
-            ),
-        )
-
-    def _sample_vpm_vorticity(self, vpm, points: np.ndarray) -> np.ndarray:
-        return self._chunked_evaluate(points, vpm.compute_vorticity_at_points)
-
-    def _fluid_authority(self, points: np.ndarray) -> np.ndarray:
-        """Velocity-blend authority with solid and identity guards."""
-        assert self._box is not None
-        dead_zone = self.vpm_only_width
-        ramp_end = self.authority_ramp_width
-        if dead_zone > 0.0:
-            dead_zone += self.particle_spacing
-            ramp_end += self.particle_spacing
-        authority = cosine_eta(
-            points,
-            self._box,
-            ramp_end,
-            dead_zone,
-        )
-        authority[self._points_in_solid(points, include_boundary=True)] = 0.0
-        return authority
-
-    def _identity_authority(self, points: np.ndarray) -> np.ndarray:
-        """Declared correction authority used for pointwise identity checks."""
-        assert self._box is not None
-        return cosine_eta(
-            points,
-            self._box,
-            self.authority_ramp_width,
-            self.vpm_only_width,
         )
 
     def transfer(self, vpm, velocity, velocity_gradient) -> TransferResult:
-        """Add the compatible velocity-defect curl to the existing VPM cloud."""
+        """Replace the inner particle state and preserve the outer particle cloud."""
         self.step += 1
-        if self._box is None or self._lattice is None or self._velocity_trace is None:
-            raise RuntimeError("VorticityTransfer.setup() has not prepared a transfer lattice")
-        cell_position = self._cell_centre
-        assert cell_position is not None
+        if self._box is None or self._cell_centre is None or self._cell_volume is None:
+            raise RuntimeError("VorticityTransfer.setup() has not prepared the FVM donor cells")
         velocity_values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
         gradient_values = np.asarray(velocity_gradient, dtype=np.float64).reshape(-1, 3, 3)
-        if len(velocity_values) != len(cell_position) or len(gradient_values) != len(cell_position):
+        if len(velocity_values) != len(self._cell_centre) or len(gradient_values) != len(
+            self._cell_centre
+        ):
             raise ValueError("FVM velocity, gradient, and cell-centre counts must match")
 
         self.last_interface_flow = self.check_interface_flow(velocity_values)
         self.last_vortex_line_closure = self.check_vortex_line_closure(gradient_values)
-        evaluate_diagnostics = self.step % self.diagnostic_interval == 0
-        if self.transfer_mode == "vorticity_defect":
-            donor_vorticity = self._vorticity_from_gradient(gradient_values)
-            result = vorticity_defect_correction(
-                self._lattice,
-                self.particle_spacing,
-                fvm_vorticity_at=lambda points: self._velocity_trace.sample_cell_field(
-                    points,
-                    donor_vorticity,
-                ),
-                vpm_vorticity_at=lambda points: self._sample_vpm_vorticity(vpm, points),
-                authority_at=self._fluid_authority,
-                identity_authority_at=self._identity_authority,
-                core_radius_ratio=self.core_radius_ratio,
-                n_existing_particles=int(vpm.particles.n_particles_total),
-                compute_diagnostics=evaluate_diagnostics,
-            )
-        else:
-            result = solenoidal_velocity_correction(
-                self._lattice,
-                self.particle_spacing,
-                fvm_velocity_at=lambda points: self._velocity_trace.sample(
-                    points,
-                    velocity_values,
-                    gradient_values,
-                ),
-                vpm_velocity_at=lambda points: self._sample_vpm_velocity(vpm, points),
-                authority_at=self._fluid_authority,
-                identity_authority_at=self._identity_authority,
-                core_radius_ratio=self.core_radius_ratio,
-                blob_second_moment=_BLOB_SECOND_MOMENT[getattr(vpm, "particle_kernel", "GAUSSIAN")],
-                n_existing_particles=int(vpm.particles.n_particles_total),
-                compute_diagnostics=evaluate_diagnostics,
-            )
-
-        can_coalesce = all(
-            hasattr(vpm.particles, name) for name in ("position_cpu", "core_radius_cpu")
+        result = replace_particles_from_fvm(
+            vpm,
+            transfer_box=self._box,
+            eta_blend_width=self.eta_blend_width,
+            fvm_position=self._cell_centre,
+            fvm_cell_volume=self._cell_volume,
+            fvm_vorticity=self._vorticity_from_gradient(gradient_values),
+            core_radius_ratio=self.core_radius_ratio,
+            kinematic_viscosity=self.kinematic_viscosity,
+            fvm_solid_mask=self._fvm_solid_mask,
         )
-        if result.n_added_particles and can_coalesce:
-            result = coalesce_lattice_corrections(
-                result,
-                vpm.particles.position_cpu(),
-                vpm.particles.core_radius_cpu(),
-                self._lattice,
-                self.particle_spacing,
-                self.particle_spacing * self.core_radius_ratio,
-            )
-
-        required = result.n_total_particles
-        capacity = int(vpm.particles.capacity)
-        if required > capacity:
-            raise RuntimeError(
-                "FVM-to-VPM correction requires "
-                f"{result.n_added_particles} new particles ({result.n_existing_particles} existing, "
-                f"required capacity {required}, VPM maximum {capacity}). Increase "
-                "VPMSetup.max_n_particles; the coupler will not delete wake particles."
-            )
-
-        if result.n_updated_particles:
-            mask = np.zeros(result.n_existing_particles, dtype=bool)
-            mask[result.updated_indices] = True
-            vpm.update_particle_vortex_strength(mask, result.updated_vortex_strength)
-
-        if result.n_added_particles:
-            dtype = vpm.np_dtype
-            vpm.add_vortex_particles(
-                position=result.position.astype(dtype),
-                velocity=np.zeros((result.n_added_particles, 3), dtype=dtype),
-                vortex_strength=result.vortex_strength.astype(dtype),
-                core_radius=result.core_radius.astype(dtype),
-                particle_volume=result.particle_volume.astype(dtype),
-                kinematic_viscosity=np.full(
-                    result.n_added_particles, self.kinematic_viscosity, dtype=dtype
-                ),
-                eddy_viscosity=np.zeros(result.n_added_particles, dtype=dtype),
-                group_id=np.zeros(result.n_added_particles, dtype=np.int32),
-                zone_id=np.zeros(result.n_added_particles, dtype=np.int32),
-            )
-
-        if result.n_added_particles:
-            notify_mutation = getattr(vpm, "notify_external_particle_mutation", None)
-            if notify_mutation is not None:
-                notify_mutation()
-
         self.last_transfer_diagnostics = {
-            "correction_divergence_l2": result.divergence_correction_l2,
-            "correction_divergence_linf": result.divergence_correction_linf,
+            "injected_vortex_strength_l1": result.injected_vortex_strength_l1,
+            "replaced_vortex_strength_l1": result.replaced_vortex_strength_l1,
+            "state_change_vortex_strength_net": float(
+                np.linalg.norm(result.state_change_vortex_strength_net)
+            ),
         }
-        logger.info(_transfer_log_record(self.step, result))
+        if self.step % self.diagnostic_interval == 0:
+            logger.info(_transfer_log_record(self.step, result))
         return result
 
 
 __all__ = [
-    "TransferLattice",
     "TransferResult",
     "VorticityTransfer",
-    "build_transfer_lattice",
-    "coalesce_lattice_corrections",
-    "cosine_eta",
-    "discrete_divergence",
-    "normalized_divergence",
-    "solenoidal_velocity_correction",
-    "vortex_strength_from_velocity_trace",
-    "vorticity_defect_correction",
+    "replace_particles_from_fvm",
+    "replacement_eta",
 ]

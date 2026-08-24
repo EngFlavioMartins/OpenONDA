@@ -1,4 +1,4 @@
-"""Compact physical contracts for the baseline FVM--VPM exchange."""
+"""Physical contracts for absolute FVM-state replacement in the overlap."""
 
 from __future__ import annotations
 
@@ -12,319 +12,221 @@ from source.coupler.boundary import advance_fvm_substeps
 from source.coupler.interpolation import FVMVelocityInterpolator
 from source.coupler.vorticity_transfer import (
     VorticityTransfer,
-    build_transfer_lattice,
-    cosine_eta,
-    normalized_divergence,
-    solenoidal_velocity_correction,
-    vortex_strength_from_velocity_trace,
+    replace_particles_from_fvm,
+    replacement_eta,
 )
 
 BOX = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
-PARTICLE_SPACING = 0.1
 
 
-def _lattice(box=BOX, particle_spacing=PARTICLE_SPACING):
-    return build_transfer_lattice(box, particle_spacing)
+class _Particles:
+    def __init__(self, position: np.ndarray, vortex_strength: np.ndarray, capacity: int = 100):
+        self.position = np.asarray(position, dtype=np.float64).reshape(-1, 3).copy()
+        self.vortex_strength = np.asarray(vortex_strength, dtype=np.float64).reshape(-1, 3).copy()
+        self.capacity = capacity
+        self.n_particles_total = len(self.position)
+
+    def position_cpu(self):
+        return self.position.copy()
+
+    def vortex_strength_cpu(self):
+        return self.vortex_strength.copy()
 
 
-def _scatter(lattice, result):
-    field = np.zeros((len(lattice.position), 3))
-    index = {tuple(position): i for i, position in enumerate(lattice.position)}
-    for position, vortex_strength in zip(result.position, result.vortex_strength, strict=True):
-        field[index[tuple(position)]] = vortex_strength
-    return field
-
-
-def _transfer(velocity_at, *, vpm_only_width=0.0):
-    class VelocityTrace:
-        @staticmethod
-        def sample(position, _velocity, _velocity_gradient):
-            return velocity_at(position)
-
-    transfer = object.__new__(VorticityTransfer)
-    transfer.step = 0
-    transfer.diagnostic_interval = 100
-    transfer._box = BOX.copy()
-    transfer._lattice = _lattice()
-    transfer._velocity_trace = VelocityTrace()
-    transfer._cell_centre = np.zeros((1, 3))
-    transfer._face_cells = {}
-    transfer._body_bounds = None
-    transfer._solid_bodies = ()
-    transfer.particle_spacing = PARTICLE_SPACING
-    transfer.authority_ramp_width = 4.0 * PARTICLE_SPACING
-    transfer.vpm_only_width = vpm_only_width
-    transfer.core_radius_ratio = 1.0
-    transfer.transfer_mode = "velocity_defect"
-    transfer.kinematic_viscosity = 1.0e-3
-    transfer.last_interface_flow = {}
-    transfer.last_vortex_line_closure = {}
-    transfer.last_transfer_diagnostics = {}
-    return transfer
-
-
-def test_uniform_velocity_and_solid_body_rotation_have_exact_curl():
-    rng = np.random.default_rng(4)
-    position = rng.uniform(-1.0, 1.0, (100, 3))
-    h = 0.05
-    uniform = vortex_strength_from_velocity_trace(
-        position,
-        h,
-        lambda query: np.tile([1.3, -0.4, 0.7], (len(query), 1)),
-    )
-    np.testing.assert_array_equal(uniform, np.zeros_like(uniform))
-
-    vorticity = np.array([0.3, -0.2, 1.1])
-    rotating = vortex_strength_from_velocity_trace(
-        position,
-        h,
-        lambda query: 0.5 * np.cross(vorticity, np.asarray(query)),
-    )
-    np.testing.assert_allclose(
-        rotating,
-        np.tile(vorticity * h**3, (len(position), 1)),
-        rtol=0.0,
-        atol=2.0e-18,
-    )
-
-
-def test_zero_authority_is_an_exact_identity():
-    def forbidden(_position):
-        raise AssertionError("a velocity evaluator was called where eta is zero")
-
-    result = solenoidal_velocity_correction(
-        _lattice(),
-        PARTICLE_SPACING,
-        fvm_velocity_at=forbidden,
-        vpm_velocity_at=forbidden,
-        authority_at=lambda position: np.zeros(len(position)),
-        core_radius_ratio=1.0,
-        n_existing_particles=7,
-    )
-
-    assert result.n_added_particles == 0
-    assert result.n_updated_particles == 0
-    assert result.n_total_particles == 7
-    assert result.n_support_nodes == 0
-
-
-class _ParticleStateVPM:
+class _VPM:
     np_dtype = np.float64
-    particle_kernel = "HIGH_ORDER_GAUSSIAN"
 
-    def __init__(self, position, velocity_at):
-        count = len(position)
-        self.velocity_at = velocity_at
-        self.mutation_notifications = 0
-        self.state = {
-            "position": position.copy(),
-            "velocity": np.arange(3 * count, dtype=float).reshape(count, 3) / 100.0,
-            "vortex_strength": np.zeros((count, 3)),
-            "core_radius": np.full(count, PARTICLE_SPACING),
-            "particle_volume": np.full(count, PARTICLE_SPACING**3),
-            "kinematic_viscosity": np.linspace(1.0e-4, 2.0e-4, count),
-            "eddy_viscosity": np.linspace(2.0e-5, 3.0e-5, count),
-            "effective_viscosity": np.linspace(1.2e-4, 2.3e-4, count),
-            "group_id": np.arange(count, dtype=np.int32) % 7,
-            "zone_id": np.arange(count, dtype=np.int32) % 5,
-            "lineage": np.linspace(0.0, 1.0, count),
-        }
-        self.particles = SimpleNamespace(
-            n_particles_total=count,
-            capacity=2 * count,
-            position_cpu=lambda: self.state["position"].copy(),
-            core_radius_cpu=lambda: self.state["core_radius"].copy(),
-        )
-
-    def compute_velocity_at_points(self, position, **_kwargs):
-        return self.velocity_at(position)
+    def __init__(self, position: np.ndarray, vortex_strength: np.ndarray, capacity: int = 100):
+        self.particles = _Particles(position, vortex_strength, capacity)
+        self.added_fields: list[dict] = []
 
     def update_particle_vortex_strength(self, mask, increment):
-        self.state["vortex_strength"][mask] += increment
+        self.particles.vortex_strength[np.asarray(mask, dtype=bool)] += np.asarray(increment)
 
-    def add_vortex_particles(self, **_fields):
-        raise AssertionError("an on-lattice correction unexpectedly added particles")
+    def remove_particles(self, particle_indices=None, remove_all=False):
+        if remove_all:
+            keep = np.zeros(self.particles.n_particles_total, dtype=bool)
+        else:
+            keep = np.ones(self.particles.n_particles_total, dtype=bool)
+            keep[np.asarray(particle_indices, dtype=np.int64)] = False
+        self.particles.position = self.particles.position[keep]
+        self.particles.vortex_strength = self.particles.vortex_strength[keep]
+        self.particles.n_particles_total = len(self.particles.position)
 
-    def notify_external_particle_mutation(self):
-        self.mutation_notifications += 1
-
-
-def test_active_transfer_preserves_complete_state_where_eta_is_zero():
-    def rotating_velocity(position):
-        position = np.asarray(position)
-        return np.column_stack((-position[:, 1], position[:, 0], np.zeros(len(position))))
-
-    transfer = _transfer(rotating_velocity, vpm_only_width=2.0 * PARTICLE_SPACING)
-    lattice = transfer._lattice
-    assert lattice is not None
-    vpm = _ParticleStateVPM(
-        lattice.position,
-        lambda position: np.zeros((len(position), 3)),
-    )
-    before = {name: value.copy() for name, value in vpm.state.items()}
-    zero_authority = transfer._identity_authority(lattice.position) == 0.0
-
-    result = transfer.transfer(vpm, np.zeros((1, 3)), np.zeros((1, 3, 3)))
-
-    assert result.n_updated_particles > 0
-    assert result.n_added_particles == 0
-    assert vpm.mutation_notifications == 0
-    np.testing.assert_array_equal(
-        vpm.state["vortex_strength"][zero_authority],
-        before["vortex_strength"][zero_authority],
-    )
-    for name in before.keys() - {"vortex_strength"}:
-        np.testing.assert_array_equal(vpm.state[name], before[name])
-
-
-def test_consistent_state_is_a_repeated_fixed_point_with_full_state_preserved():
-    def velocity(position):
-        position = np.asarray(position)
-        return np.column_stack(
-            (
-                0.2 + 0.3 * position[:, 0] - 0.1 * position[:, 2],
-                -0.4 + 0.2 * position[:, 1] + 0.5 * position[:, 2],
-                0.1 - 0.3 * position[:, 0] + 0.4 * position[:, 1],
-            )
+    def add_vortex_particles(self, **fields):
+        self.added_fields.append({name: np.asarray(value).copy() for name, value in fields.items()})
+        self.particles.position = np.concatenate(
+            [self.particles.position, np.asarray(fields["position"], dtype=np.float64)]
         )
-
-    transfer = _transfer(velocity)
-    lattice = transfer._lattice
-    assert lattice is not None
-    vpm = _ParticleStateVPM(lattice.position, velocity)
-    before = {name: value.copy() for name, value in vpm.state.items()}
-
-    for _ in range(50):
-        result = transfer.transfer(vpm, np.zeros((1, 3)), np.zeros((1, 3, 3)))
-        assert result.n_added_particles == 0
-        assert result.n_updated_particles == 0
-        assert result.correction_vortex_strength_l1 == 0.0
-
-    assert vpm.mutation_notifications == 0
-    for name, value in before.items():
-        np.testing.assert_array_equal(vpm.state[name], value)
-
-
-def test_particle_evaluated_donor_is_idempotent_for_twenty_transfers(tmp_path):
-    pytest.importorskip("taichi", reason="VPM requires taichi")
-    from source.solvers.vpm import (
-        AdvectionConfig,
-        StretchingConfig,
-        VelocityConfig,
-        ViscousConfig,
-        VPMSetup,
-        VPMSolver,
-    )
-
-    vpm = VPMSolver(
-        VPMSetup(
-            compute_device="CPU",
-            velocity=VelocityConfig.direct(),
-            stretching=StretchingConfig.disabled(),
-            viscous=ViscousConfig(scheme="NONE"),
-            advection=AdvectionConfig(scheme="NONE"),
-            checkpoint_interval_steps=0,
-            logging_interval_steps=0,
-            checkpoint_directory=str(tmp_path),
-            max_n_particles=2048,
-        )
-    )
-    position = np.array(
-        [
-            [-0.2, -0.1, 0.0],
-            [0.2, -0.1, 0.0],
-            [0.2, 0.1, 0.0],
-            [-0.2, 0.1, 0.0],
-        ],
-        dtype=np.float32,
-    )
-    vpm.add_vortex_particles(
-        position=position,
-        velocity=np.arange(12, dtype=np.float32).reshape(4, 3) * 0.01,
-        vortex_strength=np.array(
+        self.particles.vortex_strength = np.concatenate(
             [
-                [0.0, 0.04, 0.0],
-                [0.0, 0.0, 0.04],
-                [0.0, -0.04, 0.0],
-                [0.0, 0.0, -0.04],
-            ],
-            dtype=np.float32,
-        ),
-        core_radius=np.array([0.11, 0.12, 0.13, 0.14], dtype=np.float32),
-        particle_volume=np.array([0.008, 0.009, 0.010, 0.011], dtype=np.float32),
-        kinematic_viscosity=np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32) * 1.0e-4,
-        eddy_viscosity=np.array([4.0, 3.0, 2.0, 1.0], dtype=np.float32) * 1.0e-5,
-        group_id=np.array([2, 3, 4, 5], dtype=np.int32),
-        zone_id=np.array([6, 7, 8, 9], dtype=np.int32),
-    )
-
-    def physical_velocity(query):
-        return vpm.compute_velocity_at_points(
-            query,
-            include_freestream=True,
-            zone_mask=None,
-            include_body=True,
+                self.particles.vortex_strength,
+                np.asarray(fields["vortex_strength"], dtype=np.float64),
+            ]
         )
+        self.particles.n_particles_total = len(self.particles.position)
 
-    transfer = _transfer(physical_velocity)
-    field_names = (
-        "particle_position",
-        "particle_velocity",
-        "particle_vortex_strength",
-        "particle_core_radius",
-        "particle_volume",
-        "particle_kinematic_viscosity",
-        "particle_eddy_viscosity",
-        "particle_effective_viscosity",
-        "particle_group_id",
-        "particle_zone_id",
-        "particle_velocity_gradient",
-        "particle_strain_rate",
+
+def _replace(
+    vpm: _VPM,
+    fvm_position: np.ndarray,
+    fvm_volume: np.ndarray,
+    fvm_vorticity: np.ndarray,
+    *,
+    blend_width: float = 0.0,
+    solid_mask: np.ndarray | None = None,
+):
+    return replace_particles_from_fvm(
+        vpm,
+        transfer_box=BOX,
+        eta_blend_width=blend_width,
+        fvm_position=fvm_position,
+        fvm_cell_volume=fvm_volume,
+        fvm_vorticity=fvm_vorticity,
+        core_radius_ratio=1.25,
+        kinematic_viscosity=1.0e-3,
+        fvm_solid_mask=solid_mask,
     )
-    before = {name: np.asarray(getattr(vpm, name)).copy() for name in field_names}
-    mutation_notifications = 0
 
-    def record_mutation():
-        nonlocal mutation_notifications
-        mutation_notifications += 1
 
-    vpm.notify_external_particle_mutation = record_mutation
-    for _ in range(20):
-        result = transfer.transfer(
+def test_eta_zero_width_is_hard_ownership_and_positive_width_is_c1_blend():
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.25, 0.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [0.6, 0.0, 0.0],
+        ]
+    )
+    np.testing.assert_array_equal(replacement_eta(points, BOX, 0.0), [1.0, 1.0, 1.0, 0.0])
+    np.testing.assert_allclose(replacement_eta(points, BOX, 0.5), [1.0, 0.5, 0.0, 0.0])
+
+    epsilon = 1.0e-7
+    near_boundary = np.array([[0.5 - epsilon, 0.0, 0.0]])
+    near_core = np.array([[epsilon, 0.0, 0.0]])
+    assert replacement_eta(near_boundary, BOX, 0.5)[0] < 2.0e-12
+    assert 1.0 - replacement_eta(near_core, BOX, 0.5)[0] < 2.0e-12
+
+
+def test_hard_replacement_removes_inner_particles_injects_cell_circulation_and_preserves_outer():
+    outer_position = np.array([[0.8, 0.0, 0.0], [-0.7, 0.1, 0.0]])
+    outer_strength = np.array([[0.1, 0.2, 0.3], [-0.2, 0.1, 0.0]])
+    vpm = _VPM(
+        np.vstack(([0.0, 0.0, 0.0], outer_position)),
+        np.vstack(([9.0, 9.0, 9.0], outer_strength)),
+    )
+    fvm_position = np.array([[0.0, 0.0, 0.0], [0.9, 0.0, 0.0]])
+    volume = np.array([0.125, 0.125])
+    vorticity = np.array([[0.0, 4.0, -2.0], [7.0, 7.0, 7.0]])
+
+    result = _replace(vpm, fvm_position, volume, vorticity)
+
+    assert result.n_particles_before == 3
+    assert result.n_particles_removed == 1
+    assert result.n_particles_blended == 0
+    assert result.n_particles_injected == 1
+    assert result.n_particles_after == 3
+    np.testing.assert_array_equal(vpm.particles.position[:2], outer_position)
+    np.testing.assert_array_equal(vpm.particles.vortex_strength[:2], outer_strength)
+    np.testing.assert_array_equal(vpm.particles.position[2], fvm_position[0])
+    np.testing.assert_allclose(vpm.particles.vortex_strength[2], volume[0] * vorticity[0])
+    np.testing.assert_allclose(vpm.added_fields[-1]["particle_volume"], [volume[0]])
+    np.testing.assert_allclose(vpm.added_fields[-1]["core_radius"], [1.25 * np.cbrt(volume[0])])
+
+
+def test_identical_hard_replacement_is_an_exact_fixed_point_for_one_hundred_cycles():
+    outer_position = np.array([[0.8, 0.0, 0.0]])
+    outer_strength = np.array([[0.1, -0.2, 0.3]])
+    vpm = _VPM(outer_position, outer_strength)
+    fvm_position = np.array([[-0.2, 0.0, 0.0], [0.2, 0.0, 0.0]])
+    volume = np.array([0.01, 0.02])
+    vorticity = np.array([[2.0, -1.0, 0.5], [-0.5, 3.0, 1.0]])
+
+    expected_position = None
+    expected_strength = None
+    for cycle in range(100):
+        result = _replace(vpm, fvm_position, volume, vorticity)
+        if cycle == 0:
+            expected_position = vpm.particles.position.copy()
+            expected_strength = vpm.particles.vortex_strength.copy()
+        else:
+            np.testing.assert_array_equal(vpm.particles.position, expected_position)
+            np.testing.assert_array_equal(vpm.particles.vortex_strength, expected_strength)
+            np.testing.assert_allclose(result.state_change_vortex_strength_net, 0.0, atol=1.0e-18)
+        np.testing.assert_array_equal(vpm.particles.position[0], outer_position[0])
+        np.testing.assert_array_equal(vpm.particles.vortex_strength[0], outer_strength[0])
+
+
+def test_eta_blend_is_a_state_partition_not_an_additive_defect():
+    # At x=0.25 the distance to the x+ face is 0.25, so a 0.5-m ramp has eta=0.5.
+    position = np.array([[0.25, 0.0, 0.0], [0.8, 0.0, 0.0]])
+    target_strength = np.array([[0.0, 2.0, 0.0], [0.3, 0.1, -0.2]])
+    vpm = _VPM(position, target_strength)
+    volume = np.array([0.25])
+    vorticity = np.array([[0.0, 8.0, 0.0]])
+
+    result = _replace(
+        vpm,
+        position[:1],
+        volume,
+        vorticity,
+        blend_width=0.5,
+    )
+
+    assert result.n_particles_removed == 0
+    assert result.n_particles_blended == 1
+    assert result.n_particles_injected == 1
+    # The retained half and injected half sum to the original target state.
+    np.testing.assert_allclose(vpm.particles.vortex_strength[0], [0.0, 1.0, 0.0])
+    np.testing.assert_allclose(vpm.particles.vortex_strength[2], [0.0, 1.0, 0.0])
+    np.testing.assert_allclose(
+        vpm.particles.vortex_strength[[0, 2]].sum(axis=0),
+        target_strength[0],
+    )
+    np.testing.assert_array_equal(vpm.particles.vortex_strength[1], target_strength[1])
+
+
+def test_solid_fvm_cells_are_not_injected():
+    vpm = _VPM(np.empty((0, 3)), np.empty((0, 3)))
+    result = _replace(
+        vpm,
+        np.array([[0.0, 0.0, 0.0], [0.2, 0.0, 0.0]]),
+        np.array([0.01, 0.01]),
+        np.array([[4.0, 0.0, 0.0], [0.0, 5.0, 0.0]]),
+        solid_mask=np.array([True, False]),
+    )
+    assert result.n_particles_injected == 1
+    np.testing.assert_array_equal(vpm.particles.position, [[0.2, 0.0, 0.0]])
+
+
+def test_capacity_failure_is_checked_before_particle_mutation():
+    position = np.array([[0.8, 0.0, 0.0]])
+    strength = np.array([[0.1, 0.2, 0.3]])
+    vpm = _VPM(position, strength, capacity=1)
+    before_position = vpm.particles.position.copy()
+    before_strength = vpm.particles.vortex_strength.copy()
+
+    with pytest.raises(RuntimeError, match="exceeding the VPM capacity"):
+        _replace(
             vpm,
-            np.zeros((1, 3)),
-            np.zeros((1, 3, 3)),
+            np.array([[-0.2, 0.0, 0.0], [0.2, 0.0, 0.0]]),
+            np.array([0.01, 0.01]),
+            np.ones((2, 3)),
         )
-        assert result.n_added_particles == 0
-        assert result.n_updated_particles == 0
-        assert result.correction_vortex_strength_l1 == 0.0
-
-    assert mutation_notifications == 0
-    for name, value in before.items():
-        np.testing.assert_array_equal(getattr(vpm, name), value)
+    np.testing.assert_array_equal(vpm.particles.position, before_position)
+    np.testing.assert_array_equal(vpm.particles.vortex_strength, before_strength)
 
 
-def test_compatible_velocity_curl_is_discretely_solenoidal():
-    box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
-    h = 0.1
-    lattice = _lattice(box, h)
-
-    def velocity(position):
-        x, y, z = np.asarray(position).T
-        return np.column_stack((-y + 0.2 * y * z, x - 0.1 * x * z, 0.3 * x * y))
-
-    result = solenoidal_velocity_correction(
-        lattice,
-        h,
-        fvm_velocity_at=velocity,
-        vpm_velocity_at=lambda position: np.zeros((len(position), 3)),
-        authority_at=lambda position: cosine_eta(position, box, 0.3, 0.0),
-        core_radius_ratio=1.0,
+def test_fvm_gradient_curl_matches_cell_vorticity_convention():
+    gradient = np.zeros((2, 3, 3))
+    gradient[0, 1, 2] = 3.0
+    gradient[0, 2, 1] = -2.0
+    gradient[1, 2, 0] = 4.0
+    gradient[1, 0, 2] = 1.5
+    np.testing.assert_array_equal(
+        VorticityTransfer._vorticity_from_gradient(gradient),
+        [[5.0, 0.0, 0.0], [0.0, 2.5, 0.0]],
     )
-    l2, linf = normalized_divergence(_scatter(lattice, result), lattice.shape, h)
-
-    assert l2 < 5.0e-14
-    assert linf < 5.0e-14
 
 
 def _quadratic_velocity(position):
@@ -385,32 +287,6 @@ def test_fvm_velocity_interpolation_is_affine_exact_and_second_order_on_graded_m
     errors = np.array([_graded_interpolation_error(n) for n in (7, 13, 25)])
     orders = np.log2(errors[:-1] / errors[1:])
     assert np.all(orders > 1.8), (errors, orders)
-
-
-def test_vortex_crossing_authority_ramp_remains_a_fixed_point():
-    box = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
-    h = 0.1
-    lattice = _lattice(box, h)
-
-    for centre_x in np.linspace(-1.1, 0.2, 14):
-
-        def velocity(position, centre=centre_x):
-            x, y, z = np.asarray(position).T
-            x = x - centre
-            envelope = np.exp(-6.0 * (x**2 + y**2 + z**2))
-            return np.column_stack((np.zeros(len(position)), -z * envelope, y * envelope))
-
-        result = solenoidal_velocity_correction(
-            lattice,
-            h,
-            fvm_velocity_at=velocity,
-            vpm_velocity_at=velocity,
-            authority_at=lambda position: cosine_eta(position, box, 0.3, 0.1),
-            core_radius_ratio=1.0,
-            n_existing_particles=4096,
-        )
-        assert result.n_total_particles == 4096
-        assert result.correction_vortex_strength_l1 == 0.0
 
 
 def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):

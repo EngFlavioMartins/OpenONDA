@@ -83,12 +83,13 @@ def test_cube_flow_timing_resolver_adjusts_steps_without_shifting_outputs():
 
 
 def test_reference_flow_uses_the_same_sampling_and_checkpoint_cadence():
+    coupled = _load_setup(CASE_DIR / "cube_flow_setup.py", "coupled_flow_reference_contract")
     reference = _load_setup(
         CASE_DIR / "reference_flow" / "reference_flow_setup.py",
         "reference_flow_setup_contract",
     )
 
-    assert pytest.approx(0.010) == reference.FVM_TIME_STEP_SIZE
+    assert pytest.approx(coupled.FVM_TIME_STEP_SIZE) == reference.FVM_TIME_STEP_SIZE
     assert pytest.approx(0.050) == reference.SAMPLING_INTERVAL_TIME
     assert all(
         sampler.schedule.every_time == reference.SAMPLING_INTERVAL_TIME

@@ -1,4 +1,4 @@
-"""FVM–VPM coupling driver with VPM boundary conditions and compatible handoff."""
+"""FVM–VPM coupling driver with VPM boundary conditions and state replacement."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def _vpm_solver_info(vpm_solver) -> str:
 
 class FVMVPMCoupler:
     """
-    FVM-VPM coupler for boundary exchange and compatible-curl wake handoff.
+    FVM-VPM coupler for boundary exchange and absolute overlap synchronization.
     """
 
     def __init__(self, fvm_solver, vpm_solver, coupler_setup: CouplerSetup):
@@ -169,7 +169,7 @@ class FVMVPMCoupler:
             if not contains:
                 raise ValueError(
                     f"Injected VPM domain {tuple(dom)} does not contain the FVM "
-                    f"box {tuple(box)}. The near-body particles the coupler injects "
+                    f"box {tuple(box)}. The near-body particles the coupler replaces "
                     "would be removed by the VPM's out-of-bounds cull every step. "
                     "Widen domain_bounds (or the VPM stabilization "
                     "remove_particles_by_bounds) to enclose fvm_box."
@@ -430,6 +430,13 @@ class FVMVPMCoupler:
     def solve(self, start_step: int = 0) -> None:
         """Run the FVM--VPM coupling loop."""
         face_geometry, n_steps = self._prepare_run()
+        if start_step == 0:
+            # Every VPM interval must start from the FVM state at the same
+            # physical time. This first synchronization also supports non-zero
+            # user-supplied initial FVM vorticity while preserving any outer
+            # particles already present in the VPM cloud.
+            initial_result, _ = self._transfer_vorticity_to_vpm(*face_geometry)
+            self._last_transfer_result = initial_result
         initialize_vpm_boundary_history(self, *face_geometry)
         assert self.vpm_time_step_size is not None
         for step in range(1 + start_step, n_steps + 1):
@@ -447,6 +454,9 @@ class FVMVPMCoupler:
             # can apply a reported offset to an output copy when needed.
             transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
             resynchronize_vpm_boundary(self, *face_geometry)
+            if self._is_master:
+                assert self.vpm_solver is not None
+                self.vpm_solver.execute_scheduled_samplers()
             self._last_transfer_result = transfer_result
             record_step(
                 self,
@@ -512,7 +522,7 @@ class FVMVPMCoupler:
             )
 
             with self.vpm_redirector:
-                self.vpm_solver.advance()
+                self.vpm_solver.advance(defer_output=True)
             self.vpm_solver.synchronize()
         return time.perf_counter() - t0
 
@@ -522,7 +532,7 @@ class FVMVPMCoupler:
         _face_normals: np.ndarray,
         _face_area: np.ndarray,
     ):
-        """Fetch the FVM velocity trace and transfer it to the particle lattice."""
+        """Replace the FVM-authoritative part of the particle cloud."""
         t_transfer = time.perf_counter()
         velocity_global = self._get_velocity_field_buffer()
         gradient_global = self._get_velocity_gradient_field_buffer()

@@ -130,8 +130,7 @@ def write_run_metadata(coupler) -> None:
         },
         "vpm_solver": {
             "vpm_particle_spacing": coupler.setup.vpm_particle_spacing,
-            "authority_ramp_width": coupler.setup.authority_ramp_width,
-            "vpm_only_width": coupler.setup.vpm_only_width,
+            "eta_blend_width": coupler.setup.eta_blend_width,
         },
         **coupler.setup.to_dict(),
         "vpm_time_step_size": coupler.vpm_time_step_size,
@@ -150,39 +149,51 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
 
     if result is None:
         transfer = {
-            "diagnostics_evaluated": False,
-            "n_existing_particles": 0,
-            "n_updated_particles": 0,
-            "n_added_particles": 0,
-            "n_support_nodes": 0,
-            "correction_vortex_strength_l1": 0.0,
-            "correction_vortex_strength_net_x": 0.0,
-            "correction_vortex_strength_net_y": 0.0,
-            "correction_vortex_strength_net_z": 0.0,
-            "divergence_correction_l2": None,
-            "divergence_correction_linf": None,
+            "eta_blending_enabled": False,
+            "n_particles_before": 0,
+            "n_particles_retained": 0,
+            "n_particles_removed": 0,
+            "n_particles_blended": 0,
+            "n_particles_injected": 0,
+            "n_particles_after": 0,
+            "injected_vortex_strength_l1": 0.0,
+            "replaced_vortex_strength_l1": 0.0,
+            "injected_vortex_strength_net_x": 0.0,
+            "injected_vortex_strength_net_y": 0.0,
+            "injected_vortex_strength_net_z": 0.0,
+            "replaced_vortex_strength_net_x": 0.0,
+            "replaced_vortex_strength_net_y": 0.0,
+            "replaced_vortex_strength_net_z": 0.0,
+            "state_change_vortex_strength_net_x": 0.0,
+            "state_change_vortex_strength_net_y": 0.0,
+            "state_change_vortex_strength_net_z": 0.0,
         }
         particle_count = 0
     else:
-        correction_net = np.asarray(result.correction_vortex_strength_net, dtype=np.float64)
+        injected_net = np.asarray(result.injected_vortex_strength_net, dtype=np.float64)
+        replaced_net = np.asarray(result.replaced_vortex_strength_net, dtype=np.float64)
+        state_change_net = np.asarray(result.state_change_vortex_strength_net, dtype=np.float64)
         transfer = {
-            "diagnostics_evaluated": bool(result.diagnostics_evaluated),
-            "n_existing_particles": int(result.n_existing_particles),
-            "n_updated_particles": int(result.n_updated_particles),
-            "n_added_particles": int(result.n_added_particles),
-            "n_support_nodes": int(result.n_support_nodes),
-            "correction_vortex_strength_l1": float(result.correction_vortex_strength_l1),
-            "correction_vortex_strength_net_x": float(correction_net[0]),
-            "correction_vortex_strength_net_y": float(correction_net[1]),
-            "correction_vortex_strength_net_z": float(correction_net[2]),
-            "divergence_correction_l2": (
-                float(result.divergence_correction_l2) if result.diagnostics_evaluated else None
-            ),
-            "divergence_correction_linf": (
-                float(result.divergence_correction_linf) if result.diagnostics_evaluated else None
-            ),
+            "eta_blending_enabled": bool(result.eta_blending_enabled),
+            "n_particles_before": int(result.n_particles_before),
+            "n_particles_retained": int(result.n_particles_retained),
+            "n_particles_removed": int(result.n_particles_removed),
+            "n_particles_blended": int(result.n_particles_blended),
+            "n_particles_injected": int(result.n_particles_injected),
+            "n_particles_after": int(result.n_particles_after),
+            "injected_vortex_strength_l1": float(result.injected_vortex_strength_l1),
+            "replaced_vortex_strength_l1": float(result.replaced_vortex_strength_l1),
+            "injected_vortex_strength_net_x": float(injected_net[0]),
+            "injected_vortex_strength_net_y": float(injected_net[1]),
+            "injected_vortex_strength_net_z": float(injected_net[2]),
+            "replaced_vortex_strength_net_x": float(replaced_net[0]),
+            "replaced_vortex_strength_net_y": float(replaced_net[1]),
+            "replaced_vortex_strength_net_z": float(replaced_net[2]),
+            "state_change_vortex_strength_net_x": float(state_change_net[0]),
+            "state_change_vortex_strength_net_y": float(state_change_net[1]),
+            "state_change_vortex_strength_net_z": float(state_change_net[2]),
         }
-        particle_count = result.n_total_particles
+        particle_count = result.n_particles_after
     if not all(
         np.isfinite(value)
         for value in transfer.values()

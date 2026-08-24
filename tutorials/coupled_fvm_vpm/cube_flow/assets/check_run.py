@@ -59,14 +59,20 @@ def _check_coupling_history(coupling: list[dict]) -> None:
     )
     if flux_excess > 0.0:
         raise SystemExit("FAIL: a physically significant VPM boundary flux was projected")
-    correction_divergence = max(
-        float(record["transfer"]["divergence_correction_linf"] or 0.0) for record in coupling
-    )
-    if correction_divergence > 1.0e-10:
-        raise SystemExit(
-            "FAIL: compatible-curl transfer lost solenoidality "
-            f"(dimensionless Linf={correction_divergence:.3g})"
+    for record in coupling:
+        transfer = record["transfer"]
+        expected_after = (
+            int(transfer["n_particles_before"])
+            - int(transfer["n_particles_removed"])
+            + int(transfer["n_particles_injected"])
         )
+        if int(transfer["n_particles_after"]) != expected_after:
+            raise SystemExit("FAIL: inconsistent overlap-replacement particle budget")
+        circulation_budget = [
+            float(transfer[f"state_change_vortex_strength_net_{axis}"]) for axis in "xyz"
+        ]
+        if not np.all(np.isfinite(circulation_budget)):
+            raise SystemExit("FAIL: non-finite overlap-replacement circulation budget")
 
 
 def _check_reference_drag(forces: np.ndarray) -> str:

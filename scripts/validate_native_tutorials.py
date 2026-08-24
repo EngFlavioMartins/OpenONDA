@@ -32,8 +32,7 @@ def _worker(case_dir: Path, compute_device: str) -> None:
     coupler_setup = coupling.CouplerSetup(
         freestream_velocity=freestream,
         vpm_particle_spacing=spacing,
-        authority_ramp_width=2.0 * spacing,
-        vpm_only_width=spacing,
+        eta_blend_width=0.0,
         checkpoint_interval_steps=1,
     )
     line = fvm.LineSampler(
