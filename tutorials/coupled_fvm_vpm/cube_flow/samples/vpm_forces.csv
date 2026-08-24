@@ -1,2 +1,0 @@
-time,lift_coefficient,drag_coefficient,side_force_coefficient,force_x,force_y,force_z,moment_x,moment_y,moment_z,lift,drag,dynamic_pressure,reference_area
-1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.5,6.000000476837158

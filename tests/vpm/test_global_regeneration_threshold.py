@@ -44,6 +44,25 @@ def test_non_global_regeneration_threshold_mode_is_rejected():
         ViscousConfig.gbd(threshold_mode="spatially_varying")
 
 
+def test_budget_threshold_uses_float64_accounting_for_large_f32_grid():
+    diffusion = object.__new__(_GridDiffusionMixin)
+    values = np.geomspace(1.0e-10, 1.0e-3, 450_000, dtype=np.float32)
+    field = values.reshape(300, 300, 5)
+    total = float(field.sum(dtype=np.float64))
+    budget = 1.0e-4
+
+    threshold = diffusion._select_diffusion_threshold(
+        field,
+        "budget",
+        budget,
+        float(field.max()),
+        total,
+    )
+    retained = float(field[field >= threshold].sum(dtype=np.float64)) / total
+
+    assert retained >= 1.0 - budget
+
+
 def test_population_cap_selects_the_global_strongest_nodes():
     vortex_strength_magnitude = np.array(
         [

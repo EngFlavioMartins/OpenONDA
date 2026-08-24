@@ -8,19 +8,5 @@
     <DataSet timestep="0.25" file="vpm_wake_slice_z0_000025.vts"/>
     <DataSet timestep="0.3" file="vpm_wake_slice_z0_000030.vts"/>
     <DataSet timestep="0.35" file="vpm_wake_slice_z0_000035.vts"/>
-    <DataSet timestep="0.4" file="vpm_wake_slice_z0_000040.vts"/>
-    <DataSet timestep="0.45" file="vpm_wake_slice_z0_000045.vts"/>
-    <DataSet timestep="0.5" file="vpm_wake_slice_z0_000050.vts"/>
-    <DataSet timestep="0.55" file="vpm_wake_slice_z0_000055.vts"/>
-    <DataSet timestep="0.6" file="vpm_wake_slice_z0_000060.vts"/>
-    <DataSet timestep="0.65" file="vpm_wake_slice_z0_000065.vts"/>
-    <DataSet timestep="0.7" file="vpm_wake_slice_z0_000070.vts"/>
-    <DataSet timestep="0.75" file="vpm_wake_slice_z0_000075.vts"/>
-    <DataSet timestep="0.8" file="vpm_wake_slice_z0_000080.vts"/>
-    <DataSet timestep="0.85" file="vpm_wake_slice_z0_000085.vts"/>
-    <DataSet timestep="0.9" file="vpm_wake_slice_z0_000090.vts"/>
-    <DataSet timestep="0.95" file="vpm_wake_slice_z0_000095.vts"/>
-    <DataSet timestep="1.0" file="vpm_wake_slice_z0_000100.vts"/>
-    <DataSet timestep="1.05" file="vpm_wake_slice_z0_000105.vts"/>
   </Collection>
 </VTKFile>

@@ -8,6 +8,8 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
+import os
+
 import numpy as np
 import taichi as ti
 
@@ -20,7 +22,31 @@ from ..config.constants import (
 from ..io.logging import Logging
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
-_DIRECT_INTEGRAL_LIMIT = 50_000
+_DEFAULT_DIRECT_INTEGRAL_LIMIT = 50_000
+
+
+def _direct_integral_limit() -> int:
+    """Return the largest cloud evaluated by the exact unbounded GPU integral.
+
+    The FFT fallback is intended for clouds whose pairwise diagnostic is too
+    expensive.  Its finite audit box cannot reproduce the long-range energy of
+    a non-zero-circulation vortex column, so verification campaigns may raise
+    the crossover after benchmarking their GPU.  The production default stays
+    conservative for slower backends.
+    """
+    raw = os.environ.get(
+        "OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT",
+        str(_DEFAULT_DIRECT_INTEGRAL_LIMIT),
+    )
+    try:
+        limit = int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT must be an integer, got {raw!r}"
+        ) from exc
+    if limit < 0:
+        raise ValueError("OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT must be non-negative")
+    return limit
 
 
 @ti.data_oriented
@@ -686,7 +712,7 @@ class ParticleFieldEvaluation:
         if N == 0:
             # Return zero values for empty particle system
             return self._get_zero_results()
-        if N > _DIRECT_INTEGRAL_LIMIT and self.particle_kernel == "GAUSSIAN":
+        if _direct_integral_limit() < N and self.particle_kernel == "GAUSSIAN":
             return self._compute_fourier_flow_integrals(particles, time, record_history)
 
         self._resize_fields(N)

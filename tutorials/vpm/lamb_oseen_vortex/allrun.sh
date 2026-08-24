@@ -3,6 +3,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 export OPENONDA_COMPUTE_DEVICE="${OPENONDA_COMPUTE_DEVICE:-METAL}"
+# The finite-box FFT energy fallback misses the long-range energy of the
+# non-zero-circulation vortex column.  Metal benchmarks evaluate the exact
+# unbounded integral in about 1.1 s at 100k, 3.2 s at 200k, and 31 s at the
+# 500k capacity ceiling, so every calibrated Lamb--Oseen cloud stays on the
+# exact diagnostic path despite the deliberate verification cost.
+export OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT="${OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT:-500000}"
 ./allclean.sh
 mkdir -p solution
 

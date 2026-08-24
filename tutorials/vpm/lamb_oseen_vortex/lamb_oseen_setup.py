@@ -51,13 +51,29 @@ ADVECTION_SCHEME = "RK3"
 DVH_RD_RATIO = 4
 DVH_PADDING = 5.0
 DVH_THRESHOLD = 1.0e-4
-DVH_MAX_NODES = 300_000
-GBD_MAX_NODES = 300_000
+# Resource caps below the solver's declared particle capacity were rejected:
+# 50k lost 4.5% circulation by t=5.82, while 100k made the measured energy
+# decay exceed -nu*Omega by 49% at t=8.73.  Use the full declared capacity so
+# the benchmark measures the diffusion operators rather than avoidable
+# strongest-node truncation.  The global threshold still limits each
+# regeneration to its explicit 1e-4 strength budget.
+DVH_MAX_NODES = 500_000
+GBD_MAX_NODES = 500_000
 CORE_RADIUS_RATIO = 1.50
 VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
 
 
-def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> vpm.ViscousConfig:
+def _regeneration_node_cap(environment_name: str, default: int) -> int:
+    """Return an absolute override or the calibrated capacity ceiling."""
+    override = os.environ.get(environment_name)
+    return int(override) if override is not None else default
+
+
+def viscous_config(
+    scheme: str,
+    kinematic_viscosity: float,
+    spacing: float,
+) -> vpm.ViscousConfig:
     """Build one viscous model using the same spatial resolution for every case."""
     if scheme == "cs":
         return vpm.ViscousConfig.cs(
@@ -79,13 +95,19 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             ),
             threshold=float(os.environ.get("OPENONDA_LAMB_DVH_THRESHOLD", DVH_THRESHOLD)),
             threshold_mode="budget",
-            max_nodes=int(os.environ.get("OPENONDA_LAMB_DVH_MAX_NODES", DVH_MAX_NODES)),
+            max_nodes=_regeneration_node_cap(
+                "OPENONDA_LAMB_DVH_MAX_NODES",
+                DVH_MAX_NODES,
+            ),
             core_radius_ratio=CORE_RADIUS_RATIO,
         )
     return vpm.ViscousConfig.gbd(
         particle_spacing=spacing,
         kinematic_viscosity=kinematic_viscosity,
-        max_nodes=int(os.environ.get("OPENONDA_LAMB_GBD_MAX_NODES", GBD_MAX_NODES)),
+        max_nodes=_regeneration_node_cap(
+            "OPENONDA_LAMB_GBD_MAX_NODES",
+            GBD_MAX_NODES,
+        ),
         core_radius_ratio=CORE_RADIUS_RATIO,
     )
 
@@ -262,6 +284,15 @@ def run_case(
         "advection_scheme": ADVECTION_SCHEME,
         "treecode_theta": TREECODE_THETA,
         "treecode_multipole_order": TREECODE_MULTIPOLE_ORDER,
+        "random_seed": 42,
+        "dvh_rd_ratio": viscous.dvh_support_radius_ratio if scheme == "dvh" else None,
+        "dvh_threshold": viscous.dvh_threshold if scheme == "dvh" else None,
+        "dvh_threshold_mode": viscous.dvh_threshold_mode if scheme == "dvh" else None,
+        "dvh_max_nodes": viscous.dvh_max_nodes if scheme == "dvh" else None,
+        "gbd_threshold": viscous.gbd_threshold if scheme == "gbd" else None,
+        "gbd_threshold_mode": viscous.gbd_threshold_mode if scheme == "gbd" else None,
+        "gbd_max_nodes": viscous.gbd_max_nodes if scheme == "gbd" else None,
+        "regeneration_cap_basis": "solver_capacity_ceiling",
         "circulation_normalization": "per_vortex_after_strength_cutoff",
         "status": "running",
         "completed": False,
@@ -271,6 +302,7 @@ def run_case(
 
     # Add the vortex particles
     vortex_age = GAUSSIAN_CORE_RADIUS**2 / (4.0 * kinematic_viscosity)
+    normalization_records = []
     for group_id, (circulation, y_position) in enumerate(
         zip(circulations, y_positions, strict=True)
     ):
@@ -286,11 +318,22 @@ def run_case(
         )
         vortex_strength_magnitude = np.linalg.norm(particle_vortex_strength, axis=1)
         keep = vortex_strength_magnitude >= 0.01 * vortex_strength_magnitude.max()
-        retained_vortex_strength, _, _ = normalize_retained_circulation(
-            particle_vortex_strength,
-            keep,
-            circulation,
-            COLUMN_LENGTH,
+        retained_vortex_strength, raw_per_length, normalization_scale = (
+            normalize_retained_circulation(
+                particle_vortex_strength,
+                keep,
+                circulation,
+                COLUMN_LENGTH,
+            )
+        )
+        normalization_records.append(
+            {
+                "group_id": group_id,
+                "requested_circulation_per_length": circulation,
+                "raw_retained_circulation_per_length": raw_per_length,
+                "normalization_scale": normalization_scale,
+                "retained_particle_fraction": float(np.count_nonzero(keep) / len(keep)),
+            }
         )
         group_id = np.full(np.count_nonzero(keep), group_id, dtype=np.int32)
         solver.add_vortex_particles(
@@ -304,6 +347,12 @@ def run_case(
         )
 
     metadata["initial_n_particles_total"] = len(solver.particles)
+    metadata["circulation_normalization_records"] = normalization_records
+    metadata["raw_retained_circulation_fraction"] = min(
+        abs(record["raw_retained_circulation_per_length"])
+        / abs(record["requested_circulation_per_length"])
+        for record in normalization_records
+    )
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     try:

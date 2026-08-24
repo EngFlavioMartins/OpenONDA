@@ -817,7 +817,13 @@ class _GridDiffusionMixin:
             if vortex_strength_magnitude_sum > 1e-30:
                 flat = vortex_strength_magnitude.ravel()
                 order = np.argsort(-flat)
-                cumsum = np.cumsum(flat[order])
+                # The active diffusion grid can contain several hundred
+                # thousand f32 nodes.  Accumulating that budget in f32 loses
+                # enough low-magnitude tail strength to violate a nominal
+                # 1e-4 retention target (observed 3.06e-4 loss in the
+                # Lamb--Oseen DVH benchmark).  Selection is host-side already,
+                # so use f64 accounting without changing the GPU field data.
+                cumsum = np.cumsum(flat[order], dtype=np.float64)
                 target = (1.0 - regen_threshold) * vortex_strength_magnitude_sum
                 cutoff = min(int(np.searchsorted(cumsum, target)), len(order) - 1)
                 threshold = float(flat[order[cutoff]])
@@ -1210,7 +1216,7 @@ class _GridDiffusionMixin:
             self._ping = True
             return None
 
-        vortex_strength_total = float(vortex_strength_magnitude.sum())
+        vortex_strength_total = float(vortex_strength_magnitude.sum(dtype=np.float64))
         threshold = self._select_diffusion_threshold(
             vortex_strength_magnitude,
             regen_threshold_mode,
@@ -1240,7 +1246,8 @@ class _GridDiffusionMixin:
             mapping=node_mapping,
         )
         threshold_retained = (
-            float(vortex_strength_magnitude[ix, iy, iz].sum()) / vortex_strength_total
+            float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
+            / vortex_strength_total
         )
         Logging.message(
             f"[VPM][GBD] threshold={threshold:.3e} nodes={len(ix)} "
@@ -1250,7 +1257,7 @@ class _GridDiffusionMixin:
         # -- Particle-count cap ------------------------------------------------
         cap = self._regeneration_cap(particles, N, max_nodes)
         if len(ix) > cap:
-            survivor_abs = float(vortex_strength_magnitude[ix, iy, iz].sum())
+            survivor_abs = float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
                 vortex_strength_magnitude,
                 ix,
@@ -1258,7 +1265,9 @@ class _GridDiffusionMixin:
                 iz,
                 cap,
             )
-            retained = float(vortex_strength_magnitude[ix, iy, iz].sum()) / survivor_abs
+            retained = (
+                float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64)) / survivor_abs
+            )
             retained_total = retained * threshold_retained
             Logging.message(
                 f"[VPM][GBD] population_cap={cap} nodes={old_count}->{len(ix)} "
@@ -1551,7 +1560,7 @@ class _GridDiffusionMixin:
             )
             return None
 
-        vortex_strength_total = float(vortex_strength_magnitude.sum())
+        vortex_strength_total = float(vortex_strength_magnitude.sum(dtype=np.float64))
         threshold = self._select_diffusion_threshold(
             vortex_strength_magnitude,
             regen_threshold_mode,
@@ -1580,7 +1589,8 @@ class _GridDiffusionMixin:
             mapping=node_mapping,
         )
         threshold_retained = (
-            float(vortex_strength_magnitude[ix, iy, iz].sum()) / vortex_strength_total
+            float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
+            / vortex_strength_total
         )
         Logging.message(
             f"[VPM][DVH] threshold={threshold:.3e} nodes={len(ix)} "
@@ -1590,7 +1600,7 @@ class _GridDiffusionMixin:
         # -- Particle-count cap ------------------------------------------------
         cap = self._regeneration_cap(particles, N, max_nodes)
         if len(ix) > cap:
-            survivor_abs = float(vortex_strength_magnitude[ix, iy, iz].sum())
+            survivor_abs = float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             ix, iy, iz, threshold, old_count = self._cap_surviving_nodes(
                 vortex_strength_magnitude,
                 ix,
@@ -1598,7 +1608,9 @@ class _GridDiffusionMixin:
                 iz,
                 cap,
             )
-            retained = float(vortex_strength_magnitude[ix, iy, iz].sum()) / survivor_abs
+            retained = (
+                float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64)) / survivor_abs
+            )
             Logging.message(
                 f"[VPM][DVH] population_cap={cap} nodes={old_count}->{len(ix)} "
                 f"candidate_vortex_strength_magnitude_fraction={retained:.6f} "
