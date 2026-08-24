@@ -136,10 +136,7 @@ def run(arch_str, sizes, theta, repeats):
             max_n_particles=N + 8, max_nodes=2 * (N + 8), theta=theta, kernel_type="WINCKELMANS"
         )
         t_build = _time(
-            lambda evaluator=tree,
-            position=position,
-            vortex_strength=vortex_strength,
-            core_radii=core_radius: (
+            lambda evaluator=tree, position=position, vortex_strength=vortex_strength, core_radii=core_radius: (
                 evaluator.build(position, vortex_strength, core_radii, force=True)
             ),
             repeats,
