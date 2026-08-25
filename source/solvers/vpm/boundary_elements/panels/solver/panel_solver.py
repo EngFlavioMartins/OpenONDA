@@ -759,7 +759,12 @@ class PanelSolver:
         if wake_velocity is None:
             wake_velocity = self._resolve_wake_field()
 
-        ti_v_inf = ti.Vector(np.asarray(freestream_velocity, dtype=np.float64).tolist(), dt=ti.f64)
+        scalar_dtype = ti.f32 if self.float_dtype == "f32" else ti.f64
+        numpy_dtype = np.float32 if self.float_dtype == "f32" else np.float64
+        ti_v_inf = ti.Vector(
+            np.asarray(freestream_velocity, dtype=numpy_dtype).tolist(),
+            dt=scalar_dtype,
+        )
 
         if self.collect_timing:
             ti.sync()
@@ -1150,13 +1155,18 @@ class PanelSolver:
             source_full[:n] = (-np.dot(normals_np, freestream_velocity)).astype(ti_dtype)
             self.lattice.source_strength.from_numpy(source_full)
 
+        scalar_dtype = ti.f32 if self.float_dtype == "f32" else ti.f64
+        numpy_dtype = np.float32 if self.float_dtype == "f32" else np.float64
         compute_surface_velocity_with_sources(
             self.lattice.vertex_position,
             self.lattice.panel_centre,
             self.lattice.normal,
             self.lattice.doublet_strength,
             self.lattice.source_strength,
-            ti.Vector(np.asarray(freestream_velocity, dtype=np.float64).tolist(), dt=ti.f64),
+            ti.Vector(
+                np.asarray(freestream_velocity, dtype=numpy_dtype).tolist(),
+                dt=scalar_dtype,
+            ),
             wake_velocity,
             self.surface_velocity_absolute,
             n,

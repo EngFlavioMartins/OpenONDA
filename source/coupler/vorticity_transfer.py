@@ -108,6 +108,18 @@ def _validate_particle_sources(
     return source_position, volume, source_vorticity
 
 
+def _absolute_diffusion_strength_cutoff(vpm) -> float:
+    """Return the VPM's configured absolute regeneration cutoff, if any."""
+    viscous = getattr(getattr(vpm, "setup", None), "viscous", None)
+    scheme = str(getattr(vpm, "viscous_scheme", "")).upper()
+    if viscous is None or scheme not in {"GBD", "DVH"}:
+        return 0.0
+    prefix = scheme.lower()
+    mode = str(getattr(viscous, f"{prefix}_threshold_mode", "")).lower()
+    threshold = float(getattr(viscous, f"{prefix}_threshold", 0.0))
+    return threshold if mode == "absolute" and np.isfinite(threshold) and threshold > 0.0 else 0.0
+
+
 def _particle_state_snapshot(vpm) -> dict[str, np.ndarray]:
     """Download every mutable particle field required for a transfer rollback."""
     particles = vpm.particles
@@ -313,6 +325,109 @@ def _redistribute_solid_lattice_nodes(
     if not len(active_solid_index):
         return redistributed, relocated_net
 
+    # On a complete regular lattice, extrapolate each solid-node value along
+    # its shortest axis-aligned route to three consecutive fluid nodes.  The
+    # three Lagrange weights reproduce 1, x, and x² at the solid node; all
+    # other relative coordinates on that ray are zero, so every three-
+    # dimensional monomial through degree two is preserved as well.  Averaging
+    # tied shortest rays keeps face/edge/corner treatment symmetric.
+    lower = points.min(axis=0)
+    lattice_coordinate = np.rint((points - lower) / spacing).astype(np.int64)
+    lattice_shape = lattice_coordinate.max(axis=0) + 1
+    reconstructed = lower + spacing * lattice_coordinate
+    regular_lattice = bool(
+        np.prod(lattice_shape, dtype=np.int64) == len(points)
+        and np.max(np.abs(reconstructed - points), initial=0.0)
+        <= 128.0 * np.finfo(np.float64).eps * max(1.0, float(np.max(np.abs(points))))
+    )
+    linear_index = np.empty(0, dtype=np.int64)
+    if regular_lattice:
+        linear_index = (
+            lattice_coordinate[:, 0] * lattice_shape[1] + lattice_coordinate[:, 1]
+        ) * lattice_shape[2] + lattice_coordinate[:, 2]
+        if len(np.unique(linear_index)) != len(points):
+            regular_lattice = False
+
+    if regular_lattice:
+        grid_to_point = np.full(int(np.prod(lattice_shape)), -1, dtype=np.int64)
+        grid_to_point[linear_index] = np.arange(len(points), dtype=np.int64)
+        active_coordinate = lattice_coordinate[active_solid_index]
+        n_active = len(active_solid_index)
+        ray_distance = np.full((n_active, 6), -1, dtype=np.int64)
+        ray_target = np.full((n_active, 6, 3), -1, dtype=np.int64)
+        directions = (
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (1, 1),
+            (2, -1),
+            (2, 1),
+        )
+        for direction_index, (axis, sign) in enumerate(directions):
+            unresolved = np.ones(n_active, dtype=bool)
+            max_distance = int(lattice_shape[axis]) - 3
+            for distance in range(1, max_distance + 1):
+                query = np.flatnonzero(unresolved)
+                if not len(query):
+                    break
+                candidate_coordinate = np.repeat(active_coordinate[query, None, :], 3, axis=1)
+                candidate_coordinate[:, :, axis] += sign * (distance + np.arange(3, dtype=np.int64))
+                inside = np.all(
+                    (candidate_coordinate >= 0)
+                    & (candidate_coordinate < lattice_shape[None, None, :]),
+                    axis=(1, 2),
+                )
+                if not np.any(inside):
+                    continue
+                inside_query = query[inside]
+                inside_coordinate = candidate_coordinate[inside]
+                candidate_linear = (
+                    inside_coordinate[:, :, 0] * lattice_shape[1] + inside_coordinate[:, :, 1]
+                ) * lattice_shape[2] + inside_coordinate[:, :, 2]
+                candidate_index = grid_to_point[candidate_linear]
+                valid = np.all(candidate_index >= 0, axis=1) & np.all(
+                    ~forbidden[candidate_index], axis=1
+                )
+                accepted = inside_query[valid]
+                ray_distance[accepted, direction_index] = distance
+                ray_target[accepted, direction_index] = candidate_index[valid]
+                unresolved[accepted] = False
+
+        available = ray_distance > 0
+        best_distance = np.min(
+            np.where(available, ray_distance, np.iinfo(np.int64).max),
+            axis=1,
+        )
+        resolved = best_distance != np.iinfo(np.int64).max
+        resolved_source = active_solid_index[resolved]
+        if len(resolved_source):
+            tied = available[resolved] & (ray_distance[resolved] == best_distance[resolved, None])
+            tie_count = np.count_nonzero(tied, axis=1)
+            source_row, direction_column = np.nonzero(tied)
+            source_index = resolved_source[source_row]
+            distance = best_distance[resolved][source_row].astype(np.float64)
+            ray_weights = np.column_stack(
+                (
+                    0.5 * (distance + 1.0) * (distance + 2.0),
+                    -distance * (distance + 2.0),
+                    0.5 * distance * (distance + 1.0),
+                )
+            )
+            ray_weights /= tie_count[source_row, None]
+            targets = ray_target[resolved][source_row, direction_column]
+            gamma = strength[source_index]
+            redistributed[resolved_source] = 0.0
+            for column in range(3):
+                np.add.at(
+                    redistributed,
+                    targets[:, column],
+                    ray_weights[:, column, None] * gamma,
+                )
+            relocated_net += strength[resolved_source].sum(axis=0, dtype=np.float64)
+            active_solid_index = active_solid_index[~resolved]
+            if not len(active_solid_index):
+                return redistributed, relocated_net
+
     # The old implementation sorted every fluid lattice node for every solid
     # node.  On the cube that meant thousands of independent sorts of roughly
     # half a million entries before the first coupling step.  One spatial tree
@@ -352,20 +467,22 @@ def _redistribute_solid_lattice_nodes(
                 # Translation-equivalent lattice nodes have the same moment
                 # system.  Cache that solve; an axis-aligned cube contains
                 # thousands of nodes but only a small number of local stencil
-                # geometries.  ``lstsq`` already reports rank, so doing a
-                # separate SVD through ``matrix_rank`` only doubled the cost.
+                # geometries.  For a full-row-rank constraint matrix A, the
+                # minimum-norm weights are A.T @ solve(A @ A.T, target).  The
+                # Cholesky gate rejects rank-deficient prefixes without the
+                # expensive SVD that previously dominated startup.
                 for count in range(10, len(ordered) + 1):
                     candidates = ordered[:count]
                     constraints = _quadratic_moment_features(
                         points[candidates] - points[solid_index], spacing
                     ).T
-                    candidate_weights, _residual, rank, _singular = np.linalg.lstsq(
-                        constraints,
-                        target,
-                        rcond=None,
-                    )
-                    if rank < len(target):
+                    gram = constraints @ constraints.T
+                    try:
+                        np.linalg.cholesky(gram)
+                        dual_weights = np.linalg.solve(gram, target)
+                    except np.linalg.LinAlgError:
                         continue
+                    candidate_weights = constraints.T @ dual_weights
                     if np.max(np.abs(constraints @ candidate_weights - target)) <= 2.0e-12:
                         weights = candidate_weights
                         weight_cache[stencil_key] = weights
@@ -574,7 +691,22 @@ def replace_particles_from_lattice_blend(
         target_solid,
         spacing=spacing,
     )
-    nonzero = np.any(redistributed_strength != 0.0, axis=1) & ~target_solid
+    strength_magnitude = np.linalg.norm(redistributed_strength, axis=1)
+    nonzero = (strength_magnitude > 0.0) & ~target_solid
+    diffusion_cutoff = _absolute_diffusion_strength_cutoff(vpm)
+    if diffusion_cutoff > 0.0:
+        below_cutoff = nonzero & (strength_magnitude < diffusion_cutoff)
+        if np.any(below_cutoff):
+            logger.info(
+                format_coupler_log(
+                    "TransferPruning",
+                    f"discarded {int(np.count_nonzero(below_cutoff)):,} lattice nodes below "
+                    f"the {diffusion_cutoff:.3e} {str(getattr(vpm, 'viscous_scheme', ''))} cutoff",
+                    "discarded vortex-strength magnitude fraction  "
+                    f"{float(strength_magnitude[below_cutoff].sum()) / max(float(strength_magnitude[nonzero].sum()), np.finfo(float).tiny):.3e}",
+                )
+            )
+        nonzero &= strength_magnitude >= diffusion_cutoff
     target_position = state.position[nonzero]
     target_strength = redistributed_strength[nonzero]
     target_eta = state.eta[nonzero]
