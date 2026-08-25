@@ -8,6 +8,7 @@ import pytest
 from source.coupler.lattice_transfer import (
     blend_fvm_vpm_circulation_on_lattice,
     correct_state_blend_cross_divergence,
+    evaluate_gaussian_vorticity,
     first_vorticity_moment,
     m4_prime,
     map_cell_circulation_to_lattice,
@@ -34,6 +35,25 @@ def test_m4_prime_has_partition_and_first_moment_on_its_complete_support():
         weights = m4_prime(fraction - nodes)
         np.testing.assert_allclose(weights.sum(), 1.0, rtol=0.0, atol=2.0e-15)
         np.testing.assert_allclose((nodes * weights).sum(), fraction, rtol=0.0, atol=2.0e-15)
+
+
+def test_gaussian_vorticity_reference_matches_analytic_single_and_multi_particle_sums():
+    points = np.array([[0.0, 0.0, 0.0], [0.25, -0.5, 0.125], [-0.1, 0.2, 0.3]])
+    position = np.array([[0.1, -0.2, 0.05], [-0.25, 0.3, -0.1]])
+    strength = np.array([[0.2, -0.4, 0.1], [-0.3, 0.5, 0.7]])
+    radius = np.array([0.125, 0.35])
+
+    displacement = points[:, None, :] - position[None, :, :]
+    sigma = radius[None, :, None]
+    analytic_weight = (
+        np.pi ** (-1.5) * np.exp(-np.sum((displacement / sigma) ** 2, axis=2)) / sigma[..., 0] ** 3
+    )
+    expected = analytic_weight @ strength
+    actual = evaluate_gaussian_vorticity(points, position, strength, radius)
+    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=2.0e-15)
+
+    single = evaluate_gaussian_vorticity(points, position[:1], strength[:1], radius[:1])
+    np.testing.assert_allclose(single, analytic_weight[:, :1] @ strength[:1], atol=2.0e-15)
 
 
 def test_m4_prime_reproduces_quadratic_moments_for_ten_thousand_random_phases():
@@ -435,6 +455,48 @@ def test_actual_f32_stored_state_conservation(tmp_path, monkeypatch):
         rtol=0.0,
         atol=0.0,
     )
+
+
+def test_gaussian_vorticity_reference_matches_vpm_field_evaluation(tmp_path, monkeypatch):
+    """The residual evaluator uses the same Gaussian convention as VPM."""
+    pytest.importorskip("taichi", reason="VPM requires taichi")
+    monkeypatch.chdir(tmp_path)
+    from source.solvers.vpm import VelocityConfig, ViscousConfig, VPMSetup, VPMSolver
+
+    position = np.array([[0.1, -0.2, 0.05], [-0.25, 0.3, -0.1]])
+    strength = np.array([[0.2, -0.4, 0.1], [-0.3, 0.5, 0.7]])
+    core_radius = np.array([0.125, 0.35])
+    points = np.array([[0.0, 0.0, 0.0], [0.25, -0.5, 0.125], [-0.1, 0.2, 0.3]])
+    solver = VPMSolver(
+        VPMSetup(
+            time_step_size=0.01,
+            compute_device="CPU",
+            precision="f64",
+            max_n_particles=16,
+            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+            velocity=VelocityConfig.direct(),
+            viscous=ViscousConfig.cs(
+                kinematic_viscosity=1.0e-3,
+                particle_spacing=0.125,
+                core_radius_ratio=1.0,
+            ),
+        )
+    )
+    solver.add_vortex_particles(
+        position=position,
+        velocity=np.zeros_like(position),
+        vortex_strength=strength,
+        core_radius=core_radius,
+        particle_volume=core_radius**3,
+        kinematic_viscosity=np.full(len(position), 1.0e-3),
+    )
+
+    reference = evaluate_gaussian_vorticity(points, position, strength, core_radius)
+    actual = solver.compute_vorticity_at_points(points)
+    # Target-field storage is currently single precision even in the f64 VPM
+    # configuration; this checks kernel convention rather than that storage
+    # precision choice.
+    np.testing.assert_allclose(actual, reference, rtol=5.0e-8, atol=3.0e-10)
 
 
 def test_f32_matching_state_is_a_fixed_point_over_one_thousand_transfers(tmp_path, monkeypatch):

@@ -86,6 +86,10 @@ class TransferResult:
     )
     blend_cross_divergence_l2_before: float = 0.0
     blend_cross_divergence_l2_after: float = 0.0
+    persistent_vpm_vorticity_rms: float = 0.0
+    fvm_vorticity_rms: float = 0.0
+    persistent_fraction_rms: float = 0.0
+    persistent_fraction_max: float = 0.0
 
 
 def _validate_particle_sources(
@@ -409,10 +413,17 @@ def replace_particles_from_lattice_blend(
     n_before = int(particles.n_particles_total)
     existing_position = np.asarray(particles.position_cpu(), dtype=np.float64).reshape(-1, 3)
     existing_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64).reshape(-1, 3)
+    existing_core_radius = np.asarray(particles.core_radius_cpu(), dtype=np.float64).reshape(-1)
     if len(existing_position) != n_before or len(existing_strength) != n_before:
         raise RuntimeError("VPM particle arrays do not match the active particle count")
+    if len(existing_core_radius) != n_before:
+        raise RuntimeError(
+            "VPM particle core-radius array does not match the active particle count"
+        )
     if not np.all(np.isfinite(existing_position)) or not np.all(np.isfinite(existing_strength)):
         raise RuntimeError("VPM particle state contains non-finite values")
+    if not np.all(np.isfinite(existing_core_radius)) or np.any(existing_core_radius <= 0.0):
+        raise RuntimeError("VPM particle core radii must be finite and positive")
 
     state = blend_fvm_vpm_circulation_on_lattice(
         fvm_position=fvm_position,
@@ -420,6 +431,7 @@ def replace_particles_from_lattice_blend(
         fvm_vorticity=fvm_vorticity,
         vpm_position=existing_position,
         vpm_vortex_strength=existing_strength,
+        vpm_core_radius=existing_core_radius,
         transfer_box=transfer_box,
         blend_width=eta_blend_width,
         lattice_anchor=lattice_anchor,
@@ -583,6 +595,10 @@ def replace_particles_from_lattice_blend(
         mapped_first_moment=first_vorticity_moment(target_position, target_strength),
         blend_cross_divergence_l2_before=state.cross_divergence_l2_before,
         blend_cross_divergence_l2_after=state.cross_divergence_l2_after,
+        persistent_vpm_vorticity_rms=state.persistent_vpm_vorticity_rms,
+        fvm_vorticity_rms=state.fvm_vorticity_rms,
+        persistent_fraction_rms=state.persistent_fraction_rms,
+        persistent_fraction_max=state.persistent_fraction_max,
     )
 
 
@@ -600,6 +616,11 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
         "blend divergence  "
         f"before {result.blend_cross_divergence_l2_before:.3e}"
         f" | after {result.blend_cross_divergence_l2_after:.3e}",
+        "persistent VPM vorticity  "
+        f"RMS {result.persistent_vpm_vorticity_rms:.3e} 1/s"
+        f" | FVM RMS {result.fvm_vorticity_rms:.3e} 1/s"
+        f" | RMS fraction {result.persistent_fraction_rms:.3e}"
+        f" | max fraction {result.persistent_fraction_max:.3e}",
         "vortex strength  "
         f"replaced L1 {result.replaced_vortex_strength_l1:.3e}"
         f" | injected L1 {result.injected_vortex_strength_l1:.3e} m^3/s"

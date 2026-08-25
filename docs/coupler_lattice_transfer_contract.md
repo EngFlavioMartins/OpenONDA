@@ -13,17 +13,30 @@ The FVM input is a collection of cell-centred, cell-integrated circulations
   (x_c,V_c,\omega_c),\qquad \Gamma_c=V_c\omega_c.
 \]
 
-The VPM input is the current particle state `(x_p, Gamma_p)`. Both inputs are
-scattered with the same M4′ tensor-product stencil to one complete Cartesian
-lattice with the configured anchor and spacing `h`. The mapper never clips a
-donor stencil to the ownership box.
-
-The lattice state is absolute, not additive:
+The VPM input is the current particle state `(x_p, Gamma_p, sigma_p)`.  It is
+split into a physically retained state `R` and a lattice-replaced state `Q`.
+At every participating FVM donor, the transfer evaluates the exact,
+untruncated Gaussian vorticity of `R` using each particle's stored core radius:
 
 \[
-  \Gamma_{ijk}=\eta_{ijk}\Gamma^{F}_{ijk}
-      +(1-\eta_{ijk})\Gamma^{V}_{ijk}.
+  \omega_R(x_c)=\sum_{p\in R}\frac{\Gamma_p}{\pi^{3/2}\sigma_p^3}
+  \exp\!\left(-\frac{|x_c-x_p|^2}{\sigma_p^2}\right).
 \]
+
+Only the same-time residual `\omega_F-\omega_R` is scattered as the FVM
+component.  `R` stays physically present, so the newly inserted lattice state
+is
+
+\[
+  \Gamma_{\rm insert}=\eta(\Gamma_F-\Gamma_R)+(1-\eta)\Gamma_Q.
+\]
+
+This is still absolute state replacement: there is no correction history and
+the FVM solver field is not mutated.  It prevents the retained Gaussian field
+from being represented a second time by FVM donor circulation.  Both residual
+FVM and `Q` inputs are scattered with the same M4′ tensor-product stencil to
+one complete Cartesian lattice with the configured anchor and spacing `h`.
+The mapper never clips a donor stencil to the ownership box.
 
 With a positive blend width, `eta` is the product of six C1 cosine face
 windows. With zero width it is hard ownership. A persistent particle on an
@@ -108,7 +121,9 @@ GBD/DVH grid kernel. The following remain
 - continuous Gaussian field accuracy and true `div(omega)`;
 - free-space velocity neutrality and domain-padding sensitivity of the FFT
   correction;
-- persistent Gaussian-tail transparency;
+- mixed persistent/replaced Gaussian-field transparency (the single
+  persistent-tail residual regression passes, but the M4′ projection of a
+  nonzero replaced Gaussian component has not met the physical-field target);
 - repeated f32 transfer drift over a production-scale sequence;
 - dynamic face/edge/corner handoff, flux/Stokes tests, and all viscous schemes;
 - GBD/DVH anchor assertions, LES-state reconstruction, restart/MPI ordering;

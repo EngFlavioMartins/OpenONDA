@@ -185,6 +185,10 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "excluded_solid_target_nodes": 0,
             "blend_cross_divergence_l2_before": 0.0,
             "blend_cross_divergence_l2_after": 0.0,
+            "persistent_vpm_vorticity_rms": 0.0,
+            "fvm_vorticity_rms": 0.0,
+            "persistent_fraction_rms": 0.0,
+            "persistent_fraction_max": 0.0,
         }
         particle_count = 0
     else:
@@ -215,6 +219,10 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "excluded_solid_target_nodes": int(result.excluded_solid_target_nodes),
             "blend_cross_divergence_l2_before": float(result.blend_cross_divergence_l2_before),
             "blend_cross_divergence_l2_after": float(result.blend_cross_divergence_l2_after),
+            "persistent_vpm_vorticity_rms": float(result.persistent_vpm_vorticity_rms),
+            "fvm_vorticity_rms": float(result.fvm_vorticity_rms),
+            "persistent_fraction_rms": float(result.persistent_fraction_rms),
+            "persistent_fraction_max": float(result.persistent_fraction_max),
         }
         particle_count = result.n_particles_after
     if not all(

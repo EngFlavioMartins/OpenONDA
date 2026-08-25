@@ -7,9 +7,11 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from scipy.spatial import cKDTree
+from scipy.special import erf
 
 from source.coupler.boundary import advance_fvm_substeps
 from source.coupler.interpolation import FVMVelocityInterpolator
+from source.coupler.lattice_transfer import evaluate_gaussian_vorticity
 from source.coupler.vorticity_transfer import (
     VorticityTransfer,
     replace_particles_from_fvm,
@@ -361,13 +363,22 @@ def test_common_lattice_blend_is_an_exact_fixed_point_for_matching_states():
         np.vstack((fvm_position, outer_position)),
         np.vstack((target_strength, outer_strength)),
     )
+    outer_core_radius = vpm.particles.core_radius[1:2].copy()
 
     for _ in range(20):
+        # The FVM state is the same physical state: its donor includes the
+        # continuous tail of the persistent outer VPM Gaussian.
+        fvm_state = vorticity + evaluate_gaussian_vorticity(
+            fvm_position,
+            outer_position,
+            outer_strength,
+            outer_core_radius,
+        )
         result = _replace_lattice(
             vpm,
             fvm_position,
             volume,
-            vorticity,
+            fvm_state,
             blend_width=0.25,
             spacing=h,
         )
@@ -430,7 +441,13 @@ def test_blend_merges_release_support_into_a_retained_regular_node_without_dupli
         vpm,
         source_position,
         np.array([1.0]),
-        source_strength,
+        source_strength
+        + evaluate_gaussian_vorticity(
+            source_position,
+            boundary_position,
+            boundary_strength,
+            vpm.particles.core_radius[1:],
+        ),
         blend_width=0.25,
         spacing=h,
     )
@@ -461,7 +478,13 @@ def test_hard_release_support_adds_to_persistent_outer_node():
         vpm,
         source_position,
         np.array([1.0]),
-        source_strength,
+        source_strength
+        + evaluate_gaussian_vorticity(
+            source_position,
+            persistent_position,
+            persistent_strength,
+            vpm.particles.core_radius[1:],
+        ),
         blend_width=0.0,
         spacing=h,
     )
@@ -560,6 +583,198 @@ def _gaussian_angular_impulse(
     return np.cross(position, np.cross(position, strength)).sum(axis=0) / 3.0 - (
         2.0 / 9.0
     ) * angular_correction * core_radius**2 * strength.sum(axis=0)
+
+
+def _gaussian_divergence(
+    point: np.ndarray,
+    position: np.ndarray,
+    strength: np.ndarray,
+    core_radius: np.ndarray,
+) -> np.ndarray:
+    evaluation_point = np.asarray(point, dtype=np.float64).reshape(-1, 3)
+    source_position = np.asarray(position, dtype=np.float64).reshape(-1, 3)
+    source_strength = np.asarray(strength, dtype=np.float64).reshape(-1, 3)
+    radius = np.asarray(core_radius, dtype=np.float64).reshape(-1)
+    displacement = evaluation_point[:, None, :] - source_position[None, :, :]
+    sigma = radius[None, :, None]
+    zeta = (
+        np.pi ** (-1.5) * np.exp(-np.sum((displacement / sigma) ** 2, axis=2)) / sigma[..., 0] ** 3
+    )
+    return np.sum(
+        -2.0 * np.einsum("npi,pi->np", displacement, source_strength) * zeta / sigma[..., 0] ** 2,
+        axis=1,
+    )
+
+
+def _gaussian_velocity(
+    point: np.ndarray,
+    position: np.ndarray,
+    strength: np.ndarray,
+    core_radius: np.ndarray,
+) -> np.ndarray:
+    evaluation_point = np.asarray(point, dtype=np.float64).reshape(-1, 3)
+    source_position = np.asarray(position, dtype=np.float64).reshape(-1, 3)
+    source_strength = np.asarray(strength, dtype=np.float64).reshape(-1, 3)
+    radius = np.asarray(core_radius, dtype=np.float64).reshape(-1)
+    displacement = evaluation_point[:, None, :] - source_position[None, :, :]
+    radius_sq = np.einsum("npi,npi->np", displacement, displacement)
+    density = np.sqrt(radius_sq) / radius[None, :]
+    q = (erf(density) - 2.0 / np.sqrt(np.pi) * density * np.exp(-(density**2))) / (4.0 * np.pi)
+    scale = np.divide(
+        q,
+        radius_sq * np.sqrt(radius_sq),
+        out=np.zeros_like(q),
+        where=radius_sq > 0.0,
+    )
+    return -np.sum(scale[..., None] * np.cross(displacement, source_strength[None, :, :]), axis=1)
+
+
+def _gaussian_tail_case(
+    *,
+    distance_in_h: float,
+    blend_width: float,
+) -> tuple[_VPM, np.ndarray, np.ndarray, np.ndarray, np.ndarray, object]:
+    h = 0.125
+    sigma = 1.25 * h
+    fvm_spacing = h / 4.0
+    axis = np.arange(BOX[0] + 0.5 * fvm_spacing, BOX[1], fvm_spacing)
+    fvm_position = np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1).reshape(-1, 3)
+    particle_position = np.array([[BOX[1] + distance_in_h * h, 0.0, 0.0]])
+    particle_strength = np.array([[0.0, 1.0, 0.0]])
+    core_radius = np.array([sigma])
+    fvm_vorticity = evaluate_gaussian_vorticity(
+        fvm_position,
+        particle_position,
+        particle_strength,
+        core_radius,
+    )
+    vpm = _VPM(particle_position, particle_strength, capacity=100_000)
+    vpm.particles.core_radius[:] = core_radius
+    sample_axis = (
+        np.linspace(0.25, 0.8, 17),
+        np.linspace(-0.22, 0.22, 13),
+        np.linspace(-0.2, 0.2, 11),
+    )
+    sample_position = np.stack(np.meshgrid(*sample_axis, indexing="ij"), axis=-1).reshape(-1, 3)
+    result = _replace_lattice(
+        vpm,
+        fvm_position,
+        np.full(len(fvm_position), fvm_spacing**3),
+        fvm_vorticity,
+        blend_width=blend_width,
+        spacing=h,
+    )
+    return vpm, particle_position, particle_strength, core_radius, sample_position, result
+
+
+@pytest.mark.parametrize("distance_in_h", [0.0, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0])
+@pytest.mark.parametrize("blend_width_in_h", [0.0, 3.0])
+def test_persistent_gaussian_tail_residual_is_a_continuous_field_fixed_point(
+    distance_in_h,
+    blend_width_in_h,
+):
+    h = 0.125
+    vpm, before_position, before_strength, before_core, sample_position, result = (
+        _gaussian_tail_case(
+            distance_in_h=distance_in_h,
+            blend_width=blend_width_in_h * h,
+        )
+    )
+    before_omega = evaluate_gaussian_vorticity(
+        sample_position, before_position, before_strength, before_core
+    )
+    before_velocity = _gaussian_velocity(
+        sample_position, before_position, before_strength, before_core
+    )
+    before_divergence = _gaussian_divergence(
+        sample_position, before_position, before_strength, before_core
+    )
+    after_position = vpm.particles.position
+    after_strength = vpm.particles.vortex_strength
+    after_core = vpm.particles.core_radius
+    after_omega = evaluate_gaussian_vorticity(
+        sample_position, after_position, after_strength, after_core
+    )
+    after_velocity = _gaussian_velocity(sample_position, after_position, after_strength, after_core)
+    after_divergence = _gaussian_divergence(
+        sample_position, after_position, after_strength, after_core
+    )
+
+    assert result.n_particles_before == result.n_particles_after == 1
+    assert result.n_particles_removed == result.n_particles_injected == 0
+    assert result.persistent_fraction_rms == pytest.approx(1.0, abs=2.0e-15)
+    assert result.persistent_fraction_max == pytest.approx(1.0, abs=2.0e-15)
+    np.testing.assert_array_equal(after_position, before_position)
+    np.testing.assert_array_equal(after_strength, before_strength)
+    np.testing.assert_array_equal(after_core, before_core)
+    np.testing.assert_allclose(after_omega, before_omega, rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(after_velocity, before_velocity, rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(after_divergence, before_divergence, rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(
+        _linear_impulse(after_position, after_strength),
+        _linear_impulse(before_position, before_strength),
+        rtol=0.0,
+        atol=0.0,
+    )
+    np.testing.assert_allclose(
+        _gaussian_angular_impulse(after_position, after_strength, before_core[0]),
+        _gaussian_angular_impulse(before_position, before_strength, before_core[0]),
+        rtol=0.0,
+        atol=0.0,
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="R1 removes persistent tails, but a nonzero replaced Gaussian still exceeds "
+    "the continuous-field projection tolerance after FVM-to-M4 transfer",
+)
+@pytest.mark.parametrize("blend_width_in_h", [0.0, 3.0])
+def test_mixed_persistent_and_replaced_gaussian_state_is_a_continuous_fixed_point(
+    blend_width_in_h,
+):
+    """Release gate for the full R+Q identity at dense off-lattice points."""
+    h = 0.125
+    sigma = 1.25 * h
+    fvm_spacing = h / 4.0
+    axis = np.arange(BOX[0] + 0.5 * fvm_spacing, BOX[1], fvm_spacing)
+    fvm_position = np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1).reshape(-1, 3)
+    position = np.array([[-0.1, 0.02, -0.01], [BOX[1] + 0.25 * h, 0.03, -0.04]])
+    strength = np.array([[0.0, 0.5, 0.2], [0.0, 1.0, 0.0]])
+    core_radius = np.full(2, sigma)
+    fvm_vorticity = evaluate_gaussian_vorticity(
+        fvm_position,
+        position,
+        strength,
+        core_radius,
+    )
+    vpm = _VPM(position, strength, capacity=100_000)
+    vpm.particles.core_radius[:] = core_radius
+    sample_axis = (
+        np.linspace(-0.45, 0.8, 20),
+        np.linspace(-0.3, 0.3, 13),
+        np.linspace(-0.3, 0.3, 13),
+    )
+    sample_position = np.stack(np.meshgrid(*sample_axis, indexing="ij"), axis=-1).reshape(-1, 3)
+    before = evaluate_gaussian_vorticity(sample_position, position, strength, core_radius)
+
+    _replace_lattice(
+        vpm,
+        fvm_position,
+        np.full(len(fvm_position), fvm_spacing**3),
+        fvm_vorticity,
+        blend_width=blend_width_in_h * h,
+        spacing=h,
+    )
+
+    after = evaluate_gaussian_vorticity(
+        sample_position,
+        vpm.particles.position,
+        vpm.particles.vortex_strength,
+        vpm.particles.core_radius,
+    )
+    relative_rms_error = np.sqrt(np.mean((after - before) ** 2)) / np.sqrt(np.mean(before**2))
+    assert relative_rms_error <= 5.0e-3
 
 
 @pytest.mark.parametrize("distance_in_h", [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0])

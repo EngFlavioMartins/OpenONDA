@@ -129,6 +129,10 @@ class LatticeStateBlend:
     hard_replacement: bool
     cross_divergence_l2_before: float
     cross_divergence_l2_after: float
+    persistent_vpm_vorticity_rms: float
+    fvm_vorticity_rms: float
+    persistent_fraction_rms: float
+    persistent_fraction_max: float
 
     @property
     def first_moment(self) -> np.ndarray:
@@ -179,6 +183,92 @@ def state_blend_weight(
         eta *= face_window(lower_distance[:, axis])
         eta *= face_window(upper_distance[:, axis])
     return eta
+
+
+@njit(cache=True, fastmath=False)
+def _evaluate_gaussian_vorticity_direct(
+    evaluation_position: np.ndarray,
+    particle_position: np.ndarray,
+    vortex_strength: np.ndarray,
+    core_radius: np.ndarray,
+) -> np.ndarray:
+    """Evaluate the exact untruncated Gaussian vortex field in float64."""
+    result = np.zeros((len(evaluation_position), 3), dtype=np.float64)
+    normalization = np.pi ** (-1.5)
+    for target in range(len(evaluation_position)):
+        for particle in range(len(particle_position)):
+            dx = evaluation_position[target, 0] - particle_position[particle, 0]
+            dy = evaluation_position[target, 1] - particle_position[particle, 1]
+            dz = evaluation_position[target, 2] - particle_position[particle, 2]
+            sigma = core_radius[particle]
+            zeta_over_volume = (
+                normalization
+                * np.exp(-(dx * dx + dy * dy + dz * dz) / (sigma * sigma))
+                / (sigma * sigma * sigma)
+            )
+            for component in range(3):
+                result[target, component] += zeta_over_volume * vortex_strength[particle, component]
+    return result
+
+
+def evaluate_gaussian_vorticity(
+    evaluation_position: np.ndarray,
+    particle_position: np.ndarray,
+    vortex_strength: np.ndarray,
+    core_radius: np.ndarray,
+) -> np.ndarray:
+    r"""Evaluate untruncated Gaussian-particle vorticity at arbitrary points.
+
+    The convention is exactly OpenONDA's Gaussian kernel,
+    ``pi**(-3/2) exp(-(r/sigma)**2) / sigma**3``.  It deliberately makes no
+    support cutoff: the routine is the deterministic float64 reference used
+    to separate persistent VPM field from FVM donor vorticity during an
+    absolute-state transfer.
+    """
+    targets = np.ascontiguousarray(np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3))
+    position = np.ascontiguousarray(np.asarray(particle_position, dtype=np.float64).reshape(-1, 3))
+    strength = np.ascontiguousarray(np.asarray(vortex_strength, dtype=np.float64).reshape(-1, 3))
+    radius = np.ascontiguousarray(np.asarray(core_radius, dtype=np.float64).reshape(-1))
+    if len(position) != len(strength) or len(position) != len(radius):
+        raise ValueError("Gaussian particle position, strength, and core-radius counts must match")
+    if not np.all(np.isfinite(position)) or not np.all(np.isfinite(strength)):
+        raise ValueError("Gaussian particle position and strength must be finite")
+    if not np.all(np.isfinite(radius)) or np.any(radius <= 0.0):
+        raise ValueError("Gaussian particle core radii must be finite and positive")
+    if not np.all(np.isfinite(targets)):
+        raise ValueError("Gaussian evaluation positions must be finite")
+    if not len(position):
+        return np.zeros((len(targets), 3), dtype=np.float64)
+    return _evaluate_gaussian_vorticity_direct(targets, position, strength, radius)
+
+
+def _vpm_replace_mask(
+    position: np.ndarray,
+    bounds: np.ndarray,
+    blend_width: float,
+) -> np.ndarray:
+    """Select lattice-replaced VPM particles while retaining hard-boundary tails.
+
+    At a hard boundary, an existing particle centred exactly on a box face is
+    retained as a persistent Gaussian.  The FVM residual then removes its
+    continuous contribution from the donor state.  This is the unambiguous
+    field-ownership convention for a particle described as *outside at zero
+    distance*; nodal FVM authority itself remains closed as defined by
+    :func:`state_blend_weight`.
+    """
+    source_eta = state_blend_weight(position, bounds, blend_width)
+    tolerance = 32.0 * np.finfo(np.float64).eps
+    replace = source_eta > tolerance
+    if float(blend_width) == 0.0 and len(position):
+        scale = np.maximum(1.0, np.abs(bounds))
+        face_tolerance = 64.0 * np.finfo(np.float64).eps * scale
+        on_face = np.any(
+            np.isclose(position, bounds[::2], atol=face_tolerance[::2], rtol=0.0)
+            | np.isclose(position, bounds[1::2], atol=face_tolerance[1::2], rtol=0.0),
+            axis=1,
+        )
+        replace &= ~on_face
+    return replace
 
 
 def _spectral_wave_numbers(
@@ -466,18 +556,27 @@ def blend_fvm_vpm_circulation_on_lattice(
     fvm_vorticity: np.ndarray,
     vpm_position: np.ndarray,
     vpm_vortex_strength: np.ndarray,
+    vpm_core_radius: np.ndarray | None = None,
     transfer_box: np.ndarray | list[float] | tuple[float, ...],
     blend_width: float,
     lattice_anchor: np.ndarray,
     spacing: float,
     fvm_solid_mask: np.ndarray | None = None,
 ) -> LatticeStateBlend:
-    r"""Form ``Gamma = eta Gamma_F + (1-eta) Gamma_V`` on one lattice.
+    r"""Form the inserted common-lattice state after persistent-field removal.
 
-    Both states are first scattered with complete M4' support. Existing VPM
-    particles with positive ``eta`` are the source state replaced by the
-    returned lattice. With zero blend width, the operation is the conservative
-    hard lattice transfer and retains the complete FVM release stencil.
+    Existing VPM particles are split into ``Q`` (replaced by the lattice) and
+    ``R`` (persistent physical particles).  Before mapping, the exact
+    untruncated Gaussian vorticity of ``R`` is removed from each participating
+    FVM donor.  Thus the inserted state is
+
+    ``eta * (Gamma_F - Gamma_R) + (1 - eta) * Gamma_Q``;
+
+    after the unchanged ``R`` particles are included, it represents the
+    absolute target state without double-representing their Gaussian tails.
+    With zero blend width the residual FVM scatter retains its complete M4'
+    release support, preserving the established conservative hard-transfer
+    contract.
     """
     fvm_points = np.asarray(fvm_position, dtype=np.float64).reshape(-1, 3)
     volumes = np.asarray(fvm_cell_volume, dtype=np.float64).reshape(-1)
@@ -494,17 +593,52 @@ def blend_fvm_vpm_circulation_on_lattice(
     if not np.any(in_fvm_authority):
         raise ValueError("FVM transfer region contains no fluid donor cells")
 
+    vpm_points, vpm_strength = _validate_vortex_strength(vpm_position, vpm_vortex_strength)
+    replace = _vpm_replace_mask(vpm_points, bounds, blend_width)
+    persistent = ~replace
+    if vpm_core_radius is None:
+        if np.any(persistent):
+            raise ValueError(
+                "vpm_core_radius is required when persistent VPM particles contribute "
+                "to FVM residual-state transfer"
+            )
+        core_radius = np.empty(0, dtype=np.float64)
+    else:
+        core_radius = np.asarray(vpm_core_radius, dtype=np.float64).reshape(-1)
+        if len(core_radius) != len(vpm_points):
+            raise ValueError("vpm_core_radius must match the VPM particle count")
+        if not np.all(np.isfinite(core_radius)) or np.any(core_radius <= 0.0):
+            raise ValueError("vpm_core_radius must be finite and positive")
+
+    participating_position = fvm_points[in_fvm_authority]
+    participating_vorticity = fvm_omega[in_fvm_authority]
+    persistent_vorticity = np.zeros_like(participating_vorticity)
+    if np.any(persistent):
+        persistent_vorticity = evaluate_gaussian_vorticity(
+            participating_position,
+            vpm_points[persistent],
+            vpm_strength[persistent],
+            core_radius[persistent],
+        )
+    residual_vorticity = participating_vorticity - persistent_vorticity
+    fvm_magnitude = np.linalg.norm(participating_vorticity, axis=1)
+    persistent_magnitude = np.linalg.norm(persistent_vorticity, axis=1)
+    fvm_vorticity_rms = float(np.sqrt(np.mean(fvm_magnitude**2)))
+    persistent_vpm_vorticity_rms = float(np.sqrt(np.mean(persistent_magnitude**2)))
+    diagnostic_epsilon = np.finfo(np.float64).tiny
+    meaningful = fvm_magnitude > diagnostic_epsilon
+    persistent_fraction_max = (
+        float(np.max(persistent_magnitude[meaningful] / fvm_magnitude[meaningful]))
+        if np.any(meaningful)
+        else 0.0
+    )
     fvm_lattice = map_cell_circulation_to_lattice(
-        fvm_points[in_fvm_authority],
+        participating_position,
         volumes[in_fvm_authority],
-        fvm_omega[in_fvm_authority],
+        residual_vorticity,
         lattice_anchor=lattice_anchor,
         spacing=spacing,
     )
-    vpm_points, vpm_strength = _validate_vortex_strength(vpm_position, vpm_vortex_strength)
-    source_eta = state_blend_weight(vpm_points, bounds, blend_width)
-    tolerance = 32.0 * np.finfo(np.float64).eps
-    replace = source_eta > tolerance
     vpm_lattice = map_vortex_strength_to_lattice(
         vpm_points[replace],
         vpm_strength[replace],
@@ -548,6 +682,11 @@ def blend_fvm_vpm_circulation_on_lattice(
         hard_replacement=hard,
         cross_divergence_l2_before=divergence_before,
         cross_divergence_l2_after=divergence_after,
+        persistent_vpm_vorticity_rms=persistent_vpm_vorticity_rms,
+        fvm_vorticity_rms=fvm_vorticity_rms,
+        persistent_fraction_rms=persistent_vpm_vorticity_rms
+        / (fvm_vorticity_rms + diagnostic_epsilon),
+        persistent_fraction_max=persistent_fraction_max,
     )
 
 
@@ -565,6 +704,7 @@ __all__ = [
     "LatticeTransfer",
     "blend_fvm_vpm_circulation_on_lattice",
     "correct_state_blend_cross_divergence",
+    "evaluate_gaussian_vorticity",
     "first_vorticity_moment",
     "m4_prime",
     "map_cell_circulation_to_lattice",
