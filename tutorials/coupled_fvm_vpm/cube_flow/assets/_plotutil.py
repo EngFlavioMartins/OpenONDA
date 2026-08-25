@@ -409,8 +409,11 @@ def validate_plot_inputs() -> dict[str, float]:
     meta = metadata()
     if meta.get("schema_version") != 2:
         raise ValueError("Run metadata is stale; expected schema_version=2")
-    if meta.get("coupling_method") != "absolute_fvm_state_replacement":
-        raise ValueError("Samples do not belong to the absolute FVM-state replacement method")
+    expected_coupling_method = "absolute_common_m4_lattice_blend"
+    if meta.get("coupling_method") != expected_coupling_method:
+        raise ValueError(
+            "Samples do not belong to the configured absolute common-lattice replacement method"
+        )
     required_metadata = (
         ("physics", "freestream_velocity"),
         ("physics", "kinematic_viscosity"),

@@ -72,7 +72,7 @@ VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
 FVM_CORES = 4
-FVM_BOX = (-3.0, 3.0, -3.0, 3.0, -3.0, 3.0)
+FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
 FVM_WAKE_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
 TRANSFER_REGION_BOX = FVM_WAKE_BOX
 SURFACE_CELL_SIZE = 0.015625
