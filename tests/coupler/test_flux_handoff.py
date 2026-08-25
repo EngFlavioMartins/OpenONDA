@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from source.coupler.flux_handoff import FluxReleaseHandoff, vorticity_transport_flux
 from source.coupler.lattice_transfer import evaluate_gaussian_vorticity
@@ -23,6 +24,73 @@ def test_vorticity_transport_flux_has_the_conservative_viscous_sign():
     )
     expected = 2.0 * vorticity - 0.25 * velocity - 0.125 * normal_gradient
     np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+
+def test_nonzero_diffusive_flux_is_included_in_the_emitted_circulation_budget():
+    handoff = FluxReleaseHandoff(particle_spacing=1.0, core_radius=1.0)
+    normal = np.array([[1.0, 0.0, 0.0]])
+    velocity = np.array([[1.0, 0.0, 0.0]])
+    vorticity = np.array([[0.0, 2.0, 0.0]])
+    normal_gradient = np.array([[0.0, 4.0, 0.0]])
+    flux = vorticity_transport_flux(
+        velocity,
+        vorticity,
+        normal,
+        normal_gradient,
+        kinematic_viscosity=0.25,
+    )
+
+    batch = handoff.advance(
+        slot_id=np.array([[0, 0, 0]]),
+        slot_position=np.zeros((1, 3)),
+        slot_normal=normal,
+        patch_area=np.ones(1),
+        vorticity_flux=flux,
+        normal_velocity=np.ones(1),
+        transport_velocity=velocity,
+        time_step_size=1.0,
+    )
+
+    # Convective flux contributes +2 and outward diffusive flux contributes
+    # -nu*d_n(omega)=-1, so the emitted vector circulation is exactly +1.
+    np.testing.assert_allclose(batch.vortex_strength, [[0.0, 1.0, 0.0]])
+    np.testing.assert_allclose(batch.conservation_error, 0.0, atol=2.0e-15)
+
+
+def test_convective_flux_vector_cannot_copy_an_oblique_vortex_line_direction():
+    """Expose the geometric limit of mapping contracted flux directly to Gamma."""
+    normal = np.array([[1.0, 0.0, 0.0]])
+    velocity = np.array([[2.0, 0.0, 0.0]])
+    vorticity = np.array([[1.0, 1.0, 0.0]]) / np.sqrt(2.0)
+    flux = vorticity_transport_flux(velocity, vorticity, normal)
+
+    # The inviscid contracted vorticity flux is identically tangent to a
+    # surface: n dot (u_n*omega - omega_n*u) == 0.  A particle strength is a
+    # volume-integrated vorticity vector, so equating the two cannot preserve
+    # the direction of a vortex line with a nonzero normal component.
+    np.testing.assert_allclose(np.einsum("ij,ij->i", flux, normal), 0.0, atol=2.0e-15)
+    handoff = FluxReleaseHandoff(particle_spacing=1.0, core_radius=1.0)
+    batch = handoff.advance(
+        slot_id=np.array([[0, 0, 0]]),
+        slot_position=np.zeros((1, 3)),
+        slot_normal=normal,
+        patch_area=np.ones(1),
+        vorticity_flux=flux,
+        normal_velocity=np.array([2.0]),
+        transport_velocity=velocity,
+        time_step_size=0.5,
+    )
+    physical_packet_strength = vorticity  # omega * area * U*dt, with area*U*dt=1
+    np.testing.assert_allclose(batch.vortex_strength[:, 0], 0.0, atol=2.0e-15)
+    assert not np.allclose(batch.vortex_strength, physical_packet_strength)
+    direction_cosine = float(
+        np.dot(batch.vortex_strength[0], physical_packet_strength[0])
+        / (np.linalg.norm(batch.vortex_strength[0]) * np.linalg.norm(physical_packet_strength[0]))
+    )
+    assert direction_cosine == pytest.approx(1.0 / np.sqrt(2.0), abs=2.0e-15)
+    # F1 still closes its contracted-flux budget exactly; conservation of that
+    # budget alone is therefore insufficient to certify the physical field.
+    np.testing.assert_allclose(batch.conservation_error, 0.0, atol=2.0e-15)
 
 
 def _planar_patch_inputs(
@@ -173,6 +241,9 @@ def test_birth_spacing_is_invariant_under_a_coupling_timestep_sweep():
             strength.append(batch.vortex_strength)
             assert batch.min_new_new_separation >= h - 3.0e-14
             assert batch.min_new_existing_separation >= h - 3.0e-14
+            if len(batch.position):
+                assert np.all(batch.nearest_neighbour_distance_over_spacing >= 1.0 - 3.0e-14)
+                np.testing.assert_allclose(batch.core_radius_over_spacing, 1.0)
             np.testing.assert_allclose(batch.conservation_error, 0.0, atol=1.0e-12)
         assert len(existing) >= 12
         ordered = np.sort(existing[:, 0])
@@ -182,6 +253,52 @@ def test_birth_spacing_is_invariant_under_a_coupling_timestep_sweep():
             np.broadcast_to(vorticity, (len(existing), 3)),
             rtol=0.0,
             atol=3.0e-14,
+        )
+
+
+@pytest.mark.parametrize("crossing_angle_degrees", [0.0, 30.0, 45.0, 60.0, 75.0])
+def test_oblique_transport_advects_an_interpolated_birth_to_the_interval_endpoint(
+    crossing_angle_degrees,
+):
+    handoff = FluxReleaseHandoff(particle_spacing=1.0, core_radius=1.0)
+    tangential_speed = np.tan(np.deg2rad(crossing_angle_degrees))
+    patch = {
+        "slot_id": np.array([[0, 0, 0]]),
+        "slot_position": np.zeros((1, 3)),
+        "slot_normal": np.array([[1.0, 0.0, 0.0]]),
+        "patch_area": np.ones(1),
+        "vorticity_flux": np.array([[0.0, 1.0, 0.0]]),
+        "normal_velocity": np.ones(1),
+        "transport_velocity": np.array([[1.0, tangential_speed, 0.0]]),
+    }
+
+    first = handoff.advance(**patch, time_step_size=0.6)
+    second = handoff.advance(**patch, time_step_size=0.6)
+
+    assert len(first.position) == 0
+    # The crossing occurs 0.4 s into the second interval, leaving 0.2 s of
+    # full oblique convection before the end-of-interval insertion state.
+    np.testing.assert_allclose(
+        second.position,
+        [[0.2, 0.2 * tangential_speed, 0.0]],
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+    np.testing.assert_allclose(second.vortex_strength, [[0.0, 1.0, 0.0]])
+
+
+def test_oblique_transport_rejects_an_inconsistent_declared_normal_speed():
+    handoff = FluxReleaseHandoff(particle_spacing=1.0, core_radius=1.0)
+    with pytest.raises(ValueError, match="normal component"):
+        handoff.advance(
+            slot_id=np.array([[0, 0, 0]]),
+            slot_position=np.zeros((1, 3)),
+            slot_normal=np.array([[1.0, 0.0, 0.0]]),
+            patch_area=np.ones(1),
+            vorticity_flux=np.array([[0.0, 1.0, 0.0]]),
+            normal_velocity=np.ones(1),
+            transport_velocity=np.array([[0.9, 2.0, 0.0]]),
+            time_step_size=1.0,
         )
 
 

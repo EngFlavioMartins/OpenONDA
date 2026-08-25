@@ -108,6 +108,8 @@ class FluxReleaseBatch:
     min_new_existing_separation: float
     neighbour_count_within_2sigma: np.ndarray
     neighbour_count_within_3sigma: np.ndarray
+    nearest_neighbour_distance_over_spacing: np.ndarray
+    core_radius_over_spacing: np.ndarray
     held_slot_ids: tuple[tuple[int, int, int], ...]
     trapped_slot_ids: tuple[tuple[int, int, int], ...]
 
@@ -283,6 +285,7 @@ class FluxReleaseHandoff:
         normal_velocity: np.ndarray,
         time_step_size: float,
         existing_position: np.ndarray | None = None,
+        transport_velocity: np.ndarray | None = None,
     ) -> FluxReleaseBatch:
         """Accumulate outward flux and emit only after one spacing of transport.
 
@@ -297,6 +300,11 @@ class FluxReleaseHandoff:
         area = np.asarray(patch_area, dtype=np.float64).reshape(-1)
         flux = np.asarray(vorticity_flux, dtype=np.float64).reshape(-1, 3)
         velocity = np.asarray(normal_velocity, dtype=np.float64).reshape(-1)
+        transport = (
+            normal * velocity[:, None]
+            if transport_velocity is None
+            else np.asarray(transport_velocity, dtype=np.float64).reshape(-1, 3)
+        )
         count = len(identifiers)
         if (
             len(position) != count
@@ -304,6 +312,7 @@ class FluxReleaseHandoff:
             or len(area) != count
             or len(flux) != count
             or len(velocity) != count
+            or len(transport) != count
         ):
             raise ValueError("all release-patch arrays must have one value per slot_id")
         dt = float(time_step_size)
@@ -311,13 +320,30 @@ class FluxReleaseHandoff:
             raise ValueError("time_step_size must be finite and positive")
         if not np.all(np.isfinite(position)) or not np.all(np.isfinite(flux)):
             raise ValueError("release positions and vorticity flux must be finite")
-        if not np.all(np.isfinite(normal)) or not np.all(np.isfinite(velocity)):
-            raise ValueError("release normals and normal velocities must be finite")
+        if (
+            not np.all(np.isfinite(normal))
+            or not np.all(np.isfinite(velocity))
+            or not np.all(np.isfinite(transport))
+        ):
+            raise ValueError("release normals and transport velocities must be finite")
         if not np.all(np.isfinite(area)) or np.any(area <= 0.0):
             raise ValueError("release patch areas must be finite and positive")
         normal_length = np.linalg.norm(normal, axis=1)
         if not np.allclose(normal_length, 1.0, rtol=0.0, atol=64.0 * np.finfo(np.float64).eps):
             raise ValueError("release normals must be unit vectors")
+        transport_normal_velocity = np.einsum("ij,ij->i", transport, normal)
+        velocity_tolerance = (
+            256.0
+            * np.finfo(np.float64).eps
+            * np.maximum(
+                1.0,
+                np.maximum(np.abs(velocity), np.linalg.norm(transport, axis=1)),
+            )
+        )
+        if np.any(np.abs(transport_normal_velocity - velocity) > velocity_tolerance):
+            raise ValueError(
+                "normal_velocity must equal the normal component of transport_velocity"
+            )
         existing = (
             np.empty((0, 3), dtype=np.float64)
             if existing_position is None
@@ -346,6 +372,7 @@ class FluxReleaseHandoff:
                     "normal": normal[patch].copy(),
                     "outward_strength": np.zeros(3, dtype=np.float64),
                     "outward_area_weighted_speed": 0.0,
+                    "outward_area_weighted_velocity": np.zeros(3, dtype=np.float64),
                     "area": 0.0,
                 }
                 grouped[identifier] = entry
@@ -360,6 +387,10 @@ class FluxReleaseHandoff:
                 entry["outward_strength"] = np.asarray(entry["outward_strength"]) + contribution
                 entry["outward_area_weighted_speed"] = (
                     float(entry["outward_area_weighted_speed"]) + area[patch] * velocity[patch]
+                )
+                entry["outward_area_weighted_velocity"] = (
+                    np.asarray(entry["outward_area_weighted_velocity"])
+                    + area[patch] * transport[patch]
                 )
                 entry["area"] = float(entry["area"]) + area[patch]
                 outward_flux_increment += contribution
@@ -389,6 +420,12 @@ class FluxReleaseHandoff:
                 if weighted_area > 0.0
                 else 0.0
             )
+            mean_transport_velocity = (
+                np.asarray(entry["outward_area_weighted_velocity"], dtype=np.float64)
+                / weighted_area
+                if weighted_area > 0.0
+                else np.zeros(3, dtype=np.float64)
+            )
             displacement_increment = speed * dt
             original_pending = slot.pending_strength.copy()
             original_displacement = slot.accumulated_displacement
@@ -400,6 +437,15 @@ class FluxReleaseHandoff:
                 ) % self.particle_spacing
                 continue
             slot.pending_age += dt
+
+            def post_crossing_offset(
+                normal_displacement: float,
+                release_speed: float = speed,
+                release_transport_velocity: np.ndarray = mean_transport_velocity,
+            ) -> np.ndarray:
+                if release_speed <= 0.0:
+                    return np.zeros(3, dtype=np.float64)
+                return release_transport_velocity * (normal_displacement / release_speed)
 
             def emit(
                 candidate: np.ndarray,
@@ -452,7 +498,7 @@ class FluxReleaseHandoff:
                     # Existing particles are supplied at the end of this FVM
                     # interval, so advance a just-emitted particle through its
                     # post-emission displacement before checking its geometry.
-                    candidate = slot.position + slot.normal * remainder_displacement
+                    candidate = slot.position + post_crossing_offset(remainder_displacement)
                 if not np.any(release_strength):
                     slot.pending_strength = remainder_strength
                     slot.accumulated_displacement = remainder_displacement
@@ -477,7 +523,7 @@ class FluxReleaseHandoff:
                     release_strength = fraction * slot.pending_strength
                     remainder_strength = slot.pending_strength - release_strength
                     remainder_displacement = slot.accumulated_displacement - self.particle_spacing
-                    candidate = slot.position + slot.normal * remainder_displacement
+                    candidate = slot.position + post_crossing_offset(remainder_displacement)
                     if not np.any(release_strength):
                         slot.pending_strength = remainder_strength
                         slot.accumulated_displacement = remainder_displacement
@@ -543,6 +589,11 @@ class FluxReleaseHandoff:
             ],
             dtype=np.int64,
         )
+        nearest_neighbour_distance = np.empty(len(emitted_array), dtype=np.float64)
+        for local_index, point in enumerate(emitted_array):
+            distance = np.linalg.norm(geometry_position - point, axis=1)
+            distance[len(existing) + local_index] = np.inf
+            nearest_neighbour_distance[local_index] = distance.min(initial=np.inf)
         return FluxReleaseBatch(
             position=emitted_array,
             vortex_strength=strength_array,
@@ -559,6 +610,13 @@ class FluxReleaseHandoff:
             min_new_existing_separation=min(new_existing_separation, default=float("inf")),
             neighbour_count_within_2sigma=neighbour_count_2sigma,
             neighbour_count_within_3sigma=neighbour_count_3sigma,
+            nearest_neighbour_distance_over_spacing=(
+                nearest_neighbour_distance / self.particle_spacing
+            ),
+            core_radius_over_spacing=np.full(
+                len(emitted_array),
+                self.core_radius / self.particle_spacing,
+            ),
             held_slot_ids=tuple(sorted(set(held_slot_ids))),
             trapped_slot_ids=tuple(sorted(trapped_slot_ids)),
         )
