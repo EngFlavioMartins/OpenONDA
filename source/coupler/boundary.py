@@ -42,12 +42,23 @@ def _log_outflow_velocity(
     face_name = f"{'xyz'[axis]}{'+' if sign >= 0.0 else '-'}"
     logger.info(
         format_coupler_log(
-            "BoundaryOutflow",
-            f"face {face_name} | {int(mask.sum()):,} faces",
-            "streamwise velocity / freestream speed  "
-            f"min {streamwise_velocity.min() / freestream_speed:.3f}"
-            f" | mean {streamwise_velocity.mean() / freestream_speed:.3f}"
-            f" | max {streamwise_velocity.max() / freestream_speed:.3f}",
+            f"outflow, face {face_name}",
+            ("faces", f"{int(mask.sum()):,}"),
+            (
+                "streamwise velocity, min",
+                f"{streamwise_velocity.min() / freestream_speed:.3f}",
+                "U_inf",
+            ),
+            (
+                "streamwise velocity, mean",
+                f"{streamwise_velocity.mean() / freestream_speed:.3f}",
+                "U_inf",
+            ),
+            (
+                "streamwise velocity, max",
+                f"{streamwise_velocity.max() / freestream_speed:.3f}",
+                "U_inf",
+            ),
         )
     )
 
@@ -146,12 +157,13 @@ def evaluate_vpm_velocity(
         corrected_flux = float(np.dot(np.einsum("ij,ij->i", velocity, normal), areas))
         logger.info(
             format_coupler_log(
-                "BoundaryFlux",
-                f"{int(vpm.particles.n_particles_total):,} particles",
-                f"flux        raw {raw_flux:.3e} m^3/s"
-                f" | relative {raw_relative:.3e} | limit {tolerance:.3e}",
-                f"correction  normal velocity {correction:.3e} m/s"
-                f" | residual flux {corrected_flux:.3e} m^3/s",
+                "vpm boundary flux",
+                ("particles", f"{int(vpm.particles.n_particles_total):,}"),
+                ("raw flux", f"{raw_flux:.3e}", "m^3/s"),
+                ("relative to inflow", f"{raw_relative:.3e}"),
+                ("acceptance limit", f"{tolerance:.3e}"),
+                ("correction, normal velocity", f"{correction:.3e}", "m/s"),
+                ("residual flux", f"{corrected_flux:.3e}", "m^3/s"),
             )
         )
 
@@ -198,11 +210,14 @@ def evaluate_vpm_boundary(
             )
             logger.info(
                 format_coupler_log(
-                    "BoundaryPanelVelocity",
-                    f"refresh_count={panel_solver.refresh_count}",
-                    "panel-induced velocity at FVM boundary faces  "
-                    f"max {float(np.max(panel_velocity_norm)):.3e} m/s"
-                    f" | RMS {float(np.sqrt(np.mean(panel_velocity_norm**2))):.3e} m/s",
+                    "panel-induced velocity at fvm boundary faces",
+                    ("refreshes", f"{panel_solver.refresh_count:,}"),
+                    ("velocity, max", f"{float(np.max(panel_velocity_norm)):.3e}", "m/s"),
+                    (
+                        "velocity, rms",
+                        f"{float(np.sqrt(np.mean(panel_velocity_norm**2))):.3e}",
+                        "m/s",
+                    ),
                 )
             )
         if coupler.setup.boundary_condition_mode == "vorticity_mixed":
@@ -288,12 +303,21 @@ def evaluate_vpm_boundary(
             pressure_norm = np.linalg.norm(pressure_gradient, axis=1)
             logger.info(
                 format_coupler_log(
-                    "BoundaryPressureGradient",
-                    "temporal term "
-                    f"{'active' if coupler._pressure_velocity_snapshot is not None else 'inactive'}",
-                    "acceleration  "
-                    f"RMS {float(np.sqrt(np.mean(pressure_norm**2))) if len(pressure_norm) else 0.0:.3e} m/s^2"
-                    f" | max {float(np.max(pressure_norm)) if len(pressure_norm) else 0.0:.3e} m/s^2",
+                    "boundary pressure gradient",
+                    (
+                        "temporal term",
+                        "active" if coupler._pressure_velocity_snapshot is not None else "inactive",
+                    ),
+                    (
+                        "acceleration, rms",
+                        f"{float(np.sqrt(np.mean(pressure_norm**2))) if len(pressure_norm) else 0.0:.3e}",
+                        "m/s^2",
+                    ),
+                    (
+                        "acceleration, max",
+                        f"{float(np.max(pressure_norm)) if len(pressure_norm) else 0.0:.3e}",
+                        "m/s^2",
+                    ),
                 )
             )
             coupler._pressure_velocity_snapshot = pressure_velocity.copy()
@@ -374,7 +398,7 @@ def initialize_vpm_boundary_history(
     if coupler._velocity_boundary_condition_old is not None:
         return
     evaluate_vpm_boundary(coupler, face_centre, face_normal, face_area)
-    logger.info(format_coupler_log("BoundaryHistory", "initial time level stored"))
+    logger.info(format_coupler_log("boundary history, initial time level stored"))
 
 
 def advance_fvm(
@@ -494,9 +518,8 @@ def update_boundary_history_after_replacement(
         coupler._tangential_gradient_boundary_condition_old = tangential_normal_gradient
     logger.info(
         format_coupler_log(
-            "BoundaryUpdate",
-            "post-transfer trace",
-            f"maximum velocity difference / freestream speed  {drift:.3e}",
+            "boundary update, post transfer",
+            ("velocity difference, max", f"{drift:.3e}", "U_inf"),
         )
     )
 
@@ -570,22 +593,16 @@ def apply_fvm_boundary(
         streamwise = prescribed_velocity @ (freestream_velocity / freestream_speed)
         logger.info(
             format_coupler_log(
-                "FVMSubstep",
-                f"step {int(coupler.fvm_solver.step):,}",
-                "streamwise velocity / freestream speed  "
-                f"min {streamwise.min() / freestream_speed:.3f}"
-                f" | mean {streamwise.mean() / freestream_speed:.3f}"
-                f" | max {streamwise.max() / freestream_speed:.3f}",
+                f"fvm substep, step {int(coupler.fvm_solver.step):,}",
+                ("streamwise velocity, min", f"{streamwise.min() / freestream_speed:.3f}", "U_inf"),
+                (
+                    "streamwise velocity, mean",
+                    f"{streamwise.mean() / freestream_speed:.3f}",
+                    "U_inf",
+                ),
+                ("streamwise velocity, max", f"{streamwise.max() / freestream_speed:.3f}", "U_inf"),
             )
         )
-    y_plus = coupler.fvm_solver.last_y_plus
-    if y_plus:
-        for name, stats in y_plus.items():
-            coupler.fvm_solver.logger.message(
-                f"[FVM][Wall] step={coupler.fvm_solver.step} patch={name} "
-                f"min_y_plus={stats['min']:.3f} mean_y_plus={stats['avg']:.3f} "
-                f"max_y_plus={stats['max']:.3f}"
-            )
 
 
 def advance_fvm_substeps(
@@ -612,15 +629,21 @@ def advance_fvm_substeps(
             / freestream_speed
         )
         is_large_boundary_velocity_difference = boundary_velocity_difference_ratio > 0.5
-        severity = "WARNING | " if is_large_boundary_velocity_difference else ""
+        topic = "time interpolation"
+        if is_large_boundary_velocity_difference:
+            topic = "warning  time interpolation, boundary velocity change exceeds limit"
         logger.log(
             logging.WARNING if is_large_boundary_velocity_difference else logging.INFO,
             format_coupler_log(
-                "TimeInterpolation",
-                f"{severity}{n_substeps} FVM substeps"
-                f" | FVM step {coupler.fvm_time_step_size:.3e} s",
-                "boundary velocity change / freestream speed  "
-                f"{boundary_velocity_difference_ratio:.3f} | warning limit 0.500",
+                topic,
+                ("fvm substeps", n_substeps),
+                ("fvm time step", f"{coupler.fvm_time_step_size:.3e}", "s"),
+                (
+                    "boundary velocity change",
+                    f"{boundary_velocity_difference_ratio:.3f}",
+                    "U_inf",
+                ),
+                ("warning limit", "0.500", "U_inf"),
             ),
         )
 

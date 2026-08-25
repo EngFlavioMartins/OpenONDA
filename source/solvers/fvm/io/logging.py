@@ -15,20 +15,21 @@ from typing import Any, TextIO
 
 import numpy as np
 
+from source import log_style
 from source.version import __version__
 
-_WIDTH = 88
-_HEADER_ROWS = 20
+_CONSOLE_STDOUT = sys.stdout
+_WIDTH = log_style.WIDTH
 _MIB = 1024.0 * 1024.0
 
 _RESIDUAL_LABELS = {
-    "velocity": "Velocity residual",
-    "velocity_increment": "Velocity increment",
-    "velocity_x": "Velocity-x residual",
-    "velocity_y": "Velocity-y residual",
-    "velocity_z": "Velocity-z residual",
-    "kinematic_pressure": "Pressure residual",
-    "initial_kinematic_pressure": "Pressure initial residual",
+    "velocity": "residual, velocity",
+    "velocity_increment": "residual, velocity increment",
+    "velocity_x": "residual, velocity x",
+    "velocity_y": "residual, velocity y",
+    "velocity_z": "residual, velocity z",
+    "kinematic_pressure": "residual, pressure",
+    "initial_kinematic_pressure": "residual, pressure initial",
 }
 _RESIDUAL_ORDER = (
     "velocity",
@@ -41,28 +42,16 @@ _RESIDUAL_ORDER = (
 )
 
 _MEMORY_LABELS = {
-    "mesh_topology": "Mesh topology",
-    "geometry": "Geometry",
-    "solution_fields_history": "Fields and history",
-    "turbulence_model": "Turbulence model",
-    "linear_algorithm_workspaces": "Linear workspaces",
-    "derived_diagnostics": "Derived diagnostics",
-    "output_buffers": "Output buffers",
-    "numpy_unique_total": "NumPy total",
-    "native_python_petsc_rss_remainder": "Non-NumPy (Python, PETSc)",
+    "mesh_topology": "mesh topology",
+    "geometry": "geometry",
+    "solution_fields_history": "fields and history",
+    "turbulence_model": "turbulence model",
+    "linear_algorithm_workspaces": "linear workspaces",
+    "derived_diagnostics": "derived diagnostics",
+    "output_buffers": "output buffers",
+    "numpy_unique_total": "numpy total",
+    "native_python_petsc_rss_remainder": "non-numpy, python and petsc",
 }
-
-_COLUMNS = (
-    ("step", 6),
-    ("time", 9),
-    ("time_step_size", 14),
-    ("max_courant_number", 18),
-    ("residual_velocity", 17),
-    ("residual_kinematic_pressure", 27),
-    ("max_continuity_error", 25),
-    ("drag_coefficient", 16),
-    ("s/step", 8),
-)
 
 
 def resolve_mode(default: str = "simple") -> str:
@@ -111,23 +100,24 @@ def format_openonda_header(precision: str | None = "f64") -> str:
         "| D esign     | " + "Website: https://github.com/EngFlavioMartins".ljust(width - 16) + "|",
         "| A erodyn.   | " + "FVM Solver: Finite Volume Method".ljust(width - 16) + "|",
         "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
-        f"Build  : OpenONDA={__version__}",
-        f"Arch   : {system_info}",
+        "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /",
+    ]
+    rows: list[log_style.Row] = [
+        ("build", f"OpenONDA {__version__}"),
+        ("platform", system_info),
     ]
     if precision is not None:
-        lines.append(f"Precision: {precision}")
-    lines.extend(
-        [
-            "Exec   : FVM Solver",
-            f"Date   : {now:%b %d %Y}",
-            f"Time   : {now:%H:%M:%S}",
-            f"Host   : {hostname}",
-            f"User   : {username}",
-            f"PID    : {os.getpid()}",
-            "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ",
-            "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /",
-        ]
+        rows.append(("precision", precision))
+    rows.extend(
+        (
+            ("executable", "FVM solver"),
+            ("started", f"{now:%Y-%m-%d %H:%M:%S}"),
+            ("host", hostname),
+            ("user", username),
+            ("process", str(os.getpid())),
+        )
     )
+    lines.append(log_style.section("run", rows))
     return "\n".join(lines)
 
 
@@ -170,16 +160,16 @@ class _StepRecord:
         return total if found else None
 
 
-def _sections(record: _StepRecord) -> list[tuple[str, list[tuple[str, str]]]]:
-    """Return the populated debug-mode sections of one step record."""
-    sections: list[tuple[str, list[tuple[str, str]]]] = []
+def _sections(record: _StepRecord) -> list[tuple[str, list[log_style.Row]]]:
+    """Return the populated diagnostic groups of one step record."""
+    sections: list[tuple[str, list[log_style.Row]]] = []
 
     if record.residuals:
         keys = [key for key in _RESIDUAL_ORDER if key in record.residuals]
         keys.extend(key for key in record.residuals if key not in keys)
         sections.append(
             (
-                "Solver Convergence",
+                "convergence",
                 [
                     (_RESIDUAL_LABELS.get(key, key), f"{float(record.residuals[key]):.3e}")
                     for key in keys
@@ -190,59 +180,60 @@ def _sections(record: _StepRecord) -> list[tuple[str, list[tuple[str, str]]]]:
     if record.max_continuity_error is not None:
         sections.append(
             (
-                "Conservation",
+                "conservation",
                 [
-                    ("Maximum |div velocity|", f"{record.max_continuity_error:.3e} 1/s"),
-                    ("Boundary imbalance", f"{record.sum_absolute_continuity_error:.3e} m³/s"),
+                    ("continuity error, max", f"{record.max_continuity_error:.3e}", "1/s"),
+                    (
+                        "boundary imbalance",
+                        f"{record.sum_absolute_continuity_error:.3e}",
+                        "m^3/s",
+                    ),
                 ],
             )
         )
 
     if record.courant is not None:
-        target = (
-            "" if record.courant_target is None else f"  (target ≤ {record.courant_target:.3e})"
-        )
-        sections.append(
-            ("Time Control", [("Maximum Courant number", f"{record.courant:.3e}{target}")])
-        )
+        rows: list[log_style.Row] = [("courant, max", f"{record.courant:.3e}")]
+        if record.courant_target is not None:
+            rows.append(("courant target", f"{record.courant_target:.3e}"))
+        sections.append(("time control", rows))
 
     if record.y_plus:
-        sections.append(
+        wall_rows: list[log_style.Row] = []
+        for name, stats in record.y_plus.items():
+            wall_rows.extend(
+                (
+                    (f"{name}, y+ min", f"{stats['min']:.3e}"),
+                    (f"{name}, y+ mean", f"{stats['avg']:.3e}"),
+                    (f"{name}, y+ max", f"{stats['max']:.3e}"),
+                )
+            )
+        sections.append(("wall resolution", wall_rows))
+
+    loads: list[log_style.Row] = []
+    for patch, values in record.forces.items():
+        coefficients = values.get("coeffs", {})
+        loads.extend(
             (
-                "Wall Resolution (y+)",
-                [
-                    (
-                        name,
-                        f"min={stats['min']:.3e}, max={stats['max']:.3e}, mean={stats['avg']:.3e}",
-                    )
-                    for name, stats in record.y_plus.items()
-                ],
+                (f"{patch}, drag", f"{float(coefficients.get('drag_coefficient', 0.0)):.4f}"),
+                (f"{patch}, lift", f"{float(coefficients.get('lift_coefficient', 0.0)):.4f}"),
+                (
+                    f"{patch}, pitching moment",
+                    f"{float(coefficients.get('pitching_moment_coefficient', 0.0)):.4f}",
+                ),
             )
         )
-
-    loads = [
-        (
-            patch,
-            "drag_coefficient="
-            f"{float(values.get('coeffs', {}).get('drag_coefficient', 0.0)):.4f}, "
-            "lift_coefficient="
-            f"{float(values.get('coeffs', {}).get('lift_coefficient', 0.0)):.4f}, "
-            "pitching_moment_coefficient="
-            f"{float(values.get('coeffs', {}).get('pitching_moment_coefficient', 0.0)):.4f}",
+    for name, (drag, lift) in record.ibm_forces.items():
+        loads.extend(
+            (
+                (f"{name}, drag, immersed", f"{drag:.4f}"),
+                (f"{name}, lift, immersed", f"{lift:.4f}"),
+            )
         )
-        for patch, values in record.forces.items()
-    ]
-    loads.extend(
-        (
-            f"{name} (immersed)",
-            f"drag_coefficient={drag:.4f}, lift_coefficient={lift:.4f}",
-        )
-        for name, (drag, lift) in record.ibm_forces.items()
-    )
     if record.ibm_slip is not None:
-        loads.append(("Marker slip", f"{record.ibm_slip:.3e} m/s"))
+        loads.append(("marker slip", f"{record.ibm_slip:.3e}", "m/s"))
     if loads:
-        sections.append(("Aerodynamic Loads", loads))
+        sections.append(("aerodynamic loads", loads))
 
     if record.turbulence is not None:
         minimum, maximum, mean = record.turbulence
@@ -251,22 +242,23 @@ def _sections(record: _StepRecord) -> list[tuple[str, list[tuple[str, str]]]]:
         ratio_max = maximum / kinematic_viscosity if kinematic_viscosity > 0 else float("inf")
         sections.append(
             (
-                "Turbulence Diagnostics",
+                "turbulence",
                 [
-                    ("eddy_viscosity minimum", f"{minimum:.3e} m²/s"),
-                    ("eddy_viscosity maximum", f"{maximum:.3e} m²/s"),
-                    ("eddy_viscosity mean", f"{mean:.3e} m²/s"),
-                    (
-                        "eddy_viscosity/kinematic_viscosity range",
-                        f"[{ratio_min:.3e}, {ratio_max:.3e}]",
-                    ),
+                    ("eddy viscosity, min", f"{minimum:.3e}", "m^2/s"),
+                    ("eddy viscosity, mean", f"{mean:.3e}", "m^2/s"),
+                    ("eddy viscosity, max", f"{maximum:.3e}", "m^2/s"),
+                    ("viscosity ratio, min", f"{ratio_min:.3e}"),
+                    ("viscosity ratio, max", f"{ratio_max:.3e}"),
                 ],
             )
         )
 
     if record.warnings:
         sections.append(
-            ("Warnings", [(f"({index + 1})", text) for index, text in enumerate(record.warnings)])
+            (
+                "warnings",
+                [(f"({index + 1})", text) for index, text in enumerate(record.warnings)],
+            )
         )
 
     return sections
@@ -310,10 +302,10 @@ class Logging:
         self._step_wall_time = 0.0
         self._steps = 0
         self._reported_steps = 0
-        self._rows_since_header = 0
-        self._needs_header = True
-        self._drag_column = False
-        self._columns_fixed = False
+        # VPM file logging may replace process-global ``sys.stdout`` after the
+        # FVM is constructed.  Keep the FVM console sink stable so its records
+        # cannot migrate into ``vpm.log`` midway through a coupled run.
+        self._console_stream = _CONSOLE_STDOUT
 
         if self.enabled:
             solution_dir = Path(case_dir).resolve() / "solution"
@@ -330,22 +322,25 @@ class Logging:
         if not self.enabled or self._closed:
             return
         if self.console:
-            print(text, file=sys.stdout, flush=flush)
+            print(text, file=self._console_stream, flush=flush)
         if self._file is not None:
             print(text, file=self._file, flush=True)
 
     def message(self, text: str = "", *, flush: bool = False) -> None:
         """Emit one complete message to every configured sink."""
         self._emit(text, flush=flush)
-        self._needs_header = True
 
     def info(self, text: str, *, flush: bool = False) -> None:
         """Emit an informational message."""
-        self.message(f"[FVM][Info] {text}", flush=flush)
+        self.message(log_style.header("fvm", text, stamped=True), flush=flush)
 
     def warning(self, text: str, *, flush: bool = True) -> None:
         """Emit a warning message."""
-        self.message(f"[FVM][Warning] {text}", flush=flush)
+        self.message(log_style.header("fvm", f"warning  {text}", stamped=True), flush=flush)
+
+    def record(self, topic: str, *rows: log_style.Row, flush: bool = False) -> None:
+        """Emit one stamped FVM record with indented detail rows."""
+        self.message(log_style.record("fvm", topic, *rows, stamped=True), flush=flush)
 
     def debug_message(self, text: str, *, flush: bool = False) -> None:
         """Emit a message only in debug mode."""
@@ -357,15 +352,12 @@ class Logging:
         self.message(format_openonda_header(precision), flush=True)
 
     @staticmethod
-    def _section(title: str, items: list[tuple[str, str]]) -> list[str]:
-        lines = ["", "-" * _WIDTH, title, "-" * _WIDTH]
-        label_width = max((len(label) for label, _value in items), default=0)
-        lines.extend(f"  {label:<{label_width}}  : {value}" for label, value in items)
-        return lines
+    def _section(title: str, items: list[log_style.Row]) -> list[str]:
+        return log_style.section(title, items).split("\n")
 
-    def section(self, title: str, items: list[tuple[str, str]]) -> None:
+    def section(self, title: str, items: list[log_style.Row]) -> None:
         """Emit one consistently formatted information section."""
-        self.message("\n".join(self._section(title, items)))
+        self.message(log_style.section(title, items))
 
     # -- Per-step diagnostics --------------------------------------------------
 
@@ -473,76 +465,49 @@ class Logging:
             return
         self._reported_steps += 1
         if self.debug:
-            self._emit(self._debug_block(record))
-            self._emit(
-                f"[FVM][Timing] step={record.step} step_s={record.elapsed:.3e} "
-                f"cumulative_s={self._step_wall_time:.3e}",
-                flush=True,
-            )
+            self._emit(self._debug_block(record), flush=True)
         else:
-            self._emit(self._simple_row(record), flush=True)
+            self._emit(self._step_block(record), flush=True)
 
     def _debug_block(self, record: _StepRecord) -> str:
-        title = f" TIME STEP  (step {record.step}, t = {record.time:.3e} s, Δt = {record.time_step_size:.3e} s)"
-        bar = "=" * _WIDTH
-        sep = "-" * _WIDTH
-        sections = _sections(record)
-        label_width = max(
-            (len(label) for _title, items in sections for label, _value in items),
-            default=0,
-        )
-        lines = ["", bar, title, bar]
-        for index, (section_title, items) in enumerate(sections):
-            if index > 0:
-                lines.append(sep)
-            lines.append(f"  {section_title}")
-            lines.append(sep)
-            lines.extend(f"  {label:<{label_width}}  : {value}" for label, value in items)
-        lines.append(bar)
-        return "\n".join(lines)
+        """Return the full step report, one detail row per quantity."""
+        rows: list[log_style.Row] = list(self._core_rows(record))
+        for title, items in _sections(record):
+            rows.append((f"{title}:", ""))
+            for item in items:
+                label, value = item[0], item[1]
+                rows.append(
+                    (f"  {label}", value, item[2]) if len(item) > 2 else (f"  {label}", value)
+                )
+        rows.append(("cumulative wall time", f"{self._step_wall_time:.3e}", "s"))
+        return log_style.record("fvm", f"step {record.step:,}", *rows, stamped=True)
 
-    def _simple_row(self, record: _StepRecord) -> str:
-        drag = record.drag()
-        if not self._columns_fixed:
-            self._drag_column = drag is not None
-            self._columns_fixed = True
-
-        residuals = record.residuals
-        cells = {
-            "step": f"{record.step:d}",
-            "time": f"{record.time:.3e}",
-            "time_step_size": f"{record.time_step_size:.3e}",
-            "max_courant_number": "-" if record.courant is None else f"{record.courant:.3f}",
-            "residual_velocity": "-"
-            if "velocity" not in residuals
-            else f"{residuals['velocity']:.2e}",
-            "residual_kinematic_pressure": "-"
-            if "kinematic_pressure" not in residuals
-            else f"{residuals['kinematic_pressure']:.2e}",
-            "max_continuity_error": (
-                "-" if record.max_continuity_error is None else f"{record.max_continuity_error:.2e}"
-            ),
-            "drag_coefficient": "" if drag is None else f"{drag:.4f}",
-            "s/step": f"{record.elapsed:.2f}",
-        }
-        columns = [
-            (name, width)
-            for name, width in _COLUMNS
-            if name != "drag_coefficient" or self._drag_column
+    @staticmethod
+    def _core_rows(record: _StepRecord) -> list[log_style.Row]:
+        """Return the quantities reported for every step in either mode."""
+        return [
+            ("time", f"{record.time:.3e}", "s"),
+            ("time step", f"{record.time_step_size:.3e}", "s"),
         ]
 
-        lines = []
-        if self._needs_header or self._rows_since_header >= _HEADER_ROWS:
-            if self._reported_steps > 1:
-                lines.append("")
-            lines.append("  " + "  ".join(f"{name:>{width}}" for name, width in columns))
-            lines.append("  " + "  ".join("-" * width for _name, width in columns))
-            self._rows_since_header = 0
-            self._needs_header = False
-        lines.append("  " + "  ".join(f"{cells[name]:>{width}}" for name, width in columns))
-        lines.extend(f"    ! {text}" for text in record.warnings)
-        self._rows_since_header += 1
-        return "\n".join(lines)
+    def _step_block(self, record: _StepRecord) -> str:
+        """Return the routine step report: the quantities watched every step."""
+        residuals = record.residuals
+        drag = record.drag()
+        rows: list[log_style.Row] = list(self._core_rows(record))
+        if record.courant is not None:
+            rows.append(("courant, max", f"{record.courant:.3f}"))
+        if "velocity" in residuals:
+            rows.append(("residual, velocity", f"{residuals['velocity']:.2e}"))
+        if "kinematic_pressure" in residuals:
+            rows.append(("residual, pressure", f"{residuals['kinematic_pressure']:.2e}"))
+        if record.max_continuity_error is not None:
+            rows.append(("continuity error, max", f"{record.max_continuity_error:.2e}"))
+        if drag is not None:
+            rows.append(("drag coefficient", f"{drag:.4f}"))
+        rows.append(("wall time", f"{record.elapsed:.2f}", "s"))
+        rows.extend(("warning", text) for text in record.warnings)
+        return log_style.record("fvm", f"step {record.step:,}", *rows, stamped=True)
 
     # -- Startup and shutdown reports ------------------------------------------
 
@@ -554,101 +519,106 @@ class Logging:
         parallel = solver.parallel
         partition = getattr(parallel, "partition", None)
 
-        lines = ["", "=" * _WIDTH, "FVM SOLVER INFO", "=" * _WIDTH]
-        lines.extend(
-            Logging._section(
-                "CONFIGURATION",
+        lines = [log_style.banner("fvm solver")]
+        lines.append(
+            log_style.section(
+                "fvm solver  configuration",
                 [
-                    ("Case Name", str(config.case_name)),
-                    ("Algorithm", str(config.pimple.algorithm).upper()),
-                    ("Execution Mode", str(config.execution.parallel_mode)),
-                    ("MPI Ranks", str(parallel.size)),
-                    ("Operator Backend", str(config.execution.operator_backend)),
-                    ("Linear Backend", str(config.execution.linear_backend)),
+                    ("case", str(config.case_name)),
+                    ("algorithm", str(config.pimple.algorithm).upper()),
+                    ("execution mode", str(config.execution.parallel_mode)),
+                    ("mpi ranks", str(parallel.size)),
+                    ("operator backend", str(config.execution.operator_backend)),
+                    ("linear backend", str(config.execution.linear_backend)),
                 ],
             )
         )
 
         if partition is None:
-            mesh_items = [
-                ("Cells", f"{int(mesh['n_cells']):,}"),
-                ("Faces", f"{int(mesh['n_faces']):,}"),
-                ("Interior Faces", f"{int(mesh['n_interior_faces']):,}"),
-                ("Boundary Patches", str(len(mesh["boundary"]))),
+            mesh_items: list[log_style.Row] = [
+                ("cells", f"{int(mesh['n_cells']):,}"),
+                ("faces", f"{int(mesh['n_faces']):,}"),
+                ("faces, interior", f"{int(mesh['n_interior_faces']):,}"),
+                ("boundary patches", str(len(mesh["boundary"]))),
             ]
         else:
             mesh_items = [
-                ("Global Cells", f"{int(partition.n_global_cells):,}"),
-                ("Rank 0 Owned Cells", f"{int(parallel.n_owned):,}"),
-                ("Rank 0 Local Faces", f"{int(mesh['n_faces']):,}"),
-                ("Configured Patches", str(len(config.boundaries))),
+                ("cells, global", f"{int(partition.n_global_cells):,}"),
+                ("cells, rank 0 owned", f"{int(parallel.n_owned):,}"),
+                ("faces, rank 0 local", f"{int(mesh['n_faces']):,}"),
+                ("patches, configured", str(len(config.boundaries))),
             ]
-        lines.extend(Logging._section("MESH", mesh_items))
+        lines.append(log_style.section("fvm solver  mesh", mesh_items))
 
         linear_method = config.linear.linear_solver
         pressure_method = config.linear.pressure_solver or linear_method
         momentum_method = config.linear.momentum_solver or linear_method
-        lines.extend(
-            Logging._section(
-                "NUMERICS",
+        lines.append(
+            log_style.section(
+                "fvm solver  numerics",
                 [
-                    ("Time Step Size", f"{config.time.time_step_size:.3e} s"),
-                    ("End Time", f"{config.time.end_time:.3e} s"),
-                    ("Time Scheme", str(config.schemes.time_scheme)),
-                    ("Convection Scheme", str(config.schemes.convection_scheme)),
-                    ("Gradient Scheme", str(config.schemes.gradient_scheme)),
-                    ("Momentum Solver", str(momentum_method)),
-                    ("Pressure Solver", str(pressure_method)),
-                    ("Correctors", str(config.pimple.n_correctors)),
-                    ("Outer Correctors", str(config.pimple.n_outer_correctors)),
+                    ("time step", f"{config.time.time_step_size:.3e}", "s"),
+                    ("end time", f"{config.time.end_time:.3e}", "s"),
+                    ("time scheme", str(config.schemes.time_scheme)),
+                    ("convection scheme", str(config.schemes.convection_scheme)),
+                    ("gradient scheme", str(config.schemes.gradient_scheme)),
+                    ("momentum solver", str(momentum_method)),
+                    ("pressure solver", str(pressure_method)),
+                    ("correctors", str(config.pimple.n_correctors)),
+                    ("outer correctors", str(config.pimple.n_outer_correctors)),
                 ],
             )
         )
         turbulence = config.turbulence
         turbulence_name = "DNS / laminar" if turbulence is None else str(turbulence.model)
-        lines.extend(
-            Logging._section(
-                "PHYSICS",
+        lines.append(
+            log_style.section(
+                "fvm solver  physics",
                 [
-                    ("Density", f"{config.transport.density:.6g} kg/m³"),
-                    ("Kinematic Viscosity", f"{config.transport.kinematic_viscosity:.6e} m²/s"),
-                    ("Turbulence Model", turbulence_name),
+                    ("density", f"{config.transport.density:.6g}", "kg/m^3"),
+                    (
+                        "kinematic viscosity",
+                        f"{config.transport.kinematic_viscosity:.6e}",
+                        "m^2/s",
+                    ),
+                    ("turbulence model", turbulence_name),
                 ],
             )
         )
-        boundary_items = [
-            (
-                boundary.name,
-                f"velocity={boundary.velocity_type}, kinematic_pressure={boundary.pressure_type}, "
-                f"value={boundary.velocity_value}",
+        boundary_items: list[log_style.Row] = []
+        for boundary in config.boundaries:
+            boundary_items.extend(
+                (
+                    (f"{boundary.name}, velocity", str(boundary.velocity_type)),
+                    (f"{boundary.name}, pressure", str(boundary.pressure_type)),
+                    (f"{boundary.name}, value", str(boundary.velocity_value)),
+                )
             )
-            for boundary in config.boundaries
-        ]
-        lines.extend(Logging._section("BOUNDARY CONDITIONS", boundary_items))
+        lines.append(log_style.section("fvm solver  boundary conditions", boundary_items))
         sink = getattr(solver, "logger", None)
         log_file_path = getattr(sink, "log_file_path", None)
-        lines.extend(
-            Logging._section(
-                "MONITORING & I/O",
+        lines.append(
+            log_style.section(
+                "fvm solver  monitoring and output",
                 [
-                    ("Solution Directory", str(Path(solver.case_dir) / "solution")),
-                    ("Log File", str(log_file_path or "disabled")),
-                    ("Log Mode", str(getattr(sink, "mode", "simple"))),
-                    ("Log Interval", f"{getattr(sink, 'interval_steps', 1)} steps"),
-                    ("Visualization", "VTK XML, cell-centred, appended binary"),
-                    ("Output Compression", str(config.output.compression).upper()),
+                    ("solution directory", str(Path(solver.case_dir) / "solution")),
+                    ("log file", str(log_file_path or "disabled")),
+                    ("log mode", str(getattr(sink, "mode", "simple"))),
+                    ("log interval", f"{getattr(sink, 'interval_steps', 1)}", "steps"),
+                    ("visualization", "VTK XML, cell-centred, appended binary"),
+                    ("output compression", str(config.output.compression).upper()),
                     (
-                        "Output Scheduling",
+                        "output scheduling",
                         "asynchronous"
                         if config.output.asynchronous and not parallel.is_partitioned
                         else "synchronous",
                     ),
-                    ("Visualization Ghost Layers", str(config.output.ghost_layers)),
-                    ("Initialization Time", f"{initialization_time:.3e} s"),
+                    ("visualization ghost layers", str(config.output.ghost_layers)),
+                    ("initialization time", f"{initialization_time:.3e}", "s"),
                 ],
             )
         )
-        lines.extend(["", "=" * _WIDTH, ""])
+        lines.append("")
         return "\n".join(lines)
 
     def log_solver_info(self, solver: Any, initialization_time: float) -> None:
@@ -658,13 +628,13 @@ class Logging:
     def solver_state(self, solver: Any) -> None:
         """Emit the current high-level solver state."""
         self.section(
-            "FVM SOLVER STATE",
+            "fvm solver  state",
             [
-                ("Case", str(solver.setup.case_name)),
-                ("Time", f"{solver.time:.5f} s"),
-                ("Step", str(solver.step)),
-                ("Local Cells", f"{solver.mesh_data['n_cells']:,}"),
-                ("Algorithm", str(solver.setup.pimple.algorithm)),
+                ("case", str(solver.setup.case_name)),
+                ("time", f"{solver.time:.5f}", "s"),
+                ("step", f"{solver.step:,}"),
+                ("cells, local", f"{solver.mesh_data['n_cells']:,}"),
+                ("algorithm", str(solver.setup.pimple.algorithm)),
             ],
         )
 
@@ -681,55 +651,72 @@ class Logging:
         """Emit the per-step performance profile (debug mode, reported steps)."""
         if not self.debug or not self._step_reported:
             return
-        rule = "-" * _WIDTH
-        lines = [
-            "",
-            rule,
-            "PERFORMANCE PROFILE   (this step; max over ranks)",
-            rule,
-            f"  {'Phase':<31} {'calls':>5} {'mean s':>10} {'max s':>10} {'share':>8} "
-            f"{'max/mean':>8}",
-        ]
+        rows: list[log_style.Row] = [("phases, max over ranks:", "")]
         for phase in record["phases"]:
-            lines.append(
-                f"  {phase['name']:<31} "
-                f"{phase['calls']['max']:5.0f} "
-                f"{phase['seconds']['mean']:10.3f} "
-                f"{phase['seconds']['max']:10.3f} "
-                f"{100.0 * phase['critical_path_fraction']:7.1f}% "
-                f"{phase['rank_imbalance']:8.3f}"
+            rows.extend(
+                (
+                    (f"  {phase['name']}, calls", f"{phase['calls']['max']:.0f}"),
+                    (f"  {phase['name']}, mean", f"{phase['seconds']['mean']:.3f}", "s"),
+                    (f"  {phase['name']}, max", f"{phase['seconds']['max']:.3f}", "s"),
+                    (
+                        f"  {phase['name']}, share",
+                        f"{100.0 * phase['critical_path_fraction']:.1f}",
+                        "%",
+                    ),
+                    (f"  {phase['name']}, rank imbalance", f"{phase['rank_imbalance']:.3f}"),
+                )
             )
         if record["linear"]:
-            lines.extend([rule, "  Linear solvers"])
+            rows.append(("linear solvers:", ""))
             for linear in record["linear"]:
-                lines.append(
-                    f"  {linear['equation']:<31} "
-                    f"calls={linear['calls']['max']:.0f}, "
-                    f"iterations(max)={linear['iterations']['max']:.0f}, "
-                    f"setup(max)={linear['setup_seconds']['max']:.3f} s, "
-                    f"solve(max)={linear['solve_seconds']['max']:.3f} s"
+                rows.extend(
+                    (
+                        (f"  {linear['equation']}, calls", f"{linear['calls']['max']:.0f}"),
+                        (
+                            f"  {linear['equation']}, iterations, max",
+                            f"{linear['iterations']['max']:.0f}",
+                        ),
+                        (
+                            f"  {linear['equation']}, setup, max",
+                            f"{linear['setup_seconds']['max']:.3f}",
+                            "s",
+                        ),
+                        (
+                            f"  {linear['equation']}, solve, max",
+                            f"{linear['solve_seconds']['max']:.3f}",
+                            "s",
+                        ),
+                    )
                 )
         memory = record["memory"]
-        lines.extend(
-            [
-                rule,
-                f"  {'Resident, all ranks':<31}: "
-                f"{memory['aggregate_rss_end_bytes'] / _MIB:.1f} MiB",
-                f"  {'Peak during step':<31}: "
-                f"{memory['aggregate_rss_max_observed_bytes'] / _MIB:.1f} MiB",
-                f"  {'Peak since start':<31}: "
-                f"{memory['aggregate_peak_rss_end_bytes'] / _MIB:.1f} MiB",
-                f"  {'Slowest rank':<31}: {record['step_seconds']['max']:.3f} s",
-            ]
+        rows.extend(
+            (
+                ("memory:", ""),
+                (
+                    "  resident, all ranks",
+                    f"{memory['aggregate_rss_end_bytes'] / _MIB:.1f}",
+                    "MiB",
+                ),
+                (
+                    "  peak during step",
+                    f"{memory['aggregate_rss_max_observed_bytes'] / _MIB:.1f}",
+                    "MiB",
+                ),
+                (
+                    "  peak since start",
+                    f"{memory['aggregate_peak_rss_end_bytes'] / _MIB:.1f}",
+                    "MiB",
+                ),
+                ("  slowest rank", f"{record['step_seconds']['max']:.3f}", "s"),
+            )
         )
         inventory = record.get("allocation_inventory")
         if inventory is not None:
-            lines.extend([rule, "  Memory by subsystem"])
+            rows.append(("memory by subsystem:", ""))
             for name, values in inventory.items():
                 label = _MEMORY_LABELS.get(name, name)
-                lines.append(f"  {label:<31}: {values['aggregate_bytes'] / _MIB:.1f} MiB")
-        lines.append(rule)
-        self.message("\n".join(lines), flush=True)
+                rows.append((f"  {label}", f"{values['aggregate_bytes'] / _MIB:.1f}", "MiB"))
+        self.record("performance profile, this step", *rows, flush=True)
 
     def run_summary(self) -> None:
         """Emit the closing wall-time summary."""
@@ -737,9 +724,11 @@ class Logging:
             return
         mean = self._step_wall_time / self._steps
         self._emit("")
-        self._emit(
-            f"[FVM][RunTiming] steps={self._steps} total_s={self._step_wall_time:.3e} "
-            f"mean_step_s={mean:.3f}",
+        self.record(
+            "run complete",
+            ("steps", f"{self._steps:,}"),
+            ("wall time, total", f"{self._step_wall_time:.3e}", "s"),
+            ("wall time, mean per step", f"{mean:.3f}", "s"),
             flush=True,
         )
 

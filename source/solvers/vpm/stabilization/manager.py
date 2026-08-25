@@ -200,14 +200,17 @@ class StabilizationManager:
         self.last_vorticity_growth = vorticity_growth
         self.max_vorticity_growth = max(self.max_vorticity_growth, vorticity_growth)
 
-        Logging.message(
-            f"[VPM][Stabilization] mechanism={mechanism} "
-            f"n_particles_total={before.n_particles_total}->{after.n_particles_total} "
-            f"vortex_strength_closure_relative={vortex_strength_error:.2e} "
-            f"vortex_strength_magnitude_sum_relative_change={strength_growth:+.2e} "
-            f"peak_vorticity_change_rel={vorticity_growth:+.2e}"
-            + (f" detail={detail}" if detail else "")
-        )
+        rows = [
+            ("mechanism", mechanism),
+            ("particles, before", f"{before.n_particles_total:,}"),
+            ("particles, after", f"{after.n_particles_total:,}"),
+            ("vortex strength closure, relative", f"{vortex_strength_error:.2e}"),
+            ("vortex strength sum, relative change", f"{strength_growth:+.2e}"),
+            ("peak vorticity, relative change", f"{vorticity_growth:+.2e}"),
+        ]
+        if detail:
+            rows.append(("detail", detail))
+        Logging.record("stabilization", *rows)
 
         checks = []
         if conserves_vortex_strength:

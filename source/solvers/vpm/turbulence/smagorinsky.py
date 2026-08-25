@@ -66,16 +66,15 @@ class SmagorinskyModel:
             self.subgrid_dissipation_coefficient,
         )
 
-    def __str__(self) -> str:
-        return "\n".join(
-            [
-                "  Model type   : Smagorinsky",
-                f"  C_s          : {self.smagorinsky_coefficient:.4f}",
-                f"  C_k          : {self.subgrid_kinetic_energy_coefficient:.6f}",
-                f"  C_e          : {self.subgrid_dissipation_coefficient:.4f}",
-                "  Filter width : V_p^(1/3)",
-            ]
-        )
+    def report_rows(self) -> list:
+        """Return the turbulence-model configuration as log detail rows."""
+        return [
+            ("model", "Smagorinsky"),
+            ("c_s", f"{self.smagorinsky_coefficient:.4f}"),
+            ("c_k", f"{self.subgrid_kinetic_energy_coefficient:.6f}"),
+            ("c_e", f"{self.subgrid_dissipation_coefficient:.4f}"),
+            ("filter width", "V_p^(1/3)"),
+        ]
 
     @ti.kernel
     def _compute_filter_width(

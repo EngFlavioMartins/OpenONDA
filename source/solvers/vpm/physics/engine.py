@@ -63,11 +63,12 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         self._stretching = _StretchingHandler(self)
         self._coupled = _CoupledAdvectionStretchingHandler(self)
 
-    def __str__(self):
-        return (
-            f"  Kernel                   : {self.particle_kernel}\n"
-            f"  Max Particles            : {self.max_n_particles}"
-        )
+    def report_rows(self) -> list:
+        """Return the physics-model configuration as log detail rows."""
+        return [
+            ("kernel", str(self.particle_kernel)),
+            ("particles, max", f"{self.max_n_particles:,}"),
+        ]
 
     # ADVECTION INTERFACE
 

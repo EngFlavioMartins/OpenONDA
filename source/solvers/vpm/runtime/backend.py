@@ -23,6 +23,8 @@ import sys
 
 import taichi as ti
 
+from source import log_style
+
 from ..config import constants as constants_module
 
 _logger = logging.getLogger(__name__)
@@ -158,7 +160,13 @@ def _safe_device_memory_for_init(
             # Apple Silicon: GPU shares system RAM (unified memory).
             # Metal backend does NOT accept device_memory_GB / device_memory_fraction.
             print(
-                "[VPM][Backend] name=METAL memory_pool=runtime_managed memory_architecture=unified",
+                log_style.record(
+                    "vpm",
+                    "backend METAL",
+                    ("memory pool", "runtime managed"),
+                    ("memory architecture", "unified"),
+                    stamped=True,
+                ),
                 file=sys.stderr,
             )
             return {}
@@ -194,8 +202,14 @@ def _safe_device_memory_for_init(
         budget_mb = budget_info[1] / (1 << 20) if budget_info else -1
 
         print(
-            f"[VPM][Backend] name={backend} memory_pool_mib={pool_mb:.0f} "
-            f"device_budget_mib={budget_mb:.0f} gpu_type=integrated",
+            log_style.record(
+                "vpm",
+                f"backend {backend}",
+                ("memory pool", f"{pool_mb:.0f}", "MiB"),
+                ("device budget", f"{budget_mb:.0f}", "MiB"),
+                ("gpu type", "integrated"),
+                stamped=True,
+            ),
             file=sys.stderr,
         )
         return {"device_memory_GB": pool_gb}
@@ -408,9 +422,14 @@ def initialize_taichi_backend(
     clamped_fraction = max(0.1, min(device_memory_fraction, 0.7))
     if clamped_fraction != device_memory_fraction:
         print(
-            f"[VPM][Warning] component=backend requested_memory_fraction="
-            f"{device_memory_fraction:.3g} memory_fraction={clamped_fraction:.3g} "
-            "allowed_range=[0.1,0.7]",
+            log_style.record(
+                "vpm",
+                "warning  backend memory fraction clamped",
+                ("requested", f"{device_memory_fraction:.3g}"),
+                ("applied", f"{clamped_fraction:.3g}"),
+                ("allowed range", "[0.1, 0.7]"),
+                stamped=True,
+            ),
             file=sys.stderr,
         )
     device_memory_fraction = clamped_fraction
@@ -459,7 +478,7 @@ def initialize_taichi_backend(
                 )
             _probe_taichi_backend()
             constants_module.TAICHI_BACKEND = name
-            _logger.info("[VPM][Backend] name=%s precision=%s status=initialized", name, precision)
+            _logger.info("backend %s initialized at precision %s", name, precision)
             return name
         except Exception as exc:
             last_exc = exc

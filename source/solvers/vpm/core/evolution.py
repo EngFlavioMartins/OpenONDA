@@ -57,6 +57,18 @@ class EvolutionStepper:
         before scheduled samples and checkpoints are written.
         """
 
+        next_step = self.step + 1
+        diagnostics_due = (
+            self.logging_interval_steps > 0 and next_step % self.logging_interval_steps == 0
+        )
+        timing_due = self.timing_interval_steps > 0 and next_step % self.timing_interval_steps == 0
+        checkpoint_due = (
+            self.checkpoint_interval_steps > 0 and next_step % self.checkpoint_interval_steps == 0
+        )
+        Logging.set_routine_messages_enabled(
+            next_step == 1 or diagnostics_due or timing_due or checkpoint_due
+        )
+
         self.solver._domain_bounds_enforced_this_step = False
         self._apply_pending_particle_regeneration()
         self.stabilization.run_phase("pre_evolution")
@@ -65,10 +77,6 @@ class EvolutionStepper:
 
         self.particles.step = self.step
         self._debug_validate_particle_geometry("step entry")
-
-        diagnostics_due = (
-            self.logging_interval_steps > 0 and self.step % self.logging_interval_steps == 0
-        )
 
         with self.profiler.step():
             if self.vlm_solver is not None:
@@ -249,14 +257,16 @@ class EvolutionStepper:
 
         self.solver.time = round(self.solver.time + self.time_step_size, 12)
 
-        Logging.message(
-            f"\n[VPM][Step] step={self.step:d} time_s={self.time:.6e}",
+        Logging.message("")
+        Logging.record(
+            f"step {self.step:,}",
+            ("time", f"{self.time:.6e}", "s"),
             flush=True,
         )
 
     def _update_velocities(self) -> None:
         """Evaluate self-induced particle velocity and optional body/source contributions."""
-        Logging.message(f"[VPM][Velocity] method={self.physics.velocity_method.lower()}")
+        Logging.record("velocity", ("method", self.physics.velocity_method.lower()))
         self.physics.compute_self_induced_velocity(
             self.particles.position,
             self.particles.vortex_strength,
@@ -292,11 +302,15 @@ class EvolutionStepper:
 
         if use_treecode:
             if announce:
-                Logging.message(f"[VPM][velocity_gradient] method=treecode theta={theta:g}")
+                Logging.record(
+                    "velocity gradient",
+                    ("method", "treecode"),
+                    ("theta", f"{theta:g}"),
+                )
             self.physics.compute_velocity_gradients_hierarchical(self.particles, theta=theta)
         else:
             if announce:
-                Logging.message("[VPM][velocity_gradient] method=direct")
+                Logging.record("velocity gradient", ("method", "direct"))
             self.physics.compute_velocity_gradients(self.particles)
 
     def _update_velocity_and_gradients(self, announce: bool = True) -> None:
@@ -305,13 +319,15 @@ class EvolutionStepper:
         theta = self.setup.velocity.theta if self.setup.velocity else 0.5
         if use_treecode:
             if announce:
-                Logging.message(
-                    f"[VPM][Velocity] fields=velocity,gradient method=treecode theta={theta:g}"
+                Logging.record(
+                    "velocity and gradient",
+                    ("method", "treecode"),
+                    ("theta", f"{theta:g}"),
                 )
             self.physics.compute_velocity_and_gradient_hierarchical(self.particles, theta=theta)
         else:
             if announce:
-                Logging.message("[VPM][Velocity] fields=velocity,gradient method=direct")
+                Logging.record("velocity and gradient", ("method", "direct"))
             self.physics.compute_velocity_and_gradient(self.particles)
 
     def _update_les_state(self, time_step_size: float | None = None) -> None:
@@ -349,7 +365,7 @@ class EvolutionStepper:
     def _announce_strength_update(self) -> None:
         """Log the stretching formulation used for this strength update."""
         effective_mode = self._effective_stretching_mode()
-        Logging.message(f"[VPM][Stretching] formulation={effective_mode.lower()}")
+        Logging.record("stretching", ("formulation", effective_mode.lower()))
 
     def _effective_stretching_mode(self) -> str:
         """Return the user-selected stretching formulation."""
@@ -530,8 +546,10 @@ class EvolutionStepper:
             reuse_velocity = self.viscous_scheme == "NONE"
 
         if substeps > 1:
-            Logging.message(
-                f"[VPM][TimeIntegration] substeps={substeps} time_step_size_s={time_step_size:.3e}"
+            Logging.record(
+                "time integration",
+                ("substeps", f"{substeps:,}"),
+                ("time step", f"{time_step_size:.3e}", "s"),
             )
 
         if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
@@ -723,10 +741,18 @@ class EvolutionStepper:
             return
 
         if self.viscous_scheme == "CS":
-            Logging.message(f"[VPM][Diffusion] scheme=CS time_step_size_s={time_step_size:.3e}")
+            Logging.record(
+                "diffusion",
+                ("scheme", "CS"),
+                ("time step", f"{time_step_size:.3e}", "s"),
+            )
             self._apply_core_spreading_diffusion(time_step_size)
         elif self.viscous_scheme == "RWM":
-            Logging.message(f"[VPM][Diffusion] scheme=RWM time_step_size_s={time_step_size:.3e}")
+            Logging.record(
+                "diffusion",
+                ("scheme", "RWM"),
+                ("time step", f"{time_step_size:.3e}", "s"),
+            )
             self.physics.random_walk_method_diffusion(self.particles, time_step_size=time_step_size)
         elif self.viscous_scheme in ("DVH", "GBD"):
             # DVH fires only when its fixed diffusion increment has accumulated.
@@ -802,18 +828,21 @@ class EvolutionStepper:
                 N = self.particles.n_particles_total
                 if N > 0:
                     effective_viscosity = self.particles.effective_viscosity_cpu()
-            fields = (
-                f"[VPM][DVH] mode=diffusion time_step_size_s={time_step_size:.3e} "
-                f"h_m={vc.dvh_grid_spacing:.3e} "
-                f"kinematic_viscosity_m2_s={kinematic_viscosity:.3e} "
-                f"threshold={vc.dvh_threshold:.2e}"
-            )
+            rows = [
+                ("mode", "diffusion"),
+                ("time step", f"{time_step_size:.3e}", "s"),
+                ("lattice spacing", f"{vc.dvh_grid_spacing:.3e}", "m"),
+                ("kinematic viscosity", f"{kinematic_viscosity:.3e}", "m^2/s"),
+                ("threshold", f"{vc.dvh_threshold:.2e}"),
+            ]
             if effective_viscosity is not None and kinematic_viscosity > 0.0:
-                fields += (
-                    " max_effective_to_kinematic_viscosity_ratio="
-                    f"{float(effective_viscosity.max()) / kinematic_viscosity:.2f}"
+                rows.append(
+                    (
+                        "viscosity ratio, max",
+                        f"{float(effective_viscosity.max()) / kinematic_viscosity:.2f}",
+                    )
                 )
-            Logging.message(fields)
+            Logging.record("discrete vortex heat method", *rows)
             return self.physics.grid_based_diffusion(
                 self.particles,
                 time_step_size=time_step_size,
@@ -834,18 +863,21 @@ class EvolutionStepper:
                 if N > 0:
                     effective_viscosity = self.particles.effective_viscosity_cpu()
             mode = "regeneration" if time_step_size == 0.0 else "diffusion"
-            fields = (
-                f"[VPM][GBD] mode={mode} time_step_size_s={time_step_size:.3e} "
-                f"h_m={vc.gbd_grid_spacing:.3e} "
-                f"kinematic_viscosity_m2_s={kinematic_viscosity:.3e} "
-                f"threshold={vc.gbd_threshold:.2e}"
-            )
+            rows = [
+                ("mode", mode),
+                ("time step", f"{time_step_size:.3e}", "s"),
+                ("lattice spacing", f"{vc.gbd_grid_spacing:.3e}", "m"),
+                ("kinematic viscosity", f"{kinematic_viscosity:.3e}", "m^2/s"),
+                ("threshold", f"{vc.gbd_threshold:.2e}"),
+            ]
             if effective_viscosity is not None and kinematic_viscosity > 0.0:
-                fields += (
-                    " max_effective_to_kinematic_viscosity_ratio="
-                    f"{float(effective_viscosity.max()) / kinematic_viscosity:.2f}"
+                rows.append(
+                    (
+                        "viscosity ratio, max",
+                        f"{float(effective_viscosity.max()) / kinematic_viscosity:.2f}",
+                    )
                 )
-            Logging.message(fields)
+            Logging.record("gaussian blob diffusion", *rows)
             return self.physics.gbd_diffusion(
                 self.particles,
                 time_step_size=time_step_size,

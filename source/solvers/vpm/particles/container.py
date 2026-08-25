@@ -12,6 +12,8 @@ except ImportError:
 import taichi as ti
 
 # Import VPM constants
+from source import log_style
+
 from ..config.constants import MAX_N_PARTICLES
 from ..config.state import cached_particle_property
 from ..io.logging import Logging
@@ -927,82 +929,69 @@ class Particles:
     def __len__(self):
         return int(self.n_particles_total)
 
-    def __str__(self):
-        """Return formatted string representation of particle system statistics."""
-        lines = []
-
+    def report_rows(self) -> list:
+        """Return particle-system statistics as log detail rows."""
         N = self.n_particles_total
-        lines.append(f"  Number of Particles      : {N:,}")
+        rows: list[log_style.Row] = [("particles", f"{N:,}")]
 
-        if N > 0:
-            # Get particle data
-            position = self.position_cpu()
-            core_radius = self.core_radius_cpu()
-            particle_volume = self.particle_volume_cpu()
-            vortex_strength = self.vortex_strength_cpu()
-            velocity = self.velocity_cpu()
+        if N == 0:
+            rows.append(("status", "empty, no particles"))
+            return rows
 
-            # Compute statistics
-            vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
-            velocity_mag = np.linalg.norm(velocity, axis=1)
+        position = self.position_cpu()
+        core_radius = self.core_radius_cpu()
+        particle_volume = self.particle_volume_cpu()
+        vortex_strength = self.vortex_strength_cpu()
+        velocity = self.velocity_cpu()
 
-            # Spatial extent
-            bbox_min = np.min(position, axis=0)
-            bbox_max = np.max(position, axis=0)
-            domain_size = bbox_max - bbox_min
+        vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
+        velocity_magnitude = np.linalg.norm(velocity, axis=1)
 
-            lines.append("  Spatial Extent:")
-            lines.append(
-                f"    X: [{bbox_min[0]:>10.3e}, {bbox_max[0]:>10.3e}] m  (Δx = {domain_size[0]:.3e} m)"
+        bbox_min = np.min(position, axis=0)
+        bbox_max = np.max(position, axis=0)
+        domain_size = bbox_max - bbox_min
+
+        rows.append(("spatial extent:", ""))
+        for index, axis in enumerate("xyz"):
+            rows.append((f"  {axis}", f"[{bbox_min[index]:.3e}, {bbox_max[index]:.3e}]", "m"))
+            rows.append((f"  {axis}, span", f"{domain_size[index]:.3e}", "m"))
+
+        rows.extend(
+            (
+                ("core radius:", ""),
+                ("  min", f"{np.min(core_radius):.4e}", "m"),
+                ("  mean", f"{np.mean(core_radius):.4e}", "m"),
+                ("  max", f"{np.max(core_radius):.4e}", "m"),
+                ("particle volume:", ""),
+                ("  min", f"{np.min(particle_volume):.4e}", "m^3"),
+                ("  mean", f"{np.mean(particle_volume):.4e}", "m^3"),
+                ("  max", f"{np.max(particle_volume):.4e}", "m^3"),
+                ("  total", f"{np.sum(particle_volume):.4e}", "m^3"),
+                ("vortex strength magnitude:", ""),
+                ("  min", f"{np.min(vortex_strength_magnitude):.4e}", "m^3/s"),
+                ("  mean", f"{np.mean(vortex_strength_magnitude):.4e}", "m^3/s"),
+                ("  max", f"{np.max(vortex_strength_magnitude):.4e}", "m^3/s"),
+                ("velocity magnitude:", ""),
+                ("  min", f"{np.min(velocity_magnitude):.4e}", "m/s"),
+                ("  mean", f"{np.mean(velocity_magnitude):.4e}", "m/s"),
+                ("  max", f"{np.max(velocity_magnitude):.4e}", "m/s"),
             )
-            lines.append(
-                f"    Y: [{bbox_min[1]:>10.3e}, {bbox_max[1]:>10.3e}] m  (Δy = {domain_size[1]:.3e} m)"
-            )
-            lines.append(
-                f"    Z: [{bbox_min[2]:>10.3e}, {bbox_max[2]:>10.3e}] m  (Δz = {domain_size[2]:.3e} m)"
-            )
+        )
 
-            lines.append("  Particle Radii:")
-            lines.append(f"    Min                    : {np.min(core_radius):.4e} m")
-            lines.append(f"    Max                    : {np.max(core_radius):.4e} m")
-            lines.append(f"    Mean                   : {np.mean(core_radius):.4e} m")
+        group_id = self.group_id_cpu()
+        unique_groups = np.unique(group_id)
+        if len(unique_groups) > 1:
+            rows.append(("particle groups", f"{len(unique_groups):,}"))
+            for gid in unique_groups:
+                count = int(np.sum(group_id == gid))
+                rows.append((f"  group {gid}", f"{count:,}", f"particles, {100 * count / N:.1f}%"))
+        return rows
 
-            lines.append("  Particle Volumes:")
-            lines.append(f"    Min                    : {np.min(particle_volume):.4e} m³")
-            lines.append(f"    Max                    : {np.max(particle_volume):.4e} m³")
-            lines.append(f"    Mean                   : {np.mean(particle_volume):.4e} m³")
-            lines.append(f"    Total                  : {np.sum(particle_volume):.4e} m³")
-
-            lines.append("  Vortex Strength Magnitude:")
-            lines.append(
-                f"    Min                    : {np.min(vortex_strength_magnitude):.4e} m³/s"
-            )
-            lines.append(
-                f"    Max                    : {np.max(vortex_strength_magnitude):.4e} m³/s"
-            )
-            lines.append(
-                f"    Mean                   : {np.mean(vortex_strength_magnitude):.4e} m³/s"
-            )
-
-            lines.append("  Velocity Magnitude:")
-            lines.append(f"    Min                    : {np.min(velocity_mag):.4e} m/s")
-            lines.append(f"    Max                    : {np.max(velocity_mag):.4e} m/s")
-            lines.append(f"    Mean                   : {np.mean(velocity_mag):.4e} m/s")
-
-            # Group information
-            group_id = self.group_id_cpu()
-            unique_groups = np.unique(group_id)
-            if len(unique_groups) > 1:
-                lines.append(f"  Particle Groups          : {len(unique_groups)} groups")
-                for gid in unique_groups:
-                    count = np.sum(group_id == gid)
-                    lines.append(
-                        f"    Group {gid:<3}            : {count:,} particles ({100 * count / N:.1f}%)"
-                    )
-        else:
-            lines.append("  Status: Empty (no particles)")
-
-        return "\n".join(lines)
+    def __str__(self):
+        """Return the particle-system statistics as one indented block."""
+        return "\n".join(
+            log_style.record("vpm", "particle system", *self.report_rows()).split("\n")[1:]
+        )
 
     def __getitem__(self, index):
         """Return particle data at index (CPU copy)."""
@@ -1022,23 +1011,26 @@ class Particles:
             "zone_id": self.zone_id_cpu()[index],
         }
 
-    def _log_population(self, change: str) -> None:
+    def _log_population(self, change: log_style.Row) -> None:
         """Report the population left behind by an operation that changed it."""
         total = int(self.n_particles_total)
         capacity = self.capacity
         fraction = 100.0 * total / capacity if capacity else 0.0
-        Logging.message(
-            f"[VPM][Particles] {change} count={total} capacity={capacity} "
-            f"utilization_pct={fraction:.1f}"
+        Logging.record(
+            "particles",
+            change,
+            ("count", f"{total:,}"),
+            ("capacity", f"{capacity:,}"),
+            ("utilization", f"{fraction:.1f}", "%"),
         )
 
     def _log_particles_added(self, count: int) -> None:
         """Report the population after particles were appended."""
-        self._log_population(f"added={int(count)}")
+        self._log_population(("added", f"{int(count):,}"))
 
     def _log_particles_replaced(self, previous: int) -> None:
         """Report the population after the whole cloud was replaced."""
-        self._log_population(f"previous_count={int(previous)}")
+        self._log_population(("count, previous", f"{int(previous):,}"))
 
     def add_vortex_particle(
         self,
@@ -1604,7 +1596,12 @@ class Particles:
         point_cloud.point_data["strain_rate"] = self.strain_rate_cpu().reshape(n, 9)
         point_cloud.save(particle_file_name)
 
-        Logging.message(f"[VPM][Output] format=vtk particles={n} path={particle_file_name}")
+        Logging.record(
+            "particle output written",
+            ("format", "vtk"),
+            ("particles", f"{n:,}"),
+            ("path", str(particle_file_name)),
+        )
 
     def load_vortex_particles(self, particle_file_name: str, remove_current_particles: bool = True):
         """
@@ -1648,9 +1645,11 @@ class Particles:
             velocity_gradient=velocity_gradient,
         )
 
-        Logging.message(
-            f"[VPM][ParticleField] status=loaded format=vtk particles={len(self)} "
-            f"path={particle_file_name!r}"
+        Logging.record(
+            "particle field loaded",
+            ("format", "vtk"),
+            ("particles", f"{len(self):,}"),
+            ("path", str(particle_file_name)),
         )
 
     def _remove_weak_particles(self, percent: float = 0.0) -> np.ndarray:

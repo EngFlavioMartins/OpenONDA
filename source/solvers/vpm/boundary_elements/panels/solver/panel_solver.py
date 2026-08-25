@@ -19,6 +19,8 @@ from typing import Any, Literal
 import numpy as np
 import taichi as ti
 
+from source import log_style
+
 from ..coupling import kinematics as kin_module
 from ..coupling.kinematics import BodyPose
 from ..kernels.far_field import (
@@ -325,7 +327,14 @@ class PanelSolver:
             )
 
         print(
-            f"   [Panel Solver] Initialized (max_n_panels={self.max_n_panels}, dtype={self.float_dtype}, solver={self.linear_solver_name})"
+            log_style.record(
+                "vpm",
+                "panel solver initialized",
+                ("panels, max", f"{self.max_n_panels:,}"),
+                ("precision", str(self.float_dtype)),
+                ("linear solver", str(self.linear_solver_name)),
+                stamped=True,
+            )
         )
 
     def add_surface(

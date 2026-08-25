@@ -11,6 +11,7 @@ from typing import cast
 import numpy as np
 from scipy.spatial import cKDTree  # type: ignore[missing-module-attribute]
 
+from source import log_style
 from source.coupler.lattice_transfer import (
     blend_fvm_vpm_circulation_on_lattice,
     first_vorticity_moment,
@@ -699,11 +700,17 @@ def replace_particles_from_lattice_blend(
         if np.any(below_cutoff):
             logger.info(
                 format_coupler_log(
-                    "TransferPruning",
-                    f"discarded {int(np.count_nonzero(below_cutoff)):,} lattice nodes below "
-                    f"the {diffusion_cutoff:.3e} {str(getattr(vpm, 'viscous_scheme', ''))} cutoff",
-                    "discarded vortex-strength magnitude fraction  "
-                    f"{float(strength_magnitude[below_cutoff].sum()) / max(float(strength_magnitude[nonzero].sum()), np.finfo(float).tiny):.3e}",
+                    "transfer pruning",
+                    ("lattice nodes discarded", f"{int(np.count_nonzero(below_cutoff)):,}"),
+                    (
+                        "cutoff",
+                        f"{diffusion_cutoff:.3e}",
+                        str(getattr(vpm, "viscous_scheme", "")),
+                    ),
+                    (
+                        "strength fraction discarded",
+                        f"{float(strength_magnitude[below_cutoff].sum()) / max(float(strength_magnitude[nonzero].sum()), np.finfo(float).tiny):.3e}",
+                    ),
                 )
             )
         nonzero &= strength_magnitude >= diffusion_cutoff
@@ -849,41 +856,45 @@ def replace_particles_from_lattice_blend(
 
 
 def _transfer_log_record(step: int, result: TransferResult) -> str:
-    lines = [
-        "particles  "
-        f"before {result.n_particles_before:,} | removed {result.n_particles_removed:,}"
-        f" | blended {result.n_particles_blended:,} | injected {result.n_particles_injected:,}"
-        f" | after {result.n_particles_after:,}",
-        f"lattice  active nodes {result.mapped_target_nodes:,}"
-        f" | solid nodes redistributed {result.excluded_solid_target_nodes:,}",
-        "blend divergence  "
-        f"before {result.blend_cross_divergence_l2_before:.3e}"
-        f" | after {result.blend_cross_divergence_l2_after:.3e}",
-        "vortex strength  "
-        f"replaced L1 {result.replaced_vortex_strength_l1:.3e}"
-        f" | injected L1 {result.injected_vortex_strength_l1:.3e} m^3/s"
-        f" | net state change {float(np.linalg.norm(result.state_change_vortex_strength_net)):.3e} m^3/s",
+    rows: list[log_style.Row] = [
+        ("method", result.transfer_method),
+        ("blend, eta", "on" if result.eta_blending_enabled else "off"),
+        ("particles, before", f"{result.n_particles_before:,}"),
+        ("particles, removed", f"{result.n_particles_removed:,}"),
+        ("particles, blended", f"{result.n_particles_blended:,}"),
+        ("particles, injected", f"{result.n_particles_injected:,}"),
+        ("particles, after", f"{result.n_particles_after:,}"),
+        ("lattice nodes, active", f"{result.mapped_target_nodes:,}"),
+        ("lattice nodes, redistributed", f"{result.excluded_solid_target_nodes:,}"),
+        ("blend divergence, before", f"{result.blend_cross_divergence_l2_before:.3e}"),
+        ("blend divergence, after", f"{result.blend_cross_divergence_l2_after:.3e}"),
+        ("vortex strength replaced, l1", f"{result.replaced_vortex_strength_l1:.3e}", "m^3/s"),
+        ("vortex strength injected, l1", f"{result.injected_vortex_strength_l1:.3e}", "m^3/s"),
+        (
+            "vortex strength, net change",
+            f"{float(np.linalg.norm(result.state_change_vortex_strength_net)):.3e}",
+            "m^3/s",
+        ),
     ]
     if result.transfer_method == "projected_gbd_renewal":
         velocity_error = result.projection_velocity_relative_error
-        lines.extend(
+        rows.extend(
             (
-                "projection  "
-                f"omega error {result.projection_vorticity_relative_error:.3e}"
-                f" | normal velocity error "
-                f"{0.0 if velocity_error is None else velocity_error:.3e}"
-                f" | condition {result.projection_condition_number:.3e}",
-                f"GBD guard  {result.renewal_guard_width:.4g} m"
-                f" | diffusion substeps {result.renewal_diffusion_substeps}"
-                f" | selective births {result.selective_support_births:,}",
+                (
+                    "projection error, omega",
+                    f"{result.projection_vorticity_relative_error:.3e}",
+                ),
+                (
+                    "projection error, normal velocity",
+                    f"{0.0 if velocity_error is None else velocity_error:.3e}",
+                ),
+                ("projection condition number", f"{result.projection_condition_number:.3e}"),
+                ("gbd guard width", f"{result.renewal_guard_width:.4g}", "m"),
+                ("gbd diffusion substeps", result.renewal_diffusion_substeps),
+                ("selective support births", f"{result.selective_support_births:,}"),
             )
         )
-    return format_coupler_log(
-        "StateReplacement",
-        f"step {step:,} | {result.transfer_method}"
-        f" | eta blend {'on' if result.eta_blending_enabled else 'off'}",
-        *lines,
-    )
+    return format_coupler_log(f"state replacement, step {step:,}", *rows)
 
 
 class VorticityTransfer:
@@ -1070,10 +1081,14 @@ class VorticityTransfer:
         self._build_face_cell_index()
         logger.info(
             format_coupler_log(
-                "ReplacementRegion",
-                f"{donor_count:,} FVM fluid cells",
-                f"eta blend {'off' if self.eta_blend_width == 0.0 else f'{self.eta_blend_width:.4g} m'}",
-                "state  Gamma = cell volume * FVM vorticity",
+                "replacement region",
+                ("fvm fluid cells", f"{donor_count:,}"),
+                *(
+                    (("blend width, eta", "off"),)
+                    if self.eta_blend_width == 0.0
+                    else (("blend width, eta", f"{self.eta_blend_width:.4g}", "m"),)
+                ),
+                ("state", "cell volume x fvm vorticity"),
             )
         )
 

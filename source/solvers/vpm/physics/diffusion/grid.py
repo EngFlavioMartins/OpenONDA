@@ -475,8 +475,8 @@ class _GridDiffusionMixin:
         alloc_nz = int(nz * self._ALLOC_HEADROOM)
 
         _logger.debug(
-            "[VPM][DiffusionGrid] status=allocating requested_shape=%dx%dx%d "
-            "shape=%dx%dx%d headroom=%.1f",
+            "diffusion grid allocating: requested shape %dx%dx%d, "
+            "allocated shape %dx%dx%d, headroom %.1f",
             nx,
             ny,
             nz,
@@ -551,9 +551,10 @@ class _GridDiffusionMixin:
         budget = self._grid_prealloc_budget_bytes()
         self._warn_if_grid_crowds_device_pool(total_bytes, nx, ny, nz)
         if total_bytes <= budget and self._grid_a is None:
-            Logging.message(
-                f"[VPM][DiffusionGrid] status=preallocated shape={nx}x{ny}x{nz} "
-                f"memory_mib={total_mb:.0f}"
+            Logging.record(
+                "diffusion grid preallocated",
+                ("shape", f"{nx}x{ny}x{nz}"),
+                ("memory", f"{total_mb:.0f}", "MiB"),
             )
             self._grid_a = ti.Vector.field(3, dtype=ti.f32, shape=(nx, ny, nz))
             self._grid_b = ti.Vector.field(3, dtype=ti.f32, shape=(nx, ny, nz))
@@ -578,9 +579,11 @@ class _GridDiffusionMixin:
                 )
             allocation = "retained" if self._grid_a is not None else "deferred"
             reason = "existing_allocation" if self._grid_a is not None else "budget_exceeded"
-            Logging.message(
-                f"[VPM][DiffusionGrid] status={allocation} reason={reason} "
-                f"max_shape={nx}x{ny}x{nz} memory_mib={total_mb:.0f}"
+            Logging.record(
+                f"diffusion grid {allocation}",
+                ("reason", reason.replace("_", " ")),
+                ("shape, max", f"{nx}x{ny}x{nz}"),
+                ("memory", f"{total_mb:.0f}", "MiB"),
             )
 
     def configure_grid_lattice_anchor(self, anchor, particle_spacing: float) -> None:
@@ -1023,11 +1026,12 @@ class _GridDiffusionMixin:
         max_substep_diffusion_number = max_diffusion_number / n_diffusion_substeps
 
         if n_diffusion_substeps > 1:
-            Logging.message(
-                f"[VPM][GBD] n_diffusion_substeps={n_diffusion_substeps} "
-                f"max_diffusion_number={max_diffusion_number:.6f} "
-                f"max_substep_diffusion_number={max_substep_diffusion_number:.6f} "
-                f"diffusion_substep_size_s={diffusion_substep_size:.6e}"
+            Logging.record(
+                "gaussian blob diffusion substepping",
+                ("substeps", f"{n_diffusion_substeps:,}"),
+                ("diffusion number, max", f"{max_diffusion_number:.6f}"),
+                ("diffusion number, max per substep", f"{max_substep_diffusion_number:.6f}"),
+                ("substep size", f"{diffusion_substep_size:.6e}", "s"),
             )
 
         self._zero_grid_kernel(self._other_grid, nx, ny, nz)
@@ -1273,9 +1277,11 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             / vortex_strength_total
         )
-        Logging.message(
-            f"[VPM][GBD] threshold={threshold:.3e} nodes={len(ix)} "
-            f"vortex_strength_magnitude_fraction={threshold_retained:.6f}"
+        Logging.record(
+            "gaussian blob diffusion regeneration",
+            ("threshold", f"{threshold:.3e}"),
+            ("nodes retained", f"{len(ix):,}"),
+            ("strength fraction retained", f"{threshold_retained:.6f}"),
         )
 
         # -- Particle-count cap ------------------------------------------------
@@ -1293,11 +1299,14 @@ class _GridDiffusionMixin:
                 float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64)) / survivor_abs
             )
             retained_total = retained * threshold_retained
-            Logging.message(
-                f"[VPM][GBD] population_cap={cap} nodes={old_count}->{len(ix)} "
-                f"candidate_vortex_strength_magnitude_fraction={retained:.6f} "
-                f"net_vortex_strength_magnitude_fraction={retained_total:.6f} "
-                f"threshold={threshold:.3e}"
+            Logging.record(
+                "gaussian blob diffusion population cap",
+                ("cap", f"{cap:,}"),
+                ("nodes, before", f"{old_count:,}"),
+                ("nodes, after", f"{len(ix):,}"),
+                ("strength fraction, candidates", f"{retained:.6f}"),
+                ("strength fraction, net", f"{retained_total:.6f}"),
+                ("threshold", f"{threshold:.3e}"),
             )
 
         result = self._build_diffusion_particle_arrays(
@@ -1440,9 +1449,11 @@ class _GridDiffusionMixin:
                 np.count_nonzero(np.asarray(effective_viscosity_np) / kinematic_viscosity > q_max)
             )
             if n_clipped > 0:
-                Logging.message(
-                    f"[VPM][DVH] effective_viscosity_width_cap_particles={n_clipped} "
-                    f"particles={N} q_max={q_max:.1f}"
+                Logging.record(
+                    "discrete vortex heat method width cap",
+                    ("particles clipped", f"{n_clipped:,}"),
+                    ("particles", f"{N:,}"),
+                    ("q, max", f"{q_max:.1f}"),
                 )
 
         # Numba-compiled heat-kernel scatter.  This is the exact f64 algorithm
@@ -1616,9 +1627,11 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             / vortex_strength_total
         )
-        Logging.message(
-            f"[VPM][DVH] threshold={threshold:.3e} nodes={len(ix)} "
-            f"vortex_strength_magnitude_fraction={threshold_retained:.6f}"
+        Logging.record(
+            "discrete vortex heat method regeneration",
+            ("threshold", f"{threshold:.3e}"),
+            ("nodes retained", f"{len(ix):,}"),
+            ("strength fraction retained", f"{threshold_retained:.6f}"),
         )
 
         # -- Particle-count cap ------------------------------------------------
@@ -1635,10 +1648,13 @@ class _GridDiffusionMixin:
             retained = (
                 float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64)) / survivor_abs
             )
-            Logging.message(
-                f"[VPM][DVH] population_cap={cap} nodes={old_count}->{len(ix)} "
-                f"candidate_vortex_strength_magnitude_fraction={retained:.6f} "
-                f"threshold={threshold:.3e}"
+            Logging.record(
+                "discrete vortex heat method population cap",
+                ("cap", f"{cap:,}"),
+                ("nodes, before", f"{old_count:,}"),
+                ("nodes, after", f"{len(ix):,}"),
+                ("strength fraction, candidates", f"{retained:.6f}"),
+                ("threshold", f"{threshold:.3e}"),
             )
 
         return self._build_diffusion_particle_arrays(

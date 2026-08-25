@@ -40,6 +40,8 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         max_n_particles=50_000,
         domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
         freestream_velocity=[1.0, 0.0, 0.0],
+        logging_interval_steps=20,
+        timing_interval_steps=20,
         viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
     )
     vpm = VPMSolver(vpm_setup)
@@ -95,11 +97,16 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     # Native FVM and coupler diagnostics are written independently.
     sol = tmp_path / "solution"
     assert (sol / "fvm.log").exists()
+    vpm_log = (sol / "vpm.log").read_text()
+    assert "fvm      step" not in vpm_log
+    assert vpm_log.count("vpm      step 1") == 1
+    # The VPM startup report is written once, not repeated by the coupler.
+    assert vpm_log.count("vpm solver  configuration") == 1
     coupler_log = (sol / "coupler.log").read_text()
-    assert "[Coupler][Run]" in coupler_log
+    assert "coupler  run" in coupler_log
     # Initial synchronization plus one absolute replacement after each FVM interval.
-    assert coupler_log.count("[Coupler][StateReplacement]") == 3
-    assert "3 FVM substeps" in coupler_log
+    assert coupler_log.count("coupler  state replacement") == 3
+    assert "fvm substeps per coupling step" in coupler_log
     checkpoint = sol / "checkpoints"
     manifest = json.loads((checkpoint / "manifest.json").read_text())
     assert manifest["format_version"] == 9
@@ -124,6 +131,8 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             max_n_particles=50_000,
             domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
             freestream_velocity=[1.0, 0.0, 0.0],
+            logging_interval_steps=20,
+            timing_interval_steps=20,
             viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
         )
     )

@@ -10,6 +10,7 @@ import sys
 
 import numpy as np
 
+from source import log_style
 from source.coupler.checkpoint import CHECKPOINT_DIRECTORY
 
 _REAL_STDOUT = sys.stdout
@@ -92,12 +93,17 @@ def flush_log(logger: logging.Logger) -> None:
         handler.flush()
 
 
-def format_coupler_log(section: str, headline: str = "", *rows: str) -> str:
-    """Return one searchable coupler record with indented detail rows."""
-    header = f"[Coupler][{section}]"
-    if headline:
-        header = f"{header} {headline}"
-    return "\n".join((header, *(f"  {row}" for row in rows)))
+def format_coupler_log(topic: str, *rows: log_style.Row) -> str:
+    """Return one coupler record: a topic header over indented detail rows."""
+    return log_style.record("coupler", topic, *rows)
+
+
+def format_coupler_step(step: int, n_steps: int, time_end: float) -> str:
+    """Return the banner that opens a coupling step."""
+    return log_style.banner(
+        f"coupling step {step:,} of {n_steps:,}",
+        f"physical time {time_end:.6f} s",
+    )
 
 
 def _domain_dict(box: np.ndarray) -> dict[str, float]:
@@ -308,24 +314,29 @@ def record_step(
         stats = coupler._step_transfer_stats or {}
         logger.info(
             format_coupler_log(
-                "VPMState",
-                f"step {step:,}",
-                "particles        "
-                f"{int(stats.get('n_before', 0)):,} -> "
-                f"{int(stats.get('n_after', 0)):,}",
-                "vortex strength  sum of magnitudes "
-                f"{float(stats.get('sum_before', 0.0)):.4e} -> "
-                f"{float(stats.get('sum_after', 0.0)):.4e} m^3/s",
+                "vpm state",
+                ("particles, before", log_style.count(stats.get("n_before", 0))),
+                ("particles, after", log_style.count(stats.get("n_after", 0))),
+                (
+                    "vortex strength, before",
+                    f"{float(stats.get('sum_before', 0.0)):.4e}",
+                    "m^3/s",
+                ),
+                (
+                    "vortex strength, after",
+                    f"{float(stats.get('sum_after', 0.0)):.4e}",
+                    "m^3/s",
+                ),
             )
         )
         logger.info(
             format_coupler_log(
-                "Timing",
-                f"step {step:,} | total {timing_data['total']:.3f} s",
-                f"stages  VPM {timing_data['vpm']:.3f} s"
-                f" | boundary {timing_data['vpm_boundary_condition']:.3f} s"
-                f" | FVM {timing_data['fvm']:.3f} s"
-                f" | transfer {timing_data['transfer']:.3f} s",
+                f"step {step:,} complete",
+                ("wall time", f"{timing_data['total']:.3f}", "s"),
+                ("  vpm", f"{timing_data['vpm']:.3f}", "s"),
+                ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
+                ("  fvm", f"{timing_data['fvm']:.3f}", "s"),
+                ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
             )
         )
         flush_log(logger)
@@ -346,6 +357,7 @@ __all__ = [
     "configure_logging",
     "flush_log",
     "format_coupler_log",
+    "format_coupler_step",
     "record_step",
     "write_run_metadata",
 ]

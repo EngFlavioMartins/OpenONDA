@@ -150,13 +150,18 @@ class VPMSolver:
             if abs(user_time_step_size - substep_size) > 1e-6 * max(
                 user_time_step_size, substep_size
             ):
-                Logging.message(
-                    f"[VPM][DVH] requested_dt_s={user_time_step_size:.4e} "
-                    f"time_step_size_s={substep_size:.4e} "
-                    f"diffusion_interval_s={diffusion_time_step_size:.4e} "
-                    f"steps_per_diffusion={n_sub} beta={_DVH_BETA:g} "
-                    f"support_radius_m="
-                    f"{vc.dvh_support_radius_ratio * vc.dvh_grid_spacing:.4e}"
+                Logging.record(
+                    "discrete vortex heat method, time step pinned",
+                    ("time step, requested", f"{user_time_step_size:.4e}", "s"),
+                    ("time step, applied", f"{substep_size:.4e}", "s"),
+                    ("diffusion interval", f"{diffusion_time_step_size:.4e}", "s"),
+                    ("steps per diffusion", f"{n_sub:,}"),
+                    ("beta", f"{_DVH_BETA:g}"),
+                    (
+                        "support radius",
+                        f"{vc.dvh_support_radius_ratio * vc.dvh_grid_spacing:.4e}",
+                        "m",
+                    ),
                 )
                 self.time_step_size = substep_size
             self._n_steps_per_dvh_diffusion = n_sub
@@ -371,7 +376,10 @@ class VPMSolver:
         )
         active = self.stabilization.active_mechanisms()
         if active:
-            Logging.message(f"[VPM][Stabilization] mechanisms={','.join(active)}")
+            Logging.record(
+                "stabilization",
+                *(("  " + mechanism, "active") for mechanism in active),
+            )
         self._init_optional_solvers(final_setup)
         # Detailed section timing forces a device barrier around every phase.
         # Make that diagnostic opt-in; the whole-step timer remains available in
@@ -391,7 +399,7 @@ class VPMSolver:
         """Configure VLM solver coupling: mesh generation, force config, stability check."""
         self.vlm_solver.ensure_mesh_generated()
         if getattr(self.vlm_solver, "lattice", None) is not None:
-            Logging.message(f"[VPM][VLM] panels={self.vlm_solver.lattice.n_panels}")
+            Logging.record("vlm", ("panels", f"{self.vlm_solver.lattice.n_panels:,}"))
             self.vlm_solver.check_coupling_stability(
                 self.time_step_size, getattr(self.setup, "freestream_velocity", None)
             )
@@ -1510,13 +1518,11 @@ class VPMSolver:
         self.particles._cache_step = -1
 
         property_names = list(properties)
-        if len(property_names) == 1:
-            Logging.message(f"[VPM][Particles] updated_fields={property_names[0]}")
-        else:
-            Logging.message(
-                f"[VPM][Particles] updated_field_count={len(property_names)} "
-                f"updated_fields={','.join(property_names)}"
-            )
+        Logging.record(
+            "particle fields updated",
+            ("fields", f"{len(property_names):,}"),
+            *(("  " + name, "updated") for name in property_names),
+        )
 
     # State and restart
 
@@ -1532,9 +1538,12 @@ class VPMSolver:
         config_file = f"{filename}.config.json"
         CheckpointManager.write_configuration(self, config_file)
 
-        Logging.message(
-            f"[VPM][Checkpoint] status=saved base={filename} data={filename}.h5 "
-            f"visualization={filename}.xdmf configuration={config_file}"
+        Logging.record(
+            "checkpoint saved",
+            ("base", str(filename)),
+            ("data", f"{filename}.h5"),
+            ("visualization", f"{filename}.xdmf"),
+            ("configuration", str(config_file)),
         )
 
     def save_numerical_state(self, filename: str) -> None:
@@ -1585,7 +1594,7 @@ class VPMSolver:
         if not CheckpointManager.validate_checkpoint(checkpoint_name):
             raise ValueError(f"Checkpoint validation failed for: {checkpoint_name}")
 
-        Logging.message(f"[VPM][Checkpoint] status=loading base={checkpoint_name}")
+        Logging.record("checkpoint loading", ("base", str(checkpoint_name)))
 
         try:
             hdf5_file = f"{checkpoint_name}.h5"
@@ -1606,10 +1615,12 @@ class VPMSolver:
 
         restored_solver._update_all_flow_integrals()
 
-        Logging.message(
-            f"[VPM][Checkpoint] status=loaded time_s={restored_solver.time:.6e} "
-            f"step={restored_solver.step} particles={restored_solver.particles.n_particles_total} "
-            f"backend={restored_solver.setup.compute_device}"
+        Logging.record(
+            "checkpoint loaded",
+            ("time", f"{restored_solver.time:.6e}", "s"),
+            ("step", f"{restored_solver.step:,}"),
+            ("particles", f"{restored_solver.particles.n_particles_total:,}"),
+            ("backend", str(restored_solver.setup.compute_device)),
         )
 
         return restored_solver
@@ -1680,9 +1691,13 @@ class VPMSolver:
         if n_removed > 0:
             self.stabilization.on_removal(keep_mask=keep_mask)
             action = "outside" if invert_selection else "inside"
-            Logging.message(
-                f"[VPM][Particles] removed={n_removed} region={action}_box "
-                f"bounds_m=[{xmin:.6g},{xmax:.6g},{ymin:.6g},{ymax:.6g},{zmin:.6g},{zmax:.6g}]"
+            Logging.record(
+                "particles removed",
+                ("particles", f"{n_removed:,}"),
+                ("region", f"{action} box"),
+                ("bounds, x", f"[{xmin:.6g}, {xmax:.6g}]", "m"),
+                ("bounds, y", f"[{ymin:.6g}, {ymax:.6g}]", "m"),
+                ("bounds, z", f"[{zmin:.6g}, {zmax:.6g}]", "m"),
             )
 
         return n_removed

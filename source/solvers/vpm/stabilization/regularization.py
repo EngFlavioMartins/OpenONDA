@@ -294,10 +294,10 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                 )
 
         if adaptive_core_used:
-            Logging.message(
-                "[VPM][Regularization] adaptive_core=true "
-                f"configured_core_radius_m={configured_core_radius:.3e} "
-                f"selected_core_radius_m={float(new_core_radius.mean()):.3e}"
+            Logging.record(
+                "regularization, adaptive core",
+                ("core radius, configured", f"{configured_core_radius:.3e}", "m"),
+                ("core radius, selected", f"{float(new_core_radius.mean()):.3e}", "m"),
             )
 
         if projection_only or (

@@ -42,8 +42,9 @@ class ParticlesLES:
         self.max_eddy_viscosity_ratio = 0.0
         self.kinematic_viscosity = 0.0
 
-    def __str__(self) -> str:
-        return str(self.model)
+    def report_rows(self) -> list:
+        """Return the active turbulence model's configuration as log detail rows."""
+        return self.model.report_rows()
 
     @classmethod
     def rebuild(

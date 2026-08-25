@@ -169,10 +169,12 @@ class CheckpointManager:
             )
 
             if verbose:
-                Logging.message(
-                    f"[VPM][Checkpoint] status=written step={solver.step} "
-                    f"time_s={time_value:.6e} particles={solver.particles.n_particles_total} "
-                    f"path={hdf5_file!r}"
+                Logging.record(
+                    "checkpoint written",
+                    ("step", f"{solver.step:,}"),
+                    ("time", f"{time_value:.6e}", "s"),
+                    ("particles", f"{solver.particles.n_particles_total:,}"),
+                    ("path", str(hdf5_file)),
                 )
         except Exception as exc:
             raise RuntimeError(f"Checkpoint write failed: {exc}") from exc
