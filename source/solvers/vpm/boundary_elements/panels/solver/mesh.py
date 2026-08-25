@@ -66,16 +66,20 @@ def upload_body_to_lattice(
     vertex_position: np.ndarray,
     kinematics: PanelKinematics = None,
     group_id: int = 0,
+    reference_area: float | None = None,
 ) -> int:
     """Upload already-audited triangles to the lattice; returns the panel count."""
-    # add_body appends panels at the end of the lattice; record the range of
-    # the new body from the panel count before/after (add_body returns None).
     start = lattice.n_panels
-    lattice.add_body(uid, vertex_position, kinematics=kinematics, group_id=group_id)
-    count = lattice.n_panels - start
+    count = lattice.add_body(
+        uid,
+        vertex_position,
+        kinematics=kinematics,
+        group_id=group_id,
+        reference_area=reference_area,
+    )
 
-    # Initial geometry update at t=0
-    lattice.update_geometry(0.0)
+    # Initial geometry update at t=0, restricted to the body just appended.
+    lattice.update_geometry(0.0, start, count)
     return count
 
 
@@ -85,6 +89,7 @@ def add_body_from_mesh_stl(
     filepath: str,
     kinematics: PanelKinematics = None,
     group_id: int = 0,
+    reference_area: float | None = None,
     fix_normal_orientation: bool = True,
     validate: bool = True,
     max_panels: int | None = None,
@@ -106,6 +111,11 @@ def add_body_from_mesh_stl(
         expected_components=expected_components,
     )
     count = upload_body_to_lattice(
-        lattice, uid, vertex_position, kinematics=kinematics, group_id=group_id
+        lattice,
+        uid,
+        vertex_position,
+        kinematics=kinematics,
+        group_id=group_id,
+        reference_area=reference_area,
     )
     logger.debug(f"Added body '{uid}' with {count} panels from '{filepath}'.")

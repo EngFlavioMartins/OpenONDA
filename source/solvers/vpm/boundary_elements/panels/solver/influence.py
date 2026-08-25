@@ -11,7 +11,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import taichi as ti
 
-from ....config.constants import PANEL_EPSILON, TI_FLOAT
+from ....config.constants import PANEL_EPSILON
 from ..kernels.biot_savart import compute_doublet_potential, compute_vortex_ring_velocity
 from ..kernels.source_velocity import compute_source_velocity
 
@@ -26,7 +26,10 @@ def build_source_aerodynamic_influence_coefficient_matrix(
 ):
     for i, j in ti.ndrange(n, n):
         if i == j:
-            aerodynamic_influence_coefficient[i, j] = 0.5
+            # Seed the literal with a lattice scalar so f64 panel fields are
+            # not silently evaluated through default_fp=f32.
+            diagonal = normal[i][0] * 0.0 + 0.5
+            aerodynamic_influence_coefficient[i, j] = diagonal
         else:
             v0, v1, v2 = vertex_position[j, 0], vertex_position[j, 1], vertex_position[j, 2]
             velocity = compute_source_velocity(panel_centre[i], v0, v1, v2, normal[j])
@@ -50,7 +53,8 @@ def build_dirichlet_aerodynamic_influence_coefficient_matrix(
     """
     for i, j in ti.ndrange(n, n):
         if i == j:
-            aerodynamic_influence_coefficient[i, j] = -0.5
+            diagonal = normal[i][0] * 0.0 - 0.5
+            aerodynamic_influence_coefficient[i, j] = diagonal
         else:
             v0, v1, v2 = vertex_position[j, 0], vertex_position[j, 1], vertex_position[j, 2]
             aerodynamic_influence_coefficient[i, j] = compute_doublet_potential(
@@ -60,23 +64,23 @@ def build_dirichlet_aerodynamic_influence_coefficient_matrix(
 
 @ti.kernel
 def compute_right_hand_side(
-    panel_centre: ti.template(),
     normal: ti.template(),
-    freestream_velocity: ti.types.vector(3, TI_FLOAT),
-    wake_velocity: ti.template(),
+    body_velocity: ti.template(),
+    freestream_velocity: ti.types.vector(3, ti.f64),
+    incident_velocity: ti.template(),
     right_hand_side: ti.template(),
     n: int,
 ):
     """
-    Compute RHS for the boundary condition (zero normal velocity).
-    right_hand_side[i] = - (freestream_velocity + wake_velocity) · n_i
+    Compute the NEUMANN RHS for body-relative impermeability.
 
-    Note: This is the Neumann BC formulation. For a consistent panel method
-    with the potential aerodynamic_influence_coefficient matrix, use compute_dirichlet_right_hand_side instead.
+    ``incident_velocity`` is the VPM/external velocity only; rigid-body
+    velocity is a distinct field.  The equation is
+    ``A sigma = -(U_inf + u_incident - u_body) . n``.
     """
     for i in range(n):
-        v_total = freestream_velocity + wake_velocity[i]
-        right_hand_side[i] = -v_total.dot(normal[i])
+        relative_incident_velocity = freestream_velocity + incident_velocity[i] - body_velocity[i]
+        right_hand_side[i] = -relative_incident_velocity.dot(normal[i])
 
 
 @ti.kernel
@@ -84,7 +88,7 @@ def compute_neumann_right_hand_side_with_sources(
     vertex_position: ti.template(),
     panel_centre: ti.template(),
     normal: ti.template(),
-    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    freestream_velocity: ti.types.vector(3, ti.f64),
     wake_velocity: ti.template(),
     right_hand_side: ti.template(),
     n: int,
@@ -118,7 +122,7 @@ def compute_neumann_right_hand_side_with_sources(
 @ti.kernel
 def compute_dirichlet_right_hand_side(
     panel_centre: ti.template(),
-    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    freestream_velocity: ti.types.vector(3, ti.f64),
     wake_velocity: ti.template(),
     right_hand_side: ti.template(),
     n: int,
@@ -143,7 +147,7 @@ def compute_dirichlet_right_hand_side_with_sources(
     vertex_position: ti.template(),
     panel_centre: ti.template(),
     normal: ti.template(),
-    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    freestream_velocity: ti.types.vector(3, ti.f64),
     wake_velocity: ti.template(),
     right_hand_side: ti.template(),
     n: int,
@@ -176,7 +180,7 @@ def compute_surface_velocity(
     vertex_position: ti.template(),
     panel_centre: ti.template(),
     doublet_strength: ti.template(),
-    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    freestream_velocity: ti.types.vector(3, ti.f64),
     wake_velocity: ti.template(),
     surface_velocity: ti.template(),
     n: int,
@@ -187,7 +191,7 @@ def compute_surface_velocity(
     Note: Self-induction (i==j) is skipped.
     """
     for i in range(n):
-        v_induced = ti.Vector([0.0, 0.0, 0.0])
+        v_induced = panel_centre[i] * 0.0
         p_target = panel_centre[i]
 
         for j in range(n):
@@ -207,7 +211,7 @@ def compute_surface_velocity_with_sources(
     normal: ti.template(),
     doublet_strength: ti.template(),
     source_strength: ti.template(),
-    freestream_velocity: ti.types.vector(3, TI_FLOAT),
+    freestream_velocity: ti.types.vector(3, ti.f64),
     wake_velocity: ti.template(),
     surface_velocity: ti.template(),
     n: int,
@@ -226,8 +230,10 @@ def compute_surface_velocity_with_sources(
     where the point-source approximation fails.
     """
     for i in range(n):
-        v_doublet = ti.Vector([0.0, 0.0, 0.0])
-        v_source = ti.Vector([0.0, 0.0, 0.0])
+        # Multiplying a lattice vector by zero derives the accumulator dtype
+        # from the panel field instead of Taichi's global default_fp.
+        v_doublet = normal[i] * 0.0
+        v_source = normal[i] * 0.0
         p_target = panel_centre[i]
 
         for j in range(n):
@@ -260,9 +266,21 @@ def compute_surface_velocity_with_sources(
 
 
 @ti.kernel
+def compute_relative_surface_velocity(
+    surface_velocity_absolute: ti.template(),
+    body_velocity: ti.template(),
+    surface_velocity_relative: ti.template(),
+    n: int,
+):
+    """Subtract rigid-body velocity from the absolute surface flow field."""
+    for i in range(n):
+        surface_velocity_relative[i] = surface_velocity_absolute[i] - body_velocity[i]
+
+
+@ti.kernel
 def compute_pressure_bernoulli(
     surface_velocity: ti.template(),
-    freestream_speed: TI_FLOAT,
+    freestream_speed: ti.f64,
     pressure_coefficient: ti.template(),
     n: int,
 ):
@@ -279,10 +297,10 @@ def compute_pressure_bernoulli(
 @ti.kernel
 def compute_forces_bernoulli(
     surface_velocity: ti.template(),
-    freestream_speed: TI_FLOAT,
+    freestream_speed: ti.f64,
     area: ti.template(),
     normal: ti.template(),
-    density: TI_FLOAT,
+    density: ti.f64,
     forces: ti.template(),
     n: int,
 ):
@@ -302,7 +320,7 @@ def compute_forces_kutta_joukowski(
     vertex_position: ti.template(),
     area: ti.template(),
     normal: ti.template(),
-    density: TI_FLOAT,
+    density: ti.f64,
     forces: ti.template(),
     n: int,
 ):

@@ -4,12 +4,41 @@ from __future__ import annotations
 
 import abc
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
 VectorLike = Sequence[float] | np.ndarray
 ScalarOrCallable = float | Callable[[float], float]
 VectorOrCallable = VectorLike | Callable[[float], VectorLike]
+
+
+@dataclass
+class BodyPose:
+    """Complete rigid-body state for one panel body.
+
+    ``translation`` is measured from the uploaded reference geometry.
+    ``rotation_centre`` is fixed in that reference/world frame; its current
+    location is ``rotation_centre + translation``.  Position is therefore
+    ``R @ (x0 - c) + c + T`` and body velocity is
+    ``V + omega x (x - (c + T))``.
+    """
+
+    rotation: np.ndarray = field(default_factory=lambda: np.eye(3, dtype=np.float64))
+    translation: np.ndarray = field(default_factory=lambda: np.zeros(3, dtype=np.float64))
+    rotation_centre: np.ndarray = field(default_factory=lambda: np.zeros(3, dtype=np.float64))
+    linear_velocity: np.ndarray = field(default_factory=lambda: np.zeros(3, dtype=np.float64))
+    angular_velocity: np.ndarray = field(default_factory=lambda: np.zeros(3, dtype=np.float64))
+
+    def copy(self) -> BodyPose:
+        """Return a deep copy suitable for a kinematics update."""
+        return BodyPose(
+            rotation=self.rotation.copy(),
+            translation=self.translation.copy(),
+            rotation_centre=self.rotation_centre.copy(),
+            linear_velocity=self.linear_velocity.copy(),
+            angular_velocity=self.angular_velocity.copy(),
+        )
 
 
 def _to_vec3(value: VectorLike, *, name: str) -> np.ndarray:
@@ -47,73 +76,37 @@ def _rotation_matrix_from_axis_angle(axis: np.ndarray, theta: float) -> np.ndarr
     )
 
 
-def _call_translation_update(
-    panel_solver,
-    *,
-    body_range: tuple[int, int],
-    displacement: np.ndarray,
-    linear_velocity: np.ndarray,
-) -> None:
-    """
-    Apply rigid translation to a body range via the standard PanelSolver API.
-
-    Standard signature::
-        panel_solver.apply_translation_update(displacement, linear_velocity, body_range)
-    """
-    panel_solver.apply_translation_update(displacement, linear_velocity, body_range)
-
-
-def _call_rotation_update(
-    panel_solver,
-    *,
-    body_range: tuple[int, int],
-    rotation_matrix: np.ndarray,
-    angular_velocity: np.ndarray,
-    rotation_centre: np.ndarray,
-) -> None:
-    """
-    Apply rigid rotation to a body range via the standard PanelSolver API.
-
-    Standard signature::
-        panel_solver.apply_rotation_update(
-            rotation_matrix, angular_velocity, rotation_centre, body_range
-        )
-    """
-    panel_solver.apply_rotation_update(
-        rotation_matrix, angular_velocity, rotation_centre, body_range
-    )
-
-
 class PanelKinematics(abc.ABC):
-    """Abstract base class for panel body kinematics updates."""
+    """Abstract base class for complete panel-body pose updates.
+
+    A model first composes a :class:`BodyPose`; the solver then applies that
+    pose exactly once.  Geometry mutation is deliberately absent from the
+    subclasses so a rotation cannot overwrite a preceding translation.
+    """
 
     @abc.abstractmethod
+    def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        """Return the body pose at ``time + time_step_size``."""
+
     def update(
         self, panel_solver, time: float, time_step_size: float, body_range: tuple[int, int]
     ) -> None:
-        """Advance body kinematics and apply the kinematics update on ``panel_solver``."""
+        """Advance state and apply one composed pose through ``panel_solver``."""
+        pose = panel_solver.get_body_pose(body_range)
+        panel_solver.apply_body_pose(
+            self.advance_pose(time, time_step_size, pose),
+            body_range,
+        )
 
 
 class StaticPanel(PanelKinematics):
     """No-kinematics model."""
 
-    def update(
-        self, panel_solver, time: float, time_step_size: float, body_range: tuple[int, int]
-    ) -> None:
-        zero = np.zeros(3, dtype=float)
-        _call_translation_update(
-            panel_solver,
-            body_range=body_range,
-            displacement=zero,
-            linear_velocity=zero,
-        )
-        _call_rotation_update(
-            panel_solver,
-            body_range=body_range,
-            rotation_matrix=np.eye(3, dtype=float),
-            angular_velocity=zero,
-            rotation_centre=zero,
-        )
+    def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        # This must be a no-op rather than an identity reset: StaticPanel can
+        # be placed in a CompositePanel alongside a translating or rotating
+        # component.
+        return pose.copy()
 
 
 class TranslatingPanel(PanelKinematics):
@@ -125,16 +118,13 @@ class TranslatingPanel(PanelKinematics):
         self.velocity = velocity
         self.displacement = _to_vec3(initial_displacement, name="initial_displacement").copy()
 
-    def update(
-        self, panel_solver, time: float, time_step_size: float, body_range: tuple[int, int]
-    ) -> None:
+    def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
         v0 = _eval_vec3(self.velocity, time, name="velocity")
         v1 = _eval_vec3(self.velocity, time + time_step_size, name="velocity")
         self.displacement += 0.5 * (v0 + v1) * time_step_size
-        _call_translation_update(
-            panel_solver,
-            body_range=body_range,
-            displacement=self.displacement,
+        return replace(
+            pose,
+            translation=self.displacement.copy(),
             linear_velocity=v1,
         )
 
@@ -162,23 +152,17 @@ class RotatingPanel(PanelKinematics):
         self.rotation_centre = _to_vec3(rotation_centre, name="rotation_centre")
         self.angle = float(initial_angle)
 
-    def update(
-        self, panel_solver, time: float, time_step_size: float, body_range: tuple[int, int]
-    ) -> None:
+    def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
         initial_angular_speed = _eval_scalar(self.angular_speed, time)
         final_angular_speed = _eval_scalar(self.angular_speed, time + time_step_size)
         self.angle += 0.5 * (initial_angular_speed + final_angular_speed) * time_step_size
 
         axis_unit = self.axis / np.linalg.norm(self.axis)
-        angular_velocity = axis_unit * final_angular_speed
-        rotation_matrix = _rotation_matrix_from_axis_angle(axis_unit, self.angle)
-
-        _call_rotation_update(
-            panel_solver,
-            body_range=body_range,
-            rotation_matrix=rotation_matrix,
-            angular_velocity=angular_velocity,
-            rotation_centre=self.rotation_centre,
+        return replace(
+            pose,
+            rotation=_rotation_matrix_from_axis_angle(axis_unit, self.angle),
+            angular_velocity=axis_unit * final_angular_speed,
+            rotation_centre=self.rotation_centre.copy(),
         )
 
 
@@ -242,7 +226,7 @@ class HeavingPanel(TranslatingPanel):
 
 
 class ManeuverPanel(PanelKinematics):
-    """Combined translation and rotation for generic maneuvers."""
+    """Combined translation and rotation composed into one rigid pose."""
 
     def __init__(
         self,
@@ -252,26 +236,26 @@ class ManeuverPanel(PanelKinematics):
         self.translation = translation
         self.rotation = rotation
 
-    def update(
-        self, panel_solver, time: float, time_step_size: float, body_range: tuple[int, int]
-    ) -> None:
+    def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        result = pose
         if self.translation is not None:
-            self.translation.update(panel_solver, time, time_step_size, body_range)
+            result = self.translation.advance_pose(time, time_step_size, result)
         if self.rotation is not None:
-            self.rotation.update(panel_solver, time, time_step_size, body_range)
+            result = self.rotation.advance_pose(time, time_step_size, result)
+        return result
 
 
 class CompositePanel(PanelKinematics):
-    """Apply a sequence of kinematics updates in order."""
+    """Compose a sequence of pose-producing kinematics models in order."""
 
     def __init__(self, components: Iterable[PanelKinematics]):
         self.components = list(components)
 
-    def update(
-        self, panel_solver, time: float, time_step_size: float, body_range: tuple[int, int]
-    ) -> None:
+    def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        result = pose
         for component in self.components:
-            component.update(panel_solver, time, time_step_size, body_range)
+            result = component.advance_pose(time, time_step_size, result)
+        return result
 
 
 class RampedRotatingPanel(RotatingPanel):

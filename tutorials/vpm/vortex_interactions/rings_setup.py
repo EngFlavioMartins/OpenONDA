@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""DNS, LES, and stabilized-LES vortex-ring interactions (VPM).
+"""Transposed DNS/LES vortex-ring interactions and conditional stabilization.
 
-Six cases, hard-coded as a matrix of two ring families (leapfrog co-rotating
-rings, colliding counter-rotating rings) times three turbulence models
-(DNS, LES, stabilized LES). The stabilized cases use a conservative
-regularization filter to preserve resolution when the stretched cores
-threaten to under-resolve the flow. ``allplot.sh`` turns the sampled
-diagnostics into the comparison figures.
+The four primary cases compare co-rotating leapfrogging rings and
+counter-rotating colliding rings with transposed DNS and calibrated transposed
+LES.  A stabilized LES retry exists for each family, but ``allrun.sh`` launches
+it only when the corresponding plain LES fails before the requested turbulent
+transition horizon.  Stabilization is conservative filament refinement: it
+splits only particles whose strength shows a clear lineage-relative overshoot;
+it does not remesh or continuously relax the full cloud.
 
 Usage:
     python rings_setup.py --case leapfrog_dns
@@ -30,19 +31,23 @@ RING_CIRCULATION = np.pi
 CORE_RADIUS = 0.1
 KINEMATIC_VISCOSITY = RING_CIRCULATION / 3000.0
 
-# Five intervals across the physical core diameter produce 19 complete
-# cross-section orbits per ring without changing the Gaussian core width.
-PARTICLE_SPACING = 0.04
+# Match the calibrated single-ring campaign at the same circulation Reynolds
+# number.  This gives 5.71 intervals across the physical core diameter and
+# about 7.9 particle spacings per wavelength near the predicted m=23 Widnall
+# mode, while retaining complete azimuthal particle orbits.
+PARTICLE_SPACING = 0.035
 PARTICLE_RADIUS = 2.0 * PARTICLE_SPACING
 TAIL_FRACTION = 0.05
-# The nondimensional step is 0.032 and the final time is t Gamma/R^2 = 36.48.
+# The nondimensional step is 20 h^2=0.0245.  The final horizon
+# t Gamma/R^2=147 is long enough to include loss of coherent leapfrogging and
+# the subsequent disordered motion if the numerical method survives it.
 TIME_STEP_SIZE = 20.0 * PARTICLE_SPACING**2 / RING_CIRCULATION
-NUM_STEPS = 1140
+NUM_STEPS = 6000
 END_TIME = NUM_STEPS * TIME_STEP_SIZE
 # Integral histories resolve the energy budget; particle snapshots resolve the
 # ring motion for visualization. Their cadences are intentionally independent.
 DIAGNOSTIC_INTERVAL_STEPS = 5
-CHECKPOINT_INTERVAL_STEPS = 10
+CHECKPOINT_INTERVAL_STEPS = 50
 
 # The two fixed-particle baselines stop when vortex-line alignment or the
 # reconstructed divergence says the cloud is no longer resolved.  Peak
@@ -51,41 +56,17 @@ CHECKPOINT_INTERVAL_STEPS = 10
 BASELINE_MISALIGNMENT_LIMIT = 45.0
 BASELINE_DIVERGENCE_LIMIT = 0.12
 
-# Modes 1--12 include the unstable Widnall band of this slender ring.
-WIDNALL_AMPLITUDE = 0.01
-WIDNALL_MODES = 12
+# Use the exact broadband perturbation calibrated by the single-ring case.
+WIDNALL_AMPLITUDE = 0.05
+WIDNALL_MODES = 24
 RING_SEEDS = (7, 19)
 
-# The classical coefficient resolves the sustained leapfrogging deformation;
-# the more violent head-on collision needs the stronger coarse-LES filter.
-LES_COEFFICIENT = {"leapfrog": 0.16, "collide": 0.32}
-STABILIZATION_COEFFICIENT = float(
-    os.environ.get("OPENONDA_INTERACTIONS_STABILIZATION_COEFFICIENT", "0.5")
-)
-REGULARIZATION_INTERVAL_STEPS = 20
-REGULARIZATION_START_STEP = 380
-REGULARIZATION_SPACING = float(
-    os.environ.get("OPENONDA_INTERACTIONS_REGULARIZATION_SPACING", "0.084")
-)
-REGULARIZATION_CAPACITY_SPACING = float(
-    os.environ.get("OPENONDA_INTERACTIONS_CAPACITY_SPACING", "0.13")
-)
-REGULARIZATION_CORE_RADIUS = {"leapfrog": 0.23, "collide": 0.195}
-REGULARIZATION_CAPACITY_CORE_RADIUS = 0.195
-REGULARIZATION_TAIL_BUDGET = 0.003
-REGULARIZATION_DIVERGENCE_TRIGGER = 0.20
-# Act as vortex-line alignment first degrades; a solenoidal projection is only
-# warranted if the rebuilt field remains above the baseline divergence warning.
-REGULARIZATION_MISALIGNMENT_TRIGGER = 4.0
-REGULARIZATION_CAPACITY_DIVERGENCE_TRIGGER = 0.20
-REGULARIZATION_CAPACITY_MISALIGNMENT_TRIGGER = 25.0
-REGULARIZATION_CAPACITY_FRACTION = 0.70
-REGULARIZATION_ENERGY_LIMIT = 0.20
-REGULARIZATION_ENSTROPHY_LIMIT = 0.15
-REGULARIZATION_PROJECTION_TRIGGER = 0.12
-REGULARIZATION_PROJECTION_LIMIT = {"leapfrog": 0.05, "collide": 0.10}
-STABILIZED_MAX_PARTICLES = 20_000
-BASELINE_MAX_PARTICLES = 8_000
+LES_COEFFICIENT = {"leapfrog": 0.20, "collide": 0.20}
+FILAMENT_REFINEMENT_INTERVAL_STEPS = 5
+FILAMENT_REFINEMENT_STRENGTH_FACTOR = 2.0
+FILAMENT_REFINEMENT_OFFSET_FRACTION = 0.25
+STABILIZED_MAX_PARTICLES = 100_000
+BASELINE_MAX_PARTICLES = 20_000
 
 COMPUTE_DEVICE = os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper()
 # Metal does not expose f64 kernels in Taichi.  Keep the historical f64 path
@@ -120,26 +101,15 @@ def turbulence(family: str, variant: str) -> vpm.TurbulenceConfig:
 
 
 def stabilization(family: str, variant: str) -> vpm.StabilizationConfig:
+    del family
     if variant == "les_stabilized":
-        return vpm.StabilizationConfig.conservative_filter(
-            coefficient=STABILIZATION_COEFFICIENT,
-            interval_steps=REGULARIZATION_INTERVAL_STEPS,
-            start_step=REGULARIZATION_START_STEP,
-            grid_spacing=REGULARIZATION_SPACING,
-            max_n_particles=STABILIZED_MAX_PARTICLES,
-            tail_budget=REGULARIZATION_TAIL_BUDGET,
-            divergence_trigger=REGULARIZATION_DIVERGENCE_TRIGGER,
-            misalignment_trigger=REGULARIZATION_MISALIGNMENT_TRIGGER,
-            capacity_divergence_trigger=REGULARIZATION_CAPACITY_DIVERGENCE_TRIGGER,
-            capacity_misalignment_trigger=REGULARIZATION_CAPACITY_MISALIGNMENT_TRIGGER,
-            capacity_fraction=REGULARIZATION_CAPACITY_FRACTION,
-            capacity_grid_spacing=REGULARIZATION_CAPACITY_SPACING,
-            core_radius=REGULARIZATION_CORE_RADIUS[family],
-            capacity_core_radius=REGULARIZATION_CAPACITY_CORE_RADIUS,
-            total_kinetic_energy_dissipation_limit=REGULARIZATION_ENERGY_LIMIT,
-            total_enstrophy_dissipation_limit=REGULARIZATION_ENSTROPHY_LIMIT,
-            projection_trigger=REGULARIZATION_PROJECTION_TRIGGER,
-            projection_max_correction=REGULARIZATION_PROJECTION_LIMIT[family],
+        return vpm.StabilizationConfig(
+            filament_refinement=vpm.FilamentRefinementConfig.adaptive(
+                interval_steps=FILAMENT_REFINEMENT_INTERVAL_STEPS,
+                max_vortex_strength_factor=FILAMENT_REFINEMENT_STRENGTH_FACTOR,
+                offset_fraction=FILAMENT_REFINEMENT_OFFSET_FRACTION,
+                max_n_particles=STABILIZED_MAX_PARTICLES,
+            )
         )
     return vpm.StabilizationConfig.disabled()
 
@@ -258,6 +228,19 @@ def run_case(case_name: str, *, n_steps: int = NUM_STEPS) -> None:
             group_id=np.full(len(position), group, dtype=np.int32),
         )
 
+    particle_spacings_per_wavelength = 2.0 * np.pi * RING_RADIUS / (22.6 * PARTICLE_SPACING)
+    particle_spacings_across_core = 2.0 * CORE_RADIUS / PARTICLE_SPACING
+    if (
+        len(solver.particles) < 17_000
+        or particle_spacings_per_wavelength < 7.5
+        or particle_spacings_across_core < 5.5
+    ):
+        raise RuntimeError(
+            "The particle cloud does not meet the Re=3000 Widnall-resolution gate: "
+            f"N={len(solver.particles)}, wavelength/h={particle_spacings_per_wavelength:.3f}, "
+            f"core_diameter/h={particle_spacings_across_core:.3f}"
+        )
+
     manifest = {
         "status": "running",
         "case": case_name,
@@ -278,40 +261,24 @@ def run_case(case_name: str, *, n_steps: int = NUM_STEPS) -> None:
         "treecode_theta": TREECODE_THETA if VELOCITY_METHOD == "treecode" else None,
         "widnall_amplitude": WIDNALL_AMPLITUDE,
         "widnall_modes": WIDNALL_MODES,
+        "widnall_dominant_mode_estimate": 22.6,
+        "particle_spacings_per_dominant_wavelength": particle_spacings_per_wavelength,
+        "particle_spacings_across_core_diameter": particle_spacings_across_core,
         "smagorinsky_coefficient": 0.0 if variant == "dns" else LES_COEFFICIENT[family],
-        "stabilization_coefficient": (
-            STABILIZATION_COEFFICIENT if variant == "les_stabilized" else 0.0
+        "stabilization_mechanism": (
+            "overshoot_gated_filament_refinement" if variant == "les_stabilized" else "disabled"
         ),
-        "regularization_interval_steps": (
-            REGULARIZATION_INTERVAL_STEPS if variant == "les_stabilized" else 0
+        "filament_refinement_interval_steps": (
+            FILAMENT_REFINEMENT_INTERVAL_STEPS if variant == "les_stabilized" else 0
         ),
-        "regularization_grid_spacing": (
-            REGULARIZATION_SPACING if variant == "les_stabilized" else None
+        "filament_refinement_strength_factor": (
+            FILAMENT_REFINEMENT_STRENGTH_FACTOR if variant == "les_stabilized" else None
         ),
-        "regularization_capacity_grid_spacing": (
-            REGULARIZATION_CAPACITY_SPACING if variant == "les_stabilized" else None
+        "filament_refinement_offset_fraction": (
+            FILAMENT_REFINEMENT_OFFSET_FRACTION if variant == "les_stabilized" else None
         ),
-        "regularization_core_radius": (
-            REGULARIZATION_CORE_RADIUS[family] if variant == "les_stabilized" else None
-        ),
-        "regularization_capacity_core_radius": (
-            REGULARIZATION_CAPACITY_CORE_RADIUS if variant == "les_stabilized" else None
-        ),
-        "regularization_capacity_fraction": (
-            REGULARIZATION_CAPACITY_FRACTION if variant == "les_stabilized" else None
-        ),
-        "regularization_tail_budget": (
-            REGULARIZATION_TAIL_BUDGET if variant == "les_stabilized" else 0.0
-        ),
-        "regularization_misalignment_trigger_deg": (
-            REGULARIZATION_MISALIGNMENT_TRIGGER if variant == "les_stabilized" else None
-        ),
-        "regularization_projection_trigger": (
-            REGULARIZATION_PROJECTION_TRIGGER if variant == "les_stabilized" else None
-        ),
-        "regularization_projection_limit": (
-            REGULARIZATION_PROJECTION_LIMIT[family] if variant == "les_stabilized" else None
-        ),
+        "remeshing_enabled": False,
+        "pedrizzetti_relaxation_enabled": False,
         "diffusion_scheme": "CS",
         "core_spreading_moment_projection": True,
     }

@@ -21,7 +21,6 @@ from plot_style import (
     build_arg_parser,
     figure_size,
     load_theme,
-    mark_every,
     save_fig,
 )
 from ring_metrics import FIGURES_DIR, P_REF, SAMPLES_DIR, REFERENCE_TIME
@@ -35,10 +34,11 @@ def main() -> None:
     colors, _ = load_theme()
 
     fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=figure_size("wide_short"), sharex=True)
-    fig.subplots_adjust(wspace=0.26, hspace=0.10, left=0.10, right=0.98, top=0.92, bottom=0.29)
+    fig.subplots_adjust(wspace=0.37, left=0.13, right=0.98, top=0.92, bottom=0.29)
     legend_handles = []
     legend_labels = []
-    plot_end = 38.0
+    plot_end = 185
+    n_skip = 14  # plot every n-th marker
 
     # -- Energy diagnostics — all available variants -------------------------
     for variant, st in VARIANT_STYLE.items():
@@ -55,28 +55,27 @@ def main() -> None:
         label = VARIANT_LABEL[variant]
         print(f"  {variant}: {csv_path}")
         t = times / REFERENCE_TIME
-        plot_end = max(plot_end, float(t[-1]))
         (line,) = ax_de.plot(
             t,
             dedt / P_REF,
-            linestyle="None",
+            linestyle=st["linestyle"],
             color=st["color"],
             lw=st["linewidth"],
             marker=st["marker"],
             ms=st["markersize"],
-            markevery=2,
+            markevery=n_skip,
             mew=st["markeredgewidth"],
             label=label,
         )
         ax_nuens.plot(
             t,
             viscous_kinetic_energy_rate / P_REF,
-            linestyle="None",
+            linestyle=st["linestyle"],
             color=st["color"],
             lw=st["linewidth"],
             marker=st["marker"],
             ms=st["markersize"],
-            markevery=2,
+            markevery=n_skip,
             mew=st["markeredgewidth"],
             label=label,
         )

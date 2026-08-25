@@ -244,7 +244,9 @@ class VPMSolver:
             self.physics.core_radius_ratio = float(getattr(_visc_cfg, "core_radius_ratio", 2.5))
         if hasattr(self.physics, "configure_body_mask"):
             try:
-                self.physics.configure_body_mask(getattr(final_setup, "body_stl", None))
+                bodies = getattr(final_setup, "bodies", ())
+                first_body_stl = bodies[0].stl if bodies else None
+                self.physics.configure_body_mask(first_body_stl)
             except Exception as exc:
                 Logging.warning(f"component=body_mask status=configuration_failed error={exc!r}")
 
@@ -399,10 +401,23 @@ class VPMSolver:
         self.panel_solver = getattr(final_setup, "panel_solver", None)
         if self.panel_solver is not None:
             try:
-                body_stl = getattr(final_setup, "body_stl", None)
+                bodies = getattr(final_setup, "bodies", ())
                 lattice = getattr(self.panel_solver, "lattice", None)
-                if body_stl and (lattice is None or lattice.n_panels == 0):
-                    self.panel_solver.add_surface("body", body_stl)
+                if bodies and (lattice is None or lattice.n_panels == 0):
+                    for body in bodies:
+                        stl_path = Path(body.stl)
+                        if not stl_path.is_absolute():
+                            stl_path = self.case_dir / stl_path
+                        self.panel_solver.add_surface(
+                            uid=body.uid,
+                            stl_path=str(stl_path),
+                            kinematics=body.kinematics,
+                            group_id=body.group_id,
+                            translation=body.translation,
+                            rotation_degrees=body.rotation_degrees,
+                            rotation_centre=body.rotation_centre,
+                            reference_area=body.reference_area,
+                        )
                 self.panel_solver.initialize(force=True)
                 scope = getattr(self.panel_solver, "coupling_scope", "full")
                 self._pressure_body_induced_fn = self.panel_solver.compute_induced_velocity

@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-25T12:28:59Z",
+  "source": {
+    "revision": "e54e105fb15f5717c8f5e5f981471f84fb85a206",
+    "dirty": true
+  },
+  "host": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "3.11.15",
+    "logical_cpus": 10
+  },
+  "backend": "CPU",
+  "precision": "f64",
+  "qualification_scope": "moving multi-body Neumann boundary solver",
+  "scaling": {
+    "cases": [
+      {
+        "mesh": "fibonacci",
+        "target_total_panels": 4000,
+        "vertices_per_body": 502,
+        "subdivisions": null,
+        "bodies": 4,
+        "panels_per_body": 1000,
+        "total_panels": 4000,
+        "cold_seconds": {
+          "aic_assembly": 0.1564330420223996,
+          "rhs_assembly": 0.02803262503584847,
+          "device_to_host": 0.09212745795957744,
+          "constraint_factorization": 5.212885125016328,
+          "constrained_rhs_solve": 0.00980095798149705,
+          "constrained_diagnostics": 0.0,
+          "host_to_device": 0.026092915970366448,
+          "surface_evaluation": 0.4218789170263335,
+          "far_field_refresh": 0.046220249962061644,
+          "total_solve": 6.064744875009637
+        },
+        "steady_reused_seconds": {
+          "aic_assembly": 0.0,
+          "rhs_assembly": 0.0001372919650748372,
+          "device_to_host": 0.010054998972918838,
+          "constraint_factorization": 0.0,
+          "constrained_rhs_solve": 0.004608667048159987,
+          "constrained_diagnostics": 0.0,
+          "host_to_device": 0.00013579201186075807,
+          "surface_evaluation": 0.1181198749691248,
+          "far_field_refresh": 0.0007172909681685269,
+          "total_solve": 0.15516649995697662
+        },
+        "steady_refactor_seconds": {
+          "aic_assembly": 0.0,
+          "rhs_assembly": 0.0001550000160932541,
+          "device_to_host": 0.010965958994347602,
+          "constraint_factorization": 4.886899832985364,
+          "constrained_rhs_solve": 0.005731541954446584,
+          "constrained_diagnostics": 0.0,
+          "host_to_device": 0.0001973329926840961,
+          "surface_evaluation": 0.1254002500209026,
+          "far_field_refresh": 0.0007046660175547004,
+          "total_solve": 5.05511708301492
+        },
+        "steady_reassemble_refactor_total_seconds": 6.73329887597356,
+        "cpu_oracle_seconds": {
+          "aic_assembly": 0.0,
+          "rhs_assembly": 0.00016404205234721303,
+          "device_to_host": 0.011901416000910103,
+          "constraint_factorization": 0.0,
+          "constrained_rhs_solve": 0.005628416023682803,
+          "constrained_diagnostics": 0.0,
+          "host_to_device": 0.0002995830145664513,
+          "surface_evaluation": 0.14114654203876853,
+          "far_field_refresh": 0.0007668749894946814,
+          "total_solve": 0.18774824996944517
+        },
+        "projected_taichi_cold_seconds": {
+          "aic_assembly": 0.17268695798702538,
+          "rhs_assembly": 0.029368040966801345,
+          "device_to_host": 0.021228249999694526,
+          "constraint_factorization": 0.0,
+          "constrained_rhs_solve": 0.5764578750240617,
+          "constrained_diagnostics": 0.18349104101071134,
+          "host_to_device": 0.0,
+          "surface_evaluation": 0.4083027499727905,
+          "far_field_refresh": 0.022872042027302086,
+          "total_solve": 1.4353519169962965
+        },
+        "projected_taichi_steady_seconds": {
+          "aic_assembly": 0.0,
+          "rhs_assembly": 8.970801718533039e-05,
+          "device_to_host": 6.745796417817473e-05,
+          "constraint_factorization": 0.0,
+          "constrained_rhs_solve": 0.13546858303016052,
+          "constrained_diagnostics": 0.013098333962261677,
+          "host_to_device": 0.0,
+          "surface_evaluation": 0.12215058295987546,
+          "far_field_refresh": 0.0004617500235326588,
+          "total_solve": 0.2713957499945536
+        },
+        "projected_taichi_reassemble_total_seconds": 0.3855660419794731,
+        "projected_taichi_iterations": 14,
+        "projected_taichi_relative_strength_difference": 2.6206049011558284e-13,
+        "factorization_reuse_speedup": 32.5786628197231,
+        "full_static_reuse_speedup": 43.39402434056654,
+        "active_aic_bytes": 128000000,
+        "allocated_aic_bytes": 128512512,
+        "factorization_cache_bytes": 383520096,
+        "exact_panel_to_target_seconds": 0.012888042023405433,
+        "accelerated_panel_to_target_seconds": 0.0010176659561693668,
+        "far_field_speedup": 12.66431479335103,
+        "far_field_relative_l2_error": 0.00014473410775249078,
+        "far_field_fraction": 1.0,
+        "peak_process_rss_mb": 1295.5625
+      }
+    ]
+  }
+}

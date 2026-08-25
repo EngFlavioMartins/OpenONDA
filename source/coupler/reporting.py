@@ -185,6 +185,12 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "excluded_solid_target_nodes": 0,
             "blend_cross_divergence_l2_before": 0.0,
             "blend_cross_divergence_l2_after": 0.0,
+            "projection_vorticity_relative_error": 0.0,
+            "projection_velocity_relative_error": None,
+            "projection_condition_number": 0.0,
+            "selective_support_births": 0,
+            "renewal_guard_width": 0.0,
+            "renewal_diffusion_substeps": 0,
         }
         particle_count = 0
     else:
@@ -215,6 +221,18 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "excluded_solid_target_nodes": int(result.excluded_solid_target_nodes),
             "blend_cross_divergence_l2_before": float(result.blend_cross_divergence_l2_before),
             "blend_cross_divergence_l2_after": float(result.blend_cross_divergence_l2_after),
+            "projection_vorticity_relative_error": float(
+                result.projection_vorticity_relative_error
+            ),
+            "projection_velocity_relative_error": (
+                None
+                if result.projection_velocity_relative_error is None
+                else float(result.projection_velocity_relative_error)
+            ),
+            "projection_condition_number": float(result.projection_condition_number),
+            "selective_support_births": int(result.selective_support_births),
+            "renewal_guard_width": float(result.renewal_guard_width),
+            "renewal_diffusion_substeps": int(result.renewal_diffusion_substeps),
         }
         particle_count = result.n_particles_after
     if not all(

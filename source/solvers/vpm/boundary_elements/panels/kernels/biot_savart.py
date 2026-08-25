@@ -16,11 +16,11 @@ from ....config.constants import PANEL_EPSILON
 
 @ti.func
 def compute_vortex_ring_velocity(
-    p: ti.types.vector(3, float),
-    v0: ti.types.vector(3, float),
-    v1: ti.types.vector(3, float),
-    v2: ti.types.vector(3, float),
-) -> ti.types.vector(3, float):
+    p,
+    v0,
+    v1,
+    v2,
+):
     """
     Induced velocity at point ``p`` from a unit-strength triangular vortex ring.
 
@@ -50,7 +50,8 @@ def compute_vortex_ring_velocity(
 
         vel = compute_vortex_ring_velocity(p, v0, v1, v2)
     """
-    vel = ti.Vector([0.0, 0.0, 0.0])
+    # Derive the accumulator dtype from the panel geometry, not default_fp.
+    vel = v0 - v0
     vel += biot_savart_segment(p, v0, v1)
     vel += biot_savart_segment(p, v1, v2)
     vel += biot_savart_segment(p, v2, v0)
@@ -58,9 +59,7 @@ def compute_vortex_ring_velocity(
 
 
 @ti.func
-def biot_savart_segment(
-    p: ti.types.vector(3, float), v0: ti.types.vector(3, float), v1: ti.types.vector(3, float)
-) -> ti.types.vector(3, float):
+def biot_savart_segment(p, v0, v1):
     """
     Induced velocity at ``p`` from a unit-strength straight vortex segment.
 
@@ -110,11 +109,11 @@ def biot_savart_segment(
 
 @ti.func
 def compute_doublet_potential(
-    p: ti.types.vector(3, float),
-    v0: ti.types.vector(3, float),
-    v1: ti.types.vector(3, float),
-    v2: ti.types.vector(3, float),
-) -> ti.template():
+    p,
+    v0,
+    v1,
+    v2,
+):
     """Induced potential phi at point P by a triangular doublet element (v0, v1, v2). Strength = 1.0."""
     # phi = - (1/4π) · SolidAngle
     r1 = v0 - p

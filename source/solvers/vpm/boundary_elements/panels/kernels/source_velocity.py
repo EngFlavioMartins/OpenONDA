@@ -7,12 +7,12 @@ from ....config.constants import PANEL_EPSILON
 
 @ti.func
 def compute_source_velocity(
-    p: ti.types.vector(3, float),
-    v0: ti.types.vector(3, float),
-    v1: ti.types.vector(3, float),
-    v2: ti.types.vector(3, float),
-    normal: ti.types.vector(3, float),
-) -> ti.types.vector(3, float):
+    p,
+    v0,
+    v1,
+    v2,
+    normal,
+):
     """Return the velocity induced by a unit-strength source triangle."""
     r0 = v0 - p
     r1 = v1 - p

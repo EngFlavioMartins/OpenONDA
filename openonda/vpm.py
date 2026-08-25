@@ -2,11 +2,13 @@
 
 from source.solvers.vpm import (
     AdvectionConfig,
+    BodyPose,
     DivergenceRelaxationConfig,
     DivergenceRelaxationError,
     FilamentRefinementConfig,
     FilamentRefinementError,
     ForceConfig,
+    PanelBodySetup,
     PanelSolver,
     ParticleDistributor,
     RingDiagnosticsSampler,
@@ -43,6 +45,7 @@ from source.solvers.vpm.io.sampling import LineSampler, SamplingSchedule, Surfac
 
 __all__ = [
     "AdvectionConfig",
+    "BodyPose",
     "CheckpointManager",
     "doublet_flow_vpm",
     "DivergenceRelaxationConfig",
@@ -55,6 +58,7 @@ __all__ = [
     "LineSampler",
     "ManeuverVLM",
     "PanelSolver",
+    "PanelBodySetup",
     "ParticleDistributor",
     "PitchingVLM",
     "RotatingVLM",

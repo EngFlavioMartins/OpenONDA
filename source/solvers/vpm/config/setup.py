@@ -31,6 +31,36 @@ sys.tracebacklimit = 0
 
 
 @dataclass(frozen=True)
+class PanelBodySetup:
+    """Declarative setup for one closed STL body in the panel solver."""
+
+    stl: str
+    uid: str
+    group_id: int = 0
+    kinematics: Any | None = None
+    translation: tuple[float, float, float] | None = None
+    rotation_degrees: tuple[float, float, float] | None = None
+    rotation_centre: tuple[float, float, float] | None = None
+    reference_area: float | None = None
+
+    def __post_init__(self) -> None:
+        if not str(self.stl).strip():
+            raise ValueError("PanelBodySetup.stl must be a non-empty path")
+        if not str(self.uid).strip():
+            raise ValueError("PanelBodySetup.uid must be non-empty")
+        for field_name in ("translation", "rotation_degrees", "rotation_centre"):
+            value = getattr(self, field_name)
+            if value is not None:
+                if len(value) != 3:
+                    raise ValueError(f"{field_name} must contain three coordinates")
+                object.__setattr__(self, field_name, tuple(float(item) for item in value))
+        if self.group_id < 0:
+            raise ValueError("Panel body group_id must be non-negative")
+        if self.reference_area is not None and self.reference_area <= 0.0:
+            raise ValueError("Panel body reference_area must be positive when provided")
+
+
+@dataclass(frozen=True)
 class VPMSetup:
     """Complete immutable setup for a VPM simulation."""
 
@@ -100,7 +130,7 @@ class VPMSetup:
     panel_solver: Any | None = None
     samplers: tuple[Any, ...] | None = None
     final_samplers: tuple[Any, ...] | None = None
-    body_stl: str | None = None
+    bodies: tuple[PanelBodySetup, ...] = ()
 
     domain_bounds: tuple[float, ...] | None = None
     """Optional VPM domain ``(xmin, xmax, ymin, ymax, zmin, zmax)``."""
@@ -122,6 +152,12 @@ class VPMSetup:
                 "final_samplers",
                 tuple(self.final_samplers),
             )
+
+        object.__setattr__(self, "bodies", tuple(self.bodies))
+        body_uids = [body.uid for body in self.bodies]
+        if len(body_uids) != len(set(body_uids)):
+            duplicates = sorted({uid for uid in body_uids if body_uids.count(uid) > 1})
+            raise ValueError("Duplicate panel body uid(s): " + ", ".join(duplicates))
 
         if self.domain_bounds is not None:
             if len(self.domain_bounds) != 6:
@@ -380,7 +416,7 @@ class VPMSetup:
             "freestream_velocity": list(self.freestream_velocity),
             "verbose": self.verbose,
             "velocity": (as_serializable(self.velocity) if self.velocity is not None else None),
-            "body_stl": self.body_stl,
+            "bodies": [as_serializable(body) for body in self.bodies],
             "domain_bounds": (list(self.domain_bounds) if self.domain_bounds is not None else None),
         }
 
@@ -408,6 +444,15 @@ class VPMSetup:
                 values[name] = config_type(**values[name])
         if isinstance(values.get("stabilization"), dict):
             values["stabilization"] = cls._stabilization_from_dict(values)
+        if "bodies" in values:
+            body_values = values["bodies"]
+            if body_values is None:
+                values["bodies"] = ()
+            else:
+                values["bodies"] = tuple(
+                    item if isinstance(item, PanelBodySetup) else PanelBodySetup(**item)
+                    for item in body_values
+                )
         return cls(**values)
 
     @staticmethod

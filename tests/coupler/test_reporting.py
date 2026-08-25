@@ -45,3 +45,27 @@ def test_transfer_log_is_scannable_and_retains_all_diagnostics() -> None:
     assert "replaced L1 1.812e+00 | injected L1 1.834e+00 m^3/s" in record
     assert "net state change 1.000e-05 m^3/s" in record
     assert "n_particles_before=" not in record
+
+
+def test_projected_renewal_log_reports_field_gates_and_runtime_gbd_guard() -> None:
+    result = TransferResult(
+        n_particles_before=120,
+        n_particles_retained=120,
+        n_particles_removed=0,
+        n_particles_blended=96,
+        n_particles_injected=4,
+        n_particles_after=124,
+        injected_vortex_strength_l1=2.0e-4,
+        transfer_method="projected_gbd_renewal",
+        projection_vorticity_relative_error=4.0e-4,
+        projection_velocity_relative_error=7.0e-5,
+        projection_condition_number=12.5,
+        selective_support_births=4,
+        renewal_guard_width=0.09375,
+        renewal_diffusion_substeps=1,
+    )
+
+    record = _transfer_log_record(3, result)
+
+    assert "omega error 4.000e-04 | normal velocity error 7.000e-05" in record
+    assert "GBD guard  0.09375 m | diffusion substeps 1 | selective births 4" in record

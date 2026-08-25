@@ -221,6 +221,7 @@ class _GridDiffusionMixin:
     def _init_grid_diffusion(self):
         """Initialize grid-based diffusion state."""
         self._grid_realloc_count: int = 0
+        self._last_gbd_diffusion_substeps: int = 1
 
         # Core radius assigned to regenerated particles (σ = ratio·particle_spacing).
         self.core_radius_ratio: float = _REGEN_RADIUS_RATIO
@@ -262,6 +263,11 @@ class _GridDiffusionMixin:
     def _current_grid(self):
         """Field holding the current vorticity (source)."""
         return self._grid_a if self._ping else self._grid_b
+
+    @property
+    def last_gbd_diffusion_substeps(self) -> int:
+        """Exact explicit-Laplacian stage count used by the last GBD operation."""
+        return self._last_gbd_diffusion_substeps
 
     @property
     def _other_grid(self):
@@ -975,6 +981,20 @@ class _GridDiffusionMixin:
             n_diffusion_substeps += 1
         return n_diffusion_substeps, max_diffusion_number
 
+    @classmethod
+    def gbd_diffusion_substep_count(
+        cls,
+        max_diffusivity: float,
+        time_step_size: float,
+        particle_spacing: float,
+    ) -> int:
+        """Return the production GBD stage count for the supplied runtime state."""
+        return cls._explicit_diffusion_substep_count(
+            max_diffusivity,
+            time_step_size,
+            particle_spacing,
+        )[0]
+
     def _advance_gbd_laplacian(
         self,
         *,
@@ -1079,6 +1099,10 @@ class _GridDiffusionMixin:
         If the macro-step exceeds the 3-D explicit limit, only the Laplacian is
         substepped. Scatter, thresholding, and regeneration still occur once.
         """
+        # One is also the correct reach for a skipped/zero-diffusivity GBD
+        # operation. A completed Laplacian below replaces this with the exact
+        # runtime stage count used by the current regeneration.
+        self._last_gbd_diffusion_substeps = 1
         N = particles.n_particles_total
         if N == 0:
             return None
@@ -1164,7 +1188,7 @@ class _GridDiffusionMixin:
                 nz,
                 mapping=node_mapping,
             )
-        self._advance_gbd_laplacian(
+        self._last_gbd_diffusion_substeps, _max_diffusion_number = self._advance_gbd_laplacian(
             nx=nx,
             ny=ny,
             nz=nz,

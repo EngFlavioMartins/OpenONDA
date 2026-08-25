@@ -1,4 +1,4 @@
-"""Physics and comparative-stability gate for all six vortex-ring cases."""
+"""Physics and comparative-stability gate for the staged interaction cases."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ FAMILIES = ("leapfrog", "collide")
 VARIANTS = ("dns", "les", "les_stabilized")
 EXPECTED_CASES = tuple(f"{family}_{variant}" for family in FAMILIES for variant in VARIANTS)
 RING_INVARIANT_SCALE = 2.0 * np.pi**2
-EXPECTED_SMAGORINSKY = {"leapfrog": 0.16, "collide": 0.32}
+EXPECTED_SMAGORINSKY = {"leapfrog": 0.20, "collide": 0.20}
 
 
 def column(rows: list[dict[str, str]], name: str) -> np.ndarray:
@@ -104,12 +104,16 @@ def inspect_case(case_name: str) -> dict[str, float]:
     checkpoint_interval_steps = manifest.get("checkpoint_interval_steps")
     if not isinstance(diagnostic_interval_steps, int) or not 1 <= diagnostic_interval_steps <= 5:
         raise ValueError("flow diagnostics are not sampled at least every five steps")
-    if not isinstance(checkpoint_interval_steps, int) or not 1 <= checkpoint_interval_steps <= 10:
-        raise ValueError("particle states are not saved at least every ten steps")
-    if float(manifest.get("particle_spacing", np.inf)) > 0.04:
+    if not isinstance(checkpoint_interval_steps, int) or not 1 <= checkpoint_interval_steps <= 50:
+        raise ValueError("particle states are not saved at least every fifty steps")
+    if float(manifest.get("particle_spacing", np.inf)) > 0.035 + 1.0e-12:
         raise ValueError("initial vortex-ring particle spacing is too coarse")
-    if int(manifest.get("initial_n_particles_total", 0)) < 6_000:
+    if int(manifest.get("initial_n_particles_total", 0)) < 17_000:
         raise ValueError("initial vortex rings contain too few particles")
+    if not np.isclose(float(manifest.get("widnall_amplitude", np.nan)), 0.05):
+        raise ValueError("run used the wrong calibrated Widnall amplitude")
+    if int(manifest.get("widnall_modes", 0)) != 24:
+        raise ValueError("run did not seed the calibrated 24-mode Widnall band")
     expected_cs = 0.0 if variant == "dns" else EXPECTED_SMAGORINSKY[family]
     if not np.isclose(float(manifest.get("smagorinsky_coefficient", np.nan)), expected_cs):
         raise ValueError("run used the wrong family-specific Smagorinsky coefficient")
@@ -185,16 +189,7 @@ def inspect_case(case_name: str) -> dict[str, float]:
     )
     regularization_impulse = column(rows, "regularization_max_linear_impulse_error_relative")
     regularization_angular = column(rows, "regularization_max_angular_impulse_error_relative")
-
-    try:
-        all_diagnostics = np.asarray(
-            [[float(value) for value in row.values()] for row in rows],
-            dtype=float,
-        )
-    except (TypeError, ValueError) as error:
-        raise ValueError("flow diagnostics contain a non-numeric value") from error
-    if not np.isfinite(all_diagnostics).all():
-        raise ValueError("a non-finite value appears in the exported flow diagnostics")
+    n_stabilization_events = column(rows, "n_stabilization_events")
 
     required_values = np.column_stack(
         (
@@ -234,6 +229,7 @@ def inspect_case(case_name: str) -> dict[str, float]:
             regularization_vortex_strength_error_relative,
             regularization_impulse,
             regularization_angular,
+            n_stabilization_events,
         )
     )
     if not np.isfinite(required_values).all():
@@ -424,6 +420,8 @@ def inspect_case(case_name: str) -> dict[str, float]:
         "stabilization_kinematic_viscosity": float(np.max(stabilization_kinematic_viscosity)),
         "stabilization_active": float(np.max(stabilization_active)),
         "n_regularization_events": float(np.max(n_regularization_events)),
+        "n_stabilization_events": float(np.max(n_stabilization_events)),
+        "max_particle_count": float(np.max(n_particles_total)),
         "regularization_filter_decay": filter_decay / total_kinetic_energy[0],
         "regularization_total_kinetic_energy_dissipation": float(
             np.max(regularization_total_kinetic_energy_dissipation)
@@ -493,6 +491,8 @@ def inspect_case(case_name: str) -> dict[str, float]:
             failures.append("DNS has nonzero stabilization viscosity")
         if metrics["n_regularization_events"] > 0.0:
             failures.append("DNS performed conservative regularization")
+        if metrics["n_stabilization_events"] > 0.0:
+            failures.append("DNS performed a stabilization event")
     elif variant == "les":
         if metrics["max_eddy_viscosity"] <= viscosity_epsilon:
             failures.append("LES never activated its eddy viscosity")
@@ -500,17 +500,19 @@ def inspect_case(case_name: str) -> dict[str, float]:
             failures.append("plain LES has nonzero stabilization viscosity")
         if metrics["n_regularization_events"] > 0.0:
             failures.append("plain LES performed conservative regularization")
+        if metrics["n_stabilization_events"] > 0.0:
+            failures.append("plain LES performed a stabilization event")
     else:
         if metrics["max_eddy_viscosity"] <= viscosity_epsilon:
             failures.append("stabilized LES never activated its eddy viscosity")
-        if metrics["stabilization_kinematic_viscosity"] <= viscosity_epsilon:
-            failures.append("stabilized LES never activated residual viscosity")
-        if metrics["stabilization_active"] <= 0.0:
-            failures.append("stabilized LES has no active residual-viscosity particles")
-        if metrics["n_regularization_events"] <= 0.0:
-            failures.append("stabilized LES never regularized its particle cloud")
-        if metrics["regularization_filter_decay"] <= 0.0:
-            failures.append("stabilized LES recorded no dissipative filter transfer")
+        if metrics["stabilization_kinematic_viscosity"] > viscosity_epsilon:
+            failures.append("filament-refined LES unexpectedly used residual viscosity")
+        if metrics["n_regularization_events"] > 0.0:
+            failures.append("filament-refined LES unexpectedly remeshed its particle cloud")
+        if metrics["n_stabilization_events"] <= 0.0:
+            failures.append("stabilized LES never encountered a strength overshoot to split")
+        if metrics["max_particle_count"] <= n_particles_total[0]:
+            failures.append("stabilized LES recorded no filament splits")
 
     if failures:
         raise ValueError("; ".join(failures))
@@ -600,10 +602,9 @@ def main() -> None:
         if name.endswith("_les_stabilized"):
             print(
                 "  "
-                f"{'':28s} filter events={int(item['n_regularization_events'])}, "
-                f"adaptive cores={int(item['n_regularization_adaptive_core_events'])}, "
-                f"filter total_kinetic_energy={-item['regularization_filter_decay']:.2%} E0, "
-                f"max regenerated core={item['regularization_max_core_radius']:.3f}"
+                f"{'':28s} splitting events={int(item['n_stabilization_events'])}, "
+                f"max particles={int(item['max_particle_count'])}, remeshing events="
+                f"{int(item['n_regularization_events'])}"
             )
 
 

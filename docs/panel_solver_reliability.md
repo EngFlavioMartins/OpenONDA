@@ -1,97 +1,116 @@
-# Panel solver: STL requirements, coupling scopes, and diagnostics
+# Panel solver reliability contract
 
-This page is an index into the authoritative sources for each topic, not a
-duplicate of them — see `PANEL_SOLVER_PROJECT.md` for the reliability program
-this work belongs to, and `COUPLER_INVESTIGATION_LOG.md` for the evidence and
-disposition behind each change.
+The moving multi-body Neumann boundary solver is production qualified within
+the domain stated in [panel_solver_qualification.md](panel_solver_qualification.md).
+That page owns the numerical evidence, limits, scaling data, and capability
+matrix. This page defines the runtime contract.
 
-## STL requirements
+## Physics and sign convention
 
-A body STL loaded through `PanelSolver.add_surface` must be a closed,
-watertight, consistently-wound triangulation with exactly one connected
-component: finite coordinates, no zero-area or duplicate triangles, and no
-open or non-manifold edges. Normal orientation is corrected automatically
-from the component's topological signed volume — correct for concave bodies,
-unlike a per-panel centroid test.
+At collocation point `i`, the supported Neumann formulation enforces
 
-The STL is loaded, audited, and oriented **before** any Taichi lattice or
-dense influence matrix is allocated, so invalid geometry is rejected without
-consuming GPU memory.
+```text
+(U_inf + u_incident + u_panel - u_body) . n_i = 0
+A sigma = -(U_inf + u_incident - u_body) . n
+```
 
-Multi-component STLs are **rejected**, not merged: `add_surface` maps one
-file to one `PanelBody` with one uid and one kinematics object, so separate
-shells would be silently fused and could not be identified or moved
-independently, and nested shells would need a cavity-orientation policy that
-does not exist yet. Add each body from its own STL. (`audit_stl_mesh` can
-report multiple components for inspection, but no solver path consumes that.)
+- `freestream_velocity` passed to `solve` is `U_inf`.
+- `lattice.incident_velocity` is VPM/external velocity only.
+- `lattice.body_velocity` is rigid velocity
+  `V + omega x (x - (rotation_centre + translation))`.
+- `source_strength` is the constant source density `sigma` on each triangle;
+  positive strength is outward flux with the oriented outward normal.
+- `surface_velocity_absolute` is `U_inf + u_incident + u_panel`.
+- `surface_velocity_relative` subtracts `u_body` and is the field used for
+  impermeability diagnostics.
 
-- Full check list, tolerances, and the machine-readable report schema:
-  `source/solvers/vpm/boundary_elements/panels/geometry/stl_audit.py`
-  (`audit_stl_mesh` docstring).
-- Command-line audit: `python scripts/panel_mesh_audit.py <file.stl>
-  [--max-panels N] [--expected-components N] [--json report.json] [--strict]`.
-- Set `validate=False` on `add_surface`/`add_body_from_mesh_stl` only to
-  reproduce pre-audit behavior for debugging; production code should not
-  disable it.
+Each body has one authoritative `BodyPose`. Geometry is evaluated once as
+`R @ (x0 - c) + c + T`; kinematics compose pose state rather than applying
+sequential coordinate mutations.
 
-## Coupling scopes
+## Per-body compatibility and linear solvers
 
-`PanelSolver(coupling_scope=...)` is the single switch controlling how a
-panel body participates in a VPM step. The authoritative definition of
-`"full"`, `"vpm_boundary_condition"`, `"normal"`, and `"pressure"` — what each
-one solves, injects, and gets refreshed by a coupler — is the `PanelSolver`
-class docstring in
-`source/solvers/vpm/boundary_elements/panels/solver/panel_solver.py`. Do not
-duplicate that definition elsewhere; update it there and this page stays
-correct by reference.
+Every disconnected closed body imposes one area-weighted source constraint:
 
-## Diagnostics
+```text
+sum(sigma_i * area_i) = 0
+```
 
-`PanelSolver.results["diagnostic_history"]` accumulates one entry per solve
-with `residual` (relative, recomputed from the strengths actually left in the
-lattice after any NEUMANN gauge projection), `iterations`,
-`linear_solver_success`, and `refresh_count`.
+The solver minimizes `||A sigma - b||` subject to all body constraints. It
+does not modify an unconstrained solution after the fact.
 
-A solve counts as converged only when that relative residual is at or below
-the solver's `residual_tolerance` (`1e-8` by default); a non-finite solution
-is treated as infinite residual. This matters because a dense direct solve
-returns a vector for a rank-deficient or inconsistent system without raising.
-Non-convergence raises by default (`raise_on_non_convergence=True`); pass
-`False` only for a caller that checks `linear_solver_success` itself.
+- `linear_solver="SCIPY"` uses a reusable null-space/pivoted-QR factorization.
+  Geometry revisions invalidate the complete AIC and factors; changing only
+  the incident field reuses them.
+- `linear_solver="BICGSTAB_GPU"` uses projected CGLS for Neumann problems.
+  Every gradient and search direction is projected into the per-body feasible
+  subspace. For standalone Dirichlet it retains unconstrained BiCGSTAB.
 
-**Panel-induced-velocity diagnostics are off by default.** Evaluating every
-panel at every particle is an `n_panels * n_particles` direct calculation —
-tens of millions of interactions per refresh for a coupled cube run, twice
-per coupling step. Set `diagnostic_interval_steps > 0` to enable them; they
-then run on that refresh schedule and read a deterministic fixed-stride
-subsample bounded by `diagnostic_sample_size` (4096 by default), recording
-`max_induced_velocity_at_particles`, `rms_induced_velocity_at_particles`,
-`induced_velocity_sample_size`, and `induced_velocity_sample_stride`. The
-same schedule gates the coupler's `[Coupler][BoundaryPanelVelocity]` log
-line, which otherwise repeats work the boundary trace already performs.
+For constrained Neumann solves, `||A sigma-b||/||b||` is reported as
+`discrete_equation_residual`; it is a finite-resolution compatibility metric,
+not the convergence test. Success requires both relative flux and projected
+KKT stationarity to meet `residual_tolerance`.
 
-## Supported scale and preprocessing
+## Geometry and STL requirements
 
-`PanelSolver(memory_budget_bytes=...)` fails fast, before any GPU allocation,
-if the dense `max_n_panels x max_n_panels` influence matrix would exceed the
-budget (default 4 GiB), naming the panel count that would fit. There is no
-coarse/detailed dual-STL support, decimation tooling, accelerated
-panel-to-particle evaluation, or genuine multi-body support yet — see the
-"Deferred" list in the 2026-08-25 panel-solver entry of
-`COUPLER_INVESTIGATION_LOG.md` for the full set of open P1 work and why each
-item was not started in this pass.
+Each `add_surface` call accepts one finite, closed, watertight,
+consistently-wound triangulated component with no zero-area or duplicate
+triangles and no open or non-manifold edges. Orientation is corrected from
+topological signed volume before allocation.
 
-## Failure recovery
+One STL maps to one independently identifiable and movable body. A
+multi-component STL is rejected; add separate files as separate bodies.
+Nested/cavity-shell orientation and exact triangle-triangle self-intersection
+testing remain outside the supported geometry contract.
 
-- STL audit failure: `scripts/panel_mesh_audit.py <file.stl> --json report.json`
-  names the specific failing check and offending count; fix the mesh, or split
-  a multi-component file into one STL per body, rather than disabling
-  `validate`.
-- Panel solve failure (`RuntimeError` from `PanelSolver.solve`): the message
-  includes the panel count and the achieved relative residual against the
-  tolerance. It means the requested tolerance was not reached, not that the
-  geometry is necessarily invalid — run the STL audit first to rule that out.
-  A near-`1.0` relative residual usually indicates a rank-deficient or
-  inconsistent system (degenerate geometry or a duplicated body).
-- Memory-budget failure: lower `max_n_panels` to the suggested value, or
-  raise `memory_budget_bytes` only if that much memory is actually available.
+Use `python scripts/panel_mesh_audit.py <file.stl> --strict` before production
+runs. Disabling validation is a debugging-only path.
+
+## Coupling and load capabilities
+
+Neumann VPM coupling consumes the current particle-induced velocity as
+`incident_velocity`, solves the harmonic source correction, and can add that
+correction to every active particle on device. `refresh_coupled_solution`
+updates this state without advancing kinematics or history.
+
+The coupling scopes `full`, `vpm_boundary_condition`, `normal`, and `pressure`
+are defined by the `PanelSolver` class docstring. Their load limitation is
+common: static steady-potential pressure/loads are qualified; moving-body and
+general vortical VPM-coupled loads are not. Moving load APIs raise instead of
+silently applying incomplete steady Bernoulli physics.
+
+VPM plus Dirichlet is rejected because a general vortical incident field does
+not provide the scalar potential required by that formulation. Standalone
+Dirichlet remains experimental and is not on the production path.
+
+## Far field and supported scale
+
+Per-body far-field moments retain monopole and dipole terms. A target uses the
+expansion only when its distance exceeds `far_field_acceptance * body_radius`
+and the total panel threshold is met. Qualification selected the default
+acceptance `5.0`; below `far_field_min_panels=256`, evaluation remains exact.
+
+The AIC is dense. CPU factor reuse retains roughly four dense arrays (AIC,
+null-space basis, Q, and R), and the memory guard budgets them before
+allocation. Projected CGLS retains only the AIC plus O(N) work vectors. The
+qualification campaign covers 256–2,000 panels across 1–8 bodies and a
+4,000-panel extension; it does not claim asymptotically scalable dense BEM.
+
+The tested near-contact domain is `g/h >= 0.5`. Smaller gaps require new
+resolution evidence before use.
+
+## Diagnostics and failure recovery
+
+`results["diagnostic_history"]` records the actual solver, requested strategy,
+equation/constraint/KKT metrics, wall RMS/max, per-body net flux, factor reuse,
+AIC/cache bytes, iterations, and optional synchronized stage timings.
+
+- Solve failure: inspect projected optimality, relative flux, wall residual,
+  and the STL audit separately. Do not interpret a nonzero constrained
+  equation residual as iterative non-convergence.
+- Memory failure: lower `max_n_panels`, select projected CGLS, or raise the
+  budget only when the hardware can hold the stated allocation.
+- Near-contact use below `g/h=0.5`: refine or stop; this is outside the
+  qualified envelope.
+- Moving/load exception: no supported unsteady force model is present; do not
+  bypass the exception and relabel steady pressure as unsteady pressure.

@@ -24,6 +24,9 @@ class CouplerSetup:
     """Freestream velocity (u, v, w) in m/s; must be a finite three-component vector."""
 
     # ---- VORTICITY TRANSFER (FVM -> VPM) ----
+    transfer_method: Literal["common_lattice", "projected_renewal"] = "common_lattice"
+    """FVM-to-VPM state transfer. ``projected_renewal`` is the GBD-compatible
+    Gaussian residual projection; ``common_lattice`` retains the reference path."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
     """FVM-authoritative replacement region ``(xmin, xmax, ymin, ymax, zmin,
     zmax)``. It must lie inside the FVM domain; ``None`` uses the full domain."""
@@ -32,6 +35,14 @@ class CouplerSetup:
     faces. Zero selects conservative hard M4' lattice replacement."""
     transfer_diagnostic_interval_steps: int = 1
     """Replacement steps between transfer diagnostics; at least one."""
+    renewal_vorticity_error_limit: float = 5.0e-3
+    """Maximum independent relative vorticity mismatch for projected renewal."""
+    renewal_velocity_error_limit: float = 1.0e-3
+    """Maximum relative normal-velocity mismatch at the ownership boundary."""
+    renewal_gaussian_tail_cutoff: float = 1.0e-8
+    """Relative Gaussian kernel weight omitted from the production sparse operator."""
+    renewal_solver_tolerance: float = 1.0e-9
+    """Relative LSMR tolerance for the sparse absolute-strength solve."""
 
     # ---- VPM BOUNDARY-CONDITION TRACE ON THE FVM ----
     coupling_patch: str = "numericalBoundary"
@@ -66,6 +77,9 @@ class CouplerSetup:
                 "'directional_outflow', 'pressure_gradient', or 'vorticity_mixed'"
             )
 
+        if self.transfer_method not in {"common_lattice", "projected_renewal"}:
+            raise ValueError("transfer_method must be 'common_lattice' or 'projected_renewal'")
+
         if self.transfer_region_bounds is not None:
             transfer_region_bounds = np.asarray(self.transfer_region_bounds, dtype=np.float64)
             if transfer_region_bounds.shape != (6,) or not np.all(
@@ -83,6 +97,25 @@ class CouplerSetup:
             raise ValueError("eta_blend_width must be finite and non-negative")
         if self.transfer_diagnostic_interval_steps < 1:
             raise ValueError("transfer_diagnostic_interval must be at least one")
+        if (
+            not np.isfinite(self.renewal_vorticity_error_limit)
+            or self.renewal_vorticity_error_limit <= 0.0
+        ):
+            raise ValueError("renewal_vorticity_error_limit must be finite and positive")
+        if (
+            not np.isfinite(self.renewal_velocity_error_limit)
+            or self.renewal_velocity_error_limit <= 0.0
+        ):
+            raise ValueError("renewal_velocity_error_limit must be finite and positive")
+        if (
+            not np.isfinite(self.renewal_gaussian_tail_cutoff)
+            or not 0.0 < self.renewal_gaussian_tail_cutoff < 1.0
+        ):
+            raise ValueError("renewal_gaussian_tail_cutoff must lie between zero and one")
+        if not np.isfinite(self.renewal_solver_tolerance) or self.renewal_solver_tolerance <= 0.0:
+            raise ValueError("renewal_solver_tolerance must be finite and positive")
+        if self.transfer_method == "projected_renewal" and self.eta_blend_width != 0.0:
+            raise ValueError("projected_renewal requires eta_blend_width=0")
 
     @property
     def freestream_velocity_vector(self) -> np.ndarray:
@@ -91,6 +124,11 @@ class CouplerSetup:
     def validate_transfer_region_box(self, fvm_box) -> None:
         """Require the vorticity-transfer region to lie inside the FVM domain."""
         outer = np.asarray(fvm_box, dtype=np.float64)
+        if self.transfer_method == "projected_renewal" and self.transfer_region_bounds is None:
+            raise ValueError(
+                "projected_renewal requires explicit transfer_region_bounds with room "
+                "inside the FVM domain for its runtime GBD guard"
+            )
         inner = (
             outer
             if self.transfer_region_bounds is None
@@ -119,8 +157,13 @@ class CouplerSetup:
                 "checkpoint_interval_steps": self.checkpoint_interval_steps,
                 "coupling_patch": self.coupling_patch,
                 "boundary_condition_mode": self.boundary_condition_mode,
+                "transfer_method": self.transfer_method,
                 "transfer_region_bounds": transfer_region_bounds,
                 "eta_blend_width": self.eta_blend_width,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
+                "renewal_vorticity_error_limit": self.renewal_vorticity_error_limit,
+                "renewal_velocity_error_limit": self.renewal_velocity_error_limit,
+                "renewal_gaussian_tail_cutoff": self.renewal_gaussian_tail_cutoff,
+                "renewal_solver_tolerance": self.renewal_solver_tolerance,
             }
         }

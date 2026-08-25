@@ -38,15 +38,15 @@ def main() -> None:
     args = build_arg_parser("Self-induced velocity U/U₀ vs t*.").parse_args()
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
+    n_skip = 7  # plot every n-th marker
+    plot_end = 185
 
     load_theme()
 
     fig, ax = plt.subplots(figsize=figure_size("single_tall"))
-    fig.subplots_adjust(wspace=0.10, hspace=0.10, left=0.11, right=0.97, top=0.95, bottom=0.13)
+    fig.subplots_adjust(wspace=0.10, hspace=0.10, left=0.10, right=0.97, top=0.95, bottom=0.13)
 
     # -- Ring speed — all available variants ---------------------------------
-    plot_end = 38.0
-    plot_bottom = 0.6
     for variant, st in VARIANT_STYLE.items():
         csv_path = SAMPLES_DIR / variant / "ring_diagnostics.csv"
         nondimensional_time, nondimensional_velocity = load_sampled_ring_speed(csv_path)
@@ -55,17 +55,15 @@ def main() -> None:
             continue
         label = VARIANT_LABEL[variant]
         print(f"  {variant}: {len(nondimensional_time)} samples")
-        plot_end = max(plot_end, float(nondimensional_time[-1]))
-        plot_bottom = min(plot_bottom, float(np.nanmin(nondimensional_velocity)))
         ax.plot(
             nondimensional_time,
             nondimensional_velocity,
-            st["linestyle"],
+            linestyle=st["linestyle"],
             color=st["color"],
             lw=st["linewidth"],
             marker=st["marker"],
             ms=st["markersize"],
-            markevery=2,
+            markevery=n_skip,
             mew=st["markeredgewidth"],
             label=label,
         )
@@ -73,7 +71,6 @@ def main() -> None:
     # -- Analytical Saffman solution ------------------------------------------
     t_phys = np.linspace(0.0, plot_end * REFERENCE_TIME, 500)
     saffman_nondimensional_velocity = saffman_speed(t_phys) / REFERENCE_VELOCITY
-    plot_bottom = min(plot_bottom, float(np.nanmin(saffman_nondimensional_velocity)))
     ax.plot(
         t_phys / REFERENCE_TIME,
         saffman_nondimensional_velocity,
@@ -84,7 +81,7 @@ def main() -> None:
 
     ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
     ax.set_ylabel(r"Self-induced speed, $U_\Gamma / U_{\text{ref},0}$")
-    ax.set_ylim(0.95 * plot_bottom, 1.0)
+    ax.set_ylim(0.4, 1.0)
     ax.set_xlim(0, plot_end)
     ax.legend(ncol=1, loc="lower left")
     save_fig(fig, figs / "vortex_ring_motion.png", dpi=args.dpi, figure_format=args.format)

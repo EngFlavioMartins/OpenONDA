@@ -89,22 +89,27 @@ def _sample_velocity_vorticity_gradient(solver, points, spacing):
     return np.asarray(velocity).reshape(-1, 3), vorticity, gradient
 
 
-def _extract_stl_config_from_solver(solver) -> tuple[str | None, Path | None]:
-    """Extract body_stl path and case_dir from solver config (priority: FVM > VPM > direct)."""
+def _extract_stl_config_from_solver(solver) -> tuple[list[str], Path | None]:
+    """Extract all declared body STL paths and the case directory."""
     try:
-        body_stl = None
+        body_stls: list[str] = []
         case_dir = None
         if hasattr(solver.setup, "fvm_solver") and hasattr(solver.setup.fvm_solver, "surface"):
-            body_stl = solver.setup.fvm_solver.surface.body_stl
+            fvm_body_stl = solver.setup.fvm_solver.surface.body_stl
+            if fvm_body_stl:
+                body_stls.append(fvm_body_stl)
             if hasattr(solver.setup.fvm_solver, "case_dir"):
                 case_dir = Path(solver.setup.fvm_solver.case_dir)
-        if not body_stl and hasattr(solver.setup, "vpm_solver"):
-            body_stl = solver.setup.vpm_solver.body_stl
-        if not body_stl and hasattr(solver.setup, "body_stl"):
-            body_stl = solver.setup.body_stl
+        if hasattr(solver.setup, "vpm_solver"):
+            body_stls.extend(body.stl for body in getattr(solver.setup.vpm_solver, "bodies", ()))
+        if hasattr(solver.setup, "bodies"):
+            body_stls.extend(body.stl for body in getattr(solver.setup, "bodies", ()))
+        if case_dir is None and hasattr(solver, "case_dir"):
+            case_dir = Path(solver.case_dir)
     except Exception:
-        body_stl = None
-    return body_stl, case_dir
+        body_stls = []
+        case_dir = None
+    return list(dict.fromkeys(body_stls)), case_dir
 
 
 def resolve_samples_dir(case_directory, sample_subdirectory: str | None = None) -> Path:
@@ -231,21 +236,19 @@ class SurfaceSampler:
         self._grid_shape = C1.shape
         self._n_points = n_points
 
-    def _resolve_body_stl_path(self, solver) -> Path | None:
-        """Resolve body STL from coupler config (absolute path if possible)."""
+    def _resolve_body_stl_path(self, solver) -> list[Path]:
+        """Resolve all body STLs from coupler config."""
         if not hasattr(solver, "setup"):
-            return None
-        body_stl, case_dir = _extract_stl_config_from_solver(solver)
-        if not body_stl:
-            return None
-        body_stl_path = Path(body_stl)
-        if body_stl_path.is_absolute():
-            return body_stl_path if body_stl_path.exists() else None
-        if case_dir is not None:
-            case_body_stl_path = case_dir / body_stl
-            if case_body_stl_path.exists():
-                return case_body_stl_path
-        return body_stl_path if body_stl_path.exists() else None
+            return []
+        body_stls, case_dir = _extract_stl_config_from_solver(solver)
+        paths = []
+        for body_stl in body_stls:
+            body_stl_path = Path(body_stl)
+            if not body_stl_path.is_absolute() and case_dir is not None:
+                body_stl_path = case_dir / body_stl_path
+            if body_stl_path.exists():
+                paths.append(body_stl_path)
+        return paths
 
     def _ensure_body_geometry(self, solver) -> None:
         """Load/caches STL and surface KDTree once."""
@@ -258,12 +261,26 @@ class SurfaceSampler:
         except Exception:
             return
 
-        stl_path = self._resolve_body_stl_path(solver)
-        if stl_path is None:
-            return
-
         try:
-            self._body_mesh = pv.read(str(stl_path))
+            panel_solver = getattr(solver, "panel_solver", None)
+            lattice = getattr(panel_solver, "lattice", None)
+            if lattice is not None and lattice.n_panels > 0:
+                n_panels = lattice.n_panels
+                vertices = lattice.vertex_position.to_numpy()[:n_panels].reshape(-1, 3)
+                faces = np.column_stack(
+                    (
+                        np.full(n_panels, 3, dtype=np.int64),
+                        np.arange(n_panels * 3).reshape(n_panels, 3),
+                    )
+                ).ravel()
+                self._body_mesh = pv.PolyData(vertices, faces)
+            else:
+                stl_paths = self._resolve_body_stl_path(solver)
+                if not stl_paths:
+                    return
+                self._body_mesh = pv.read(str(stl_paths[0]))
+                for stl_path in stl_paths[1:]:
+                    self._body_mesh = self._body_mesh.merge(pv.read(str(stl_path)))
             if cKDTree is not None:
                 surf = self._body_mesh.extract_surface().compute_normals(
                     point_normals=True, cell_normals=False
@@ -686,21 +703,19 @@ class LineSampler:
 
         self.t_param = t  # Parametric coordinate [0, 1]
 
-    def _resolve_body_stl_path(self, solver) -> Path | None:
-        """Resolve body STL from coupler config (absolute path if possible)."""
+    def _resolve_body_stl_path(self, solver) -> list[Path]:
+        """Resolve all body STLs from coupler config."""
         if not hasattr(solver, "setup"):
-            return None
-        body_stl, case_dir = _extract_stl_config_from_solver(solver)
-        if not body_stl:
-            return None
-        body_stl_path = Path(body_stl)
-        if body_stl_path.is_absolute():
-            return body_stl_path if body_stl_path.exists() else None
-        if case_dir is not None:
-            case_body_stl_path = case_dir / body_stl
-            if case_body_stl_path.exists():
-                return case_body_stl_path
-        return body_stl_path if body_stl_path.exists() else None
+            return []
+        body_stls, case_dir = _extract_stl_config_from_solver(solver)
+        paths = []
+        for body_stl in body_stls:
+            body_stl_path = Path(body_stl)
+            if not body_stl_path.is_absolute() and case_dir is not None:
+                body_stl_path = case_dir / body_stl_path
+            if body_stl_path.exists():
+                paths.append(body_stl_path)
+        return paths
 
     def _ensure_body_geometry(self, solver) -> None:
         if self._body_loaded:
@@ -712,12 +727,26 @@ class LineSampler:
         except Exception:
             return
 
-        stl_path = self._resolve_body_stl_path(solver)
-        if stl_path is None:
-            return
-
         try:
-            self._body_mesh = pv.read(str(stl_path))
+            panel_solver = getattr(solver, "panel_solver", None)
+            lattice = getattr(panel_solver, "lattice", None)
+            if lattice is not None and lattice.n_panels > 0:
+                n_panels = lattice.n_panels
+                vertices = lattice.vertex_position.to_numpy()[:n_panels].reshape(-1, 3)
+                faces = np.column_stack(
+                    (
+                        np.full(n_panels, 3, dtype=np.int64),
+                        np.arange(n_panels * 3).reshape(n_panels, 3),
+                    )
+                ).ravel()
+                self._body_mesh = pv.PolyData(vertices, faces)
+            else:
+                stl_paths = self._resolve_body_stl_path(solver)
+                if not stl_paths:
+                    return
+                self._body_mesh = pv.read(str(stl_paths[0]))
+                for stl_path in stl_paths[1:]:
+                    self._body_mesh = self._body_mesh.merge(pv.read(str(stl_path)))
             if cKDTree is not None:
                 surf = self._body_mesh.extract_surface().compute_normals(
                     point_normals=True, cell_normals=False

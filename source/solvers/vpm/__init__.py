@@ -5,6 +5,7 @@ import os
 import sys
 
 from .boundary_elements import vlm
+from .boundary_elements.panels.coupling.kinematics import BodyPose
 from .boundary_elements.panels.solver.panel_solver import PanelSolver
 from .boundary_elements.vlm.config import (
     ForceConfig,
@@ -16,6 +17,7 @@ from .config import (
     AdvectionConfig,
     DivergenceRelaxationConfig,
     FilamentRefinementConfig,
+    PanelBodySetup,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -44,7 +46,9 @@ __all__ = [
     "FilamentRefinementConfig",
     "FilamentRefinementError",
     "ForceConfig",
+    "BodyPose",
     "PanelSolver",
+    "PanelBodySetup",
     "ParticleDistributor",
     "RingDiagnosticsSampler",
     "SamplingSchedule",

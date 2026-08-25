@@ -19,12 +19,12 @@ from ....config.constants import PANEL_EPSILON
 
 @ti.func
 def compute_source_potential(
-    p: ti.types.vector(3, float),
-    v0: ti.types.vector(3, float),
-    v1: ti.types.vector(3, float),
-    v2: ti.types.vector(3, float),
-    normal: ti.types.vector(3, float),
-) -> float:
+    p,
+    v0,
+    v1,
+    v2,
+    normal,
+):
     """
     Exact analytical potential induced by a constant-strength source triangle at point P.
 

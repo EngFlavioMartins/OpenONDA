@@ -107,7 +107,12 @@ def _ensure_taichi_cpu() -> None:
         taichi.init(arch=taichi.cpu)
 
 
-def _solved_sphere(tmp_path, subdivisions: int, linear_solver: str = "SCIPY") -> PanelSolver:
+def _solved_sphere(
+    tmp_path,
+    subdivisions: int,
+    linear_solver: str = "SCIPY",
+    float_dtype: str = "f64",
+) -> PanelSolver:
     _ensure_taichi_cpu()
     triangles = _icosphere_triangles(subdivisions)
     stl_path = tmp_path / f"icosphere_{subdivisions}_{linear_solver}.stl"
@@ -116,7 +121,7 @@ def _solved_sphere(tmp_path, subdivisions: int, linear_solver: str = "SCIPY") ->
     freestream_velocity = np.array([FREESTREAM_SPEED, 0.0, 0.0])
     panel = PanelSolver(
         max_n_panels=triangles.shape[0] + 8,
-        float_dtype="f64",
+        float_dtype=float_dtype,
         boundary_condition_type="NEUMANN",
         linear_solver=linear_solver,
         density=1.0,
@@ -227,4 +232,25 @@ def test_gpu_and_cpu_linear_solvers_agree(tmp_path):
     # element-wise tolerance is meaningless.
     difference = np.linalg.norm(gpu_strength - cpu_strength) / np.linalg.norm(cpu_strength)
     assert difference < 1.0e-5
-    assert gpu.results["diagnostic_history"][-1]["linear_solver_success"]
+    diagnostic = gpu.results["diagnostic_history"][-1]
+    assert diagnostic["linear_solver"] == "ProjectedCGLS(Taichi)"
+    assert diagnostic["linear_solver_success"]
+    assert diagnostic["iterations"] > 0
+    assert diagnostic["relative_constraint_residual"] < 1.0e-10
+
+
+def test_logged_no_penetration_accuracy_tracks_panel_precision(tmp_path):
+    """f64 panel arithmetic escapes the default_fp=f32 accuracy ceiling."""
+    f32 = _solved_sphere(tmp_path, subdivisions=1, float_dtype="f32")
+    f64 = _solved_sphere(tmp_path, subdivisions=1, float_dtype="f64")
+
+    measured = {}
+    for dtype, panel in (("f32", f32), ("f64", f64)):
+        normal, surface_velocity, _, _ = _surface_state(panel)
+        value = float(np.sqrt(np.mean(np.einsum("ij,ij->i", surface_velocity, normal) ** 2)))
+        measured[dtype] = value
+        logged = panel.results["diagnostic_history"][-1]["no_penetration_residual"]
+        assert logged == pytest.approx(value, rel=1e-12, abs=1e-20)
+
+    assert measured["f64"] < 1.0e-10
+    assert measured["f32"] > 1.0e-8

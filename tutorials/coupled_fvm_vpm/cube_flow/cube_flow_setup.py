@@ -356,7 +356,7 @@ VPM_SETUP = vpm.VPMSetup(
     export_flow_integrals=False,
     samplers=VPM_SAMPLERS,
     panel_solver=VPM_PANEL_SOLVER,
-    body_stl=BODY_STL,
+    bodies=(vpm.PanelBodySetup(stl=BODY_STL, uid="body", reference_area=CUBE_SIDE**2),),
 )
 
 

@@ -83,8 +83,8 @@ CM = 1 / 2.54
 FONT_SIZE_PT = 10
 DEFAULT_DPI = 400
 EXPORT_FORMATS = ("png", "pdf")
-MAX_FIGURE_WIDTH_CM = 12.8
-WIDE_FIGURE_WIDTH_CM = 17.2
+MAX_FIGURE_WIDTH_CM = 12.5
+WIDE_FIGURE_WIDTH_CM = 12.5
 FONT_PATH = Path(__file__).with_name("DejaVuSerif.ttf")
 
 FIGURE_SIZES_CM = {
@@ -226,7 +226,12 @@ for _style in VORTEX_RING_VARIANT_STYLE.values():
     _style["markersize"] = MARKER_SIZE
     _style["markeredgewidth"] = MARKER_EDGE_WIDTH
 VORTEX_RING_VARIANT_LABEL = {
-    **{name: name.replace("_", " ") for name in VORTEX_RING_VARIANT_STYLE},
+    "dns_direct": "DNS Direct",
+    "dns_transposed": "DNS Transposed",
+    "dns_mixed": "DNS Mixed",
+    "les_direct": "LES Direct",
+    "les_transposed": "LES Transposed",
+    "les_mixed": "LES Mixed",
 }
 
 LAMB_OSEEN_SCHEME_STYLE = {

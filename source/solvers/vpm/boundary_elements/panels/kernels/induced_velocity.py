@@ -44,7 +44,7 @@ def compute_induced_velocity_kernel(
 
     for i in range(n_queries):
         p = ti.Vector([points[i, 0], points[i, 1], points[i, 2]])
-        v_total = ti.Vector([0.0, 0.0, 0.0])
+        v_total = p * 0.0
 
         for j in range(n_panels):
             v0 = ti.Vector(
@@ -79,7 +79,7 @@ def compute_source_induced_velocity_kernel(
 ):
     for i in range(points.shape[0]):
         point = ti.Vector([points[i, 0], points[i, 1], points[i, 2]])
-        value = ti.Vector([0.0, 0.0, 0.0])
+        value = point * 0.0
         for j in range(doublet_strength.shape[0]):
             v0 = ti.Vector(
                 [vertex_position[j, 0, 0], vertex_position[j, 0, 1], vertex_position[j, 0, 2]]
@@ -116,7 +116,7 @@ def accumulate_source_panel_velocity_on_field(
     """Add constant-source panel velocity to ``target_velocity`` in place."""
     for i in range(n_targets):
         point = target_position[i]
-        value = ti.Vector([0.0, 0.0, 0.0])
+        value = normal[0] * 0.0
         for j in range(n_panels):
             value += source_strength[j] * compute_source_velocity(
                 point,
@@ -140,7 +140,7 @@ def accumulate_doublet_panel_velocity_on_field(
     """Add vortex-ring (doublet) panel velocity to ``target_velocity`` in place."""
     for i in range(n_targets):
         point = target_position[i]
-        value = ti.Vector([0.0, 0.0, 0.0])
+        value = vertex_position[0, 0] * 0.0
         for j in range(n_panels):
             v0 = vertex_position[j, 0]
             v1 = vertex_position[j, 1]

@@ -3,7 +3,9 @@ OpenONDA 3D Panel Solver Package.
 ==================
 GPU-accelerated potential flow solver for arbitrary 3D triangular meshes.
 Provides the irrotational body-blockage boundary condition for the VPM via a
-Morino DIRICHLET doublet-panel BEM on coarse closed STL surfaces.
+NEUMANN source-panel BEM on coarse closed STL surfaces.  DIRICHLET is an
+experimental standalone potential-flow mode and is intentionally unsupported
+for VPM velocity-field coupling.
 
 Mirrors ``vlm/`` package conventions: same module layout, naming patterns,
 and API design.  See ``solver/``, ``coupling/``, ``kernels/``, ``geometry/``.
@@ -15,6 +17,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from .coupling.kinematics import (
+    BodyPose,
     CompositePanel,
     HeavingPanel,
     ManeuverPanel,
@@ -44,6 +47,7 @@ __all__ = [
     "ForceConfig",
     "PanelLattice",
     "PanelKinematics",
+    "BodyPose",
     "StaticPanel",
     "TranslatingPanel",
     "RotatingPanel",

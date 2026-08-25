@@ -71,6 +71,7 @@ def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
         setup.COUPLER_SETUP,
         "is_boundary_condition_resynchronized_after_transfer",
     )
+    assert setup.COUPLER_SETUP.transfer_method == "common_lattice"
     assert pytest.approx(3.0 * setup.VPM_PARTICLE_SPACING) == setup.ETA_BLEND_WIDTH
     assert pytest.approx(setup.ETA_BLEND_WIDTH) == setup.COUPLER_SETUP.eta_blend_width
 
