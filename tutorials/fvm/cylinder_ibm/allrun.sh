@@ -18,13 +18,13 @@ mkdir -p solution
 # Quality targets: Cd = 1.74-1.80, recirculation L/D = 1.55-1.70.
 # For the unsteady von Karman validation run instead:
 #   python cylinder_ibm_setup.py --Re 100 --end-time 150 --h 0.05
-#   ./plot_all.sh
+#   ./allplot.sh
 python cylinder_ibm_setup.py --Re 30 --end-time 60 2>&1 | tee solution/cylinder_ibm.log
 
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+./allplot.sh
 
 echo
 echo "===== DONE ====="

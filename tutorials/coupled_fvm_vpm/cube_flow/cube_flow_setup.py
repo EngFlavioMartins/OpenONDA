@@ -85,7 +85,8 @@ PARTICLE_LIMIT = 1_500_000
 VPM_CORE_RADIUS_RATIO = 1.0
 GBD_VORTICITY_FLOOR = 0.02
 VPM_PARTICLE_SPACING = 2 * SURFACE_CELL_SIZE
-ETA_BLEND_WIDTH = 0.0
+ETA_BLEND_WIDTH = 3 * VPM_PARTICLE_SPACING
+VPM_VISCOUS_SCHEME = "GBD"
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
@@ -242,6 +243,46 @@ COUPLER_SETUP = coupling.CouplerSetup(
 )
 
 
+def make_vpm_viscous_config(scheme: str) -> vpm.ViscousConfig:
+    """Build any VPM diffusion scheme with the coupled spatial resolution."""
+    name = scheme.upper()
+    common = {
+        "particle_spacing": VPM_PARTICLE_SPACING,
+        "core_radius_ratio": VPM_CORE_RADIUS_RATIO,
+    }
+    if name == "CS":
+        return vpm.ViscousConfig.cs(
+            kinematic_viscosity=KINEMATIC_VISCOSITY,
+            **common,
+        )
+    if name == "RWM":
+        return vpm.ViscousConfig.rwm(
+            kinematic_viscosity=KINEMATIC_VISCOSITY,
+            **common,
+        )
+    if name == "DVH":
+        return vpm.ViscousConfig.dvh(
+            padding=5.0,
+            kinematic_viscosity=KINEMATIC_VISCOSITY,
+            threshold_mode="absolute",
+            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
+            max_nodes=PARTICLE_LIMIT,
+            **common,
+        )
+    if name == "GBD":
+        return vpm.ViscousConfig.gbd(
+            padding=5.0,
+            kinematic_viscosity=KINEMATIC_VISCOSITY,
+            threshold_mode="absolute",
+            threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
+            max_nodes=PARTICLE_LIMIT,
+            **common,
+        )
+    if name == "NONE":
+        return vpm.ViscousConfig.inviscid(**common)
+    raise ValueError(f"Unsupported VPM viscous scheme {scheme!r}")
+
+
 VPM_SAMPLERS = (
     vpm.LineSampler(
         start=[VPM_DOMAIN[0], 0.0, 0.0],
@@ -291,15 +332,7 @@ VPM_SETUP = vpm.VPMSetup(
     coupled_max_strain_increment=None,
     coupled_max_advection_fraction=None,
     freestream_velocity=list(FREESTREAM_VELOCITY),
-    viscous=vpm.ViscousConfig.gbd(
-        particle_spacing=VPM_PARTICLE_SPACING,
-        padding=5.0,
-        kinematic_viscosity=KINEMATIC_VISCOSITY,
-        threshold_mode="absolute",
-        threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
-        max_nodes=PARTICLE_LIMIT,
-        core_radius_ratio=VPM_CORE_RADIUS_RATIO,
-    ),
+    viscous=make_vpm_viscous_config(VPM_VISCOUS_SCHEME),
     stretching=vpm.StretchingConfig.transposed(scheme=VPM_SCHEME),
     advection=vpm.AdvectionConfig(scheme=VPM_SCHEME),
     turbulence=vpm.TurbulenceConfig.equilibrium_smagorinsky(

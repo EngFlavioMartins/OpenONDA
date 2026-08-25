@@ -3,7 +3,7 @@
 
 A leading wing and a following wing both heave and pitch through the flow,
 shedding vortex wakes that the trailing wing crosses. The sampled forces and
-circulation histories feed the ``plot_all.sh`` figures.
+circulation histories feed the ``allplot.sh`` figures.
 
 Usage:
     python delta_wing_setup.py
@@ -219,7 +219,7 @@ def main() -> int:
     print("---- Two heaving/pitching delta wings crossing wakes ----")
     run()
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     return 0
 
 

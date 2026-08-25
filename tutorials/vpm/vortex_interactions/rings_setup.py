@@ -5,7 +5,7 @@ Six cases, hard-coded as a matrix of two ring families (leapfrog co-rotating
 rings, colliding counter-rotating rings) times three turbulence models
 (DNS, LES, stabilized LES). The stabilized cases use a conservative
 regularization filter to preserve resolution when the stretched cores
-threaten to under-resolve the flow. ``plot_all.sh`` turns the sampled
+threaten to under-resolve the flow. ``allplot.sh`` turns the sampled
 diagnostics into the comparison figures.
 
 Usage:

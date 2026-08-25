@@ -38,6 +38,7 @@ def main() -> None:
     fig.subplots_adjust(wspace=0.26, hspace=0.10, left=0.10, right=0.98, top=0.92, bottom=0.29)
     legend_handles = []
     legend_labels = []
+    plot_end = 38.0
 
     # -- Energy diagnostics — all available variants -------------------------
     for variant, st in VARIANT_STYLE.items():
@@ -54,6 +55,7 @@ def main() -> None:
         label = VARIANT_LABEL[variant]
         print(f"  {variant}: {csv_path}")
         t = times / REFERENCE_TIME
+        plot_end = max(plot_end, float(t[-1]))
         (line,) = ax_de.plot(
             t,
             dedt / P_REF,
@@ -84,7 +86,7 @@ def main() -> None:
     for ax in (ax_de, ax_nuens):
         ax.set_xlabel(r"$t\,\Gamma / R_0^2$")
         ax.set_ylim(-0.05, 0.01)
-        ax.set_xlim(0, 38)
+        ax.set_xlim(0, plot_end)
         ax.axhspan(0.0, 0.01, color=colors["background_light"], linewidth=0, zorder=0)
 
     ax_de.set_title(r"Energy rate versus time")

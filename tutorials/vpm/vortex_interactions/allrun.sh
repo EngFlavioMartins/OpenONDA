@@ -38,13 +38,13 @@ echo
 echo "===== FIGURES ====="
 echo
 if [[ $# -eq 0 ]]; then
-    ./plot_all.sh png
-    ./plot_all.sh pdf
+    ./allplot.sh png
+    ./allplot.sh pdf
 else
     # Keep subset diagnostics separate from the canonical six-case figures;
     # this avoids silently overwriting a previously validated full campaign.
-    VPM_INTERACTIONS_FIGURES_DIR="figures/partial" ./plot_all.sh png --allow-partial
-    VPM_INTERACTIONS_FIGURES_DIR="figures/partial" ./plot_all.sh pdf --allow-partial
+    VPM_INTERACTIONS_FIGURES_DIR="figures/partial" ./allplot.sh png --allow-partial
+    VPM_INTERACTIONS_FIGURES_DIR="figures/partial" ./allplot.sh pdf --allow-partial
 fi
 
 echo

@@ -1,29 +1,30 @@
 # FVM–VPM Coupler Investigation Ledger
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
 
 This file is the durable record of coupling experiments. A setting is retained
 only when a controlled comparison improved the result or fixed a demonstrated
 contract violation. Rejected settings are restored to the stated baseline.
 
-## Accepted algorithm
+## Current implementation — full-solver acceptance pending
 
-The only FVM-to-VPM transfer algorithm in the code is absolute overlap-state
-replacement:
+The production transfer path is now an absolute common-lattice state blend:
 
-1. For every fluid FVM cell in the transfer region, create one particle at the
-   cell centre with `Gamma = cell_volume * FVM_vorticity` and with the actual
-   cell volume.
-2. For hard replacement (`eta_blend_width = 0`), delete all existing particles
-   in the transfer region before injecting the FVM particles. Particles outside
-   the region are not modified.
-3. For a positive `eta_blend_width`, use a C1 cosine `eta` ramp at the transfer
-   box boundary. Existing and FVM states are weighted by `1-eta` and `eta`.
-   Thus the knob enables/disables blending without an additive corrector.
-4. Advance the VPM normally. Its existing GBD diffusion/regeneration remains
-   responsible for producing the next regular particle cloud. No extra
-   remeshing/regeneration pass is performed by the coupler.
-5. Resolve the boundary-only panel potential against the current particle
+1. Map fluid-cell circulation `Gamma_c = V_c*omega_c` to the regular VPM
+   lattice with complete M4' support.
+2. Map the replaceable current VPM circulation to the same lattice and time.
+3. Apply `Gamma_new = eta*Gamma_FVM + (1-eta)*Gamma_VPM` node by node in a C1
+   overlap band. Remove the VPM source particles represented by this state,
+   insert the blended lattice state once, and leave VPM-authoritative particles
+   untouched. Coincident release nodes are merged rather than duplicated.
+4. Remove the blend-only cross-divergence with a mean-free lattice Poisson
+   correction. This correction preserves net circulation and is zero for
+   matching FVM/VPM states.
+5. A zero blend width retains the conservative hard-lattice transfer and its
+   complete release support. The cube candidate uses a three-cell blend band.
+6. Advance the VPM with its configured viscous scheme. The transfer does not
+   call GBD and supports CS, RWM, DVH, GBD, and NONE through `ViscousConfig`.
+7. Resolve the boundary-only panel potential against the current particle
    state before every FVM boundary trace. This is a fixed-time harmonic-state
    refresh; it does not modify particle circulation, advance panel history,
    shed wake, or evolve geometry.
@@ -44,8 +45,8 @@ history so they are not repeated.
 | FVM time step | `0.005` s | Matches the fresh validation reference |
 | VPM/coupling step | `0.010` s | Two exact FVM substeps |
 | Boundary mode | `vorticity_mixed` | Dirichlet replacement control changed Cd error 6.145% to 6.150%; no benefit, reverted |
-| `eta_blend_width` | `0.0` m | Hard replacement/blending off is the validated baseline; on/off and partition behavior are unit tested |
-| VPM spacing/core ratio | `h=0.03125`, ratio `1.0`, owned by `ViscousConfig.gbd` | The coupler derives both runtime values from the VPM diffusion configuration; its duplicate knobs were deleted |
+| `eta_blend_width` | `3h = 0.09375` m candidate; `0.0` m historical baseline | Three-cell band has unit/manufactured acceptance; same-seed full-solver acceptance remains pending |
+| VPM spacing/core ratio | `h=0.03125`, ratio `1.0`, owned by `ViscousConfig` | The coupler derives both runtime values from the selected VPM viscous configuration; no duplicate coupler knobs |
 | GBD threshold | `0.02*h^3`, absolute | Existing physical VPM diffusion; not retuned during replacement validation |
 | Pressure anchoring | no coupler implementation or option | The dead no-op pressure-reference code and option were deleted |
 | Boundary history after replacement | mandatory internal update | The next FVM interval must start from the replaced current state; the hallucinated optional resynchronization flag was deleted |
@@ -149,3 +150,146 @@ python tutorials/coupled_fvm_vpm/cube_flow/assets/measure_trial_errors.py <trial
 Taichi emitted cache-lock warnings because concurrent processes could not write
 its user cache. Tests and simulations completed successfully; the warnings did
 not affect solver state or metrics.
+
+## 2026-08-25 panel-solver P0 fixes: full-scope refresh and STL orientation
+
+Two production bugs identified by `PANEL_SOLVER_PROJECT.md`'s P0 requirements
+were fixed, plus four defects found in review of the first attempt. Nothing
+here changes `vorticity_mixed`, adds remeshing, or touches the FVM-to-VPM
+absolute-injection algorithm. Nothing changes the numerical behavior of the
+`vpm_boundary_condition` panel mode, which remains the only mode
+`cube_flow_setup.py` uses in production.
+
+**Problem 1 — stale `coupling_scope="full"` panel refresh.**
+`VPMSolver.refresh_boundary_element_solution()` only re-solved the panel for
+`coupling_scope="vpm_boundary_condition"`; for `"full"` it was a silent no-op,
+so a coupler that replaces the particle cloud left `full`-scope panel
+strengths solved against the pre-replacement state until the next macro VPM
+step. This is why the earlier `P1_full_panel` continuation was not a clean
+test of synchronized full panel coupling.
+
+Tracing confirmed this was the only lifecycle gap: `physics.body_velocity` /
+`_vel()` in `source/solvers/vpm/physics/engine.py` already add panel-induced
+velocity to every active particle at every Runge-Kutta stage under `"full"`,
+and `compute_induced_velocity_direct` / `_set_coupled_wake_velocity` already
+operate on `particles.n_particles_total` with no injected/retained
+distinction anywhere in the panel solver.
+
+*Fix.* The guard became `not in ("full", "vpm_boundary_condition")`. Both
+coupler refresh call sites in `source/coupler/boundary.py` already called the
+method unconditionally, so no new call site was needed. The unit test that
+asserted the old skip-for-`"full"` behavior was rewritten.
+
+*Disposition.* Kept. This corrects a scope that is not the current production
+configuration for any tutorial, so it carries no risk to the validated
+`vpm_boundary_condition` baseline and needs no empirical re-run to accept. It
+does **not** decide whether `full` should replace `vpm_boundary_condition` in
+production; the same-seed `t=2 -> t=2.5` controlled comparison for that
+decision has **not** been run and remains open.
+
+**Problem 2 — geometric-centroid normal-orientation heuristic.**
+`add_body_from_mesh_stl` flipped each panel normal based on the direction
+from the body's mean panel-centre to that panel — a per-panel test against a
+single point, provably wrong for concave bodies. A synthetic concave "long L"
+prism (`tests/vpm/test_panel_stl_audit.py`) is watertight, consistently
+wound, and correctly outward-oriented, yet the old heuristic flips 4 of its
+20 panels.
+
+*Fix.* New
+`source/solvers/vpm/boundary_elements/panels/geometry/stl_audit.py`:
+`orient_components_by_signed_volume` orients each closed connected component
+by the sign of its divergence-theorem volume, correct regardless of
+concavity. The same module adds `audit_stl_mesh`, which rejects non-finite
+coordinates, degenerate/duplicate triangles, open or non-manifold edges,
+inconsistent winding, panel-count overflow, and undeclared multi-body STLs.
+`scripts/panel_mesh_audit.py` exposes it as a CLI.
+
+*Disposition.* Kept. Regression-checked against the production
+`tutorials/coupled_fvm_vpm/cube_flow/assets/cube.stl`: the new method
+produces bit-identical normals to the old heuristic for that STL, and the
+same STL passes the audit cleanly (108 triangles, 1 watertight component,
+signed volume +1.0). Cube-flow geometry handling is unaffected.
+
+### Defects found in review of the first attempt, and their fixes
+
+| Defect | Evidence | Fix |
+|---|---|---|
+| Diagnostics evaluated every panel at every particle on every refresh, twice per coupled step, unconditionally — about `108 * 543,276 = 5.9e7` panel-target interactions per refresh for the cube | Measured against the production panel config | Diagnostics are now opt-in (`diagnostic_interval_steps`, default `0` = off), scheduled, and read a deterministic fixed-stride subsample bounded by `diagnostic_sample_size`. Production path measured at **zero** extra evaluations |
+| The boundary-face panel diagnostic repeated work the boundary trace already performs, on every trace | Code inspection | Gated behind the same schedule; off by default |
+| STL audit ran *after* `_ensure_initialized()`, so an invalid STL still allocated the lattice and the dense influence matrix. The original tests missed this by calling the lower-level loader with a fake lattice | Code inspection | `mesh.py` split into `load_and_audit_body_stl` (no GPU state) and `upload_body_to_lattice`; `add_surface` audits first. Tests now assert `solver.lattice is None` and `solver.aerodynamic_influence_coefficient is None` after rejection |
+| `PanelScipySolver.solve` returned `True` unconditionally, so the advertised "hard failure on non-convergence" never fired for the default solver | Reproduced: an inconsistent singular system returned success with relative residual `0.577` and strengths near `1e14` | Both solvers now decide success from the relative residual of the returned solution, with non-finite solutions mapped to infinite residual. Tolerance `1e-8` relative (`DEFAULT_PANEL_RESIDUAL_TOLERANCE`) |
+| The reported residual predated the NEUMANN gauge projection, so it did not describe the strengths left in the lattice; BiCGSTAB reported its recursively-updated residual rather than one recomputed from the final solution | Code inspection | `PanelSolver.solve` recomputes the relative residual from the final field state after the projection; BiCGSTAB recomputes from the final `x`. Verified the gauge projection does not inflate it: sphere post-projection relative residual `1.0e-15` |
+| `expected_components=2` accepted two shells but uploaded them as a single `PanelBody` with one uid and one kinematics, and oriented every component to positive volume — wrong for nested cavity shells | Code inspection | `PanelSolver.add_surface` now accepts exactly one connected component and rejects multi-component STLs. Genuine per-component bodies and a cavity policy remain unimplemented |
+| The `coupling_scope` docstring claimed all four scopes solve in `advance()` once per step and that `vpm_boundary_condition` computes surface pressure — both false | Code inspection | Docstring corrected: `advance()` is skipped entirely for `vpm_boundary_condition`, whose strengths come solely from `refresh_coupled_solution`, which calls `solve()` only and computes no pressure or force |
+
+**Not implemented, and why.** A `no_penetration_residual` diagnostic was
+written and then removed: a sphere check produced values around 0.8-5.2
+instead of near zero for both NEUMANN and DIRICHLET, despite a linear-solver
+residual near `1e-14`. This may be an impulsive-start transient
+(`potential_time_derivative` from a zero doublet-strength history on the
+first solve) rather than a steady-state defect, but resolving which internal
+quantity is the correct total surface velocity for each formulation was not
+achievable in this pass. Shipping an unverified diagnostic was judged worse
+than shipping none. Consequently the sphere test verifies only the far-field
+decay *exponent* and a tight solve residual — not the decay magnitude or
+sign, not the analytic surface velocity, and not true error-vs-refinement
+convergence.
+
+**Verification.**
+
+```text
+pytest tests
+ruff check source tests scripts
+ruff format --check source tests scripts
+pyrefly check source/coupler
+python scripts/panel_mesh_audit.py tutorials/coupled_fvm_vpm/cube_flow/assets/cube.stl
+```
+
+114 tests pass; Ruff and format clean; Pyrefly reports 0 errors on
+`source/coupler`.
+
+**Deferred (not started, not half-implemented).** Coarse-vs-detailed dual-STL
+support with hash/provenance metadata; opt-in decimation CLI;
+influence-matrix/factorization reuse for static geometry (needs a correctness
+audit of the moving-body AIC-rebuild path first — `initialize()` currently
+builds the AIC once regardless of kinematics, which may itself be a latent
+bug for translating/rotating bodies); a preconditioned iterative solver with
+per-iteration convergence history; scalable panel-to-particle evaluation
+replacing the direct `O(N_panels * N_particles)` kernel; an accelerated
+inside/collision query replacing `absorb_particles` /
+`point_inside_stl_body`; an explicit float32-vs-float64 test matrix;
+near-surface analytic verification and the ellipsoid/multi-body matrix;
+genuine multi-body and cavity support; per-stage panel timing; and the
+empirical same-seed cube-flow `t=2 -> t=2.5` decision test.
+
+**Note on coupling priority.** This panel work is orthogonal to the
+downstream wake escape/reset mechanism identified as the likely long-time
+coupling failure. It does not repair that. The next coupling experiment
+should still be the one-step downstream circulation/escape budget, not a
+strength correction or broad calibration.
+
+## 2026-08-25 common-lattice blend implementation gate
+
+The production transfer now uses the common M4' lattice for both same-time
+states and applies the C1 partition `eta*Gamma_FVM + (1-eta)*Gamma_VPM`.
+Mutation is preflighted for capacity and duplicate target nodes. Complete M4'
+support conserves signed circulation and componentwise first moments to
+floating-point roundoff before the explicit solid-node exclusion.
+The blend-only cross-divergence is removed by a lattice Poisson correction;
+a manufactured solenoidal test reduces that term to roundoff without changing
+net circulation, and a matching-state test confirms the correction is zero.
+
+The focused test gate covers float32/float64 conservation, nonuniform donor
+volumes, constant-state reproduction, phase shifts, all six faces, zero and
+solid donors, exact fixed points, no double counting at coincident release
+nodes, atomic capacity failure, and a manufactured packet that crosses the
+ownership face and survives two later replacements. An actual CS step retains
+the blended particle count, positions, and vortex strength while satisfying
+`sigma^2(t+dt) = sigma^2(t) + 4*nu*dt`.
+
+The VPM scheme API now carries particle spacing and core-radius ratio for CS,
+RWM, and NONE as well as DVH/GBD; coupled integration accepts all five schemes.
+The cube setup exposes one `VPM_VISCOUS_SCHEME` selector and remains on GBD for
+the pending controlled full-solver comparison. Verification at this gate:
+`42` coupler tests and `128` repository tests passed; Ruff is clean on the
+changed files; focused Pyrefly reports zero errors.

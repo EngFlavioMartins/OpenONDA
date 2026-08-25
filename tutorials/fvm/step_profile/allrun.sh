@@ -21,7 +21,7 @@ python step_profile_setup.py --Re 100 --end-time 12 2>&1 | tee solution/step_pro
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+./allplot.sh
 
 echo
 echo "===== DONE ====="

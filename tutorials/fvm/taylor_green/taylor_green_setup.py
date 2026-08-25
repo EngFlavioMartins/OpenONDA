@@ -190,7 +190,7 @@ def main() -> None:
     print(f"History written: {history_path}")
 
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print(f"Final velocity L2 error: {final['velocity_l2_error']:.6e}")
     print(
         f"Final total_kinetic_energy relative error: {final['total_kinetic_energy_relative_error']:.6e}"

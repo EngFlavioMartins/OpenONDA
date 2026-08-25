@@ -66,7 +66,7 @@ else
     echo
     echo "===== FIGURES ====="
     echo
-    ./plot_all.sh png
+    ./allplot.sh png
     archive_label="full"
 fi
 

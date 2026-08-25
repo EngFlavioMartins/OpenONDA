@@ -28,8 +28,8 @@ class CouplerSetup:
     """FVM-authoritative replacement region ``(xmin, xmax, ymin, ymax, zmin,
     zmax)``. It must lie inside the FVM domain; ``None`` uses the full domain."""
     eta_blend_width: float = 0.0
-    """Width (m) of the C1 state-blending ramp inside the replacement-region
-    faces. Zero disables eta blending and performs hard delete/reinjection."""
+    """Width (m) of the C1 common-lattice state blend inside the transfer
+    faces. Zero selects conservative hard M4' lattice replacement."""
     transfer_diagnostic_interval_steps: int = 1
     """Replacement steps between transfer diagnostics; at least one."""
 
@@ -90,12 +90,18 @@ class CouplerSetup:
 
     def validate_transfer_region_box(self, fvm_box) -> None:
         """Require the vorticity-transfer region to lie inside the FVM domain."""
-        if self.transfer_region_bounds is None:
-            return
         outer = np.asarray(fvm_box, dtype=np.float64)
-        inner = np.asarray(self.transfer_region_bounds, dtype=np.float64)
+        inner = (
+            outer
+            if self.transfer_region_bounds is None
+            else np.asarray(self.transfer_region_bounds, dtype=np.float64)
+        )
         if np.any(inner[::2] < outer[::2]) or np.any(inner[1::2] > outer[1::2]):
             raise ValueError("transfer_region_bounds must be contained within the FVM domain")
+        if self.eta_blend_width > 0.0:
+            minimum_extent = float(np.min(inner[1::2] - inner[::2]))
+            if 2.0 * self.eta_blend_width >= minimum_extent:
+                raise ValueError("eta_blend_width must leave a non-empty FVM-authoritative core")
 
     def to_dict(self) -> dict:
         transfer_region_bounds = None

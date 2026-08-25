@@ -13,6 +13,7 @@ from source.coupler.interpolation import FVMVelocityInterpolator
 from source.coupler.vorticity_transfer import (
     VorticityTransfer,
     replace_particles_from_fvm,
+    replace_particles_from_lattice_blend,
     replacement_eta,
 )
 
@@ -86,6 +87,31 @@ def _replace(
         core_radius_ratio=1.25,
         kinematic_viscosity=1.0e-3,
         fvm_solid_mask=solid_mask,
+    )
+
+
+def _replace_lattice(
+    vpm: _VPM,
+    fvm_position: np.ndarray,
+    fvm_volume: np.ndarray,
+    fvm_vorticity: np.ndarray,
+    *,
+    blend_width: float = 0.25,
+    spacing: float = 0.125,
+    solid_contains=None,
+):
+    return replace_particles_from_lattice_blend(
+        vpm,
+        transfer_box=BOX,
+        eta_blend_width=blend_width,
+        fvm_position=fvm_position,
+        fvm_cell_volume=fvm_volume,
+        fvm_vorticity=fvm_vorticity,
+        lattice_anchor=np.zeros(3),
+        particle_spacing=spacing,
+        core_radius_ratio=1.25,
+        kinematic_viscosity=1.0e-3,
+        solid_contains=solid_contains,
     )
 
 
@@ -184,6 +210,145 @@ def test_eta_blend_is_a_state_partition_not_an_additive_defect():
         target_strength[0],
     )
     np.testing.assert_array_equal(vpm.particles.vortex_strength[1], target_strength[1])
+
+
+def test_common_lattice_blend_is_an_exact_fixed_point_for_matching_states():
+    h = 0.125
+    fvm_position = np.array([[0.375, 0.0, 0.0]])
+    volume = np.array([h**3])
+    vorticity = np.array([[0.0, 8.0, -4.0]])
+    target_strength = volume[:, None] * vorticity
+    outer_position = np.array([[0.75, 0.0, 0.0]])
+    outer_strength = np.array([[0.3, -0.2, 0.1]])
+    vpm = _VPM(
+        np.vstack((fvm_position, outer_position)),
+        np.vstack((target_strength, outer_strength)),
+    )
+
+    for _ in range(20):
+        result = _replace_lattice(
+            vpm,
+            fvm_position,
+            volume,
+            vorticity,
+            blend_width=0.25,
+            spacing=h,
+        )
+        by_position = {
+            tuple(position): strength
+            for position, strength in zip(
+                vpm.particles.position,
+                vpm.particles.vortex_strength,
+                strict=True,
+            )
+        }
+        np.testing.assert_allclose(by_position[tuple(fvm_position[0])], target_strength[0])
+        np.testing.assert_array_equal(by_position[tuple(outer_position[0])], outer_strength[0])
+        np.testing.assert_allclose(result.state_change_vortex_strength_net, 0.0, atol=1.0e-18)
+        assert result.transfer_method == "common_m4_lattice_blend"
+        assert len(by_position) == vpm.particles.n_particles_total
+
+
+def test_manufactured_convecting_release_crosses_interface_and_survives_next_handoff():
+    h = 0.125
+    fvm_position = np.array([[0.375, 0.0, 0.0]])
+    volume = np.array([h**3])
+    vorticity = np.array([[0.0, 16.0, 0.0]])
+    vpm = _VPM(np.empty((0, 3)), np.empty((0, 3)))
+
+    _replace_lattice(vpm, fvm_position, volume, vorticity, blend_width=0.25, spacing=h)
+    assert vpm.particles.position.shape == (1, 3)
+    released_strength = vpm.particles.vortex_strength[0].copy()
+    vpm.particles.position[:, 0] += 0.15
+    assert vpm.particles.position[0, 0] > BOX[1]
+
+    _replace_lattice(vpm, fvm_position, volume, vorticity, blend_width=0.25, spacing=h)
+    outside = vpm.particles.position[:, 0] > BOX[1]
+    np.testing.assert_allclose(
+        vpm.particles.vortex_strength[outside].sum(axis=0),
+        released_strength,
+        atol=1.0e-18,
+    )
+    _replace_lattice(vpm, fvm_position, volume, vorticity, blend_width=0.25, spacing=h)
+    outside = vpm.particles.position[:, 0] > BOX[1]
+    np.testing.assert_allclose(
+        vpm.particles.vortex_strength[outside].sum(axis=0),
+        released_strength,
+        atol=1.0e-18,
+    )
+
+
+def test_blend_merges_release_support_into_a_retained_regular_node_without_duplicates():
+    h = 0.125
+    source_position = np.array([[0.4375, 0.0, 0.0]])
+    source_strength = np.array([[0.0, 2.0, 0.0]])
+    boundary_position = np.array([[BOX[1], 0.0, 0.0]])
+    boundary_strength = np.array([[0.0, 0.3, 0.0]])
+    vpm = _VPM(
+        np.vstack((source_position, boundary_position)),
+        np.vstack((source_strength, boundary_strength)),
+    )
+
+    _replace_lattice(
+        vpm,
+        source_position,
+        np.array([1.0]),
+        source_strength,
+        blend_width=0.25,
+        spacing=h,
+    )
+
+    matches = np.all(np.isclose(vpm.particles.position, boundary_position[0]), axis=1)
+    assert matches.sum() == 1
+    m4_weight = 0.5625
+    np.testing.assert_allclose(
+        vpm.particles.vortex_strength[matches][0],
+        boundary_strength[0] + m4_weight * source_strength[0],
+        atol=1.0e-15,
+    )
+    assert len(np.unique(vpm.particles.position, axis=0)) == vpm.particles.n_particles_total
+
+
+def test_lattice_blend_excludes_solid_targets_and_reports_the_strength():
+    h = 0.125
+    vpm = _VPM(np.empty((0, 3)), np.empty((0, 3)))
+
+    def target_solid(points):
+        return np.isclose(np.asarray(points)[:, 0], h)
+
+    result = _replace_lattice(
+        vpm,
+        np.array([[0.5 * h, 0.0, 0.0]]),
+        np.array([h**3]),
+        np.array([[0.0, 4.0, 0.0]]),
+        blend_width=0.25,
+        spacing=h,
+        solid_contains=target_solid,
+    )
+    assert not np.any(np.isclose(vpm.particles.position[:, 0], h))
+    assert result.excluded_solid_target_nodes > 0
+    assert np.linalg.norm(result.excluded_solid_vortex_strength_net) > 0.0
+
+
+def test_lattice_blend_capacity_failure_is_atomic():
+    h = 0.125
+    position = np.array([[0.75, 0.0, 0.0]])
+    strength = np.array([[0.1, 0.2, 0.3]])
+    vpm = _VPM(position, strength, capacity=1)
+    before_position = vpm.particles.position.copy()
+    before_strength = vpm.particles.vortex_strength.copy()
+
+    with pytest.raises(RuntimeError, match="exceeding the VPM capacity"):
+        _replace_lattice(
+            vpm,
+            np.array([[-0.25, 0.0, 0.0], [0.25, 0.0, 0.0]]),
+            np.array([h**3, h**3]),
+            np.array([[0.0, 1.0, 0.0], [0.0, -1.0, 0.0]]),
+            blend_width=0.25,
+            spacing=h,
+        )
+    np.testing.assert_array_equal(vpm.particles.position, before_position)
+    np.testing.assert_array_equal(vpm.particles.vortex_strength, before_strength)
 
 
 def test_solid_fvm_cells_are_not_injected():

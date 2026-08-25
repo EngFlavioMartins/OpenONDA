@@ -184,6 +184,27 @@ def evaluate_vpm_boundary(
     if coupler._is_master:
         assert coupler.vpm_solver is not None
         coupler.vpm_solver.refresh_boundary_element_solution()
+        # Evaluating the panel at every boundary face repeats work the
+        # boundary trace below already performs, so it runs only on the
+        # panel's own diagnostic schedule, which is off by default.
+        panel_solver = getattr(coupler.vpm_solver, "panel_solver", None)
+        if (
+            panel_solver is not None
+            and len(face_centre) > 0
+            and panel_solver.induced_velocity_diagnostic_is_due()
+        ):
+            panel_velocity_norm = np.linalg.norm(
+                panel_solver.compute_induced_velocity(face_centre), axis=1
+            )
+            logger.info(
+                format_coupler_log(
+                    "BoundaryPanelVelocity",
+                    f"refresh_count={panel_solver.refresh_count}",
+                    "panel-induced velocity at FVM boundary faces  "
+                    f"max {float(np.max(panel_velocity_norm)):.3e} m/s"
+                    f" | RMS {float(np.sqrt(np.mean(panel_velocity_norm**2))):.3e} m/s",
+                )
+            )
         if coupler.setup.boundary_condition_mode == "vorticity_mixed":
             vpm_boundary_condition_velocity, tangential_normal_gradient = (
                 coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(

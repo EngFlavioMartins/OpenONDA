@@ -137,7 +137,7 @@ def main() -> None:
         fvm_solver.advance()
 
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print("Reference values at Re = 100 (square cylinder, 5% blockage):")
     print("  St = 0.140-0.150   (Okajima 1982; Sohankar et al. 1998; Sen et al. 2011)")
     print("  mean Cd = 1.45-1.58")

@@ -244,7 +244,7 @@ def main() -> None:
     x_re, min_u = reattachment_location(fvm_solver)
 
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print(f"  Re_h={args.Re:g}; minimum downstream near-wall u={min_u:.6g}")
     print(
         f"  estimated x_reattachment/h={x_re:.6g}"

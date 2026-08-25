@@ -153,7 +153,7 @@ def main() -> None:
         fvm_solver.advance()
 
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print("Reference values (Constant et al. 2017):")
     if abs(args.Re - 30.0) < 1e-9:
         print("  Re=30 steady:  Cd = 1.74-1.80, recirculation L/D = 1.55-1.70")

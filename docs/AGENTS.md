@@ -77,7 +77,7 @@ Tutorial runnability notes (all applied):
   Linux/Windows).
 - Every `assets/plot_*.py` (incl. `plot_flat_plate_kelvin.py`) degrades
   gracefully with a `[MISSING]`/skip message when a sample CSV is absent, so
-  `plot_all.sh` never hard-fails on a partial solution set.
+  `allplot.sh` never hard-fails on a partial solution set.
 - Data layout is consistent across code and scripts via
   `resolve_samples_dir` (`samples/` lifted next to a dir literally named
   `solution/`).

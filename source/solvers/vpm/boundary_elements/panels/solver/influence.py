@@ -240,8 +240,21 @@ def compute_surface_velocity_with_sources(
                     p_target, v0, v1, v2
                 )
 
-            # Source contribution - include self-induction (exact analytical)
-            v_source += source_strength[j] * compute_source_velocity(p_target, v0, v1, v2, normal_j)
+            if i == j:
+                # Exterior limit of a constant source panel at its own
+                # collocation point: sigma/2 along the outward normal. The
+                # general kernel must not be used here — at the panel's own
+                # centroid the solid-angle term evaluates atan2(0, negative),
+                # which sits exactly on the branch cut, so the sign of the
+                # self-term follows floating-point noise. This is the same
+                # +0.5 the influence matrix assembles on its diagonal, so the
+                # two paths now agree by construction and the solved
+                # no-penetration condition is reproduced exactly here.
+                v_source += source_strength[j] * 0.5 * normal_j
+            else:
+                v_source += source_strength[j] * compute_source_velocity(
+                    p_target, v0, v1, v2, normal_j
+                )
 
         surface_velocity[i] = freestream_velocity + wake_velocity[i] + v_doublet + v_source
 

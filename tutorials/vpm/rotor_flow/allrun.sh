@@ -21,8 +21,8 @@ echo
 echo "===== FIGURES ====="
 echo
 python assets/validate_results.py --pre-plot
-./plot_all.sh png
-./plot_all.sh pdf
+./allplot.sh png
+./allplot.sh pdf
 
 echo
 echo "===== VALIDATE ====="

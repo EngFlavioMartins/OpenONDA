@@ -19,7 +19,7 @@ python boundary_layer_setup.py --Re 1e4 --end-time 8 2>&1 | tee solution/boundar
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+./allplot.sh
 
 echo
 echo "===== DONE ====="

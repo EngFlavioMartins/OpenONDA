@@ -24,4 +24,4 @@ python assets/check_run.py
 echo
 echo "===== DONE ====="
 echo
-echo "Simulation completed. Run ./plot_all.sh to make the figures."
+echo "Simulation completed. Run ./allplot.sh to make the figures."

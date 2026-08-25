@@ -28,14 +28,17 @@ sampling interval. FVM visualization and the atomic coupled restart checkpoint
 are written every `0.5 s`; the native VPM checkpoint writer is disabled because
 it would capture the pre-replacement state. Matching the transient time discretization is required for
 the reference comparison. The coupled and reference FVMs use the same pressure
-corrector counts. Particle diffusion, global thresholding, and population
-control are performed only by VPM GBD.
+corrector counts. `VPM_VISCOUS_SCHEME` selects CS, RWM, DVH, GBD, or NONE;
+the acceptance case remains on GBD until the controlled full-solver comparison.
 
-The FVM-to-VPM hand-off is absolute overlap replacement. Fluid-cell particles
-carry `Gamma = cell_volume * FVM_vorticity`; particles inside the transfer box
-are replaced each coupling interval and particles outside are left untouched.
-`ETA_BLEND_WIDTH = 0` selects the validated hard replacement. A positive value
-enables the C1 `eta` state blend at the transfer-box faces. The coupler does not
-run an additional remeshing pass: the VPM's normal GBD step regenerates the
-particle cloud. Boundary-only panel strengths are refreshed against the current
-particle state before their harmonic velocity is used on the FVM boundary.
+The FVM-to-VPM hand-off is an absolute state replacement on the regular VPM
+lattice. The coupler maps `Gamma = cell_volume * FVM_vorticity` and the current
+replaceable VPM circulation to that same lattice with complete M4' support,
+then applies `Gamma_new = eta*Gamma_FVM + (1-eta)*Gamma_VPM`. The C1 transition
+band is three particle spacings wide. A lattice Poisson correction removes only
+the cross-divergence introduced by the varying `eta`; it preserves net
+circulation and is zero when the two states match. Particles in VPM authority remain
+persistent; coincident release nodes are merged without creating duplicates.
+This mapping is independent of the selected VPM viscous scheme. Boundary-only
+panel strengths are refreshed against the current particle state before their
+harmonic velocity is used on the FVM boundary.

@@ -2,8 +2,8 @@
 # Make every Lamb--Oseen comparison figure from samples/<case>/.
 #
 # Usage:
-#   ./plot_all.sh        PNG figures (default)
-#   ./plot_all.sh pdf    PDF figures
+#   ./allplot.sh        PNG figures (default)
+#   ./allplot.sh pdf    PDF figures
 set -euo pipefail
 
 cd "$(dirname "$0")"

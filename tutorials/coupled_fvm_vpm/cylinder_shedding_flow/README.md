@@ -62,7 +62,7 @@ printed in the report and stored in `solution/analysis_summary.json`.
 ```sh
 ./allrun.sh                         # run the hybrid (clean + simulate)
 OPENONDA_SEED_AMPLITUDE=1e-4 ./allrun.sh
-./plot_all.sh                        # png (or ./plot_all.sh pdf)
+./allplot.sh                        # png (or ./allplot.sh pdf)
 ./allclean.sh                       # remove all generated output + runs/
 ```
 

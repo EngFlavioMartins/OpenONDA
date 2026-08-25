@@ -16,6 +16,7 @@ from .constants import (
     DEFAULT_CUTOFF_RADIUS_FACTOR,
     DEFAULT_TIME_STEP,
     MAX_N_PARTICLES,
+    SMAGORINSKY_CONSTANT,
     TREECODE_SUPPORTED_KERNELS,
 )
 from .divergence_relaxation import DivergenceRelaxationConfig
@@ -200,11 +201,12 @@ class VPMSetup:
             if self.viscous.scheme.upper() not in {
                 "NONE",
                 "CS",
+                "RWM",
                 "DVH",
                 "GBD",
             }:
                 raise ValueError(
-                    "COUPLED time integration supports NONE, CS, DVH, or GBD diffusion"
+                    "COUPLED time integration supports NONE, CS, RWM, DVH, or GBD diffusion"
                 )
         elif self.stretching.conserve_moments or self.stretching.conserve_energy:
             raise ValueError("stretching invariant projection requires COUPLED time integration")
@@ -490,7 +492,7 @@ class VPMSetup:
     @staticmethod
     def les_simulation(
         time_step_size: float = 0.01,
-        smagorinsky_coefficient: float = 0.17,
+        smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
         **kwargs: Any,
     ) -> VPMSetup:

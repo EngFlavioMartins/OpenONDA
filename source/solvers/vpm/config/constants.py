@@ -117,10 +117,11 @@ TREECODE_SUPPORTED_KERNELS = ("GAUSSIAN", "WINCKELMANS")
 # TURBULENCE MODEL CONSTANTS
 # =========================================================
 
-# Classical Smagorinsky constant C_s (Lilly 1966; Lilly & Deardorff ≈ 0.17).
-# This is the value users recognise from grid-based LES.  Internally, the
-# k-equilibrium model converts it to C_k via  C_k = (C_s² √C_e)^(2/3).
-SMAGORINSKY_CONSTANT = 0.17
+# Default VPM Smagorinsky constant C_s.  The vortex-ring stability calibration
+# qualified C_s=0.20 for the transposed VPM LES formulation; callers may still
+# override it for a case-specific validation.  Internally, the k-equilibrium
+# model converts it to C_k via C_k = (C_s² √C_e)^(2/3).
+SMAGORINSKY_CONSTANT = 0.20
 
 # =========================================================
 # FILE I/O CONSTANTS

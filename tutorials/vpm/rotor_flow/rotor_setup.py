@@ -4,7 +4,7 @@
 A three-bladed rotor flies at a tip-speed ratio of 7.0. The wake is resolved
 with vortex particles convected by a coupled (implicit) advection integrator;
 the blade loading and the downstream wake planes are sampled for the
-``plot_all.sh`` figures.
+``allplot.sh`` figures.
 
 Usage:
     python rotor_setup.py
@@ -298,7 +298,7 @@ def main() -> int:
         solver.save_state(str(SOLUTION_DIR / "rejected_state"))
         raise
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     return 0
 
 

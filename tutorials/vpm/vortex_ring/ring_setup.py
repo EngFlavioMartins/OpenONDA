@@ -9,7 +9,7 @@ Four physics variants are provided:
   * ``les_transposed``: the transposed stretching with a Smagorinsky model.
 
 Each case samples the ring motion, energy, and circulation that the
-``plot_all.sh`` figures compare with the theory.
+``allplot.sh`` figures compare with the theory.
 
 Usage:
     python ring_setup.py --variant dns_transposed
@@ -82,6 +82,7 @@ def run_case(
     velocity_method: str = "TREECODE",
     treecode_theta: float = 0.3,
     compute_device: str = "AUTO",
+    smagorinsky_coefficient: float = 0.20,
 ) -> None:
     if widnall_amplitude < 0.0:
         raise ValueError("widnall_amplitude must be non-negative")
@@ -101,6 +102,8 @@ def run_case(
         raise ValueError("velocity_method must be DIRECT or TREECODE")
     if not 0.0 < treecode_theta < 2.0:
         raise ValueError("treecode_theta must be in (0, 2)")
+    if smagorinsky_coefficient < 0.0 or not np.isfinite(smagorinsky_coefficient):
+        raise ValueError("smagorinsky_coefficient must be finite and non-negative")
 
     mode, stretching = name.lower().split("_", maxsplit=1)
     label = output_label or name
@@ -258,7 +261,9 @@ def run_case(
             turbulence=(
                 vpm.TurbulenceConfig.dns()
                 if mode == "dns"
-                else vpm.TurbulenceConfig.les_smagorinsky(smagorinsky_coefficient=0.20)
+                else vpm.TurbulenceConfig.les_smagorinsky(
+                    smagorinsky_coefficient=smagorinsky_coefficient
+                )
             ),
             stretching=stretching_setup(stretching),
             stabilization=stabilization,
@@ -330,7 +335,7 @@ def run_case(
         "resolution_misalignment_limit_deg": RESOLUTION_MISALIGNMENT_LIMIT_DEG,
         "molecular_diffusion": "core_spreading",
         "sgs_model": "none" if mode == "dns" else "smagorinsky",
-        "smagorinsky_coefficient": 0.0 if mode == "dns" else 0.20,
+        "smagorinsky_coefficient": 0.0 if mode == "dns" else smagorinsky_coefficient,
         "claim_scope": "VPM Widnall challenge; structural DIAD is not active",
         "stabilization_enabled": ENABLE_STABILIZATION,
     }
@@ -417,6 +422,7 @@ def main() -> int:
         default="TREECODE",
     )
     parser.add_argument("--treecode-theta", type=float, default=0.3)
+    parser.add_argument("--smagorinsky-coefficient", type=float, default=0.20)
     parser.add_argument(
         "--compute-device",
         choices=("AUTO", "CPU", "METAL", "VULKAN", "CUDA"),
@@ -462,6 +468,7 @@ def main() -> int:
         velocity_method=args.velocity_method,
         treecode_theta=args.treecode_theta,
         compute_device=args.compute_device,
+        smagorinsky_coefficient=args.smagorinsky_coefficient,
     )
     return 0
 

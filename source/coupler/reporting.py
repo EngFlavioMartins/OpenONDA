@@ -1,5 +1,6 @@
 """Logging, metadata, and per-step diagnostics for coupled runs."""
 
+from dataclasses import asdict
 from datetime import UTC, datetime
 import json
 import logging
@@ -113,9 +114,10 @@ def write_run_metadata(coupler) -> None:
     """Write the resolved solver and coupling state used by post-processing."""
     assert coupler.fvm_box is not None
     assert coupler.vpm_solver is not None
+    viscous_config = asdict(coupler.vpm_solver.setup.viscous)
     metadata = {
         "schema_version": 2,
-        "coupling_method": "absolute_fvm_state_replacement",
+        "coupling_method": "absolute_common_m4_lattice_blend",
         "generated_utc": datetime.now(UTC).isoformat(),
         "case_dir": str(coupler.case_dir),
         "physics": {
@@ -136,8 +138,7 @@ def write_run_metadata(coupler) -> None:
             "vpm_core_radius_ratio": coupler.vpm_core_radius_ratio,
             "eta_blend_width": coupler.setup.eta_blend_width,
             "viscous_scheme": coupler.vpm_solver.setup.viscous.scheme,
-            "gbd_threshold": coupler.vpm_solver.setup.viscous.gbd_threshold,
-            "gbd_threshold_mode": coupler.vpm_solver.setup.viscous.gbd_threshold_mode,
+            "viscous_config": viscous_config,
             "panel_coupling_scope": (
                 None
                 if coupler.vpm_solver.panel_solver is None
@@ -161,6 +162,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
 
     if result is None:
         transfer = {
+            "transfer_method": "none",
             "eta_blending_enabled": False,
             "n_particles_before": 0,
             "n_particles_retained": 0,
@@ -179,6 +181,10 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "state_change_vortex_strength_net_x": 0.0,
             "state_change_vortex_strength_net_y": 0.0,
             "state_change_vortex_strength_net_z": 0.0,
+            "mapped_target_nodes": 0,
+            "excluded_solid_target_nodes": 0,
+            "blend_cross_divergence_l2_before": 0.0,
+            "blend_cross_divergence_l2_after": 0.0,
         }
         particle_count = 0
     else:
@@ -186,6 +192,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         replaced_net = np.asarray(result.replaced_vortex_strength_net, dtype=np.float64)
         state_change_net = np.asarray(result.state_change_vortex_strength_net, dtype=np.float64)
         transfer = {
+            "transfer_method": str(result.transfer_method),
             "eta_blending_enabled": bool(result.eta_blending_enabled),
             "n_particles_before": int(result.n_particles_before),
             "n_particles_retained": int(result.n_particles_retained),
@@ -204,12 +211,16 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "state_change_vortex_strength_net_x": float(state_change_net[0]),
             "state_change_vortex_strength_net_y": float(state_change_net[1]),
             "state_change_vortex_strength_net_z": float(state_change_net[2]),
+            "mapped_target_nodes": int(result.mapped_target_nodes),
+            "excluded_solid_target_nodes": int(result.excluded_solid_target_nodes),
+            "blend_cross_divergence_l2_before": float(result.blend_cross_divergence_l2_before),
+            "blend_cross_divergence_l2_after": float(result.blend_cross_divergence_l2_after),
         }
         particle_count = result.n_particles_after
     if not all(
         np.isfinite(value)
         for value in transfer.values()
-        if value is not None and not isinstance(value, bool)
+        if value is not None and isinstance(value, int | float | np.number)
     ):
         raise FloatingPointError("non-finite transfer diagnostic")
     boundary_flux = {

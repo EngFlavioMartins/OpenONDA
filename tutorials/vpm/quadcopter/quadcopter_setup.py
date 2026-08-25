@@ -4,7 +4,7 @@
 Four two-bladed rotors counter-rotate on a small quadcopter frame. The vehicle
 climbs at constant speed while the rotors shed their wakes into the flow. The
 particle count and the integrated vorticity history are sampled for the
-diagnostic figures made by ``plot_all.sh``.
+diagnostic figures made by ``allplot.sh``.
 
 Usage:
     python quadcopter_setup.py
@@ -188,7 +188,7 @@ def main() -> int:
     print("---- Quadcopter climb: 4 rotors, 2 blades each, 6 revolutions ----")
     run()
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     return 0
 
 

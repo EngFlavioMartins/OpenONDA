@@ -136,30 +136,41 @@ class ViscousConfig:
     def cs(
         kinematic_viscosity: float | None = None,
         particle_spacing: float | None = None,
+        core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
         """Return Core-Spreading viscous configuration."""
         return ViscousConfig(
             scheme="CS",
             kinematic_viscosity=kinematic_viscosity,
             particle_spacing=particle_spacing,
+            core_radius_ratio=core_radius_ratio,
         )
 
     @staticmethod
     def rwm(
         kinematic_viscosity: float | None = None,
         particle_spacing: float | None = None,
+        core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
         """Return Random-Walk viscous configuration."""
         return ViscousConfig(
             scheme="RWM",
             kinematic_viscosity=kinematic_viscosity,
             particle_spacing=particle_spacing,
+            core_radius_ratio=core_radius_ratio,
         )
 
     @staticmethod
-    def inviscid() -> ViscousConfig:
+    def inviscid(
+        particle_spacing: float | None = None,
+        core_radius_ratio: float = 2.5,
+    ) -> ViscousConfig:
         """Return configuration with molecular diffusion disabled."""
-        return ViscousConfig(scheme="NONE")
+        return ViscousConfig(
+            scheme="NONE",
+            particle_spacing=particle_spacing,
+            core_radius_ratio=core_radius_ratio,
+        )
 
     @staticmethod
     def dvh(

@@ -20,6 +20,8 @@ import taichi as ti
 
 from ..coupling import kinematics as kin_module
 from ..kernels.induced_velocity import (
+    accumulate_doublet_panel_velocity_on_field,
+    accumulate_source_panel_velocity_on_field,
     compute_induced_velocity_kernel,
     compute_source_induced_velocity_kernel,
 )
@@ -35,8 +37,13 @@ from .influence import (
 )
 from .kernels import panel_update_rotation_kernel, panel_update_translation_kernel
 from .lattice import PanelLattice
-from .linear_solvers import PanelBiCGSTABSolver, PanelScipySolver
-from .mesh import add_body_from_mesh_stl
+from .linear_solvers import (
+    PanelBiCGSTABSolver,
+    PanelScipySolver,
+    default_residual_tolerance,
+    relative_residual,
+)
+from .mesh import load_and_audit_body_stl, upload_body_to_lattice
 from .vtk_export import panel_mesh_to_vtp
 
 logger = logging.getLogger("vpm")
@@ -97,6 +104,55 @@ class ForceConfig:
 
 
 class PanelSolver:
+    """Boundary-element panel solver, optionally coupled to a live VPM particle set.
+
+    ``coupling_scope`` is the single authoritative switch for how the panel
+    solver participates in a VPM step. Wherever a scope solves the panel, it
+    solves from ``particles.n_particles_total`` — every active particle;
+    there is no injected/retained distinction anywhere in this solver. The
+    scopes differ in *who* solves the panel, and in what is done with the
+    result:
+
+    - ``"full"``: :meth:`advance` runs every VPM step from
+      :class:`~source.solvers.vpm.coupling.stepper.CouplingStepper`, updating
+      kinematics, solving, and computing forces and surface pressure. The
+      panel's induced velocity is added to every active particle's
+      trajectory at every Runge-Kutta stage, via the
+      ``physics.body_velocity_field`` hook
+      (:meth:`accumulate_induced_velocity_on_field`) installed by
+      :class:`~source.solvers.vpm.core.solver.VPMSolver` and applied in
+      ``PhysicsEngine._AdvectionHandler._vel`` on top of the self-induced
+      Biot-Savart velocity, entirely on device. Because that solve happens at the
+      top of the step, an external coupler that replaces the particle cloud
+      at fixed physical time must re-solve against the replaced state (see
+      :meth:`refresh_coupled_solution`) before the next advection step or
+      boundary trace uses it.
+    - ``"vpm_boundary_condition"``: :meth:`advance` is skipped entirely by
+      ``CouplingStepper.advance_panel``, so this scope never advances
+      kinematics, panel history, forces, or wake shedding, and never injects
+      velocity into particle trajectories. Its strengths are produced solely
+      by :meth:`refresh_coupled_solution`, which an external coupler calls
+      before each boundary trace and after each particle replacement. That
+      refresh calls :meth:`solve` only: no surface pressure or force is
+      computed for this scope. It exists purely to supply the harmonic/body
+      correction a coupler traces onto an external solver.
+    - ``"normal"`` / ``"pressure"``: :meth:`advance` runs every step and
+      computes forces and surface pressure exactly like ``"full"``, but the
+      result never enters particle trajectories and is never refreshed by a
+      coupler. One-way, postprocessing-only aerodynamic force evaluation;
+      the two names are not currently distinguished from each other.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        # Two-way coupling: panel deflects every particle at every RK stage.
+        panel = PanelSolver(coupling_scope="full")
+
+        # One-way: panel only supplies a boundary condition to another solver.
+        panel = PanelSolver(coupling_scope="vpm_boundary_condition")
+    """
+
     def __init__(
         self,
         max_n_panels: int = 10000,
@@ -108,6 +164,11 @@ class PanelSolver:
         freestream_velocity: np.ndarray | None = None,
         logging_interval_steps: int = 1,
         coupling_scope: Literal["full", "vpm_boundary_condition", "normal", "pressure"] = "full",
+        raise_on_non_convergence: bool = True,
+        memory_budget_bytes: int = 4 * 1024**3,
+        diagnostic_interval_steps: int = 0,
+        diagnostic_sample_size: int = 4096,
+        residual_tolerance: float | None = None,
     ):
         self.max_n_panels = max_n_panels
         self.float_dtype = float_dtype
@@ -124,7 +185,14 @@ class PanelSolver:
                 "coupling_scope must be 'full', 'vpm_boundary_condition', 'normal', or 'pressure'"
             )
         self.coupling_scope = coupling_scope
+        self.raise_on_non_convergence = raise_on_non_convergence
+        self.memory_budget_bytes = memory_budget_bytes
+        # None resolves per working precision at solver construction.
+        self.residual_tolerance = residual_tolerance
+        self.diagnostic_interval_steps = max(0, int(diagnostic_interval_steps))
+        self.diagnostic_sample_size = max(1, int(diagnostic_sample_size))
         self.step = 0
+        self.refresh_count = 0
         self._current_time = 0.0
         self._solved = False
         self._last_forces: dict[str, float] = {}
@@ -148,10 +216,34 @@ class PanelSolver:
         }
         self.is_initialized = False
 
+    def _check_memory_budget(self) -> None:
+        """Fail fast if the dense influence matrix would exceed the memory budget.
+
+        The influence matrix is ``max_n_panels x max_n_panels`` dense; a body
+        with a large panel count silently allocating this before failing
+        (or thrashing) is the failure mode this guard replaces.
+        """
+        itemsize = 4 if self.float_dtype == "f32" else 8
+        required_bytes = itemsize * self.max_n_panels**2
+        if required_bytes <= self.memory_budget_bytes:
+            return
+        required_gib = required_bytes / 1024**3
+        budget_gib = self.memory_budget_bytes / 1024**3
+        suggested_max_n_panels = int((self.memory_budget_bytes / itemsize) ** 0.5)
+        raise RuntimeError(
+            f"Panel influence matrix would require {required_gib:.2f} GiB "
+            f"(max_n_panels={self.max_n_panels}, dtype={self.float_dtype}), "
+            f"exceeding the {budget_gib:.2f} GiB memory_budget_bytes. "
+            f"Lower max_n_panels to at most {suggested_max_n_panels}, or raise "
+            "memory_budget_bytes if this much memory is actually available."
+        )
+
     def _ensure_initialized(self) -> None:
         """Lazy initialization of GPU fields and sub-solvers after Taichi init."""
         if self.lattice is not None:
             return
+
+        self._check_memory_budget()
 
         # 1. Create Lattice
         self.lattice = PanelLattice(self.max_n_panels, self.float_dtype)
@@ -166,10 +258,17 @@ class PanelSolver:
         self.surface_velocity = ti.Vector.field(3, dtype=ti_dtype, shape=self.max_n_panels)
 
         # 3. Strategy pattern for linear solver
+        tolerance = (
+            default_residual_tolerance(self.float_dtype)
+            if self.residual_tolerance is None
+            else self.residual_tolerance
+        )
         if self.linear_solver_name == "SCIPY":
-            self.solver_strategy = PanelScipySolver()
+            self.solver_strategy = PanelScipySolver(residual_tolerance=tolerance)
         else:
-            self.solver_strategy = PanelBiCGSTABSolver(self.max_n_panels, ti_dtype)
+            self.solver_strategy = PanelBiCGSTABSolver(
+                self.max_n_panels, ti_dtype, residual_tolerance=tolerance
+            )
 
         print(
             f"   [Panel Solver] Initialized (max_n_panels={self.max_n_panels}, dtype={self.float_dtype}, solver={self.linear_solver_name})"
@@ -181,10 +280,35 @@ class PanelSolver:
         stl_path: str,
         kinematics: Any = None,
         group_id: int = 0,
+        validate: bool = True,
     ) -> None:
+        """Add one closed body from an STL file.
+
+        The STL is loaded, audited, and oriented *before* any Taichi lattice
+        or dense influence matrix is allocated, so invalid geometry cannot
+        consume GPU memory on its way to being rejected.
+
+        Exactly one connected component is accepted. A multi-component STL is
+        rejected rather than uploaded, because this method maps one file to
+        one :class:`~.lattice.PanelBody` with one uid and one kinematics
+        object: separate shells silently merged into that single body could
+        not be moved or identified independently, and nested shells would
+        need a cavity-orientation policy that does not exist yet. Add each
+        body from its own STL instead.
+        """
+        vertex_position = load_and_audit_body_stl(
+            stl_path,
+            validate=validate,
+            max_panels=self.max_n_panels,
+            expected_components=1,
+        )
         self._ensure_initialized()
-        add_body_from_mesh_stl(
-            self.lattice, uid, stl_path, kinematics=kinematics, group_id=group_id
+        upload_body_to_lattice(
+            self.lattice,
+            uid,
+            vertex_position,
+            kinematics=kinematics,
+            group_id=group_id,
         )
 
     def load_scene(self, layout_file: str):
@@ -353,14 +477,38 @@ class PanelSolver:
         success = self.solver_strategy.solve(
             self.aerodynamic_influence_coefficient, self.right_hand_side, doublet_strength, n
         )
-        if not success:
-            logger.error("Panel linear solver failed to converge.")
-        elif self.boundary_condition_type == "NEUMANN":
+        iterations = getattr(self.solver_strategy, "last_iterations", None)
+        if success and self.boundary_condition_type == "NEUMANN":
             values = doublet_strength.to_numpy()
             area = self.lattice.area.to_numpy()
             values[:n] -= np.dot(values[:n], area[:n]) / np.sum(area[:n])
             doublet_strength.from_numpy(values)
+
+        # Report the residual of the strengths actually left in the lattice.
+        # The NEUMANN gauge projection above rewrites the solution, so the
+        # solver's own pre-projection value would not describe the state every
+        # later evaluation uses.
+        residual = (
+            relative_residual(
+                self.aerodynamic_influence_coefficient.to_numpy()[:n, :n],
+                doublet_strength.to_numpy()[:n],
+                self.right_hand_side.to_numpy()[:n],
+            )
+            if n > 0
+            else 0.0
+        )
+        if not success:
+            message = (
+                f"Panel linear solver failed to converge (n_panels={n}, "
+                f"relative residual {residual:.3e} above the "
+                f"{getattr(self.solver_strategy, 'residual_tolerance', float('nan')):.3e} "
+                "tolerance)."
+            )
+            if self.raise_on_non_convergence:
+                raise RuntimeError(message)
+            logger.error(message)
         self._solved = success
+
         self.results["diagnostic_history"].append(
             {
                 "step": int(self.step),
@@ -368,6 +516,9 @@ class PanelSolver:
                 "n_panels": int(n),
                 "linear_solver": type(self.solver_strategy).__name__,
                 "linear_solver_success": bool(success),
+                "residual": None if residual is None else float(residual),
+                "iterations": None if iterations is None else int(iterations),
+                "refresh_count": int(self.refresh_count),
                 "force_method": self.force_config.method,
                 "boundary_condition_type": self.boundary_condition_type,
             }
@@ -707,7 +858,48 @@ class PanelSolver:
         """
         self.ensure_mesh_generated()
         wake_velocity = self._set_coupled_wake_velocity(particles, physics)
+        self.refresh_count += 1
         self.solve(freestream_velocity, wake_velocity, time)
+        self._record_particle_velocity_diagnostic(particles)
+
+    def induced_velocity_diagnostic_is_due(self) -> bool:
+        """Whether this refresh should pay for a panel-induced-velocity sample."""
+        return (
+            self.diagnostic_interval_steps > 0
+            and self.refresh_count % self.diagnostic_interval_steps == 0
+        )
+
+    def _record_particle_velocity_diagnostic(self, particles: Any) -> None:
+        """Sample panel-induced velocity at particles, when scheduled.
+
+        Evaluating every panel at every particle is an
+        ``n_panels * n_particles`` direct calculation — for a coupled cube
+        run, tens of millions of interactions per refresh. It is therefore
+        off unless ``diagnostic_interval_steps`` is set, and even then reads
+        a fixed-stride subsample so its cost is bounded by
+        ``diagnostic_sample_size`` rather than by the particle count.
+        """
+        if not self.induced_velocity_diagnostic_is_due():
+            return
+        n_particles_total = getattr(particles, "n_particles_total", 0)
+        if n_particles_total <= 0 or not self.results["diagnostic_history"]:
+            return
+
+        np_dtype = getattr(particles, "_np_float_dtype", np.float32)
+        position = particles.position.to_numpy()[:n_particles_total].astype(np_dtype)
+        # A fixed stride keeps the sample deterministic across repeat runs and
+        # restarts, which a random subsample would not.
+        stride = max(1, -(-n_particles_total // self.diagnostic_sample_size))
+        sample = position[::stride]
+        induced_norm = np.linalg.norm(self.compute_induced_velocity(sample), axis=1)
+        self.results["diagnostic_history"][-1].update(
+            {
+                "max_induced_velocity_at_particles": float(np.max(induced_norm)),
+                "rms_induced_velocity_at_particles": float(np.sqrt(np.mean(induced_norm**2))),
+                "induced_velocity_sample_size": int(sample.shape[0]),
+                "induced_velocity_sample_stride": int(stride),
+            }
+        )
 
     def advance_time(self, time_step_size: float, current_time: float) -> None:
         """Advance kinematics state and geometry for all surfaces (VLM-compatible API)."""
@@ -734,16 +926,18 @@ class PanelSolver:
         self.solve(freestream_velocity, wake_velocity, current_time)
 
     def compute_induced_velocity_direct(self, particles) -> None:
-        """
-        Compute velocity induced by panels on VPM particles and add to particles.velocity.
+        """Add panel-induced velocity to every active particle, on device.
 
-        This method is called by the core VPM solver to couple the panel method
-        with the particle method. It extracts particle position, computes the
-        induced velocity using the existing compute_induced_velocity method,
-        and adds the result to particles.velocity.
+        Called by the core VPM solver to couple the panel method to the
+        particle method. Every particle in ``[0, n_particles_total)`` is
+        treated identically; the panel solver draws no distinction between
+        particles injected by a coupler and particles it already carried.
 
-        Args:
-            particles: VPM particles object with position and velocity fields
+        The accumulation runs entirely in Taichi against the lattice and
+        particle fields. Round-tripping particle position and velocity
+        through numpy here would move several arrays of length
+        ``n_particles_total`` across the host boundary at every Runge-Kutta
+        stage of every step, which dominates the cost of a coupled run.
         """
         if self.lattice is None or self.lattice.n_panels == 0:
             return
@@ -752,28 +946,41 @@ class PanelSolver:
         if n_particles_total == 0:
             return
 
-        np_dtype = getattr(particles, "_np_float_dtype", np.float32)
-
-        # Synchronize any pending Taichi kernel writes before reading
-        # particle data (compute_self_induced_velocity may have just written to these fields).
+        # The self-induced velocity kernel may still be in flight.
         ti.sync()
+        self.accumulate_induced_velocity_on_field(
+            particles.position, particles.velocity, n_particles_total
+        )
 
-        # Extract particle position in the container's native dtype
-        position = particles.position.to_numpy()[:n_particles_total].astype(np_dtype)
+    def accumulate_induced_velocity_on_field(
+        self, target_position, target_velocity, n_targets: int
+    ) -> None:
+        """Add panel-induced velocity into a Taichi vec3 field, in place."""
+        if self.lattice is None or n_targets <= 0:
+            return
+        n_panels = self.lattice.n_panels
+        if n_panels == 0:
+            return
 
-        # Compute induced velocity at particle position
-        v_induced = self.compute_induced_velocity(position)
-
-        # Add to particle velocity.
-        # v_induced is f64 from numpy operations; v_current is f32.
-        # We cast the sum to f32 for the taichi field.
-        v_current = particles.velocity.to_numpy()[:n_particles_total]
-        v_new = (v_current + v_induced).astype(np_dtype)
-
-        # Write back using the particle container's copy kernel which
-        # handles dtype conversion safely (avoids from_numpy issues on
-        # fields previously written by Taichi kernels).
-        particles._copy_to_taichi_vectors(v_new, particles.velocity, 0, n_particles_total)
+        if self.boundary_condition_type == "NEUMANN":
+            accumulate_source_panel_velocity_on_field(
+                self.lattice.vertex_position,
+                self.lattice.normal,
+                self.lattice.source_strength,
+                target_position,
+                target_velocity,
+                n_panels,
+                n_targets,
+            )
+        else:
+            accumulate_doublet_panel_velocity_on_field(
+                self.lattice.vertex_position,
+                self.lattice.doublet_strength,
+                target_position,
+                target_velocity,
+                n_panels,
+                n_targets,
+            )
 
     def absorb_particles(self, particles, tolerance: float = 0.05) -> int:
         """

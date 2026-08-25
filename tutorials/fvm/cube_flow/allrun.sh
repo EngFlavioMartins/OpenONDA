@@ -22,7 +22,7 @@ python cube_flow_setup.py --Re 100 --end-time 120 2>&1 | tee solution/cube_flow.
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+./allplot.sh
 
 echo
 echo "===== DONE ====="

@@ -45,6 +45,8 @@ def main() -> None:
     fig.subplots_adjust(wspace=0.10, hspace=0.10, left=0.11, right=0.97, top=0.95, bottom=0.13)
 
     # -- Ring speed — all available variants ---------------------------------
+    plot_end = 38.0
+    plot_bottom = 0.6
     for variant, st in VARIANT_STYLE.items():
         csv_path = SAMPLES_DIR / variant / "ring_diagnostics.csv"
         nondimensional_time, nondimensional_velocity = load_sampled_ring_speed(csv_path)
@@ -53,6 +55,8 @@ def main() -> None:
             continue
         label = VARIANT_LABEL[variant]
         print(f"  {variant}: {len(nondimensional_time)} samples")
+        plot_end = max(plot_end, float(nondimensional_time[-1]))
+        plot_bottom = min(plot_bottom, float(np.nanmin(nondimensional_velocity)))
         ax.plot(
             nondimensional_time,
             nondimensional_velocity,
@@ -67,8 +71,9 @@ def main() -> None:
         )
 
     # -- Analytical Saffman solution ------------------------------------------
-    t_phys = np.linspace(0.0, 38 * REFERENCE_TIME, 500)
+    t_phys = np.linspace(0.0, plot_end * REFERENCE_TIME, 500)
     saffman_nondimensional_velocity = saffman_speed(t_phys) / REFERENCE_VELOCITY
+    plot_bottom = min(plot_bottom, float(np.nanmin(saffman_nondimensional_velocity)))
     ax.plot(
         t_phys / REFERENCE_TIME,
         saffman_nondimensional_velocity,
@@ -79,8 +84,8 @@ def main() -> None:
 
     ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
     ax.set_ylabel(r"Self-induced speed, $U_\Gamma / U_{\text{ref},0}$")
-    ax.set_ylim(0.6, 1.0)
-    ax.set_xlim(0, 38)
+    ax.set_ylim(0.95 * plot_bottom, 1.0)
+    ax.set_xlim(0, plot_end)
     ax.legend(ncol=1, loc="lower left")
     save_fig(fig, figs / "vortex_ring_motion.png", dpi=args.dpi, figure_format=args.format)
 

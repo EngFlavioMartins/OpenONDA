@@ -19,7 +19,7 @@ python airfoil_flow_setup.py --Re 1000 --angle 0 --end-time 25 2>&1 | tee soluti
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+./allplot.sh
 
 echo
 echo "===== DONE ====="

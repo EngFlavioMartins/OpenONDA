@@ -10,7 +10,7 @@ Freestream speed, then allowed to travel. Two families of cases are run:
     (wind frame).
 
 Each case is named ``exp_<mode>_aoa<NN>``; the sampled forces are used by
-``plot_all.sh`` to build the lift/drag polar and to compare moving and static
+``allplot.sh`` to build the lift/drag polar and to compare moving and static
 plates at matching angles. The ``static`` case at 8 degrees additionally
 writes cross-flow wake planes for the Kelvin theorem figure.
 

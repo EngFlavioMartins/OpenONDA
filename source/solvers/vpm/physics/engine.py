@@ -52,6 +52,10 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         # to blend in the FVM near-body velocity for overlap-region particles.
         self.velocity_override = None
         self.body_velocity = None
+        # Device-resident counterpart of ``body_velocity``: fn(pos_field,
+        # vel_field, N) accumulating in place. When set it supersedes
+        # ``body_velocity`` and keeps the RK stages off the host.
+        self.body_velocity_field = None
 
         # Create specialized physics handlers
         self._advection = _AdvectionHandler(self)
@@ -242,14 +246,26 @@ class _AdvectionHandler:
             reuse_tree=reuse_tree and self._parent.velocity_override is None,
         )
         body_velocity = self._parent.body_velocity
-        if body_velocity is not None or self._parent.velocity_override is not None:
+        body_velocity_field = self._parent.body_velocity_field
+        override = self._parent.velocity_override
+
+        # A body that can accumulate straight into the Taichi field does so
+        # here, before the numpy branch below decides whether a host
+        # round-trip is needed at all. Every RK stage runs this, so keeping
+        # the whole-particle-set transfer out of it matters.
+        if body_velocity_field is not None:
+            body_velocity_field(pos_field, out_field, N)
+
+        needs_host_pass = override is not None or (
+            body_velocity is not None and body_velocity_field is None
+        )
+        if needs_host_pass:
             pos_np = pos_field.to_numpy()
             vel_np = out_field.to_numpy()
-            if body_velocity is not None:
+            if body_velocity is not None and body_velocity_field is None:
                 vel_np[:N] += np.asarray(body_velocity(pos_np[:N]), dtype=vel_np.dtype).reshape(
                     N, 3
                 )
-            override = self._parent.velocity_override
             if override is not None:
                 if hasattr(override, "blend_into"):
                     override.blend_into(pos_np[:N], vel_np[:N], vel_np[:N])

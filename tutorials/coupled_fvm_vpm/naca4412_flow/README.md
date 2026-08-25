@@ -8,7 +8,7 @@ After installing OpenONDA, run:
 
 ```sh
 ./allrun.sh
-./plot_all.sh
+./allplot.sh
 ```
 
 The production horizon is 12 convective time units. The VPM advances in 0.04 s

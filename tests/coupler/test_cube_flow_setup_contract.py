@@ -1,5 +1,6 @@
 """Cube-flow timing and output contracts."""
 
+from dataclasses import replace
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
@@ -70,6 +71,21 @@ def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
         setup.COUPLER_SETUP,
         "is_boundary_condition_resynchronized_after_transfer",
     )
+    assert pytest.approx(3.0 * setup.VPM_PARTICLE_SPACING) == setup.ETA_BLEND_WIDTH
+    assert pytest.approx(setup.ETA_BLEND_WIDTH) == setup.COUPLER_SETUP.eta_blend_width
+
+
+@pytest.mark.parametrize("scheme", ["CS", "RWM", "DVH", "GBD", "NONE"])
+def test_cube_flow_can_select_any_supported_vpm_viscous_scheme(scheme):
+    setup = _load_setup(CASE_DIR / "cube_flow_setup.py", f"cube_flow_viscous_{scheme.lower()}")
+    viscous = setup.make_vpm_viscous_config(scheme)
+
+    assert viscous.scheme == scheme
+    assert viscous.particle_spacing == pytest.approx(setup.VPM_PARTICLE_SPACING)
+    assert viscous.core_radius_ratio == pytest.approx(setup.VPM_CORE_RADIUS_RATIO)
+    if scheme != "NONE":
+        assert viscous.kinematic_viscosity == pytest.approx(setup.KINEMATIC_VISCOSITY)
+    replace(setup.VPM_SETUP, viscous=viscous)._validate_config()
 
 
 def test_cube_flow_timing_resolver_adjusts_steps_without_shifting_outputs():

@@ -36,8 +36,12 @@ GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX
 COLUMN_LENGTH = 50.0 * CORE_RADIUS  # length of the finite vortex column [m]
 
 # ---- Numerical setup shared by every viscous scheme ----------------------
-SPACING = 0.3375 * CORE_RADIUS
-COLUMN_SPACING = 0.80 * CORE_RADIUS
+# The full-length CS convergence study supports h/a0=0.45: its differences
+# from the next finer solution are below 0.22% for velocity, vorticity, and
+# velocity gradient.  The former h/a0=0.3375 setting made the isotropic
+# DVH/GBD regeneration volume 2.37x larger without a material profile gain.
+SPACING = 0.45 * CORE_RADIUS
+COLUMN_SPACING = 0.45 * CORE_RADIUS
 PARTICLE_RADIUS = 1.50 * SPACING
 FIELD_SPACING = 0.15 * CORE_RADIUS
 TIME_STEP_SIZE = 0.291 / 9.0
@@ -50,15 +54,15 @@ TREECODE_MULTIPOLE_ORDER = 3
 ADVECTION_SCHEME = "RK3"
 DVH_RD_RATIO = 4
 DVH_PADDING = 5.0
+GBD_PADDING = 5.0
 DVH_THRESHOLD = 1.0e-4
-# Resource caps below the solver's declared particle capacity were rejected:
-# 50k lost 4.5% circulation by t=5.82, while 100k made the measured energy
-# decay exceed -nu*Omega by 49% at t=8.73.  Use the full declared capacity so
-# the benchmark measures the diffusion operators rather than avoidable
-# strongest-node truncation.  The global threshold still limits each
-# regeneration to its explicit 1e-4 strength budget.
-DVH_MAX_NODES = 500_000
-GBD_MAX_NODES = 500_000
+GBD_THRESHOLD = 5.0e-5
+# At h/a0=0.45 the former 500k ceiling is unnecessary.  A 300k guard leaves
+# margin above the particle count predicted from the completed h/a0=0.3375
+# campaigns while preventing an accidentally unbounded tutorial run.
+DVH_MAX_NODES = 300_000
+GBD_MAX_NODES = 300_000
+INITIAL_STRENGTH_CUTOFF = 0.01
 CORE_RADIUS_RATIO = 1.50
 VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
 
@@ -73,6 +77,14 @@ def viscous_config(
     scheme: str,
     kinematic_viscosity: float,
     spacing: float,
+    *,
+    dvh_rd_ratio: int = DVH_RD_RATIO,
+    dvh_padding: float = DVH_PADDING,
+    gbd_padding: float = GBD_PADDING,
+    dvh_threshold: float = DVH_THRESHOLD,
+    gbd_threshold: float = GBD_THRESHOLD,
+    dvh_max_nodes: int = DVH_MAX_NODES,
+    gbd_max_nodes: int = GBD_MAX_NODES,
 ) -> vpm.ViscousConfig:
     """Build one viscous model using the same spatial resolution for every case."""
     if scheme == "cs":
@@ -88,25 +100,28 @@ def viscous_config(
     if scheme == "dvh":
         return vpm.ViscousConfig.dvh(
             particle_spacing=spacing,
-            padding=DVH_PADDING,
+            padding=dvh_padding,
             kinematic_viscosity=kinematic_viscosity,
-            dvh_support_radius_ratio=float(
-                os.environ.get("OPENONDA_LAMB_DVH_RD_RATIO", DVH_RD_RATIO)
+            dvh_support_radius_ratio=int(
+                os.environ.get("OPENONDA_LAMB_DVH_RD_RATIO", dvh_rd_ratio)
             ),
-            threshold=float(os.environ.get("OPENONDA_LAMB_DVH_THRESHOLD", DVH_THRESHOLD)),
+            threshold=float(os.environ.get("OPENONDA_LAMB_DVH_THRESHOLD", dvh_threshold)),
             threshold_mode="budget",
             max_nodes=_regeneration_node_cap(
                 "OPENONDA_LAMB_DVH_MAX_NODES",
-                DVH_MAX_NODES,
+                dvh_max_nodes,
             ),
             core_radius_ratio=CORE_RADIUS_RATIO,
         )
     return vpm.ViscousConfig.gbd(
         particle_spacing=spacing,
+        padding=gbd_padding,
         kinematic_viscosity=kinematic_viscosity,
+        threshold=float(os.environ.get("OPENONDA_LAMB_GBD_THRESHOLD", gbd_threshold)),
+        threshold_mode="budget",
         max_nodes=_regeneration_node_cap(
             "OPENONDA_LAMB_GBD_MAX_NODES",
-            GBD_MAX_NODES,
+            gbd_max_nodes,
         ),
         core_radius_ratio=CORE_RADIUS_RATIO,
     )
@@ -168,6 +183,14 @@ def run_case(
     case_dir: Path = TUTORIAL_DIR,
     compute_device: str = "AUTO",
     anti_diffusion: bool = True,
+    strength_cutoff: float = INITIAL_STRENGTH_CUTOFF,
+    dvh_rd_ratio: int = DVH_RD_RATIO,
+    dvh_padding: float = DVH_PADDING,
+    gbd_padding: float = GBD_PADDING,
+    dvh_threshold: float = DVH_THRESHOLD,
+    gbd_threshold: float = GBD_THRESHOLD,
+    dvh_max_nodes: int = DVH_MAX_NODES,
+    gbd_max_nodes: int = GBD_MAX_NODES,
 ) -> None:
     """Run one benchmark case."""
     spacing = spacing_ratio * CORE_RADIUS
@@ -181,7 +204,24 @@ def run_case(
     sample_interval_time = (
         MERGING_SAMPLE_INTERVAL_TIME if physics == "merging" else SAMPLE_INTERVAL_TIME
     )
-    viscous = viscous_config(scheme, kinematic_viscosity, spacing)
+    if not 0.0 <= strength_cutoff < 1.0:
+        raise ValueError("strength_cutoff must be in [0, 1)")
+    if dvh_padding < 0.0 or gbd_padding < 0.0:
+        raise ValueError("diffusion-grid padding must be non-negative")
+    if not 0.0 <= dvh_threshold < 1.0 or not 0.0 <= gbd_threshold < 1.0:
+        raise ValueError("diffusion strength budgets must be in [0, 1)")
+    viscous = viscous_config(
+        scheme,
+        kinematic_viscosity,
+        spacing,
+        dvh_rd_ratio=dvh_rd_ratio,
+        dvh_padding=dvh_padding,
+        gbd_padding=gbd_padding,
+        dvh_threshold=dvh_threshold,
+        gbd_threshold=gbd_threshold,
+        dvh_max_nodes=dvh_max_nodes,
+        gbd_max_nodes=gbd_max_nodes,
+    )
     n_steps = round(end_time / time_step_size)
     sample_steps = round(sample_interval_time / time_step_size)
     checkpoint_interval_steps = round(CHECKPOINT_INTERVAL_TIME / time_step_size)
@@ -274,6 +314,9 @@ def run_case(
         "end_time": end_time,
         "time_step_size": time_step_size,
         "in_plane_spacing": spacing,
+        "in_plane_spacing_ratio": spacing_ratio,
+        "column_spacing": column_spacing,
+        "column_spacing_ratio": column_spacing / CORE_RADIUS,
         "field_spacing": field_spacing,
         "sample_plane_fraction": sample_plane_fraction,
         "sample_plane_z": sample_plane_fraction * COLUMN_LENGTH,
@@ -288,11 +331,14 @@ def run_case(
         "dvh_rd_ratio": viscous.dvh_support_radius_ratio if scheme == "dvh" else None,
         "dvh_threshold": viscous.dvh_threshold if scheme == "dvh" else None,
         "dvh_threshold_mode": viscous.dvh_threshold_mode if scheme == "dvh" else None,
+        "dvh_padding_cells": viscous.dvh_domain_padding if scheme == "dvh" else None,
         "dvh_max_nodes": viscous.dvh_max_nodes if scheme == "dvh" else None,
         "gbd_threshold": viscous.gbd_threshold if scheme == "gbd" else None,
         "gbd_threshold_mode": viscous.gbd_threshold_mode if scheme == "gbd" else None,
+        "gbd_padding_cells": viscous.gbd_domain_padding if scheme == "gbd" else None,
         "gbd_max_nodes": viscous.gbd_max_nodes if scheme == "gbd" else None,
-        "regeneration_cap_basis": "solver_capacity_ceiling",
+        "regeneration_cap_basis": "calibrated_resource_ceiling",
+        "initial_strength_cutoff_fraction": strength_cutoff,
         "circulation_normalization": "per_vortex_after_strength_cutoff",
         "status": "running",
         "completed": False,
@@ -317,7 +363,7 @@ def run_case(
             is_anti_diffusion_enabled=anti_diffusion,
         )
         vortex_strength_magnitude = np.linalg.norm(particle_vortex_strength, axis=1)
-        keep = vortex_strength_magnitude >= 0.01 * vortex_strength_magnitude.max()
+        keep = vortex_strength_magnitude >= strength_cutoff * vortex_strength_magnitude.max()
         retained_vortex_strength, raw_per_length, normalization_scale = (
             normalize_retained_circulation(
                 particle_vortex_strength,
@@ -388,6 +434,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--end-time", type=float, default=TOTAL_TIME)
     parser.add_argument("--time-step-size", type=float, default=TIME_STEP_SIZE)
     parser.add_argument("--sample-plane-fraction", type=float, default=0.25)
+    parser.add_argument("--strength-cutoff", type=float, default=INITIAL_STRENGTH_CUTOFF)
+    parser.add_argument("--dvh-rd-ratio", type=int, choices=(3, 4, 5), default=DVH_RD_RATIO)
+    parser.add_argument("--dvh-padding", type=float, default=DVH_PADDING)
+    parser.add_argument("--gbd-padding", type=float, default=GBD_PADDING)
+    parser.add_argument("--dvh-threshold", type=float, default=DVH_THRESHOLD)
+    parser.add_argument("--gbd-threshold", type=float, default=GBD_THRESHOLD)
+    parser.add_argument("--dvh-max-nodes", type=int, default=DVH_MAX_NODES)
+    parser.add_argument("--gbd-max-nodes", type=int, default=GBD_MAX_NODES)
     parser.add_argument("--case-dir", type=Path, default=TUTORIAL_DIR)
     parser.add_argument(
         "--compute-device",
@@ -424,6 +478,14 @@ def main() -> int:
         case_dir=args.case_dir,
         compute_device=args.compute_device,
         anti_diffusion=not args.disable_anti_diffusion,
+        strength_cutoff=args.strength_cutoff,
+        dvh_rd_ratio=args.dvh_rd_ratio,
+        dvh_padding=args.dvh_padding,
+        gbd_padding=args.gbd_padding,
+        dvh_threshold=args.dvh_threshold,
+        gbd_threshold=args.gbd_threshold,
+        dvh_max_nodes=args.dvh_max_nodes,
+        gbd_max_nodes=args.gbd_max_nodes,
     )
     return 0
 

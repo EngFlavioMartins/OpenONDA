@@ -16,6 +16,7 @@ def test_panel_refresh_resolves_current_state_without_advancing_history():
     wake_velocity = object()
     panel = SimpleNamespace(
         step=7,
+        refresh_count=0,
         _current_time=0.3,
         results={"time_history": [0.1, 0.2, 0.3]},
         ensure_mesh_generated=lambda: calls.append(("mesh",)),
@@ -25,6 +26,7 @@ def test_panel_refresh_resolves_current_state_without_advancing_history():
         solve=lambda freestream, wake, time: calls.append(
             ("solve", np.asarray(freestream).copy(), wake, time)
         ),
+        _record_particle_velocity_diagnostic=lambda particles: None,
     )
     particles = object()
     physics = object()
@@ -45,9 +47,10 @@ def test_panel_refresh_resolves_current_state_without_advancing_history():
     assert panel.step == 7
     assert panel._current_time == 0.3
     assert panel.results["time_history"] == [0.1, 0.2, 0.3]
+    assert panel.refresh_count == 1
 
 
-def test_vpm_refresh_is_limited_to_boundary_only_panel_scope():
+def test_vpm_refresh_applies_to_full_and_boundary_only_panel_scopes():
     calls: list[dict] = []
     panel = SimpleNamespace(
         coupling_scope="vpm_boundary_condition",
@@ -72,9 +75,23 @@ def test_vpm_refresh_is_limited_to_boundary_only_panel_scope():
         }
     ]
 
+    # A synchronized "full" panel was last solved against the pre-replacement
+    # particle state, so it must be refreshed too, not just the boundary-only
+    # panel above.
     panel.coupling_scope = "full"
     VPMSolver.refresh_boundary_element_solution(solver)
-    assert len(calls) == 1
+    assert len(calls) == 2
+
+    # A scope that never participates in coupled solving stays a no-op.
+    panel.coupling_scope = "normal"
+    VPMSolver.refresh_boundary_element_solution(solver)
+    assert len(calls) == 2
+
+
+def test_vpm_refresh_is_a_no_op_without_a_panel_solver():
+    solver = SimpleNamespace(panel_solver=None)
+
+    VPMSolver.refresh_boundary_element_solution(solver)
 
 
 def test_boundary_only_panel_is_not_advanced_before_particle_evolution():

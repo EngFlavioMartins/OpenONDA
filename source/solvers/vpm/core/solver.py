@@ -410,8 +410,15 @@ class VPMSolver:
                     self.set_body_induced_velocity(self.panel_solver.compute_induced_velocity)
                 else:
                     self.set_body_induced_velocity(None)
-                if scope != "full":
+                if scope == "full":
+                    # Only "full" deflects particle trajectories, and it does so
+                    # at every RK stage, so give it the device-resident hook.
+                    self.physics.body_velocity_field = (
+                        self.panel_solver.accumulate_induced_velocity_on_field
+                    )
+                else:
                     self.physics.body_velocity = None
+                    self.physics.body_velocity_field = None
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize panel solver: {e}") from e
 
@@ -936,17 +943,25 @@ class VPMSolver:
         """
         self._body_induced_fn = fn
         self.physics.body_velocity = fn
+        if fn is None:
+            # Never leave the device hook installed for a disabled body.
+            self.physics.body_velocity_field = None
 
     def refresh_boundary_element_solution(self) -> None:
-        """Make a boundary-only panel solution consistent with current particles.
+        """Make a synchronized panel solution consistent with current particles.
 
         A ``vpm_boundary_condition`` panel does not participate in particle
-        evolution. External couplers may replace the particle cloud at fixed
-        physical time, so its harmonic/body correction must be re-solved before
-        the next boundary trace is evaluated.
+        evolution, and a ``full`` panel was last solved against the particle
+        state at the top of the VPM step. External couplers may replace the
+        particle cloud at fixed physical time, so the panel's harmonic/body
+        correction must be re-solved against the replaced state before the
+        next boundary trace or advection step evaluates it.
         """
         panel = self.panel_solver
-        if panel is None or getattr(panel, "coupling_scope", "full") != "vpm_boundary_condition":
+        if panel is None or getattr(panel, "coupling_scope", "full") not in (
+            "full",
+            "vpm_boundary_condition",
+        ):
             return
         panel.refresh_coupled_solution(
             particles=self.particles,

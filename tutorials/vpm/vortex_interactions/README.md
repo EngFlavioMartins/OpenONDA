@@ -171,5 +171,5 @@ After all six runs pass the physics and comparative-stability gate, generate
 the PNG and PDF diagnostics with:
 
 ```sh
-./plot_all.sh
+./allplot.sh
 ```

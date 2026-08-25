@@ -20,7 +20,7 @@ python taylor_green_setup.py --n 24 --kinematic-viscosity 0.1 --time-step-size 0
 echo
 echo "===== FIGURES ====="
 echo
-./plot_all.sh
+./allplot.sh
 
 echo
 echo "===== DONE ====="

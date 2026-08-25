@@ -160,7 +160,7 @@ def main() -> None:
     write_surface_cp(fvm_solver, sol_dir)
 
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     if abs(args.angle) < 1e-9:
         print("Zero-angle check: mean lift and upper/lower Cp asymmetry should approach zero.")
 

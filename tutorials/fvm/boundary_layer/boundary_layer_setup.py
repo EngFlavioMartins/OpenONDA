@@ -203,7 +203,7 @@ def main() -> None:
     write_profiles(fvm_solver, sol_dir, kinematic_viscosity)
 
     print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./plot_all.sh to make the figures.")
+    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
     print("Validation targets (Blasius; Schlichting, Boundary-Layer Theory):")
     print("  u/U = f'(eta) with eta = y*sqrt(U/(nu x));  Cf = 0.664/sqrt(Re_x)")
 

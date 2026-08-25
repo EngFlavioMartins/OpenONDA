@@ -95,3 +95,59 @@ def compute_source_induced_velocity_kernel(
         velocity[i, 0] = value[0]
         velocity[i, 1] = value[1]
         velocity[i, 2] = value[2]
+
+
+# The kernels below take the panel lattice and the particle buffers as Taichi
+# fields rather than numpy arrays, so a coupled step never copies panel
+# geometry or particle state across the host boundary. The ndarray kernels
+# above remain for host-side queries at arbitrary probe points.
+
+
+@ti.kernel
+def accumulate_source_panel_velocity_on_field(
+    vertex_position: ti.template(),
+    normal: ti.template(),
+    source_strength: ti.template(),
+    target_position: ti.template(),
+    target_velocity: ti.template(),
+    n_panels: ti.i32,
+    n_targets: ti.i32,
+):
+    """Add constant-source panel velocity to ``target_velocity`` in place."""
+    for i in range(n_targets):
+        point = target_position[i]
+        value = ti.Vector([0.0, 0.0, 0.0])
+        for j in range(n_panels):
+            value += source_strength[j] * compute_source_velocity(
+                point,
+                vertex_position[j, 0],
+                vertex_position[j, 1],
+                vertex_position[j, 2],
+                normal[j],
+            )
+        target_velocity[i] += value
+
+
+@ti.kernel
+def accumulate_doublet_panel_velocity_on_field(
+    vertex_position: ti.template(),
+    doublet_strength: ti.template(),
+    target_position: ti.template(),
+    target_velocity: ti.template(),
+    n_panels: ti.i32,
+    n_targets: ti.i32,
+):
+    """Add vortex-ring (doublet) panel velocity to ``target_velocity`` in place."""
+    for i in range(n_targets):
+        point = target_position[i]
+        value = ti.Vector([0.0, 0.0, 0.0])
+        for j in range(n_panels):
+            v0 = vertex_position[j, 0]
+            v1 = vertex_position[j, 1]
+            v2 = vertex_position[j, 2]
+            value += doublet_strength[j] * (
+                _segment_velocity(point, v0, v1)
+                + _segment_velocity(point, v1, v2)
+                + _segment_velocity(point, v2, v0)
+            )
+        target_velocity[i] += value
