@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 from pathlib import Path
@@ -25,7 +26,12 @@ def _json_lines(path: Path) -> list[dict]:
 def _check_solver_history(diagnostics: list[dict]) -> tuple[float, float]:
     max_courant_number = max(float(record["max_courant_number"]) for record in diagnostics)
     max_continuity = max(float(record["max_continuity_error"]) for record in diagnostics)
-    if any(int(record["nonfinite_count"]) != 0 for record in diagnostics):
+    nonfinite_counts = [
+        record.get("n_nonfinite_values", record.get("nonfinite_count")) for record in diagnostics
+    ]
+    if any(value is None for value in nonfinite_counts):
+        raise SystemExit("FAIL: FVM diagnostics omit the non-finite-value count")
+    if any(int(value) != 0 for value in nonfinite_counts):
         raise SystemExit("FAIL: non-finite FVM fields were detected")
     failed = [
         (record["step"], solve.get("equation", "unknown"))
@@ -77,10 +83,14 @@ def _check_coupling_history(coupling: list[dict]) -> None:
             raise SystemExit("FAIL: non-finite overlap-replacement circulation budget")
 
 
-def _check_reference_accuracy() -> str:
-    """Require every sampled Cd and line-profile maximum to remain within 5%."""
-    samples = CASE_DIR / "samples"
-    reference_samples = CASE_DIR / "reference_flow" / "samples"
+def _check_reference_accuracy(
+    case_directory: Path,
+    reference_directory: Path,
+    acceptance_limit: float,
+) -> str:
+    """Require every sampled Cd and line-profile maximum to satisfy the limit."""
+    samples = case_directory / "samples"
+    reference_samples = reference_directory / "samples"
     candidate_force = load_table(samples / "forces_history.csv")
     reference_force = load_table(reference_samples / "forces_history.csv")
     measurements: list[tuple[str, float]] = []
@@ -120,17 +130,35 @@ def _check_reference_accuracy() -> str:
 
     if not measurements:
         raise SystemExit("FAIL: no coincident reference metrics were available")
-    failed = [(name, value) for name, value in measurements if value > 0.05]
+    failed = [(name, value) for name, value in measurements if value > acceptance_limit]
     if failed:
         detail = ", ".join(f"{name}={value:.2%}" for name, value in failed[:8])
-        raise SystemExit(f"FAIL: reference errors exceed 5%: {detail}")
+        raise SystemExit(f"FAIL: reference errors exceed {acceptance_limit:.1%}: {detail}")
     worst_name, worst_value = max(measurements, key=lambda item: item[1])
-    return f" worst reference error {worst_name}={worst_value:.2%}"
+    comparison_end = min(candidate_force["time"].max(), reference_force["time"].max())
+    return (
+        f" {len(measurements)} reference metrics checked through t={comparison_end:g};"
+        f" worst reference error {worst_name}={worst_value:.2%}"
+    )
 
 
 def main() -> None:
-    metadata_path = CASE_DIR / "solution" / "run_metadata.json"
-    force_path = CASE_DIR / "samples" / "forces_history.csv"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--case-directory", type=Path, default=CASE_DIR)
+    parser.add_argument(
+        "--reference-directory",
+        type=Path,
+        default=CASE_DIR / "reference_flow",
+    )
+    parser.add_argument("--acceptance-limit", type=float, default=0.05)
+    arguments = parser.parse_args()
+    if not 0.0 < arguments.acceptance_limit < 1.0:
+        raise ValueError("acceptance limit must lie strictly between zero and one")
+    case_directory = arguments.case_directory.resolve()
+    reference_directory = arguments.reference_directory.resolve()
+
+    metadata_path = case_directory / "solution" / "run_metadata.json"
+    force_path = case_directory / "samples" / "forces_history.csv"
     if not metadata_path.is_file():
         raise SystemExit("FAIL: coupled run metadata was not written")
     expected_end = float(json.loads(metadata_path.read_text())["physics"]["end_time"])
@@ -164,13 +192,17 @@ def main() -> None:
             f"FAIL: force history ends at t={forces[-1, 0]:g}, expected {expected_end:g}"
         )
 
-    diagnostics = _json_lines(CASE_DIR / "solution" / "diagnostics.jsonl")
+    diagnostics = _json_lines(case_directory / "solution" / "diagnostics.jsonl")
     max_courant_number, max_continuity = _check_solver_history(diagnostics)
 
-    coupling = _json_lines(CASE_DIR / "solution" / "coupler_diagnostics.jsonl")
+    coupling = _json_lines(case_directory / "solution" / "coupler_diagnostics.jsonl")
     _check_coupling_history(coupling)
 
-    physics_summary = _check_reference_accuracy()
+    physics_summary = _check_reference_accuracy(
+        case_directory,
+        reference_directory,
+        arguments.acceptance_limit,
+    )
 
     print(
         "PASS: native cube run completed with converged FVM solves, "

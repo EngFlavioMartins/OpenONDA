@@ -3,22 +3,27 @@
 This Re=1000 cube case uses OpenONDA's adaptive Cartesian FVM mesher and the
 FVM–VPM coupler. It has no external mesher or repository-path requirement.
 
-After installing OpenONDA, run the production case with:
+After installing OpenONDA, run the configured cube case with:
 
 ```sh
 ./allrun.sh
 ./allplot.sh
 ```
 
-`allrun.sh` removes the previous generated outputs before starting a new run.
-The preserved baseline samples remain in `samples_archive/`; the fully
-meshed reference samples are in `reference_flow/samples/`. Run
+`allrun.sh` has no run modes or command-line flags. It runs the `t=20` case
+defined in `cube_flow_setup.py`, checks numerical integrity for the complete
+run, and applies the strict drag/profile gate wherever its current reference
+overlaps (the default cache ends at `t=0.10`). Point `OPENONDA_CUBE_REFERENCE` to a
+current full-horizon FVM reference to gate all sample times.
+The run removes the previous generated outputs before starting.
+The preserved baseline samples remain in `samples_archive/`; the archived
+full-horizon reference samples are in `reference_flow/samples/`. Run
 `./allplot.sh pdf` when PDF output is required; PNG is the default.
 
-The production case uses four partitioned FVM ranks. Its coupled MPI smoke
-test includes the body-wall geometry gathers used during transfer setup.
+The case uses four partitioned FVM ranks. Its coupled MPI initialization
+includes the body-wall geometry gathers used during transfer setup.
 
-Production inputs use the wall-commensurate particle spacing `h=0.03125`, an
+The inputs use the wall-commensurate particle spacing `h=0.03125`, an
 FVM time-step size of `0.005 s`, and a VPM/coupling time-step size of `0.010 s`.
 The coupler therefore advances two FVM substeps per VPM step. All force, line,
 and surface samplers use the single `SAMPLING_INTERVAL_TIME` defined in
@@ -29,7 +34,7 @@ are written every `0.5 s`; the native VPM checkpoint writer is disabled because
 it would capture the pre-replacement state. Matching the transient time discretization is required for
 the reference comparison. The coupled and reference FVMs use the same pressure
 corrector counts. `VPM_VISCOUS_SCHEME` selects CS, RWM, DVH, GBD, or NONE;
-the acceptance case remains on GBD until the controlled full-solver comparison.
+this case uses GBD.
 
 The FVM-to-VPM hand-off is an absolute state replacement on the regular VPM
 lattice. The coupler maps `Gamma = cell_volume * FVM_vorticity` and the current
