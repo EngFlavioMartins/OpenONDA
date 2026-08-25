@@ -78,6 +78,15 @@ def test_tensor_m4_prime_reproduces_3d_moments_for_random_phases():
     )
 
 
+def test_coupler_m4_prime_matches_the_grid_diffusion_kernel():
+    pytest.importorskip("taichi", reason="grid diffusion requires taichi")
+    from source.solvers.vpm.physics.diffusion.grid import _m4_prime_1d
+
+    rng = np.random.default_rng(116)
+    distance = rng.uniform(-2.5, 2.5, size=10_000)
+    np.testing.assert_allclose(m4_prime(distance), _m4_prime_1d(distance), rtol=0.0, atol=0.0)
+
+
 def _numerical_eta_gradient(point: np.ndarray, *, step: float) -> np.ndarray:
     gradient = np.empty(3)
     for axis in range(3):
@@ -426,6 +435,54 @@ def test_actual_f32_stored_state_conservation(tmp_path, monkeypatch):
         rtol=0.0,
         atol=0.0,
     )
+
+
+def test_f32_matching_state_is_a_fixed_point_over_one_thousand_transfers(tmp_path, monkeypatch):
+    """A matching hard-state handoff cannot accumulate f32 representation drift."""
+    pytest.importorskip("taichi", reason="VPM requires taichi")
+    monkeypatch.chdir(tmp_path)
+    from source.coupler.vorticity_transfer import replace_particles_from_lattice_blend
+    from source.solvers.vpm import ViscousConfig, VPMSetup, VPMSolver
+
+    h = 0.03125
+    position = np.array([[0.0, 0.0, 0.0]])
+    volume = np.array([h**3])
+    vorticity = np.array([[1.5, -2.0, 0.25]])
+    solver = VPMSolver(
+        VPMSetup(
+            time_step_size=0.01,
+            compute_device="CPU",
+            precision="f32",
+            max_n_particles=128,
+            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+            viscous=ViscousConfig.cs(
+                kinematic_viscosity=1.0e-3,
+                particle_spacing=h,
+                core_radius_ratio=1.0,
+            ),
+        )
+    )
+    transfer_arguments = {
+        "transfer_box": np.array([-0.1, 0.1, -0.1, 0.1, -0.1, 0.1]),
+        "eta_blend_width": 0.0,
+        "fvm_position": position,
+        "fvm_cell_volume": volume,
+        "fvm_vorticity": vorticity,
+        "lattice_anchor": np.zeros(3),
+        "particle_spacing": h,
+        "core_radius_ratio": 1.0,
+        "kinematic_viscosity": 1.0e-3,
+    }
+
+    replace_particles_from_lattice_blend(solver, **transfer_arguments)
+    first_position = solver.particles.position_cpu().copy()
+    first_strength = solver.particles.vortex_strength_cpu().copy()
+    first_count = solver.particles.n_particles_total
+    for _ in range(999):
+        result = replace_particles_from_lattice_blend(solver, **transfer_arguments)
+        assert result.n_particles_after == first_count
+    np.testing.assert_array_equal(solver.particles.position_cpu(), first_position)
+    np.testing.assert_array_equal(solver.particles.vortex_strength_cpu(), first_strength)
 
 
 def test_m4_lattice_particles_are_preserved_by_cs_core_spreading(tmp_path, monkeypatch):

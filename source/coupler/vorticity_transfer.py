@@ -16,6 +16,21 @@ from source.coupler.reporting import format_coupler_log
 
 logger = logging.getLogger("coupler")
 
+_MAX_SOLID_REDISTRIBUTION_CONDITION = 1.0e6
+_MAX_SOLID_REDISTRIBUTION_ABS_WEIGHT = 8.0
+_MAX_SOLID_REDISTRIBUTION_WEIGHT_L1 = 16.0
+
+
+@dataclass(frozen=True)
+class SolidRedistributionAudit:
+    """Numerical quality of every constrained solid-node redistribution."""
+
+    condition_numbers: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=np.float64))
+    max_abs_weights: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=np.float64))
+    weight_l1: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=np.float64))
+    strength_l1_amplification: float = 1.0
+    max_particle_strength_amplification: float = 1.0
+
 
 def replacement_eta(
     points: np.ndarray,
@@ -62,6 +77,9 @@ class TransferResult:
     )
     redistributed_solid_vortex_strength_net: np.ndarray = field(
         default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    solid_redistribution_audit: SolidRedistributionAudit = field(
+        default_factory=SolidRedistributionAudit
     )
     mapped_first_moment: np.ndarray = field(
         default_factory=lambda: np.zeros((3, 3), dtype=np.float64)
@@ -142,7 +160,7 @@ def _redistribute_solid_lattice_nodes(
     solid: np.ndarray,
     *,
     spacing: float,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, SolidRedistributionAudit]:
     """Move forbidden-node strength to fluid nodes without changing moments.
 
     For every solid lattice node, the minimum-norm constrained weights on
@@ -158,7 +176,7 @@ def _redistribute_solid_lattice_nodes(
     if len(points) != len(strength) or len(points) != len(forbidden):
         raise ValueError("solid lattice redistribution arrays must have matching lengths")
     if not np.any(forbidden):
-        return strength.copy(), np.zeros(3, dtype=np.float64)
+        return strength.copy(), np.zeros(3, dtype=np.float64), SolidRedistributionAudit()
 
     fluid_index = np.flatnonzero(~forbidden)
     if len(fluid_index) < 10:
@@ -169,6 +187,9 @@ def _redistribute_solid_lattice_nodes(
 
     redistributed = strength.copy()
     relocated_net = np.zeros(3, dtype=np.float64)
+    condition_numbers: list[float] = []
+    max_abs_weights: list[float] = []
+    weight_l1: list[float] = []
     target = np.zeros(10, dtype=np.float64)
     target[0] = 1.0
     for solid_index in np.flatnonzero(forbidden):
@@ -195,17 +216,43 @@ def _redistribute_solid_lattice_nodes(
                 rcond=None,
             )
             if np.max(np.abs(constraints @ candidate_weights - target)) <= 2.0e-12:
-                weights = candidate_weights
-                break
+                condition_number = float(np.linalg.cond(constraints))
+                max_abs_weight = float(np.max(np.abs(candidate_weights)))
+                candidate_weight_l1 = float(np.abs(candidate_weights).sum())
+                if (
+                    condition_number <= _MAX_SOLID_REDISTRIBUTION_CONDITION
+                    and max_abs_weight <= _MAX_SOLID_REDISTRIBUTION_ABS_WEIGHT
+                    and candidate_weight_l1 <= _MAX_SOLID_REDISTRIBUTION_WEIGHT_L1
+                ):
+                    weights = candidate_weights
+                    condition_numbers.append(condition_number)
+                    max_abs_weights.append(max_abs_weight)
+                    weight_l1.append(candidate_weight_l1)
+                    break
         if weights is None:
             raise RuntimeError(
                 "solid-aware lattice transfer could not find a fluid stencil "
-                "that preserves quadratic moments"
+                "with acceptable quadratic-moment conditioning and weights"
             )
         redistributed[ordered[: len(weights)]] += weights[:, None] * gamma
         redistributed[solid_index] = 0.0
         relocated_net += gamma
-    return redistributed, relocated_net
+    strength_l1_before = float(np.linalg.norm(strength, axis=1).sum())
+    strength_l1_after = float(np.linalg.norm(redistributed, axis=1).sum())
+    max_strength_before = float(np.linalg.norm(strength, axis=1).max(initial=0.0))
+    max_strength_after = float(np.linalg.norm(redistributed, axis=1).max(initial=0.0))
+    audit = SolidRedistributionAudit(
+        condition_numbers=np.asarray(condition_numbers, dtype=np.float64),
+        max_abs_weights=np.asarray(max_abs_weights, dtype=np.float64),
+        weight_l1=np.asarray(weight_l1, dtype=np.float64),
+        strength_l1_amplification=(
+            strength_l1_after / strength_l1_before if strength_l1_before else 1.0
+        ),
+        max_particle_strength_amplification=(
+            max_strength_after / max_strength_before if max_strength_before else 1.0
+        ),
+    )
+    return redistributed, relocated_net, audit
 
 
 def replace_particles_from_fvm(
@@ -386,7 +433,11 @@ def replace_particles_from_lattice_blend(
     )
     if len(target_solid) != len(state.position):
         raise ValueError("solid_contains must return one flag per target lattice node")
-    redistributed_strength, redistributed_solid_strength = _redistribute_solid_lattice_nodes(
+    (
+        redistributed_strength,
+        redistributed_solid_strength,
+        solid_redistribution_audit,
+    ) = _redistribute_solid_lattice_nodes(
         state.position,
         state.vortex_strength,
         target_solid,
@@ -528,6 +579,7 @@ def replace_particles_from_lattice_blend(
         excluded_solid_target_nodes=int(np.count_nonzero(target_solid)),
         excluded_solid_vortex_strength_net=np.zeros(3, dtype=np.float64),
         redistributed_solid_vortex_strength_net=redistributed_solid_strength,
+        solid_redistribution_audit=solid_redistribution_audit,
         mapped_first_moment=first_vorticity_moment(target_position, target_strength),
         blend_cross_divergence_l2_before=state.cross_divergence_l2_before,
         blend_cross_divergence_l2_after=state.cross_divergence_l2_after,

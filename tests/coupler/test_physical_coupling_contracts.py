@@ -182,6 +182,12 @@ class _Float32VPM(_VPM):
     np_dtype = np.float32
 
 
+class _CountMismatchingVPM(_VPM):
+    def add_vortex_particles(self, **fields):
+        super().add_vortex_particles(**fields)
+        self.particles.n_particles_total += 1
+
+
 def _particle_state(particles: _Particles) -> dict[str, np.ndarray | int]:
     return {
         "position": particles.position.copy(),
@@ -541,6 +547,81 @@ def test_lattice_blend_redistributes_solid_targets_without_losing_moments():
     )
 
 
+def _linear_impulse(position: np.ndarray, strength: np.ndarray) -> np.ndarray:
+    return 0.5 * np.cross(position, strength).sum(axis=0)
+
+
+def _gaussian_angular_impulse(
+    position: np.ndarray,
+    strength: np.ndarray,
+    core_radius: float,
+) -> np.ndarray:
+    angular_correction = 1.5
+    return np.cross(position, np.cross(position, strength)).sum(axis=0) / 3.0 - (
+        2.0 / 9.0
+    ) * angular_correction * core_radius**2 * strength.sum(axis=0)
+
+
+@pytest.mark.parametrize("distance_in_h", [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0])
+@pytest.mark.parametrize("geometry", ["plane", "edge", "corner"])
+def test_solid_redistribution_preserves_solver_moments_and_is_well_conditioned(
+    distance_in_h,
+    geometry,
+):
+    h = 0.125
+    distance = distance_in_h * h
+    if geometry == "plane":
+        donor_position = np.array([[-distance, 0.0, 0.0]])
+    elif geometry == "edge":
+        donor_position = np.array([[-distance, -distance, 0.0]])
+    else:
+        donor_position = np.array([[-distance, -distance, -distance]])
+
+    def solid_contains(points):
+        query = np.asarray(points)
+        if geometry == "plane":
+            return query[:, 0] > 0.0
+        if geometry == "edge":
+            return (query[:, 0] > 0.0) & (query[:, 1] > 0.0)
+        return np.all(query > 0.0, axis=1)
+
+    donor_strength = np.array([[0.2, -0.3, 0.5]])
+    vpm = _VPM(np.empty((0, 3)), np.empty((0, 3)))
+
+    result = _replace_lattice(
+        vpm,
+        donor_position,
+        np.array([1.0]),
+        donor_strength,
+        blend_width=0.0,
+        spacing=h,
+        solid_contains=solid_contains,
+    )
+
+    final_position = vpm.particles.position
+    final_strength = vpm.particles.vortex_strength
+    assert not np.any(solid_contains(final_position))
+    np.testing.assert_allclose(final_strength.sum(axis=0), donor_strength[0], atol=3.0e-14)
+    np.testing.assert_allclose(
+        _linear_impulse(final_position, final_strength),
+        _linear_impulse(donor_position, donor_strength),
+        atol=3.0e-14,
+    )
+    np.testing.assert_allclose(
+        _gaussian_angular_impulse(final_position, final_strength, 1.25 * h),
+        _gaussian_angular_impulse(donor_position, donor_strength, 1.25 * h),
+        atol=5.0e-14,
+    )
+    audit = result.solid_redistribution_audit
+    if distance_in_h < 1.0:
+        assert len(audit.condition_numbers) > 0
+        assert np.max(audit.condition_numbers) < 1.0e6
+        assert np.max(audit.max_abs_weights) < 8.0
+        assert np.max(audit.weight_l1) < 16.0
+    else:
+        assert len(audit.condition_numbers) == 0
+
+
 def test_lattice_blend_capacity_failure_is_atomic():
     h = 0.125
     position = np.array([[0.75, 0.0, 0.0]])
@@ -645,6 +726,29 @@ def test_lattice_particle_mutation_failures_roll_back_every_particle_field(failu
             np.array([[0.0, 8.0, 0.0]]),
             blend_width=blend_width,
             spacing=h,
+        )
+
+    after = _particle_state(vpm.particles)
+    for name in before:
+        if isinstance(before[name], np.ndarray):
+            np.testing.assert_array_equal(after[name], before[name])
+        else:
+            assert after[name] == before[name]
+
+
+def test_post_mutation_count_failure_rolls_back_every_particle_field():
+    vpm = _CountMismatchingVPM(
+        np.array([[0.8, 0.0, 0.0]]),
+        np.array([[0.0, 2.0, 0.0]]),
+    )
+    before = _particle_state(vpm.particles)
+
+    with pytest.raises(RuntimeError, match="count after replacement"):
+        _replace(
+            vpm,
+            np.array([[0.0, 0.0, 0.0]]),
+            np.array([0.25]),
+            np.array([[0.0, 8.0, 0.0]]),
         )
 
     after = _particle_state(vpm.particles)

@@ -47,7 +47,10 @@ When a target lattice node is inside a solid, its strength is redistributed to
 nearby fluid nodes with constrained weights reproducing constants, linear
 terms, and quadratic terms. It is never simply discarded. The operation
 requires at least ten linearly independent fluid nodes; otherwise it fails
-before particle mutation.
+before particle mutation. Each successful solve records its matrix condition
+number, maximum absolute weight, and weight L1 norm. A candidate is rejected
+before mutation unless those values are at most `1e6`, `8`, and `16`,
+respectively.
 
 ## Solver-level invariant definitions
 
@@ -97,7 +100,9 @@ strain rate.
 The unit regressions cover M4′ moment identities, C1 ownership seams,
 solid-target redistribution, hard-release collision ownership, mutation
 rollback, the matched discrete divergence operator, and one authoritative f32
-post-insertion state download. The following remain
+post-insertion state download. They also exercise f32 fixed-point replacement
+for 1,000 transfers, mutation count-check rollback, and M4′ agreement with the
+GBD/DVH grid kernel. The following remain
 **not certified** and are release gates for the coupled cube continuation:
 
 - continuous Gaussian field accuracy and true `div(omega)`;
