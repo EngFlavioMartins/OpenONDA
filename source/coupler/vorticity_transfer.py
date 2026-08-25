@@ -60,6 +60,9 @@ class TransferResult:
     excluded_solid_vortex_strength_net: np.ndarray = field(
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
+    redistributed_solid_vortex_strength_net: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
     mapped_first_moment: np.ndarray = field(
         default_factory=lambda: np.zeros((3, 3), dtype=np.float64)
     )
@@ -84,6 +87,125 @@ def _validate_particle_sources(
     if not np.all(np.isfinite(source_vorticity)):
         raise RuntimeError("FVM cell vorticity contains non-finite values")
     return source_position, volume, source_vorticity
+
+
+def _particle_state_snapshot(vpm) -> dict[str, np.ndarray]:
+    """Download every mutable particle field required for a transfer rollback."""
+    particles = vpm.particles
+    count = int(particles.n_particles_total)
+    dtype = np.dtype(getattr(vpm, "np_dtype", np.float64))
+
+    def read(name: str, shape: tuple[int, ...], default: float | int, *, integer: bool = False):
+        accessor = getattr(particles, f"{name}_cpu", None)
+        value_dtype = np.int32 if integer else dtype
+        if callable(accessor):
+            return np.ascontiguousarray(np.asarray(accessor(), dtype=value_dtype).copy())
+        return np.full(shape, default, dtype=value_dtype)
+
+    return {
+        "position": read("position", (count, 3), 0.0),
+        "velocity": read("velocity", (count, 3), 0.0),
+        "vortex_strength": read("vortex_strength", (count, 3), 0.0),
+        "core_radius": read("core_radius", (count,), 0.0),
+        "particle_volume": read("particle_volume", (count,), 0.0),
+        "kinematic_viscosity": read("kinematic_viscosity", (count,), 0.0),
+        "eddy_viscosity": read("eddy_viscosity", (count,), 0.0),
+        "group_id": read("group_id", (count,), 0, integer=True),
+        "zone_id": read("zone_id", (count,), 0, integer=True),
+        "velocity_gradient": read("velocity_gradient", (count, 3, 3), 0.0),
+        "strain_rate": read("strain_rate", (count, 3, 3), 0.0),
+    }
+
+
+def _restore_particle_state(vpm, snapshot: dict[str, np.ndarray]) -> None:
+    """Restore a transfer snapshot through VPM's atomic field replacement API."""
+    replace = getattr(vpm, "replace_vortex_particles", None)
+    if not callable(replace):
+        raise RuntimeError(
+            "FVM/VPM transfer needs replace_vortex_particles to roll back a failed mutation"
+        )
+    replace(report_removal=False, **snapshot)
+
+
+def _quadratic_moment_features(displacement: np.ndarray, spacing: float) -> np.ndarray:
+    """Return basis terms through degree two in dimensionless displacement."""
+    relative = np.asarray(displacement, dtype=np.float64) / float(spacing)
+    x, y, z = relative.T
+    return np.column_stack(
+        (np.ones(len(relative)), x, y, z, x * x, y * y, z * z, x * y, x * z, y * z)
+    )
+
+
+def _redistribute_solid_lattice_nodes(
+    position: np.ndarray,
+    vortex_strength: np.ndarray,
+    solid: np.ndarray,
+    *,
+    spacing: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Move forbidden-node strength to fluid nodes without changing moments.
+
+    For every solid lattice node, the minimum-norm constrained weights on
+    nearby fluid nodes reproduce constants, linear terms, and all quadratic
+    monomials at the forbidden location.  This permits the extrapolatory
+    negative weights required near a wall, but keeps total circulation and the
+    moments needed by the M4' contract instead of creating then deleting a
+    solid-state particle.
+    """
+    points = np.asarray(position, dtype=np.float64).reshape(-1, 3)
+    strength = np.asarray(vortex_strength, dtype=np.float64).reshape(-1, 3)
+    forbidden = np.asarray(solid, dtype=bool).reshape(-1)
+    if len(points) != len(strength) or len(points) != len(forbidden):
+        raise ValueError("solid lattice redistribution arrays must have matching lengths")
+    if not np.any(forbidden):
+        return strength.copy(), np.zeros(3, dtype=np.float64)
+
+    fluid_index = np.flatnonzero(~forbidden)
+    if len(fluid_index) < 10:
+        raise RuntimeError(
+            "solid-aware lattice transfer needs at least ten fluid target nodes "
+            "to preserve quadratic moments"
+        )
+
+    redistributed = strength.copy()
+    relocated_net = np.zeros(3, dtype=np.float64)
+    target = np.zeros(10, dtype=np.float64)
+    target[0] = 1.0
+    for solid_index in np.flatnonzero(forbidden):
+        gamma = redistributed[solid_index].copy()
+        if not np.any(gamma):
+            continue
+        distance_sq = np.einsum(
+            "ij,ij->i",
+            points[fluid_index] - points[solid_index],
+            points[fluid_index] - points[solid_index],
+        )
+        ordered = fluid_index[np.argsort(distance_sq, kind="stable")]
+        weights: np.ndarray | None = None
+        for count in range(10, len(ordered) + 1):
+            candidates = ordered[:count]
+            constraints = _quadratic_moment_features(
+                points[candidates] - points[solid_index], spacing
+            ).T
+            if np.linalg.matrix_rank(constraints) < len(target):
+                continue
+            candidate_weights, _residual, _rank, _singular = np.linalg.lstsq(
+                constraints,
+                target,
+                rcond=None,
+            )
+            if np.max(np.abs(constraints @ candidate_weights - target)) <= 2.0e-12:
+                weights = candidate_weights
+                break
+        if weights is None:
+            raise RuntimeError(
+                "solid-aware lattice transfer could not find a fluid stencil "
+                "that preserves quadratic moments"
+            )
+        redistributed[ordered[: len(weights)]] += weights[:, None] * gamma
+        redistributed[solid_index] = 0.0
+        relocated_net += gamma
+    return redistributed, relocated_net
 
 
 def replace_particles_from_fvm(
@@ -162,33 +284,38 @@ def replace_particles_from_fvm(
     replaced_net = replaced_strength.sum(axis=0)
     injected_net = injected_strength.sum(axis=0)
 
-    # Complete every validation and capacity check before the first mutation.
-    if n_blended:
-        vpm.update_particle_vortex_strength(
-            blend,
-            -existing_eta[blend, None] * existing_strength[blend],
-        )
-    if n_removed:
-        vpm.remove_particles(particle_indices=remove_index.tolist())
-    if n_injected:
-        dtype = vpm.np_dtype
-        vpm.add_vortex_particles(
-            position=np.ascontiguousarray(injected_position, dtype=dtype),
-            velocity=np.zeros((n_injected, 3), dtype=dtype),
-            vortex_strength=np.ascontiguousarray(injected_strength, dtype=dtype),
-            core_radius=np.ascontiguousarray(injected_core_radius, dtype=dtype),
-            particle_volume=np.ascontiguousarray(injected_volume, dtype=dtype),
-            kinematic_viscosity=np.full(n_injected, viscosity, dtype=dtype),
-            eddy_viscosity=np.zeros(n_injected, dtype=dtype),
-            group_id=np.zeros(n_injected, dtype=np.int32),
-            zone_id=np.zeros(n_injected, dtype=np.int32),
-        )
-
-    actual_after = int(particles.n_particles_total)
-    if actual_after != n_after:
-        raise RuntimeError(
-            f"VPM particle count after replacement is {actual_after}, expected {n_after}"
-        )
+    # All checks above occur before the first mutation.  Any later API failure
+    # is rolled back through the solver's full-field replacement API.
+    snapshot = _particle_state_snapshot(vpm)
+    try:
+        if n_blended:
+            vpm.update_particle_vortex_strength(
+                blend,
+                -existing_eta[blend, None] * existing_strength[blend],
+            )
+        if n_removed:
+            vpm.remove_particles(particle_indices=remove_index.tolist())
+        if n_injected:
+            dtype = vpm.np_dtype
+            vpm.add_vortex_particles(
+                position=np.ascontiguousarray(injected_position, dtype=dtype),
+                velocity=np.zeros((n_injected, 3), dtype=dtype),
+                vortex_strength=np.ascontiguousarray(injected_strength, dtype=dtype),
+                core_radius=np.ascontiguousarray(injected_core_radius, dtype=dtype),
+                particle_volume=np.ascontiguousarray(injected_volume, dtype=dtype),
+                kinematic_viscosity=np.full(n_injected, viscosity, dtype=dtype),
+                eddy_viscosity=np.zeros(n_injected, dtype=dtype),
+                group_id=np.zeros(n_injected, dtype=np.int32),
+                zone_id=np.zeros(n_injected, dtype=np.int32),
+            )
+        actual_after = int(particles.n_particles_total)
+        if actual_after != n_after:
+            raise RuntimeError(
+                f"VPM particle count after replacement is {actual_after}, expected {n_after}"
+            )
+    except Exception:
+        _restore_particle_state(vpm, snapshot)
+        raise
     return TransferResult(
         n_particles_before=n_before,
         n_particles_retained=n_before - n_removed,
@@ -259,10 +386,15 @@ def replace_particles_from_lattice_blend(
     )
     if len(target_solid) != len(state.position):
         raise ValueError("solid_contains must return one flag per target lattice node")
-    excluded_solid_strength = state.vortex_strength[target_solid].sum(axis=0, dtype=np.float64)
-    nonzero = np.any(state.vortex_strength != 0.0, axis=1) & ~target_solid
+    redistributed_strength, redistributed_solid_strength = _redistribute_solid_lattice_nodes(
+        state.position,
+        state.vortex_strength,
+        target_solid,
+        spacing=spacing,
+    )
+    nonzero = np.any(redistributed_strength != 0.0, axis=1) & ~target_solid
     target_position = state.position[nonzero]
-    target_strength = state.vortex_strength[nonzero]
+    target_strength = redistributed_strength[nonzero]
     target_eta = state.eta[nonzero]
 
     remove = state.vpm_replace_mask
@@ -271,8 +403,21 @@ def replace_particles_from_lattice_blend(
     anchor = np.asarray(lattice_anchor, dtype=np.float64).reshape(3)
     existing_index = np.rint((existing_position - anchor) / spacing).astype(np.int64)
     existing_lattice_position = anchor + spacing * existing_index
-    regular = (
-        np.max(np.abs(existing_position - existing_lattice_position), axis=1) <= 1.0e-5 * spacing
+    storage_dtype = np.dtype(vpm.np_dtype)
+    if not np.issubdtype(storage_dtype, np.floating):
+        raise RuntimeError("VPM particle position dtype must be floating point")
+    stored_position = np.asarray(existing_position, dtype=storage_dtype)
+    stored_lattice_position = np.asarray(existing_lattice_position, dtype=storage_dtype)
+    coordinate_ulp = np.maximum(
+        np.abs(np.spacing(stored_position)),
+        np.abs(np.spacing(stored_lattice_position)),
+    ).astype(np.float64)
+    coordinate_tolerance = np.maximum(
+        8.0 * coordinate_ulp,
+        32.0 * np.finfo(np.float64).eps * np.maximum(1.0, np.abs(existing_lattice_position)),
+    )
+    regular = np.all(
+        np.abs(existing_position - existing_lattice_position) <= coordinate_tolerance, axis=1
     )
     target_index = np.rint((target_position - anchor) / spacing).astype(np.int64)
     retained_by_node: dict[tuple[int, int, int], list[int]] = {}
@@ -284,7 +429,6 @@ def replace_particles_from_lattice_blend(
     inject = np.ones(len(target_position), dtype=bool)
     update_index: list[int] = []
     update_increment: list[np.ndarray] = []
-    overwritten_strength: list[np.ndarray] = []
     tolerance = 32.0 * np.finfo(np.float64).eps
     for target_number, node in enumerate(target_index):
         matches = retained_by_node.get(tuple(node), [])
@@ -296,13 +440,12 @@ def replace_particles_from_lattice_blend(
         if not state.hard_replacement and target_eta[target_number] > tolerance:
             raise RuntimeError("a retained VPM particle lies inside the lattice blend region")
         update_index.append(particle_index)
-        if state.hard_replacement:
-            overwritten_strength.append(existing_strength[particle_index])
-            update_increment.append(
-                target_strength[target_number] - existing_strength[particle_index]
-            )
-        else:
-            update_increment.append(target_strength[target_number])
+        # A target node outside the owned source state is persistent VPM state.
+        # Its strength and the complete M4' release support are both physical,
+        # including in the hard-release case.  Replacing it here would delete
+        # the persistent contribution whenever a release stencil crosses the
+        # ownership boundary.
+        update_increment.append(target_strength[target_number])
         inject[target_number] = False
 
     n_injected = int(np.count_nonzero(inject))
@@ -316,44 +459,44 @@ def replace_particles_from_lattice_blend(
             f"{n_injected:,} injected), exceeding the VPM capacity {capacity:,}."
         )
 
-    # Complete validation and capacity checks before the first mutation.
-    if update_index:
-        order = np.argsort(np.asarray(update_index, dtype=np.int64))
-        ordered_index = np.asarray(update_index, dtype=np.int64)[order]
-        update_mask = np.zeros(n_before, dtype=bool)
-        update_mask[ordered_index] = True
-        vpm.update_particle_vortex_strength(
-            update_mask,
-            np.asarray(update_increment, dtype=np.float64)[order],
-        )
-    if n_removed:
-        vpm.remove_particles(particle_indices=remove_index.tolist())
-    if n_injected:
-        dtype = vpm.np_dtype
-        vpm.add_vortex_particles(
-            position=np.ascontiguousarray(target_position[inject], dtype=dtype),
-            velocity=np.zeros((n_injected, 3), dtype=dtype),
-            vortex_strength=np.ascontiguousarray(target_strength[inject], dtype=dtype),
-            core_radius=np.full(n_injected, ratio * spacing, dtype=dtype),
-            particle_volume=np.full(n_injected, spacing**3, dtype=dtype),
-            kinematic_viscosity=np.full(n_injected, viscosity, dtype=dtype),
-            eddy_viscosity=np.zeros(n_injected, dtype=dtype),
-            group_id=np.zeros(n_injected, dtype=np.int32),
-            zone_id=np.zeros(n_injected, dtype=np.int32),
-        )
-
-    actual_after = int(particles.n_particles_total)
-    if actual_after != n_after:
-        raise RuntimeError(
-            f"VPM particle count after lattice blend is {actual_after}, expected {n_after}"
-        )
+    # All checks above occur before the first mutation.  Roll back every VPM
+    # field if a later mutation or final-count assertion fails.
+    snapshot = _particle_state_snapshot(vpm)
+    try:
+        if update_index:
+            order = np.argsort(np.asarray(update_index, dtype=np.int64))
+            ordered_index = np.asarray(update_index, dtype=np.int64)[order]
+            update_mask = np.zeros(n_before, dtype=bool)
+            update_mask[ordered_index] = True
+            vpm.update_particle_vortex_strength(
+                update_mask,
+                np.asarray(update_increment, dtype=np.float64)[order],
+            )
+        if n_removed:
+            vpm.remove_particles(particle_indices=remove_index.tolist())
+        if n_injected:
+            dtype = vpm.np_dtype
+            vpm.add_vortex_particles(
+                position=np.ascontiguousarray(target_position[inject], dtype=dtype),
+                velocity=np.zeros((n_injected, 3), dtype=dtype),
+                vortex_strength=np.ascontiguousarray(target_strength[inject], dtype=dtype),
+                core_radius=np.full(n_injected, ratio * spacing, dtype=dtype),
+                particle_volume=np.full(n_injected, spacing**3, dtype=dtype),
+                kinematic_viscosity=np.full(n_injected, viscosity, dtype=dtype),
+                eddy_viscosity=np.zeros(n_injected, dtype=dtype),
+                group_id=np.zeros(n_injected, dtype=np.int32),
+                zone_id=np.zeros(n_injected, dtype=np.int32),
+            )
+        actual_after = int(particles.n_particles_total)
+        if actual_after != n_after:
+            raise RuntimeError(
+                f"VPM particle count after lattice blend is {actual_after}, expected {n_after}"
+            )
+    except Exception:
+        _restore_particle_state(vpm, snapshot)
+        raise
     removed_strength = existing_strength[remove]
-    overwritten = (
-        np.asarray(overwritten_strength, dtype=np.float64).reshape(-1, 3)
-        if overwritten_strength
-        else np.empty((0, 3), dtype=np.float64)
-    )
-    replaced_strength = np.concatenate((removed_strength, overwritten), axis=0)
+    replaced_strength = removed_strength
     update_delta = (
         np.asarray(update_increment, dtype=np.float64).sum(axis=0, dtype=np.float64)
         if update_increment
@@ -383,7 +526,8 @@ def replace_particles_from_lattice_blend(
         transfer_method="common_m4_lattice_blend",
         mapped_target_nodes=int(len(target_position)),
         excluded_solid_target_nodes=int(np.count_nonzero(target_solid)),
-        excluded_solid_vortex_strength_net=excluded_solid_strength,
+        excluded_solid_vortex_strength_net=np.zeros(3, dtype=np.float64),
+        redistributed_solid_vortex_strength_net=redistributed_solid_strength,
         mapped_first_moment=first_vorticity_moment(target_position, target_strength),
         blend_cross_divergence_l2_before=state.cross_divergence_l2_before,
         blend_cross_divergence_l2_after=state.cross_divergence_l2_after,
@@ -400,7 +544,7 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
         f" | blended {result.n_particles_blended:,} | injected {result.n_particles_injected:,}"
         f" | after {result.n_particles_after:,}",
         f"lattice  active nodes {result.mapped_target_nodes:,}"
-        f" | solid nodes excluded {result.excluded_solid_target_nodes:,}",
+        f" | solid nodes redistributed {result.excluded_solid_target_nodes:,}",
         "blend divergence  "
         f"before {result.blend_cross_divergence_l2_before:.3e}"
         f" | after {result.blend_cross_divergence_l2_after:.3e}",

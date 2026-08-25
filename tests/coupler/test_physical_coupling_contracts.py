@@ -26,12 +26,49 @@ class _Particles:
         self.vortex_strength = np.asarray(vortex_strength, dtype=np.float64).reshape(-1, 3).copy()
         self.capacity = capacity
         self.n_particles_total = len(self.position)
+        index = np.arange(self.n_particles_total, dtype=np.float64)
+        self.velocity = np.column_stack((index, -index, 0.5 * index))
+        self.core_radius = 0.1 + 0.01 * index
+        self.particle_volume = 0.001 + 0.001 * index
+        self.kinematic_viscosity = 0.01 + 0.001 * index
+        self.eddy_viscosity = 0.02 + 0.001 * index
+        self.group_id = np.arange(self.n_particles_total, dtype=np.int32)
+        self.zone_id = (10 + np.arange(self.n_particles_total)).astype(np.int32)
+        self.velocity_gradient = np.broadcast_to(np.eye(3), (self.n_particles_total, 3, 3)).copy()
+        self.strain_rate = np.broadcast_to(2.0 * np.eye(3), (self.n_particles_total, 3, 3)).copy()
 
     def position_cpu(self):
         return self.position.copy()
 
     def vortex_strength_cpu(self):
         return self.vortex_strength.copy()
+
+    def velocity_cpu(self):
+        return self.velocity.copy()
+
+    def core_radius_cpu(self):
+        return self.core_radius.copy()
+
+    def particle_volume_cpu(self):
+        return self.particle_volume.copy()
+
+    def kinematic_viscosity_cpu(self):
+        return self.kinematic_viscosity.copy()
+
+    def eddy_viscosity_cpu(self):
+        return self.eddy_viscosity.copy()
+
+    def group_id_cpu(self):
+        return self.group_id.copy()
+
+    def zone_id_cpu(self):
+        return self.zone_id.copy()
+
+    def velocity_gradient_cpu(self):
+        return self.velocity_gradient.copy()
+
+    def strain_rate_cpu(self):
+        return self.strain_rate.copy()
 
 
 class _VPM:
@@ -50,22 +87,116 @@ class _VPM:
         else:
             keep = np.ones(self.particles.n_particles_total, dtype=bool)
             keep[np.asarray(particle_indices, dtype=np.int64)] = False
-        self.particles.position = self.particles.position[keep]
-        self.particles.vortex_strength = self.particles.vortex_strength[keep]
+        for name in (
+            "position",
+            "vortex_strength",
+            "velocity",
+            "core_radius",
+            "particle_volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "group_id",
+            "zone_id",
+            "velocity_gradient",
+            "strain_rate",
+        ):
+            setattr(self.particles, name, getattr(self.particles, name)[keep])
         self.particles.n_particles_total = len(self.particles.position)
 
     def add_vortex_particles(self, **fields):
         self.added_fields.append({name: np.asarray(value).copy() for name, value in fields.items()})
-        self.particles.position = np.concatenate(
-            [self.particles.position, np.asarray(fields["position"], dtype=np.float64)]
-        )
-        self.particles.vortex_strength = np.concatenate(
-            [
-                self.particles.vortex_strength,
-                np.asarray(fields["vortex_strength"], dtype=np.float64),
-            ]
-        )
+        count = len(fields["position"])
+        defaults = {
+            "velocity": np.zeros((count, 3)),
+            "core_radius": np.zeros(count),
+            "particle_volume": np.zeros(count),
+            "kinematic_viscosity": np.zeros(count),
+            "eddy_viscosity": np.zeros(count),
+            "group_id": np.zeros(count, dtype=np.int32),
+            "zone_id": np.zeros(count, dtype=np.int32),
+            "velocity_gradient": np.zeros((count, 3, 3)),
+            "strain_rate": np.zeros((count, 3, 3)),
+        }
+        for name in (
+            "position",
+            "vortex_strength",
+            "velocity",
+            "core_radius",
+            "particle_volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "group_id",
+            "zone_id",
+            "velocity_gradient",
+            "strain_rate",
+        ):
+            value = fields.get(name, defaults.get(name))
+            setattr(
+                self.particles,
+                name,
+                np.concatenate((getattr(self.particles, name), np.asarray(value))),
+            )
         self.particles.n_particles_total = len(self.particles.position)
+
+    def replace_vortex_particles(self, *, report_removal=True, **fields):
+        del report_removal
+        for name in (
+            "position",
+            "vortex_strength",
+            "velocity",
+            "core_radius",
+            "particle_volume",
+            "kinematic_viscosity",
+            "eddy_viscosity",
+            "group_id",
+            "zone_id",
+            "velocity_gradient",
+            "strain_rate",
+        ):
+            setattr(self.particles, name, np.asarray(fields[name]).copy())
+        self.particles.n_particles_total = len(self.particles.position)
+
+
+class _FailingVPM(_VPM):
+    def __init__(self, *args, fail_at: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fail_at = fail_at
+
+    def update_particle_vortex_strength(self, mask, increment):
+        super().update_particle_vortex_strength(mask, increment)
+        if self.fail_at == "update_particle_vortex_strength":
+            raise RuntimeError("injected update failure")
+
+    def remove_particles(self, *args, **kwargs):
+        super().remove_particles(*args, **kwargs)
+        if self.fail_at == "remove_particles":
+            raise RuntimeError("injected removal failure")
+
+    def add_vortex_particles(self, **fields):
+        super().add_vortex_particles(**fields)
+        if self.fail_at == "add_vortex_particles":
+            raise RuntimeError("injected add failure")
+
+
+class _Float32VPM(_VPM):
+    np_dtype = np.float32
+
+
+def _particle_state(particles: _Particles) -> dict[str, np.ndarray | int]:
+    return {
+        "position": particles.position.copy(),
+        "vortex_strength": particles.vortex_strength.copy(),
+        "velocity": particles.velocity.copy(),
+        "core_radius": particles.core_radius.copy(),
+        "particle_volume": particles.particle_volume.copy(),
+        "kinematic_viscosity": particles.kinematic_viscosity.copy(),
+        "eddy_viscosity": particles.eddy_viscosity.copy(),
+        "group_id": particles.group_id.copy(),
+        "zone_id": particles.zone_id.copy(),
+        "velocity_gradient": particles.velocity_gradient.copy(),
+        "strain_rate": particles.strain_rate.copy(),
+        "n_particles_total": particles.n_particles_total,
+    }
 
 
 def _replace(
@@ -309,7 +440,62 @@ def test_blend_merges_release_support_into_a_retained_regular_node_without_dupli
     assert len(np.unique(vpm.particles.position, axis=0)) == vpm.particles.n_particles_total
 
 
-def test_lattice_blend_excludes_solid_targets_and_reports_the_strength():
+def test_hard_release_support_adds_to_persistent_outer_node():
+    h = 0.125
+    source_position = np.array([[0.4375, 0.0, 0.0]])
+    source_strength = np.array([[0.0, 2.0, 0.0]])
+    persistent_position = np.array([[0.625, 0.0, 0.0]])
+    persistent_strength = np.array([[0.0, 0.3, 0.0]])
+    vpm = _VPM(
+        np.vstack((source_position, persistent_position)),
+        np.vstack((source_strength, persistent_strength)),
+    )
+
+    _replace_lattice(
+        vpm,
+        source_position,
+        np.array([1.0]),
+        source_strength,
+        blend_width=0.0,
+        spacing=h,
+    )
+
+    matches = np.all(np.isclose(vpm.particles.position, persistent_position[0]), axis=1)
+    assert matches.sum() == 1
+    np.testing.assert_allclose(
+        vpm.particles.vortex_strength[matches][0],
+        persistent_strength[0] - 0.0625 * source_strength[0],
+        atol=1.0e-15,
+    )
+
+
+def test_hard_release_recognizes_f32_lattice_nodes_at_large_coordinates():
+    h = 0.03
+    source_position = np.array([[9999.99, 0.0, 0.0]], dtype=np.float32)
+    persistent_position = np.array([[10000.02, 0.0, 0.0]], dtype=np.float32)
+    vpm = _Float32VPM(persistent_position, np.array([[0.0, 0.3, 0.0]]))
+
+    replace_particles_from_lattice_blend(
+        vpm,
+        transfer_box=np.array([9999.9, 10000.0, -0.5, 0.5, -0.5, 0.5]),
+        eta_blend_width=0.0,
+        fvm_position=source_position,
+        fvm_cell_volume=np.array([1.0]),
+        fvm_vorticity=np.array([[0.0, 2.0, 0.0]]),
+        lattice_anchor=np.zeros(3),
+        particle_spacing=h,
+        core_radius_ratio=1.0,
+        kinematic_viscosity=1.0e-3,
+    )
+
+    close_to_persistent = (
+        np.max(np.abs(vpm.particles.position - persistent_position.astype(np.float64)), axis=1)
+        <= 2.0e-3
+    )
+    assert close_to_persistent.sum() == 1
+
+
+def test_lattice_blend_redistributes_solid_targets_without_losing_moments():
     h = 0.125
     vpm = _VPM(np.empty((0, 3)), np.empty((0, 3)))
 
@@ -327,7 +513,32 @@ def test_lattice_blend_excludes_solid_targets_and_reports_the_strength():
     )
     assert not np.any(np.isclose(vpm.particles.position[:, 0], h))
     assert result.excluded_solid_target_nodes > 0
-    assert np.linalg.norm(result.excluded_solid_vortex_strength_net) > 0.0
+    np.testing.assert_allclose(result.excluded_solid_vortex_strength_net, 0.0, atol=1.0e-15)
+    assert np.linalg.norm(result.redistributed_solid_vortex_strength_net) > 0.0
+    expected_strength = h**3 * np.array([0.0, 4.0, 0.0])
+    np.testing.assert_allclose(
+        vpm.particles.vortex_strength.sum(axis=0), expected_strength, atol=1.0e-14
+    )
+    np.testing.assert_allclose(
+        vpm.particles.position.T @ vpm.particles.vortex_strength,
+        np.outer(np.array([0.5 * h, 0.0, 0.0]), expected_strength),
+        atol=1.0e-14,
+    )
+    np.testing.assert_allclose(
+        np.einsum(
+            "ni,nj,nk->ijk",
+            vpm.particles.position,
+            vpm.particles.position,
+            vpm.particles.vortex_strength,
+        ),
+        np.einsum(
+            "i,j,k->ijk",
+            np.array([0.5 * h, 0.0, 0.0]),
+            np.array([0.5 * h, 0.0, 0.0]),
+            expected_strength,
+        ),
+        atol=2.0e-14,
+    )
 
 
 def test_lattice_blend_capacity_failure_is_atomic():
@@ -349,6 +560,99 @@ def test_lattice_blend_capacity_failure_is_atomic():
         )
     np.testing.assert_array_equal(vpm.particles.position, before_position)
     np.testing.assert_array_equal(vpm.particles.vortex_strength, before_strength)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["update_particle_vortex_strength", "remove_particles", "add_vortex_particles"],
+)
+def test_particle_mutation_failures_roll_back_every_particle_field(failure):
+    if failure == "update_particle_vortex_strength":
+        vpm = _FailingVPM(
+            np.array([[0.25, 0.0, 0.0]]),
+            np.array([[0.0, 2.0, 0.0]]),
+            fail_at=failure,
+        )
+        replace_arguments = (
+            np.array([[0.25, 0.0, 0.0]]),
+            np.array([0.25]),
+            np.array([[0.0, 8.0, 0.0]]),
+        )
+        blend_width = 0.5
+    else:
+        vpm = _FailingVPM(
+            np.array([[0.0 if failure == "remove_particles" else 0.8, 0.0, 0.0]]),
+            np.array([[0.0, 2.0, 0.0]]),
+            fail_at=failure,
+        )
+        replace_arguments = (
+            np.array([[0.0, 0.0, 0.0]]),
+            np.array([0.25]),
+            np.array([[0.0, 8.0, 0.0]]),
+        )
+        blend_width = 0.0
+    before = _particle_state(vpm.particles)
+
+    with pytest.raises(RuntimeError, match="injected"):
+        _replace(vpm, *replace_arguments, blend_width=blend_width)
+
+    after = _particle_state(vpm.particles)
+    assert after.keys() == before.keys()
+    for name in before:
+        if isinstance(before[name], np.ndarray):
+            np.testing.assert_array_equal(after[name], before[name])
+        else:
+            assert after[name] == before[name]
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["update_particle_vortex_strength", "remove_particles", "add_vortex_particles"],
+)
+def test_lattice_particle_mutation_failures_roll_back_every_particle_field(failure):
+    h = 0.125
+    if failure == "update_particle_vortex_strength":
+        vpm = _FailingVPM(
+            np.array([[0.4375, 0.0, 0.0], [0.625, 0.0, 0.0]]),
+            np.array([[0.0, 2.0, 0.0], [0.0, 0.3, 0.0]]),
+            fail_at=failure,
+        )
+        blend_width = 0.0
+        source_position = np.array([[0.4375, 0.0, 0.0]])
+    elif failure == "remove_particles":
+        vpm = _FailingVPM(
+            np.array([[0.0, 0.0, 0.0]]),
+            np.array([[0.0, 2.0, 0.0]]),
+            fail_at=failure,
+        )
+        blend_width = 0.0
+        source_position = np.array([[0.0, 0.0, 0.0]])
+    else:
+        vpm = _FailingVPM(
+            np.array([[0.8, 0.0, 0.0]]),
+            np.array([[0.0, 2.0, 0.0]]),
+            fail_at=failure,
+        )
+        blend_width = 0.0
+        source_position = np.array([[0.0, 0.0, 0.0]])
+    before = _particle_state(vpm.particles)
+
+    with pytest.raises(RuntimeError, match="injected"):
+        _replace_lattice(
+            vpm,
+            source_position,
+            np.array([h**3]),
+            np.array([[0.0, 8.0, 0.0]]),
+            blend_width=blend_width,
+            spacing=h,
+        )
+
+    after = _particle_state(vpm.particles)
+    for name in before:
+        if isinstance(before[name], np.ndarray):
+            np.testing.assert_array_equal(after[name], before[name])
+        else:
+            assert after[name] == before[name]
 
 
 def test_solid_fvm_cells_are_not_injected():

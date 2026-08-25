@@ -146,8 +146,10 @@ def state_blend_weight(
 ) -> np.ndarray:
     """Return the FVM state weight on or inside an ownership box.
 
-    A positive width gives a C1 cosine ramp from one at the inner edge of the
-    overlap band to zero at the ownership boundary. Zero gives hard ownership.
+    A positive width uses the tensor product of six one-dimensional cosine
+    face windows. Unlike a ramp based on the minimum face distance, this is a
+    globally C1 Cartesian window: its value and gradient agree on all face,
+    edge, and corner bisectors. Zero gives hard ownership.
     """
     position = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     bounds = np.asarray(box, dtype=np.float64).reshape(6)
@@ -157,25 +159,25 @@ def state_blend_weight(
     if not np.isfinite(width) or width < 0.0:
         raise ValueError("eta_blend_width must be finite and non-negative")
 
-    distance = np.minimum.reduce(
-        [
-            position[:, 0] - bounds[0],
-            bounds[1] - position[:, 0],
-            position[:, 1] - bounds[2],
-            bounds[3] - position[:, 1],
-            position[:, 2] - bounds[4],
-            bounds[5] - position[:, 2],
-        ]
-    )
-    eta = np.zeros(len(position), dtype=np.float64)
-    inside = distance >= 0.0
+    lower_distance = position - bounds[::2]
+    upper_distance = bounds[1::2] - position
+    inside = np.all((lower_distance >= 0.0) & (upper_distance >= 0.0), axis=1)
     if width == 0.0:
+        eta = np.zeros(len(position), dtype=np.float64)
         eta[inside] = 1.0
         return eta
 
-    eta[distance >= width] = 1.0
-    ramp = inside & (distance < width)
-    eta[ramp] = 0.5 * (1.0 - np.cos(np.pi * distance[ramp] / width))
+    def face_window(distance: np.ndarray) -> np.ndarray:
+        window = np.ones(len(distance), dtype=np.float64)
+        ramp = (distance >= 0.0) & (distance < width)
+        window[ramp] = 0.5 * (1.0 - np.cos(np.pi * distance[ramp] / width))
+        window[distance < 0.0] = 0.0
+        return window
+
+    eta = np.ones(len(position), dtype=np.float64)
+    for axis in range(3):
+        eta *= face_window(lower_distance[:, axis])
+        eta *= face_window(upper_distance[:, axis])
     return eta
 
 
@@ -193,6 +195,26 @@ def _spectral_wave_numbers(
         frequencies[2][None, None, :],
     )
     return kx, ky, kz
+
+
+def spectral_lattice_divergence(field: np.ndarray, *, spacing: float) -> np.ndarray:
+    """Return the periodic spectral divergence used by blend correction.
+
+    This is deliberately the single discrete operator used to form the blend
+    residual, solve its Poisson equation, and report the remaining defect.
+    """
+    vector = np.asarray(field, dtype=np.float64)
+    if vector.ndim != 4 or vector.shape[-1] != 3:
+        raise ValueError("field must have shape (nx, ny, nz, 3)")
+    h = float(spacing)
+    if not np.isfinite(h) or h <= 0.0:
+        raise ValueError("spacing must be finite and positive")
+    wave_numbers = _spectral_wave_numbers(vector.shape[:3], h)
+    divergence_hat = sum(
+        1j * wave_numbers[component] * np.fft.rfftn(vector[..., component])
+        for component in range(3)
+    )
+    return np.fft.irfftn(divergence_hat, s=vector.shape[:3], axes=(0, 1, 2)).real
 
 
 def correct_state_blend_cross_divergence(
@@ -224,10 +246,10 @@ def correct_state_blend_cross_divergence(
         return fvm.copy(), fvm.copy(), 0.0, 0.0
 
     partitioned = weight[..., None] * fvm + (1.0 - weight[..., None]) * vpm
-    weight_gradient = np.gradient(weight, h, edge_order=2)
-    cross_divergence = sum(
-        weight_gradient[component] * (fvm[..., component] - vpm[..., component])
-        for component in range(3)
+    fvm_divergence = spectral_lattice_divergence(fvm, spacing=h)
+    vpm_divergence = spectral_lattice_divergence(vpm, spacing=h)
+    cross_divergence = spectral_lattice_divergence(partitioned, spacing=h) - (
+        weight * fvm_divergence + (1.0 - weight) * vpm_divergence
     )
     cross_mean = float(np.mean(cross_divergence))
     removable = cross_divergence - cross_mean
@@ -256,12 +278,8 @@ def correct_state_blend_cross_divergence(
         axis=-1,
     )
     corrected = partitioned - correction
-    correction_divergence = np.fft.irfftn(
-        -wave_number_sq * potential_hat,
-        s=shape,
-        axes=(0, 1, 2),
-    ).real
-    residual = cross_divergence - correction_divergence
+    corrected_divergence = spectral_lattice_divergence(corrected, spacing=h)
+    residual = corrected_divergence - (weight * fvm_divergence + (1.0 - weight) * vpm_divergence)
     after = float(np.sqrt(np.mean(residual**2)))
     net_error = partitioned.sum(axis=(0, 1, 2)) - corrected.sum(axis=(0, 1, 2))
     corrected += net_error / float(np.prod(shape))
@@ -551,5 +569,6 @@ __all__ = [
     "m4_prime",
     "map_cell_circulation_to_lattice",
     "map_vortex_strength_to_lattice",
+    "spectral_lattice_divergence",
     "state_blend_weight",
 ]

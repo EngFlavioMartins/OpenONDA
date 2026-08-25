@@ -12,6 +12,8 @@ from source.coupler.lattice_transfer import (
     m4_prime,
     map_cell_circulation_to_lattice,
     map_vortex_strength_to_lattice,
+    spectral_lattice_divergence,
+    state_blend_weight,
 )
 
 
@@ -32,6 +34,101 @@ def test_m4_prime_has_partition_and_first_moment_on_its_complete_support():
         weights = m4_prime(fraction - nodes)
         np.testing.assert_allclose(weights.sum(), 1.0, rtol=0.0, atol=2.0e-15)
         np.testing.assert_allclose((nodes * weights).sum(), fraction, rtol=0.0, atol=2.0e-15)
+
+
+def test_m4_prime_reproduces_quadratic_moments_for_ten_thousand_random_phases():
+    rng = np.random.default_rng(20260825)
+    phase = rng.uniform(-1.0e4, 1.0e4, size=10_000)
+    nodes = np.floor(phase)[:, None] + np.arange(-1, 3)[None, :]
+    weights = m4_prime(phase[:, None] - nodes)
+    scale = 512.0 * np.finfo(np.float64).eps * (1.0 + np.abs(phase) ** 2)
+    assert np.all(np.abs(weights.sum(axis=1) - 1.0) <= scale)
+    assert np.all(np.abs((nodes * weights).sum(axis=1) - phase) <= scale)
+    assert np.all(np.abs((nodes**2 * weights).sum(axis=1) - phase**2) <= scale)
+
+
+def test_tensor_m4_prime_reproduces_3d_moments_for_random_phases():
+    rng = np.random.default_rng(63)
+    phase = rng.uniform(-3.0, 3.0, size=(10_000, 3))
+    nodes = np.floor(phase)[:, :, None] + np.arange(-1, 3)[None, None, :]
+    axis_weight = m4_prime(phase[:, :, None] - nodes)
+    weight = np.einsum("ni,nj,nk->nijk", axis_weight[:, 0], axis_weight[:, 1], axis_weight[:, 2])
+    x, y, z = (nodes[:, axis] for axis in range(3))
+    np.testing.assert_allclose(weight.sum(axis=(1, 2, 3)), 1.0, rtol=0.0, atol=5.0e-15)
+    for axis, coordinate in enumerate((x, y, z)):
+        target = np.expand_dims(
+            coordinate,
+            tuple(other for other in range(1, 4) if other != axis + 1),
+        )
+        # The insertion above leaves one coordinate axis; broadcasting it over
+        # the two remaining stencil dimensions tests the tensor product itself.
+        reconstructed = (weight * target).sum(axis=(1, 2, 3))
+        np.testing.assert_allclose(reconstructed, phase[:, axis], rtol=0.0, atol=2.0e-14)
+    np.testing.assert_allclose(
+        (weight * x[:, :, None, None] ** 2).sum(axis=(1, 2, 3)),
+        phase[:, 0] ** 2,
+        rtol=0.0,
+        atol=3.0e-14,
+    )
+    np.testing.assert_allclose(
+        (weight * x[:, :, None, None] * y[:, None, :, None]).sum(axis=(1, 2, 3)),
+        phase[:, 0] * phase[:, 1],
+        rtol=0.0,
+        atol=3.0e-14,
+    )
+
+
+def _numerical_eta_gradient(point: np.ndarray, *, step: float) -> np.ndarray:
+    gradient = np.empty(3)
+    for axis in range(3):
+        offset = np.zeros(3)
+        offset[axis] = step
+        gradient[axis] = (
+            state_blend_weight((point + offset)[None], _UNIT_BOX, _BLEND_WIDTH)[0]
+            - state_blend_weight((point - offset)[None], _UNIT_BOX, _BLEND_WIDTH)[0]
+        ) / (2.0 * step)
+    return gradient
+
+
+_UNIT_BOX = np.array([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
+_BLEND_WIDTH = 0.4
+
+
+def _assert_eta_gradient_jump_vanishes(base: np.ndarray, direction: np.ndarray) -> None:
+    """Check the normal-gradient jump across a box-distance bisector."""
+    coarse_offset, fine_offset = 2.0e-5, 1.0e-5
+    coarse_step, fine_step = 2.0e-6, 1.0e-6
+    coarse_jump = np.linalg.norm(
+        _numerical_eta_gradient(base + coarse_offset * direction, step=coarse_step)
+        - _numerical_eta_gradient(base - coarse_offset * direction, step=coarse_step)
+    )
+    fine_jump = np.linalg.norm(
+        _numerical_eta_gradient(base + fine_offset * direction, step=fine_step)
+        - _numerical_eta_gradient(base - fine_offset * direction, step=fine_step)
+    )
+    assert fine_jump < 0.75 * coarse_jump
+    assert fine_jump < 2.0e-3
+
+
+def test_eta_is_c1_across_face_bisectors():
+    _assert_eta_gradient_jump_vanishes(
+        np.array([-0.8, -0.8, 0.0]),
+        np.array([1.0, -1.0, 0.0]) / np.sqrt(2.0),
+    )
+
+
+def test_eta_is_c1_across_edge_bisectors():
+    _assert_eta_gradient_jump_vanishes(
+        np.array([-0.8, -0.8, 0.0]),
+        np.array([1.0, 0.0, -1.0]) / np.sqrt(2.0),
+    )
+
+
+def test_eta_is_c1_near_box_corners():
+    _assert_eta_gradient_jump_vanishes(
+        np.array([-0.8, -0.8, -0.8]),
+        np.array([1.0, -1.0, 0.0]) / np.sqrt(2.0),
+    )
 
 
 @pytest.mark.parametrize("dtype,atol", [(np.float64, 5.0e-14), (np.float32, 3.0e-7)])
@@ -176,6 +273,36 @@ def test_blend_cross_divergence_correction_preserves_net_and_matching_states():
     assert matching_after == 0.0
 
 
+def test_blend_correction_uses_the_same_discrete_divergence_as_its_diagnostics():
+    n = 14
+    h = 2.0 * np.pi / n
+    axis = h * np.arange(n)
+    x, y, z = np.meshgrid(axis, axis, axis, indexing="ij")
+    fvm = np.empty((n, n, n, 3))
+    vpm = np.empty_like(fvm)
+    fvm[..., 0] = np.sin(y) + 0.2 * np.cos(z)
+    fvm[..., 1] = np.sin(z) + 0.1 * np.cos(x)
+    fvm[..., 2] = np.sin(x) + 0.3 * np.cos(y)
+    vpm[..., 0] = np.cos(y) - 0.1 * np.sin(z)
+    vpm[..., 1] = np.cos(z) - 0.2 * np.sin(x)
+    vpm[..., 2] = np.cos(x) - 0.3 * np.sin(y)
+    eta = 0.5 + 0.2 * np.cos(x) * np.cos(y) * np.cos(z)
+
+    _partitioned, corrected, before, after = correct_state_blend_cross_divergence(
+        fvm,
+        vpm,
+        eta,
+        spacing=h,
+    )
+    discrete_defect = spectral_lattice_divergence(corrected, spacing=h) - (
+        eta * spectral_lattice_divergence(fvm, spacing=h)
+        + (1.0 - eta) * spectral_lattice_divergence(vpm, spacing=h)
+    )
+    assert before > 1.0e-3
+    assert after < 1.0e-12 * before
+    assert np.sqrt(np.mean(discrete_defect**2)) < 1.0e-12 * before
+
+
 def test_zero_width_common_lattice_state_keeps_complete_fvm_release_support():
     h = 0.25
     state = blend_fvm_vpm_circulation_on_lattice(
@@ -239,6 +366,66 @@ def test_solid_and_zero_vorticity_donors_are_handled_without_nan_or_gamma_leakag
     expected = volume[0] * vorticity[0]
     np.testing.assert_allclose(mapped.target_gamma_net, expected, rtol=0.0, atol=2.0e-15)
     assert np.isfinite(mapped.vortex_strength).all()
+
+
+def test_actual_f32_stored_state_conservation(tmp_path, monkeypatch):
+    """The authoritative budget is downloaded from the f32 VPM state."""
+    pytest.importorskip("taichi", reason="VPM requires taichi")
+    monkeypatch.chdir(tmp_path)
+    from source.coupler.vorticity_transfer import replace_particles_from_lattice_blend
+    from source.solvers.vpm import ViscousConfig, VPMSetup, VPMSolver
+
+    h = 0.03
+    position = np.array([[0.5 * h, -0.5 * h, 0.25 * h]])
+    volume = np.array([h**3])
+    vorticity = np.array([[1.5, -2.0, 0.25]])
+    expected = map_cell_circulation_to_lattice(
+        position,
+        volume,
+        vorticity,
+        lattice_anchor=np.zeros(3),
+        spacing=h,
+    )
+    solver = VPMSolver(
+        VPMSetup(
+            time_step_size=0.01,
+            compute_device="CPU",
+            precision="f32",
+            max_n_particles=128,
+            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+            viscous=ViscousConfig.cs(
+                kinematic_viscosity=1.0e-3,
+                particle_spacing=h,
+                core_radius_ratio=1.0,
+            ),
+        )
+    )
+
+    replace_particles_from_lattice_blend(
+        solver,
+        transfer_box=np.array([-0.2, 0.2, -0.2, 0.2, -0.2, 0.2]),
+        eta_blend_width=0.0,
+        fvm_position=position,
+        fvm_cell_volume=volume,
+        fvm_vorticity=vorticity,
+        lattice_anchor=np.zeros(3),
+        particle_spacing=h,
+        core_radius_ratio=1.0,
+        kinematic_viscosity=1.0e-3,
+    )
+
+    actual_position = solver.particles.position_cpu()
+    actual_strength = solver.particles.vortex_strength_cpu()
+    expected_position = expected.position.astype(np.float32)
+    expected_strength = expected.vortex_strength.astype(np.float32)
+    np.testing.assert_array_equal(actual_position, expected_position)
+    np.testing.assert_array_equal(actual_strength, expected_strength)
+    np.testing.assert_allclose(
+        actual_strength.sum(axis=0, dtype=np.float64),
+        expected_strength.sum(axis=0, dtype=np.float64),
+        rtol=0.0,
+        atol=0.0,
+    )
 
 
 def test_m4_lattice_particles_are_preserved_by_cs_core_spreading(tmp_path, monkeypatch):
