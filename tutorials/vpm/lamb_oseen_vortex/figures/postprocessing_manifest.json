@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-08-25T17:30:28.404072+00:00",
+  "generated_at_utc": "2026-08-25T21:49:02.216428+00:00",
   "policy": "Figures intentionally plot every readable sample; missing/incomplete runs do not fail.",
   "runs": {
     "vortex_cs": {
@@ -261,18 +261,18 @@
       ]
     },
     "merging_dvh": {
-      "status": "running",
-      "complete": false,
-      "field_rows": 59,
-      "last_field_time": 16.867125,
-      "integral_rows": 59,
-      "last_integral_time": 17.1579375,
+      "status": "complete",
+      "complete": true,
+      "field_rows": 104,
+      "last_field_time": 29.9536875,
+      "integral_rows": 103,
+      "last_integral_time": 29.9536875,
       "end_time": 29.973,
       "core_radius_definition": "gaussian_1_over_e_vorticity_radius",
       "sample_plane_z": 1.5625,
       "particle_spacing_ratio": 0.45,
       "field_spacing_ratio": 0.15,
-      "max_n_particles_sampled": 279022.0,
+      "max_n_particles_sampled": 300000.0,
       "time_step_size": 0.03233333333333333,
       "advection_scheme": "RK3",
       "treecode_theta": 0.3,
@@ -283,32 +283,36 @@
       "circulation_normalization": "per_vortex_after_strength_cutoff",
       "raw_retained_circulation_fraction": 0.990575449812264,
       "random_seed": 42,
-      "quality_warnings": []
+      "quality_warnings": [
+        "DVH reached its particle-count guard; inspect late-time sensitivity to dvh_max_nodes."
+      ]
     },
     "merging_gbd": {
-      "status": "missing",
-      "complete": false,
-      "field_rows": 0,
-      "last_field_time": null,
-      "integral_rows": 0,
-      "last_integral_time": null,
-      "end_time": null,
-      "core_radius_definition": null,
-      "sample_plane_z": null,
-      "particle_spacing_ratio": null,
-      "field_spacing_ratio": null,
-      "max_n_particles_sampled": null,
-      "time_step_size": null,
-      "advection_scheme": null,
-      "treecode_theta": null,
-      "treecode_multipole_order": null,
+      "status": "complete",
+      "complete": true,
+      "field_rows": 104,
+      "last_field_time": 29.972999999691,
+      "integral_rows": 103,
+      "last_integral_time": 29.972999999691,
+      "end_time": 29.973,
+      "core_radius_definition": "gaussian_1_over_e_vorticity_radius",
+      "sample_plane_z": 1.5625,
+      "particle_spacing_ratio": 0.45,
+      "field_spacing_ratio": 0.15,
+      "max_n_particles_sampled": 300000.0,
+      "time_step_size": 0.03233333333333333,
+      "advection_scheme": "RK3",
+      "treecode_theta": 0.3,
+      "treecode_multipole_order": 3,
       "dvh_rd_ratio": null,
       "dvh_max_nodes": null,
-      "gbd_max_nodes": null,
-      "circulation_normalization": null,
-      "raw_retained_circulation_fraction": null,
-      "random_seed": null,
-      "quality_warnings": []
+      "gbd_max_nodes": 300000,
+      "circulation_normalization": "per_vortex_after_strength_cutoff",
+      "raw_retained_circulation_fraction": 0.990575449812264,
+      "random_seed": 42,
+      "quality_warnings": [
+        "GBD reached its particle-count guard; inspect late-time sensitivity to gbd_max_nodes."
+      ]
     }
   },
   "figures": [
