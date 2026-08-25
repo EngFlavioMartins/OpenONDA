@@ -129,6 +129,7 @@ remeshing/regeneration call.
 | Acceptance gate | The integrity script allowed 15% drag and 35% profile errors | Replaced by a strict 5% gate for every coincident Cd and FVM/VPM line-profile maximum |
 | Calibration cost metric | Fixed injection-lattice size cannot measure GBD pruning | Matrix uses the next step's pre-replacement VPM cloud plus median step/VPM time |
 | Concurrent timing | Reference contention would bias the baseline relative to restart variants | All timing trials run sequentially |
+| First B0 matrix execution | B0 completed stably through `t=2.5 s` and copied the exact `t=2` atomic seed, but the harness re-tested the live final checkpoint and falsely reported the seed missing | `_capture_seed` now validates the preserved seed before the advancing live manifest; `--resume` permits only a completed B0/reference workspace |
 
 Preflight verification: 18 focused tests passed; Ruff passed; Pyrefly reported
 zero errors for the changed coupler, VPM stepper, validation, and calibration
