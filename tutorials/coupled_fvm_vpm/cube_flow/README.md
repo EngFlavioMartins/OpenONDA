@@ -20,6 +20,9 @@ The preserved baseline samples remain in `samples_archive/`; the archived
 full-horizon reference samples are in `reference_flow/samples/`. Run
 `./allplot.sh pdf` when PDF output is required; PNG is the default.
 
+The pre-change short-run physics and performance benchmark is recorded in
+[`baselines/2026-08-25_common_m4_gbd_t1p00`](baselines/2026-08-25_common_m4_gbd_t1p00/README.md).
+
 The case uses four partitioned FVM ranks. Its coupled MPI initialization
 includes the body-wall geometry gathers used during transfer setup.
 

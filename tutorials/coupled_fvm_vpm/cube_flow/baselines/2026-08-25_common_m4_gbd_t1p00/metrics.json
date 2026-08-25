@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "baseline_id": "cube_flow_2026-08-25_common_m4_gbd_t1p00",
+  "classification": "diagnostic_interrupted",
+  "decision_use": "pre_change_physics_and_performance_benchmark",
+  "run": {
+    "generated_utc": "2026-08-25T21:08:26.656195+00:00",
+    "configured_end_time_s": 20.0,
+    "last_complete_coupling_step": 105,
+    "last_complete_coupled_time_s": 1.05,
+    "excluded_incomplete_coupling_step": 106,
+    "performance_end_time_s": 1.0,
+    "reference_error_end_time_s": 0.5,
+    "inferred_source_commit": "b31cb0c738fd7ad1962fb8bfb0c839f8e415cc8f",
+    "inferred_dirty_change": "FVM_BOX changed from [-3,3]^3 to [-1.5,1.5]^3",
+    "sample_snapshot_commit": "f7173ac11ac3ed53de4d044f28631e4f830e7136",
+    "source_provenance_certified": false
+  },
+  "configuration": {
+    "coupling_method": "absolute_common_m4_lattice_blend",
+    "transfer_method": "common_lattice",
+    "vpm_viscous_scheme": "GBD",
+    "particle_spacing_m": 0.03125,
+    "fvm_time_step_s": 0.005,
+    "vpm_time_step_s": 0.01,
+    "fvm_substeps_per_coupling_step": 2,
+    "backup_interval_physical_s": 0.5,
+    "backup_interval_coupling_steps": 50,
+    "eta_blend_width_m": 0.09375,
+    "gbd_absolute_strength_cutoff_m3_s": 6.103515625e-7,
+    "fvm_domain_bounds_m": [-1.5, 1.5, -1.5, 1.5, -1.5, 1.5],
+    "transfer_region_bounds_m": [-1.25, 1.25, -1.25, 1.25, -1.25, 1.25],
+    "fvm_mpi_ranks": 4,
+    "fvm_cells": 549344,
+    "platform": "Darwin arm64",
+    "python": "3.11.15",
+    "taichi": "1.7.4"
+  },
+  "timing": {
+    "primary_metric": "scheduled_output_mtime_difference_s",
+    "cold_interval": {
+      "physical_time_s": [0.0, 0.5],
+      "coupling_steps": [1, 50],
+      "scheduled_output_mtime_difference_s": 861.191386992,
+      "log_step_start_to_next_step_start_s": 859.0,
+      "summed_timed_stages_s": 842.3847983733867,
+      "stage_s": {
+        "vpm": 378.1115794170764,
+        "boundary": 8.806154129153583,
+        "fvm": 353.83218828908866,
+        "transfer": 101.63487653806806
+      },
+      "step_total_p50_s": 16.658063998562284,
+      "step_total_p95_s": 23.141561513129247
+    },
+    "warm_interval": {
+      "physical_time_s": [0.5, 1.0],
+      "coupling_steps": [51, 100],
+      "scheduled_output_mtime_difference_s": 1276.499886356,
+      "log_step_start_to_next_step_start_s": 1277.0,
+      "summed_timed_stages_s": 1258.9057405891363,
+      "stage_s": {
+        "vpm": 799.2411930472008,
+        "boundary": 9.96728558104951,
+        "fvm": 330.73666299995966,
+        "transfer": 118.96059896092629
+      },
+      "step_total_p50_s": 23.883907499490306,
+      "step_total_p95_s": 40.52761389597138
+    },
+    "excluded_partial_interval": {
+      "physical_time_s": [1.0, 1.05],
+      "coupling_steps": [101, 105],
+      "summed_timed_stages_s": 139.16660858603427
+    },
+    "checkpoint": {
+      "checkpoint_step": 100,
+      "checkpoint_size_bytes": 141487028,
+      "checkpoint_size_mib": 134.93254470825195,
+      "observed_overhead_s_approx": 1.0,
+      "overhead_is_exact": false
+    },
+    "robust_speed_target_s": 1212.6748920382
+  },
+  "physics_error": {
+    "normalization": "U_inf=1 m/s for velocity; absolute relative error for drag",
+    "valid_reference_times_s": [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
+    "drag": {
+      "mean_abs_relative": 0.05493958669098318,
+      "rms_relative": 0.058008973541897754,
+      "worst_abs_relative": 0.07716964074846966,
+      "worst_time_s": 0.3,
+      "at_0p5": {
+        "candidate_cd": 1.3037337533609896,
+        "reference_cd": 1.362588718313357,
+        "signed_relative_error": -0.04319349203567406
+      }
+    },
+    "profiles_at_0p5": {
+      "fvm_centreline_solid_excluded": {
+        "mean_abs": 0.014491926931098105,
+        "rms": 0.016468511677036387,
+        "p95_abs": 0.02674098621488858,
+        "max_abs": 0.03569025934532463
+      },
+      "fvm_offaxis_y0p75": {
+        "mean_abs": 0.00664270062172715,
+        "rms": 0.0073178697285175235,
+        "p95_abs": 0.010911508201065474,
+        "max_abs": 0.013486273641533764
+      },
+      "vpm_centreline_authority_x_gt_1p25_le_5": {
+        "mean_abs": 0.0027620457733276973,
+        "rms": 0.004259160387862037,
+        "p95_abs": 0.009089678553772011,
+        "max_abs": 0.014091718706801815
+      },
+      "vpm_offaxis_y0p75_authority_x_gt_1p25_le_5": {
+        "mean_abs": 0.0026302067880966174,
+        "rms": 0.0043987245506200735,
+        "p95_abs": 0.010613043973528628,
+        "max_abs": 0.014795666303527799
+      }
+    },
+    "wake_slice_at_0p5_diagnostic_only": {
+      "domain": "z=0, 1.25<x<=5, -1.5<=y<=1.5",
+      "comparison_grid": "legacy reference 126x76 grid; linear interpolation",
+      "content_metric": "2D slice integral proxy, not 3D circulation",
+      "legacy_wake_reference": {
+        "velocity_vector_rms_over_u_inf": 0.005879358792266796,
+        "vorticity_relative_rms": 1.3428084610264783,
+        "vorticity_magnitude_content_ratio": 0.6216727852343331
+      },
+      "current_full_slice_reference": {
+        "velocity_vector_rms_over_u_inf": 0.004560922976628491,
+        "vorticity_relative_rms": 4.005876202363486,
+        "vorticity_magnitude_content_ratio": 2.831337163985271
+      },
+      "reference_to_reference_vorticity_magnitude_content_ratio": 4.554384929232552,
+      "certified_for_acceptance": false
+    }
+  },
+  "guardrails": {
+    "particles_after_transfer_at_0p5": 216432,
+    "particles_after_transfer_at_1p0": 305347,
+    "particle_growth_0p5_to_1p0": 88915,
+    "downstream_particles_x_gt_1p25_at_1p0": 7169,
+    "downstream_sum_abs_gamma_m3_s_at_1p0": 0.05002976953983307,
+    "max_particle_strength_m3_s_at_1p0": 0.002808332210406661,
+    "peak_fvm_courant": 1.0749267311874684,
+    "peak_fvm_continuity_error": 1.1194939686376415e-7,
+    "nonfinite_fvm_values": 0,
+    "unconverged_fvm_solves": 0,
+    "max_corrected_boundary_flux_abs_m3_s": 6.750155989720952e-14,
+    "max_blend_cross_divergence_after": 2.775638013637021e-10,
+    "max_transfer_net_circulation_change_norm_m3_s": 0.0003255577281584908
+  },
+  "evidence_sha256": {
+    "cube_flow_setup.py": "66adf1805d973d8919dd96029e04d066d0e9afd8f11b0d76f84adfafee999ad5",
+    "solution/run_metadata.json": "b87e887591b6795c614b0ec251112638cf88a9299934191f765ee4a5ea44cd59",
+    "solution/coupler_diagnostics.jsonl": "e4d440406b5b832999340e508e1a512fade55bb77d0f43e7d6aad84dfdb7f289",
+    "solution/diagnostics.jsonl": "a562287d98598f1347bfa538a11486c07abd39c9ca676244eb4c7a28dbf7135a",
+    "solution/coupler.log": "1c6bb46e7817c723f39bf61413000d13fadbe69d611634696a7bd5b883147d76",
+    "solution/checkpoints/manifest.json": "ddb7956829c39406ced08576243d20a035b9d19c8fb2a3de755add573b2f1ba3",
+    "samples/forces_history.csv": "4f422f4c8decbe1623130cba319c4b33213c9e2189e385e7c11fbb09569672fa",
+    "reference_flow/samples/forces_history.csv": "952ed3ca9a3c62461437693b88b3e5bb84cd6346817c64cd9e5c808db8125dae",
+    "samples/fvm_centreline.csv": "b093ceab6c851c2dbefc6642bc7c54cddfc45955938ec5bdda3461d3555681ec",
+    "samples/vpm_centreline.csv": "b7c5899168318c237dd3832a281541b86832f6f4174f9af1b756f44692003801",
+    "samples/fvm_offaxis_y075.csv": "8b1cbdb3560bc575263d76569f49a5f1714b5c8b506052e7b806e62d49798b3e",
+    "samples/vpm_offaxis_y075.csv": "3b1e67afc939a7660361ba2be432a6803863f560d74f4645fae8575e0434a50c",
+    "reference_flow/samples/centreline.csv": "a18264a5a5960719e6c1a643081295da769860b359a285f609c4657120338dff",
+    "reference_flow/samples/offaxis_y075.csv": "67d984ed0c9d95c44a65433987913c4baaed0082e2e6cc0bb26a1cacabe0d688",
+    "samples/vpm_wake_slice_z0_000050.vts": "fc44a60ab666d0f9b09e6cbea3f14615d916857b8d64ba5b52a66dbc4c7195b1",
+    "reference_flow/samples/wake_slice_z0_000050.vts": "72c4234c48e01130533b750849c37263d85604045790ee4c3dd4044a382d0f1a",
+    "reference_flow/samples/slice_z0_000100.vts": "4267bc41024b67eda1193fb9c56bb8460e34202317019fc51e653f9f3807ab92"
+  },
+  "known_measurement_defects": [
+    "measure_trial_errors.py extrapolates drag beyond the reference horizon by clamping np.interp to the last value",
+    "plot_velocity_fields.py reports statistics over the full reference grid, including far-field points outside the displayed box",
+    "the two available t=0.50 vorticity references are mutually inconsistent",
+    "the exact run Git state was not written into run_metadata.json"
+  ]
+}
