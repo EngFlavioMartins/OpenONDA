@@ -1,15 +1,17 @@
 """Experimental conservative vorticity-flux release for FVM→VPM coupling.
 
 This module deliberately has no dependency on the production volumetric M4'
-replacement path and does not mutate a VPM solver.  It owns only flux-budget
-accounting and deterministic particle birth geometry so the two contracts can
-be tested independently before an experimental solver integration is proposed.
+replacement path.  ``FluxReleaseHandoff`` owns only flux-budget accounting and
+deterministic particle birth geometry; the explicit ``inject_vpm_release_batch``
+adapter appends a completed batch through the native particle API and then
+leaves position and velocity evolution entirely to the VPM solver.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Protocol
 
 import numpy as np
 
@@ -108,6 +110,71 @@ class FluxReleaseBatch:
     neighbour_count_within_3sigma: np.ndarray
     held_slot_ids: tuple[tuple[int, int, int], ...]
     trapped_slot_ids: tuple[tuple[int, int, int], ...]
+
+
+class VortexParticleSink(Protocol):
+    """Minimal particle-solver API consumed by the experimental handoff."""
+
+    def add_vortex_particles(
+        self,
+        position: np.ndarray,
+        velocity: np.ndarray,
+        vortex_strength: np.ndarray,
+        core_radius: np.ndarray,
+        particle_volume: np.ndarray,
+        kinematic_viscosity: np.ndarray,
+        eddy_viscosity: np.ndarray | None = None,
+        group_id: np.ndarray | None = None,
+        zone_id: np.ndarray | None = None,
+        velocity_gradient: np.ndarray | None = None,
+    ) -> None: ...
+
+
+def inject_vpm_release_batch(
+    particle_solver: VortexParticleSink,
+    release_batch: FluxReleaseBatch,
+    *,
+    particle_volume: float,
+    kinematic_viscosity: float = 0.0,
+    particle_group_id: int = 0,
+    particle_zone_id: int = 0,
+) -> int:
+    """Append one emitted batch through the native VPM particle API.
+
+    The adapter deliberately supplies zero cached velocity: the VPM solver
+    recomputes self-induced and background velocity at its next Runge--Kutta
+    stage and owns all motion after insertion.  No external-solver velocity or
+    position state is imposed on an emitted particle.
+
+    Returns the number of particles appended.  An empty batch is a no-op.
+    """
+    count = len(release_batch.position)
+    if count == 0:
+        return 0
+    if (
+        release_batch.position.shape != (count, 3)
+        or release_batch.vortex_strength.shape != (count, 3)
+        or release_batch.core_radius.shape != (count,)
+    ):
+        raise ValueError("release batch particle arrays have inconsistent shapes")
+    volume = float(particle_volume)
+    viscosity = float(kinematic_viscosity)
+    if not np.isfinite(volume) or volume <= 0.0:
+        raise ValueError("particle_volume must be finite and positive")
+    if not np.isfinite(viscosity) or viscosity < 0.0:
+        raise ValueError("kinematic_viscosity must be finite and non-negative")
+
+    particle_solver.add_vortex_particles(
+        position=np.ascontiguousarray(release_batch.position),
+        velocity=np.zeros((count, 3), dtype=np.float64),
+        vortex_strength=np.ascontiguousarray(release_batch.vortex_strength),
+        core_radius=np.ascontiguousarray(release_batch.core_radius),
+        particle_volume=np.full(count, volume, dtype=np.float64),
+        kinematic_viscosity=np.full(count, viscosity, dtype=np.float64),
+        group_id=np.full(count, particle_group_id, dtype=np.int32),
+        zone_id=np.full(count, particle_zone_id, dtype=np.int32),
+    )
+    return count
 
 
 class FluxReleaseHandoff:
@@ -501,5 +568,7 @@ __all__ = [
     "FluxReleaseBatch",
     "FluxReleaseHandoff",
     "ReleaseSlotStatus",
+    "VortexParticleSink",
+    "inject_vpm_release_batch",
     "vorticity_transport_flux",
 ]
