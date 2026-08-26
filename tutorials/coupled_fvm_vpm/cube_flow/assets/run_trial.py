@@ -1,4 +1,4 @@
-"""Run a time-limited cube-flow trial without changing the production setup."""
+"""Run an isolated cube-flow trial with strict, resumable step limits."""
 
 from __future__ import annotations
 
@@ -22,15 +22,30 @@ TRANSFER_RESTART_ALLOWLIST = frozenset(
         "coupler.transfer_boundary_prune_multiplier",
         "coupler.transfer_amplification_cap",
         "coupler.transfer_discretization_error_limit",
+        "vpm.viscous.gbd_threshold",
+        "panel.coupling_scope",
     }
 )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--end-time", type=float, required=True)
+    parser.add_argument(
+        "--end-time",
+        type=float,
+        help=(
+            "configure the physical horizon; on restart it must match the checkpoint configuration"
+        ),
+    )
+    parser.add_argument(
+        "--coupling-steps",
+        type=int,
+        help="stop after this many coupling steps without changing the solver setup",
+    )
     parser.add_argument("--case-directory", type=Path, required=True)
     parser.add_argument("--eta-blend-width", type=float)
+    parser.add_argument("--transfer-vorticity-cutoff", type=float)
+    parser.add_argument("--transfer-boundary-prune-multiplier", type=float)
     parser.add_argument("--gbd-threshold-scale", type=float, default=1.0)
     parser.add_argument(
         "--panel-coupling-scope",
@@ -45,17 +60,28 @@ def main() -> None:
     )
     arguments = parser.parse_args()
 
-    if arguments.end_time <= 0.0:
+    if arguments.end_time is None and arguments.coupling_steps is None:
+        raise ValueError("specify --end-time, --coupling-steps, or both")
+    if arguments.end_time is not None and arguments.end_time <= 0.0:
         raise ValueError("end time must be positive")
+    if arguments.coupling_steps is not None and arguments.coupling_steps <= 0:
+        raise ValueError("coupling steps must be positive")
     if arguments.gbd_threshold_scale <= 0.0:
         raise ValueError("GBD threshold scale must be positive")
+    if (
+        arguments.transfer_vorticity_cutoff is not None
+        and arguments.transfer_vorticity_cutoff < 0.0
+    ):
+        raise ValueError("transfer vorticity cutoff must be non-negative")
+    if (
+        arguments.transfer_boundary_prune_multiplier is not None
+        and arguments.transfer_boundary_prune_multiplier <= 0.0
+    ):
+        raise ValueError("transfer boundary prune multiplier must be positive")
     if arguments.allow_transfer_config_differences and arguments.restart_from is None:
         raise ValueError("--allow-transfer-config-differences requires --restart-from")
-
     case.CASE_DIR = arguments.case_directory.resolve()
-    if arguments.restart_from is None and any(
-        (case.CASE_DIR / name).exists() for name in ("solution", "samples")
-    ):
+    if any((case.CASE_DIR / name).exists() for name in ("solution", "samples")):
         raise FileExistsError(
             f"Trial directory is not empty: {case.CASE_DIR}. "
             "Use a new isolated directory; trial output is never appended."
@@ -75,8 +101,9 @@ def main() -> None:
         checkpoint_directory=str(case.CASE_DIR / "solution"),
     )
 
-    time = replace(case.FVM_SETUP.time, end_time=arguments.end_time)
-    case.FVM_SETUP = replace(case.FVM_SETUP, time=time)
+    if arguments.end_time is not None:
+        time = replace(case.FVM_SETUP.time, end_time=arguments.end_time)
+        case.FVM_SETUP = replace(case.FVM_SETUP, time=time)
     case.COUPLER_SETUP = replace(
         case.COUPLER_SETUP,
         eta_blend_width=(
@@ -84,12 +111,24 @@ def main() -> None:
             if arguments.eta_blend_width is None
             else arguments.eta_blend_width
         ),
+        transfer_vorticity_cutoff=(
+            case.COUPLER_SETUP.transfer_vorticity_cutoff
+            if arguments.transfer_vorticity_cutoff is None
+            else arguments.transfer_vorticity_cutoff
+        ),
+        transfer_boundary_prune_multiplier=(
+            case.COUPLER_SETUP.transfer_boundary_prune_multiplier
+            if arguments.transfer_boundary_prune_multiplier is None
+            else arguments.transfer_boundary_prune_multiplier
+        ),
     )
     case.main(
         restart_from=(None if arguments.restart_from is None else arguments.restart_from.resolve()),
         restart_allowed_config_differences=(
             TRANSFER_RESTART_ALLOWLIST if arguments.allow_transfer_config_differences else ()
         ),
+        max_coupling_steps=arguments.coupling_steps,
+        checkpoint_at_stop=True,
     )
 
 

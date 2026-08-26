@@ -332,6 +332,7 @@ def main() -> None:
             str(threshold_scale),
             "--panel-coupling-scope",
             panel_scope,
+            "--allow-transfer-config-differences",
         ]
         print(f"starting {name}", flush=True)
         _run_command(command, workspace / f"{name}_runner.log")

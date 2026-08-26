@@ -100,7 +100,7 @@ TRANSFER_AMPLIFICATION_CAP = 1.8
 END_TIME = 20.0
 SAMPLING_INTERVAL_TIME = 0.050
 WRITE_SOLUTION_BACKUP = 0.5
-VPM_TIME_STEP_MULTIPLIER = 2
+VPM_TIME_STEP_MULTIPLIER = 5
 (
     FVM_TIME_STEP_SIZE,
     VPM_TIME_STEP_SIZE,
@@ -109,7 +109,7 @@ VPM_TIME_STEP_MULTIPLIER = 2
     FVM_SAMPLING_INTERVAL_STEPS,
     VPM_SAMPLING_INTERVAL_STEPS,
 ) = resolve_case_timing(
-    fvm_time_step_size=0.005,
+    fvm_time_step_size=0.010,
     vpm_time_step_multiplier=VPM_TIME_STEP_MULTIPLIER,
     write_solution_backup=WRITE_SOLUTION_BACKUP,
     sampling_period=SAMPLING_INTERVAL_TIME,
@@ -360,6 +360,8 @@ VPM_SETUP = vpm.VPMSetup(
     log_mode="file",
     logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
     timing_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
+    write_precision="f32",
+    checkpoint_store_velocity_gradient=False,
     # Coupled runs use the atomic FVM+VPM checkpoint owned by COUPLER_SETUP.
     checkpoint_interval_steps=0,
     checkpoint_directory=str(CASE_DIR / "solution"),
@@ -374,14 +376,19 @@ def main(
     *,
     restart_from: Path | None = None,
     restart_allowed_config_differences: Collection[str] = (),
-) -> None:
+    max_coupling_steps: int | None = None,
+    checkpoint_at_stop: bool = False,
+) -> int:
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
-    fvm_solver.write_vtk()
+    if restart_from is None:
+        fvm_solver.write_vtk()
     vpm_solver = vpm.create_vpm_solver(VPM_SETUP, case_dir=CASE_DIR)
     coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
-    coupled_solver.run(
+    return coupled_solver.run(
         restart_from=restart_from,
         restart_allowed_config_differences=restart_allowed_config_differences,
+        max_coupling_steps=max_coupling_steps,
+        checkpoint_at_stop=checkpoint_at_stop,
     )
 
 

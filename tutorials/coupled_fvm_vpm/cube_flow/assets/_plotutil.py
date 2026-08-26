@@ -404,16 +404,24 @@ def _require_coincident_overlap(label: str, base: np.ndarray, *series: np.ndarra
     return matched
 
 
+def _validate_metadata_provenance(meta: dict) -> None:
+    """Accept current metadata while keeping existing schema-2 runs readable."""
+    provenance = (meta.get("schema_version"), meta.get("coupling_method"))
+    supported_provenance = {
+        (2, "absolute_common_m4_lattice_blend"),
+        (3, "buffered_m4_renewal"),
+    }
+    if provenance not in supported_provenance:
+        raise ValueError(
+            "Samples do not belong to a supported cube-flow coupling metadata contract: "
+            f"schema={provenance[0]!r}, method={provenance[1]!r}"
+        )
+
+
 def validate_plot_inputs() -> dict[str, float]:
     """Validate source provenance and exact cross-solver sample times."""
     meta = metadata()
-    if meta.get("schema_version") != 2:
-        raise ValueError("Run metadata is stale; expected schema_version=2")
-    expected_coupling_method = "absolute_common_m4_lattice_blend"
-    if meta.get("coupling_method") != expected_coupling_method:
-        raise ValueError(
-            "Samples do not belong to the configured absolute common-lattice replacement method"
-        )
+    _validate_metadata_provenance(meta)
     required_metadata = (
         ("physics", "freestream_velocity"),
         ("physics", "kinematic_viscosity"),
