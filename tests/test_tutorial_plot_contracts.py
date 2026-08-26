@@ -115,6 +115,17 @@ def test_lamb_oseen_surface_plot_derives_speed_from_the_canonical_velocity_vecto
     assert 'GetArray("velocity_magnitude")' not in source
 
 
+def test_lamb_oseen_case_names_are_separate_from_energy_plot_metadata():
+    diagnostics = _load_module(
+        TUTORIALS / "vpm/lamb_oseen_vortex/assets/vortex_diagnostics.py",
+        "lamb_oseen_vortex_diagnostics_contract",
+    )
+
+    assert diagnostics.CASES == ("vortex", "dipole", "merging")
+    assert tuple(case_name for case_name, _, _ in diagnostics.ENERGY_CASES) == diagnostics.CASES
+    assert all(isinstance(case_name, str) for case_name in diagnostics.CASES)
+
+
 def test_vpm_tutorials_keep_their_compact_sampling_budgets():
     lamb_oseen = (TUTORIALS / "vpm/lamb_oseen_vortex/lamb_oseen_setup.py").read_text(
         encoding="utf-8"

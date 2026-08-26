@@ -42,6 +42,12 @@ REF_DIR = ASSETS_DIR / "references"
 
 # -- Tutorial constants -------------------------------------------------------
 SCHEMES = ("cs", "rwm", "dvh", "gbd")
+CASES = ("vortex", "dipole", "merging")
+ENERGY_CASES = (
+    ("vortex", "Single vortex", 1),
+    ("dipole", "Vortex dipole", 2),
+    ("merging", "Co-rotating merger", 2),
+)
 
 BETA_RMAX = 1.12
 REFERENCE_CIRCULATION = 1.0

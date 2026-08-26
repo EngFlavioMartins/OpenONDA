@@ -146,6 +146,7 @@ def plot_merging_case(args) -> int:
         if path.exists():
             reference = np.loadtxt(path, delimiter=",")
             axis.plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
+
     if B_DIMENSIONAL_REF.exists():
         print(
             "  [merging] vortex_separation literature curve retained as dimensional source data "
@@ -154,15 +155,12 @@ def plot_merging_case(args) -> int:
 
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
-    axes[0].set_ylim([-20, 900])
 
     axes[1].set_ylabel(r"$a_c^2 / b_0^2$")
-    axes[1].set_ylim([-0.1, 0.70])
 
     axes[2].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[2].set_ylabel(r"$b / b_0$")
     axes[2].set_xlim([0, 3.2])
-    axes[2].set_ylim([0, 2.0])
 
     handles, labels = axes[0].get_legend_handles_labels()
 

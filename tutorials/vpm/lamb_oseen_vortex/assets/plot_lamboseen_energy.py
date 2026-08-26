@@ -28,6 +28,7 @@ from matplotlib.lines import Line2D
 
 if __package__:
     from .vortex_diagnostics import (
+        ENERGY_CASES,
         SCHEMES,
         build_arg_parser,
         build_style_map,
@@ -38,6 +39,7 @@ if __package__:
     )
 else:
     from vortex_diagnostics import (
+        ENERGY_CASES,
         SCHEMES,
         build_arg_parser,
         build_style_map,
@@ -73,12 +75,6 @@ def read_flow_integrals(csv_path: Path) -> dict | None:
 # =============================================================
 # Plot
 # =============================================================
-
-CASES = (
-    ("vortex", "Single vortex", 1),
-    ("dipole", "Vortex dipole", 2),
-    ("merging", "Co-rotating merger", 2),
-)
 
 
 def prepend_initial_point(
@@ -167,10 +163,10 @@ def plot_energy_enstrophy(args) -> int:
     # formula and its natural scale are per unit length, so both must carry L.
     p_ref = run_kinematic_viscosity * run_circulation**2 * column_length / (a0**2)
     fig, axes = plt.subplots(1, 3, figsize=figure_size("trajectory"), sharey=True)
-    fig.subplots_adjust(wspace=0.09, top=0.92, bottom=0.32, left=0.12, right=0.98)
+    fig.subplots_adjust(wspace=0.09, top=0.92, bottom=0.32, left=0.14, right=0.98)
 
     plotted = False
-    for ax, (case_prefix, title, n_vortices) in zip(axes, CASES):
+    for ax, (case_prefix, title, n_vortices) in zip(axes, ENERGY_CASES):
         latest_tau = plot_case_panel(
             ax,
             samples_dir,
@@ -196,12 +192,11 @@ def plot_energy_enstrophy(args) -> int:
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 L / a_{c,0}^2)$")
 
-    axes[0].set_xlim([0.0, 3.8])
-    axes[1].set_xlim([0.0, 3.8])
-    axes[2].set_xlim([0.0, 3.8])
-
-    # sharey=True links the y-axes, so the limit is set once and propagates.
-    axes[0].set_ylim([-1.5, 0.2])
+    # sharey=True links the y-axes, so the scale and limits propagate.
+    for ax in axes:
+        ax.set_yscale("symlog", linthresh=0.01)
+    for ax in axes:
+        ax.axhspan(0.0, 0.05, color=colors["background_light"], linewidth=0, zorder=0)
 
     available_schemes = [
         scheme
@@ -209,7 +204,7 @@ def plot_energy_enstrophy(args) -> int:
         if any(
             read_flow_integrals(samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv")
             is not None
-            for case_prefix, _, _ in CASES
+            for case_prefix, _, _ in ENERGY_CASES
         )
     ]
     handles: list = []

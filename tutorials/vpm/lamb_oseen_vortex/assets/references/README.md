@@ -14,8 +14,9 @@ Each file has two headerless columns:
   auditability and is deliberately **not plotted** because rank-resampling is
   not a physical time conversion.
 - `b_over_b0_time.csv`: original digitized dimensional-time coordinate and
-  `b/b0`; retained as source data. It will remain unplotted until the
-  experiment's `nu/b0^2` conversion is recorded from a primary source.
+  `b/b0`; retained as source data. It remains unplotted until the experiment's
+  `nu/b0^2` conversion is established from primary-source parameters; matching
+  the span of another digitized curve is not a physical time conversion.
 
 The plotting script converts the first coordinate to `nu*t/core_radius_0^2` using the
 actual initialized velocity-peak core radius from each run's metadata.
