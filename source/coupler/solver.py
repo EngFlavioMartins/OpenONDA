@@ -28,6 +28,7 @@ from source.coupler.boundary import (
 from source.coupler.checkpoint import (
     CHECKPOINT_DIRECTORY,
     load_coupled_state,
+    publish_vpm_snapshot,
     save_coupled_state,
 )
 from source.coupler.config.types import CouplerSetup
@@ -748,7 +749,10 @@ class FVMVPMCoupler:
 
     def save_state(self, directory, *, coupling_step: int | None = None) -> Path:
         """Write a complete coupled checkpoint."""
-        return save_coupled_state(self, directory, coupling_step=coupling_step)
+        checkpoint = save_coupled_state(self, directory, coupling_step=coupling_step)
+        if self._is_master:
+            publish_vpm_snapshot(checkpoint, self.solution_dir)
+        return checkpoint
 
     def load_state(
         self,

@@ -14,6 +14,7 @@ from source.coupler import boundary as boundary_module
 from source.coupler.checkpoint import (
     config_difference_paths,
     load_coupled_state,
+    publish_vpm_snapshot,
     save_coupled_state,
 )
 
@@ -27,12 +28,7 @@ class _MappingSetup:
 
 
 class _CouplerSetup(_MappingSetup):
-    def __init__(
-        self,
-        *,
-        transfer_method: str = "common_lattice",
-        vpm_checkpoint_retention: int = 1,
-    ):
+    def __init__(self, *, transfer_method: str = "common_lattice"):
         super().__init__(
             {
                 "coupler": {
@@ -44,7 +40,6 @@ class _CouplerSetup(_MappingSetup):
         self.boundary_condition_mode = "pressure_gradient"
         self.coupling_patch = "numericalBoundary"
         self.freestream_velocity = [1.0, 0.0, 0.0]
-        self.vpm_checkpoint_retention = vpm_checkpoint_retention
 
 
 class _Panel:
@@ -157,7 +152,6 @@ def _make_coupler(
     panel_scope: str = "vpm_boundary_condition",
     transfer_method: str = "common_lattice",
     checkpoint_directory: str = "original-output",
-    vpm_checkpoint_retention: int = 1,
 ):
     previous_velocity = np.array([[1.0, 0.1, 0.0], [1.0, 0.1, 0.0]])
     previous_pressure_gradient = np.array([[0.2, -0.1, 0.0], [0.3, -0.2, 0.0]])
@@ -169,10 +163,7 @@ def _make_coupler(
         pressure_gradient=np.array([[0.4, 0.2, 0.0], [0.5, 0.1, 0.0]]),
     )
     coupler = SimpleNamespace(
-        setup=_CouplerSetup(
-            transfer_method=transfer_method,
-            vpm_checkpoint_retention=vpm_checkpoint_retention,
-        ),
+        setup=_CouplerSetup(transfer_method=transfer_method),
         fvm_solver=_FVM(),
         vpm_solver=vpm,
         vorticity_transfer=SimpleNamespace(step=0),
@@ -198,26 +189,29 @@ def _make_coupler(
     return coupler
 
 
-def test_checkpoint_retains_a_bounded_post_renewal_vpm_history(tmp_path):
+def test_post_renewal_particle_history_is_published_outside_the_rolling_checkpoint(tmp_path):
     checkpoint = tmp_path / "checkpoint"
-    coupler = _make_coupler(vpm_checkpoint_retention=2)
-    for step in (1, 2, 3):
+    output = tmp_path / "solution"
+    coupler = _make_coupler()
+    for step in (1, 2):
         coupler.fvm_solver.step = 2 * step
         coupler.vpm_solver.step = step
         coupler.vpm_solver.time = 0.1 * step
         save_coupled_state(coupler, checkpoint, coupling_step=step)
+        publish_vpm_snapshot(checkpoint, output)
 
-    assert sorted(path.name for path in checkpoint.glob("vpm_*.h5")) == [
+    assert sorted(path.name for path in output.glob("vpm_*.h5")) == [
+        "vpm_000001.h5",
         "vpm_000002.h5",
-        "vpm_000003.h5",
     ]
-    assert sorted(path.name for path in checkpoint.glob("vpm_*.xdmf")) == [
+    assert sorted(path.name for path in output.glob("vpm_*.xdmf")) == [
+        "vpm_000001.xdmf",
         "vpm_000002.xdmf",
-        "vpm_000003.xdmf",
     ]
-    assert sorted(path.name for path in checkpoint.glob("fvm_*")) == ["fvm_000003.npz"]
+    assert sorted(path.name for path in checkpoint.glob("vpm_*.h5")) == ["vpm_000002.h5"]
+    assert sorted(path.name for path in checkpoint.glob("fvm_*")) == ["fvm_000002.npz"]
     assert sorted(path.name for path in checkpoint.glob("vpm_boundary_condition_*")) == [
-        "vpm_boundary_condition_000003.npz"
+        "vpm_boundary_condition_000002.npz"
     ]
 
 

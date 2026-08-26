@@ -81,10 +81,6 @@ class CouplerSetup:
     # ---- RUN-LEVEL OPERATIONAL ----
     checkpoint_interval_steps: int = 1
     """Coupling steps between automatic checkpoints; non-negative (0 disables checkpoints)."""
-    vpm_checkpoint_retention: int = 1
-    """Number of post-renewal VPM particle snapshots retained in the coupled
-    checkpoint directory. The latest synchronized FVM+VPM state remains the
-    sole restart point."""
 
     def __post_init__(self) -> None:
         freestream_velocity = np.asarray(self.freestream_velocity, dtype=np.float64)
@@ -126,8 +122,6 @@ class CouplerSetup:
 
         if self.checkpoint_interval_steps < 0:
             raise ValueError("checkpoint_interval_steps must be non-negative")
-        if self.vpm_checkpoint_retention < 1:
-            raise ValueError("vpm_checkpoint_retention must be at least one")
         if not np.isfinite(self.fvm_consistency_width) or self.fvm_consistency_width < 0.0:
             raise ValueError("fvm_consistency_width must be finite and non-negative")
         if not np.isfinite(self.eta_blend_width) or self.eta_blend_width < 0.0:
@@ -220,7 +214,6 @@ class CouplerSetup:
             "coupler": {
                 "freestream_velocity": self.freestream_velocity,
                 "checkpoint_interval_steps": self.checkpoint_interval_steps,
-                "vpm_checkpoint_retention": self.vpm_checkpoint_retention,
                 "coupling_patch": self.coupling_patch,
                 "boundary_condition_mode": self.boundary_condition_mode,
                 "fvm_consistency_width": self.fvm_consistency_width,

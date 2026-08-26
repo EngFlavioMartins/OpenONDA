@@ -23,6 +23,8 @@ TRANSFER_RESTART_ALLOWLIST = frozenset(
         "coupler.transfer_amplification_cap",
         "coupler.transfer_discretization_error_limit",
         "coupler.fvm_consistency_width",
+        # Accepted only to resume checkpoints written by the brief two-file
+        # checkpoint-history implementation. It no longer exists in CouplerSetup.
         "coupler.vpm_checkpoint_retention",
         "vpm.viscous.gbd_threshold",
         "panel.coupling_scope",

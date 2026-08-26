@@ -101,7 +101,6 @@ FVM_CONSISTENCY_WIDTH = FVM_BOX[1] - TRANSFER_REGION_BOX[1]
 END_TIME = 20.0
 SAMPLING_INTERVAL_TIME = 0.050
 WRITE_SOLUTION_BACKUP = 0.5
-VPM_CHECKPOINT_RETENTION = 2
 VPM_TIME_STEP_MULTIPLIER = 5
 (
     FVM_TIME_STEP_SIZE,
@@ -247,7 +246,6 @@ COUPLER_SETUP = coupling.CouplerSetup(
     checkpoint_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     fvm_consistency_width=FVM_CONSISTENCY_WIDTH,
-    vpm_checkpoint_retention=VPM_CHECKPOINT_RETENTION,
     eta_blend_width=ETA_BLEND_WIDTH,
     vpm_only_width=0.0,
     transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,

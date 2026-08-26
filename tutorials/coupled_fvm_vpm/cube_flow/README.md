@@ -44,11 +44,12 @@ sampling interval. FVM visualization and the atomic coupled restart checkpoint
 are written every `0.5 s`; the native VPM checkpoint writer is disabled because
 it would capture the pre-replacement state. Coupled VPM checkpoints use `f32`
 storage and omit the derived velocity-gradient tensor; a restart recomputes that
-field. The latest synchronized state is the restart point, while the two newest
-post-renewal VPM particle snapshots are retained in `solution/checkpoints` for
-inspection. Matching the transient time discretization is required for the reference
-comparison. The coupled and reference FVMs use the same pressure corrector
-counts. This production transfer uses GBD.
+field. The latest synchronized state is the restart point. Every scheduled,
+post-renewal VPM particle snapshot is published directly as
+`solution/vpm_STEP.{h5,xdmf}`; open the XDMF file in ParaView. Matching the
+transient time discretization is required for the reference comparison. The
+coupled and reference FVMs use the same pressure corrector counts. This
+production transfer uses GBD.
 
 The Billuart normal-velocity/tangential-gradient boundary condition remains in
 use. A resolved-scale implicit consistency source acts only in the `0.25 m`

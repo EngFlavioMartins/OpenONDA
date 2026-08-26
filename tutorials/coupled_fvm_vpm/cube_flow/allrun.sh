@@ -35,7 +35,7 @@ for required_file in \
 done
 
 if ! preflight_output=$("$python_bin" -c \
-    'import openonda.coupler, openonda.fvm, openonda.vpm, scipy, taichi; import cube_flow_setup as c; assert c.END_TIME == 20.0; assert c.FVM_TIME_STEP_SIZE == 0.010; assert c.VPM_TIME_STEP_SIZE == 0.050; assert c.VPM_PARTICLE_SPACING == 0.03125; assert c.VPM_VISCOUS_SCHEME == "GBD"; assert c.VPM_PANEL_SOLVER.linear_solver_name == "SCIPY"; assert c.VPM_PANEL_SOLVER.coupling_scope == "vpm_boundary_condition"; assert c.COUPLER_SETUP.transfer_method == "buffered_m4_renewal"; assert c.COUPLER_SETUP.eta_blend_width == 6 * c.VPM_PARTICLE_SPACING; assert c.COUPLER_SETUP.fvm_consistency_width == 0.25; assert c.COUPLER_SETUP.vpm_checkpoint_retention == 2; assert c.VPM_SETUP.write_precision == "f32"; assert not c.VPM_SETUP.checkpoint_store_velocity_gradient' \
+    'import openonda.coupler, openonda.fvm, openonda.vpm, scipy, taichi; import cube_flow_setup as c; assert c.END_TIME == 20.0; assert c.FVM_TIME_STEP_SIZE == 0.010; assert c.VPM_TIME_STEP_SIZE == 0.050; assert c.VPM_PARTICLE_SPACING == 0.03125; assert c.VPM_VISCOUS_SCHEME == "GBD"; assert c.VPM_PANEL_SOLVER.linear_solver_name == "SCIPY"; assert c.VPM_PANEL_SOLVER.coupling_scope == "vpm_boundary_condition"; assert c.COUPLER_SETUP.transfer_method == "buffered_m4_renewal"; assert c.COUPLER_SETUP.eta_blend_width == 6 * c.VPM_PARTICLE_SPACING; assert c.COUPLER_SETUP.fvm_consistency_width == 0.25; assert c.VPM_SETUP.write_precision == "f32"; assert not c.VPM_SETUP.checkpoint_store_velocity_gradient' \
     2>&1); then
     printf '%s\n' "$preflight_output" >&2
     echo "[FAIL] Cube-flow Python/configuration preflight failed." >&2
@@ -60,7 +60,7 @@ print_configuration() {
         "panel_scope=vpm_boundary_condition" \
         "transfer=buffered M4' whole-belt renewal, h=0.03125, blend_width=6h" \
         "fvm_consistency=resolved-scale outer 0.25m buffer" \
-        "checkpoint=f32, two post-renewal VPM snapshots, derived velocity gradient omitted" \
+        "particle_history=solution/vpm_STEP.{h5,xdmf}, post-renewal f32" \
         "reference=${reference_directory}" \
         "reference_horizon=${reference_horizon}" \
         "acceptance_horizon=${acceptance_horizon}" \

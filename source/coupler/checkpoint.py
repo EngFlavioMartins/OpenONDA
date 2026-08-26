@@ -9,7 +9,6 @@ import json
 import logging
 import os
 from pathlib import Path
-import re
 import shutil
 import warnings
 
@@ -19,7 +18,6 @@ from source.solvers.fvm.io.checkpoint import decode_state, encode_state
 
 CHECKPOINT_DIRECTORY = "checkpoints"
 CHECKPOINT_FORMAT_VERSION = 11
-_VPM_SNAPSHOT_PATTERN = re.compile(r"^vpm_(\d+)\.(h5|xdmf)$")
 
 _VPM_OPERATIONAL_CONFIG_FIELDS = frozenset(
     {
@@ -277,11 +275,12 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
     os.replace(manifest_temporary, target / "manifest.json")
 
     keep = {"manifest.json", *manifest["artifacts"].values()}
-    stale_restart_artifacts = {
+    stale = {
         *target.glob("fvm_*"),
+        *target.glob("vpm_*"),
         *target.glob("vpm_boundary_condition_*"),
     }
-    for artifact in stale_restart_artifacts:
+    for artifact in stale:
         if artifact.name in keep or not artifact.exists():
             continue
         if artifact.is_dir():
@@ -289,34 +288,46 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
         else:
             artifact.unlink()
 
-    retention = int(getattr(coupler.setup, "vpm_checkpoint_retention", 1))
-    snapshots: dict[int, dict[str, Path]] = {}
-    for artifact in target.iterdir():
-        match = _VPM_SNAPSHOT_PATTERN.fullmatch(artifact.name)
-        if match is not None:
-            snapshots.setdefault(int(match.group(1)), {})[match.group(2)] = artifact
-    complete_steps = sorted(
-        (
-            snapshot_step
-            for snapshot_step, files in snapshots.items()
-            if set(files) == {"h5", "xdmf"}
-        ),
-        reverse=True,
-    )
-    retained_steps = set(complete_steps[:retention])
-    for snapshot_step, files in snapshots.items():
-        if snapshot_step in retained_steps:
-            continue
-        for artifact in files.values():
-            artifact.unlink(missing_ok=True)
-
     logging.getLogger("coupler").info(
-        "coupled checkpoint saved | manifest=%s | vpm=%s | retained_vpm_snapshots=%d",
+        "coupled checkpoint saved | manifest=%s | vpm=%s",
         target / "manifest.json",
         target / manifest["artifacts"]["vpm"],
-        len(retained_steps),
     )
     return target
+
+
+def publish_vpm_snapshot(checkpoint_directory, output_directory) -> tuple[Path, Path]:
+    """Publish the post-renewal VPM state as a user-facing time-series frame.
+
+    The atomic coupled checkpoint remains a rolling restart artifact. This
+    function copies its already-written VPM HDF5/XDMF pair directly into the
+    solution directory, where every scheduled frame is retained and visible to
+    plotting and ParaView without navigating restart internals.
+    """
+    checkpoint = Path(checkpoint_directory)
+    output = Path(output_directory)
+    manifest = json.loads((checkpoint / "manifest.json").read_text(encoding="utf-8"))
+    artifacts = manifest.get("artifacts", {})
+    source_h5 = _resolve_artifact(checkpoint, artifacts.get("vpm", ""))
+    source_xdmf = _resolve_artifact(checkpoint, artifacts.get("vpm_xdmf", ""))
+    if not source_h5.is_file() or not source_xdmf.is_file():
+        raise FileNotFoundError("Coupled checkpoint does not contain a complete VPM snapshot")
+
+    output.mkdir(parents=True, exist_ok=True)
+    destinations = (output / source_h5.name, output / source_xdmf.name)
+    for source, destination in zip((source_h5, source_xdmf), destinations, strict=True):
+        temporary = destination.with_name(f".{destination.name}.tmp")
+        try:
+            shutil.copy2(source, temporary)
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+    logging.getLogger("coupler").info(
+        "vpm particle snapshot published | h5=%s | xdmf=%s",
+        destinations[0],
+        destinations[1],
+    )
+    return destinations
 
 
 def load_coupled_state(
@@ -555,5 +566,6 @@ __all__ = [
     "config_digest",
     "config_mapping_digest",
     "load_coupled_state",
+    "publish_vpm_snapshot",
     "save_coupled_state",
 ]

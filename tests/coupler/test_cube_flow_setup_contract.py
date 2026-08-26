@@ -128,7 +128,6 @@ def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
     assert pytest.approx(6.0 * setup.VPM_PARTICLE_SPACING) == setup.ETA_BLEND_WIDTH
     assert pytest.approx(setup.ETA_BLEND_WIDTH) == setup.COUPLER_SETUP.eta_blend_width
     assert setup.COUPLER_SETUP.fvm_consistency_width == pytest.approx(0.25)
-    assert setup.COUPLER_SETUP.vpm_checkpoint_retention == 2
     assert setup.COUPLER_SETUP.transfer_vorticity_cutoff == pytest.approx(0.05)
     assert setup.COUPLER_SETUP.transfer_boundary_prune_multiplier == pytest.approx(10.0)
     assert setup.COUPLER_SETUP.transfer_amplification_cap == pytest.approx(1.8)
