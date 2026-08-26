@@ -18,6 +18,7 @@ from source.solvers.fvm import (
     TimeConfig,
     TransportConfig,
 )
+from source.solvers.fvm.io.checkpoint import decode_state, encode_state
 from source.solvers.fvm.mesh.cartesian import structured_box
 
 
@@ -78,3 +79,31 @@ def test_restart_restores_backward_time_history(tmp_path):
         )
     assert resumed.time == pytest.approx(reference.time)
     assert resumed.step == reference.step
+
+
+def test_checkpoint_storage_codec_is_bit_exact_for_history_and_scalars():
+    velocity = np.linspace(-2.0, 3.0, 4096, dtype=np.float64).reshape(-1, 1)
+    flux = np.linspace(-1.0, 1.0, 4096, dtype=np.float64)
+    state = {
+        "metadata": np.asarray('{"format_version": 8}'),
+        "velocity": velocity,
+        "velocity_old": velocity * (1.0 + np.finfo(np.float64).eps),
+        "velocity_older": velocity * (1.0 - np.finfo(np.float64).eps),
+        "volumetric_face_flux": flux,
+        "volumetric_face_flux_old": flux + np.finfo(np.float64).eps,
+        "volumetric_face_flux_older": flux - np.finfo(np.float64).eps,
+        "step": np.asarray(42, dtype=np.int64),
+    }
+
+    stored = encode_state(state)
+    restored = decode_state(stored)
+
+    assert set(stored) == {*state, "storage_layout"}
+    assert restored["metadata"].shape == ()
+    for name, expected in state.items():
+        np.testing.assert_array_equal(restored[name], expected)
+
+    direct, compact = io.BytesIO(), io.BytesIO()
+    np.savez_compressed(direct, **state)
+    np.savez_compressed(compact, **stored)
+    assert len(compact.getvalue()) < len(direct.getvalue()) / 2

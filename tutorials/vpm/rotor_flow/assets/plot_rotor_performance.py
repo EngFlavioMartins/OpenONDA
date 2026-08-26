@@ -13,7 +13,6 @@ Saves: ``figures/rotor_performance.png``
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -25,7 +24,6 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgba
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
     build_arg_parser,
     build_rotor_style_map,

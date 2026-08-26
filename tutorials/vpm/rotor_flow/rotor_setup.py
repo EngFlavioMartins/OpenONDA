@@ -13,7 +13,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -82,7 +81,7 @@ def build_solver_config(
     wake_spacing = nominal_wake_spacing(time_step_size)
     return vpm.VPMSetup(
         time_step_size=time_step_size,
-        compute_device=os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper(),
+        compute_device="METAL",
         time_integration="COUPLED",
         coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
         coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
@@ -122,6 +121,8 @@ def build_solver_config(
         checkpoint_name=CASE_NAME,
         checkpoint_directory=str(SOLUTION_DIR),
         sample_subdirectory=CASE_NAME,
+        write_precision="f32",
+        checkpoint_store_velocity_gradient=False,
         checkpoint_interval_steps=cadence_steps(checkpoint_interval_time, time_step_size),
         logging_interval_steps=cadence_steps(sample_interval_time, time_step_size),
         export_flow_integrals=True,
@@ -188,6 +189,8 @@ def write_manifest(
         "smagorinsky_coefficient": smagorinsky_coefficient,
         "compute_device": solver.compute_device,
         "precision": solver.precision,
+        "write_precision": solver.write_precision,
+        "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
@@ -198,13 +201,9 @@ def main() -> int:
 
     sample_interval_time = SAMPLE_INTERVAL_TIME
     checkpoint_interval_time = CHECKPOINT_INTERVAL_TIME
-    n_steps = int(os.environ.get("OPENONDA_ROTOR_N_STEPS", N_STEPS))
-    time_step_size = float(os.environ.get("OPENONDA_ROTOR_DT", TIME_STEP_SIZE))
-    smagorinsky_coefficient = float(
-        os.environ.get("OPENONDA_ROTOR_CS", DEFAULT_SMAGORINSKY_COEFFICIENT)
-    )
-    if n_steps < 1 or time_step_size <= 0.0 or smagorinsky_coefficient < 0.0:
-        raise ValueError("invalid rotor override: n_steps, dt, and C_s must be positive")
+    n_steps = N_STEPS
+    time_step_size = TIME_STEP_SIZE
+    smagorinsky_coefficient = DEFAULT_SMAGORINSKY_COEFFICIENT
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
 

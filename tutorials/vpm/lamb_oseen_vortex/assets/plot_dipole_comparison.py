@@ -21,11 +21,25 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 if __package__:
-    from .plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
-    from .vortex_diagnostics import SCHEMES, resolve_runtime_physics
+    from .vortex_diagnostics import (
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        figure_size,
+        load_theme,
+        resolve_runtime_physics,
+        save_fig,
+    )
 else:
-    from plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
-    from vortex_diagnostics import SCHEMES, resolve_runtime_physics
+    from vortex_diagnostics import (
+        SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        figure_size,
+        load_theme,
+        resolve_runtime_physics,
+        save_fig,
+    )
 
 
 def extract_dipole_timeseries(

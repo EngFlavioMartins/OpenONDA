@@ -11,6 +11,8 @@ import numpy as np
 import vtk
 from vtk.util import numpy_support
 
+from source.vtk_output import write_vtk_dataset
+
 # =========================================================
 
 
@@ -94,9 +96,8 @@ def _write_polydata_file(polydata, filename: str, compression: bool = True):
         filename: Output filename
         compression: Whether to compress the file (default: True)
     """
-    writer = vtk.vtkXMLPolyDataWriter()
-    writer.SetFileName(filename)
-    writer.SetInputData(polydata)
-    if compression:
-        writer.SetCompressorTypeToZLib()
-    writer.Write()
+    write_vtk_dataset(
+        polydata,
+        filename,
+        compression="zlib" if compression else "none",
+    )

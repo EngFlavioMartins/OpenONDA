@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 
 from .logging import Logging
-from .sampling import SAMPLER_CSV_COLUMNS, resolve_samples_dir
+from .sampling import resolve_samples_dir, sampler_csv_columns
 
 
 class SamplerExecutor:
@@ -179,11 +179,12 @@ class SamplerExecutor:
     ) -> None:
         """Append one complete sampled field to a time-aware CSV table."""
         data = sampler.sample(solver)
-        missing = [name for name in SAMPLER_CSV_COLUMNS if name not in data]
+        columns = sampler_csv_columns(sampler)
+        missing = [name for name in columns if name not in data]
         if missing:
             raise ValueError(f"Sampler result is missing columns: {', '.join(missing)}")
 
-        lengths = {len(np.asarray(data[name])) for name in SAMPLER_CSV_COLUMNS}
+        lengths = {len(np.asarray(data[name])) for name in columns}
         if len(lengths) != 1:
             raise ValueError("Sampler result columns do not all have the same length")
 
@@ -192,10 +193,10 @@ class SamplerExecutor:
         with filepath.open("a", newline="", encoding="utf-8") as stream:
             writer = csv.writer(stream, lineterminator="\n")
             if write_header:
-                writer.writerow(["time", "step", *SAMPLER_CSV_COLUMNS])
+                writer.writerow(["time", "step", *columns])
             step = "" if step is None else int(step)
             for values in zip(
-                *(np.asarray(data[name]).reshape(-1) for name in SAMPLER_CSV_COLUMNS),
+                *(np.asarray(data[name]).reshape(-1) for name in columns),
                 strict=True,
             ):
                 writer.writerow([float(time), step, *values])

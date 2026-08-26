@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import cast
 
 import numpy as np
+from scipy.spatial import cKDTree  # type: ignore[missing-module-attribute]
 
 from source import log_style
+from source.coupler.interpolation import FVMVelocityInterpolator
 from source.coupler.lattice_transfer import (
     RenewalLattice,
     blend_fvm_vpm_circulation_in_renewal_belt,
@@ -28,9 +30,24 @@ from source.coupler.renewal_projection import (
     solve_sparse_renewal_projection,
 )
 from source.coupler.reporting import format_coupler_log
+from source.coupler.stable_renewal import (
+    StableRenewalLattice,
+    build_stable_renewal_lattice,
+    renew_stable_overlap,
+    vortex_strength_from_velocity_trace,
+)
 from source.solvers.vpm.diagnostics.resolution import discretization_health
 
 logger = logging.getLogger("coupler")
+
+
+def _smoothstep(values: np.ndarray | float, lower: float, upper: float) -> np.ndarray:
+    """C1 Hermite ramp used by the proven solid and mesh confidence tapers."""
+    span = float(upper) - float(lower)
+    if abs(span) < np.finfo(np.float64).tiny:
+        return np.where(np.asarray(values, dtype=np.float64) >= upper, 1.0, 0.0)
+    phase = np.clip((np.asarray(values, dtype=np.float64) - lower) / span, 0.0, 1.0)
+    return phase * phase * (3.0 - 2.0 * phase)
 
 
 def replacement_eta(
@@ -138,6 +155,21 @@ class TransferResult:
     selective_support_births: int = 0
     renewal_guard_width: float = 0.0
     renewal_diffusion_substeps: int = 0
+    renewed_input_particles: int = 0
+    renewed_output_particles: int = 0
+    preserved_outer_particles: int = 0
+    pruned_lattice_nodes: int = 0
+    pruned_vortex_strength_l1: float = 0.0
+    pruned_vortex_strength_fraction: float = 0.0
+    population_pruned_particles: int = 0
+    population_pruned_vortex_strength_fraction: float = 0.0
+    population_pruned_velocity_bound: float = 0.0
+    renewal_cfl: float = 0.0
+    renewal_conservation_error: float = 0.0
+    renewal_linear_impulse_error: float = 0.0
+    representation_residual_before_prune: float | None = None
+    representation_residual_after_prune: float | None = None
+    maximum_transfer_amplification: float = 0.0
 
 
 def _validate_particle_sources(
@@ -195,6 +227,147 @@ def _restore_particle_state(vpm, snapshot: dict[str, np.ndarray]) -> None:
             "FVM/VPM transfer needs replace_vortex_particles to roll back a failed mutation"
         )
     replace(report_removal=False, **snapshot)
+
+
+def replace_particles_from_buffered_m4_renewal(
+    vpm,
+    *,
+    lattice: StableRenewalLattice,
+    fvm_vortex_strength_at_node: Callable[[np.ndarray], np.ndarray],
+    particle_fluid_weight: Callable[[np.ndarray], np.ndarray] | None,
+    particle_in_solid: Callable[[np.ndarray], np.ndarray] | None,
+    prune_threshold: float,
+    core_radius_ratio: float,
+    amplification_cap: float,
+    boundary_prune_multiplier: float,
+    kinematic_viscosity: float,
+    freestream_speed: float,
+    time_step_size: float,
+    compute_diagnostics: bool,
+) -> TransferResult:
+    """Atomically apply the recovered whole-belt M4' renewal to a GBD cloud."""
+    if str(getattr(vpm, "viscous_scheme", "")).upper() != "GBD":
+        raise ValueError("buffered_m4_renewal requires the GBD viscous scheme")
+    viscosity = float(kinematic_viscosity)
+    if not np.isfinite(viscosity) or viscosity < 0.0:
+        raise ValueError("kinematic_viscosity must be finite and non-negative")
+
+    particles = vpm.particles
+    n_before = int(particles.n_particles_total)
+    existing_position = np.asarray(particles.position_cpu(), dtype=np.float64).reshape(-1, 3)
+    existing_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64).reshape(-1, 3)
+    if len(existing_position) != n_before or len(existing_strength) != n_before:
+        raise RuntimeError("VPM particle arrays do not match the active particle count")
+    if not np.all(np.isfinite(existing_position)) or not np.all(np.isfinite(existing_strength)):
+        raise RuntimeError("VPM particle state contains non-finite values")
+
+    result = renew_stable_overlap(
+        existing_position,
+        existing_strength,
+        lattice,
+        fvm_vortex_strength_at_node=fvm_vortex_strength_at_node,
+        particle_fluid_weight=particle_fluid_weight,
+        particle_in_solid=particle_in_solid,
+        prune_threshold=prune_threshold,
+        core_radius_ratio=core_radius_ratio,
+        amplification_cap=amplification_cap,
+        boundary_prune_multiplier=boundary_prune_multiplier,
+        maximum_particle_count=int(particles.capacity),
+        freestream_speed=freestream_speed,
+        time_step_size=time_step_size,
+        compute_diagnostics=compute_diagnostics,
+    )
+    n_after = result.particle_count
+    if n_after > int(particles.capacity):
+        raise RuntimeError(
+            f"buffered M4' renewal produced {n_after:,} particles, exceeding "
+            f"the VPM capacity {int(particles.capacity):,}"
+        )
+
+    dtype = np.dtype(vpm.np_dtype)
+    vpm.replace_vortex_particles(
+        position=np.ascontiguousarray(result.position, dtype=dtype),
+        velocity=np.zeros((n_after, 3), dtype=dtype),
+        vortex_strength=np.ascontiguousarray(result.vortex_strength, dtype=dtype),
+        core_radius=np.ascontiguousarray(result.core_radius, dtype=dtype),
+        particle_volume=np.ascontiguousarray(result.particle_volume, dtype=dtype),
+        kinematic_viscosity=np.full(n_after, viscosity, dtype=dtype),
+        eddy_viscosity=np.zeros(n_after, dtype=dtype),
+        group_id=np.zeros(n_after, dtype=np.int32),
+        zone_id=np.zeros(n_after, dtype=np.int32),
+        report_removal=False,
+    )
+    if int(particles.n_particles_total) != n_after:
+        raise RuntimeError(
+            f"VPM particle count after buffered renewal is "
+            f"{int(particles.n_particles_total)}, expected {n_after}"
+        )
+
+    renewed_output_count = min(int(result.renewed_output_count), n_after)
+    renewed_strength = result.vortex_strength[:renewed_output_count]
+    removed_mask = np.ones(n_before, dtype=bool)
+    if n_before:
+        valid = np.ones(n_before, dtype=bool)
+        if particle_in_solid is not None:
+            valid &= ~np.asarray(particle_in_solid(existing_position), dtype=bool).reshape(-1)
+        preserved = valid & ~np.all(
+            (existing_position >= lattice.renewal_bounds[::2])
+            & (existing_position <= lattice.renewal_bounds[1::2]),
+            axis=1,
+        )
+        removed_mask = ~preserved
+    replaced_strength = existing_strength[removed_mask]
+    injected_net = renewed_strength.sum(axis=0, dtype=np.float64)
+    output_net = result.vortex_strength.sum(axis=0, dtype=np.float64)
+    input_net = existing_strength.sum(axis=0, dtype=np.float64)
+    conservation = result.conservation_residual
+    maximum_strength = float(np.linalg.norm(result.vortex_strength, axis=1).max(initial=0.0))
+    return TransferResult(
+        n_particles_before=n_before,
+        n_particles_retained=int(result.preserved_outer_count),
+        n_particles_removed=int(np.count_nonzero(removed_mask)),
+        n_particles_blended=int(result.renewed_input_count),
+        n_particles_injected=renewed_output_count,
+        n_particles_after=n_after,
+        injected_vortex_strength_l1=float(
+            np.linalg.norm(renewed_strength, axis=1).sum(dtype=np.float64)
+        ),
+        injected_vortex_strength_net=injected_net,
+        replaced_vortex_strength_l1=float(
+            np.linalg.norm(replaced_strength, axis=1).sum(dtype=np.float64)
+        ),
+        replaced_vortex_strength_net=replaced_strength.sum(axis=0, dtype=np.float64),
+        state_change_vortex_strength_net=output_net - input_net,
+        eta_blending_enabled=bool(
+            np.any((lattice.fvm_authority > 0.0) & (lattice.fvm_authority < 1.0))
+        ),
+        transfer_method="buffered_m4_renewal",
+        mapped_target_nodes=renewed_output_count,
+        excluded_solid_target_nodes=int(np.count_nonzero(lattice.solid_interior)),
+        excluded_solid_vortex_strength_l1=float(result.excluded_target_vortex_strength_l1),
+        mapped_target_vortex_strength_l1=float(
+            np.linalg.norm(renewed_strength, axis=1).sum(dtype=np.float64)
+        ),
+        mapped_target_vortex_strength_net=injected_net,
+        maximum_mapped_vortex_strength=maximum_strength,
+        renewed_input_particles=int(result.renewed_input_count),
+        renewed_output_particles=renewed_output_count,
+        preserved_outer_particles=int(result.preserved_outer_count),
+        pruned_lattice_nodes=int(result.pruned_node_count),
+        pruned_vortex_strength_l1=float(result.pruned_vortex_strength_l1),
+        pruned_vortex_strength_fraction=float(result.pruned_vortex_strength_fraction),
+        population_pruned_particles=int(result.population_pruned_count),
+        population_pruned_vortex_strength_fraction=float(
+            result.population_pruned_vortex_strength_fraction
+        ),
+        population_pruned_velocity_bound=float(result.population_pruned_velocity_bound),
+        renewal_cfl=float(result.transfer_cfl),
+        renewal_conservation_error=float(conservation.get("total_vortex_strength", 0.0)),
+        renewal_linear_impulse_error=float(conservation.get("linear_impulse", 0.0)),
+        representation_residual_before_prune=result.representation_residual_before_prune,
+        representation_residual_after_prune=result.representation_residual_after_prune,
+        maximum_transfer_amplification=float(result.maximum_transfer_amplification),
+    )
 
 
 def apply_projected_gbd_renewal(
@@ -845,6 +1018,46 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
                 ("selective support births", f"{result.selective_support_births:,}"),
             )
         )
+    if result.transfer_method == "buffered_m4_renewal":
+        rows.extend(
+            (
+                ("renewal belt, input", f"{result.renewed_input_particles:,}"),
+                ("renewal belt, output", f"{result.renewed_output_particles:,}"),
+                ("outer wake, preserved", f"{result.preserved_outer_particles:,}"),
+                ("lattice nodes, pruned", f"{result.pruned_lattice_nodes:,}"),
+                (
+                    "pruned strength, fraction",
+                    f"{100.0 * result.pruned_vortex_strength_fraction:.3f}",
+                    "%",
+                ),
+                ("renewal CFL", f"{result.renewal_cfl:.3f}"),
+                (
+                    "renewal conservation, strength",
+                    f"{result.renewal_conservation_error:.3e}",
+                ),
+                (
+                    "renewal conservation, impulse",
+                    f"{result.renewal_linear_impulse_error:.3e}",
+                ),
+                (
+                    "transfer amplification, max",
+                    f"{result.maximum_transfer_amplification:.3f}",
+                ),
+            )
+        )
+        if result.representation_residual_after_prune is not None:
+            rows.extend(
+                (
+                    (
+                        "representation residual, before prune",
+                        f"{0.0 if result.representation_residual_before_prune is None else result.representation_residual_before_prune:.3e}",
+                    ),
+                    (
+                        "representation residual, after prune",
+                        f"{result.representation_residual_after_prune:.3e}",
+                    ),
+                )
+            )
     return format_coupler_log(f"state replacement, step {step:,}", *rows)
 
 
@@ -857,6 +1070,13 @@ class VorticityTransfer:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM state")
         self.config = cfg
         self.transfer_method = str(cfg.transfer_method)
+        candidate_vpm = getattr(coupler, "vpm_solver", None)
+        if (
+            self.transfer_method == "buffered_m4_renewal"
+            and candidate_vpm is not None
+            and str(getattr(candidate_vpm, "viscous_scheme", "")).upper() != "GBD"
+        ):
+            raise ValueError("buffered_m4_renewal currently requires the GBD viscous scheme")
         if not np.isfinite(coupler.vpm_core_radius_ratio):
             raise RuntimeError("VorticityTransfer requires the resolved VPM core-radius ratio")
         self.core_radius_ratio = float(coupler.vpm_core_radius_ratio)
@@ -864,13 +1084,23 @@ class VorticityTransfer:
             raise RuntimeError("VorticityTransfer requires the resolved VPM particle spacing")
         self.particle_spacing = float(coupler.vpm_particle_spacing)
         self.eta_blend_width = float(cfg.eta_blend_width)
+        self.vpm_only_width = float(cfg.vpm_only_width)
+        self.transfer_prune_threshold_abs = (
+            float(cfg.transfer_vorticity_cutoff) * self.particle_spacing**3
+        )
+        self.transfer_boundary_prune_multiplier = float(cfg.transfer_boundary_prune_multiplier)
+        self.transfer_amplification_cap = float(cfg.transfer_amplification_cap)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
         coupling_time_step = getattr(coupler, "vpm_time_step_size", None)
-        if coupling_time_step is None and self.transfer_method == "common_lattice":
+        if coupling_time_step is None and self.transfer_method in {
+            "buffered_m4_renewal",
+            "common_lattice",
+        }:
             raise RuntimeError("VorticityTransfer requires the resolved VPM time step")
+        self.coupling_time_step = 0.0 if coupling_time_step is None else float(coupling_time_step)
         self.renewal_buffer_length = required_renewal_buffer_length(
             cfg.freestream_velocity,
-            0.0 if coupling_time_step is None else float(coupling_time_step),
+            self.coupling_time_step,
             self.particle_spacing,
         )
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
@@ -881,14 +1111,17 @@ class VorticityTransfer:
         self.renewal_solver_tolerance = float(cfg.renewal_solver_tolerance)
         self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
         self._box: np.ndarray | None = None
+        self._cell_tree: cKDTree | None = None
         self._cell_centre: np.ndarray | None = None
         self._cell_volume: np.ndarray | None = None
+        self._velocity_trace: FVMVelocityInterpolator | None = None
         self._fvm_solid_mask: np.ndarray | None = None
         self._body_bounds: np.ndarray | None = None
         self._solid_bodies: tuple = ()
         self._lattice_anchor: np.ndarray | None = None
         self._renewal_lattice: RenewalLattice | None = None
         self._renewal_target_solid_mask: np.ndarray | None = None
+        self._stable_renewal_lattice: StableRenewalLattice | None = None
         self._face_cells: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self._authority_cell_mask: np.ndarray | None = None
         self.step = 0
@@ -923,6 +1156,25 @@ class VorticityTransfer:
                 comparison = (query > lower) & (query < upper)
             inside |= np.all(comparison, axis=1)
         return inside
+
+    def _signed_solid_distance(self, points: np.ndarray) -> np.ndarray:
+        """Approximate signed distance, positive in fluid and negative in solid."""
+        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        distance = np.full(len(query), np.inf, dtype=np.float64)
+        for body in self._solid_bodies:
+            distance = np.minimum(
+                distance,
+                np.asarray(body.signed_distance(query), dtype=np.float64).reshape(-1),
+            )
+        if self._body_bounds is not None:
+            lower = self._body_bounds[[0, 2, 4]]
+            upper = self._body_bounds[[1, 3, 5]]
+            outward = np.maximum(lower - query, query - upper)
+            outside_distance = np.linalg.norm(np.maximum(outward, 0.0), axis=1)
+            inside_depth = np.max(outward, axis=1)
+            box_distance = np.where(outside_distance > 0.0, outside_distance, inside_depth)
+            distance = np.minimum(distance, box_distance)
+        return distance
 
     def _face_cell_index(self, bounds: np.ndarray) -> dict[str, tuple[np.ndarray, np.ndarray]]:
         faces: dict[str, tuple[np.ndarray, np.ndarray]] = {}
@@ -1002,6 +1254,13 @@ class VorticityTransfer:
             self._cell_volume,
             np.zeros_like(self._cell_centre),
         )
+        if self.transfer_method == "buffered_m4_renewal":
+            self._cell_tree = cKDTree(self._cell_centre)
+            self._velocity_trace = FVMVelocityInterpolator(
+                self._cell_centre,
+                self._cell_tree,
+                neighbour_count=4,
+            )
 
         if wall_faces is not None and len(wall_faces):
             bounds = np.array(
@@ -1021,6 +1280,10 @@ class VorticityTransfer:
             if on_planes.all():
                 self._body_bounds = bounds
                 self._lattice_anchor = bounds[[0, 2, 4]]
+                if self.transfer_method == "buffered_m4_renewal":
+                    # This is the lattice phase used by the 20-second renewal
+                    # run: no particle centre lies directly on a cube face.
+                    self._lattice_anchor -= 0.5 * self.particle_spacing
 
         ibm = getattr(fvm, "ibm", None)
         bodies = () if ibm is None else tuple(ibm.bodies)
@@ -1031,18 +1294,54 @@ class VorticityTransfer:
         if self._lattice_anchor is None:
             self._lattice_anchor = self._cell_centre[0].copy()
 
-        renewal_bounds = self._box.copy()
-        renewal_bounds[::2] -= self.renewal_buffer_length
-        renewal_bounds[1::2] += self.renewal_buffer_length
-        self._renewal_lattice = build_renewal_lattice(
-            renewal_bounds,
-            lattice_anchor=self._lattice_anchor,
-            spacing=self.particle_spacing,
-        )
-        self._renewal_target_solid_mask = self._points_in_solid(
-            self._renewal_lattice.position,
-            include_boundary=False,
-        )
+        if self.transfer_method == "buffered_m4_renewal":
+            if self._cell_tree is None:
+                raise RuntimeError("buffered M4' renewal requires an FVM cell tree")
+
+            def mesh_weight_at_node(points: np.ndarray) -> np.ndarray:
+                distance, _ = self._cell_tree.query(points, workers=-1)
+                return 1.0 - _smoothstep(
+                    distance,
+                    self.particle_spacing,
+                    2.0 * self.particle_spacing,
+                )
+
+            has_solid = bool(self._solid_bodies) or self._body_bounds is not None
+
+            def fluid_weight_at_node(points: np.ndarray) -> np.ndarray:
+                return _smoothstep(
+                    self._signed_solid_distance(points),
+                    -self.particle_spacing,
+                    0.0,
+                )
+
+            def interior_at_node(points: np.ndarray) -> np.ndarray:
+                return self._points_in_solid(points, include_boundary=False)
+
+            self._stable_renewal_lattice = build_stable_renewal_lattice(
+                self._box,
+                self.particle_spacing,
+                buffer_length=self.renewal_buffer_length,
+                authority_ramp_width=self.eta_blend_width,
+                vpm_dead_zone=self.vpm_only_width,
+                lattice_anchor=self._lattice_anchor,
+                mesh_weight_at_node=mesh_weight_at_node,
+                fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
+                interior_at_node=interior_at_node if has_solid else None,
+            )
+        else:
+            renewal_bounds = self._box.copy()
+            renewal_bounds[::2] -= self.renewal_buffer_length
+            renewal_bounds[1::2] += self.renewal_buffer_length
+            self._renewal_lattice = build_renewal_lattice(
+                renewal_bounds,
+                lattice_anchor=self._lattice_anchor,
+                spacing=self.particle_spacing,
+            )
+            self._renewal_target_solid_mask = self._points_in_solid(
+                self._renewal_lattice.position,
+                include_boundary=False,
+            )
         self._fvm_solid_mask = self._points_in_solid(
             self._cell_centre,
             include_boundary=True,
@@ -1053,18 +1352,31 @@ class VorticityTransfer:
         if donor_count == 0:
             raise ValueError("FVM transfer region contains no fluid cell centres")
         self._build_face_cell_index()
+        lattice_count = (
+            len(self._stable_renewal_lattice.positions)
+            if self._stable_renewal_lattice is not None
+            else (0 if self._renewal_lattice is None else len(self._renewal_lattice.position))
+        )
         logger.info(
             format_coupler_log(
                 "replacement region",
+                ("method", self.transfer_method),
                 ("fvm fluid cells", f"{donor_count:,}"),
                 *(
-                    (("release blend width, eta", "off"),)
+                    (("authority ramp width, eta", "off"),)
                     if self.eta_blend_width == 0.0
-                    else (("release blend width, eta", f"{self.eta_blend_width:.4g}", "m"),)
+                    else (("authority ramp width, eta", f"{self.eta_blend_width:.4g}", "m"),)
                 ),
                 ("renewal buffer", f"{self.renewal_buffer_length:.4g}", "m"),
-                ("renewal lattice nodes", f"{len(self._renewal_lattice.position):,}"),
-                ("state", "cell volume x fvm vorticity"),
+                ("renewal lattice nodes", f"{lattice_count:,}"),
+                (
+                    "state",
+                    (
+                        "synchronized fvm velocity trace"
+                        if self.transfer_method == "buffered_m4_renewal"
+                        else "cell volume x fvm vorticity"
+                    ),
+                ),
             )
         )
 
@@ -1650,6 +1962,66 @@ class VorticityTransfer:
             renewal_diffusion_substeps=diffusion_substeps,
         )
 
+    def _transfer_buffered_m4_renewal(
+        self,
+        vpm,
+        *,
+        fvm_velocity: np.ndarray,
+        fvm_velocity_gradient: np.ndarray,
+    ) -> TransferResult:
+        """Run the recovered synchronized velocity-trace whole-belt renewal."""
+        if self._stable_renewal_lattice is None or self._velocity_trace is None:
+            raise RuntimeError("buffered M4' renewal lattice was not initialized")
+        has_solid = bool(self._solid_bodies) or self._body_bounds is not None
+
+        def fluid_weight(points: np.ndarray) -> np.ndarray:
+            return _smoothstep(
+                self._signed_solid_distance(points),
+                -self.particle_spacing,
+                0.0,
+            )
+
+        def in_solid(points: np.ndarray) -> np.ndarray:
+            return self._points_in_solid(points, include_boundary=False)
+
+        def velocity_at(points: np.ndarray) -> np.ndarray:
+            query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+            sampled = self._velocity_trace.sample(
+                query,
+                fvm_velocity,
+                fvm_velocity_gradient,
+            )
+            if has_solid:
+                sampled *= _smoothstep(
+                    self._signed_solid_distance(query),
+                    0.0,
+                    self.particle_spacing,
+                )[:, None]
+            return sampled
+
+        def target_at_node(points: np.ndarray) -> np.ndarray:
+            return vortex_strength_from_velocity_trace(
+                points,
+                self.particle_spacing,
+                velocity_at,
+            )
+
+        return replace_particles_from_buffered_m4_renewal(
+            vpm,
+            lattice=self._stable_renewal_lattice,
+            fvm_vortex_strength_at_node=target_at_node,
+            particle_fluid_weight=fluid_weight if has_solid else None,
+            particle_in_solid=in_solid if has_solid else None,
+            prune_threshold=self.transfer_prune_threshold_abs,
+            core_radius_ratio=self.core_radius_ratio,
+            amplification_cap=self.transfer_amplification_cap,
+            boundary_prune_multiplier=self.transfer_boundary_prune_multiplier,
+            kinematic_viscosity=self.kinematic_viscosity,
+            freestream_speed=float(np.linalg.norm(self.config.freestream_velocity_vector)),
+            time_step_size=self.coupling_time_step,
+            compute_diagnostics=(self.step == 1 or self.step % self.diagnostic_interval == 0),
+        )
+
     def transfer(self, vpm, velocity, velocity_gradient) -> TransferResult:
         """Replace the inner particle state and preserve the outer particle cloud."""
         self.step += 1
@@ -1667,7 +2039,13 @@ class VorticityTransfer:
         if self._lattice_anchor is None:
             raise RuntimeError("VorticityTransfer.setup() did not resolve a lattice anchor")
         fvm_vorticity = self._vorticity_from_gradient(gradient_values)
-        if self.transfer_method == "projected_renewal":
+        if self.transfer_method == "buffered_m4_renewal":
+            result = self._transfer_buffered_m4_renewal(
+                vpm,
+                fvm_velocity=velocity_values,
+                fvm_velocity_gradient=gradient_values,
+            )
+        elif self.transfer_method == "projected_renewal":
             result = self._transfer_projected_gbd(
                 vpm,
                 fvm_velocity=velocity_values,
@@ -1704,6 +2082,7 @@ __all__ = [
     "TransferResult",
     "VorticityTransfer",
     "apply_projected_gbd_renewal",
+    "replace_particles_from_buffered_m4_renewal",
     "replace_particles_from_fvm",
     "replace_particles_from_lattice_blend",
     "replacement_eta",

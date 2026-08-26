@@ -15,6 +15,7 @@ import taichi as ti
 
 from source.solvers.vpm.particles.container import Particles
 from source.solvers.vpm.turbulence.turbulence import ParticlesLES
+from source.write_precision import DEFAULT_WRITE_PRECISION, validate_write_precision
 
 from ..boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
@@ -209,6 +210,12 @@ class VPMSolver:
         self.precision = getattr(final_setup, "precision", "f32")
         if self.precision not in ("f32", "f64"):
             raise ValueError(f"precision must be 'f32' or 'f64', got '{self.precision}'")
+        self.write_precision = validate_write_precision(
+            getattr(final_setup, "write_precision", DEFAULT_WRITE_PRECISION)
+        )
+        self.checkpoint_store_velocity_gradient = bool(
+            getattr(final_setup, "checkpoint_store_velocity_gradient", True)
+        )
         self.compute_device = initialize_taichi_backend(
             self.compute_device,
             debug_mode,

@@ -9,13 +9,15 @@ Saves: figures/vortex_ring_energy.png
 """
 
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent))
-from plot_style import (
+from ring_metrics import (
+    FIGURES_DIR,
+    P_REF,
+    SAMPLES_DIR,
+    REFERENCE_TIME,
     VARIANT_LABEL,
     VARIANT_STYLE,
     build_arg_parser,
@@ -23,7 +25,6 @@ from plot_style import (
     load_theme,
     save_fig,
 )
-from ring_metrics import FIGURES_DIR, P_REF, SAMPLES_DIR, REFERENCE_TIME
 
 
 def main() -> None:

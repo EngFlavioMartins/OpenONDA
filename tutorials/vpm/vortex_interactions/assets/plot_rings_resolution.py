@@ -11,20 +11,17 @@ conservative-but-wrong one.  This one shows the resolution instead:
   discrete one is not, and stretching amplifies precisely its divergent part;
 * the angle between ``alpha_p`` and ``w(x_p)`` — parallel in the continuum.
 
-Shaded bands mark the acceptance limits enforced by ``assets/check_run.py``.
+Shaded bands mark the acceptance limits enforced by ``assets/postprocess.py``.
 
 Color encodes the numerical method, linestyle the interaction family - the
 same key shared by every comparison figure (see ``_common.case_style``).
 """
 
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 
-ASSETS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(ASSETS_DIR))
-from _common import (  # noqa: E402
+from _common import (
     REFERENCE_TIME,
     build_arg_parser,
     case_style,
@@ -47,8 +44,6 @@ def main() -> None:
     args = build_arg_parser(
         "Particle overlap, vorticity-divergence error and Gamma-omega misalignment."
     ).parse_args()
-    figs = Path(args.figures_dir)
-    figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
     fig, axes = plt.subplots(3, 1, figsize=(8.4, 7.2), sharex=True)
@@ -109,7 +104,7 @@ def main() -> None:
 
     save_fig(
         fig,
-        figs / "rings_resolution.png",
+        Path("figures") / "rings_resolution.png",
         dpi=args.dpi,
         figure_format=args.format,
         tight_rect=(0.0, 0.12, 1.0, 1.0),

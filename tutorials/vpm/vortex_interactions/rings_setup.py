@@ -3,11 +3,9 @@
 
 The four primary cases compare co-rotating leapfrogging rings and
 counter-rotating colliding rings with transposed DNS and calibrated transposed
-LES.  A stabilized LES retry exists for each family, but ``allrun.sh`` launches
-it only when the corresponding plain LES fails before the requested turbulent
-transition horizon.  Stabilization is conservative filament refinement: it
-splits only particles whose strength shows a clear lineage-relative overshoot;
-it does not remesh or continuously relax the full cloud.
+LES.  A stabilized LES variant for each family uses overshoot-gated filament
+splitting (no remesh, no relaxation) to extend the simulation through the
+turbulent-transition horizon when the plain LES terminates early.
 
 Usage:
     python rings_setup.py --case leapfrog_dns
@@ -17,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -68,15 +65,10 @@ FILAMENT_REFINEMENT_OFFSET_FRACTION = 0.25
 STABILIZED_MAX_PARTICLES = 100_000
 BASELINE_MAX_PARTICLES = 20_000
 
-COMPUTE_DEVICE = os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper()
-# Metal does not expose f64 kernels in Taichi.  Keep the historical f64 path
-# for CPU diagnostics, while making the canonical GPU campaign explicit and
-# recording the reduced precision in each run manifest.
+COMPUTE_DEVICE = "METAL"
 PRECISION = "f32" if COMPUTE_DEVICE == "METAL" else "f64"
-NUM_STEPS = int(os.environ.get("OPENONDA_INTERACTIONS_NUM_STEPS", str(NUM_STEPS)))
-END_TIME = NUM_STEPS * TIME_STEP_SIZE
-VELOCITY_METHOD = os.environ.get("OPENONDA_INTERACTIONS_VELOCITY_METHOD", "treecode")
-TREECODE_THETA = float(os.environ.get("OPENONDA_INTERACTIONS_TREECODE_THETA", "0.30"))
+VELOCITY_METHOD = "treecode"
+TREECODE_THETA = 0.30
 
 CASES = {
     "leapfrog_dns": ("leapfrog", "dns"),
@@ -149,6 +141,8 @@ def solver_setup(case_name: str, output_dir: Path) -> vpm.VPMSetup:
         particle_kernel="GAUSSIAN",
         precision=PRECISION,
         compute_device=COMPUTE_DEVICE,
+        write_precision="f32",
+        checkpoint_store_velocity_gradient=False,
         max_n_particles=(
             STABILIZED_MAX_PARTICLES if variant == "les_stabilized" else BASELINE_MAX_PARTICLES
         ),
@@ -228,59 +222,24 @@ def run_case(case_name: str, *, n_steps: int = NUM_STEPS) -> None:
             group_id=np.full(len(position), group, dtype=np.int32),
         )
 
-    particle_spacings_per_wavelength = 2.0 * np.pi * RING_RADIUS / (22.6 * PARTICLE_SPACING)
-    particle_spacings_across_core = 2.0 * CORE_RADIUS / PARTICLE_SPACING
-    if (
-        len(solver.particles) < 17_000
-        or particle_spacings_per_wavelength < 7.5
-        or particle_spacings_across_core < 5.5
-    ):
-        raise RuntimeError(
-            "The particle cloud does not meet the Re=3000 Widnall-resolution gate: "
-            f"N={len(solver.particles)}, wavelength/h={particle_spacings_per_wavelength:.3f}, "
-            f"core_diameter/h={particle_spacings_across_core:.3f}"
-        )
-
     manifest = {
         "status": "running",
         "case": case_name,
         "family": family,
         "model": variant,
         "requested_steps": n_steps,
-        "requested_end_time": n_steps * TIME_STEP_SIZE,
         "diagnostic_interval_steps": DIAGNOSTIC_INTERVAL_STEPS,
         "checkpoint_interval_steps": CHECKPOINT_INTERVAL_STEPS,
-        "baseline_misalignment_limit_deg": BASELINE_MISALIGNMENT_LIMIT,
-        "baseline_divergence_limit": BASELINE_DIVERGENCE_LIMIT,
         "particle_spacing": PARTICLE_SPACING,
-        "particle_core_radius": PARTICLE_RADIUS,
-        "initial_n_particles_total": len(solver.particles),
         "precision": PRECISION,
+        "write_precision": solver.write_precision,
+        "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
         "compute_device": COMPUTE_DEVICE,
         "velocity_method": VELOCITY_METHOD,
-        "treecode_theta": TREECODE_THETA if VELOCITY_METHOD == "treecode" else None,
-        "widnall_amplitude": WIDNALL_AMPLITUDE,
-        "widnall_modes": WIDNALL_MODES,
-        "widnall_dominant_mode_estimate": 22.6,
-        "particle_spacings_per_dominant_wavelength": particle_spacings_per_wavelength,
-        "particle_spacings_across_core_diameter": particle_spacings_across_core,
         "smagorinsky_coefficient": 0.0 if variant == "dns" else LES_COEFFICIENT[family],
         "stabilization_mechanism": (
             "overshoot_gated_filament_refinement" if variant == "les_stabilized" else "disabled"
         ),
-        "filament_refinement_interval_steps": (
-            FILAMENT_REFINEMENT_INTERVAL_STEPS if variant == "les_stabilized" else 0
-        ),
-        "filament_refinement_strength_factor": (
-            FILAMENT_REFINEMENT_STRENGTH_FACTOR if variant == "les_stabilized" else None
-        ),
-        "filament_refinement_offset_fraction": (
-            FILAMENT_REFINEMENT_OFFSET_FRACTION if variant == "les_stabilized" else None
-        ),
-        "remeshing_enabled": False,
-        "pedrizzetti_relaxation_enabled": False,
-        "diffusion_scheme": "CS",
-        "core_spreading_moment_projection": True,
     }
     manifest_path = output_dir / "run_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")

@@ -1,64 +1,36 @@
 #!/usr/bin/env python3
-"""
-Flat Plate VLM-VPM — AoA Polar Plotter
-=======================================
-Generates Figure 1: CL, CD, CM vs α for the flat-plate VLM-VPM
-experiment suite over α = −10° … 15°.
+"""CL, CD, CM vs alpha polar for the flat-plate VLM--VPM suite.
 
-Output:
-    figures/exp_polar.png
-
-Author:  Flavio A. C. Martins, OpenONDA Team
-Date: June 2026
+Output: figures/plate_polar.png
 """
 
-import sys
 import argparse
-import importlib.util
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# -- Paths ---------------------------------------------------------------------
-CASE_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = CASE_DIR.parents[2]
-THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-SAMPLES_DIR = CASE_DIR / "samples"
-FIG_DIR = CASE_DIR / "figures"
+from _plot_theme import CASE_DIR, SAMPLES_DIR, FIG_DIR, color, cm, save_fig
+from theoretical_model import prandtl_finite_span_lift_curve_slope
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--format", choices=("png", "pdf"), default="png")
 parser.add_argument("--dpi", type=int, default=300)
 args = parser.parse_args()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
-# -- Theme ---------------------------------------------------------------------
-m = None
-if not THEME_PATH.exists():
-    raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
-spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
-m.set_style()
-
-from theoretical_model import prandtl_finite_span_lift_curve_slope
 
 
-def _c(key):
-    return m.COLORS[key]
-
-
-# -- Colours -------------------------------------------------------------------
-C_MOVING = _c("TUDcyan")
-C_STATIC = _c("vpm")
-C_THEORY = _c("ref")
+C_MOVING = color("TUDcyan")
+C_STATIC = color("vpm")
+C_THEORY = color("ref")
 
 # -- Physical constants --------------------------------------------------------
 aspect_ratio = 10.0
 CHORD = 1.0
 FREESTREAM_SPEED = 10.0
 
-cm = 1 / 2.54
+CM = cm()
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -177,7 +149,7 @@ for i, a_deg in enumerate(alpha_range):
 # -- Figure --------------------------------------------------------------------
 
 fig, (ax_cl, ax_cd, ax_cm) = plt.subplots(
-    3, 1, figsize=(12 * cm, 15 * cm), sharex=True, constrained_layout=True
+    3, 1, figsize=(12 * CM, 15 * CM), sharex=True, constrained_layout=True
 )
 
 # CL vs α
@@ -191,7 +163,7 @@ ax_cl.plot(
 )
 ax_cl.plot(moving_aoa, moving_cl, "o", color=C_MOVING, ms=5, zorder=5, label="Moving (body frame)")
 ax_cl.plot(static_aoa, static_cl, "s", color=C_STATIC, ms=5, zorder=4, label="Static (wind frame)")
-ax_cl.axhline(0, color=_c("DarkText"), lw=0.5, alpha=0.35)
+ax_cl.axhline(0, color=color("DarkText"), lw=0.5, alpha=0.35)
 ax_cl.set_ylabel(r"Lift coefficient, $C_L$")
 ax_cl.set_title(r"$C_L$ vs $\alpha$")
 ax_cl.set_ylim(bottom=-1.6, top=1.6)
@@ -209,7 +181,7 @@ ax_cd.plot(
 )
 ax_cd.plot(moving_aoa, moving_cd, "o", color=C_MOVING, ms=5, zorder=5, label="Moving (body frame)")
 ax_cd.plot(static_aoa, static_cd, "s", color=C_STATIC, ms=5, zorder=4, label="Static (wind frame)")
-ax_cd.axhline(0, color=_c("DarkText"), lw=0.5, alpha=0.35)
+ax_cd.axhline(0, color=color("DarkText"), lw=0.5, alpha=0.35)
 ax_cd.set_ylabel(r"Drag coefficient, $C_D$")
 ax_cd.set_title(r"$C_D$ vs $\alpha$")
 ax_cd.legend()
@@ -219,7 +191,7 @@ ax_cd.set_ylim(bottom=-0.01, top=0.10)
 # CM vs α
 ax_cm.plot(moving_aoa, moving_cm, "o", color=C_MOVING, ms=5, zorder=5, label="Moving (body frame)")
 ax_cm.plot(static_aoa, static_cm, "s", color=C_STATIC, ms=5, zorder=4, label="Static (wind frame)")
-ax_cm.axhline(0, color=_c("DarkText"), lw=0.5, alpha=0.35)
+ax_cm.axhline(0, color=color("DarkText"), lw=0.5, alpha=0.35)
 ax_cm.set_xlabel(r"Angle of attack, $\alpha$ [°]")
 ax_cm.set_ylabel(r"Moment coeff., $C_{m,c/4}$")
 ax_cm.set_title(r"$C_{m,c/4}$ vs $\alpha$")
@@ -228,4 +200,4 @@ ax_cm.set_ylim(bottom=-0.01, top=0.01)
 ax_cm.set_xlim(-12, 18)
 
 out = FIG_DIR / "plate_polar.png"
-m.save_fig(fig, out, figure_format=args.format, dpi=args.dpi)
+save_fig(fig, out, figure_format=args.format, dpi=args.dpi)

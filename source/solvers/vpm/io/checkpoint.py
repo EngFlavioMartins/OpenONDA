@@ -16,10 +16,18 @@ from typing import Any
 import h5py
 import numpy as np
 
+from source.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write, storage_dtype
+
 from ..config.setup import VPMSetup
 from .logging import Logging
 
-_CHECKPOINT_FORMAT_VERSION = "7.0"
+_CHECKPOINT_FORMAT_VERSION = "8.0"
+_COMPRESSION = {
+    "chunks": True,
+    "compression": "gzip",
+    "compression_opts": 4,
+    "shuffle": True,
+}
 _STABILIZATION_DIAGNOSTIC_NAMES = (
     "n_stabilization_events",
     "last_stabilization_mechanism",
@@ -87,6 +95,17 @@ def _reshape_tensor(array: np.ndarray | None) -> np.ndarray | None:
     if array.ndim == 2 and array.shape[1] == 9:
         return array.reshape(-1, 3, 3)
     return array
+
+
+def _symmetric_part(velocity_gradient: np.ndarray | None) -> np.ndarray | None:
+    """Return the strain rate implied by a ``(N, 3, 3)`` velocity gradient.
+
+    Strain rate is the symmetric part of the velocity gradient exactly, so it
+    is reconstructed on load instead of occupying a quarter of the file.
+    """
+    if velocity_gradient is None:
+        return None
+    return 0.5 * (velocity_gradient + np.swapaxes(velocity_gradient, 1, 2))
 
 
 class CheckpointManager:
@@ -184,6 +203,7 @@ class CheckpointManager:
         particles_group: h5py.Group,
         solver,
         n_particles_total: int,
+        write_precision: str,
     ) -> None:
         stabilization = _stabilization(solver)
         reference_vortex_strength = getattr(
@@ -204,50 +224,42 @@ class CheckpointManager:
         ):
             particles_group.create_dataset(
                 "filament_reference_vortex_strength",
-                data=np.asarray(reference_vortex_strength, dtype=np.float64),
+                data=cast_for_write(reference_vortex_strength, write_precision),
+                **_COMPRESSION,
             )
             particles_group.create_dataset(
                 "filament_reference_length",
-                data=np.asarray(reference_lengths, dtype=np.float64),
+                data=cast_for_write(reference_lengths, write_precision),
+                **_COMPRESSION,
             )
 
         particles_group.create_dataset(
             "zone_id",
             data=solver.particles.zone_id_cpu(),
+            **_COMPRESSION,
         )
 
-        velocity_gradient = solver.particles.velocity_gradient_cpu()
-        if velocity_gradient.shape[0] != n_particles_total:
-            raise ValueError(
-                "velocity_gradient particle count does not match "
-                f"n_particles_total ({velocity_gradient.shape[0]} != {n_particles_total})"
+        if solver.checkpoint_store_velocity_gradient:
+            velocity_gradient = solver.particles.velocity_gradient_cpu()
+            if velocity_gradient.shape[0] != n_particles_total:
+                raise ValueError(
+                    "velocity_gradient particle count does not match "
+                    f"n_particles_total ({velocity_gradient.shape[0]} != {n_particles_total})"
+                )
+            particles_group.create_dataset(
+                "velocity_gradient",
+                data=cast_for_write(
+                    velocity_gradient.reshape(n_particles_total, 9),
+                    write_precision,
+                ),
+                **_COMPRESSION,
             )
-        particles_group.create_dataset(
-            "velocity_gradient",
-            data=velocity_gradient.reshape(n_particles_total, 9),
-        )
 
-        strain_rate = solver.particles.strain_rate_cpu()
-        if strain_rate.shape[0] != n_particles_total:
-            raise ValueError(
-                "strain_rate particle count does not match "
-                f"n_particles_total ({strain_rate.shape[0]} != {n_particles_total})"
-            )
-        particles_group.create_dataset(
-            "strain_rate",
-            data=strain_rate.reshape(n_particles_total, 9),
-        )
-
-        freestream_velocity = np.asarray(
-            solver.freestream_velocity,
-            dtype=solver.np_dtype,
-        )
-        particles_group.create_dataset(
-            "freestream_velocity",
-            data=np.tile(freestream_velocity, (n_particles_total, 1)),
-        )
-
-        if hasattr(solver, "physics") and hasattr(solver.physics, "get_total_enstrophy"):
+        if (
+            n_particles_total > 0
+            and hasattr(solver, "physics")
+            and hasattr(solver.physics, "get_total_enstrophy")
+        ):
             total_enstrophy = solver.physics.get_total_enstrophy(
                 solver.particles.position_cpu(),
                 solver.particles.vortex_strength_cpu(),
@@ -255,7 +267,8 @@ class CheckpointManager:
             )
             particles_group.create_dataset(
                 "total_enstrophy",
-                data=total_enstrophy,
+                data=cast_for_write(total_enstrophy, write_precision),
+                **_COMPRESSION,
             )
 
     @staticmethod
@@ -265,9 +278,18 @@ class CheckpointManager:
         time: float,
     ) -> None:
         """Write canonical solver and particle state."""
+        write_precision = getattr(solver, "write_precision", DEFAULT_WRITE_PRECISION)
         with h5py.File(hdf5_file, "w") as file:
             solver_group = file.create_group("solver")
             solver_group.attrs["checkpoint_format_version"] = _CHECKPOINT_FORMAT_VERSION
+            solver_group.attrs["write_precision"] = write_precision
+            solver_group.attrs["checkpoint_store_velocity_gradient"] = int(
+                getattr(solver, "checkpoint_store_velocity_gradient", True)
+            )
+            solver_group.attrs["freestream_velocity"] = np.asarray(
+                solver.freestream_velocity,
+                dtype=np.float64,
+            )
             solver_group.attrs["time"] = time
             solver_group.attrs["step"] = int(solver.step)
             solver_group.attrs["time_step_size"] = float(solver.time_step_size)
@@ -310,8 +332,6 @@ class CheckpointManager:
 
             particles_group = file.create_group("particles")
             n_particles_total = int(solver.particles.n_particles_total)
-            if n_particles_total == 0:
-                return
 
             for name in (
                 "position",
@@ -327,21 +347,18 @@ class CheckpointManager:
             ):
                 particles_group.create_dataset(
                     name,
-                    data=getattr(
-                        solver.particles,
-                        f"{name}_cpu",
-                    )(),
+                    data=cast_for_write(
+                        getattr(solver.particles, f"{name}_cpu")(),
+                        write_precision,
+                    ),
+                    **_COMPRESSION,
                 )
-
-            particles_group.create_dataset(
-                "vortex_strength_magnitude",
-                data=np.linalg.norm(solver.particles.vortex_strength_cpu(), axis=1),
-            )
 
             CheckpointManager._write_optional_particle_fields(
                 particles_group,
                 solver,
                 n_particles_total,
+                write_precision,
             )
 
     @staticmethod
@@ -380,25 +397,25 @@ class CheckpointManager:
         """Write an XDMF descriptor using canonical field names."""
         n_particles_total = int(solver.particles.n_particles_total)
         hdf5_basename = os.path.basename(f"{checkpoint_base}.h5")
-        float_precision = 8 if solver.precision == "f64" else 4
-        optional = f"""
+        write_precision = getattr(solver, "write_precision", DEFAULT_WRITE_PRECISION)
+        float_precision = storage_dtype(write_precision).itemsize
+        optional_parts = [
+            f"""
       <Attribute Name="zone_id" AttributeType="Scalar" Center="Node">
         <DataItem Dimensions="{n_particles_total}" NumberType="Int" Format="HDF">
           {hdf5_basename}:/particles/zone_id
         </DataItem>
-      </Attribute>
+      </Attribute>"""
+        ]
 
+        if getattr(solver, "checkpoint_store_velocity_gradient", True):
+            optional_parts.append(f"""
       <Attribute Name="velocity_gradient" AttributeType="Tensor" Center="Node">
         <DataItem Dimensions="{n_particles_total} 9" NumberType="Float" Precision="{float_precision}" Format="HDF">
           {hdf5_basename}:/particles/velocity_gradient
         </DataItem>
-      </Attribute>
-
-      <Attribute Name="strain_rate" AttributeType="Tensor" Center="Node">
-        <DataItem Dimensions="{n_particles_total} 9" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/strain_rate
-        </DataItem>
-      </Attribute>"""
+      </Attribute>""")
+        optional = "\n".join(optional_parts)
 
         xdmf_content = f"""<?xml version="1.0" ?>
 <!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>
@@ -420,21 +437,9 @@ class CheckpointManager:
         </DataItem>
       </Attribute>
 
-      <Attribute Name="freestream_velocity" AttributeType="Vector" Center="Node">
-        <DataItem Dimensions="{n_particles_total} 3" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/freestream_velocity
-        </DataItem>
-      </Attribute>
-
       <Attribute Name="vortex_strength" AttributeType="Vector" Center="Node">
         <DataItem Dimensions="{n_particles_total} 3" NumberType="Float" Precision="{float_precision}" Format="HDF">
           {hdf5_basename}:/particles/vortex_strength
-        </DataItem>
-      </Attribute>
-
-      <Attribute Name="vortex_strength_magnitude" AttributeType="Scalar" Center="Node">
-        <DataItem Dimensions="{n_particles_total}" NumberType="Float" Precision="{float_precision}" Format="HDF">
-          {hdf5_basename}:/particles/vortex_strength_magnitude
         </DataItem>
       </Attribute>
 
@@ -514,7 +519,6 @@ class CheckpointManager:
                     "position",
                     "velocity",
                     "vortex_strength",
-                    "vortex_strength_magnitude",
                     "core_radius",
                     "particle_volume",
                     "kinematic_viscosity",
@@ -523,9 +527,7 @@ class CheckpointManager:
                     "group_id",
                     "vorticity",
                     "velocity_gradient",
-                    "strain_rate",
                     "zone_id",
-                    "freestream_velocity",
                     "filament_reference_vortex_strength",
                     "filament_reference_length",
                     "total_enstrophy",
@@ -533,6 +535,7 @@ class CheckpointManager:
                 stored = {
                     name: name if name in particles_group else None for name in canonical_datasets
                 }
+                float_precision = int(particles_group["position"].dtype.itemsize)
 
             hdf5_basename = os.path.basename(hdf5_file)
 
@@ -543,11 +546,12 @@ class CheckpointManager:
                 number_type: str = "Float",
                 stored: dict[str, str | None] = stored,
                 hdf5_basename: str = hdf5_basename,
+                float_precision: int = float_precision,
             ) -> str:
                 stored_name = stored[canonical]
                 if stored_name is None:
                     return ""
-                precision = ' Precision="4"' if number_type == "Float" else ""
+                precision = f' Precision="{float_precision}"' if number_type == "Float" else ""
                 return (
                     f'<DataItem Dimensions="{dimensions}" '
                     f'NumberType="{number_type}"{precision} Format="HDF">'
@@ -562,10 +566,10 @@ class CheckpointManager:
           {data_item("zone_id", str(n_particles_total), number_type="Int")}
         </Attribute>"""
                 )
-            if stored["strain_rate"] is not None:
+            if stored["velocity_gradient"] is not None:
                 optional_parts.append(
-                    f"""        <Attribute Name="strain_rate" AttributeType="Tensor" Center="Node">
-          {data_item("strain_rate", f"{n_particles_total} 9")}
+                    f"""        <Attribute Name="velocity_gradient" AttributeType="Tensor" Center="Node">
+          {data_item("velocity_gradient", f"{n_particles_total} 9")}
         </Attribute>"""
                 )
 
@@ -582,9 +586,6 @@ class CheckpointManager:
         </Attribute>
         <Attribute Name="vortex_strength" AttributeType="Vector" Center="Node">
           {data_item("vortex_strength", f"{n_particles_total} 3")}
-        </Attribute>
-        <Attribute Name="vortex_strength_magnitude" AttributeType="Scalar" Center="Node">
-          {data_item("vortex_strength_magnitude", str(n_particles_total))}
         </Attribute>
         <Attribute Name="vorticity" AttributeType="Vector" Center="Node">
           {data_item("vorticity", f"{n_particles_total} 3")}
@@ -629,23 +630,20 @@ class CheckpointManager:
         particles_group: h5py.Group,
     ) -> dict[str, np.ndarray | None]:
         """Load required auxiliary fields and optional filament lineage."""
+        velocity_gradient = _reshape_tensor(
+            _read_dataset(
+                particles_group,
+                "velocity_gradient",
+                required=False,
+            )
+        )
         return {
             "zone_id": _read_dataset(
                 particles_group,
                 "zone_id",
             ),
-            "velocity_gradient": _reshape_tensor(
-                _read_dataset(
-                    particles_group,
-                    "velocity_gradient",
-                )
-            ),
-            "strain_rate": _reshape_tensor(
-                _read_dataset(
-                    particles_group,
-                    "strain_rate",
-                )
-            ),
+            "velocity_gradient": velocity_gradient,
+            "strain_rate": _symmetric_part(velocity_gradient),
             "effective_viscosity": _read_dataset(
                 particles_group,
                 "effective_viscosity",
@@ -761,7 +759,9 @@ class CheckpointManager:
                 solver._loading_numerical_state = False
 
             solver.particles.set_field("vorticity", vorticity)
-            if auxiliary["strain_rate"] is not None:
+            if auxiliary["velocity_gradient"] is None and solver.flow_model != "POTENTIAL":
+                solver.stepper._update_velocity_gradients(announce=False)
+            elif auxiliary["strain_rate"] is not None:
                 solver.particles.set_field(
                     "strain_rate",
                     auxiliary["strain_rate"],
@@ -817,6 +817,9 @@ class CheckpointManager:
                 solver_group = file["solver"]
                 required_solver_attributes = {
                     "checkpoint_format_version",
+                    "write_precision",
+                    "checkpoint_store_velocity_gradient",
+                    "freestream_velocity",
                     "time",
                     "step",
                     "time_step_size",
@@ -841,8 +844,9 @@ class CheckpointManager:
                 if n_particles_total < 0:
                     return False
                 particles_group = file["particles"]
-                if n_particles_total == 0:
-                    return len(particles_group) == 0
+                store_velocity_gradient = bool(
+                    _read_attribute(solver_group, "checkpoint_store_velocity_gradient")
+                )
 
                 required = {
                     "position",
@@ -854,13 +858,13 @@ class CheckpointManager:
                     "eddy_viscosity",
                     "group_id",
                     "vorticity",
-                    "vortex_strength_magnitude",
                     "effective_viscosity",
                     "zone_id",
-                    "freestream_velocity",
-                    "velocity_gradient",
-                    "strain_rate",
                 }
+                if store_velocity_gradient:
+                    required.add("velocity_gradient")
+                if n_particles_total == 0:
+                    return set(particles_group) == required
                 optional = {
                     "filament_reference_vortex_strength",
                     "filament_reference_length",
@@ -882,7 +886,6 @@ class CheckpointManager:
                     "velocity",
                     "vortex_strength",
                     "vorticity",
-                    "freestream_velocity",
                 )
                 scalar_fields = (
                     "core_radius",
@@ -891,7 +894,6 @@ class CheckpointManager:
                     "eddy_viscosity",
                     "group_id",
                     "zone_id",
-                    "vortex_strength_magnitude",
                     "effective_viscosity",
                 )
                 if any(
@@ -902,10 +904,9 @@ class CheckpointManager:
                     particles_group[name].shape != (n_particles_total,) for name in scalar_fields
                 ):
                     return False
-                for name in ("velocity_gradient", "strain_rate"):
-                    if particles_group[name].shape != (n_particles_total, 9):
-                        return False
-                return True
+                return not store_velocity_gradient or particles_group[
+                    "velocity_gradient"
+                ].shape == (n_particles_total, 9)
         except (OSError, KeyError, ValueError):
             return False
 

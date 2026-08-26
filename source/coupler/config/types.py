@@ -24,16 +24,31 @@ class CouplerSetup:
     """Freestream velocity (u, v, w) in m/s; must be a finite three-component vector."""
 
     # ---- VORTICITY TRANSFER (FVM -> VPM) ----
-    transfer_method: Literal["common_lattice", "projected_renewal"] = "common_lattice"
-    """FVM-to-VPM state transfer. ``projected_renewal`` is the GBD-compatible
-    Gaussian residual projection; ``common_lattice`` retains the reference path."""
+    transfer_method: Literal[
+        "buffered_m4_renewal",
+        "common_lattice",
+        "projected_renewal",
+    ] = "common_lattice"
+    """FVM-to-VPM state transfer. ``buffered_m4_renewal`` is the whole-belt
+    M4' method proven by the historical 20-second GBD cube run.
+    ``projected_renewal`` and ``common_lattice`` remain experimental paths."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
     """FVM-authoritative replacement region ``(xmin, xmax, ymin, ymax, zmin,
     zmax)``. It must lie inside the FVM domain; ``None`` uses the full domain."""
     eta_blend_width: float = 0.0
-    """Width (m) of the C1 common-lattice release blend outside the transfer
-    faces. The FVM state is authoritative inside; zero retains its complete
-    M4' support as a hard release stencil."""
+    """Width (m) of the C1 FVM-authority ramp measured inward from the transfer
+    faces. The stable renewal leaves the face and its release buffer under VPM
+    authority; zero selects a hard interior authority profile."""
+    vpm_only_width: float = 0.0
+    """Width (m) just inside the transfer faces where stable renewal keeps
+    FVM authority exactly zero. It must be smaller than ``eta_blend_width``."""
+    transfer_vorticity_cutoff: float = 0.05
+    """Stable-renewal soft-prune threshold in vorticity units (1/s)."""
+    transfer_boundary_prune_multiplier: float = 10.0
+    """Multiplier on the stable-renewal prune threshold as FVM authority
+    approaches zero at the transfer boundary."""
+    transfer_amplification_cap: float = 1.8
+    """Maximum gain used by the stable represented-state correction."""
     transfer_diagnostic_interval_steps: int = 1
     """Replacement steps between transfer diagnostics; at least one."""
     transfer_discretization_error_limit: float = 0.08
@@ -80,8 +95,15 @@ class CouplerSetup:
                 "'directional_outflow', 'pressure_gradient', or 'vorticity_mixed'"
             )
 
-        if self.transfer_method not in {"common_lattice", "projected_renewal"}:
-            raise ValueError("transfer_method must be 'common_lattice' or 'projected_renewal'")
+        if self.transfer_method not in {
+            "buffered_m4_renewal",
+            "common_lattice",
+            "projected_renewal",
+        }:
+            raise ValueError(
+                "transfer_method must be 'buffered_m4_renewal', 'common_lattice', "
+                "or 'projected_renewal'"
+            )
 
         if self.transfer_region_bounds is not None:
             transfer_region_bounds = np.asarray(self.transfer_region_bounds, dtype=np.float64)
@@ -98,6 +120,24 @@ class CouplerSetup:
             raise ValueError("checkpoint_interval_steps must be non-negative")
         if not np.isfinite(self.eta_blend_width) or self.eta_blend_width < 0.0:
             raise ValueError("eta_blend_width must be finite and non-negative")
+        if not np.isfinite(self.vpm_only_width) or self.vpm_only_width < 0.0:
+            raise ValueError("vpm_only_width must be finite and non-negative")
+        if self.eta_blend_width == 0.0 and self.vpm_only_width != 0.0:
+            raise ValueError("vpm_only_width requires a positive eta_blend_width")
+        if self.eta_blend_width > 0.0 and self.vpm_only_width >= self.eta_blend_width:
+            raise ValueError("vpm_only_width must be smaller than eta_blend_width")
+        if not np.isfinite(self.transfer_vorticity_cutoff) or self.transfer_vorticity_cutoff < 0.0:
+            raise ValueError("transfer_vorticity_cutoff must be finite and non-negative")
+        if (
+            not np.isfinite(self.transfer_boundary_prune_multiplier)
+            or self.transfer_boundary_prune_multiplier < 1.0
+        ):
+            raise ValueError("transfer_boundary_prune_multiplier must be at least one")
+        if (
+            not np.isfinite(self.transfer_amplification_cap)
+            or self.transfer_amplification_cap < 1.0
+        ):
+            raise ValueError("transfer_amplification_cap must be at least one")
         if self.transfer_diagnostic_interval_steps < 1:
             raise ValueError("transfer_diagnostic_interval must be at least one")
         if (
@@ -164,6 +204,10 @@ class CouplerSetup:
                 "transfer_method": self.transfer_method,
                 "transfer_region_bounds": transfer_region_bounds,
                 "eta_blend_width": self.eta_blend_width,
+                "vpm_only_width": self.vpm_only_width,
+                "transfer_vorticity_cutoff": self.transfer_vorticity_cutoff,
+                "transfer_boundary_prune_multiplier": (self.transfer_boundary_prune_multiplier),
+                "transfer_amplification_cap": self.transfer_amplification_cap,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
                 "transfer_discretization_error_limit": (self.transfer_discretization_error_limit),
                 "renewal_vorticity_error_limit": self.renewal_vorticity_error_limit,

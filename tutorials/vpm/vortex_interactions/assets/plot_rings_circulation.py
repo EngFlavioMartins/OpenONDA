@@ -29,8 +29,6 @@ from _common import (
 
 def main() -> None:
     args = build_arg_parser("Total circulation Σ|Γᵢ|/Σ|Γᵢ|₀ vs t*.").parse_args()
-    figs = Path(args.figures_dir)
-    figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
@@ -74,7 +72,7 @@ def main() -> None:
 
     save_fig(
         fig,
-        figs / "rings_circulation.png",
+        Path("figures") / "rings_circulation.png",
         dpi=args.dpi,
         figure_format=args.format,
         tight_rect=(0.0, 0.27, 1.0, 1.0),

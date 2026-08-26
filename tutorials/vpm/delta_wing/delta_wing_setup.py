@@ -12,7 +12,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -76,13 +75,9 @@ def pitch_velocity(phase: float):
 
 
 def run() -> None:
-    treecode_theta = float(os.environ.get("OPENONDA_DELTA_TREECODE_THETA", "0.35"))
-    smagorinsky_coefficient = float(os.environ.get("OPENONDA_DELTA_CS", "0.30"))
-    n_steps = int(os.environ.get("OPENONDA_DELTA_N_STEPS", N_STEPS))
-    if not 0.1 <= treecode_theta < 1.5:
-        raise ValueError("OPENONDA_DELTA_TREECODE_THETA must be in [0.1, 1.5)")
-    if n_steps < 1 or n_steps > N_STEPS:
-        raise ValueError(f"OPENONDA_DELTA_N_STEPS must be in [1, {N_STEPS}]")
+    treecode_theta = 0.30
+    smagorinsky_coefficient = 0.0
+    n_steps = N_STEPS
     sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
     checkpoint_interval_steps = cadence_steps(CHECKPOINT_INTERVAL_TIME)
     surface_file = TUTORIAL_DIR / "delta_wing_surface.json"
@@ -139,7 +134,7 @@ def run() -> None:
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup(
             time_step_size=TIME_STEP_SIZE,
-            compute_device=os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper(),
+            compute_device="METAL",
             turbulence=vpm.TurbulenceConfig.les_smagorinsky(
                 smagorinsky_coefficient=smagorinsky_coefficient
             ),
@@ -168,6 +163,8 @@ def run() -> None:
             checkpoint_name=CASE_NAME,
             checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,
+            write_precision="f32",
+            checkpoint_store_velocity_gradient=False,
             samplers=samplers,
         ),
         case_dir=TUTORIAL_DIR,
@@ -188,7 +185,8 @@ def run() -> None:
         "treecode_theta": treecode_theta,
         "smagorinsky_coefficient": smagorinsky_coefficient,
         "precision": solver.precision,
-        "smagorinsky_coefficient": 0.3,
+        "write_precision": solver.write_precision,
+        "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
         "panel_resolution": {"chordwise": 8, "spanwise": 18},
         "sample_interval_time": SAMPLE_INTERVAL_TIME,
         "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,

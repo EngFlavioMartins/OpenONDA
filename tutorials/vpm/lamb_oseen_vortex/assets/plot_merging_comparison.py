@@ -17,19 +17,27 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 if __package__:
-    from .plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
     from .vortex_diagnostics import (
         REF_DIR,
         SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        figure_size,
+        load_theme,
         resolve_runtime_physics,
+        save_fig,
         unwrap_pair_orientation,
     )
 else:
-    from plot_style import build_arg_parser, build_style_map, figure_size, load_theme, save_fig
     from vortex_diagnostics import (
         REF_DIR,
         SCHEMES,
+        build_arg_parser,
+        build_style_map,
+        figure_size,
+        load_theme,
         resolve_runtime_physics,
+        save_fig,
         unwrap_pair_orientation,
     )
 

@@ -23,7 +23,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 from pathlib import Path
 
 import numpy as np
@@ -188,7 +187,7 @@ def run_case(
         setup=vpm.VPMSetup.les_simulation(
             smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP_SIZE,
-            compute_device=os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper(),
+            compute_device="METAL",
             advection=vpm.AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
@@ -205,6 +204,8 @@ def run_case(
             checkpoint_name=name,
             checkpoint_directory="solution",
             sample_subdirectory=name,
+            write_precision="f32",
+            checkpoint_store_velocity_gradient=False,
             max_n_particles=120_000,
             final_samplers=final_samplers,
         ),
@@ -223,6 +224,8 @@ def run_case(
                 "smagorinsky_coefficient": SMAGORINSKY_COEFFICIENT,
                 "compute_device": solver.compute_device,
                 "precision": solver.precision,
+                "write_precision": solver.write_precision,
+                "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
                 "panel_resolution": {
                     "chordwise": CHORDWISE_PANELS,
                     "spanwise": SPANWISE_PANELS,

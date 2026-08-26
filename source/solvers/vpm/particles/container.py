@@ -13,6 +13,8 @@ import taichi as ti
 
 # Import VPM constants
 from source import log_style
+from source.vtk_output import write_vtk_dataset
+from source.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write
 
 from ..config.constants import MAX_N_PARTICLES
 from ..config.state import cached_particle_property
@@ -1565,8 +1567,17 @@ class Particles:
                     destination_velocity_gradient[dst_idx][row, col] = 0.0
                     destination_strain_rate[dst_idx][row, col] = 0.0
 
-    def save_vortex_particles(self, particle_file_name: str) -> None:
-        """Export the particle cloud to a VTP point cloud (field names match ``load_vortex_particles``)."""
+    def save_vortex_particles(
+        self,
+        particle_file_name: str,
+        write_precision: str = DEFAULT_WRITE_PRECISION,
+    ) -> None:
+        """Export the particle cloud to a VTP point cloud (field names match ``load_vortex_particles``).
+
+        Point coordinates already carry the positions, and strain rate is the
+        symmetric part of the velocity gradient, so neither is stored again;
+        ParaView derives the magnitude of any vector on its own.
+        """
         if not HAS_PYVISTA:
             Logging.warning(
                 f"[Output] status=skipped format=vtk reason=pyvista_unavailable "
@@ -1575,26 +1586,23 @@ class Particles:
             return
 
         n = int(self.n_particles_total)
-        position = self.position_cpu()
-        vortex_strength = self.vortex_strength_cpu()
-        point_cloud = pv.PolyData(position)
-        point_cloud.point_data["position"] = position
-        point_cloud.point_data["velocity"] = self.velocity_cpu()
-        point_cloud.point_data["vortex_strength"] = vortex_strength
-        point_cloud.point_data["vortex_strength_magnitude"] = np.linalg.norm(
-            vortex_strength, axis=1
-        )
-        point_cloud.point_data["core_radius"] = self.core_radius_cpu()
-        point_cloud.point_data["particle_volume"] = self.particle_volume_cpu()
-        point_cloud.point_data["kinematic_viscosity"] = self.kinematic_viscosity_cpu()
-        point_cloud.point_data["eddy_viscosity"] = self.eddy_viscosity_cpu()
-        point_cloud.point_data["effective_viscosity"] = self.effective_viscosity_cpu()
-        point_cloud.point_data["group_id"] = self.group_id_cpu()
-        point_cloud.point_data["zone_id"] = self.zone_id_cpu()
-        point_cloud.point_data["vorticity"] = self.vorticity_cpu()
-        point_cloud.point_data["velocity_gradient"] = self.velocity_gradient_cpu().reshape(n, 9)
-        point_cloud.point_data["strain_rate"] = self.strain_rate_cpu().reshape(n, 9)
-        point_cloud.save(particle_file_name)
+        point_cloud = pv.PolyData(cast_for_write(self.position_cpu(), write_precision))
+        fields = {
+            "velocity": self.velocity_cpu(),
+            "vortex_strength": self.vortex_strength_cpu(),
+            "core_radius": self.core_radius_cpu(),
+            "particle_volume": self.particle_volume_cpu(),
+            "kinematic_viscosity": self.kinematic_viscosity_cpu(),
+            "eddy_viscosity": self.eddy_viscosity_cpu(),
+            "effective_viscosity": self.effective_viscosity_cpu(),
+            "group_id": self.group_id_cpu(),
+            "zone_id": self.zone_id_cpu(),
+            "vorticity": self.vorticity_cpu(),
+            "velocity_gradient": self.velocity_gradient_cpu().reshape(n, 9),
+        }
+        for name, values in fields.items():
+            point_cloud.point_data[name] = cast_for_write(values, write_precision)
+        write_vtk_dataset(point_cloud, particle_file_name)
 
         Logging.record(
             "particle output written",

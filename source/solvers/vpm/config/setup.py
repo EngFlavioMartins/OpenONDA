@@ -9,6 +9,12 @@ import re
 import sys
 from typing import Any, Literal
 
+from source.write_precision import (
+    DEFAULT_WRITE_PRECISION,
+    WritePrecision,
+    validate_write_precision,
+)
+
 from ..boundary_elements.vlm.config import VLMSetup
 from .advection import AdvectionConfig
 from .constants import (
@@ -103,6 +109,8 @@ class VPMSetup:
     ] = "AUTO"
 
     precision: Literal["f32", "f64"] = "f32"
+    write_precision: WritePrecision = DEFAULT_WRITE_PRECISION
+    checkpoint_store_velocity_gradient: bool = True
     random_seed: int = 42
     device_memory_fraction: float = 0.5
     debug_mode: bool = False
@@ -136,6 +144,9 @@ class VPMSetup:
     """Optional VPM domain ``(xmin, xmax, ymin, ymax, zmin, zmax)``."""
 
     def __post_init__(self) -> None:
+        validate_write_precision(self.write_precision)
+        if not isinstance(self.checkpoint_store_velocity_gradient, bool):
+            raise TypeError("checkpoint_store_velocity_gradient must be a boolean")
         if len(self.freestream_velocity) != 3:
             raise ValueError("freestream_velocity must contain three components")
         object.__setattr__(
@@ -410,6 +421,8 @@ class VPMSetup:
             "clean": self.clean,
             "cutoff_radius_factor": self.cutoff_radius_factor,
             "precision": self.precision,
+            "write_precision": self.write_precision,
+            "checkpoint_store_velocity_gradient": self.checkpoint_store_velocity_gradient,
             "random_seed": self.random_seed,
             "device_memory_fraction": self.device_memory_fraction,
             "debug_mode": self.debug_mode,

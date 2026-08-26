@@ -31,8 +31,6 @@ from _common import (
 
 def main() -> None:
     args = build_arg_parser("Kinetic energy E/E₀ and enstrophy ε/ε₀ vs t*.").parse_args()
-    figs = Path(args.figures_dir)
-    figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
     fig, (ax_e, ax_w) = plt.subplots(2, 1, figsize=figure_size("wide_stacked"), sharex=True)
@@ -76,7 +74,7 @@ def main() -> None:
 
     save_fig(
         fig,
-        figs / "rings_energy.png",
+        Path("figures") / "rings_energy.png",
         dpi=args.dpi,
         figure_format=args.format,
         tight_rect=(0.0, 0.16, 1.0, 1.0),

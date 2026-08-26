@@ -109,7 +109,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert "fvm substeps per coupling step" in coupler_log
     checkpoint = sol / "checkpoints"
     manifest = json.loads((checkpoint / "manifest.json").read_text())
-    assert manifest["format_version"] == 9
+    assert manifest["format_version"] == 10
     assert manifest["kind"] == "openonda.coupled_checkpoint"
     assert all((checkpoint / name).is_file() for name in manifest["artifacts"].values())
     assert manifest["artifacts"] == {

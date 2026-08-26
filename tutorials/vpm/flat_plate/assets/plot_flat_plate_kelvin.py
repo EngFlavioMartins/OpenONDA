@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
-"""Discrete bound/wake vortex-strength closure for the flat-plate case.
+"""Bound/wake vortex-strength closure for the static 8-degree case (Kelvin's theorem).
 
-VPM particles store vector vortex strength ``alpha = integral(vorticity dV)``
-[m^3/s].  The comparable VLM quantity is therefore not peak sectional
-circulation [m^2/s], but the oriented bound-vortex strength
-``sum(Gamma_TE * bound_leg)``.  For the complete bound+wake vortex system,
-the two y-components must cancel (Kelvin's circulation theorem).
-
-Styling follows the other flat-plate figures (plot_plate_polar.py,
-plot_plate_spanwise.py): shared docs/themes/matplotlib_setup.py theme.
+Output: figures/flat_plate_kelvin.png
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib.util
 from pathlib import Path
 
 import matplotlib
@@ -24,24 +16,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-CASE_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = CASE_DIR.parents[2]
-THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-
-# -- Theme (same pattern as the sibling flat-plate plotters) ------------------
-_M = None
-if not THEME_PATH.exists():
-    raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
-_spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
-_M = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_M)
-_M.set_style()
-CM = _M.CM
+from _plot_theme import CASE_DIR, SAMPLES_DIR, color, cm, save_fig, export_formats
 
 
-def _c(key: str) -> str:
-    """Theme colour by key."""
-    return _M.COLORS[key]
+CM = cm()
 
 
 def load_budget(samples_dir: Path, name: str):
@@ -64,7 +42,7 @@ def load_budget(samples_dir: Path, name: str):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Bound/wake vortex-strength closure.")
-    ap.add_argument("--format", choices=_M.EXPORT_FORMATS, default="png")
+    ap.add_argument("--format", choices=export_formats(), default="png")
     ap.add_argument("--dpi", type=int, default=300)
     args = ap.parse_args()
 
@@ -78,8 +56,8 @@ def main() -> None:
     if t.size == 0:
         raise SystemExit("No finite Kelvin-budget rows were found.")
 
-    c_bound = _c("vpm")
-    c_wake = _c("hybrid")
+    c_bound = color("vpm")
+    c_wake = color("hybrid")
     residual = bound + wake
     scale = max(float(np.max(np.abs(bound))), float(np.max(np.abs(wake))), 1e-15)
     rel = 100.0 * residual / scale
@@ -100,8 +78,8 @@ def main() -> None:
     ax.set_title(rf"Bound–wake vortex-strength closure, $\alpha={angle_of_attack:.0f}^\circ$")
     ax.legend(loc="lower right")
 
-    axr.axhline(0.0, color=_c("reference"), ls="--", lw=1.0)
-    axr.plot(t, rel / 1e-4, color=_c("DarkText"), lw=1.2)
+    axr.axhline(0.0, color=color("reference"), ls="--", lw=1.0)
+    axr.plot(t, rel / 1e-4, color=color("DarkText"), lw=1.2)
     axr.set_xlabel("Time [s]")
     axr.set_ylabel(r"$\mathrm{Residual}\ [10^{-4}\,\%]$")
     axr.set_xlim(float(t.min()), float(t.max()))
@@ -117,7 +95,7 @@ def main() -> None:
     out_dir = CASE_DIR / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "flat_plate_kelvin.png"
-    _M.save_fig(fig, out, figure_format=args.format, dpi=args.dpi)
+    save_fig(fig, out, figure_format=args.format, dpi=args.dpi)
     print(f"Maximum relative closure residual: {max_rel / 100.0:.3e}")
 
 

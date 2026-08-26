@@ -20,14 +20,11 @@ It reads the flow-integral CSV written by the VPM sampler.
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-ASSETS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(ASSETS_DIR))
 from _common import (
     RING_CIRCULATION,
     RING_RADIUS,
@@ -383,8 +380,7 @@ def main() -> None:
     args = parser.parse_args()
 
     solution_dir = Path(args.solution_dir)
-    figures_dir = Path(args.figures_dir)
-    figures_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir = Path("figures")
 
     all_series: list[pd.DataFrame] = []
     rows: list[dict] = []

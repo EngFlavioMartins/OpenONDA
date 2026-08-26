@@ -15,7 +15,6 @@ Saves: ``figures/rotor_loading_validation.png``
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -25,7 +24,6 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (
     build_arg_parser,
     build_rotor_style_map,
@@ -101,7 +99,6 @@ def plot_loading_validation(args) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     # -- BEM reference ---------------------------------------------------
-    sys.path.insert(0, str(Path(__file__).parent))
     from rotor_theory import solve_blade_element_momentum
     from generate_openvsp_blade import RotorBladeDesign, design_schedule
 

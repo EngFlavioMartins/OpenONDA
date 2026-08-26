@@ -150,7 +150,7 @@ FVM_SETUP = fvm.FVMSetup(
         data_location="cell",
         encoding="appended",
         compression="lz4",
-        precision="float32",
+        precision="f32",
         asynchronous=True,
         ghost_layers=0,
     ),

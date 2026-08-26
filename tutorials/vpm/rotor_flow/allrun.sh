@@ -4,12 +4,11 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-export OPENONDA_COMPUTE_DEVICE="${OPENONDA_COMPUTE_DEVICE:-METAL}"
 
 echo
 echo "===== CLEAN ====="
 echo
-./allclean.sh
+./allclean.sh --all
 
 echo
 echo "===== SIMULATE ====="

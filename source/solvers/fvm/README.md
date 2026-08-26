@@ -19,6 +19,7 @@ setup = fvm.FVMSetup(
     cores=1,
     output=fvm.OutputConfig(
         compression="lz4",
+        precision="f32",
         asynchronous=True,
         ghost_layers=1,
     ),
@@ -52,6 +53,12 @@ pressure values are supplied through `FVMSetup.initial_velocity` and
 `FVMSetup.initial_kinematic_pressure`.
 Nonzero `relTol` values are supported, and separate final-stage values may
 override the relative tolerances for the final momentum and pressure solves.
+
+Visualization precision is independent of solver precision. `OutputConfig`
+accepts `precision="f16"`, `"f32"`, or `"f64"`; `f16` is half-quantized but
+stored in float32 VTK arrays so ParaView remains compatible. FVM restart
+checkpoints always remain lossless and use compact byte-shuffled/XOR history
+encoding internally.
 
 Low-level operators are imported through their defining packages:
 

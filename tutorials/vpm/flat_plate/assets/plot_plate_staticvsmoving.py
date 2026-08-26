@@ -1,58 +1,29 @@
 #!/usr/bin/env python3
-"""
-Flat Plate VLM-VPM — Static vs. Moving Comparison Plotter
-==========================================================
-Generates Figure 2: CL and CD histories (vs chord-lengths travelled)
-comparing the static wind-frame and moving body-frame solutions at
-α = 5°, alongside Wagner impulsive-start theory for aspect_ratio = 10.
+"""CL and CD histories comparing static vs moving at AoA=5 deg, with Wagner theory.
 
-Output:
-    figures/exp_static_vs_moving.png
-
-Author:  Flavio A. C. Martins, OpenONDA Team
-Date: June 2026
+Output: figures/plate_staticvsmoving.png
 """
 
-import sys
 import argparse
-import importlib.util
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# -- Paths ---------------------------------------------------------------------
-CASE_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = CASE_DIR.parents[2]
-THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-SAMPLES_DIR = CASE_DIR / "samples"
-FIG_DIR = CASE_DIR / "figures"
+from _plot_theme import SAMPLES_DIR, FIG_DIR, color, cm, save_fig
+from theoretical_model import prandtl_finite_span_lift_curve_slope
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--format", choices=("png", "pdf"), default="png")
 parser.add_argument("--dpi", type=int, default=300)
 args = parser.parse_args()
 FIG_DIR.mkdir(parents=True, exist_ok=True)
-# -- Theme ---------------------------------------------------------------------
-m = None
-if not THEME_PATH.exists():
-    raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
-spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
-m.set_style()
-
-from theoretical_model import prandtl_finite_span_lift_curve_slope
 
 
-def _c(key):
-    return m.COLORS[key]
-
-
-# -- Colours -------------------------------------------------------------------
-C_MOVING = _c("TUDcyan")
-C_STATIC = _c("vpm")
-C_THEORY = _c("ref")
+C_MOVING = color("TUDcyan")
+C_STATIC = color("vpm")
+C_THEORY = color("ref")
 
 # -- Physical constants --------------------------------------------------------
 aspect_ratio = 10.0
@@ -60,7 +31,7 @@ CHORD = 1.0
 FREESTREAM_SPEED = 10.0
 finite_span_lift_curve_slope = prandtl_finite_span_lift_curve_slope(aspect_ratio)
 
-cm = m.CM
+CM = cm()
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -83,7 +54,7 @@ steady_lift_coefficient = finite_span_lift_curve_slope * np.sin(np.radians(5.0))
 
 # -- Figure --------------------------------------------------------------------
 
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12 * cm, 12 * cm), sharex=True)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12 * CM, 12 * CM), sharex=True)
 fig.subplots_adjust(hspace=0.1, left=0.12, right=0.95, bottom=0.12, top=0.92)
 
 if df_static is not None:
@@ -144,4 +115,4 @@ ax2.legend()
 ax2.set_ylim(bottom=0)
 
 out = FIG_DIR / "plate_staticvsmoving.png"
-m.save_fig(fig, out, figure_format=args.format, dpi=args.dpi)
+save_fig(fig, out, figure_format=args.format, dpi=args.dpi)

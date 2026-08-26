@@ -10,7 +10,6 @@ import pandas as pd
 
 ASSETS_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = ASSETS_DIR.parent
-FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
 THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
@@ -111,11 +110,6 @@ def build_arg_parser(description: str):
         "--solution-dir",
         default=str(SOLUTION_DIR),
         help="Root solution directory.",
-    )
-    parser.add_argument(
-        "--figures-dir",
-        default=str(FIGURES_DIR),
-        help="Output directory for figures.",
     )
     parser.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
     parser.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")

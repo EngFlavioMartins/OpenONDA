@@ -6,6 +6,9 @@ from typing import Any
 
 import numpy as np
 
+from source.vtk_output import configure_writer
+from source.write_precision import cast_for_write
+
 from ..config.types import OutputConfig
 
 try:
@@ -78,14 +81,7 @@ class VTKExporter:
 
     def _field_array(self, data: np.ndarray) -> np.ndarray:
         """Return a contiguous array matching the qualified output precision."""
-        values = np.asarray(data)
-        if np.issubdtype(values.dtype, np.floating):
-            dtype = np.float32 if self.output.precision == "float32" else np.float64
-            if dtype != values.dtype:
-                fmin = float(np.finfo(dtype).min)
-                fmax = float(np.finfo(dtype).max)
-                values = np.clip(values, fmin, fmax).astype(dtype)
-        return np.ascontiguousarray(values)
+        return cast_for_write(data, self.output.precision)
 
     def _write_grid(self, filename: str, grid) -> None:
         """Write one valid appended-binary VTU and publish it atomically."""
@@ -101,15 +97,8 @@ class VTKExporter:
             writer = _vtk.vtkXMLUnstructuredGridWriter()
             writer.SetFileName(temporary)
             writer.SetInputData(grid)
-            writer.SetDataModeToAppended()
-            writer.EncodeAppendedDataOn()
+            configure_writer(writer, self.output.compression)
             writer.SetHeaderTypeToUInt64()
-            if self.output.compression == "lz4":
-                writer.SetCompressorTypeToLZ4()
-            elif self.output.compression == "zlib":
-                writer.SetCompressorTypeToZLib()
-            else:
-                writer.SetCompressorTypeToNone()
             if writer.Write() != 1:
                 raise OSError(f"VTK failed to write {target}")
             with open(temporary, "rb") as stream:

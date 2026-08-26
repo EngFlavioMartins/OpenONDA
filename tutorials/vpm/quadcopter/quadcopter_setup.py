@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
-import os
 
 import numpy as np
 
@@ -110,7 +109,7 @@ def run() -> None:
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup(
             time_step_size=TIME_STEP_SIZE,
-            compute_device=os.environ.get("OPENONDA_COMPUTE_DEVICE", "METAL").upper(),
+            compute_device="METAL",
             vlm=vlm_setup,
             stretching=vpm.StretchingConfig.disabled(),
             viscous=vpm.ViscousConfig.cs(
@@ -132,6 +131,8 @@ def run() -> None:
             checkpoint_name=CASE_NAME,
             checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,
+            write_precision="f32",
+            checkpoint_store_velocity_gradient=False,
             samplers=tuple(
                 vpm.SurfaceSampler(
                     point=[0.0, 0.0, height],
@@ -158,6 +159,8 @@ def run() -> None:
                 "time_step_size": TIME_STEP_SIZE,
                 "compute_device": solver.compute_device,
                 "precision": solver.precision,
+                "write_precision": solver.write_precision,
+                "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
                 "turbulence_model": "DNS",
                 "smagorinsky_coefficient": 0.0,
                 "treecode_theta": 0.35,

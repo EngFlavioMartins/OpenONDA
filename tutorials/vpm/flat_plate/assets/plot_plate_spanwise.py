@@ -1,25 +1,12 @@
 #!/usr/bin/env python3
-"""
-Flat Plate — Spanwise Lift Distribution Plotter
-================================================
-Reads the spanwise-force CSV produced by setup_plate.py (via
-VLMLoadingDistribution) and plots the sectional lift coefficient
-cl(y) against Prandtl lifting-line theory and an elliptic reference.
+"""Spanwise lift distribution cl(y) for moving and static plates at AoA=5 deg.
 
-Overlays the moving and static cases at the same AoA on one figure.
-
-Output:
-    figures/plate_spanwise.png
-
-Author:  Flavio A. C. Martins, OpenONDA Team
-Date: June 2026
+Output: figures/plate_spanwise.png
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib.util
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -29,43 +16,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# -- Paths ----------------------------------------------------------------------
-CASE_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = CASE_DIR.parents[2]
-THEME_PATH = REPO_ROOT / "docs" / "themes" / "matplotlib_setup.py"
-
+from _plot_theme import SAMPLES_DIR, FIG_DIR, color, cm, save_fig
 from theoretical_model import spanwise_reference
 
-# -- Argument parsing -----------------------------------------------------------
 parser = argparse.ArgumentParser(description="Flat plate spanwise lift distribution")
 parser.add_argument("--format", choices=("png", "pdf"), default="png")
 parser.add_argument("--dpi", type=int, default=300)
 args = parser.parse_args()
-
-SAMPLES_DIR = CASE_DIR / "samples"
-FIG_DIR = CASE_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-# -- Theme ----------------------------------------------------------------------
-m = None
-if not THEME_PATH.exists():
-    raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
-spec = importlib.util.spec_from_file_location("matplotlib_setup", str(THEME_PATH))
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
-m.set_style()
 
+C_MOVING = color("TUDcyan")
+C_STATIC = color("vpm")
+C_LL = color("ref")
+C_ELL = color("literature")
 
-def _c(key):
-    return m.COLORS[key]
-
-
-C_MOVING = _c("TUDcyan")
-C_STATIC = _c("vpm")
-C_LL = _c("ref")
-C_ELL = _c("literature")
-
-cm_inch = m.CM
+CM = cm()
 
 # -- Physical constants ---------------------------------------------------------
 aspect_ratio = 10.0
@@ -142,7 +108,7 @@ moving_data = load_spanwise_csv("exp_moving_aoa05")
 static_data = load_spanwise_csv("exp_static_aoa05")
 
 # -- Figure ---------------------------------------------------------------------
-fig, ax = plt.subplots(1, 1, figsize=(12 * cm_inch, 5.5 * cm_inch))
+fig, ax = plt.subplots(1, 1, figsize=(12 * CM, 5.5 * CM))
 fig.subplots_adjust(left=0.14, right=0.95, bottom=0.17, top=0.88)
 
 if moving_data is not None:
@@ -182,4 +148,4 @@ ax.set_xlim(-1, 1)
 ax.legend()
 
 out = FIG_DIR / "plate_spanwise.png"
-m.save_fig(fig, out, figure_format=args.format, dpi=args.dpi)
+save_fig(fig, out, figure_format=args.format, dpi=args.dpi)

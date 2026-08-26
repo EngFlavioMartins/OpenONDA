@@ -145,7 +145,7 @@ FVM_SETUP = fvm.FVMSetup(
     execution=fvm.ComputeConfig(operator_backend="numba"),
     output=fvm.OutputConfig(
         compression="lz4",
-        precision="float32",
+        precision="f32",
         asynchronous=False,
         ghost_layers=0,
     ),

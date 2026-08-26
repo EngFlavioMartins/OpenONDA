@@ -1,58 +1,41 @@
 #!/usr/bin/env bash
-# Run the moving- and fixed-plate angle-of-attack sweeps, then make the figures.
-# Usage: ./allrun.sh
 set -euo pipefail
 
 cd "$(dirname "$0")"
-export OPENONDA_COMPUTE_DEVICE="${OPENONDA_COMPUTE_DEVICE:-METAL}"
 
-echo
-echo "===== CLEAN ====="
-echo
-./allclean.sh
+python_bin="${OPENONDA_PYTHON:-python}"
+
+./allclean.sh --all
 mkdir -p solution
 
-echo
-echo "===== SIMULATE ====="
-echo
+# Moving plate (body frame, smooth ramp to avoid impulsive-start transient)
+echo "===== moving ====="
+"$python_bin" -u setup_plate.py --mode moving --angle -10
+"$python_bin" -u setup_plate.py --mode moving --angle -5
+"$python_bin" -u setup_plate.py --mode moving --angle -2
+"$python_bin" -u setup_plate.py --mode moving --angle 0
+"$python_bin" -u setup_plate.py --mode moving --angle 2
+"$python_bin" -u setup_plate.py --mode moving --angle 5
+"$python_bin" -u setup_plate.py --mode moving --angle 8
+"$python_bin" -u setup_plate.py --mode moving --angle 10
+"$python_bin" -u setup_plate.py --mode moving --angle 12
+"$python_bin" -u setup_plate.py --mode moving --angle 15
 
-run_case() {
-    local mode="$1"
-    local angle="$2"
-    local sign=""
-    local magnitude="$angle"
-    if (( angle < 0 )); then
-        sign="n"
-        magnitude=$((-angle))
-    fi
-    local tag
-    printf -v tag 'aoa%s%02d' "$sign" "$magnitude"
-    echo
-    echo "---- ${mode} plate, angle ${angle} deg ----"
-    python -u setup_plate.py --mode "$mode" --angle "$angle" \
-        2>&1 | tee "solution/${mode}_${tag}.log"
-}
+# Static plate (wind frame, fixed angle of attack)
+echo "===== static ====="
+"$python_bin" -u setup_plate.py --mode static --angle -10
+"$python_bin" -u setup_plate.py --mode static --angle -5
+"$python_bin" -u setup_plate.py --mode static --angle -2
+"$python_bin" -u setup_plate.py --mode static --angle 0
+"$python_bin" -u setup_plate.py --mode static --angle 2
+"$python_bin" -u setup_plate.py --mode static --angle 5
+"$python_bin" -u setup_plate.py --mode static --angle 8
+"$python_bin" -u setup_plate.py --mode static --angle 10
+"$python_bin" -u setup_plate.py --mode static --angle 12
+"$python_bin" -u setup_plate.py --mode static --angle 15
 
-for angle in -10 -5 -2 0 2 5 8 10 12 15; do
-    run_case moving "$angle"
-done
-
-for angle in -10 -5 -2 0 2 5 8 10 12 15; do
-    run_case static "$angle"
-done
-
-echo
-echo "===== FIGURES ====="
-echo
-python assets/validate_results.py --pre-plot
+# Post-processing: validation and figures (png, pdf)
+"$python_bin" assets/validate_results.py --pre-plot
 ./allplot.sh png
 ./allplot.sh pdf
-
-echo
-echo "===== VALIDATE ====="
-echo
-python assets/validate_results.py
-
-echo
-echo "===== DONE ====="
-echo
+"$python_bin" assets/validate_results.py

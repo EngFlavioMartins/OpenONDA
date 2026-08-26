@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 import logging
 import os
 from pathlib import Path
@@ -412,6 +413,8 @@ class FVMVPMCoupler:
         self,
         start_step: int = 0,
         restart_from=None,
+        *,
+        restart_allowed_config_differences: Collection[str] = (),
     ) -> None:
         """Initialize and run the coupling loop."""
         if self.vorticity_transfer is None:
@@ -419,7 +422,12 @@ class FVMVPMCoupler:
         if restart_from is not None:
             if start_step:
                 raise ValueError("start_step and restart_from are mutually exclusive")
-            start_step = self.load_state(restart_from)
+            start_step = self.load_state(
+                restart_from,
+                allowed_config_differences=restart_allowed_config_differences,
+            )
+        elif restart_allowed_config_differences:
+            raise ValueError("restart_allowed_config_differences requires restart_from")
         self.solve(start_step=start_step)
 
     def solve(self, start_step: int = 0) -> None:
@@ -584,6 +592,16 @@ class FVMVPMCoupler:
         """Write a complete coupled checkpoint."""
         return save_coupled_state(self, directory, coupling_step=coupling_step)
 
-    def load_state(self, directory) -> int:
+    def load_state(
+        self,
+        directory,
+        *,
+        allowed_config_differences: Collection[str] = (),
+    ) -> int:
         """Restore both solvers and the VPM boundary history."""
-        return load_coupled_state(self, directory, comm=_mpi4py_comm)
+        return load_coupled_state(
+            self,
+            directory,
+            comm=_mpi4py_comm,
+            allowed_config_differences=allowed_config_differences,
+        )

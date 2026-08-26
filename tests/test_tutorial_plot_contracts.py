@@ -75,3 +75,46 @@ def test_vortex_interaction_validators_use_canonical_cadence_keys():
             r"range\(\s*checkpoint_interval_steps,\s*completed_steps\s*\+\s*1",
             source,
         )
+
+
+def test_lamb_oseen_surface_plot_derives_speed_from_the_canonical_velocity_vector():
+    source = (TUTORIALS / "vpm/lamb_oseen_vortex/assets/plot_vortex_surface_fields.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'GetArray("velocity")' in source
+    assert "np.linalg.norm(velocity, axis=2)" in source
+    assert 'GetArray("velocity_magnitude")' not in source
+
+
+def test_vpm_tutorials_keep_their_compact_sampling_budgets():
+    lamb_oseen = (TUTORIALS / "vpm/lamb_oseen_vortex/lamb_oseen_setup.py").read_text(
+        encoding="utf-8"
+    )
+    vortex_ring = (TUTORIALS / "vpm/vortex_ring/ring_setup.py").read_text(encoding="utf-8")
+
+    assert "FIELD_SPACING = 0.16 * CORE_RADIUS" in lamb_oseen
+    assert "MERGING_SAMPLE_INTERVAL_TIME = SAMPLE_INTERVAL_TIME" in lamb_oseen
+    assert 'field_padding = 0.0 if physics == "vortex" else 3.0 * final_core_radius' in lamb_oseen
+    assert "bounds=field_bounds" in lamb_oseen
+    assert "checkpoint_store_velocity_gradient=False" in lamb_oseen
+    assert "SAMPLE_INTERVAL_TIME = 0.1" in vortex_ring
+    assert "CHECKPOINT_INTERVAL_TIME = 0.5" in vortex_ring
+    assert "checkpoint_store_velocity_gradient=False" in vortex_ring
+
+
+def test_vpm_tutorials_request_compact_restartable_checkpoints():
+    setup_files = (
+        "vpm/delta_wing/delta_wing_setup.py",
+        "vpm/flat_plate/setup_plate.py",
+        "vpm/lamb_oseen_vortex/lamb_oseen_setup.py",
+        "vpm/quadcopter/quadcopter_setup.py",
+        "vpm/rotor_flow/rotor_setup.py",
+        "vpm/vortex_interactions/rings_setup.py",
+        "vpm/vortex_ring/ring_setup.py",
+    )
+
+    for relative_path in setup_files:
+        source = (TUTORIALS / relative_path).read_text(encoding="utf-8")
+        assert 'write_precision="f32"' in source
+        assert "checkpoint_store_velocity_gradient=False" in source

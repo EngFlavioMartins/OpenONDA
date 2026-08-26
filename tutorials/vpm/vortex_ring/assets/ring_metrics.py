@@ -3,6 +3,7 @@ vortex_ring plot scripts."""
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import h5py
@@ -11,12 +12,12 @@ import pandas as pd
 
 # -- Directory layout ---------------------------------------------------------
 ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
-SCRIPT_DIR = ASSETS_DIR.parent  # …/vortex_rings/
+SCRIPT_DIR = ASSETS_DIR.parent  # …/vortex_ring/
 FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
 SAMPLES_DIR = SCRIPT_DIR / "samples"
 
-# -- Physical constants  (match ring_setup.py) -------------------------------------
+# -- Physical constants  (match ring_setup.py) --------------------------------
 RING_RADIUS = 1.0  # ring major radius [m]
 RING_CIRCULATION = np.pi  # circulation [m²/s]
 CORE_RADIUS = 0.1  # initial core radius [m]
@@ -35,6 +36,77 @@ REFERENCE_KINETIC_ENERGY = (
     RING_CIRCULATION**2 * RING_RADIUS
 )  # [m⁵/s²]  kinetic energy scale for a ring
 P_REF = REFERENCE_KINETIC_ENERGY / REFERENCE_TIME  # [m⁵/s³]  dissipation rate scale = Γ³/R₀
+
+# -- Theme / plotting ---------------------------------------------------------
+THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
+
+_THEME_MODULE = None
+
+
+def _theme():
+    global _THEME_MODULE
+    if _THEME_MODULE is None:
+        if not THEME_PATH.exists():
+            raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+        spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
+        theme = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(theme)
+        _THEME_MODULE = theme
+    return _THEME_MODULE
+
+
+VARIANT_STYLE = _theme().VORTEX_RING_VARIANT_STYLE
+VARIANT_LABEL = _theme().VORTEX_RING_VARIANT_LABEL
+
+
+def load_theme() -> tuple[dict[str, str], object | None]:
+    """Load the OpenONDA matplotlib theme. Returns (COLORS dict, theme module)."""
+    theme = _theme()
+    theme.set_style()
+    return dict(theme.COLORS), theme
+
+
+def figure_size(name: str = "single") -> tuple[float, float]:
+    return _theme().figure_size(name)
+
+
+def mark_every(name: str = "default") -> int:
+    return _theme().MARK_EVERY[name]
+
+
+def reference_style() -> dict:
+    return dict(_theme().REFERENCE_STYLE)
+
+
+def build_arg_parser(description: str):
+    """Base argument parser shared by all plot scripts."""
+    import argparse
+
+    p = argparse.ArgumentParser(description=description)
+    p.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
+    p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
+    return p
+
+
+def save_fig(
+    fig,
+    path,
+    dpi: int | None = None,
+    tight_rect: tuple[float, float, float, float] | None = None,
+    figure_format: str = "png",
+) -> None:
+    """Save without tight layout or cropping; manual subplots_adjust() takes precedence."""
+    import matplotlib.pyplot as plt
+
+    out = Path(path)
+    fmt = figure_format or "png"
+    if fmt not in _theme().EXPORT_FORMATS:
+        raise ValueError(f"Unsupported figure format: {fmt!r}")
+    out = out.with_suffix(f".{fmt}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=_theme().DEFAULT_DPI if dpi is None else dpi, bbox_inches=None)
+    plt.close(fig)
+    print(f"  Saved: {out}")
 
 
 # -- H5 helpers ----------------------------------------------------------------
@@ -348,11 +420,3 @@ def saffman_speed(t_arr: np.ndarray, k_nu: float = 4.0) -> np.ndarray:
     eps = a_t / RING_RADIUS
     C = 0.558 + 1.12 * eps**2 + 5.0 * eps**4
     return RING_CIRCULATION / (4.0 * np.pi * RING_RADIUS) * (np.log(8.0 / eps) - C)
-
-
-def read_csv(assets_dir, fname: str, xcol: str, ycol: str):
-    path = Path(assets_dir) / fname
-    if not path.exists():
-        return None, None
-    df = pd.read_csv(path)
-    return df[xcol].values, df[ycol].values

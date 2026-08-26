@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from pathlib import Path
 
 import numpy as np
@@ -85,11 +86,15 @@ PARTICLE_LIMIT = 1_500_000
 VPM_CORE_RADIUS_RATIO = 1.0
 GBD_VORTICITY_FLOOR = 0.02
 VPM_PARTICLE_SPACING = 2 * SURFACE_CELL_SIZE
-ETA_BLEND_WIDTH = 3 * VPM_PARTICLE_SPACING
+ETA_BLEND_WIDTH = 6 * VPM_PARTICLE_SPACING
 VPM_VISCOUS_SCHEME = "GBD"
 
 # Coupling
 BOUNDARY_CONDITION_MODE = "vorticity_mixed"
+TRANSFER_METHOD = "buffered_m4_renewal"
+TRANSFER_VORTICITY_CUTOFF = 0.05
+TRANSFER_BOUNDARY_PRUNE_MULTIPLIER = 10.0
+TRANSFER_AMPLIFICATION_CAP = 1.8
 
 # Time and output
 END_TIME = 20.0
@@ -177,7 +182,7 @@ FVM_SETUP = fvm.FVMSetup(
         data_location="cell",
         encoding="appended",
         compression="lz4",
-        precision="float32",
+        precision="f32",
         asynchronous=True,
         ghost_layers=0,
     ),
@@ -235,10 +240,15 @@ FVM_SETUP = fvm.FVMSetup(
 
 COUPLER_SETUP = coupling.CouplerSetup(
     freestream_velocity=list(FREESTREAM_VELOCITY),
+    transfer_method=TRANSFER_METHOD,
     transfer_region_bounds=TRANSFER_REGION_BOX,
     checkpoint_interval_steps=VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
     boundary_condition_mode=BOUNDARY_CONDITION_MODE,
     eta_blend_width=ETA_BLEND_WIDTH,
+    vpm_only_width=0.0,
+    transfer_vorticity_cutoff=TRANSFER_VORTICITY_CUTOFF,
+    transfer_boundary_prune_multiplier=TRANSFER_BOUNDARY_PRUNE_MULTIPLIER,
+    transfer_amplification_cap=TRANSFER_AMPLIFICATION_CAP,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
 )
 
@@ -360,12 +370,19 @@ VPM_SETUP = vpm.VPMSetup(
 )
 
 
-def main(*, restart_from: Path | None = None) -> None:
+def main(
+    *,
+    restart_from: Path | None = None,
+    restart_allowed_config_differences: Collection[str] = (),
+) -> None:
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.write_vtk()
     vpm_solver = vpm.create_vpm_solver(VPM_SETUP, case_dir=CASE_DIR)
     coupled_solver = coupling.create_coupler(fvm_solver, vpm_solver, COUPLER_SETUP)
-    coupled_solver.run(restart_from=restart_from)
+    coupled_solver.run(
+        restart_from=restart_from,
+        restart_allowed_config_differences=restart_allowed_config_differences,
+    )
 
 
 if __name__ == "__main__":

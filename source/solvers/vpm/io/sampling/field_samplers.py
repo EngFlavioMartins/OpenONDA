@@ -18,6 +18,9 @@ from pathlib import Path
 
 import numpy as np
 
+from source.vtk_output import write_vtk_dataset
+from source.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write
+
 from .schedule import SamplingSchedule
 
 try:
@@ -29,7 +32,7 @@ except Exception:
 # source of truth: the header row and every data row are built from this list,
 # so the written header always matches the data (no magic column indices on the
 # reader side — see ``_read_sampler_csv`` in the tutorials' post-processing).
-SAMPLER_CSV_COLUMNS = [
+SAMPLER_BASE_CSV_COLUMNS = [
     "position_x",
     "position_y",
     "position_z",
@@ -39,6 +42,9 @@ SAMPLER_CSV_COLUMNS = [
     "vorticity_x",
     "vorticity_y",
     "vorticity_z",
+]
+
+SAMPLER_DERIVATIVE_CSV_COLUMNS = [
     "strain_rate_xx",
     "strain_rate_xy",
     "strain_rate_xz",
@@ -55,6 +61,15 @@ SAMPLER_CSV_COLUMNS = [
     "velocity_gradient_zy",
     "velocity_gradient_zz",
 ]
+
+SAMPLER_CSV_COLUMNS = [*SAMPLER_BASE_CSV_COLUMNS, *SAMPLER_DERIVATIVE_CSV_COLUMNS]
+
+
+def sampler_csv_columns(sampler) -> list[str]:
+    """Return the persisted CSV schema for one sampler."""
+    if getattr(sampler, "include_derivatives", True):
+        return SAMPLER_CSV_COLUMNS
+    return SAMPLER_BASE_CSV_COLUMNS
 
 
 def _validated_sample_data(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
@@ -482,11 +497,12 @@ class SurfaceSampler:
             writer = csv.writer(f, lineterminator="\n")
 
             # Header (single source of truth: SAMPLER_CSV_COLUMNS)
-            writer.writerow(SAMPLER_CSV_COLUMNS)
+            columns = sampler_csv_columns(self)
+            writer.writerow(columns)
 
             # Data rows — built from SAMPLER_CSV_COLUMNS so they always align
             for i in range(self._n_points):
-                writer.writerow([data[col][i] for col in SAMPLER_CSV_COLUMNS])
+                writer.writerow([data[col][i] for col in columns])
 
         return filepath
 
@@ -575,30 +591,14 @@ class SurfaceSampler:
         def _reshape_scalar(key):
             return data[key].reshape(self._grid_shape).ravel(order="F")
 
-        # Add velocity as vector field
-        grid.point_data["velocity"] = velocity
-
-        # Add velocity magnitude as scalar
-        grid.point_data["velocity_magnitude"] = np.linalg.norm(velocity, axis=1)
-
-        # Add vorticity as vector field
-        grid.point_data["vorticity"] = vorticity
-
-        # Add vorticity magnitude as scalar
-        grid.point_data["vorticity_magnitude"] = np.linalg.norm(vorticity, axis=1)
+        # Magnitudes are not stored: ParaView offers the magnitude of any
+        # vector directly, and strain rate is the symmetric part of the
+        # velocity gradient, so both are recovered without occupying the file.
+        write_precision = getattr(solver, "write_precision", DEFAULT_WRITE_PRECISION)
+        grid.point_data["velocity"] = cast_for_write(velocity, write_precision)
+        grid.point_data["vorticity"] = cast_for_write(vorticity, write_precision)
 
         if self.include_derivatives:
-            strain_rate = np.column_stack(
-                [
-                    _reshape_scalar("strain_rate_xx"),
-                    _reshape_scalar("strain_rate_xy"),
-                    _reshape_scalar("strain_rate_xz"),
-                    _reshape_scalar("strain_rate_yy"),
-                    _reshape_scalar("strain_rate_yz"),
-                    _reshape_scalar("strain_rate_zz"),
-                ]
-            )
-            grid.point_data["strain_rate"] = strain_rate
             velocity_gradient = np.column_stack(
                 [
                     _reshape_scalar("velocity_gradient_xx"),
@@ -612,10 +612,12 @@ class SurfaceSampler:
                     _reshape_scalar("velocity_gradient_zz"),
                 ]
             )
-            grid.point_data["velocity_gradient"] = velocity_gradient
+            grid.point_data["velocity_gradient"] = cast_for_write(
+                velocity_gradient,
+                write_precision,
+            )
 
-        # Save as VTS (binary by default for efficiency)
-        grid.save(str(filepath), binary=True)
+        write_vtk_dataset(grid, filepath)
 
         return filepath
 
@@ -652,6 +654,7 @@ class LineSampler:
         end: np.ndarray | list,
         spacing: float,
         file_name: str | None = None,
+        include_derivatives: bool = True,
         schedule: SamplingSchedule | None = None,
     ):
         """
@@ -663,12 +666,14 @@ class LineSampler:
             spacing: Distance between sample points along the line.
             file_name: Optional base name for output CSV files. If None, uses
                       default naming based on sampler class name.
+            include_derivatives: Persist strain-rate and velocity-gradient fields.
             schedule: Optional independent step- or flow-time output cadence.
         """
         self.start = np.asarray(start, dtype=np.float32)
         self.end = np.asarray(end, dtype=np.float32)
         self.spacing = float(spacing)
         self.file_name = file_name
+        self.include_derivatives = bool(include_derivatives)
         self.schedule = schedule
 
         # Body geometry cache for masking / wall projection
@@ -936,10 +941,11 @@ class LineSampler:
             writer = csv.writer(f, lineterminator="\n")
 
             # Header (single source of truth: SAMPLER_CSV_COLUMNS)
-            writer.writerow(SAMPLER_CSV_COLUMNS)
+            columns = sampler_csv_columns(self)
+            writer.writerow(columns)
 
             # Data rows — built from SAMPLER_CSV_COLUMNS so they always align
             for i in range(self.n_points):
-                writer.writerow([data[col][i] for col in SAMPLER_CSV_COLUMNS])
+                writer.writerow([data[col][i] for col in columns])
 
         return filepath

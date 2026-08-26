@@ -13,6 +13,18 @@ sys.path.insert(0, str(CASE_DIR))
 
 import cube_flow_setup as case  # noqa: E402
 
+TRANSFER_RESTART_ALLOWLIST = frozenset(
+    {
+        "coupler.transfer_method",
+        "coupler.eta_blend_width",
+        "coupler.vpm_only_width",
+        "coupler.transfer_vorticity_cutoff",
+        "coupler.transfer_boundary_prune_multiplier",
+        "coupler.transfer_amplification_cap",
+        "coupler.transfer_discretization_error_limit",
+    }
+)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -26,12 +38,19 @@ def main() -> None:
         default="vpm_boundary_condition",
     )
     parser.add_argument("--restart-from", type=Path)
+    parser.add_argument(
+        "--allow-transfer-config-differences",
+        action="store_true",
+        help="allow only the enumerated transfer fields to differ from a restart seed",
+    )
     arguments = parser.parse_args()
 
     if arguments.end_time <= 0.0:
         raise ValueError("end time must be positive")
     if arguments.gbd_threshold_scale <= 0.0:
         raise ValueError("GBD threshold scale must be positive")
+    if arguments.allow_transfer_config_differences and arguments.restart_from is None:
+        raise ValueError("--allow-transfer-config-differences requires --restart-from")
 
     case.CASE_DIR = arguments.case_directory.resolve()
     if arguments.restart_from is None and any(
@@ -67,7 +86,10 @@ def main() -> None:
         ),
     )
     case.main(
-        restart_from=(None if arguments.restart_from is None else arguments.restart_from.resolve())
+        restart_from=(None if arguments.restart_from is None else arguments.restart_from.resolve()),
+        restart_allowed_config_differences=(
+            TRANSFER_RESTART_ALLOWLIST if arguments.allow_transfer_config_differences else ()
+        ),
     )
 
 

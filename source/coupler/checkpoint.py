@@ -2,22 +2,31 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import UTC, datetime
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
+import warnings
 
 import numpy as np
 
+from source.solvers.fvm.io.checkpoint import decode_state, encode_state
+
 CHECKPOINT_DIRECTORY = "checkpoints"
-CHECKPOINT_FORMAT_VERSION = 9
+CHECKPOINT_FORMAT_VERSION = 10
+
+
+def config_mapping_digest(config: dict) -> str:
+    """Hash an already-serialized configuration mapping."""
+    payload = json.dumps(config, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def config_digest(config) -> str:
-    payload = json.dumps(config.to_dict(), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode()).hexdigest()
+    return config_mapping_digest(config.to_dict())
 
 
 def artifact_digest(path: Path) -> str:
@@ -68,6 +77,22 @@ def config_diff(stored: dict | None, current: dict) -> list[str]:
     return lines
 
 
+def config_difference_paths(stored: dict | None, current: dict) -> set[str]:
+    """Return the exact two-level configuration paths whose values differ."""
+    if not stored:
+        return set()
+    paths: set[str] = set()
+    for section in set(stored) | set(current):
+        old_section, new_section = stored.get(section), current.get(section)
+        if isinstance(old_section, dict) and isinstance(new_section, dict):
+            for key in set(old_section) | set(new_section):
+                if old_section.get(key) != new_section.get(key):
+                    paths.add(f"{section}.{key}")
+        elif old_section != new_section:
+            paths.add(section)
+    return paths
+
+
 def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) -> Path:
     """Write both solvers and the boundary-history state, committing the manifest last."""
     if coupler.fvm_solver is None:
@@ -94,32 +119,34 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
     coupler.vpm_solver.save_numerical_state(str(target / f"vpm_{suffix}"))
     boundary_artifact = f"vpm_boundary_condition_{suffix}.npz"
     boundary_temporary = target / f".{boundary_artifact}.tmp"
+    boundary_state = {
+        "boundary_schema_version": np.asarray(2, dtype=np.int64),
+        "has_velocity": np.asarray(coupler._velocity_boundary_condition_old is not None),
+        "velocity": (
+            np.empty((0, 3))
+            if coupler._velocity_boundary_condition_old is None
+            else coupler._velocity_boundary_condition_old
+        ),
+        "has_normal_velocity": np.asarray(
+            coupler._normal_velocity_boundary_condition_old is not None
+        ),
+        "normal_velocity": (
+            np.empty(0)
+            if coupler._normal_velocity_boundary_condition_old is None
+            else coupler._normal_velocity_boundary_condition_old
+        ),
+        "has_tangential_gradient": np.asarray(
+            coupler._tangential_gradient_boundary_condition_old is not None
+        ),
+        "tangential_gradient": (
+            np.empty((0, 3))
+            if coupler._tangential_gradient_boundary_condition_old is None
+            else coupler._tangential_gradient_boundary_condition_old
+        ),
+    }
     try:
         with open(boundary_temporary, "wb") as stream:
-            np.savez_compressed(
-                stream,
-                boundary_schema_version=np.asarray(1, dtype=np.int64),
-                has_velocity=np.asarray(coupler._velocity_boundary_condition_old is not None),
-                velocity=np.empty((0, 3))
-                if coupler._velocity_boundary_condition_old is None
-                else coupler._velocity_boundary_condition_old,
-                has_normal_velocity=np.asarray(
-                    coupler._normal_velocity_boundary_condition_old is not None
-                ),
-                normal_velocity=(
-                    np.empty(0)
-                    if coupler._normal_velocity_boundary_condition_old is None
-                    else coupler._normal_velocity_boundary_condition_old
-                ),
-                has_tangential_gradient=np.asarray(
-                    coupler._tangential_gradient_boundary_condition_old is not None
-                ),
-                tangential_gradient=(
-                    np.empty((0, 3))
-                    if coupler._tangential_gradient_boundary_condition_old is None
-                    else coupler._tangential_gradient_boundary_condition_old
-                ),
-            )
+            np.savez_compressed(stream, **encode_state(boundary_state))
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(boundary_temporary, target / boundary_artifact)
@@ -171,8 +198,19 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
     return target
 
 
-def load_coupled_state(coupler, directory, *, comm=None) -> int:
-    """Restore both solvers and the VPM boundary-history state."""
+def load_coupled_state(
+    coupler,
+    directory,
+    *,
+    comm=None,
+    allowed_config_differences: Collection[str] = (),
+) -> int:
+    """Restore both solvers and the VPM boundary-history state.
+
+    Configuration matching remains strict unless a caller explicitly names
+    the exact paths allowed to differ for a controlled restart experiment.
+    Artifact integrity and every unlisted configuration field remain strict.
+    """
     if coupler.fvm_solver is None or (coupler._is_master and coupler.vpm_solver is None):
         raise RuntimeError("Initialize the coupler before loading a checkpoint")
 
@@ -238,7 +276,7 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
                     not isinstance(artifact_hashes, dict) or set(artifact_hashes) != set(artifacts)
                 ):
                     error = (
-                        "Coupled checkpoint format 9 requires one SHA-256 digest "
+                        "Coupled checkpoint format 10 requires one SHA-256 digest "
                         "for every declared artifact"
                     )
                 if error is None and artifact_hashes:
@@ -271,10 +309,33 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
             ]
             if error is None and missing:
                 error = f"Incomplete coupled checkpoint; missing: {', '.join(missing)}"
-            elif error is None and manifest.get("config_sha256") != config_digest(coupler.setup):
-                changes = config_diff(manifest.get("config"), coupler.setup.to_dict())
-                detail = "\n  ".join(changes) if changes else "(checkpoint stored no config)"
-                error = f"Coupled checkpoint configuration differs:\n  {detail}"
+            elif error is None:
+                stored_config = manifest.get("config")
+                if not isinstance(stored_config, dict):
+                    error = "Coupled checkpoint configuration must be a mapping"
+                elif manifest.get("config_sha256") != config_mapping_digest(stored_config):
+                    error = "Coupled checkpoint stored configuration hash mismatch"
+                elif manifest.get("config_sha256") != config_digest(coupler.setup):
+                    current_config = coupler.setup.to_dict()
+                    changed_paths = config_difference_paths(stored_config, current_config)
+                    unexpected = changed_paths - set(allowed_config_differences)
+                    changes = config_diff(stored_config, current_config)
+                    detail = "\n  ".join(changes) if changes else "(no structured diff)"
+                    if unexpected:
+                        error = (
+                            "Coupled checkpoint configuration differs outside the explicit "
+                            "allowlist:\n  "
+                            + detail
+                            + "\n  disallowed paths: "
+                            + ", ".join(sorted(unexpected))
+                        )
+                    else:
+                        warnings.warn(
+                            "Loading a coupled checkpoint with explicitly allowed "
+                            f"configuration differences: {', '.join(sorted(changed_paths))}",
+                            RuntimeWarning,
+                            stacklevel=2,
+                        )
     if comm is not None and comm.Get_size() > 1:
         error, manifest = comm.bcast(
             (error, manifest) if coupler._is_master else None,
@@ -305,25 +366,29 @@ def load_coupled_state(coupler, directory, *, comm=None) -> int:
                 "normal_velocity",
                 "has_tangential_gradient",
                 "tangential_gradient",
+                "storage_layout",
             }
             if set(boundary.files) != expected_boundary_keys:
                 raise ValueError("Coupled boundary checkpoint has invalid fields")
+            boundary_state = decode_state(
+                {name: np.array(boundary[name], copy=True) for name in boundary.files}
+            )
             if (
-                "boundary_schema_version" not in boundary.files
-                or int(boundary["boundary_schema_version"]) != 1
+                "boundary_schema_version" not in boundary_state
+                or int(boundary_state["boundary_schema_version"]) != 2
             ):
                 raise ValueError("Unsupported coupled boundary checkpoint schema")
             coupler._velocity_boundary_condition_old = (
-                boundary["velocity"].copy() if bool(boundary["has_velocity"]) else None
+                boundary_state["velocity"].copy() if bool(boundary_state["has_velocity"]) else None
             )
             coupler._normal_velocity_boundary_condition_old = (
-                boundary["normal_velocity"].copy()
-                if bool(boundary["has_normal_velocity"])
+                boundary_state["normal_velocity"].copy()
+                if bool(boundary_state["has_normal_velocity"])
                 else None
             )
             coupler._tangential_gradient_boundary_condition_old = (
-                boundary["tangential_gradient"].copy()
-                if bool(boundary["has_tangential_gradient"])
+                boundary_state["tangential_gradient"].copy()
+                if bool(boundary_state["has_tangential_gradient"])
                 else None
             )
             coupler._normal_velocity_boundary_condition = None
@@ -341,7 +406,9 @@ __all__ = [
     "CHECKPOINT_DIRECTORY",
     "CHECKPOINT_FORMAT_VERSION",
     "config_diff",
+    "config_difference_paths",
     "config_digest",
+    "config_mapping_digest",
     "load_coupled_state",
     "save_coupled_state",
 ]

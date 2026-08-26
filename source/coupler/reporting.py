@@ -214,6 +214,21 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "selective_support_births": 0,
             "renewal_guard_width": 0.0,
             "renewal_diffusion_substeps": 0,
+            "renewed_input_particles": 0,
+            "renewed_output_particles": 0,
+            "preserved_outer_particles": 0,
+            "pruned_lattice_nodes": 0,
+            "pruned_vortex_strength_l1": 0.0,
+            "pruned_vortex_strength_fraction": 0.0,
+            "population_pruned_particles": 0,
+            "population_pruned_vortex_strength_fraction": 0.0,
+            "population_pruned_velocity_bound": 0.0,
+            "renewal_cfl": 0.0,
+            "renewal_conservation_error": 0.0,
+            "renewal_linear_impulse_error": 0.0,
+            "representation_residual_before_prune": None,
+            "representation_residual_after_prune": None,
+            "maximum_transfer_amplification": 0.0,
         }
         particle_count = 0
     else:
@@ -295,6 +310,31 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "selective_support_births": int(result.selective_support_births),
             "renewal_guard_width": float(result.renewal_guard_width),
             "renewal_diffusion_substeps": int(result.renewal_diffusion_substeps),
+            "renewed_input_particles": int(result.renewed_input_particles),
+            "renewed_output_particles": int(result.renewed_output_particles),
+            "preserved_outer_particles": int(result.preserved_outer_particles),
+            "pruned_lattice_nodes": int(result.pruned_lattice_nodes),
+            "pruned_vortex_strength_l1": float(result.pruned_vortex_strength_l1),
+            "pruned_vortex_strength_fraction": float(result.pruned_vortex_strength_fraction),
+            "population_pruned_particles": int(result.population_pruned_particles),
+            "population_pruned_vortex_strength_fraction": float(
+                result.population_pruned_vortex_strength_fraction
+            ),
+            "population_pruned_velocity_bound": float(result.population_pruned_velocity_bound),
+            "renewal_cfl": float(result.renewal_cfl),
+            "renewal_conservation_error": float(result.renewal_conservation_error),
+            "renewal_linear_impulse_error": float(result.renewal_linear_impulse_error),
+            "representation_residual_before_prune": (
+                None
+                if result.representation_residual_before_prune is None
+                else float(result.representation_residual_before_prune)
+            ),
+            "representation_residual_after_prune": (
+                None
+                if result.representation_residual_after_prune is None
+                else float(result.representation_residual_after_prune)
+            ),
+            "maximum_transfer_amplification": float(result.maximum_transfer_amplification),
         }
         particle_count = result.n_particles_after
     if not all(

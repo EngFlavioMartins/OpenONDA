@@ -6,6 +6,12 @@ from dataclasses import asdict, dataclass, field
 import json
 from typing import Any, Literal
 
+from source.write_precision import (
+    DEFAULT_WRITE_PRECISION,
+    WritePrecision,
+    validate_write_precision,
+)
+
 
 @dataclass
 class BoundaryConfig:
@@ -448,11 +454,8 @@ class OutputConfig:
         "lz4",
         "none",
         "zlib",
-    ] = "lz4"
-    precision: Literal[
-        "float32",
-        "float64",
-    ] = "float64"
+    ] = "zlib"
+    precision: WritePrecision = DEFAULT_WRITE_PRECISION
     asynchronous: bool = True
     ghost_layers: Literal[0, 1] = 1
     point_interpolation: Literal[
@@ -469,8 +472,7 @@ class OutputConfig:
             raise ValueError("Only appended-binary VTK encoding is supported")
         if self.compression not in {"lz4", "none", "zlib"}:
             raise ValueError("compression must be 'lz4', 'none', or 'zlib'")
-        if self.precision not in {"float32", "float64"}:
-            raise ValueError("precision must be 'float32' or 'float64'")
+        validate_write_precision(self.precision, field_name="output precision")
         if not isinstance(self.asynchronous, bool):
             raise TypeError("asynchronous must be a boolean")
         if self.ghost_layers not in {0, 1}:

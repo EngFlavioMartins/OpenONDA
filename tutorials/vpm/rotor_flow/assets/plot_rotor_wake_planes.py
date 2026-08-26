@@ -17,7 +17,6 @@ Saves: figures/rotor_wake_planes.png
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -31,7 +30,6 @@ try:
 except Exception:  # pragma: no cover
     pv = None
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     build_arg_parser,
     build_rotor_style_map,

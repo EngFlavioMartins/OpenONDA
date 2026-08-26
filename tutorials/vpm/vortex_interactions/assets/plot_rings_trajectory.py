@@ -9,14 +9,11 @@ linestyle for both rings.
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-ASSETS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(ASSETS_DIR))
-from _common import (  # noqa: E402
+from _common import (
     RING_RADIUS,
     build_arg_parser,
     case_style,
@@ -86,7 +83,7 @@ def main() -> None:
 
     save_fig(
         fig,
-        Path(args.figures_dir) / "rings_trajectory.png",
+        Path("figures") / "rings_trajectory.png",
         dpi=args.dpi,
         figure_format=args.format,
         tight_rect=(0.0, 0.22, 1.0, 1.0),

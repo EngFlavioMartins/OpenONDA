@@ -106,8 +106,10 @@ class SolverIO:
         self._xdmf_series_entries.append((time_val, xdmf_filename))
 
         # 2. VTK Visualization Export
+        # Particles are not exported here: the HDF5 state written above already
+        # carries them, and its XDMF descriptor is what ParaView opens.
         vtk_base = f"{self.export_dir}/{self.vpm_prefix}_{self.step:06d}"
-        self.export_state(vtk_base)
+        self.export_state(vtk_base, include_particles=False)
 
         # 3. Panel Solver Aerodynamic Loads (CSV)
         self._export_panel_loads(time_val)
@@ -280,7 +282,10 @@ class SolverIO:
             export_panels_vtk(self.solver, panel_file, compression)
 
         if include_particles and self.solver.particles.n_particles_total > 0:
-            self.solver.particles.save_vortex_particles(f"{filename}_particles.vtp")
+            self.solver.particles.save_vortex_particles(
+                f"{filename}_particles.vtp",
+                write_precision=self.solver.write_precision,
+            )
 
         # Field export is not yet implemented; particles are handled above.
 

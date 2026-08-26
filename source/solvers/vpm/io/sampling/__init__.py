@@ -11,6 +11,7 @@ from .field_samplers import (
     LineSampler,
     SurfaceSampler,
     resolve_samples_dir,
+    sampler_csv_columns,
 )
 from .schedule import SamplingSchedule
 
@@ -20,4 +21,5 @@ __all__ = [
     "SamplingSchedule",
     "SurfaceSampler",
     "resolve_samples_dir",
+    "sampler_csv_columns",
 ]

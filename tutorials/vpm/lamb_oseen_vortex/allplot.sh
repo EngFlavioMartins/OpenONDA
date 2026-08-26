@@ -44,7 +44,7 @@ plot assets/plot_lamboseen_energy.py
 echo
 echo "===== DATA STATUS ====="
 echo
-python assets/postprocessing_manifest.py
+python assets/postprocess.py --manifest
 
 echo
 echo "===== DONE ====="

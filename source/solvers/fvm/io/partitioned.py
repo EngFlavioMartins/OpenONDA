@@ -11,11 +11,14 @@ from uuid import uuid4
 
 import numpy as np
 
+from source.write_precision import cast_for_write
+
 from ..config.types import OutputConfig
+from .checkpoint import decode_state, encode_state
 from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter, atomic_write_text
 
-PARTITIONED_CHECKPOINT_VERSION = 5
+PARTITIONED_CHECKPOINT_VERSION = 6
 
 
 def _resolve_checkpoint_file(target: Path, name: str) -> Path:
@@ -143,7 +146,7 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
     files = [f"rank-{rank:05d}-{generation}.npz" for rank in range(partition.size)]
     local_error = None
     try:
-        _atomic_npz(target / files[partition.rank], arrays)
+        _atomic_npz(target / files[partition.rank], encode_state(arrays))
     except Exception as error:
         local_error = _error_payload(error, rank=partition.rank)
     errors = solver.parallel.comm.allgather(local_error)
@@ -227,7 +230,7 @@ def load_partitioned_solver_checkpoint(
     rank = solver.parallel.rank
     rank_file = _resolve_checkpoint_file(target, files[rank])
     with np.load(rank_file, allow_pickle=False) as archive:
-        state = {name: np.array(archive[name], copy=True) for name in archive.files}
+        state = decode_state({name: np.array(archive[name], copy=True) for name in archive.files})
     required_state = {
         "global_cell_id",
         "global_face_id",
@@ -248,6 +251,7 @@ def load_partitioned_solver_checkpoint(
         "time_since_last_write",
         "n_consecutive_accepted_steps",
     }
+    state.pop("storage_layout", None)
     unexpected = sorted(set(state) - required_state)
     missing = sorted(required_state - set(state))
     if missing or unexpected:
@@ -412,14 +416,8 @@ def write_partition_vtu(
         if len(partition.ghost_global_ids):
             for values in local_fields.values():
                 partition.exchange_halo(values, comm)
-        _output_dtype = np.float32 if output.precision == "float32" else np.float64
-        if _output_dtype != np.float64:
-            _fmin = float(np.finfo(_output_dtype).min)
-            _fmax = float(np.finfo(_output_dtype).max)
-            for name in list(local_fields):
-                array = local_fields[name]
-                if np.issubdtype(array.dtype, np.floating):
-                    local_fields[name] = np.clip(array, _fmin, _fmax).astype(_output_dtype)
+        for name in list(local_fields):
+            local_fields[name] = cast_for_write(local_fields[name], output.precision)
         piece_fields = dict(local_fields)
         ghost_types = np.zeros(local_count, dtype=np.uint8)
         # vtkDataSetAttributes::DUPLICATECELL marks overlap supplied only for

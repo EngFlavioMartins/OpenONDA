@@ -13,7 +13,70 @@ import numpy as np
 
 from .storage import require_free_space
 
-FORMAT_VERSION = 7
+FORMAT_VERSION = 8
+
+# Deflate finds almost nothing in raw float64: the mantissa bytes look like
+# noise. Two lossless transforms expose the structure that is really there.
+# A byte-plane shuffle groups each array's exponent bytes together, and the
+# history fields are stored as a bit XOR against the level they follow, which
+# leaves mostly zeros because consecutive time levels share their leading
+# bytes. Both invert exactly, so a restart is still bit-for-bit.
+_HISTORY_REFERENCE = {
+    "velocity_old": "velocity",
+    "velocity_older": "velocity",
+    "volumetric_face_flux_old": "volumetric_face_flux",
+    "volumetric_face_flux_older": "volumetric_face_flux",
+}
+_SHUFFLE_THRESHOLD_BYTES = 4096
+
+
+def _shuffled(array: np.ndarray) -> np.ndarray:
+    """Return the byte-plane transpose of *array*."""
+    contiguous = np.ascontiguousarray(array)
+    return contiguous.view(np.uint8).reshape(-1, contiguous.dtype.itemsize).T.copy()
+
+
+def _unshuffled(planes: np.ndarray, dtype: np.dtype, shape: tuple[int, ...]) -> np.ndarray:
+    """Invert :func:`_shuffled` back to the original dtype and shape."""
+    return np.ascontiguousarray(planes.T).view(dtype).reshape(shape)
+
+
+def _contiguous(values) -> np.ndarray:
+    """Return a contiguous array without changing a scalar's shape."""
+    array = np.asarray(values)
+    return array if array.ndim == 0 else np.ascontiguousarray(array)
+
+
+def encode_state(arrays: dict) -> dict:
+    """Return the stored form of one checkpoint payload."""
+    encoded: dict = {}
+    layout: dict[str, list] = {}
+    for name, value in arrays.items():
+        array = _contiguous(value)
+        reference = _HISTORY_REFERENCE.get(name)
+        if reference is not None:
+            array = array.view(np.uint64) ^ _contiguous(arrays[reference]).view(np.uint64)
+        if array.ndim and array.nbytes >= _SHUFFLE_THRESHOLD_BYTES:
+            layout[name] = [str(array.dtype), list(array.shape)]
+            array = _shuffled(array)
+        encoded[name] = array
+    encoded["storage_layout"] = np.asarray(json.dumps(layout, sort_keys=True))
+    return encoded
+
+
+def decode_state(stored: dict) -> dict:
+    """Invert :func:`encode_state`, returning the original arrays."""
+    layout = json.loads(str(stored["storage_layout"]))
+    decoded = {name: value for name, value in stored.items() if name != "storage_layout"}
+    for name, (dtype_name, shape) in layout.items():
+        decoded[name] = _unshuffled(decoded[name], np.dtype(dtype_name), tuple(shape))
+    for name, reference in _HISTORY_REFERENCE.items():
+        if name in decoded:
+            decoded[name] = (
+                decoded[name].view(np.uint64)
+                ^ np.ascontiguousarray(decoded[reference]).view(np.uint64)
+            ).view(_contiguous(decoded[reference]).dtype)
+    return decoded
 
 
 def _update_digest(digest, value) -> None:
@@ -127,6 +190,7 @@ def save_checkpoint(solver, path) -> Path:
         payload_bytes + (4 << 20),
     )
 
+    stored = encode_state(arrays)
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{destination.name}.",
         suffix=".tmp",
@@ -134,7 +198,7 @@ def save_checkpoint(solver, path) -> Path:
     )
     try:
         with os.fdopen(descriptor, "wb") as stream:
-            np.savez_compressed(stream, **arrays)
+            np.savez_compressed(stream, **stored)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, destination)
@@ -167,6 +231,7 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
         "max_courant_number",
         "time_since_last_write",
         "n_consecutive_accepted_steps",
+        "storage_layout",
     }
     with np.load(source, allow_pickle=False) as archive:
         archive_keys = set(archive.files)
@@ -176,7 +241,7 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
             raise ValueError(
                 f"Invalid FVM checkpoint fields; missing={missing}, unexpected={unexpected}"
             )
-        metadata = json.loads(str(archive["metadata"]))
+        metadata = json.loads(str(np.asarray(archive["metadata"]).item()))
         metadata_keys = set(metadata)
         expected_metadata = {"format_version", "config_hash", "mesh_hash"}
         if metadata_keys != expected_metadata:
@@ -194,11 +259,10 @@ def load_checkpoint(solver, path, *, allow_config_change: bool = False) -> None:
             raise ValueError("FVM checkpoint mesh hash does not match the active mesh")
         if not allow_config_change and metadata.get("config_hash") != config_hash(solver.setup):
             raise ValueError("FVM checkpoint configuration hash does not match the active case")
-        state = {
-            name: np.array(archive[name], copy=True) for name in archive.files if name != "metadata"
-        }
+        state = decode_state({name: np.array(archive[name], copy=True) for name in archive.files})
+        state.pop("metadata", None)
 
-    missing = sorted((required - {"metadata"}) - set(state))
+    missing = sorted((required - {"metadata", "storage_layout"}) - set(state))
     if missing:
         raise ValueError("Incomplete FVM checkpoint; missing: " + ", ".join(missing))
 

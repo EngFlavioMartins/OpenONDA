@@ -6,24 +6,20 @@ Saves: figures/vortex_ring_circulation.png
 """
 
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).parent))
-from plot_style import (
+from ring_metrics import (
+    FIGURES_DIR,
+    SAMPLES_DIR,
     VARIANT_LABEL,
     VARIANT_STYLE,
     build_arg_parser,
     figure_size,
-    load_theme,
-    save_fig,
-)
-from ring_metrics import (
-    FIGURES_DIR,
-    SAMPLES_DIR,
     load_sampled_ring_circulation,
     load_sampled_vector_circulation_error,
+    load_theme,
+    save_fig,
 )
 
 

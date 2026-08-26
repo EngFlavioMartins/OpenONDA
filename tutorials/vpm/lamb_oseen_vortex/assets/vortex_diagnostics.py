@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
 import json
 import re
 from pathlib import Path
@@ -49,7 +50,7 @@ CORE_RADIUS = 0.125  # paper's radius of maximum azimuthal velocity
 GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX
 SEPARATION = 1.0
 COLUMN_LENGTH = 50.0 * CORE_RADIUS  # mirrors lamb_oseen_setup.py::COLUMN_LENGTH
-FIELD_SPACING = 0.15 * CORE_RADIUS  # mirrors lamb_oseen_setup.py::FIELD_SPACING
+FIELD_SPACING = 0.16 * CORE_RADIUS  # mirrors lamb_oseen_setup.py::FIELD_SPACING
 TOTAL_TIME = 30.0  # fallback reference time [s] when no run data is available
 
 VTS_STEP_RE = re.compile(r"_(\d+)\.vts$")
@@ -85,15 +86,6 @@ def unwrap_pair_orientation(angle_radians: np.ndarray) -> np.ndarray:
 # =============================================================
 # Run-metadata / sampled-field readers
 # =============================================================
-
-
-def read_sample_time(csv_path: Path) -> float | None:
-    """Extract canonical ``time`` metadata from a sampled CSV."""
-    with open(csv_path) as handle:
-        first_line = handle.readline().strip()
-    if first_line.startswith("# time="):
-        return float(first_line.split("=", 1)[1])
-    return None
 
 
 def read_run_metadata(samples_dir: Path, prefix: str = "vortex") -> dict:
@@ -339,16 +331,6 @@ def _match_centres_to_previous(
     return centres if direct <= swapped else centres[::-1]
 
 
-def _core_radius_utheta(
-    field: dict,
-    centre: np.ndarray,
-    r_max: float,
-    bin_width: float | None = None,
-) -> float:
-    """Velocity-peak core radius from the signed u_theta profile."""
-    return _core_radius_diagnostic(field, centre, r_max, bin_width)[0]
-
-
 def _core_radius_diagnostic(
     field: dict,
     centre: np.ndarray,
@@ -567,6 +549,79 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
 # =============================================================
 # CLI entry point
 # =============================================================
+
+
+# =============================================================
+# Plotting utilities (absorbed from plot_style.py)
+# =============================================================
+
+THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
+
+_THEME_MODULE = None
+
+
+def _theme():
+    global _THEME_MODULE
+    if _THEME_MODULE is None:
+        if not THEME_PATH.exists():
+            raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
+        spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
+        theme = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(theme)
+        _THEME_MODULE = theme
+    return _THEME_MODULE
+
+
+def load_theme() -> tuple[dict[str, str], object | None]:
+    """Load the OpenONDA matplotlib theme and return (COLORS dict, theme module)."""
+    theme = _theme()
+    theme.set_style()
+    return dict(theme.COLORS), theme
+
+
+def build_style_map(colors: dict[str, str]) -> dict[str, dict]:
+    """Map scheme names to plot style dicts (color, marker, label)."""
+    return {name: dict(style) for name, style in _theme().LAMB_OSEEN_SCHEME_STYLE.items()}
+
+
+def figure_size(name: str = "single") -> tuple[float, float]:
+    """Return a named figure size in inches from the shared theme."""
+    return _theme().figure_size(name)
+
+
+def save_fig(fig, path: Path, dpi: int) -> None:
+    """Save without tight layout or cropping; manual subplots_adjust() takes precedence."""
+    import matplotlib.pyplot as plt
+
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=dpi, bbox_inches=None)
+    plt.close(fig)
+    print(f"  Saved: {out}")
+
+
+def build_arg_parser(description: str):
+    """Base argument parser shared by all plot scripts."""
+    import argparse as _argparse
+
+    p = _argparse.ArgumentParser(description=description)
+    p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI (PNG only).")
+    p.add_argument(
+        "--format",
+        choices=_theme().EXPORT_FORMATS,
+        default="png",
+        help="Output figure format (default: png).",
+    )
+    kinematic_viscosity = REFERENCE_CIRCULATION / REYNOLDS_NUMBER
+    p.set_defaults(
+        samples_dir=SAMPLES_DIR,
+        figures_dir=FIGURES_DIR,
+        circulation=REFERENCE_CIRCULATION,
+        kinematic_viscosity=kinematic_viscosity,
+        b0=SEPARATION,
+        a0_over_b0=CORE_RADIUS / SEPARATION,
+    )
+    return p
 
 
 def parse_args() -> argparse.Namespace:

@@ -2,14 +2,11 @@
 """Particle count and all conserved vector moments."""
 
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-ASSETS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(ASSETS_DIR))
-from _common import (  # noqa: E402
+from _common import (
     RING_CIRCULATION,
     RING_RADIUS,
     REFERENCE_TIME,
@@ -29,8 +26,6 @@ def main() -> None:
     args = build_arg_parser(
         "Particle-count growth and impulse drift (structure-destruction audit)."
     ).parse_args()
-    figs = Path(args.figures_dir)
-    figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
     fig, axes = plt.subplots(4, 1, figsize=(8.4, 9.0), sharex=True)
@@ -102,7 +97,7 @@ def main() -> None:
 
     save_fig(
         fig,
-        figs / "rings_conservation.png",
+        Path("figures") / "rings_conservation.png",
         dpi=args.dpi,
         figure_format=args.format,
         tight_rect=(0.0, 0.10, 1.0, 1.0),

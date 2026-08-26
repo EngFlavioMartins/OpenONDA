@@ -36,11 +36,25 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
 if __package__:
-    from .plot_style import build_arg_parser, figure_size, load_theme, save_fig
-    from .vortex_diagnostics import SCHEMES, pvd_time_map, resolve_runtime_physics
+    from .vortex_diagnostics import (
+        SCHEMES,
+        build_arg_parser,
+        figure_size,
+        load_theme,
+        pvd_time_map,
+        resolve_runtime_physics,
+        save_fig,
+    )
 else:
-    from plot_style import build_arg_parser, figure_size, load_theme, save_fig
-    from vortex_diagnostics import SCHEMES, pvd_time_map, resolve_runtime_physics
+    from vortex_diagnostics import (
+        SCHEMES,
+        build_arg_parser,
+        figure_size,
+        load_theme,
+        pvd_time_map,
+        resolve_runtime_physics,
+        save_fig,
+    )
 
 _LAYOUT = [
     ("gbd", "TL", r"$\mathrm{GBD}$", (-4.5, 4.5), "left", "top"),
@@ -123,7 +137,8 @@ def _read_vts(path: Path):
     Y = pts[:, :, 1]
 
     pd = grid.GetPointData()
-    vel_mag = ns.vtk_to_numpy(pd.GetArray("velocity_magnitude")).reshape(ny_d, nx_d)
+    velocity = ns.vtk_to_numpy(pd.GetArray("velocity")).reshape(ny_d, nx_d, 3)
+    vel_mag = np.linalg.norm(velocity, axis=2)
     vort = ns.vtk_to_numpy(pd.GetArray("vorticity")).reshape(ny_d, nx_d, 3)
     vort_z = vort[:, :, 2]
 

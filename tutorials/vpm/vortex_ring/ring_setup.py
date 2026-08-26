@@ -12,14 +12,13 @@ Each case samples the ring motion, energy, and circulation that the
 ``allplot.sh`` figures compare with the theory.
 
 Usage:
-    python ring_setup.py --variant dns_transposed
+    python ring_setup.py --variant dns_transposed --compute-device METAL
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -31,26 +30,31 @@ import openonda.vpm as vpm
 TUTORIAL_DIR = Path(__file__).resolve().parent
 SOLUTION_DIR = TUTORIAL_DIR / "solution"
 
-# ---- Physics -------------------------------------------------------------
-RING_RADIUS = 1.0
-RING_STRENGTH = np.pi
-REYNOLDS_NUMBER = 3000.0
-CORE_RADIUS = 0.1
+# ---- Physics ---------------------------------------------------------------
+RING_RADIUS = 1.0  # ring major radius [m]
+RING_STRENGTH = np.pi  # circulation [m²/s]
+REYNOLDS_NUMBER = 3000.0  # Re = Γ/ν — sets the vortex Reynolds number
+CORE_RADIUS = 0.1  # initial Gaussian core radius [m]
 
-# ---- Numerics ------------------------------------------------------------
-PARTICLE_SPACING = float(os.environ.get("OPENONDA_RING_PARTICLE_SPACING", "0.035"))
-TIME_STEP_SIZE = 0.02
-N_STEPS = 600
-DOMAIN_BOUNDS = (-0.15, 0.15, -1.5, 1.5, -1.5, 1.5)
-SAMPLE_INTERVAL_TIME = 0.1  # write a snapshot every this many seconds
+# ---- Numerics --------------------------------------------------------------
+PARTICLE_SPACING = 0.035  # in-plane particle spacing [m]
+TIME_STEP_SIZE = 0.02  # Δt [s]
+N_STEPS = 3000  # total number of time steps
+DOMAIN_BOUNDS = (-0.15, 0.15, -1.5, 1.5, -1.5, 1.5)  # bounding box [m]
+SAMPLE_INTERVAL_TIME = 0.1  # write a sample every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.5  # keep an animation frame every this many seconds
-WIDNALL_MODES = 24
-DEFAULT_WIDNALL_AMPLITUDE = 0.05
-TOROIDAL_TAIL_FRACTION = 0.05
-RESOLUTION_DIVERGENCE_LIMIT = 0.12
-RESOLUTION_MISALIGNMENT_LIMIT_DEG = 45.0
-MAX_N_PARTICLES = int(os.environ.get("OPENONDA_RING_MAX_N_PARTICLES", "100000"))
-ENABLE_STABILIZATION = os.environ.get("OPENONDA_RING_ENABLE_STABILIZATION", "0") == "1"
+WIDNALL_MODES = 24  # number of azimuthal bending modes
+DEFAULT_WIDNALL_AMPLITUDE = 0.05  # broadband centreline perturbation amplitude
+TOROIDAL_TAIL_FRACTION = 0.05  # toroidal particle distribution tail fraction
+RESOLUTION_DIVERGENCE_LIMIT = 0.12  # vorticity-divergence health gate
+RESOLUTION_MISALIGNMENT_LIMIT_DEG = 45.0  # vortex-strength misalignment health gate
+MAX_N_PARTICLES = 100_000  # particle count guard
+ENABLE_STABILIZATION = False  # enable conservative particle filter
+TREECODE_THETA = 0.30  # treecode accuracy parameter
+SMAGORINSKY_COEFFICIENT = 0.20  # Smagorinsky coefficient for LES
+
+# -- Derived quantities -------------------------------------------------------
+KINEMATIC_VISCOSITY = RING_STRENGTH / REYNOLDS_NUMBER  # ν = Γ/Re
 
 
 def cadence_steps(period: float, time_step_size: float = TIME_STEP_SIZE) -> int:
@@ -67,132 +71,44 @@ def stretching_setup(name: str) -> vpm.StretchingConfig:
     }[name](scheme="RK3")
 
 
-def run_case(
-    name: str,
-    *,
-    widnall_amplitude: float = DEFAULT_WIDNALL_AMPLITUDE,
-    widnall_modes: int = WIDNALL_MODES,
-    widnall_single_mode: int | None = None,
-    n_steps: int = N_STEPS,
-    output_directory: Path = SOLUTION_DIR,
-    output_label: str | None = None,
-    particle_distribution: str = "hexagonal",
-    time_step_size: float = TIME_STEP_SIZE,
-    time_integration: str = "FRACTIONAL",
-    velocity_method: str = "TREECODE",
-    treecode_theta: float = 0.3,
-    compute_device: str = "AUTO",
-    smagorinsky_coefficient: float = 0.20,
-) -> None:
-    if widnall_amplitude < 0.0:
-        raise ValueError("widnall_amplitude must be non-negative")
-    if widnall_modes < 1:
-        raise ValueError("widnall_modes must be positive")
-    if widnall_single_mode is not None and widnall_single_mode < 1:
-        raise ValueError("widnall_single_mode must be positive")
-    if n_steps < 1:
-        raise ValueError("n_steps must be positive")
-    if time_step_size <= 0.0:
-        raise ValueError("time_step_size must be positive")
-    time_integration = time_integration.upper()
-    if time_integration not in {"FRACTIONAL", "COUPLED"}:
-        raise ValueError("time_integration must be FRACTIONAL or COUPLED")
-    velocity_method = velocity_method.upper()
-    if velocity_method not in {"DIRECT", "TREECODE"}:
-        raise ValueError("velocity_method must be DIRECT or TREECODE")
-    if not 0.0 < treecode_theta < 2.0:
-        raise ValueError("treecode_theta must be in (0, 2)")
-    if smagorinsky_coefficient < 0.0 or not np.isfinite(smagorinsky_coefficient):
-        raise ValueError("smagorinsky_coefficient must be finite and non-negative")
-
-    mode, stretching = name.lower().split("_", maxsplit=1)
-    label = output_label or name
-    if Path(label).name != label:
-        raise ValueError("output_label must be a file name, not a path")
-    output_directory = Path(output_directory).resolve()
+def run_case(variant: str, compute_device: str = "AUTO") -> None:
+    """Run a single vortex-ring variant and write solution/samples."""
+    mode, stretching = variant.lower().split("_", maxsplit=1)
+    smagorinsky_coefficient = 0.0 if mode == "dns" else SMAGORINSKY_COEFFICIENT
+    output_directory = SOLUTION_DIR.resolve()
     output_directory.mkdir(parents=True, exist_ok=True)
-    sample_subdirectory = label if output_directory.name == "solution" else None
-    sample_directory = (
-        output_directory.parent / "samples" / label
-        if sample_subdirectory
-        else output_directory / "samples"
+
+    # -- Particle distribution ------------------------------------------------
+    particle_core_radius = 2.0 * PARTICLE_SPACING
+    represented_core_sq = CORE_RADIUS**2 - particle_core_radius**2
+    tube_radius = np.sqrt(represented_core_sq) * np.sqrt(-np.log(TOROIDAL_TAIL_FRACTION))
+    position, particle_volume, core_radius = vpm.ParticleDistributor.toroidal_distribution(
+        RING_RADIUS,
+        tube_radius,
+        PARTICLE_SPACING,
+        widnall_amplitude=DEFAULT_WIDNALL_AMPLITUDE,
+        seed=42,
+        n_widnall_modes=WIDNALL_MODES,
     )
-    existing = [
-        *output_directory.glob(f"vpm_{label}_*.h5"),
-        *output_directory.glob(f"vpm_{label}_*.xdmf"),
-        output_directory / f"run_manifest_{label}.json",
-        sample_directory / "ring_modes.csv",
-    ]
-    existing = [path for path in existing if path.exists()]
-    if existing:
-        raise FileExistsError(
-            "Refusing to mix with an existing run; choose a new --output-label or "
-            f"--output-directory. First conflict: {existing[0]}"
-        )
+    core_radius.fill(particle_core_radius)
 
-    kinematic_viscosity = RING_STRENGTH / REYNOLDS_NUMBER
-    if particle_distribution == "hexagonal":
-        position, particle_volume, core_radius = vpm.ParticleDistributor.hexagonal_distribution(
-            DOMAIN_BOUNDS,
-            PARTICLE_SPACING,
-        )
-    elif particle_distribution == "toroidal":
-        particle_core_radius = 2.0 * PARTICLE_SPACING
-        represented_core_sq = CORE_RADIUS**2 - particle_core_radius**2
-        if represented_core_sq <= 0.0:
-            raise ValueError("particle radius must be smaller than the physical core radius")
-        tube_radius = np.sqrt(represented_core_sq) * np.sqrt(-np.log(TOROIDAL_TAIL_FRACTION))
-        position, particle_volume, core_radius = vpm.ParticleDistributor.toroidal_distribution(
-            RING_RADIUS,
-            tube_radius,
-            PARTICLE_SPACING,
-            widnall_amplitude=0.0 if widnall_single_mode is not None else widnall_amplitude,
-            seed=42,
-            n_widnall_modes=widnall_modes,
-        )
-        core_radius.fill(particle_core_radius)
-    else:
-        raise ValueError(f"unknown particle_distribution {particle_distribution!r}")
+    # -- Initial vortex velocity and strength ---------------------------------
+    velocity, particle_kinematic_viscosity, vortex_strength = vpm.vortex_ring_vpm(
+        kinematic_viscosity=KINEMATIC_VISCOSITY,
+        ring_centre=[0, 0, 0],
+        ring_radius=RING_RADIUS,
+        tube_circulation=RING_STRENGTH,
+        ring_core_radius=CORE_RADIUS,
+        mean_core_radius=float(core_radius.mean()),
+        position=position,
+        particle_volume=particle_volume,
+        widnall_amplitude=DEFAULT_WIDNALL_AMPLITUDE,
+        n_widnall_modes=WIDNALL_MODES,
+        is_anti_diffusion_enabled=True,
+        is_circulation_normalization_enabled=True,
+    )
 
-    single_mode_phase = None
-    if widnall_single_mode is not None:
-        if particle_distribution != "toroidal":
-            raise ValueError("widnall_single_mode requires the toroidal distribution")
-        (
-            position,
-            particle_volume,
-            core_radius,
-            velocity,
-            particle_kinematic_viscosity,
-            vortex_strength,
-            single_mode_phase,
-        ) = initialize_single_mode_toroidal_ring(
-            position,
-            particle_volume,
-            core_radius,
-            kinematic_viscosity=kinematic_viscosity,
-            ring_radius=RING_RADIUS,
-            tube_circulation=RING_STRENGTH,
-            ring_core_radius=CORE_RADIUS,
-            amplitude=widnall_amplitude,
-            mode=widnall_single_mode,
-            seed=42,
-        )
-    else:
-        velocity, particle_kinematic_viscosity, vortex_strength = vpm.vortex_ring_vpm(
-            kinematic_viscosity=kinematic_viscosity,
-            ring_centre=[0, 0, 0],
-            ring_radius=RING_RADIUS,
-            tube_circulation=RING_STRENGTH,
-            ring_core_radius=CORE_RADIUS,
-            mean_core_radius=float(core_radius.mean()),
-            position=position,
-            particle_volume=particle_volume,
-            widnall_amplitude=widnall_amplitude,
-            n_widnall_modes=widnall_modes,
-            is_anti_diffusion_enabled=True,
-            is_circulation_normalization_enabled=particle_distribution == "toroidal",
-        )
+    # -- Ring mode diagnostics (seed quality check) ---------------------------
     mode_sampler = RingModeDiagnosticsSampler(
         max_mode=40,
         azimuthal_bins=128,
@@ -200,12 +116,8 @@ def run_case(
         transverse_origin=(0.0, 0.0),
     )
     initial_modes = np.asarray(mode_sampler._sample_group(position, vortex_strength), dtype=float)
-    seeded_modes = (
-        np.asarray([widnall_single_mode], dtype=int)
-        if widnall_single_mode is not None
-        else np.arange(1, widnall_modes + 1)
-    )
-    theoretical_seed_amplitude = widnall_amplitude / np.sqrt(len(seeded_modes))
+    seeded_modes = np.arange(1, WIDNALL_MODES + 1)
+    theoretical_seed_amplitude = DEFAULT_WIDNALL_AMPLITUDE / np.sqrt(len(seeded_modes))
     seeded_indices = seeded_modes - 1
     unseeded_indices = np.setdiff1d(np.arange(len(initial_modes)), seeded_indices)
     if theoretical_seed_amplitude > 0.0:
@@ -220,15 +132,14 @@ def run_case(
     else:
         initial_seed_relative_l2 = 0.0
         initial_unseeded_to_seeded_rms = 0.0
-    if particle_distribution == "toroidal" and (
-        initial_seed_relative_l2 > 0.05 or initial_unseeded_to_seeded_rms > 0.10
-    ):
+    if initial_seed_relative_l2 > 0.05 or initial_unseeded_to_seeded_rms > 0.10:
         raise RuntimeError(
             "Discrete Widnall seed failed its representation gate: "
             f"seed_error={initial_seed_relative_l2:.3%}, "
             f"unseeded_noise={initial_unseeded_to_seeded_rms:.3%}"
         )
 
+    # -- Stabilization --------------------------------------------------------
     stabilization = vpm.StabilizationConfig.disabled()
     if ENABLE_STABILIZATION:
         stabilization = vpm.StabilizationConfig.conservative_filter(
@@ -252,11 +163,12 @@ def run_case(
             projection_max_correction=0.10,
         )
 
+    # -- Solver setup ---------------------------------------------------------
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup(
-            time_step_size=time_step_size,
+            time_step_size=TIME_STEP_SIZE,
             compute_device=compute_device,
-            time_integration=time_integration,
+            time_integration="FRACTIONAL",
             advection=vpm.AdvectionConfig(scheme="RK3"),
             turbulence=(
                 vpm.TurbulenceConfig.dns()
@@ -267,25 +179,23 @@ def run_case(
             ),
             stretching=stretching_setup(stretching),
             stabilization=stabilization,
-            velocity=(
-                vpm.VelocityConfig.direct()
-                if velocity_method == "DIRECT"
-                else vpm.VelocityConfig.treecode(
-                    theta=treecode_theta,
-                    sort_particle_targets=True,
-                    traversal_block_dim=128,
-                )
+            velocity=vpm.VelocityConfig.treecode(
+                theta=TREECODE_THETA,
+                sort_particle_targets=True,
+                traversal_block_dim=128,
             ),
             viscous=vpm.ViscousConfig.cs(),
-            logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME, time_step_size),
-            checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME, time_step_size),
-            checkpoint_name=label,
+            logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME, TIME_STEP_SIZE),
+            checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME, TIME_STEP_SIZE),
+            checkpoint_name=variant,
             checkpoint_directory=str(output_directory),
-            sample_subdirectory=sample_subdirectory,
+            sample_subdirectory=variant,
             samplers=(RingDiagnosticsSampler(), mode_sampler),
+            write_precision="f32",
+            checkpoint_store_velocity_gradient=False,
             max_n_particles=MAX_N_PARTICLES,
         ),
-        case_dir=output_directory.parent if sample_subdirectory else output_directory,
+        case_dir=output_directory.parent,
     )
     solver.add_vortex_particles(
         position=position,
@@ -296,61 +206,29 @@ def run_case(
         kinematic_viscosity=particle_kinematic_viscosity,
         group_id=0,
     )
-    if particle_distribution == "hexagonal":
-        solver.remove_weak_particles(percent=0.1)
 
-    initial_strength = np.abs(solver.particles.vortex_strength_cpu()).max()
+    # -- Metadata (minimal: only what postprocess.py needs) -------------------
     manifest = {
         "status": "running",
-        "variant": name,
-        "output_label": label,
-        "requested_steps": n_steps,
-        "time_step_size": time_step_size,
-        "time_integration": time_integration,
-        "velocity_method": velocity_method,
-        "treecode_theta": treecode_theta if velocity_method == "TREECODE" else None,
+        "variant": variant,
+        "requested_steps": N_STEPS,
+        "time_step_size": TIME_STEP_SIZE,
         "compute_device": solver.compute_device,
-        "precision": solver.precision,
-        "ring_radius": RING_RADIUS,
-        "core_radius": CORE_RADIUS,
-        "ring_circulation": RING_STRENGTH,
-        "circulation_reynolds_number": REYNOLDS_NUMBER,
-        "particle_spacing": PARTICLE_SPACING,
-        "particle_distribution": particle_distribution,
-        "toroidal_tail_fraction": (
-            TOROIDAL_TAIL_FRACTION if particle_distribution == "toroidal" else None
-        ),
-        "widnall_amplitude": widnall_amplitude,
-        "widnall_modes": widnall_modes,
-        "widnall_single_mode": widnall_single_mode,
-        "widnall_mode_numbers": seeded_modes.tolist(),
-        "widnall_single_mode_phase": single_mode_phase,
-        "theoretical_radial_seed_amplitude_per_mode": theoretical_seed_amplitude,
-        "discrete_radial_seed_relative_l2": initial_seed_relative_l2,
-        "discrete_unseeded_to_seeded_rms": initial_unseeded_to_seeded_rms,
-        "discrete_seed_relative_l2_limit": 0.05,
-        "discrete_unseeded_noise_limit": 0.10,
-        "theoretical_gaussian_dominant_mode_estimate": 2.26 * RING_RADIUS / CORE_RADIUS,
-        "resolution_divergence_limit": RESOLUTION_DIVERGENCE_LIMIT,
-        "resolution_misalignment_limit_deg": RESOLUTION_MISALIGNMENT_LIMIT_DEG,
-        "molecular_diffusion": "core_spreading",
-        "sgs_model": "none" if mode == "dns" else "smagorinsky",
-        "smagorinsky_coefficient": 0.0 if mode == "dns" else smagorinsky_coefficient,
-        "claim_scope": "VPM Widnall challenge; structural DIAD is not active",
-        "stabilization_enabled": ENABLE_STABILIZATION,
     }
-    manifest_path = output_directory / f"run_manifest_{label}.json"
+    manifest_path = output_directory / f"run_manifest_{variant}.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
+    # -- Time integration -----------------------------------------------------
     solver.record_diagnostics(refresh_fields=True)
-    solver.save_state(str(output_directory / f"vpm_{label}"))
+    solver.save_state(str(output_directory / f"vpm_{variant}"))
+    initial_strength = np.abs(solver.particles.vortex_strength_cpu()).max()
     termination_reason = None
-    for _ in range(n_steps):
+    for _ in range(N_STEPS):
         solver.advance()
         if np.abs(solver.particles.vortex_strength_cpu()).max() > 50 * initial_strength:
             termination_reason = "peak particle strength exceeded 50 times its initial value"
             break
-        if solver.step % cadence_steps(SAMPLE_INTERVAL_TIME, time_step_size):
+        if solver.step % cadence_steps(SAMPLE_INTERVAL_TIME, TIME_STEP_SIZE):
             continue
         health = solver._discretization_health
         divergence = float(health["vorticity_divergence_error"])
@@ -365,7 +243,7 @@ def run_case(
             )
             break
 
-    solver.save_state(str(output_directory / f"vpm_{label}_final"))
+    solver.save_state(str(output_directory / f"vpm_{variant}_final"))
     manifest.update(
         status="resolution_lost" if termination_reason else "completed",
         completed_steps=solver.step,
@@ -383,93 +261,10 @@ def main() -> int:
         "--variant",
         required=True,
         choices=("dns_direct", "dns_transposed", "dns_mixed", "les_transposed"),
-        help="physics variant to run",
     )
-    parser.add_argument(
-        "--particle-distribution",
-        choices=("hexagonal", "toroidal"),
-        default="hexagonal",
-        help="Toroidal uses complete azimuthal orbits for modal-instability studies.",
-    )
-    parser.add_argument(
-        "--widnall-amplitude",
-        type=float,
-        default=DEFAULT_WIDNALL_AMPLITUDE,
-        help="Broadband centreline perturbation amplitude.",
-    )
-    parser.add_argument(
-        "--widnall-modes",
-        type=int,
-        default=WIDNALL_MODES,
-        help="Number of equally seeded azimuthal modes.",
-    )
-    parser.add_argument(
-        "--widnall-single-mode",
-        type=int,
-        help="Seed one azimuthal mode instead of broadband modes 1...N.",
-    )
-    parser.add_argument("--n-steps", type=int, default=N_STEPS)
-    parser.add_argument("--time-step-size", type=float, default=TIME_STEP_SIZE)
-    parser.add_argument(
-        "--time-integration",
-        choices=("FRACTIONAL", "COUPLED"),
-        default="FRACTIONAL",
-        help="COUPLED advances position and vortex_strength at common RK stages.",
-    )
-    parser.add_argument(
-        "--velocity-method",
-        choices=("DIRECT", "TREECODE"),
-        default="TREECODE",
-    )
-    parser.add_argument("--treecode-theta", type=float, default=0.3)
-    parser.add_argument("--smagorinsky-coefficient", type=float, default=0.20)
-    parser.add_argument(
-        "--compute-device",
-        choices=("AUTO", "CPU", "METAL", "VULKAN", "CUDA"),
-        default="AUTO",
-    )
-    parser.add_argument(
-        "--final-time-star",
-        type=float,
-        help="Override --n-steps to reach t*=t circulation/R^2.",
-    )
-    parser.add_argument(
-        "--output-directory",
-        type=Path,
-        default=SOLUTION_DIR,
-        help="Directory for raw restart states and run manifest.",
-    )
-    parser.add_argument(
-        "--output-label",
-        help="Unique run label; defaults to the physics variant.",
-    )
+    parser.add_argument("--compute-device", default="AUTO")
     args = parser.parse_args()
-
-    print("\n===== SIMULATION =====")
-    print(f"---- vortex ring variant: {args.variant} ----")
-    n_steps = args.n_steps
-    if args.final_time_star is not None:
-        if args.final_time_star <= 0.0:
-            parser.error("--final-time-star must be positive")
-        physical_end_time = args.final_time_star * RING_RADIUS**2 / RING_STRENGTH
-        n_steps = int(np.ceil(physical_end_time / args.time_step_size))
-
-    run_case(
-        args.variant,
-        widnall_amplitude=args.widnall_amplitude,
-        widnall_modes=args.widnall_modes,
-        widnall_single_mode=args.widnall_single_mode,
-        n_steps=n_steps,
-        output_directory=args.output_directory,
-        output_label=args.output_label,
-        particle_distribution=args.particle_distribution,
-        time_step_size=args.time_step_size,
-        time_integration=args.time_integration,
-        velocity_method=args.velocity_method,
-        treecode_theta=args.treecode_theta,
-        compute_device=args.compute_device,
-        smagorinsky_coefficient=args.smagorinsky_coefficient,
-    )
+    run_case(args.variant, compute_device=args.compute_device)
     return 0
 
 

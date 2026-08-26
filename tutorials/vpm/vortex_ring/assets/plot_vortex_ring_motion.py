@@ -9,28 +9,24 @@ Saves: figures/vortex_ring_motion.png
 """
 
 from pathlib import Path
-import sys
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).parent))
-from plot_style import (
-    VARIANT_LABEL,
-    VARIANT_STYLE,
-    build_arg_parser,
-    figure_size,
-    load_theme,
-    reference_style,
-    save_fig,
-)
 from ring_metrics import (
     FIGURES_DIR,
     SAMPLES_DIR,
     REFERENCE_TIME,
     REFERENCE_VELOCITY,
+    VARIANT_LABEL,
+    VARIANT_STYLE,
+    build_arg_parser,
+    figure_size,
     load_sampled_ring_speed,
+    load_theme,
+    reference_style,
     saffman_speed,
+    save_fig,
 )
 
 

@@ -32,8 +32,6 @@ BLOWUP_FACTOR = 50.0
 
 def main() -> None:
     args = build_arg_parser("Peak circulation max|Γᵢ|/max|Γᵢ|₀ vs t*.").parse_args()
-    figs = Path(args.figures_dir)
-    figs.mkdir(parents=True, exist_ok=True)
 
     load_theme()
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
@@ -81,7 +79,7 @@ def main() -> None:
 
     save_fig(
         fig,
-        figs / "rings_stability.png",
+        Path("figures") / "rings_stability.png",
         dpi=args.dpi,
         figure_format=args.format,
         tight_rect=(0.0, 0.27, 1.0, 1.0),
