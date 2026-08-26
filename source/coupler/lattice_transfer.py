@@ -240,6 +240,61 @@ def release_blend_weight(
     return eta
 
 
+@njit(cache=True, fastmath=False)
+def _evaluate_gaussian_vorticity_direct(
+    evaluation_position: np.ndarray,
+    particle_position: np.ndarray,
+    vortex_strength: np.ndarray,
+    core_radius: np.ndarray,
+) -> np.ndarray:
+    """Evaluate the exact untruncated Gaussian vortex field in float64."""
+    result = np.zeros((len(evaluation_position), 3), dtype=np.float64)
+    normalization = np.pi ** (-1.5)
+    for target in range(len(evaluation_position)):
+        for particle in range(len(particle_position)):
+            dx = evaluation_position[target, 0] - particle_position[particle, 0]
+            dy = evaluation_position[target, 1] - particle_position[particle, 1]
+            dz = evaluation_position[target, 2] - particle_position[particle, 2]
+            sigma = core_radius[particle]
+            zeta_over_volume = (
+                normalization
+                * np.exp(-(dx * dx + dy * dy + dz * dz) / (sigma * sigma))
+                / (sigma * sigma * sigma)
+            )
+            for component in range(3):
+                result[target, component] += zeta_over_volume * vortex_strength[particle, component]
+    return result
+
+
+def evaluate_gaussian_vorticity(
+    evaluation_position: np.ndarray,
+    particle_position: np.ndarray,
+    vortex_strength: np.ndarray,
+    core_radius: np.ndarray,
+) -> np.ndarray:
+    r"""Evaluate untruncated Gaussian-particle vorticity at arbitrary points.
+
+    This deterministic reference uses OpenONDA's Gaussian convention,
+    ``pi**(-3/2) exp(-(r/sigma)**2) / sigma**3``. It is intended for focused
+    certification and diagnostics, not the cube's per-step production path.
+    """
+    targets = np.ascontiguousarray(np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3))
+    position = np.ascontiguousarray(np.asarray(particle_position, dtype=np.float64).reshape(-1, 3))
+    strength = np.ascontiguousarray(np.asarray(vortex_strength, dtype=np.float64).reshape(-1, 3))
+    radius = np.ascontiguousarray(np.asarray(core_radius, dtype=np.float64).reshape(-1))
+    if len(position) != len(strength) or len(position) != len(radius):
+        raise ValueError("Gaussian particle position, strength, and core-radius counts must match")
+    if not np.all(np.isfinite(position)) or not np.all(np.isfinite(strength)):
+        raise ValueError("Gaussian particle position and strength must be finite")
+    if not np.all(np.isfinite(radius)) or np.any(radius <= 0.0):
+        raise ValueError("Gaussian particle core radii must be finite and positive")
+    if not np.all(np.isfinite(targets)):
+        raise ValueError("Gaussian evaluation positions must be finite")
+    if not len(position):
+        return np.zeros((len(targets), 3), dtype=np.float64)
+    return _evaluate_gaussian_vorticity_direct(targets, position, strength, radius)
+
+
 def _spectral_wave_numbers(
     shape: tuple[int, int, int], spacing: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -866,6 +921,7 @@ __all__ = [
     "blend_fvm_vpm_circulation_on_lattice",
     "build_renewal_lattice",
     "correct_state_blend_cross_divergence",
+    "evaluate_gaussian_vorticity",
     "first_vorticity_moment",
     "m4_prime",
     "map_cell_circulation_to_lattice",

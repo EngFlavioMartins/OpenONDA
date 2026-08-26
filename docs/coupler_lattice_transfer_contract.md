@@ -1,9 +1,22 @@
-# Common-lattice FVM→VPM transfer contract
+# FVM→VPM lattice-transfer contract
 
 This document defines the promise of `source/coupler/lattice_transfer.py` and
 `source/coupler/vorticity_transfer.py`. It deliberately separates algebraic
 properties of the mapper from physical properties that require a reconstructed
 VPM field or a coupled integration test.
+
+## Scope and production status
+
+The cube-flow production candidate is `buffered_m4_renewal` with GBD. It ports
+the fixed whole-belt M4′ renewal used by the historical 20-second stable run,
+while retaining the current synchronized `t+1` solver and panel ordering. The
+older `common_m4_lattice_blend`, projected-renewal code, and the F1 surface-flux
+handoff remain available for focused experiments; they are not selected by the
+cube configuration.
+
+`evaluate_gaussian_vorticity` is an exact, untruncated float64 reference used
+by certification tests. Its direct target-by-particle evaluation is not a
+production-scale transfer algorithm.
 
 ## State represented
 
@@ -43,11 +56,31 @@ component, total vortex strength and all monomials through degree two:
 `sum(|Gamma_p|)` is explicitly **not** an invariant: M4′ has legitimate
 negative lobes. The invariant is the signed vector sum.
 
-When a target lattice node is inside a solid, its strength is redistributed to
-nearby fluid nodes with constrained weights reproducing constants, linear
-terms, and quadratic terms. It is never simply discarded. The operation
-requires at least ten linearly independent fluid nodes; otherwise it fails
-before particle mutation.
+The common-lattice path reports circulation excluded from solid target nodes
+explicitly. The buffered production candidate instead builds solid confidence
+and taper information into the fixed renewal lattice, applies bounded local
+redistribution and pruning, then recovers its signed circulation and impulse
+invariants before particle mutation.
+
+## Buffered whole-belt renewal
+
+The buffered method uses a fixed lattice covering the FVM authority box, the
+distance a particle can travel in one coupling interval, and the complete
+two-cell M4′ guard. At each handoff it:
+
+1. separates the renewable belt from the untouched outer wake;
+2. scatters every renewable VPM particle to that one lattice;
+3. reconstructs the synchronized FVM target from the current velocity trace;
+4. blends represented FVM and VPM states with inward FVM authority that is
+   exactly zero at and beyond the ownership boundary;
+5. prunes and corrects the lattice state under bounded amplification and
+   invariant checks; and
+6. atomically replaces the complete managed belt while appending the untouched
+   outer wake.
+
+Renewing the complete belt, including its managed release support, is the
+anti-accumulation contract. A released particle becomes persistent only after
+it has left that belt; it is not independently re-added at every handoff.
 
 ## Solver-level invariant definitions
 
@@ -95,9 +128,9 @@ strain rate.
 ## Current certification status
 
 The unit regressions cover M4′ moment identities, C1 ownership seams,
-solid-target redistribution, hard-release collision ownership, mutation
-rollback, the matched discrete divergence operator, and one authoritative f32
-post-insertion state download. The following remain
+release-support ownership, mutation rollback, invariant recovery, the matched
+discrete divergence operator, the exact Gaussian reference, and one
+authoritative f32 post-insertion state download. The following remain
 **not certified** and are release gates for the coupled cube continuation:
 
 - continuous Gaussian field accuracy and true `div(omega)`;
@@ -105,6 +138,11 @@ post-insertion state download. The following remain
   correction;
 - persistent Gaussian-tail transparency;
 - repeated f32 transfer drift over a production-scale sequence;
-- dynamic face/edge/corner handoff, flux/Stokes tests, and all viscous schemes;
+- the one-step and next-handoff cube checkpoint gates with GBD;
+- dynamic face/edge/corner handoff and long-time coupled accuracy;
 - GBD/DVH anchor assertions, LES-state reconstruction, restart/MPI ordering;
 - the offline actual-cube `t=2` audit and transfer performance envelope.
+
+The isolated F1 experiment and its current geometric limitation are documented
+in `docs/flux_handoff_experiment.md`; passing F1 unit tests does not certify it
+for cube production.

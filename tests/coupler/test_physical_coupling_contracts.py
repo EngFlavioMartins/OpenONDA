@@ -183,6 +183,12 @@ class _Float32VPM(_VPM):
     np_dtype = np.float32
 
 
+class _CountMismatchingVPM(_VPM):
+    def add_vortex_particles(self, **fields):
+        super().add_vortex_particles(**fields)
+        self.particles.n_particles_total += 1
+
+
 def _particle_state(particles: _Particles) -> dict[str, np.ndarray | int]:
     return {
         "position": particles.position.copy(),
@@ -741,6 +747,29 @@ def test_lattice_particle_mutation_failures_roll_back_every_particle_field(failu
             np.array([[0.0, 8.0, 0.0]]),
             blend_width=blend_width,
             spacing=h,
+        )
+
+    after = _particle_state(vpm.particles)
+    for name in before:
+        if isinstance(before[name], np.ndarray):
+            np.testing.assert_array_equal(after[name], before[name])
+        else:
+            assert after[name] == before[name]
+
+
+def test_post_mutation_count_failure_rolls_back_every_particle_field():
+    vpm = _CountMismatchingVPM(
+        np.array([[0.8, 0.0, 0.0]]),
+        np.array([[0.0, 2.0, 0.0]]),
+    )
+    before = _particle_state(vpm.particles)
+
+    with pytest.raises(RuntimeError, match="count after replacement"):
+        _replace(
+            vpm,
+            np.array([[0.0, 0.0, 0.0]]),
+            np.array([0.25]),
+            np.array([[0.0, 8.0, 0.0]]),
         )
 
     after = _particle_state(vpm.particles)

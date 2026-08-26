@@ -10,6 +10,7 @@ from source.coupler.lattice_transfer import (
     blend_fvm_vpm_circulation_on_lattice,
     build_renewal_lattice,
     correct_state_blend_cross_divergence,
+    evaluate_gaussian_vorticity,
     first_vorticity_moment,
     m4_prime,
     map_cell_circulation_to_lattice,
@@ -38,6 +39,31 @@ def test_m4_prime_has_partition_and_first_moment_on_its_complete_support():
         weights = m4_prime(fraction - nodes)
         np.testing.assert_allclose(weights.sum(), 1.0, rtol=0.0, atol=2.0e-15)
         np.testing.assert_allclose((nodes * weights).sum(), fraction, rtol=0.0, atol=2.0e-15)
+
+
+def test_gaussian_vorticity_reference_matches_analytic_particle_sum():
+    points = np.array([[0.0, 0.0, 0.0], [0.25, -0.5, 0.125], [-0.1, 0.2, 0.3]])
+    position = np.array([[0.1, -0.2, 0.05], [-0.25, 0.3, -0.1]])
+    strength = np.array([[0.2, -0.4, 0.1], [-0.3, 0.5, 0.7]])
+    radius = np.array([0.125, 0.35])
+
+    displacement = points[:, None, :] - position[None, :, :]
+    sigma = radius[None, :, None]
+    analytic_weight = (
+        np.pi ** (-1.5) * np.exp(-np.sum((displacement / sigma) ** 2, axis=2)) / sigma[..., 0] ** 3
+    )
+    expected = analytic_weight @ strength
+    actual = evaluate_gaussian_vorticity(points, position, strength, radius)
+    np.testing.assert_allclose(actual, expected, rtol=0.0, atol=2.0e-15)
+
+
+def test_coupler_m4_prime_matches_the_grid_diffusion_kernel():
+    pytest.importorskip("taichi", reason="grid diffusion requires taichi")
+    from source.solvers.vpm.physics.diffusion.grid import _m4_prime_1d
+
+    rng = np.random.default_rng(116)
+    distance = rng.uniform(-2.5, 2.5, size=10_000)
+    np.testing.assert_allclose(m4_prime(distance), _m4_prime_1d(distance), rtol=0.0, atol=0.0)
 
 
 def test_m4_prime_reproduces_quadratic_moments_for_ten_thousand_random_phases():

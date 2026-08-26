@@ -63,18 +63,17 @@ def test_plotters_use_canonical_export_fields_and_valid_math_commands():
     assert offenders == []
 
 
-def test_vortex_interaction_validators_use_canonical_cadence_keys():
-    for relative_path in (
-        "vpm/vortex_interactions/assets/check_run.py",
-        "vpm/vortex_interactions/assets/validate_plot_inputs.py",
-    ):
-        source = (TUTORIALS / relative_path).read_text(encoding="utf-8")
-        assert re.search(r'manifest\.get\("checkpoint_interval_steps"(?:,\s*0)?\)', source)
-        assert 'manifest.get("snapshot_frequency")' not in source
-        assert re.search(
-            r"range\(\s*checkpoint_interval_steps,\s*completed_steps\s*\+\s*1",
-            source,
-        )
+def test_vortex_interaction_postprocessor_uses_canonical_cadence_keys():
+    source = (TUTORIALS / "vpm/vortex_interactions/assets/postprocess.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert re.search(r'manifest\.get\("checkpoint_interval_steps"(?:,\s*0)?\)', source)
+    assert 'manifest.get("snapshot_frequency")' not in source
+    assert re.search(
+        r'range\(ci,\s*manifest\["completed_steps"\]\s*\+\s*1,\s*ci\)',
+        source,
+    )
 
 
 def test_lamb_oseen_surface_plot_derives_speed_from_the_canonical_velocity_vector():
