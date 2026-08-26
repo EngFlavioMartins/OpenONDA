@@ -4,7 +4,10 @@ from dataclasses import replace
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
+import numpy as np
 import pytest
+
+from source.coupler.lattice_transfer import map_cell_circulation_to_lattice
 
 CASE_DIR = Path(__file__).resolve().parents[2] / "tutorials" / "coupled_fvm_vpm" / "cube_flow"
 
@@ -87,6 +90,36 @@ def test_cube_flow_can_select_any_supported_vpm_viscous_scheme(scheme):
     if scheme != "NONE":
         assert viscous.kinematic_viscosity == pytest.approx(setup.KINEMATIC_VISCOSITY)
     replace(setup.VPM_SETUP, viscous=viscous)._validate_config()
+
+
+def test_cube_interface_m4_support_requires_one_outer_renewal_plane():
+    setup = _load_setup(CASE_DIR / "cube_flow_setup.py", "cube_flow_m4_buffer_contract")
+    h = setup.VPM_PARTICLE_SPACING
+    downstream_face = setup.TRANSFER_REGION_BOX[1]
+    last_donor_centre = downstream_face - 0.5 * h
+
+    # The cube interface is a regular VPM plane while its last FVM donor is at
+    # the half-grid phase.  Complete M4' support therefore reaches one full
+    # VPM plane into persistent authority; renewal must own that support plane
+    # while forming the new absolute state.
+    assert downstream_face / h == pytest.approx(round(downstream_face / h))
+    mapped = map_cell_circulation_to_lattice(
+        np.array([[last_donor_centre, 0.0, 0.0]]),
+        np.array([h**3]),
+        np.array([[0.0, 1.0, 0.0]]),
+        lattice_anchor=np.zeros(3),
+        spacing=h,
+    )
+    active = np.linalg.norm(mapped.vortex_strength, axis=1) > 0.0
+    active_x_planes = np.unique(mapped.position[active, 0])
+
+    np.testing.assert_allclose(
+        active_x_planes,
+        downstream_face + h * np.array([-2.0, -1.0, 0.0, 1.0]),
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+    assert active_x_planes[-1] - downstream_face == pytest.approx(h)
 
 
 def test_cube_flow_timing_resolver_adjusts_steps_without_shifting_outputs():

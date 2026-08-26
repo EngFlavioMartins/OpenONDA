@@ -15,6 +15,7 @@ from source.coupler.vorticity_transfer import (
     replace_particles_from_fvm,
     replace_particles_from_lattice_blend,
     replacement_eta,
+    required_renewal_buffer_length,
 )
 
 BOX = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
@@ -199,6 +200,14 @@ def _particle_state(particles: _Particles) -> dict[str, np.ndarray | int]:
     }
 
 
+def _canonical_vortex_state(vpm: _VPM) -> tuple[np.ndarray, np.ndarray]:
+    """Return position/strength ordered by position for renewal comparisons."""
+    position = vpm.particles.position.copy()
+    strength = vpm.particles.vortex_strength.copy()
+    order = np.lexsort((position[:, 2], position[:, 1], position[:, 0]))
+    return position[order], strength[order]
+
+
 def _replace(
     vpm: _VPM,
     fvm_position: np.ndarray,
@@ -380,36 +389,115 @@ def test_common_lattice_blend_is_an_exact_fixed_point_for_matching_states():
         assert len(by_position) == vpm.particles.n_particles_total
 
 
-def test_manufactured_convecting_release_crosses_interface_and_survives_next_handoff():
+@pytest.mark.parametrize(
+    ("blend_width", "persistent_x"),
+    [(0.0, 0.625), (0.25, BOX[1])],
+    ids=("hard", "c1-blend"),
+)
+def test_repeated_phase_shifted_m4_renewal_is_idempotent_across_release_support(
+    blend_width: float,
+    persistent_x: float,
+):
+    """An unchanged absolute handoff must not re-add the same M4 support.
+
+    The half-lattice donor is the phase occurring at the cube's downstream
+    interface.  Its complete M4' stencil crosses the ownership face and
+    overlaps a persistent VPM node.  Once the first handoff has formed the
+    common-lattice state, repeating that same handoff without advancing either
+    solver must be an exact fixed point.
+    """
     h = 0.125
-    fvm_position = np.array([[0.375, 0.0, 0.0]])
-    volume = np.array([h**3])
-    vorticity = np.array([[0.0, 16.0, 0.0]])
-    vpm = _VPM(np.empty((0, 3)), np.empty((0, 3)))
-
-    _replace_lattice(vpm, fvm_position, volume, vorticity, blend_width=0.25, spacing=h)
-    assert vpm.particles.position.shape == (1, 3)
-    released_strength = vpm.particles.vortex_strength[0].copy()
-    vpm.particles.position[:, 0] += 0.15
-    assert vpm.particles.position[0, 0] > BOX[1]
-
-    _replace_lattice(vpm, fvm_position, volume, vorticity, blend_width=0.25, spacing=h)
-    outside = vpm.particles.position[:, 0] > BOX[1]
-    np.testing.assert_allclose(
-        vpm.particles.vortex_strength[outside].sum(axis=0),
-        released_strength,
-        atol=1.0e-18,
-    )
-    _replace_lattice(vpm, fvm_position, volume, vorticity, blend_width=0.25, spacing=h)
-    outside = vpm.particles.position[:, 0] > BOX[1]
-    np.testing.assert_allclose(
-        vpm.particles.vortex_strength[outside].sum(axis=0),
-        released_strength,
-        atol=1.0e-18,
+    source_position = np.array([[0.4375, 0.0, 0.0]])
+    source_strength = np.array([[0.0, 2.0, 0.0]])
+    persistent_position = np.array([[persistent_x, 0.0, 0.0]])
+    persistent_strength = np.array([[0.0, 0.3, 0.0]])
+    vpm = _VPM(
+        np.vstack((source_position, persistent_position)),
+        np.vstack((source_strength, persistent_strength)),
+        capacity=1_000,
     )
 
+    _replace_lattice(
+        vpm,
+        source_position,
+        np.array([1.0]),
+        source_strength,
+        blend_width=blend_width,
+        spacing=h,
+    )
+    expected_position, expected_strength = _canonical_vortex_state(vpm)
+    expected_count = vpm.particles.n_particles_total
+    expected_max_strength = np.linalg.norm(expected_strength, axis=1).max()
 
-def test_blend_merges_release_support_into_a_retained_regular_node_without_duplicates():
+    for _ in range(20):
+        result = _replace_lattice(
+            vpm,
+            source_position,
+            np.array([1.0]),
+            source_strength,
+            blend_width=blend_width,
+            spacing=h,
+        )
+        actual_position, actual_strength = _canonical_vortex_state(vpm)
+
+        assert result.n_particles_after == expected_count
+        np.testing.assert_array_equal(actual_position, expected_position)
+        np.testing.assert_allclose(actual_strength, expected_strength, rtol=0.0, atol=2.0e-15)
+        assert np.linalg.norm(actual_strength, axis=1).max() <= expected_max_strength + 2.0e-15
+        np.testing.assert_allclose(result.state_change_vortex_strength_net, 0.0, atol=2.0e-15)
+
+
+def test_renewal_buffer_covers_release_travel_plus_complete_m4_support():
+    h = 0.03125
+    coupling_time_step = 0.01
+
+    buffer_length = required_renewal_buffer_length(
+        [1.0, 0.0, 0.0],
+        coupling_time_step,
+        h,
+    )
+
+    assert buffer_length == pytest.approx(1.5 * coupling_time_step + 2.0 * h)
+    assert buffer_length == pytest.approx(0.0775)
+    assert required_renewal_buffer_length([0.0, 0.0, 0.0], coupling_time_step, h) == pytest.approx(
+        2.0 * h
+    )
+
+
+def test_sub_h_release_is_coalesced_in_the_renewal_belt_without_strength_blowup():
+    h = 0.125
+    displacement = 0.32 * h
+    fvm_position = np.array([[0.4375, 0.0, 0.0]])
+    source_strength = np.array([[0.0, 2.0, 0.0]])
+    vpm = _VPM(np.empty((0, 3)), np.empty((0, 3)), capacity=10_000)
+    release_band_counts: list[int] = []
+    maximum_strengths: list[float] = []
+
+    for _ in range(30):
+        _replace_lattice(
+            vpm,
+            fvm_position,
+            np.ones(1),
+            source_strength,
+            blend_width=2.0 * h,
+            spacing=h,
+        )
+        position = vpm.particles.position
+        strength = vpm.particles.vortex_strength
+        release_band = (position[:, 0] > BOX[1]) & (position[:, 0] <= BOX[1] + 2.0 * h)
+        release_band_counts.append(int(np.count_nonzero(release_band)))
+        maximum_strengths.append(float(np.linalg.norm(strength, axis=1).max()))
+        assert len(np.unique(position, axis=0)) == len(position)
+        vpm.particles.position[:, 0] += displacement
+
+    # Although one-step travel is much smaller than h, the fixed belt has at
+    # most one particle per active node.  Older packets may leave as physical
+    # free wake, but they cannot stack at sub-h spacing inside the handoff.
+    assert max(release_band_counts) <= 2
+    assert max(maximum_strengths) <= 0.5625 * np.linalg.norm(source_strength[0]) + 2.0e-15
+
+
+def test_blend_reconciles_release_support_as_an_absolute_regular_node_without_duplicates():
     h = 0.125
     source_position = np.array([[0.4375, 0.0, 0.0]])
     source_strength = np.array([[0.0, 2.0, 0.0]])
@@ -434,13 +522,13 @@ def test_blend_merges_release_support_into_a_retained_regular_node_without_dupli
     m4_weight = 0.5625
     np.testing.assert_allclose(
         vpm.particles.vortex_strength[matches][0],
-        boundary_strength[0] + m4_weight * source_strength[0],
+        m4_weight * source_strength[0],
         atol=1.0e-15,
     )
     assert len(np.unique(vpm.particles.position, axis=0)) == vpm.particles.n_particles_total
 
 
-def test_hard_release_support_adds_to_persistent_outer_node():
+def test_hard_release_support_overwrites_managed_outer_node_absolutely():
     h = 0.125
     source_position = np.array([[0.4375, 0.0, 0.0]])
     source_strength = np.array([[0.0, 2.0, 0.0]])
@@ -464,9 +552,29 @@ def test_hard_release_support_adds_to_persistent_outer_node():
     assert matches.sum() == 1
     np.testing.assert_allclose(
         vpm.particles.vortex_strength[matches][0],
-        persistent_strength[0] - 0.0625 * source_strength[0],
+        -0.0625 * source_strength[0],
         atol=1.0e-15,
     )
+
+
+def test_zero_regular_support_guard_source_is_removed_instead_of_accumulating():
+    """A represented guard node with a zero absolute target cannot remain stale."""
+    h = 0.125
+    guard_position = np.array([[0.875, 0.0, 0.0]])
+    vpm = _VPM(guard_position, np.zeros((1, 3)))
+
+    result = _replace_lattice(
+        vpm,
+        np.array([[0.0, 0.0, 0.0]]),
+        np.array([h**3]),
+        np.zeros((1, 3)),
+        blend_width=0.25,
+        spacing=h,
+    )
+
+    assert result.n_particles_removed == 1
+    assert result.n_particles_injected == 0
+    assert vpm.particles.n_particles_total == 0
 
 
 def test_hard_release_recognizes_f32_lattice_nodes_at_large_coordinates():
@@ -495,7 +603,7 @@ def test_hard_release_recognizes_f32_lattice_nodes_at_large_coordinates():
     assert close_to_persistent.sum() == 1
 
 
-def test_lattice_blend_redistributes_solid_targets_without_losing_moments():
+def test_lattice_blend_excludes_solid_targets_with_an_explicit_budget():
     h = 0.125
     vpm = _VPM(np.empty((0, 3)), np.empty((0, 3)))
 
@@ -513,31 +621,19 @@ def test_lattice_blend_redistributes_solid_targets_without_losing_moments():
     )
     assert not np.any(np.isclose(vpm.particles.position[:, 0], h))
     assert result.excluded_solid_target_nodes > 0
-    np.testing.assert_allclose(result.excluded_solid_vortex_strength_net, 0.0, atol=1.0e-15)
-    assert np.linalg.norm(result.redistributed_solid_vortex_strength_net) > 0.0
+    assert result.excluded_solid_active_nodes > 0
+    assert result.excluded_solid_vortex_strength_l1 > 0.0
     expected_strength = h**3 * np.array([0.0, 4.0, 0.0])
     np.testing.assert_allclose(
-        vpm.particles.vortex_strength.sum(axis=0), expected_strength, atol=1.0e-14
-    )
-    np.testing.assert_allclose(
-        vpm.particles.position.T @ vpm.particles.vortex_strength,
-        np.outer(np.array([0.5 * h, 0.0, 0.0]), expected_strength),
+        vpm.particles.vortex_strength.sum(axis=0) + result.excluded_solid_vortex_strength_net,
+        expected_strength,
         atol=1.0e-14,
     )
     np.testing.assert_allclose(
-        np.einsum(
-            "ni,nj,nk->ijk",
-            vpm.particles.position,
-            vpm.particles.position,
-            vpm.particles.vortex_strength,
-        ),
-        np.einsum(
-            "i,j,k->ijk",
-            np.array([0.5 * h, 0.0, 0.0]),
-            np.array([0.5 * h, 0.0, 0.0]),
-            expected_strength,
-        ),
-        atol=2.0e-14,
+        vpm.particles.position.T @ vpm.particles.vortex_strength
+        + result.excluded_solid_first_moment,
+        np.outer(np.array([0.5 * h, 0.0, 0.0]), expected_strength),
+        atol=1.0e-14,
     )
 
 
@@ -621,7 +717,7 @@ def test_lattice_particle_mutation_failures_roll_back_every_particle_field(failu
         source_position = np.array([[0.4375, 0.0, 0.0]])
     elif failure == "remove_particles":
         vpm = _FailingVPM(
-            np.array([[0.0, 0.0, 0.0]]),
+            np.array([[0.1, 0.0, 0.0]]),
             np.array([[0.0, 2.0, 0.0]]),
             fail_at=failure,
         )

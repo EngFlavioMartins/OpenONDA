@@ -9,11 +9,12 @@ from pathlib import Path
 from typing import cast
 
 import numpy as np
-from scipy.spatial import cKDTree  # type: ignore[missing-module-attribute]
 
 from source import log_style
 from source.coupler.lattice_transfer import (
-    blend_fvm_vpm_circulation_on_lattice,
+    RenewalLattice,
+    blend_fvm_vpm_circulation_in_renewal_belt,
+    build_renewal_lattice,
     first_vorticity_moment,
     state_blend_weight,
 )
@@ -27,6 +28,7 @@ from source.coupler.renewal_projection import (
     solve_sparse_renewal_projection,
 )
 from source.coupler.reporting import format_coupler_log
+from source.solvers.vpm.diagnostics.resolution import discretization_health
 
 logger = logging.getLogger("coupler")
 
@@ -44,6 +46,31 @@ def replacement_eta(
     six box faces. This is a state partition, not an additive correction.
     """
     return state_blend_weight(points, box, blend_width)
+
+
+def required_renewal_buffer_length(
+    freestream_velocity: np.ndarray | list[float] | tuple[float, ...],
+    coupling_time_step: float,
+    particle_spacing: float,
+    *,
+    advection_safety_factor: float = 1.5,
+) -> float:
+    """Return the release travel plus complete M4' support required by renewal."""
+    velocity = np.asarray(freestream_velocity, dtype=np.float64).reshape(3)
+    dt = float(coupling_time_step)
+    spacing = float(particle_spacing)
+    safety = float(advection_safety_factor)
+    if (
+        not np.all(np.isfinite(velocity))
+        or not np.isfinite(dt)
+        or dt < 0.0
+        or not np.isfinite(spacing)
+        or spacing <= 0.0
+        or not np.isfinite(safety)
+        or safety < 1.0
+    ):
+        raise ValueError("renewal buffer inputs must be finite and physically valid")
+    return safety * float(np.linalg.norm(velocity)) * dt + 2.0 * spacing
 
 
 @dataclass(frozen=True)
@@ -71,17 +98,40 @@ class TransferResult:
     transfer_method: str = "fvm_cell_centres"
     mapped_target_nodes: int = 0
     excluded_solid_target_nodes: int = 0
+    excluded_solid_active_nodes: int = 0
     excluded_solid_vortex_strength_net: np.ndarray = field(
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
-    redistributed_solid_vortex_strength_net: np.ndarray = field(
-        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    excluded_solid_vortex_strength_l1: float = 0.0
+    excluded_solid_first_moment: np.ndarray = field(
+        default_factory=lambda: np.zeros((3, 3), dtype=np.float64)
     )
     mapped_first_moment: np.ndarray = field(
         default_factory=lambda: np.zeros((3, 3), dtype=np.float64)
     )
+    mapped_target_vortex_strength_l1: float = 0.0
+    mapped_target_vortex_strength_net: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    maximum_mapped_vortex_strength: float = 0.0
+    fvm_donor_vortex_strength_net: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    fvm_mapped_vortex_strength_net: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    fvm_donor_first_moment: np.ndarray = field(
+        default_factory=lambda: np.zeros((3, 3), dtype=np.float64)
+    )
+    fvm_mapped_first_moment: np.ndarray = field(
+        default_factory=lambda: np.zeros((3, 3), dtype=np.float64)
+    )
     blend_cross_divergence_l2_before: float = 0.0
     blend_cross_divergence_l2_after: float = 0.0
+    blend_cross_divergence_relative: float = 0.0
+    mapped_vorticity_divergence_error: float | None = None
+    mapped_vortex_strength_misalignment_degrees: float | None = None
+    mapped_mean_overlap_ratio: float | None = None
     projection_vorticity_relative_error: float = 0.0
     projection_velocity_relative_error: float | None = None
     projection_condition_number: float = 0.0
@@ -107,18 +157,6 @@ def _validate_particle_sources(
     if not np.all(np.isfinite(source_vorticity)):
         raise RuntimeError("FVM cell vorticity contains non-finite values")
     return source_position, volume, source_vorticity
-
-
-def _absolute_diffusion_strength_cutoff(vpm) -> float:
-    """Return the VPM's configured absolute regeneration cutoff, if any."""
-    viscous = getattr(getattr(vpm, "setup", None), "viscous", None)
-    scheme = str(getattr(vpm, "viscous_scheme", "")).upper()
-    if viscous is None or scheme not in {"GBD", "DVH"}:
-        return 0.0
-    prefix = scheme.lower()
-    mode = str(getattr(viscous, f"{prefix}_threshold_mode", "")).lower()
-    threshold = float(getattr(viscous, f"{prefix}_threshold", 0.0))
-    return threshold if mode == "absolute" and np.isfinite(threshold) and threshold > 0.0 else 0.0
 
 
 def _particle_state_snapshot(vpm) -> dict[str, np.ndarray]:
@@ -278,236 +316,6 @@ def apply_projected_gbd_renewal(
     )
 
 
-def _quadratic_moment_features(displacement: np.ndarray, spacing: float) -> np.ndarray:
-    """Return basis terms through degree two in dimensionless displacement."""
-    relative = np.asarray(displacement, dtype=np.float64) / float(spacing)
-    x, y, z = relative.T
-    return np.column_stack(
-        (np.ones(len(relative)), x, y, z, x * x, y * y, z * z, x * y, x * z, y * z)
-    )
-
-
-def _redistribute_solid_lattice_nodes(
-    position: np.ndarray,
-    vortex_strength: np.ndarray,
-    solid: np.ndarray,
-    *,
-    spacing: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Move forbidden-node strength to fluid nodes without changing moments.
-
-    For every solid lattice node, the minimum-norm constrained weights on
-    nearby fluid nodes reproduce constants, linear terms, and all quadratic
-    monomials at the forbidden location.  This permits the extrapolatory
-    negative weights required near a wall, but keeps total circulation and the
-    moments needed by the M4' contract instead of creating then deleting a
-    solid-state particle.
-    """
-    points = np.asarray(position, dtype=np.float64).reshape(-1, 3)
-    strength = np.asarray(vortex_strength, dtype=np.float64).reshape(-1, 3)
-    forbidden = np.asarray(solid, dtype=bool).reshape(-1)
-    if len(points) != len(strength) or len(points) != len(forbidden):
-        raise ValueError("solid lattice redistribution arrays must have matching lengths")
-    if not np.any(forbidden):
-        return strength.copy(), np.zeros(3, dtype=np.float64)
-
-    fluid_index = np.flatnonzero(~forbidden)
-    if len(fluid_index) < 10:
-        raise RuntimeError(
-            "solid-aware lattice transfer needs at least ten fluid target nodes "
-            "to preserve quadratic moments"
-        )
-
-    redistributed = strength.copy()
-    relocated_net = np.zeros(3, dtype=np.float64)
-    target = np.zeros(10, dtype=np.float64)
-    target[0] = 1.0
-    active_solid_index = np.flatnonzero(forbidden & np.any(strength != 0.0, axis=1))
-    if not len(active_solid_index):
-        return redistributed, relocated_net
-
-    # On a complete regular lattice, extrapolate each solid-node value along
-    # its shortest axis-aligned route to three consecutive fluid nodes.  The
-    # three Lagrange weights reproduce 1, x, and x² at the solid node; all
-    # other relative coordinates on that ray are zero, so every three-
-    # dimensional monomial through degree two is preserved as well.  Averaging
-    # tied shortest rays keeps face/edge/corner treatment symmetric.
-    lower = points.min(axis=0)
-    lattice_coordinate = np.rint((points - lower) / spacing).astype(np.int64)
-    lattice_shape = lattice_coordinate.max(axis=0) + 1
-    reconstructed = lower + spacing * lattice_coordinate
-    regular_lattice = bool(
-        np.prod(lattice_shape, dtype=np.int64) == len(points)
-        and np.max(np.abs(reconstructed - points), initial=0.0)
-        <= 128.0 * np.finfo(np.float64).eps * max(1.0, float(np.max(np.abs(points))))
-    )
-    linear_index = np.empty(0, dtype=np.int64)
-    if regular_lattice:
-        linear_index = (
-            lattice_coordinate[:, 0] * lattice_shape[1] + lattice_coordinate[:, 1]
-        ) * lattice_shape[2] + lattice_coordinate[:, 2]
-        if len(np.unique(linear_index)) != len(points):
-            regular_lattice = False
-
-    if regular_lattice:
-        grid_to_point = np.full(int(np.prod(lattice_shape)), -1, dtype=np.int64)
-        grid_to_point[linear_index] = np.arange(len(points), dtype=np.int64)
-        active_coordinate = lattice_coordinate[active_solid_index]
-        n_active = len(active_solid_index)
-        ray_distance = np.full((n_active, 6), -1, dtype=np.int64)
-        ray_target = np.full((n_active, 6, 3), -1, dtype=np.int64)
-        directions = (
-            (0, -1),
-            (0, 1),
-            (1, -1),
-            (1, 1),
-            (2, -1),
-            (2, 1),
-        )
-        for direction_index, (axis, sign) in enumerate(directions):
-            unresolved = np.ones(n_active, dtype=bool)
-            max_distance = int(lattice_shape[axis]) - 3
-            for distance in range(1, max_distance + 1):
-                query = np.flatnonzero(unresolved)
-                if not len(query):
-                    break
-                candidate_coordinate = np.repeat(active_coordinate[query, None, :], 3, axis=1)
-                candidate_coordinate[:, :, axis] += sign * (distance + np.arange(3, dtype=np.int64))
-                inside = np.all(
-                    (candidate_coordinate >= 0)
-                    & (candidate_coordinate < lattice_shape[None, None, :]),
-                    axis=(1, 2),
-                )
-                if not np.any(inside):
-                    continue
-                inside_query = query[inside]
-                inside_coordinate = candidate_coordinate[inside]
-                candidate_linear = (
-                    inside_coordinate[:, :, 0] * lattice_shape[1] + inside_coordinate[:, :, 1]
-                ) * lattice_shape[2] + inside_coordinate[:, :, 2]
-                candidate_index = grid_to_point[candidate_linear]
-                valid = np.all(candidate_index >= 0, axis=1) & np.all(
-                    ~forbidden[candidate_index], axis=1
-                )
-                accepted = inside_query[valid]
-                ray_distance[accepted, direction_index] = distance
-                ray_target[accepted, direction_index] = candidate_index[valid]
-                unresolved[accepted] = False
-
-        available = ray_distance > 0
-        best_distance = np.min(
-            np.where(available, ray_distance, np.iinfo(np.int64).max),
-            axis=1,
-        )
-        resolved = best_distance != np.iinfo(np.int64).max
-        resolved_source = active_solid_index[resolved]
-        if len(resolved_source):
-            tied = available[resolved] & (ray_distance[resolved] == best_distance[resolved, None])
-            tie_count = np.count_nonzero(tied, axis=1)
-            source_row, direction_column = np.nonzero(tied)
-            source_index = resolved_source[source_row]
-            distance = best_distance[resolved][source_row].astype(np.float64)
-            ray_weights = np.column_stack(
-                (
-                    0.5 * (distance + 1.0) * (distance + 2.0),
-                    -distance * (distance + 2.0),
-                    0.5 * distance * (distance + 1.0),
-                )
-            )
-            ray_weights /= tie_count[source_row, None]
-            targets = ray_target[resolved][source_row, direction_column]
-            gamma = strength[source_index]
-            redistributed[resolved_source] = 0.0
-            for column in range(3):
-                np.add.at(
-                    redistributed,
-                    targets[:, column],
-                    ray_weights[:, column, None] * gamma,
-                )
-            relocated_net += strength[resolved_source].sum(axis=0, dtype=np.float64)
-            active_solid_index = active_solid_index[~resolved]
-            if not len(active_solid_index):
-                return redistributed, relocated_net
-
-    # The old implementation sorted every fluid lattice node for every solid
-    # node.  On the cube that meant thousands of independent sorts of roughly
-    # half a million entries before the first coupling step.  One spatial tree
-    # gives the identical local-stencil search in O(log N) per solid node.
-    tree = cKDTree(points[fluid_index])
-    initial_neighbour_count = min(64, len(fluid_index))
-    distances, local_indices = tree.query(
-        points[active_solid_index],
-        k=initial_neighbour_count,
-        workers=-1,
-    )
-    if initial_neighbour_count == 1:
-        distances = np.asarray(distances)[:, None]
-        local_indices = np.asarray(local_indices)[:, None]
-
-    weight_cache: dict[tuple[int, ...], np.ndarray] = {}
-    for row, solid_index in enumerate(active_solid_index):
-        gamma = redistributed[solid_index].copy()
-        weights: np.ndarray | None = None
-        ordered = np.empty(0, dtype=np.int64)
-        neighbour_count = initial_neighbour_count
-        row_distances = np.asarray(distances[row], dtype=np.float64).reshape(-1)
-        row_local_indices = np.asarray(local_indices[row], dtype=np.int64).reshape(-1)
-        while weights is None:
-            candidate_fluid_index = fluid_index[row_local_indices]
-            # cKDTree is deterministic, but equal-distance neighbours do not
-            # have an API-level ordering guarantee.  Resolve ties by the
-            # stable global lattice index so repeated runs use the same stencil.
-            order = np.lexsort((candidate_fluid_index, row_distances))
-            ordered = candidate_fluid_index[order]
-            relative_index = np.rint((points[ordered] - points[solid_index]) / spacing).astype(
-                np.int64
-            )
-            stencil_key = tuple(relative_index.ravel())
-            weights = weight_cache.get(stencil_key)
-            if weights is None:
-                # Translation-equivalent lattice nodes have the same moment
-                # system.  Cache that solve; an axis-aligned cube contains
-                # thousands of nodes but only a small number of local stencil
-                # geometries.  For a full-row-rank constraint matrix A, the
-                # minimum-norm weights are A.T @ solve(A @ A.T, target).  The
-                # Cholesky gate rejects rank-deficient prefixes without the
-                # expensive SVD that previously dominated startup.
-                for count in range(10, len(ordered) + 1):
-                    candidates = ordered[:count]
-                    constraints = _quadratic_moment_features(
-                        points[candidates] - points[solid_index], spacing
-                    ).T
-                    gram = constraints @ constraints.T
-                    try:
-                        np.linalg.cholesky(gram)
-                        dual_weights = np.linalg.solve(gram, target)
-                    except np.linalg.LinAlgError:
-                        continue
-                    candidate_weights = constraints.T @ dual_weights
-                    if np.max(np.abs(constraints @ candidate_weights - target)) <= 2.0e-12:
-                        weights = candidate_weights
-                        weight_cache[stencil_key] = weights
-                        break
-            if weights is not None or neighbour_count == len(fluid_index):
-                break
-            neighbour_count = min(2 * neighbour_count, len(fluid_index))
-            row_distances, row_local_indices = tree.query(
-                points[solid_index],
-                k=neighbour_count,
-            )
-            row_distances = np.asarray(row_distances, dtype=np.float64).reshape(-1)
-            row_local_indices = np.asarray(row_local_indices, dtype=np.int64).reshape(-1)
-        if weights is None:
-            raise RuntimeError(
-                "solid-aware lattice transfer could not find a fluid stencil "
-                "that preserves quadratic moments"
-            )
-        redistributed[ordered[: len(weights)]] += weights[:, None] * gamma
-        redistributed[solid_index] = 0.0
-        relocated_net += gamma
-    return redistributed, relocated_net
-
-
 def replace_particles_from_fvm(
     vpm,
     *,
@@ -646,8 +454,13 @@ def replace_particles_from_lattice_blend(
     kinematic_viscosity: float,
     fvm_solid_mask: np.ndarray | None = None,
     solid_contains=None,
+    renewal_lattice: RenewalLattice | None = None,
+    renewal_buffer_length: float | None = None,
+    target_solid_mask: np.ndarray | None = None,
+    compute_divergence_diagnostic: bool = True,
+    discretization_error_limit: float | None = None,
 ) -> TransferResult:
-    """Replace the overlap with one common-lattice FVM/VPM state blend."""
+    """Renew a buffered overlap from one absolute common-lattice state."""
     spacing = float(particle_spacing)
     ratio = float(core_radius_ratio)
     viscosity = float(kinematic_viscosity)
@@ -657,17 +470,56 @@ def replace_particles_from_lattice_blend(
         raise ValueError("core_radius_ratio must be finite and positive")
     if not np.isfinite(viscosity) or viscosity < 0.0:
         raise ValueError("kinematic_viscosity must be finite and non-negative")
+    if discretization_error_limit is not None and (
+        not np.isfinite(discretization_error_limit) or not 0.0 < discretization_error_limit <= 1.0
+    ):
+        raise ValueError("discretization_error_limit must lie in (0, 1]")
 
     particles = vpm.particles
     n_before = int(particles.n_particles_total)
     existing_position = np.asarray(particles.position_cpu(), dtype=np.float64).reshape(-1, 3)
     existing_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64).reshape(-1, 3)
-    if len(existing_position) != n_before or len(existing_strength) != n_before:
+    existing_core_radius = np.asarray(particles.core_radius_cpu(), dtype=np.float64).reshape(-1)
+    if (
+        len(existing_position) != n_before
+        or len(existing_strength) != n_before
+        or len(existing_core_radius) != n_before
+    ):
         raise RuntimeError("VPM particle arrays do not match the active particle count")
-    if not np.all(np.isfinite(existing_position)) or not np.all(np.isfinite(existing_strength)):
+    if (
+        not np.all(np.isfinite(existing_position))
+        or not np.all(np.isfinite(existing_strength))
+        or not np.all(np.isfinite(existing_core_radius))
+        or np.any(existing_core_radius <= 0.0)
+    ):
         raise RuntimeError("VPM particle state contains non-finite values")
 
-    state = blend_fvm_vpm_circulation_on_lattice(
+    if renewal_lattice is None:
+        buffer_length = (
+            2.0 * spacing if renewal_buffer_length is None else float(renewal_buffer_length)
+        )
+        if not np.isfinite(buffer_length) or buffer_length < 2.0 * spacing:
+            raise ValueError("renewal_buffer_length must cover at least the complete M4' support")
+        renewal_bounds = np.asarray(transfer_box, dtype=np.float64).reshape(6).copy()
+        renewal_bounds[::2] -= buffer_length
+        renewal_bounds[1::2] += buffer_length
+        renewal_lattice = build_renewal_lattice(
+            renewal_bounds,
+            lattice_anchor=lattice_anchor,
+            spacing=spacing,
+        )
+    else:
+        anchor = np.asarray(lattice_anchor, dtype=np.float64).reshape(3)
+        if not np.isclose(renewal_lattice.spacing, spacing, rtol=0.0, atol=0.0):
+            raise ValueError("renewal lattice spacing does not match particle_spacing")
+        if not np.allclose(
+            renewal_lattice.lattice_anchor,
+            anchor,
+            rtol=0.0,
+            atol=32.0 * np.finfo(np.float64).eps * np.maximum(1.0, np.abs(anchor)),
+        ):
+            raise ValueError("renewal lattice anchor does not match lattice_anchor")
+    state = blend_fvm_vpm_circulation_in_renewal_belt(
         fvm_position=fvm_position,
         fvm_cell_volume=fvm_cell_volume,
         fvm_vorticity=fvm_vorticity,
@@ -675,52 +527,73 @@ def replace_particles_from_lattice_blend(
         vpm_vortex_strength=existing_strength,
         transfer_box=transfer_box,
         blend_width=eta_blend_width,
-        lattice_anchor=lattice_anchor,
-        spacing=spacing,
+        lattice=renewal_lattice,
         fvm_solid_mask=fvm_solid_mask,
+        vpm_position_dtype=np.dtype(vpm.np_dtype),
+        # Periodic spectral divergence is not a valid acceptance metric for
+        # this finite free-space wake.  The Gaussian particle-field diagnostic
+        # below is the production gate.
+        compute_divergence_diagnostic=False,
     )
-    target_solid = (
-        np.asarray(solid_contains(state.position), dtype=bool).reshape(-1)
-        if solid_contains is not None
-        else np.zeros(len(state.position), dtype=bool)
-    )
+    if target_solid_mask is not None:
+        target_solid = np.asarray(target_solid_mask, dtype=bool).reshape(-1)
+    else:
+        target_solid = (
+            np.asarray(solid_contains(state.position), dtype=bool).reshape(-1)
+            if solid_contains is not None
+            else np.zeros(len(state.position), dtype=bool)
+        )
     if len(target_solid) != len(state.position):
         raise ValueError("solid_contains must return one flag per target lattice node")
-    redistributed_strength, redistributed_solid_strength = _redistribute_solid_lattice_nodes(
-        state.position,
-        state.vortex_strength,
-        target_solid,
-        spacing=spacing,
-    )
-    strength_magnitude = np.linalg.norm(redistributed_strength, axis=1)
-    nonzero = (strength_magnitude > 0.0) & ~target_solid
-    diffusion_cutoff = _absolute_diffusion_strength_cutoff(vpm)
-    if diffusion_cutoff > 0.0:
-        below_cutoff = nonzero & (strength_magnitude < diffusion_cutoff)
-        if np.any(below_cutoff):
-            logger.info(
-                format_coupler_log(
-                    "transfer pruning",
-                    ("lattice nodes discarded", f"{int(np.count_nonzero(below_cutoff)):,}"),
-                    (
-                        "cutoff",
-                        f"{diffusion_cutoff:.3e}",
-                        str(getattr(vpm, "viscous_scheme", "")),
-                    ),
-                    (
-                        "strength fraction discarded",
-                        f"{float(strength_magnitude[below_cutoff].sum()) / max(float(strength_magnitude[nonzero].sum()), np.finfo(float).tiny):.3e}",
-                    ),
-                )
-            )
-        nonzero &= strength_magnitude >= diffusion_cutoff
+    excluded_solid_strength = state.vortex_strength[target_solid]
+    mapped_strength = state.vortex_strength.copy()
+    mapped_strength[target_solid] = 0.0
+    strength_magnitude = np.linalg.norm(mapped_strength, axis=1)
+    nonzero = strength_magnitude > 0.0
     target_position = state.position[nonzero]
-    target_strength = redistributed_strength[nonzero]
-    target_eta = state.eta[nonzero]
+    target_strength = mapped_strength[nonzero]
 
-    remove = state.vpm_replace_mask
-    remove_index = np.flatnonzero(remove)
-    retained = ~remove
+    health: dict[str, float] | None = None
+    if compute_divergence_diagnostic:
+        # Sources represented by the common lattice must not be counted a
+        # second time.  Retained particles outside that source set remain part
+        # of the physical post-transfer Gaussian field.
+        retained = ~state.vpm_source_mask
+        health_position = np.vstack((target_position, existing_position[retained]))
+        health_strength = np.vstack((target_strength, existing_strength[retained]))
+        health_radius = np.concatenate(
+            (
+                np.full(len(target_position), ratio * spacing, dtype=np.float64),
+                existing_core_radius[retained],
+            )
+        )
+        evaluated = discretization_health(health_position, health_strength, health_radius)
+        divergence_error = evaluated["vorticity_divergence_error"]
+        if np.isfinite(divergence_error):
+            health = evaluated
+            if (
+                discretization_error_limit is not None
+                and divergence_error >= discretization_error_limit
+            ):
+                raise RuntimeError(
+                    "common-lattice transfer failed its Gaussian-vorticity divergence gate: "
+                    f"error={divergence_error:.6e}, limit={discretization_error_limit:.6e}"
+                )
+            if discretization_error_limit is not None and divergence_error > 0.05:
+                logger.warning(
+                    "common-lattice Gaussian-vorticity divergence is in the short-run "
+                    "acceptance band: error=%.6e",
+                    divergence_error,
+                )
+
+    renewable = state.vpm_replace_mask
+    # Every source represented in the absolute lattice state is topologically
+    # managed by this handoff.  This includes regular nodes in the complete
+    # outer support guard: if their new absolute target is zero, retaining them
+    # would leave stale zero/cancelled particles and grow the cloud on repeated
+    # renewals.  Off-lattice particles beyond the physical belt are not source
+    # state and remain fully persistent.
+    managed = state.vpm_source_mask
     anchor = np.asarray(lattice_anchor, dtype=np.float64).reshape(3)
     existing_index = np.rint((existing_position - anchor) / spacing).astype(np.int64)
     existing_lattice_position = anchor + spacing * existing_index
@@ -741,34 +614,50 @@ def replace_particles_from_lattice_blend(
         np.abs(existing_position - existing_lattice_position) <= coordinate_tolerance, axis=1
     )
     target_index = np.rint((target_position - anchor) / spacing).astype(np.int64)
-    retained_by_node: dict[tuple[int, int, int], list[int]] = {}
-    for particle_index in np.flatnonzero(retained & regular):
-        retained_by_node.setdefault(tuple(existing_index[particle_index]), []).append(
+    existing_by_node: dict[tuple[int, int, int], list[int]] = {}
+    for particle_index in np.flatnonzero(regular):
+        existing_by_node.setdefault(tuple(existing_index[particle_index]), []).append(
             int(particle_index)
         )
 
     inject = np.ones(len(target_position), dtype=bool)
+    remove = managed.copy()
     update_index: list[int] = []
     update_increment: list[np.ndarray] = []
     tolerance = 32.0 * np.finfo(np.float64).eps
     for target_number, node in enumerate(target_index):
-        matches = retained_by_node.get(tuple(node), [])
-        if not matches:
+        matches = existing_by_node.get(tuple(node), [])
+        renewable_matches = [index for index in matches if renewable[index]]
+        persistent_matches = [index for index in matches if not renewable[index]]
+        if renewable_matches:
+            # Reconcile an existing lattice node to the new absolute state.
+            # Any duplicates on the renewable side collapse into this one node.
+            particle_index = renewable_matches[0]
+            remove[particle_index] = False
+            delta = target_strength[target_number] - existing_strength[particle_index]
+            if np.any(delta != 0.0):
+                update_index.append(particle_index)
+                update_increment.append(delta)
+            inject[target_number] = False
             continue
-        if len(matches) != 1:
-            raise RuntimeError("VPM state contains duplicate particles on a target lattice node")
-        particle_index = matches[0]
-        if not state.hard_replacement and target_eta[target_number] > tolerance:
-            raise RuntimeError("a retained VPM particle lies inside the lattice blend region")
-        update_index.append(particle_index)
-        # A target node outside the owned source state is persistent VPM state.
-        # Its strength and the complete M4' release support are both physical,
-        # including in the hard-release case.  Replacing it here would delete
-        # the persistent contribution whenever a release stencil crosses the
-        # ownership boundary.
-        update_increment.append(target_strength[target_number])
-        inject[target_number] = False
+        if persistent_matches:
+            if len(persistent_matches) != 1:
+                raise RuntimeError("VPM state contains duplicate persistent lattice nodes")
+            particle_index = persistent_matches[0]
+            if state.vpm_source_mask[particle_index]:
+                # A regular release-belt node was embedded directly in the
+                # absolute VPM lattice state.  Reconcile it, never add it.
+                delta = target_strength[target_number] - existing_strength[particle_index]
+            else:
+                # Outer complete-stencil support from a renewable off-lattice
+                # source reaches an otherwise independent persistent node.
+                delta = target_strength[target_number]
+            if np.any(delta != 0.0):
+                update_index.append(particle_index)
+                update_increment.append(delta)
+            inject[target_number] = False
 
+    remove_index = np.flatnonzero(remove)
     n_injected = int(np.count_nonzero(inject))
     n_removed = int(len(remove_index))
     n_after = n_before - n_removed + n_injected
@@ -817,13 +706,15 @@ def replace_particles_from_lattice_blend(
         _restore_particle_state(vpm, snapshot)
         raise
     removed_strength = existing_strength[remove]
-    replaced_strength = removed_strength
+    replaced_strength = existing_strength[managed]
     update_delta = (
         np.asarray(update_increment, dtype=np.float64).sum(axis=0, dtype=np.float64)
         if update_increment
         else np.zeros(3, dtype=np.float64)
     )
-    injected_net = target_strength.sum(axis=0, dtype=np.float64)
+    mapped_net = target_strength.sum(axis=0, dtype=np.float64)
+    actually_injected_strength = target_strength[inject]
+    injected_net = actually_injected_strength.sum(axis=0, dtype=np.float64)
     state_change = (
         target_strength[inject].sum(axis=0, dtype=np.float64)
         + update_delta
@@ -838,7 +729,7 @@ def replace_particles_from_lattice_blend(
         n_particles_blended=int(np.count_nonzero(blended)),
         n_particles_injected=n_injected,
         n_particles_after=n_after,
-        injected_vortex_strength_l1=float(np.linalg.norm(target_strength, axis=1).sum()),
+        injected_vortex_strength_l1=float(np.linalg.norm(actually_injected_strength, axis=1).sum()),
         injected_vortex_strength_net=injected_net,
         replaced_vortex_strength_l1=float(np.linalg.norm(replaced_strength, axis=1).sum()),
         replaced_vortex_strength_net=replaced_strength.sum(axis=0, dtype=np.float64),
@@ -847,11 +738,34 @@ def replace_particles_from_lattice_blend(
         transfer_method="common_m4_lattice_blend",
         mapped_target_nodes=int(len(target_position)),
         excluded_solid_target_nodes=int(np.count_nonzero(target_solid)),
-        excluded_solid_vortex_strength_net=np.zeros(3, dtype=np.float64),
-        redistributed_solid_vortex_strength_net=redistributed_solid_strength,
+        excluded_solid_active_nodes=int(
+            np.count_nonzero(np.linalg.norm(excluded_solid_strength, axis=1) > 0.0)
+        ),
+        excluded_solid_vortex_strength_net=excluded_solid_strength.sum(axis=0, dtype=np.float64),
+        excluded_solid_vortex_strength_l1=float(
+            np.linalg.norm(excluded_solid_strength, axis=1).sum(dtype=np.float64)
+        ),
+        excluded_solid_first_moment=first_vorticity_moment(
+            state.position[target_solid], excluded_solid_strength
+        ),
         mapped_first_moment=first_vorticity_moment(target_position, target_strength),
+        mapped_target_vortex_strength_l1=float(np.linalg.norm(target_strength, axis=1).sum()),
+        mapped_target_vortex_strength_net=mapped_net,
+        maximum_mapped_vortex_strength=float(strength_magnitude[nonzero].max(initial=0.0)),
+        fvm_donor_vortex_strength_net=state.fvm_donor_vortex_strength_net,
+        fvm_mapped_vortex_strength_net=state.fvm_vortex_strength.sum(axis=0, dtype=np.float64),
+        fvm_donor_first_moment=state.fvm_donor_first_moment,
+        fvm_mapped_first_moment=first_vorticity_moment(state.position, state.fvm_vortex_strength),
         blend_cross_divergence_l2_before=state.cross_divergence_l2_before,
         blend_cross_divergence_l2_after=state.cross_divergence_l2_after,
+        blend_cross_divergence_relative=state.cross_divergence_relative,
+        mapped_vorticity_divergence_error=(
+            None if health is None else health["vorticity_divergence_error"]
+        ),
+        mapped_vortex_strength_misalignment_degrees=(
+            None if health is None else health["vortex_strength_misalignment_degrees"]
+        ),
+        mapped_mean_overlap_ratio=(None if health is None else health["mean_overlap_ratio"]),
     )
 
 
@@ -865,17 +779,54 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
         ("particles, injected", f"{result.n_particles_injected:,}"),
         ("particles, after", f"{result.n_particles_after:,}"),
         ("lattice nodes, active", f"{result.mapped_target_nodes:,}"),
-        ("lattice nodes, redistributed", f"{result.excluded_solid_target_nodes:,}"),
-        ("blend divergence, before", f"{result.blend_cross_divergence_l2_before:.3e}"),
-        ("blend divergence, after", f"{result.blend_cross_divergence_l2_after:.3e}"),
+        ("solid nodes, excluded", f"{result.excluded_solid_active_nodes:,}"),
+        (
+            "solid strength, excluded l1",
+            f"{result.excluded_solid_vortex_strength_l1:.3e}",
+            "m^3/s",
+        ),
+        (
+            "fvm map, net error",
+            f"{float(np.linalg.norm(result.fvm_mapped_vortex_strength_net - result.fvm_donor_vortex_strength_net)):.3e}",
+            "m^3/s",
+        ),
+        (
+            "fvm map, first-moment error",
+            f"{float(np.linalg.norm(result.fvm_mapped_first_moment - result.fvm_donor_first_moment)):.3e}",
+            "m^4/s",
+        ),
         ("vortex strength replaced, l1", f"{result.replaced_vortex_strength_l1:.3e}", "m^3/s"),
-        ("vortex strength injected, l1", f"{result.injected_vortex_strength_l1:.3e}", "m^3/s"),
+        (
+            "vortex strength mapped, l1",
+            f"{result.mapped_target_vortex_strength_l1:.3e}",
+            "m^3/s",
+        ),
+        ("vortex strength born, l1", f"{result.injected_vortex_strength_l1:.3e}", "m^3/s"),
+        ("vortex strength, max node", f"{result.maximum_mapped_vortex_strength:.3e}", "m^3/s"),
         (
             "vortex strength, net change",
             f"{float(np.linalg.norm(result.state_change_vortex_strength_net)):.3e}",
             "m^3/s",
         ),
     ]
+    if result.mapped_vorticity_divergence_error is not None:
+        rows.extend(
+            (
+                (
+                    "particle field, divergence error",
+                    f"{result.mapped_vorticity_divergence_error:.3e}",
+                ),
+                (
+                    "particle field, misalignment",
+                    f"{result.mapped_vortex_strength_misalignment_degrees:.3f}",
+                    "deg",
+                ),
+                (
+                    "particle field, mean overlap",
+                    f"{result.mapped_mean_overlap_ratio:.3f}",
+                ),
+            )
+        )
     if result.transfer_method == "projected_gbd_renewal":
         velocity_error = result.projection_velocity_relative_error
         rows.extend(
@@ -914,7 +865,16 @@ class VorticityTransfer:
         self.particle_spacing = float(coupler.vpm_particle_spacing)
         self.eta_blend_width = float(cfg.eta_blend_width)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
+        coupling_time_step = getattr(coupler, "vpm_time_step_size", None)
+        if coupling_time_step is None and self.transfer_method == "common_lattice":
+            raise RuntimeError("VorticityTransfer requires the resolved VPM time step")
+        self.renewal_buffer_length = required_renewal_buffer_length(
+            cfg.freestream_velocity,
+            0.0 if coupling_time_step is None else float(coupling_time_step),
+            self.particle_spacing,
+        )
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
+        self.discretization_error_limit = float(cfg.transfer_discretization_error_limit)
         self.renewal_vorticity_error_limit = float(cfg.renewal_vorticity_error_limit)
         self.renewal_velocity_error_limit = float(cfg.renewal_velocity_error_limit)
         self.renewal_gaussian_tail_cutoff = float(cfg.renewal_gaussian_tail_cutoff)
@@ -927,6 +887,8 @@ class VorticityTransfer:
         self._body_bounds: np.ndarray | None = None
         self._solid_bodies: tuple = ()
         self._lattice_anchor: np.ndarray | None = None
+        self._renewal_lattice: RenewalLattice | None = None
+        self._renewal_target_solid_mask: np.ndarray | None = None
         self._face_cells: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self._authority_cell_mask: np.ndarray | None = None
         self.step = 0
@@ -1069,11 +1031,23 @@ class VorticityTransfer:
         if self._lattice_anchor is None:
             self._lattice_anchor = self._cell_centre[0].copy()
 
+        renewal_bounds = self._box.copy()
+        renewal_bounds[::2] -= self.renewal_buffer_length
+        renewal_bounds[1::2] += self.renewal_buffer_length
+        self._renewal_lattice = build_renewal_lattice(
+            renewal_bounds,
+            lattice_anchor=self._lattice_anchor,
+            spacing=self.particle_spacing,
+        )
+        self._renewal_target_solid_mask = self._points_in_solid(
+            self._renewal_lattice.position,
+            include_boundary=False,
+        )
         self._fvm_solid_mask = self._points_in_solid(
             self._cell_centre,
             include_boundary=True,
         )
-        donor_eta = replacement_eta(self._cell_centre, self._box, self.eta_blend_width)
+        donor_eta = replacement_eta(self._cell_centre, self._box, 0.0)
         self._authority_cell_mask = (donor_eta > 0.0) & ~self._fvm_solid_mask
         donor_count = int(np.count_nonzero(self._authority_cell_mask))
         if donor_count == 0:
@@ -1084,10 +1058,12 @@ class VorticityTransfer:
                 "replacement region",
                 ("fvm fluid cells", f"{donor_count:,}"),
                 *(
-                    (("blend width, eta", "off"),)
+                    (("release blend width, eta", "off"),)
                     if self.eta_blend_width == 0.0
-                    else (("blend width, eta", f"{self.eta_blend_width:.4g}", "m"),)
+                    else (("release blend width, eta", f"{self.eta_blend_width:.4g}", "m"),)
                 ),
+                ("renewal buffer", f"{self.renewal_buffer_length:.4g}", "m"),
+                ("renewal lattice nodes", f"{len(self._renewal_lattice.position):,}"),
                 ("state", "cell volume x fvm vorticity"),
             )
         )
@@ -1698,6 +1674,8 @@ class VorticityTransfer:
                 fvm_vorticity=fvm_vorticity,
             )
         else:
+            if self._renewal_lattice is None or self._renewal_target_solid_mask is None:
+                raise RuntimeError("VorticityTransfer.setup() did not build the renewal lattice")
             result = replace_particles_from_lattice_blend(
                 vpm,
                 transfer_box=self._box,
@@ -1710,7 +1688,12 @@ class VorticityTransfer:
                 core_radius_ratio=self.core_radius_ratio,
                 kinematic_viscosity=self.kinematic_viscosity,
                 fvm_solid_mask=self._fvm_solid_mask,
-                solid_contains=lambda points: self._points_in_solid(points, include_boundary=True),
+                renewal_lattice=self._renewal_lattice,
+                target_solid_mask=self._renewal_target_solid_mask,
+                compute_divergence_diagnostic=(
+                    self.step == 1 or self.step % self.diagnostic_interval == 0
+                ),
+                discretization_error_limit=self.discretization_error_limit,
             )
         if self.step % self.diagnostic_interval == 0:
             logger.info(_transfer_log_record(self.step, result))
@@ -1724,4 +1707,5 @@ __all__ = [
     "replace_particles_from_fvm",
     "replace_particles_from_lattice_blend",
     "replacement_eta",
+    "required_renewal_buffer_length",
 ]

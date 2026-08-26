@@ -31,10 +31,13 @@ class CouplerSetup:
     """FVM-authoritative replacement region ``(xmin, xmax, ymin, ymax, zmin,
     zmax)``. It must lie inside the FVM domain; ``None`` uses the full domain."""
     eta_blend_width: float = 0.0
-    """Width (m) of the C1 common-lattice state blend inside the transfer
-    faces. Zero selects conservative hard M4' lattice replacement."""
+    """Width (m) of the C1 common-lattice release blend outside the transfer
+    faces. The FVM state is authoritative inside; zero retains its complete
+    M4' support as a hard release stencil."""
     transfer_diagnostic_interval_steps: int = 1
     """Replacement steps between transfer diagnostics; at least one."""
+    transfer_discretization_error_limit: float = 0.08
+    """Maximum Gaussian-particle vorticity-divergence error admitted before transfer."""
     renewal_vorticity_error_limit: float = 5.0e-3
     """Maximum independent relative vorticity mismatch for projected renewal."""
     renewal_velocity_error_limit: float = 1.0e-3
@@ -98,6 +101,11 @@ class CouplerSetup:
         if self.transfer_diagnostic_interval_steps < 1:
             raise ValueError("transfer_diagnostic_interval must be at least one")
         if (
+            not np.isfinite(self.transfer_discretization_error_limit)
+            or not 0.0 < self.transfer_discretization_error_limit <= 1.0
+        ):
+            raise ValueError("transfer_discretization_error_limit must lie in (0, 1]")
+        if (
             not np.isfinite(self.renewal_vorticity_error_limit)
             or self.renewal_vorticity_error_limit <= 0.0
         ):
@@ -136,10 +144,6 @@ class CouplerSetup:
         )
         if np.any(inner[::2] < outer[::2]) or np.any(inner[1::2] > outer[1::2]):
             raise ValueError("transfer_region_bounds must be contained within the FVM domain")
-        if self.eta_blend_width > 0.0:
-            minimum_extent = float(np.min(inner[1::2] - inner[::2]))
-            if 2.0 * self.eta_blend_width >= minimum_extent:
-                raise ValueError("eta_blend_width must leave a non-empty FVM-authoritative core")
 
     def to_dict(self) -> dict:
         transfer_region_bounds = None
@@ -161,6 +165,7 @@ class CouplerSetup:
                 "transfer_region_bounds": transfer_region_bounds,
                 "eta_blend_width": self.eta_blend_width,
                 "transfer_diagnostic_interval_steps": self.transfer_diagnostic_interval_steps,
+                "transfer_discretization_error_limit": (self.transfer_discretization_error_limit),
                 "renewal_vorticity_error_limit": self.renewal_vorticity_error_limit,
                 "renewal_velocity_error_limit": self.renewal_velocity_error_limit,
                 "renewal_gaussian_tail_cutoff": self.renewal_gaussian_tail_cutoff,

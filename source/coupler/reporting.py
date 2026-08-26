@@ -189,8 +189,25 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "state_change_vortex_strength_net_z": 0.0,
             "mapped_target_nodes": 0,
             "excluded_solid_target_nodes": 0,
+            "excluded_solid_active_nodes": 0,
+            "excluded_solid_vortex_strength_l1": 0.0,
+            "excluded_solid_vortex_strength_net_x": 0.0,
+            "excluded_solid_vortex_strength_net_y": 0.0,
+            "excluded_solid_vortex_strength_net_z": 0.0,
+            "excluded_solid_first_moment_norm": 0.0,
+            "mapped_target_vortex_strength_l1": 0.0,
+            "mapped_target_vortex_strength_net_x": 0.0,
+            "mapped_target_vortex_strength_net_y": 0.0,
+            "mapped_target_vortex_strength_net_z": 0.0,
+            "maximum_mapped_vortex_strength": 0.0,
+            "fvm_mapping_vortex_strength_error": 0.0,
+            "fvm_mapping_first_moment_error": 0.0,
             "blend_cross_divergence_l2_before": 0.0,
             "blend_cross_divergence_l2_after": 0.0,
+            "blend_cross_divergence_relative": 0.0,
+            "mapped_vorticity_divergence_error": None,
+            "mapped_vortex_strength_misalignment_degrees": None,
+            "mapped_mean_overlap_ratio": None,
             "projection_vorticity_relative_error": 0.0,
             "projection_velocity_relative_error": None,
             "projection_condition_number": 0.0,
@@ -203,6 +220,8 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         injected_net = np.asarray(result.injected_vortex_strength_net, dtype=np.float64)
         replaced_net = np.asarray(result.replaced_vortex_strength_net, dtype=np.float64)
         state_change_net = np.asarray(result.state_change_vortex_strength_net, dtype=np.float64)
+        mapped_target_net = np.asarray(result.mapped_target_vortex_strength_net, dtype=np.float64)
+        excluded_solid_net = np.asarray(result.excluded_solid_vortex_strength_net, dtype=np.float64)
         transfer = {
             "transfer_method": str(result.transfer_method),
             "eta_blending_enabled": bool(result.eta_blending_enabled),
@@ -225,8 +244,45 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "state_change_vortex_strength_net_z": float(state_change_net[2]),
             "mapped_target_nodes": int(result.mapped_target_nodes),
             "excluded_solid_target_nodes": int(result.excluded_solid_target_nodes),
+            "excluded_solid_active_nodes": int(result.excluded_solid_active_nodes),
+            "excluded_solid_vortex_strength_l1": float(result.excluded_solid_vortex_strength_l1),
+            "excluded_solid_vortex_strength_net_x": float(excluded_solid_net[0]),
+            "excluded_solid_vortex_strength_net_y": float(excluded_solid_net[1]),
+            "excluded_solid_vortex_strength_net_z": float(excluded_solid_net[2]),
+            "excluded_solid_first_moment_norm": float(
+                np.linalg.norm(result.excluded_solid_first_moment)
+            ),
+            "mapped_target_vortex_strength_l1": float(result.mapped_target_vortex_strength_l1),
+            "mapped_target_vortex_strength_net_x": float(mapped_target_net[0]),
+            "mapped_target_vortex_strength_net_y": float(mapped_target_net[1]),
+            "mapped_target_vortex_strength_net_z": float(mapped_target_net[2]),
+            "maximum_mapped_vortex_strength": float(result.maximum_mapped_vortex_strength),
+            "fvm_mapping_vortex_strength_error": float(
+                np.linalg.norm(
+                    result.fvm_mapped_vortex_strength_net - result.fvm_donor_vortex_strength_net
+                )
+            ),
+            "fvm_mapping_first_moment_error": float(
+                np.linalg.norm(result.fvm_mapped_first_moment - result.fvm_donor_first_moment)
+            ),
             "blend_cross_divergence_l2_before": float(result.blend_cross_divergence_l2_before),
             "blend_cross_divergence_l2_after": float(result.blend_cross_divergence_l2_after),
+            "blend_cross_divergence_relative": float(result.blend_cross_divergence_relative),
+            "mapped_vorticity_divergence_error": (
+                None
+                if result.mapped_vorticity_divergence_error is None
+                else float(result.mapped_vorticity_divergence_error)
+            ),
+            "mapped_vortex_strength_misalignment_degrees": (
+                None
+                if result.mapped_vortex_strength_misalignment_degrees is None
+                else float(result.mapped_vortex_strength_misalignment_degrees)
+            ),
+            "mapped_mean_overlap_ratio": (
+                None
+                if result.mapped_mean_overlap_ratio is None
+                else float(result.mapped_mean_overlap_ratio)
+            ),
             "projection_vorticity_relative_error": float(
                 result.projection_vorticity_relative_error
             ),

@@ -6,12 +6,16 @@ import numpy as np
 import pytest
 
 from source.coupler.lattice_transfer import (
+    blend_fvm_vpm_circulation_in_renewal_belt,
     blend_fvm_vpm_circulation_on_lattice,
+    build_renewal_lattice,
     correct_state_blend_cross_divergence,
     first_vorticity_moment,
     m4_prime,
     map_cell_circulation_to_lattice,
     map_vortex_strength_to_lattice,
+    release_blend_weight,
+    scatter_vortex_strength_to_renewal_lattice,
     spectral_lattice_divergence,
     state_blend_weight,
 )
@@ -76,6 +80,212 @@ def test_tensor_m4_prime_reproduces_3d_moments_for_random_phases():
         rtol=0.0,
         atol=3.0e-14,
     )
+
+
+def test_fixed_renewal_lattice_preserves_gamma_and_first_moments_for_shifted_donors():
+    h = 0.125
+    lattice = build_renewal_lattice(
+        [-0.5, 0.5, -0.5, 0.5, -0.5, 0.5],
+        lattice_anchor=np.array([0.03125, -0.046875, 0.015625]),
+        spacing=h,
+    )
+    position = np.array(
+        [
+            [-0.4375, 0.203125, -0.109375],
+            [0.296875, -0.390625, 0.453125],
+            [0.078125, 0.359375, -0.328125],
+        ]
+    )
+    strength = np.array(
+        [
+            [0.2, -0.3, 0.5],
+            [-0.7, 0.1, 0.25],
+            [0.4, 0.6, -0.2],
+        ]
+    )
+
+    field = scatter_vortex_strength_to_renewal_lattice(position, strength, lattice)
+    target_strength = field.reshape(-1, 3)
+
+    np.testing.assert_allclose(
+        target_strength.sum(axis=0), strength.sum(axis=0), rtol=0.0, atol=4.0e-15
+    )
+    np.testing.assert_allclose(
+        first_vorticity_moment(lattice.position, target_strength),
+        first_vorticity_moment(position, strength),
+        rtol=0.0,
+        atol=4.0e-15,
+    )
+
+
+def test_fixed_renewal_lattice_embeds_aligned_nodes_and_sums_duplicates_directly():
+    h = 0.25
+    lattice = build_renewal_lattice(
+        [-0.5, 0.5, -0.5, 0.5, -0.5, 0.5],
+        lattice_anchor=np.zeros(3),
+        spacing=h,
+    )
+    duplicate_node = np.array([0.0, 0.25, -0.25])
+    other_node = np.array([0.5, -0.5, 0.25])
+    position = np.vstack((duplicate_node, duplicate_node, other_node))
+    strength = np.array(
+        [
+            [0.25, -0.5, 1.0],
+            [0.75, 0.125, -0.5],
+            [-0.25, 0.5, 0.25],
+        ]
+    )
+
+    field = scatter_vortex_strength_to_renewal_lattice(position, strength, lattice)
+    target_strength = field.reshape(-1, 3)
+    duplicate_target = np.all(lattice.position == duplicate_node, axis=1)
+    other_target = np.all(lattice.position == other_node, axis=1)
+
+    assert duplicate_target.sum() == 1
+    assert other_target.sum() == 1
+    np.testing.assert_array_equal(target_strength[duplicate_target][0], strength[:2].sum(axis=0))
+    np.testing.assert_array_equal(target_strength[other_target][0], strength[2])
+    assert np.count_nonzero(np.linalg.norm(target_strength, axis=1)) == 2
+
+
+def test_fixed_renewal_lattice_closed_bounds_contain_complete_face_stencils():
+    h = 0.25
+    bounds = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+    lattice = build_renewal_lattice(
+        bounds,
+        lattice_anchor=np.zeros(3),
+        spacing=h,
+    )
+
+    np.testing.assert_array_equal(lattice.lower_index, [-3, -3, -3])
+    np.testing.assert_array_equal(lattice.shape, [8, 8, 8])
+    np.testing.assert_array_equal(lattice.origin, [-0.75, -0.75, -0.75])
+    np.testing.assert_array_equal(lattice.position.max(axis=0), [1.0, 1.0, 1.0])
+
+    position = np.array(
+        [
+            [-0.5, -0.1875, 0.4375],
+            [0.5, 0.3125, -0.0625],
+        ]
+    )
+    strength = np.array([[0.3, -0.2, 0.1], [-0.4, 0.7, 0.25]])
+    field = scatter_vortex_strength_to_renewal_lattice(position, strength, lattice)
+    target_strength = field.reshape(-1, 3)
+
+    np.testing.assert_allclose(
+        target_strength.sum(axis=0), strength.sum(axis=0), rtol=0.0, atol=3.0e-15
+    )
+    np.testing.assert_allclose(
+        first_vorticity_moment(lattice.position, target_strength),
+        first_vorticity_moment(position, strength),
+        rtol=0.0,
+        atol=3.0e-15,
+    )
+    with pytest.raises(ValueError, match="inside renewal_bounds"):
+        scatter_vortex_strength_to_renewal_lattice(
+            np.array([[bounds[1] + 1.0e-6, 0.0, 0.0]]),
+            np.array([[0.0, 1.0, 0.0]]),
+            lattice,
+        )
+
+
+def test_release_blend_is_one_inside_and_c1_across_the_exterior_overlap():
+    width = 0.25
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [0.625, 0.0, 0.0],
+            [0.75, 0.0, 0.0],
+            [0.8, 0.0, 0.0],
+        ]
+    )
+
+    np.testing.assert_allclose(
+        release_blend_weight(points, [-0.5, 0.5, -0.5, 0.5, -0.5, 0.5], width),
+        [1.0, 1.0, 0.5, 0.0, 0.0],
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+
+
+def test_hard_renewal_maps_empty_vpm_donor_to_complete_persistent_release_support():
+    h = 0.125
+    box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+    donor_position = np.array([[0.4375, 0.0, 0.0]])
+    donor_strength = np.array([[0.0, 2.0, 0.0]])
+    lattice = build_renewal_lattice(
+        box + np.array([-2 * h, 2 * h, -2 * h, 2 * h, -2 * h, 2 * h]),
+        lattice_anchor=np.zeros(3),
+        spacing=h,
+    )
+
+    state = blend_fvm_vpm_circulation_in_renewal_belt(
+        fvm_position=donor_position,
+        fvm_cell_volume=np.ones(1),
+        fvm_vorticity=donor_strength,
+        vpm_position=np.empty((0, 3)),
+        vpm_vortex_strength=np.empty((0, 3)),
+        transfer_box=box,
+        blend_width=0.0,
+        lattice=lattice,
+        compute_divergence_diagnostic=False,
+    )
+    release = state.position[:, 0] > box[1]
+
+    assert np.linalg.norm(state.vortex_strength[release], axis=1).sum() > 0.0
+    np.testing.assert_allclose(state.gamma_net, donor_strength[0], rtol=0.0, atol=2.0e-15)
+    np.testing.assert_allclose(
+        state.first_moment,
+        first_vorticity_moment(donor_position, donor_strength),
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+
+
+def test_c1_renewal_populates_release_support_when_vpm_is_empty_or_mismatched():
+    h = 0.125
+    box = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+    donor_position = np.array([[0.4375, 0.0, 0.0]])
+    donor_strength = np.array([[0.0, 2.0, 0.0]])
+    lattice = build_renewal_lattice(
+        box + np.array([-2 * h, 2 * h, -2 * h, 2 * h, -2 * h, 2 * h]),
+        lattice_anchor=np.zeros(3),
+        spacing=h,
+    )
+
+    states = [
+        blend_fvm_vpm_circulation_in_renewal_belt(
+            fvm_position=donor_position,
+            fvm_cell_volume=np.ones(1),
+            fvm_vorticity=donor_strength,
+            vpm_position=vpm_position,
+            vpm_vortex_strength=vpm_strength,
+            transfer_box=box,
+            blend_width=2.0 * h,
+            lattice=lattice,
+            compute_divergence_diagnostic=False,
+        )
+        for vpm_position, vpm_strength in (
+            (np.empty((0, 3)), np.empty((0, 3))),
+            (donor_position, -0.25 * donor_strength),
+        )
+    ]
+
+    for state in states:
+        release = state.position[:, 0] > box[1]
+        assert np.linalg.norm(state.vortex_strength[release], axis=1).sum() > 0.0
+        # The conservative FVM mapping itself remains exact before the state
+        # partition; only the explicitly blended final field may change net Γ.
+        np.testing.assert_allclose(
+            state.fvm_vortex_strength.sum(axis=0), donor_strength[0], rtol=0.0, atol=2.0e-15
+        )
+        np.testing.assert_allclose(
+            first_vorticity_moment(state.position, state.fvm_vortex_strength),
+            first_vorticity_moment(donor_position, donor_strength),
+            rtol=0.0,
+            atol=2.0e-15,
+        )
 
 
 def _numerical_eta_gradient(point: np.ndarray, *, step: float) -> np.ndarray:
