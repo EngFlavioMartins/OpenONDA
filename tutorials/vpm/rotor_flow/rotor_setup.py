@@ -45,6 +45,11 @@ GUARD_INTERVAL_STEPS = 20
 MAX_PARTICLE_STRENGTH = 10.0
 SAMPLE_INTERVAL_TIME = 0.12  # write a snapshot every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.03  # about 26 animation frames per rotor revolution
+ROTATION_PERIOD = 2.0 * np.pi / ANGULAR_VELOCITY
+PLANE_SAMPLING_ROTATIONS = 6.0
+PLANE_SAMPLING_START_TIME = max(
+    0.0, N_STEPS * TIME_STEP_SIZE - PLANE_SAMPLING_ROTATIONS * ROTATION_PERIOD
+)
 
 
 def nominal_wake_spacing(time_step_size: float) -> float:
@@ -260,6 +265,10 @@ def main() -> int:
     # Downstream planes at 1.5R, 3R, and 4.5R.
     off_wake = ROTOR_RADIUS * 1.2
     sample_spacing = ROTOR_RADIUS / 36
+    plane_schedule = vpm.SamplingSchedule(
+        every_n_steps=cadence_steps(sample_interval_time, TIME_STEP_SIZE),
+        start_time=PLANE_SAMPLING_START_TIME,
+    )
     plane_samplers = [
         vpm.SurfaceSampler(
             point=[x_loc, 0.0, 0.0],
@@ -267,6 +276,8 @@ def main() -> int:
             bounds=[-off_wake, off_wake, -off_wake, off_wake],
             spacing=sample_spacing,
             file_name=f"slice_x{int(round(x_loc))}m",
+            include_derivatives=False,
+            schedule=plane_schedule,
         )
         for x_loc in [1.5 * ROTOR_RADIUS, 3.0 * ROTOR_RADIUS, 4.5 * ROTOR_RADIUS]
     ]

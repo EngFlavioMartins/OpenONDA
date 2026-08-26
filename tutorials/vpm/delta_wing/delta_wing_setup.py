@@ -129,9 +129,10 @@ def run() -> None:
         vpm.SurfaceSampler(
             point=[-distance * HALF_SPAN, 0.0, 0.0],
             normal=[1, 0, 0],
-            bounds=[-1.5, 1.5, -1.0, 1.0],
+            bounds=[-0.9, 0.9, -0.9, 0.2],
             spacing=0.04,
             file_name=f"wake_{distance}span",
+            include_derivatives=False,
         )
         for distance in (1, 5, 10)
     )

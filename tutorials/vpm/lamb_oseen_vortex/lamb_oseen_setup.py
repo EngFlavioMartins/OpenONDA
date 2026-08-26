@@ -270,6 +270,7 @@ def run_case(
         bounds=domain_bounds[:4],
         spacing=field_spacing,
         file_name=f"{case_name}_zq",
+        include_derivatives=False,
     )
     scheduled_samplers = [field_sampler]
     final_samplers = [field_sampler]

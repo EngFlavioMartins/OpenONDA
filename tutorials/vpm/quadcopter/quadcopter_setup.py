@@ -45,6 +45,8 @@ N_STEPS = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION
 SAMPLE_INTERVAL_TIME = 0.0375  # write a snapshot every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.0125  # 24 animation frames per rotor revolution
 
+WAKE_PLANES = (("sampled_zplane", -0.35), ("sampled_zplane_deep", -0.70))
+
 
 def cadence_steps(period: float) -> int:
     """Convert a physical output period to solver steps."""
@@ -130,14 +132,16 @@ def run() -> None:
             checkpoint_name=CASE_NAME,
             checkpoint_directory=str(SOLUTION_DIR),
             sample_subdirectory=CASE_NAME,
-            samplers=(
+            samplers=tuple(
                 vpm.SurfaceSampler(
-                    point=[0.0, 0.0, -1.2],
+                    point=[0.0, 0.0, height],
                     normal=[0.0, 0.0, 1.0],
                     bounds=[-0.4, 0.4, -0.4, 0.4],
                     spacing=0.0075,
-                    file_name="sampled_zplane",
-                ),
+                    file_name=plane_name,
+                    include_derivatives=False,
+                )
+                for plane_name, height in WAKE_PLANES
             ),
         ),
         case_dir=TUTORIAL_DIR,

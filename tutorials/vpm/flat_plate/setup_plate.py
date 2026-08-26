@@ -116,9 +116,10 @@ def crossflow_samplers(name: str) -> tuple[vpm.SurfaceSampler, ...]:
         vpm.SurfaceSampler(
             point=[position, 0.0, 0.0],
             normal=[1, 0, 0],
-            bounds=[-6.0, 6.0, -0.5, 5.0],
+            bounds=[-6.5, 6.5, -0.5, 6.0],
             spacing=max(FREESTREAM_SPEED * TIME_STEP_SIZE, 0.05),
             file_name=f"{name}_crossflow_x{position:g}",
+            include_derivatives=False,
         )
         for position in (5.0, 15.0, 25.0)
     )
