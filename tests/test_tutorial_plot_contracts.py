@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 
 import numpy as np
+import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 TUTORIALS = REPOSITORY_ROOT / "tutorials"
@@ -39,6 +40,34 @@ def test_coupled_line_loader_sorts_along_the_varying_coordinate(tmp_path):
     assert frame is not None
     np.testing.assert_array_equal(frame["position_z"], [-1.0, 0.0, 1.0])
     np.testing.assert_array_equal(frame["velocity_y"], [-10.0, 0.0, 10.0])
+
+
+def test_cube_plot_metadata_accepts_legacy_and_current_coupling_contracts():
+    plot_util = _load_module(
+        TUTORIALS / "coupled_fvm_vpm/cube_flow/assets/_plotutil.py",
+        "cube_flow_plot_metadata_contract",
+    )
+
+    plot_util._validate_metadata_provenance(
+        {
+            "schema_version": 2,
+            "coupling_method": "absolute_common_m4_lattice_blend",
+        }
+    )
+    plot_util._validate_metadata_provenance(
+        {
+            "schema_version": 3,
+            "coupling_method": "buffered_m4_renewal",
+        }
+    )
+
+    with pytest.raises(ValueError, match="supported cube-flow coupling metadata"):
+        plot_util._validate_metadata_provenance(
+            {
+                "schema_version": 3,
+                "coupling_method": "absolute_common_m4_lattice_blend",
+            }
+        )
 
 
 def test_plotters_use_canonical_export_fields_and_valid_math_commands():

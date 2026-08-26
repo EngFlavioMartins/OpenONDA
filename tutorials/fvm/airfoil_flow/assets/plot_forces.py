@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Plot drag and lift histories for the airfoil patch."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -10,10 +9,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     COLORS,
+    FIGURES_DIR,
     RE,
+    SOLUTION_DIR,
     build_arg_parser,
     figure_size,
     load_forces_csv,
@@ -23,7 +23,7 @@ from _common import (  # noqa: E402
 
 def main():
     args = build_arg_parser().parse_args()
-    data = load_forces_csv(args.solution_dir)
+    data = load_forces_csv(SOLUTION_DIR)
     if "airfoil" not in data:
         print("  No force data on patch 'airfoil' to plot.")
         return
@@ -65,7 +65,7 @@ def main():
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
-    save_fig(fig, "airfoil_forces.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
+    save_fig(fig, "airfoil_forces.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     print(
         f"  airfoil: mean drag_coefficient = {drag_coefficient_mean:.4f}, "

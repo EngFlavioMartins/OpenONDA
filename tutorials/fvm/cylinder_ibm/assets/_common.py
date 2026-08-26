@@ -47,8 +47,6 @@ REFERENCES = {
 
 def build_arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--solution-dir", default=str(SOLUTION_DIR))
-    parser.add_argument("--figures-dir", default=str(FIGURES_DIR))
     parser.add_argument("--format", choices=THEME.EXPORT_FORMATS, default="png")
     parser.add_argument("--dpi", type=int, default=THEME.DEFAULT_DPI)
     parser.add_argument("--Re", type=float, default=30.0)

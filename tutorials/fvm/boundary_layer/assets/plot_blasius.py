@@ -3,7 +3,6 @@
 solution.  Profiles from every station must collapse onto the single curve
 u/U = f'(eta) if the solver reproduces the laminar boundary layer."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -12,10 +11,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     COLORS,
+    FIGURES_DIR,
     FREESTREAM_SPEED,
+    SOLUTION_DIR,
     blasius_solution,
     build_arg_parser,
     figure_size,
@@ -29,7 +29,7 @@ STATION_MARKERS = {0.25: "o", 0.5: "s", 0.75: "^"}
 def main():
     args = build_arg_parser().parse_args()
     kinematic_viscosity = FREESTREAM_SPEED * 1.0 / args.Re
-    data = load_csv_columns(Path(args.solution_dir) / "profiles.csv")
+    data = load_csv_columns(Path(SOLUTION_DIR) / "profiles.csv")
     if not data:
         return
 
@@ -66,7 +66,7 @@ def main():
     ax.legend(fontsize=8)
 
     fig.tight_layout()
-    save_fig(fig, "blasius_profiles.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
+    save_fig(fig, "blasius_profiles.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
     print(
         f"  overall max profile error: {max_err:.4f}"
         f"  [{'OK' if max_err < 0.05 else 'OUT OF BAND'} — target < 0.05]"

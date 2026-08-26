@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
 """Vorticity and velocity-magnitude snapshots with the IBM marker overlay."""
 
-import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import COLORS, COLORMAPS, build_arg_parser, figure_size, load_markers, save_fig  # noqa: E402
+from _common import (  # noqa: E402
+    COLORS,
+    COLORMAPS,
+    FIGURES_DIR,
+    SOLUTION_DIR,
+    build_arg_parser,
+    figure_size,
+    load_markers,
+    save_fig,
+)
 
 
 def main():
     args = build_arg_parser().parse_args()
 
-    vtu_files = sorted(Path(args.solution_dir).glob("*.vtu"))
+    vtu_files = sorted(Path(SOLUTION_DIR).glob("*.vtu"))
     if not vtu_files:
-        print(f"  WARNING: no VTU files in {args.solution_dir}")
+        print(f"  WARNING: no VTU files in {SOLUTION_DIR}")
         return
     final = vtu_files[-1]
     print(f"  Reading: {final.name}")
@@ -30,7 +37,7 @@ def main():
         u = mesh.cell_data.get("velocity")
         vort = mesh.cell_data.get("vorticity")
 
-    markers = load_markers(args.solution_dir)
+    markers = load_markers(SOLUTION_DIR)
 
     fields = [("velocity_magnitude", np.linalg.norm(u, axis=1), COLORMAPS["field_speed"], None)]
     if vort is not None:
@@ -72,7 +79,7 @@ def main():
             if label == "velocity_magnitude"
             else "field_vorticity.png"
         )
-        save_fig(fig, name, args.figures_dir, dpi=args.dpi, figure_format=args.format)
+        save_fig(fig, name, FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

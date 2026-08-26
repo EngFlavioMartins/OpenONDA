@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Plot streamwise-velocity profiles downstream of the step."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -10,16 +9,23 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import COLORS, build_arg_parser, figure_size, load_csv_columns, save_fig  # noqa: E402
+from _common import (  # noqa: E402
+    COLORS,
+    FIGURES_DIR,
+    SOLUTION_DIR,
+    build_arg_parser,
+    figure_size,
+    load_csv_columns,
+    save_fig,
+)
 
 
 def main():
     args = build_arg_parser().parse_args()
-    data = load_csv_columns(Path(args.solution_dir) / "fields.csv")
+    data = load_csv_columns(Path(SOLUTION_DIR) / "fields.csv")
     if not data:
         return
-    Path(args.figures_dir).mkdir(parents=True, exist_ok=True)
+    Path(FIGURES_DIR).mkdir(parents=True, exist_ok=True)
 
     x, y, u = (
         data["position_x_over_height"],
@@ -49,7 +55,7 @@ def main():
     ax.set_ylim(0.0, 2.0)
     ax.legend()
     ax.grid(True, alpha=0.3)
-    save_fig(fig, "step_evolution.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
+    save_fig(fig, "step_evolution.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

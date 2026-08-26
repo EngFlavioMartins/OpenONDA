@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Signed z-vorticity snapshot of the von Karman street from the final VTU."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -12,16 +11,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import build_arg_parser, figure_size, latest_vtu, save_fig  # noqa: E402
+from _common import (  # noqa: E402
+    FIGURES_DIR,
+    SOLUTION_DIR,
+    build_arg_parser,
+    figure_size,
+    latest_vtu,
+    save_fig,
+)
 
 
 def main():
     args = build_arg_parser().parse_args()
 
-    final = latest_vtu(args.solution_dir)
+    final = latest_vtu(SOLUTION_DIR)
     if final is None:
-        print(f"  WARNING: No VTU files found in {args.solution_dir}")
+        print(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
         return
     print(f"  Reading: {final}")
     mesh = pv.read(final)
@@ -56,9 +61,7 @@ def main():
     ax.set_aspect("equal")
 
     plt.tight_layout()
-    save_fig(
-        fig, "cube_vorticity_street.png", args.figures_dir, dpi=args.dpi, figure_format=args.format
-    )
+    save_fig(fig, "cube_vorticity_street.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

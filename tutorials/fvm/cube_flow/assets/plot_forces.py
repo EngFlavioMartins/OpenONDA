@@ -3,7 +3,6 @@
 with reference bands from Okajima (1982), Sohankar et al. (1998), and
 Sen et al. (2011)."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -12,10 +11,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     COLORS,
+    FIGURES_DIR,
     REFERENCES,
+    SOLUTION_DIR,
     build_arg_parser,
     figure_size,
     load_forces_csv,
@@ -27,7 +27,7 @@ from _common import (  # noqa: E402
 def main():
     args = build_arg_parser().parse_args()
     ref = REFERENCES.get(args.Re, {})
-    data = load_forces_csv(args.solution_dir)
+    data = load_forces_csv(SOLUTION_DIR)
     if "cube" not in data:
         print("  No force data on patch 'cube' to plot.")
         return
@@ -80,7 +80,7 @@ def main():
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
-    save_fig(fig, "forces_cube.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
+    save_fig(fig, "forces_cube.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     print(f"  cube: mean drag_coefficient = {drag_coefficient_mean:.4f}", end="")
     if "drag_coefficient" in ref:

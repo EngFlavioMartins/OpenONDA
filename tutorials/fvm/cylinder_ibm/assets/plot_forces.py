@@ -3,16 +3,16 @@
 from samples/ibm_forces_history.csv, with reference bands from
 Constant et al. 2017."""
 
-import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     COLORS,
+    FIGURES_DIR,
     REFERENCES,
+    SOLUTION_DIR,
     build_arg_parser,
     figure_size,
     load_ibm_forces_csv,
@@ -41,7 +41,7 @@ def strouhal_from_lift(t, cl):
 def main():
     args = build_arg_parser().parse_args()
     ref = REFERENCES.get(args.Re, {})
-    data = load_ibm_forces_csv(args.solution_dir)
+    data = load_ibm_forces_csv(SOLUTION_DIR)
     if not data:
         print("  No IBM force data to plot.")
         return
@@ -98,9 +98,7 @@ def main():
         ax.grid(True, alpha=0.3, which="both")
 
         fig.tight_layout()
-        save_fig(
-            fig, f"forces_{name}.png", args.figures_dir, dpi=args.dpi, figure_format=args.format
-        )
+        save_fig(fig, f"forces_{name}.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
         print(
             f"  {name}: mean drag_coefficient = {drag_coefficient_mean:.4f}",

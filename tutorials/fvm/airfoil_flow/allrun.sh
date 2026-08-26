@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 echo
 echo "===== CLEAN ====="
 echo
-./allclean.sh
+./allclean.sh --all
 
 echo
 echo "===== SIMULATE ====="

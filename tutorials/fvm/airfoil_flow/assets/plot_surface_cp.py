@@ -2,7 +2,6 @@
 """Surface pressure distribution -Cp(x/c) from solution/surface_cp.csv
 (written by airfoil_flow_setup.py at the end of the run)."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -10,10 +9,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     COLORS,
+    FIGURES_DIR,
     RE,
+    SOLUTION_DIR,
     build_arg_parser,
     figure_size,
     load_csv_columns,
@@ -23,7 +23,7 @@ from _common import (  # noqa: E402
 
 def main():
     args = build_arg_parser().parse_args()
-    data = load_csv_columns(Path(args.solution_dir) / "surface_cp.csv")
+    data = load_csv_columns(Path(SOLUTION_DIR) / "surface_cp.csv")
     if not data:
         return
     x = data["position_x_over_chord"]
@@ -58,9 +58,7 @@ def main():
     ax.legend(fontsize=8)
 
     fig.tight_layout()
-    save_fig(
-        fig, "airfoil_surface_cp.png", args.figures_dir, dpi=args.dpi, figure_format=args.format
-    )
+    save_fig(fig, "airfoil_surface_cp.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
     if abs(args.angle) < 1e-9:
         gap = float(abs(cp[upper].mean() - cp[lower].mean()))
         print(f"  upper/lower mean Cp difference at alpha=0: {gap:.4f} (symmetry check, ~0)")

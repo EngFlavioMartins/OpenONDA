@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Skin-friction distribution along the plate vs Cf = 0.664 / sqrt(Re_x)."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -10,9 +9,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     COLORS,
+    FIGURES_DIR,
+    SOLUTION_DIR,
     build_arg_parser,
     figure_size,
     load_csv_columns,
@@ -22,7 +22,7 @@ from _common import (  # noqa: E402
 
 def main():
     args = build_arg_parser().parse_args()
-    data = load_csv_columns(Path(args.solution_dir) / "cf.csv")
+    data = load_csv_columns(Path(SOLUTION_DIR) / "cf.csv")
     if not data:
         return
 
@@ -43,7 +43,7 @@ def main():
     ax.legend(fontsize=8)
 
     fig.tight_layout()
-    save_fig(fig, "skin_friction.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
+    save_fig(fig, "skin_friction.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     # Deviation away from the leading edge (the LE cell itself is singular).
     sel = (x > 0.2) & (x < 0.95)

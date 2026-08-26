@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Velocity-magnitude snapshot around the airfoil from the final VTU."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -11,10 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _common import (  # noqa: E402
     COLORMAPS,
+    FIGURES_DIR,
     RE,
+    SOLUTION_DIR,
     build_arg_parser,
     figure_size,
     latest_vtu,
@@ -25,9 +25,9 @@ from _common import (  # noqa: E402
 def main():
     args = build_arg_parser().parse_args()
 
-    final = latest_vtu(args.solution_dir)
+    final = latest_vtu(SOLUTION_DIR)
     if final is None:
-        print(f"  WARNING: No VTU files found in {args.solution_dir}")
+        print(f"  WARNING: No VTU files found in {SOLUTION_DIR}")
         return
     print(f"  Reading: {final}")
     mesh = pv.read(final)
@@ -60,7 +60,7 @@ def main():
     ax.set_aspect("equal")
 
     fig.tight_layout()
-    save_fig(fig, "airfoil_velocity.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
+    save_fig(fig, "airfoil_velocity.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":

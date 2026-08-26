@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Plot the stepped geometry, velocity field, and reattachment history."""
 
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -11,17 +10,23 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _common import COLORMAPS, build_arg_parser, load_csv_columns, save_fig  # noqa: E402
+from _common import (  # noqa: E402
+    COLORMAPS,
+    FIGURES_DIR,
+    SOLUTION_DIR,
+    build_arg_parser,
+    load_csv_columns,
+    save_fig,
+)
 
 
 def main():
     args = build_arg_parser().parse_args()
-    fields = load_csv_columns(Path(args.solution_dir) / "fields.csv")
-    history = load_csv_columns(Path(args.solution_dir) / "reattachment_history.csv")
+    fields = load_csv_columns(Path(SOLUTION_DIR) / "fields.csv")
+    history = load_csv_columns(Path(SOLUTION_DIR) / "reattachment_history.csv")
     if not fields or not history:
         return
-    Path(args.figures_dir).mkdir(parents=True, exist_ok=True)
+    Path(FIGURES_DIR).mkdir(parents=True, exist_ok=True)
 
     x, y = fields["position_x_over_height"], fields["position_y_over_height"]
     speed = np.hypot(fields["velocity_x"], fields["velocity_y"])
@@ -54,7 +59,7 @@ def main():
     if finite.any():
         x_final = float(x_re[finite][-1])
         print(f"  final x_r/h = {x_final:.2f}")
-    save_fig(fig, "step_comparison.png", args.figures_dir, dpi=args.dpi, figure_format=args.format)
+    save_fig(fig, "step_comparison.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 
 if __name__ == "__main__":
