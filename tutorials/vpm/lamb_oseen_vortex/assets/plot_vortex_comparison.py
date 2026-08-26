@@ -168,7 +168,7 @@ def plot_vortex_case(args) -> int:
     gc_ref = uc_ref / ac0
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.18, left=0.12, right=0.98)
+    fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.19, left=0.12, right=0.98)
 
     comparison_time = latest_common_time(samples_dir)
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
@@ -219,14 +219,11 @@ def plot_vortex_case(args) -> int:
     axes[0].set_title(r"Single vortex characteristics")
     axes[0].set_ylabel(r"$u_\theta / U_{c,0}$")
     axes[0].set_xlim([-5.5, 5.5])
-    axes[0].set_ylim([-0.25, 0.25])
 
     axes[1].set_ylabel(r"$\omega_z / \omega_{c,0}$")
-    axes[1].set_ylim([-0.01, 0.1])
 
     axes[2].set_xlabel(r"$r / a_{c,0}$")
     axes[2].set_ylabel(r"$(\partial u_y / \partial x)\,a_{c,0} / U_{c,0}$")
-    axes[2].set_ylim([-0.05, 0.13])
 
     handles, labels = axes[0].get_legend_handles_labels()
 
