@@ -22,8 +22,8 @@ from ring_metrics import (
     save_fig,
 )
 
-ZOOM_END = 3.2  # early window that holds the whole dns_direct / dns_mixed history
-ZOOM_BOX = (0.575, 0.545, 0.400, 0.415)  # inset rectangle in axes coordinates
+ZOOM_END = 3.2
+ZOOM_BOX = (0.520, 0.500, 0.460, 0.460)
 ZOOM_MARKER_SIZE = 2.0
 
 
@@ -45,7 +45,6 @@ def zoom_axes(ax, ylim: tuple[float, float]):
     inset = ax.inset_axes(ZOOM_BOX)
     inset.set_xlim(0.0, ZOOM_END)
     inset.set_ylim(*ylim)
-    inset.tick_params(labelsize=5, length=2, pad=1.5)
     return inset
 
 
@@ -65,7 +64,7 @@ def main() -> None:
 
     n_skip = 14  # plot every n-th marker
 
-    ax_sum.set_yscale("log")  # match before adding the log-scaled inset below
+    ax_sum.set_yscale("log")
     zoom_tube = zoom_axes(ax_tube, ylim=(0.98, 1.80))
     zoom_sum = zoom_axes(ax_sum, ylim=(1e-8, 1e-2))
     zoom_sum.set_yscale("log")
@@ -98,7 +97,9 @@ def main() -> None:
     ax_sum.axhspan(1e-4, 1e-2, color=colors["background_light"], linewidth=0, zorder=0)
     zoom_sum.axhspan(1e-4, 1e-2, color=colors["background_light"], linewidth=0, zorder=0)
     zoom_tube.set_xticks([0, 1, 2, 3])
+    zoom_tube.set_yticks([1.0, 1.4, 1.8])
     zoom_sum.set_xticks([0, 1, 2, 3])
+    zoom_sum.set_yticks([1e-8, 1e-5, 1e-2])
 
     fig.legend(
         legend_handles,

@@ -1,0 +1,20 @@
+{
+  "status": "complete",
+  "completed": true,
+  "case": "merging",
+  "scheme": "cs",
+  "circulations": [
+    1.0,
+    1.0
+  ],
+  "kinematic_viscosity": 0.0018867924528301887,
+  "core_radius": 0.11160714285714285,
+  "velocity_peak_radius": 0.125,
+  "vortex_separation": 1.0,
+  "column_half_length": 2.5,
+  "end_time": 29.973,
+  "time_step_size": 0.03233333333333333,
+  "initial_n_particles_total": 3916,
+  "final_time": 29.973,
+  "compute_device": "METAL"
+}

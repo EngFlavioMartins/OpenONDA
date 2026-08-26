@@ -48,7 +48,22 @@ else:
 
 THETA_REF = REF_DIR / "theta_vs_tau.csv"
 A2_REF = REF_DIR / "a2_over_b02.csv"
-B_DIMENSIONAL_REF = REF_DIR / "b_over_b0_time.csv"
+B_REF = REF_DIR / "b_over_b0_tau.csv"
+
+
+def uniform_cadence_mask(step: np.ndarray) -> np.ndarray:
+    """Keep only the rows that fall on the run's dominant step cadence.
+
+    A scheme's fast-transient window can interleave an extra burst of
+    every-step samples (e.g. merging_cs around its core-overlap event);
+    those off-cadence rows plot as a dense cluster that skips at a
+    different pace than the uniformly sampled schemes.
+    """
+    if step.size < 2:
+        return np.ones_like(step, dtype=bool)
+    deltas = np.diff(step)
+    cadence = int(np.median(deltas[deltas > 0]))
+    return (step - step[0]) % cadence == 0
 
 
 def extract_merging_timeseries(
@@ -69,6 +84,7 @@ def extract_merging_timeseries(
     data = data.sort_values("step").drop_duplicates("step", keep="last")
     if data.empty:
         return None
+    data = data[uniform_cadence_mask(data["step"].to_numpy(int))]
 
     angle = data["angle_radians"].to_numpy(float)
     finite = np.isfinite(angle)
@@ -116,7 +132,7 @@ def plot_merging_case(args) -> int:
     b0 = runtime["vortex_separation"]
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.23, left=0.10, right=0.98)
+    fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.19, left=0.10, right=0.98)
 
     plotted_schemes = []
     for scheme in SCHEME_DRAW_ORDER:
@@ -168,16 +184,10 @@ def plot_merging_case(args) -> int:
     }
     scale = (a0 / b0) ** 2
 
-    for axis, path in ((axes[0], THETA_REF), (axes[1], A2_REF)):
+    for axis, path in ((axes[0], THETA_REF), (axes[1], A2_REF), (axes[2], B_REF)):
         if path.exists():
             reference = np.loadtxt(path, delimiter=",")
             axis.plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
-
-    if B_DIMENSIONAL_REF.exists():
-        print(
-            "  [merging] vortex_separation literature curve retained as dimensional source data "
-            "but not overlaid: experimental kinematic_viscosity/b0^2 provenance is not yet recorded"
-        )
 
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")

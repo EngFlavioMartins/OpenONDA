@@ -188,7 +188,7 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
             logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME, TIME_STEP_SIZE),
             checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME, TIME_STEP_SIZE),
             checkpoint_name=variant,
-            checkpoint_directory=str(output_directory),
+            checkpoint_directory=str(output_directory / variant),
             sample_subdirectory=variant,
             samplers=(RingDiagnosticsSampler(), mode_sampler),
             write_precision="f32",
@@ -220,7 +220,7 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
 
     # -- Time integration -----------------------------------------------------
     solver.record_diagnostics(refresh_fields=True)
-    solver.save_state(str(output_directory / f"vpm_{variant}"))
+    solver.save_state(str(output_directory / variant / f"vpm_{variant}"))
     initial_strength = np.abs(solver.particles.vortex_strength_cpu()).max()
     termination_reason = None
     for _ in range(N_STEPS):
@@ -243,7 +243,7 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
             )
             break
 
-    solver.save_state(str(output_directory / f"vpm_{variant}_final"))
+    solver.save_state(str(output_directory / variant / f"vpm_{variant}_final"))
     manifest.update(
         status="resolution_lost" if termination_reason else "completed",
         completed_steps=solver.step,

@@ -27,10 +27,10 @@ from ring_metrics import (
     save_fig,
 )
 
-ZOOM_END = 3.2  # early window that holds the whole dns_direct / dns_mixed history
-ZOOM_BOX = (0.575, 0.545, 0.400, 0.415)  # inset rectangle in axes coordinates
+ZOOM_END = 3.2
+ZOOM_BOX = (0.520, 0.500, 0.460, 0.460)
 ZOOM_MARKER_SIZE = 2.0
-ZOOM_FLOOR = 1e-3  # clip magnitude before semilogy (guards the exact-zero t=0 sample)
+ZOOM_FLOOR = 1e-3
 
 
 def line_style(st: dict, markevery: int, markersize: float | None = None) -> dict:
@@ -52,8 +52,8 @@ def zoom_axes(ax, ylim: tuple[float, float]):
     inset.set_xlim(0.0, ZOOM_END)
     inset.set_yscale("log")
     inset.set_ylim(*ylim)
-    inset.tick_params(labelsize=5, length=2, pad=1.5)
-    inset.text(0.05, 0.92, r"$|\cdot|$", fontsize=5, transform=inset.transAxes, va="top")
+    inset.yaxis.set_minor_locator(plt.NullLocator())
+    inset.text(0.95, 0.92, r"$|\cdot|$", transform=inset.transAxes, va="top", ha="right")
     return inset
 
 
@@ -72,7 +72,9 @@ def main() -> None:
     n_skip = 14  # plot every n-th marker
 
     zoom_de = zoom_axes(ax_de, ylim=(ZOOM_FLOOR, 3e-1))
-    zoom_nuens = zoom_axes(ax_nuens, ylim=(1e-2, 1e-1))
+    zoom_de.set_yticks([1e-3, 1e-2, 1e-1])
+    zoom_nuens = zoom_axes(ax_nuens, ylim=(1e-2, 1.5e-1))
+    zoom_nuens.set_yticks([1e-2, 1e-1])
 
     # -- Energy diagnostics — all available variants -------------------------
     for variant, st in VARIANT_STYLE.items():
@@ -91,12 +93,12 @@ def main() -> None:
         t = times / REFERENCE_TIME
         (line,) = ax_de.plot(t, dedt / P_REF, label=label, **line_style(st, n_skip))
         ax_nuens.plot(t, viscous_kinetic_energy_rate / P_REF, label=label, **line_style(st, n_skip))
-        zoom_de.semilogy(
+        zoom_de.plot(
             t,
             np.abs(dedt / P_REF).clip(min=ZOOM_FLOOR),
             **line_style(st, 1, ZOOM_MARKER_SIZE),
         )
-        zoom_nuens.semilogy(
+        zoom_nuens.plot(
             t,
             np.abs(viscous_kinetic_energy_rate / P_REF).clip(min=ZOOM_FLOOR),
             **line_style(st, 1, ZOOM_MARKER_SIZE),

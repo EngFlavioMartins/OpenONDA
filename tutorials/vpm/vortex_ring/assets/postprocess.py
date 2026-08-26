@@ -53,7 +53,7 @@ def _run_contract(name: str) -> tuple[dict, set[int], list[str]]:
     """Load and cross-check the manifest and final checkpoint configuration."""
     failures: list[str] = []
     manifest_path = SOLUTION_DIR / f"run_manifest_{name}.json"
-    configuration_path = SOLUTION_DIR / f"vpm_{name}_final.config.json"
+    configuration_path = SOLUTION_DIR / name / f"vpm_{name}_final.config.json"
     manifest = _metadata(manifest_path)
     configuration = _metadata(configuration_path)
     if not manifest:
@@ -128,7 +128,7 @@ def validate(pre_plot: bool) -> int:
         if contract_failures:
             continue
 
-        all_files = sorted(glob.glob(str(SOLUTION_DIR / f"vpm_{name}_*.h5")))
+        all_files = sorted(glob.glob(str(SOLUTION_DIR / name / f"vpm_{name}_*.h5")))
         numbered = {
             int(match.group(1)): path
             for path in all_files
@@ -192,7 +192,7 @@ def validate(pre_plot: bool) -> int:
                 continue
             if data.empty or not np.isfinite(data.select_dtypes(include=[np.number])).all().all():
                 failures.append(f"{name}: empty or non-finite {csv_name}")
-        final = SOLUTION_DIR / f"vpm_{name}_final.h5"
+        final = SOLUTION_DIR / name / f"vpm_{name}_final.h5"
         if not final.is_file():
             failures.append(f"{name}: missing final restart state")
 
