@@ -375,7 +375,8 @@ def load_sampled_ring_speed(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
         lower = max(0, index - 2)
         upper = min(len(time), index + 3)
         speed[index] = np.polyfit(time[lower:upper], position[lower:upper], 1)[0]
-    return time / REFERENCE_TIME, speed / REFERENCE_VELOCITY
+    keep = time > 0.0
+    return time[keep] / REFERENCE_TIME, speed[keep] / REFERENCE_VELOCITY
 
 
 def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -387,9 +388,10 @@ def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarra
     valid = np.isfinite(circulation) & (circulation > 0.0)
     if not valid.any():
         return np.array([]), np.array([])
-    time = data[_sample_time_column(data)].to_numpy(float)[valid] / REFERENCE_TIME
-    circulation = circulation[valid]
-    return time, circulation / circulation[0]
+    time = data[_sample_time_column(data)].to_numpy(float)[valid]
+    normalized = circulation[valid] / circulation[valid][0]
+    keep = time > 0.0
+    return time[keep] / REFERENCE_TIME, normalized[keep]
 
 
 def load_sampled_vector_circulation_error(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -403,9 +405,10 @@ def load_sampled_vector_circulation_error(csv_path: Path) -> tuple[np.ndarray, n
     strength0 = float(data["vortex_strength_magnitude_sum"].iloc[0])
     if strength0 <= 0.0:
         return np.array([]), np.array([])
-    time = data[_sample_time_column(data)].to_numpy(float) / REFERENCE_TIME
+    time = data[_sample_time_column(data)].to_numpy(float)
     error = np.linalg.norm(vector - vector[0], axis=1) / strength0
-    return time, error
+    keep = time > 0.0
+    return time[keep] / REFERENCE_TIME, error[keep]
 
 
 def saffman_speed(t_arr: np.ndarray, k_nu: float = 4.0) -> np.ndarray:

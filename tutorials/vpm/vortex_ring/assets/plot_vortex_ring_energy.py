@@ -11,7 +11,6 @@ Saves: figures/vortex_ring_energy.png
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 from ring_metrics import (
@@ -27,8 +26,8 @@ from ring_metrics import (
     save_fig,
 )
 
-ZOOM_END = 3.2
-ZOOM_BOX = (0.520, 0.500, 0.460, 0.460)
+ZOOM_END = 5
+ZOOM_BOX = (0.55, 0.12, 0.35, 0.30)
 ZOOM_MARKER_SIZE = 2.0
 ZOOM_FLOOR = 1e-3
 
@@ -47,13 +46,11 @@ def line_style(st: dict, markevery: int, markersize: float | None = None) -> dic
 
 
 def zoom_axes(ax, ylim: tuple[float, float]):
-    """Attach an early-time |rate| zoom inset to the top-right corner of ``ax``."""
+    """Attach an early-time zoom inset to the top-right corner of ``ax``."""
     inset = ax.inset_axes(ZOOM_BOX)
     inset.set_xlim(0.0, ZOOM_END)
-    inset.set_yscale("log")
+    inset.set_yscale("symlog", linthresh=ZOOM_FLOOR)
     inset.set_ylim(*ylim)
-    inset.yaxis.set_minor_locator(plt.NullLocator())
-    inset.text(0.95, 0.92, r"$|\cdot|$", transform=inset.transAxes, va="top", ha="right")
     return inset
 
 
@@ -65,16 +62,13 @@ def main() -> None:
     colors, _ = load_theme()
 
     fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=figure_size("wide_short"), sharex=True)
-    fig.subplots_adjust(wspace=0.37, left=0.13, right=0.98, top=0.92, bottom=0.29)
+    fig.subplots_adjust(wspace=0.42, left=0.14, right=0.98, top=0.92, bottom=0.29)
     legend_handles = []
     legend_labels = []
     plot_end = 185
     n_skip = 14  # plot every n-th marker
 
-    zoom_de = zoom_axes(ax_de, ylim=(ZOOM_FLOOR, 3e-1))
-    zoom_de.set_yticks([1e-3, 1e-2, 1e-1])
-    zoom_nuens = zoom_axes(ax_nuens, ylim=(1e-2, 1.5e-1))
-    zoom_nuens.set_yticks([1e-2, 1e-1])
+    zoom_de = zoom_axes(ax_de, ylim=(-2e-1, 5e-2))
 
     # -- Energy diagnostics — all available variants -------------------------
     for variant, st in VARIANT_STYLE.items():
@@ -82,9 +76,10 @@ def main() -> None:
         if not csv_path.exists():
             continue
         data = pd.read_csv(csv_path)
-        times = data["time"].to_numpy()
-        viscous_kinetic_energy_rate = data["viscous_kinetic_energy_rate"].to_numpy()
-        dedt = data["kinetic_energy_rate"].to_numpy()
+        keep = data["time"].to_numpy() > 0.0
+        times = data["time"].to_numpy()[keep]
+        viscous_kinetic_energy_rate = data["viscous_kinetic_energy_rate"].to_numpy()[keep]
+        dedt = data["kinetic_energy_rate"].to_numpy()[keep]
         if times.size == 0:
             print(f"  (no energy data for {variant})")
             continue
@@ -93,31 +88,20 @@ def main() -> None:
         t = times / REFERENCE_TIME
         (line,) = ax_de.plot(t, dedt / P_REF, label=label, **line_style(st, n_skip))
         ax_nuens.plot(t, viscous_kinetic_energy_rate / P_REF, label=label, **line_style(st, n_skip))
-        zoom_de.plot(
-            t,
-            np.abs(dedt / P_REF).clip(min=ZOOM_FLOOR),
-            **line_style(st, 1, ZOOM_MARKER_SIZE),
-        )
-        zoom_nuens.plot(
-            t,
-            np.abs(viscous_kinetic_energy_rate / P_REF).clip(min=ZOOM_FLOOR),
-            **line_style(st, 1, ZOOM_MARKER_SIZE),
-        )
+        zoom_de.plot(t, dedt / P_REF, **line_style(st, 1, ZOOM_MARKER_SIZE))
         legend_handles.append(line)
         legend_labels.append(label)
 
     for ax in (ax_de, ax_nuens):
         ax.set_xlabel(r"$t\,\Gamma / R_0^2$")
-        ax.set_ylim(-0.05, 0.01)
-        ax.set_xlim(0, plot_end)
-        ax.axhspan(0.0, 0.01, color=colors["background_light"], linewidth=0, zorder=0)
+        ax.set_yscale("symlog", linthresh=ZOOM_FLOOR)
+        ax.set_ylim(-2e-1, 2e-4)
+        ax.axhspan(0.0, 2e-4, color=colors["background_light"], linewidth=0, zorder=0)
 
     ax_de.set_title(r"Energy rate versus time")
     ax_de.set_ylabel(r"$(dE/dt)\,T_0\,/\,(\Gamma^2 R_0)$")
     ax_nuens.set_title(r"Viscous dissipation versus time")
     ax_nuens.set_ylabel(r"$(-\nu\varepsilon)\,T_0\,/\,(\Gamma^2 R_0)$")
-    for inset in (zoom_de, zoom_nuens):
-        inset.set_xticks([0, 1, 2, 3])
     fig.legend(
         legend_handles,
         legend_labels,

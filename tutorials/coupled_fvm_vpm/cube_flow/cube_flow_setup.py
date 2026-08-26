@@ -73,8 +73,8 @@ VPM_SCHEME = "RK2"
 
 # FVM domain and mesh
 FVM_CORES = 4
-FVM_BOX = (-1.5, 1.5, -1.5, 1.5, -1.5, 1.5)
-FVM_WAKE_BOX = (-1.25, 1.25, -1.25, 1.25, -1.25, 1.25)
+FVM_BOX = (-1.75, 1.75, -1.75, 1.75, -1.75, 1.75)
+FVM_WAKE_BOX = (-1.50, 1.50, -1.50, 1.50, -1.50, 1.50)
 TRANSFER_REGION_BOX = FVM_WAKE_BOX
 SURFACE_CELL_SIZE = 0.015625
 FVM_MAX_CELL_SIZE = 0.25
@@ -129,13 +129,14 @@ WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
 
 FVM_MESH = fvm.AdaptiveCartesianMesher(
     domain=FVM_BOX,
-    max_cell_size=FVM_MAX_CELL_SIZE,
+    max_cell_size=SURFACE_CELL_SIZE * 2,
     surface_file=CUBE_STL,
     wall_patch_name="cube",
     surface_cell_size=SURFACE_CELL_SIZE,
-    refinements=(fvm.BoxRefinement(FVM_WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),),
     merge_outer_patch="numericalBoundary",
 )
+
+# refinements=(fvm.BoxRefinement(FVM_WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),),
 
 FVM_SAMPLING_SCHEDULE = fvm.SamplingSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
 VPM_SAMPLING_SCHEDULE = vpm.SamplingSchedule(every_n_steps=VPM_SAMPLING_INTERVAL_STEPS)

@@ -23,7 +23,7 @@ from ring_metrics import (
 )
 
 ZOOM_END = 3.2
-ZOOM_BOX = (0.520, 0.500, 0.460, 0.460)
+ZOOM_BOX = (0.54, 0.58, 0.40, 0.38)
 ZOOM_MARKER_SIZE = 2.0
 
 
@@ -58,7 +58,7 @@ def main() -> None:
     colors, _ = load_theme()
 
     fig, (ax_tube, ax_sum) = plt.subplots(1, 2, figsize=figure_size("single_tall"), sharex=True)
-    fig.subplots_adjust(wspace=0.32, hspace=0.10, left=0.10, right=0.98, top=0.92, bottom=0.30)
+    fig.subplots_adjust(wspace=0.32, hspace=0.10, left=0.09, right=0.98, top=0.92, bottom=0.30)
     legend_handles = []
     legend_labels = []
 
@@ -86,20 +86,13 @@ def main() -> None:
 
     for ax in (ax_tube, ax_sum):
         ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
-        ax.set_xlim(0, 190)
 
     ax_tube.set_title(r"Tube circulation")
     ax_tube.set_ylabel(r"$\Gamma_{\rm tube}/\Gamma_{\rm tube,0}$")
-    ax_tube.set_ylim(0.8, 1.8)
+    ax_tube.set_ylim(1.0, 1.6)
     ax_sum.set_title(r"Vector-sum conservation")
     ax_sum.set_ylabel(r"$\|\Sigma\alpha-\Sigma\alpha_0\|\,/\,\Sigma|\alpha|_0$")
-    ax_sum.set_ylim(1e-8, 1e-2)
-    ax_sum.axhspan(1e-4, 1e-2, color=colors["background_light"], linewidth=0, zorder=0)
-    zoom_sum.axhspan(1e-4, 1e-2, color=colors["background_light"], linewidth=0, zorder=0)
-    zoom_tube.set_xticks([0, 1, 2, 3])
-    zoom_tube.set_yticks([1.0, 1.4, 1.8])
-    zoom_sum.set_xticks([0, 1, 2, 3])
-    zoom_sum.set_yticks([1e-8, 1e-5, 1e-2])
+    ax_sum.set_ylim(1e-9, 1e-1)
 
     fig.legend(
         legend_handles,
