@@ -6,8 +6,10 @@ from collections.abc import Collection
 from datetime import UTC, datetime
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
+import re
 import shutil
 import warnings
 
@@ -17,6 +19,7 @@ from source.solvers.fvm.io.checkpoint import decode_state, encode_state
 
 CHECKPOINT_DIRECTORY = "checkpoints"
 CHECKPOINT_FORMAT_VERSION = 11
+_VPM_SNAPSHOT_PATTERN = re.compile(r"^vpm_(\d+)\.(h5|xdmf)$")
 
 _VPM_OPERATIONAL_CONFIG_FIELDS = frozenset(
     {
@@ -274,18 +277,45 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
     os.replace(manifest_temporary, target / "manifest.json")
 
     keep = {"manifest.json", *manifest["artifacts"].values()}
-    stale = {
+    stale_restart_artifacts = {
         *target.glob("fvm_*"),
-        *target.glob("vpm_*"),
         *target.glob("vpm_boundary_condition_*"),
     }
-    for artifact in stale:
+    for artifact in stale_restart_artifacts:
         if artifact.name in keep or not artifact.exists():
             continue
         if artifact.is_dir():
             shutil.rmtree(artifact)
         else:
             artifact.unlink()
+
+    retention = int(getattr(coupler.setup, "vpm_checkpoint_retention", 1))
+    snapshots: dict[int, dict[str, Path]] = {}
+    for artifact in target.iterdir():
+        match = _VPM_SNAPSHOT_PATTERN.fullmatch(artifact.name)
+        if match is not None:
+            snapshots.setdefault(int(match.group(1)), {})[match.group(2)] = artifact
+    complete_steps = sorted(
+        (
+            snapshot_step
+            for snapshot_step, files in snapshots.items()
+            if set(files) == {"h5", "xdmf"}
+        ),
+        reverse=True,
+    )
+    retained_steps = set(complete_steps[:retention])
+    for snapshot_step, files in snapshots.items():
+        if snapshot_step in retained_steps:
+            continue
+        for artifact in files.values():
+            artifact.unlink(missing_ok=True)
+
+    logging.getLogger("coupler").info(
+        "coupled checkpoint saved | manifest=%s | vpm=%s | retained_vpm_snapshots=%d",
+        target / "manifest.json",
+        target / manifest["artifacts"]["vpm"],
+        len(retained_steps),
+    )
     return target
 
 

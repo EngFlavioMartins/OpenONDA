@@ -44,9 +44,19 @@ sampling interval. FVM visualization and the atomic coupled restart checkpoint
 are written every `0.5 s`; the native VPM checkpoint writer is disabled because
 it would capture the pre-replacement state. Coupled VPM checkpoints use `f32`
 storage and omit the derived velocity-gradient tensor; a restart recomputes that
-field. Matching the transient time discretization is required for the reference
+field. The latest synchronized state is the restart point, while the two newest
+post-renewal VPM particle snapshots are retained in `solution/checkpoints` for
+inspection. Matching the transient time discretization is required for the reference
 comparison. The coupled and reference FVMs use the same pressure corrector
 counts. This production transfer uses GBD.
+
+The Billuart normal-velocity/tangential-gradient boundary condition remains in
+use. A resolved-scale implicit consistency source acts only in the `0.25 m`
+outer numerical buffer, between the transfer box and the FVM boundary. Its C1
+rate is zero in FVM authority and increases toward the numerical boundary. The
+target is evaluated from the complete VPM velocity at both coupling time levels
+and interpolated over the five FVM substeps; the FVM high-pass fluctuation is
+preserved rather than relaxed toward a scale the particle field cannot represent.
 
 The FVM-to-VPM hand-off is the recovered buffered whole-belt M4' renewal used
 by the historically stable long run. After VPM advection/stretching/GBD and the

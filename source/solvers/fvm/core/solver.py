@@ -546,6 +546,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self._time_since_last_write = 0.0
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
+        self._coupling_consistency_filter = None
         self._n_committed_time_steps = 0  # number of committed time steps (BDF2 startup gate)
         self._accepted_time_step_size = self.time_step_size
         self._last_residuals = None
@@ -869,6 +870,46 @@ class FVMSolver(CouplerInterfaceMixin):
         )
         return self.ibm
 
+    def _coupling_consistency_source(self):
+        """Build the resolved-scale VPM-to-FVM relaxation source, if registered.
+
+        The implicit part is ``Sp = rate``. The explicit target retains the
+        current FVM high-pass fluctuation, so only scales representable by the
+        VPM velocity field are relaxed:
+
+        ``S = rate * (target + (U - filter(U))) - rate * U``.
+        """
+        rate_field = "couplingConsistencyRate"
+        target_field = "couplingConsistencyTargetVelocity"
+        rate = self.registered_fields.get(rate_field)
+        target = self.registered_fields.get(target_field)
+        if rate is None and target is None:
+            return None, None
+        if rate is None or target is None:
+            raise RuntimeError(
+                f"Incomplete coupling consistency source: {rate_field} and "
+                f"{target_field} must be registered together"
+            )
+        n_cells = int(self.mesh_data["n_cells"])
+        rate = np.asarray(rate, dtype=np.float64)[:n_cells]
+        target = np.asarray(target, dtype=np.float64)[:n_cells]
+        if rate.shape != (n_cells,) or target.shape != (n_cells, 3):
+            raise RuntimeError("Coupling consistency fields have incompatible cell shapes")
+        if np.any(rate < 0.0) or not np.all(np.isfinite(rate)) or not np.all(np.isfinite(target)):
+            raise RuntimeError("Coupling consistency fields must be finite with non-negative rate")
+
+        if self._coupling_consistency_filter is None:
+            from ..fields.filters import CellBoxFilter
+
+            self._coupling_consistency_filter = CellBoxFilter(
+                self.mesh_data,
+                self.geo_data,
+                centre_weight="neighbour_sum",
+            )
+        velocity = np.asarray(self.velocity, dtype=np.float64)[:n_cells]
+        high_pass_velocity = velocity - self._coupling_consistency_filter(velocity)
+        return rate[:, np.newaxis] * (target + high_pass_velocity), rate
+
     def solve_pimple(self, time_step_size: float | None = None):
         """Solve the pressure–velocity system at the current time level WITHOUT
         advancing the clock (coupler-facing method).
@@ -900,6 +941,7 @@ class FVMSolver(CouplerInterfaceMixin):
         )
         # BDF2 needs u^{n-1}; available only once at least one step is committed.
         velocity_older_argument = self.velocity_older if self._n_committed_time_steps >= 1 else None
+        source_explicit, source_implicit = self._coupling_consistency_source()
         self.velocity, self.kinematic_pressure, self.volumetric_face_flux, residuals = (
             self.algorithm.step(
                 self.velocity,
@@ -910,8 +952,8 @@ class FVMSolver(CouplerInterfaceMixin):
                 density=self.setup.transport.density,
                 kinematic_viscosity=effective_viscosity,
                 velocity_older=velocity_older_argument,
-                source_explicit=None,
-                source_implicit=None,
+                source_explicit=source_explicit,
+                source_implicit=source_implicit,
                 volumetric_face_flux_old=self.volumetric_face_flux_old,
                 volumetric_face_flux_older=(
                     self.volumetric_face_flux_older if self._n_committed_time_steps >= 1 else None

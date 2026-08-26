@@ -27,7 +27,12 @@ class _MappingSetup:
 
 
 class _CouplerSetup(_MappingSetup):
-    def __init__(self, *, transfer_method: str = "common_lattice"):
+    def __init__(
+        self,
+        *,
+        transfer_method: str = "common_lattice",
+        vpm_checkpoint_retention: int = 1,
+    ):
         super().__init__(
             {
                 "coupler": {
@@ -39,6 +44,7 @@ class _CouplerSetup(_MappingSetup):
         self.boundary_condition_mode = "pressure_gradient"
         self.coupling_patch = "numericalBoundary"
         self.freestream_velocity = [1.0, 0.0, 0.0]
+        self.vpm_checkpoint_retention = vpm_checkpoint_retention
 
 
 class _Panel:
@@ -151,6 +157,7 @@ def _make_coupler(
     panel_scope: str = "vpm_boundary_condition",
     transfer_method: str = "common_lattice",
     checkpoint_directory: str = "original-output",
+    vpm_checkpoint_retention: int = 1,
 ):
     previous_velocity = np.array([[1.0, 0.1, 0.0], [1.0, 0.1, 0.0]])
     previous_pressure_gradient = np.array([[0.2, -0.1, 0.0], [0.3, -0.2, 0.0]])
@@ -162,7 +169,10 @@ def _make_coupler(
         pressure_gradient=np.array([[0.4, 0.2, 0.0], [0.5, 0.1, 0.0]]),
     )
     coupler = SimpleNamespace(
-        setup=_CouplerSetup(transfer_method=transfer_method),
+        setup=_CouplerSetup(
+            transfer_method=transfer_method,
+            vpm_checkpoint_retention=vpm_checkpoint_retention,
+        ),
         fvm_solver=_FVM(),
         vpm_solver=vpm,
         vorticity_transfer=SimpleNamespace(step=0),
@@ -186,6 +196,29 @@ def _make_coupler(
         _last_vpm_boundary_condition_flux_diagnostics={},
     )
     return coupler
+
+
+def test_checkpoint_retains_a_bounded_post_renewal_vpm_history(tmp_path):
+    checkpoint = tmp_path / "checkpoint"
+    coupler = _make_coupler(vpm_checkpoint_retention=2)
+    for step in (1, 2, 3):
+        coupler.fvm_solver.step = 2 * step
+        coupler.vpm_solver.step = step
+        coupler.vpm_solver.time = 0.1 * step
+        save_coupled_state(coupler, checkpoint, coupling_step=step)
+
+    assert sorted(path.name for path in checkpoint.glob("vpm_*.h5")) == [
+        "vpm_000002.h5",
+        "vpm_000003.h5",
+    ]
+    assert sorted(path.name for path in checkpoint.glob("vpm_*.xdmf")) == [
+        "vpm_000002.xdmf",
+        "vpm_000003.xdmf",
+    ]
+    assert sorted(path.name for path in checkpoint.glob("fvm_*")) == ["fvm_000003.npz"]
+    assert sorted(path.name for path in checkpoint.glob("vpm_boundary_condition_*")) == [
+        "vpm_boundary_condition_000003.npz"
+    ]
 
 
 def test_config_difference_paths_are_recursive_and_distinguish_missing_from_none():

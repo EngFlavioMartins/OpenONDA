@@ -8,7 +8,8 @@ Getters
     ``get_velocity_gradient_field_into``, ``get_vorticity_field``,
     ``get_vorticity_field_into``,
     ``get_boundary_face_centre_coordinates``,
-    ``get_boundary_face_normal``, ``get_boundary_face_area``, ``n_procs``.
+    ``get_boundary_face_normal``, ``get_boundary_face_area``,
+    ``get_boundary_face_velocity``, ``n_procs``.
 Setters
     ``set_cell_scalar_field``, ``set_cell_vector_field``, ``set_time_step``,
     ``set_kinematic_viscosity``, ``set_dirichlet_velocity_boundary_condition_vec``,
@@ -517,6 +518,25 @@ class CouplerInterfaceMixin:
         sf = self.geo_data["face_area_vector"][face_slice]
         mag = np.linalg.norm(sf, axis=1, keepdims=True)
         return self._gather_patch_faces(patch_name, sf / (mag + 1e-30), trailing_shape=(3,))
+
+    def get_boundary_face_velocity(self, patch_name):
+        """Return the actual face-centred velocity stored for a boundary patch."""
+        if self.parallel.is_partitioned:
+            boundary, _, face_slice = self._local_patch_face_ids(patch_name)
+            if boundary is None:
+                local = np.empty((0, 3), dtype=np.float64)
+            else:
+                first = self.mesh_data["n_cells"] + (
+                    face_slice.start - self.mesh_data["n_interior_faces"]
+                )
+                local = self.velocity[first : first + boundary["n_faces"]]
+        else:
+            boundary, face_slice = self._patch_face_slice(patch_name)
+            first = self.mesh_data["n_cells"] + (
+                face_slice.start - self.mesh_data["n_interior_faces"]
+            )
+            local = self.velocity[first : first + boundary["n_faces"]]
+        return self._gather_patch_faces(patch_name, local, trailing_shape=(3,))
 
     def n_procs(self):
         """Number of ranks participating in the native FVM solve."""

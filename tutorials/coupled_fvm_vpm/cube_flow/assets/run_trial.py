@@ -22,6 +22,8 @@ TRANSFER_RESTART_ALLOWLIST = frozenset(
         "coupler.transfer_boundary_prune_multiplier",
         "coupler.transfer_amplification_cap",
         "coupler.transfer_discretization_error_limit",
+        "coupler.fvm_consistency_width",
+        "coupler.vpm_checkpoint_retention",
         "vpm.viscous.gbd_threshold",
         "panel.coupling_scope",
     }

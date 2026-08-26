@@ -31,6 +31,7 @@ from source.coupler.checkpoint import (
     save_coupled_state,
 )
 from source.coupler.config.types import CouplerSetup
+from source.coupler.consistency import FVMConsistencyBand
 from source.coupler.reporting import (
     OutputRedirector,
     configure_logging,
@@ -160,6 +161,7 @@ class FVMVPMCoupler:
         self.vpm_solver: VPMSolver | None = None
         self.fvm_solver: FVMSolver | None = None
         self.vorticity_transfer: VorticityTransfer | None = None
+        self.fvm_consistency_band: FVMConsistencyBand | None = None
         self._velocity_boundary_condition_old: np.ndarray | None = None
         self._normal_velocity_boundary_condition_old: np.ndarray | None = None
         self._normal_velocity_boundary_condition: np.ndarray | None = None
@@ -176,6 +178,13 @@ class FVMVPMCoupler:
             "acceptance_limit": 0.0,
             "applied_correction": 0.0,
             "corrected_mismatch": 0.0,
+        }
+        self._last_fvm_boundary_trace_diagnostics = {
+            "mean_velocity_mismatch": 0.0,
+            "maximum_velocity_mismatch": 0.0,
+            "maximum_normal_velocity_mismatch": 0.0,
+            "mean_outflow_velocity_mismatch": 0.0,
+            "maximum_outflow_velocity_mismatch": 0.0,
         }
         self.coupling_diagnostics: list[dict] = []
         self._last_transfer_result = None
@@ -413,6 +422,14 @@ class FVMVPMCoupler:
 
         self.vorticity_transfer = VorticityTransfer(self)
         self.vorticity_transfer.setup(self.fvm_solver)
+        if cfg.fvm_consistency_width > 0.0:
+            assert self.fvm_box is not None
+            self.fvm_consistency_band = FVMConsistencyBand(
+                cfg,
+                self.fvm_solver,
+                coupling_time_step_size=self.vpm_time_step_size,
+                fvm_box=self.fvm_box,
+            )
         if self._is_master and self.vorticity_transfer._body_bounds is not None:
             assert self.vpm_solver is not None
             self.vpm_solver.physics.configure_body_box(self.vorticity_transfer._body_bounds)

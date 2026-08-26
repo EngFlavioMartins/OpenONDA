@@ -439,6 +439,12 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     }
     if not all(np.isfinite(value) for value in boundary_flux.values()):
         raise FloatingPointError("non-finite VPM boundary-flux diagnostic")
+    boundary_trace = {
+        str(name): float(value)
+        for name, value in getattr(coupler, "_last_fvm_boundary_trace_diagnostics", {}).items()
+    }
+    if not all(np.isfinite(value) for value in boundary_trace.values()):
+        raise FloatingPointError("non-finite FVM boundary-trace diagnostic")
 
     interface = {}
     closure = {}
@@ -492,6 +498,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
                 raise FloatingPointError("non-finite GBD moment-recovery diagnostic")
     return {
         "vpm_boundary_condition_flux": boundary_flux,
+        "fvm_boundary_trace": boundary_trace,
         "transfer": transfer,
         "boundary_normal_velocity": interface,
         "vortex_line_closure": closure,
