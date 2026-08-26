@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 
 import numpy as np
 import pytest
@@ -32,21 +33,23 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     setup = CouplerSetup(
         freestream_velocity=[1.0, 0.0, 0.0],
         eta_blend_width=0.0,
+        checkpoint_interval_steps=2,
     )
 
-    vpm_setup = VPMSetup(
-        time_step_size=VPM_TIME_STEP_SIZE,
-        compute_device="CPU",
-        max_n_particles=50_000,
-        domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-        freestream_velocity=[1.0, 0.0, 0.0],
-        logging_interval_steps=20,
-        timing_interval_steps=20,
-        viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
-    )
-    vpm = VPMSolver(vpm_setup)
+    def make_vpm():
+        config = VPMSetup(
+            time_step_size=VPM_TIME_STEP_SIZE,
+            compute_device="CPU",
+            max_n_particles=50_000,
+            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+            freestream_velocity=[1.0, 0.0, 0.0],
+            logging_interval_steps=20,
+            timing_interval_steps=20,
+            viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
+        )
+        return VPMSolver(config), config
 
-    def make_fvm():
+    def make_fvm(case_dir="."):
         config = FVMSetup(
             case_name="coupled_smoke",
             time=TimeConfig(time_step_size=FVM_TIME_STEP_SIZE, end_time=2 * VPM_TIME_STEP_SIZE),
@@ -63,11 +66,12 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         )
         solver = FVMSolver(
             config,
-            case_dir=".",
+            case_dir=case_dir,
             mesh_data=coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), H),
         )
         return solver, config
 
+    vpm, vpm_setup = make_vpm()
     fvm, fvm_config = make_fvm()
     coupler = FVMVPMCoupler(fvm, vpm, setup)
 
@@ -77,7 +81,30 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert coupler.setup is setup
     assert not hasattr(coupler, "config")
 
-    coupler.run()
+    first_stop = coupler.run(max_coupling_steps=1, checkpoint_at_stop=True)
+    assert first_stop == 1
+    first_checkpoint = tmp_path / "solution" / "checkpoints"
+    first_manifest = json.loads((first_checkpoint / "manifest.json").read_text())
+    assert first_manifest["coupling_step"] == 1
+    assert all("000001" in name for name in first_manifest["artifacts"].values())
+    seed_checkpoint = tmp_path / "seed_checkpoint"
+    shutil.copytree(first_checkpoint, seed_checkpoint)
+    first_metadata = json.loads((tmp_path / "solution" / "run_metadata.json").read_text())
+    assert first_metadata["execution"] == {
+        "start_coupling_step": 0,
+        "stop_coupling_step": 1,
+        "configured_end_coupling_step": 2,
+        "start_time": 0.0,
+        "stop_time": pytest.approx(VPM_TIME_STEP_SIZE),
+        "is_limited": True,
+    }
+
+    second_stop = coupler.solve(
+        start_step=first_stop,
+        max_coupling_steps=1,
+        checkpoint_at_stop=True,
+    )
+    assert second_stop == 2
 
     # Sub-cycling derived from the two native solver time steps.
     assert coupler.n_fvm_substeps == 3
@@ -109,7 +136,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert "fvm substeps per coupling step" in coupler_log
     checkpoint = sol / "checkpoints"
     manifest = json.loads((checkpoint / "manifest.json").read_text())
-    assert manifest["format_version"] == 10
+    assert manifest["format_version"] == 11
     assert manifest["kind"] == "openonda.coupled_checkpoint"
     assert all((checkpoint / name).is_file() for name in manifest["artifacts"].values())
     assert manifest["artifacts"] == {
@@ -124,31 +151,54 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     expected_u = fvm.velocity.copy()
     expected_p = fvm.kinematic_pressure.copy()
     expected_flux = fvm.volumetric_face_flux.copy()
-    restored_vpm = VPMSolver(
-        VPMSetup(
-            time_step_size=VPM_TIME_STEP_SIZE,
-            compute_device="CPU",
-            max_n_particles=50_000,
-            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-            freestream_velocity=[1.0, 0.0, 0.0],
-            logging_interval_steps=20,
-            timing_interval_steps=20,
-            viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
-        )
-    )
-    restored_fvm, _ = make_fvm()
+    restart_case = tmp_path / "restart"
+    restored_vpm, _ = make_vpm()
+    restored_fvm, _ = make_fvm(restart_case)
     restored = FVMVPMCoupler(restored_fvm, restored_vpm, setup)
-    restored.initialize()
-    restored_step = restored.load_state(checkpoint)
+    restored_step = restored.run(
+        restart_from=seed_checkpoint,
+        max_coupling_steps=1,
+        checkpoint_at_stop=True,
+    )
 
     assert restored_step == 2
+    assert restored.vorticity_transfer is not None
+    # Initial synchronization is transfer 1; the saved step-1 state is transfer
+    # 2, and the first resumed replacement must therefore be transfer 3.
+    assert restored.vorticity_transfer.step == restored_step + 1 == 3
     assert restored_fvm.step == 6
     assert restored_vpm.step == 2
+    assert restored_vpm.time == pytest.approx(vpm.time)
+    assert restored_vpm.particles.n_particles_total == vpm.particles.n_particles_total
     np.testing.assert_allclose(restored_fvm.velocity, expected_u, rtol=0.0, atol=1e-13)
     np.testing.assert_allclose(restored_fvm.kinematic_pressure, expected_p, rtol=0.0, atol=1e-13)
     np.testing.assert_allclose(
         restored_fvm.volumetric_face_flux, expected_flux, rtol=0.0, atol=1e-13
     )
+    np.testing.assert_allclose(
+        restored._velocity_boundary_condition_old,
+        coupler._velocity_boundary_condition_old,
+        rtol=0.0,
+        atol=1e-13,
+    )
+    restarted_metadata = json.loads((restart_case / "solution" / "run_metadata.json").read_text())
+    assert restarted_metadata["execution"] == {
+        "start_coupling_step": 1,
+        "stop_coupling_step": 2,
+        "configured_end_coupling_step": 2,
+        "start_time": pytest.approx(VPM_TIME_STEP_SIZE),
+        "stop_time": pytest.approx(2 * VPM_TIME_STEP_SIZE),
+        "is_limited": False,
+    }
     # No external solver case artifacts were created anywhere.
     assert not (tmp_path / "constant").exists()
     assert not (tmp_path / "system").exists()
+
+
+@pytest.mark.parametrize("value", [True, False, 0, -1, 1.5, "2"])
+def test_coupling_step_limit_rejects_invalid_values(value):
+    from source.coupler import FVMVPMCoupler
+
+    error = TypeError if isinstance(value, bool | float | str) else ValueError
+    with pytest.raises(error):
+        FVMVPMCoupler._validate_step_limit(value)

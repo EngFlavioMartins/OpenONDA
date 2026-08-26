@@ -16,7 +16,28 @@ import numpy as np
 from source.solvers.fvm.io.checkpoint import decode_state, encode_state
 
 CHECKPOINT_DIRECTORY = "checkpoints"
-CHECKPOINT_FORMAT_VERSION = 10
+CHECKPOINT_FORMAT_VERSION = 11
+
+_VPM_OPERATIONAL_CONFIG_FIELDS = frozenset(
+    {
+        "time",
+        "step",
+        "logging_interval_steps",
+        "timing_interval_steps",
+        "checkpoint_interval_steps",
+        "checkpoint_name",
+        "checkpoint_directory",
+        "sample_subdirectory",
+        "export_flow_integrals",
+        "export_discretization_health",
+        "log_mode",
+        "clean",
+        "write_precision",
+        "checkpoint_store_velocity_gradient",
+        "debug_mode",
+        "verbose",
+    }
+)
 
 
 def config_mapping_digest(config: dict) -> str:
@@ -27,6 +48,54 @@ def config_mapping_digest(config: dict) -> str:
 
 def config_digest(config) -> str:
     return config_mapping_digest(config.to_dict())
+
+
+def _vpm_numerical_config(vpm_setup) -> dict:
+    """Return only VPM settings that can affect the continued solution."""
+    serialized = vpm_setup.to_dict()
+    if not isinstance(serialized, dict):
+        raise TypeError("VPM checkpoint configuration must serialize to a mapping")
+    return {
+        key: value for key, value in serialized.items() if key not in _VPM_OPERATIONAL_CONFIG_FIELDS
+    }
+
+
+def _panel_numerical_config(panel_solver) -> dict | None:
+    """Serialize the constructor-level panel choices, excluding diagnostics."""
+    if panel_solver is None:
+        return None
+    force_config = getattr(panel_solver, "force_config", None)
+    freestream_velocity = getattr(panel_solver, "freestream_velocity", None)
+    return {
+        "type": f"{type(panel_solver).__module__}.{type(panel_solver).__qualname__}",
+        "max_n_panels": int(panel_solver.max_n_panels),
+        "float_dtype": panel_solver.float_dtype,
+        "linear_solver": panel_solver.linear_solver_name,
+        "force_method": None if force_config is None else force_config.method,
+        "boundary_condition_type": panel_solver.boundary_condition_type,
+        "density": float(panel_solver.density),
+        "freestream_velocity": (
+            None
+            if freestream_velocity is None
+            else np.asarray(freestream_velocity, dtype=np.float64).tolist()
+        ),
+        "coupling_scope": panel_solver.coupling_scope,
+        "raise_on_non_convergence": bool(panel_solver.raise_on_non_convergence),
+        "residual_tolerance": panel_solver.residual_tolerance,
+        "far_field_acceptance": float(panel_solver.far_field_acceptance),
+        "far_field_min_panels": int(panel_solver.far_field_min_panels),
+        "reuse_constrained_factorization": bool(panel_solver.reuse_constrained_factorization),
+    }
+
+
+def _checkpoint_config(coupler) -> dict:
+    """Build the strict restart identity for all coupled numerical components."""
+    if coupler.vpm_solver is None:
+        raise RuntimeError("Initialize the coupler before checkpointing configuration")
+    config = dict(coupler.setup.to_dict())
+    config["vpm"] = _vpm_numerical_config(coupler.vpm_solver.setup)
+    config["panel"] = _panel_numerical_config(coupler.vpm_solver.panel_solver)
+    return config
 
 
 def artifact_digest(path: Path) -> str:
@@ -59,38 +128,43 @@ def _resolve_artifact(target: Path, artifact: str) -> Path:
     return resolved
 
 
+def _config_differences(
+    stored: object,
+    current: object,
+    *,
+    prefix: str = "",
+) -> list[tuple[str, object, object]]:
+    """Return recursive leaf differences with stable dotted paths."""
+    if isinstance(stored, dict) and isinstance(current, dict):
+        differences: list[tuple[str, object, object]] = []
+        for key in sorted(set(stored) | set(current)):
+            path = f"{prefix}.{key}" if prefix else str(key)
+            if key not in stored:
+                differences.append((path, "<missing>", current[key]))
+            elif key not in current:
+                differences.append((path, stored[key], "<missing>"))
+            else:
+                differences.extend(_config_differences(stored[key], current[key], prefix=path))
+        return differences
+    if stored != current:
+        return [(prefix, stored, current)]
+    return []
+
+
 def config_diff(stored: dict | None, current: dict) -> list[str]:
-    """Return ``section.key: old -> new`` lines for a two-level config dict."""
-    if not stored:
+    """Return recursive ``path: old -> new`` configuration differences."""
+    if stored is None:
         return []
-    lines: list[str] = []
-    for section in sorted(set(stored) | set(current)):
-        old_section, new_section = stored.get(section), current.get(section)
-        if isinstance(old_section, dict) and isinstance(new_section, dict):
-            for key in sorted(set(old_section) | set(new_section)):
-                if old_section.get(key) != new_section.get(key):
-                    lines.append(
-                        f"{section}.{key}: {old_section.get(key)!r} -> {new_section.get(key)!r}"
-                    )
-        elif old_section != new_section:
-            lines.append(f"{section}: {old_section!r} -> {new_section!r}")
-    return lines
+    return [
+        f"{path}: {old!r} -> {new!r}" for path, old, new in _config_differences(stored, current)
+    ]
 
 
 def config_difference_paths(stored: dict | None, current: dict) -> set[str]:
-    """Return the exact two-level configuration paths whose values differ."""
-    if not stored:
+    """Return the exact recursive configuration paths whose values differ."""
+    if stored is None:
         return set()
-    paths: set[str] = set()
-    for section in set(stored) | set(current):
-        old_section, new_section = stored.get(section), current.get(section)
-        if isinstance(old_section, dict) and isinstance(new_section, dict):
-            for key in set(old_section) | set(new_section):
-                if old_section.get(key) != new_section.get(key):
-                    paths.add(f"{section}.{key}")
-        elif old_section != new_section:
-            paths.add(section)
-    return paths
+    return {path for path, _old, _new in _config_differences(stored, current)}
 
 
 def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) -> Path:
@@ -120,7 +194,7 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
     boundary_artifact = f"vpm_boundary_condition_{suffix}.npz"
     boundary_temporary = target / f".{boundary_artifact}.tmp"
     boundary_state = {
-        "boundary_schema_version": np.asarray(2, dtype=np.int64),
+        "boundary_schema_version": np.asarray(3, dtype=np.int64),
         "has_velocity": np.asarray(coupler._velocity_boundary_condition_old is not None),
         "velocity": (
             np.empty((0, 3))
@@ -143,6 +217,22 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
             if coupler._tangential_gradient_boundary_condition_old is None
             else coupler._tangential_gradient_boundary_condition_old
         ),
+        "has_kinematic_pressure_gradient": np.asarray(
+            coupler._kinematic_pressure_gradient_boundary_condition_old is not None
+        ),
+        "kinematic_pressure_gradient": (
+            np.empty((0, 3))
+            if coupler._kinematic_pressure_gradient_boundary_condition_old is None
+            else coupler._kinematic_pressure_gradient_boundary_condition_old
+        ),
+        "has_pressure_velocity_snapshot": np.asarray(
+            coupler._pressure_velocity_snapshot is not None
+        ),
+        "pressure_velocity_snapshot": (
+            np.empty((0, 3))
+            if coupler._pressure_velocity_snapshot is None
+            else coupler._pressure_velocity_snapshot
+        ),
     }
     try:
         with open(boundary_temporary, "wb") as stream:
@@ -153,13 +243,14 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
     finally:
         boundary_temporary.unlink(missing_ok=True)
 
+    checkpoint_config = _checkpoint_config(coupler)
     manifest = {
         "format_version": CHECKPOINT_FORMAT_VERSION,
         "kind": "openonda.coupled_checkpoint",
         "created_utc": datetime.now(UTC).isoformat(),
         "backend": "fvm",
-        "config_sha256": config_digest(coupler.setup),
-        "config": coupler.setup.to_dict(),
+        "config_sha256": config_mapping_digest(checkpoint_config),
+        "config": checkpoint_config,
         "coupling_step": step,
         "time": float(coupler.vpm_solver.time),
         "fvm_step": int(coupler.fvm_solver.step),
@@ -276,7 +367,8 @@ def load_coupled_state(
                     not isinstance(artifact_hashes, dict) or set(artifact_hashes) != set(artifacts)
                 ):
                     error = (
-                        "Coupled checkpoint format 10 requires one SHA-256 digest "
+                        f"Coupled checkpoint format {CHECKPOINT_FORMAT_VERSION} requires one "
+                        "SHA-256 digest "
                         "for every declared artifact"
                     )
                 if error is None and artifact_hashes:
@@ -315,27 +407,28 @@ def load_coupled_state(
                     error = "Coupled checkpoint configuration must be a mapping"
                 elif manifest.get("config_sha256") != config_mapping_digest(stored_config):
                     error = "Coupled checkpoint stored configuration hash mismatch"
-                elif manifest.get("config_sha256") != config_digest(coupler.setup):
-                    current_config = coupler.setup.to_dict()
-                    changed_paths = config_difference_paths(stored_config, current_config)
-                    unexpected = changed_paths - set(allowed_config_differences)
-                    changes = config_diff(stored_config, current_config)
-                    detail = "\n  ".join(changes) if changes else "(no structured diff)"
-                    if unexpected:
-                        error = (
-                            "Coupled checkpoint configuration differs outside the explicit "
-                            "allowlist:\n  "
-                            + detail
-                            + "\n  disallowed paths: "
-                            + ", ".join(sorted(unexpected))
-                        )
-                    else:
-                        warnings.warn(
-                            "Loading a coupled checkpoint with explicitly allowed "
-                            f"configuration differences: {', '.join(sorted(changed_paths))}",
-                            RuntimeWarning,
-                            stacklevel=2,
-                        )
+                else:
+                    current_config = _checkpoint_config(coupler)
+                    if manifest.get("config_sha256") != config_mapping_digest(current_config):
+                        changed_paths = config_difference_paths(stored_config, current_config)
+                        unexpected = changed_paths - set(allowed_config_differences)
+                        changes = config_diff(stored_config, current_config)
+                        detail = "\n  ".join(changes) if changes else "(no structured diff)"
+                        if unexpected:
+                            error = (
+                                "Coupled checkpoint configuration differs outside the explicit "
+                                "allowlist:\n  "
+                                + detail
+                                + "\n  disallowed paths: "
+                                + ", ".join(sorted(unexpected))
+                            )
+                        else:
+                            warnings.warn(
+                                "Loading a coupled checkpoint with explicitly allowed "
+                                f"configuration differences: {', '.join(sorted(changed_paths))}",
+                                RuntimeWarning,
+                                stacklevel=2,
+                            )
     if comm is not None and comm.Get_size() > 1:
         error, manifest = comm.bcast(
             (error, manifest) if coupler._is_master else None,
@@ -366,6 +459,10 @@ def load_coupled_state(
                 "normal_velocity",
                 "has_tangential_gradient",
                 "tangential_gradient",
+                "has_kinematic_pressure_gradient",
+                "kinematic_pressure_gradient",
+                "has_pressure_velocity_snapshot",
+                "pressure_velocity_snapshot",
                 "storage_layout",
             }
             if set(boundary.files) != expected_boundary_keys:
@@ -375,7 +472,7 @@ def load_coupled_state(
             )
             if (
                 "boundary_schema_version" not in boundary_state
-                or int(boundary_state["boundary_schema_version"]) != 2
+                or int(boundary_state["boundary_schema_version"]) != 3
             ):
                 raise ValueError("Unsupported coupled boundary checkpoint schema")
             coupler._velocity_boundary_condition_old = (
@@ -391,15 +488,33 @@ def load_coupled_state(
                 if bool(boundary_state["has_tangential_gradient"])
                 else None
             )
+            coupler._kinematic_pressure_gradient_boundary_condition_old = (
+                boundary_state["kinematic_pressure_gradient"].copy()
+                if bool(boundary_state["has_kinematic_pressure_gradient"])
+                else None
+            )
+            coupler._pressure_velocity_snapshot = (
+                boundary_state["pressure_velocity_snapshot"].copy()
+                if bool(boundary_state["has_pressure_velocity_snapshot"])
+                else None
+            )
             coupler._normal_velocity_boundary_condition = None
             coupler._tangential_gradient_boundary_condition = None
+            coupler._kinematic_pressure_gradient_boundary_condition = None
         if not np.isclose(coupler.fvm_solver.time, coupler.vpm_solver.time, rtol=0.0, atol=1e-12):
             error = f"Coupled checkpoint time mismatch: FVM={coupler.fvm_solver.time}, VPM={coupler.vpm_solver.time}"
     if comm is not None and comm.Get_size() > 1:
         error = comm.bcast(error if coupler._is_master else None, root=0)
     if error is not None:
         raise ValueError(error)
-    return int(manifest["coupling_step"])
+    coupling_step = int(manifest["coupling_step"])
+    if coupler.vorticity_transfer is None:
+        raise RuntimeError("Coupled checkpoint load requires an initialized vorticity transfer")
+    # A fresh run performs one initial synchronization plus one transfer after
+    # every completed coupling interval.  Preserve that cadence so resumed
+    # diagnostics and their cost remain identical to an uninterrupted run.
+    coupler.vorticity_transfer.step = coupling_step + 1
+    return coupling_step
 
 
 __all__ = [

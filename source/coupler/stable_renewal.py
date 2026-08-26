@@ -570,6 +570,10 @@ class StableRenewalResult:
     renewed_input_count: int = 0
     renewed_output_count: int = 0
     preserved_outer_count: int = 0
+    coalesced_outer_count: int = 0
+    coalesced_outer_input_indices: np.ndarray = field(
+        default_factory=lambda: np.empty(0, dtype=np.int64)
+    )
     excluded_solid_count: int = 0
     pruned_node_count: int = 0
     pruned_vortex_strength_l1: float = 0.0
@@ -578,7 +582,17 @@ class StableRenewalResult:
     population_pruned_vortex_strength_fraction: float = 0.0
     population_pruned_velocity_bound: float = 0.0
     transfer_cfl: float = 0.0
+    conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
+    conservation_applied_correction: dict[str, float] = field(default_factory=dict)
     conservation_residual: dict[str, float] = field(default_factory=dict)
+    conservation_applied_particle_strength_fraction: float = 0.0
+    conservation_target_invariants: VortexInvariants | None = None
+    conservation_raw_invariants: VortexInvariants | None = None
+    conservation_reference_strength_l1: float = 0.0
+    population_conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
+    population_conservation_applied_correction: dict[str, float] = field(default_factory=dict)
+    population_conservation_residual: dict[str, float] = field(default_factory=dict)
+    population_conservation_applied_particle_strength_fraction: float = 0.0
     representation_residual_before_prune: float | None = None
     representation_residual_after_prune: float | None = None
     maximum_transfer_amplification: float = 0.0
@@ -714,18 +728,31 @@ def renew_stable_overlap(
     pruned_l1 = float(magnitude_before[pruned].sum())
 
     renewed_position = lattice.positions[keep]
-    renewed_strength = redistributed[keep]
-    conservation_residual: dict[str, float] = {}
+    raw_renewed_strength = redistributed[keep]
+    renewed_strength = raw_renewed_strength
+    renewed_volume = np.full(len(renewed_position), spacing**3, dtype=np.float64)
+    raw_invariants = vortex_invariants(renewed_position, raw_renewed_strength)
+    conservation_raw_mismatch = _invariant_residual(pre_prune_invariants, raw_invariants)
+    conservation_target_invariants = pre_prune_invariants
+    conservation_raw_invariants = raw_invariants
+    conservation_reference_strength_l1 = active_l1
     if len(renewed_position) > 1:
-        renewed_volume = np.full(len(renewed_position), spacing**3, dtype=np.float64)
         renewed_strength = recover_vortex_invariants(
             renewed_position,
-            renewed_strength,
+            raw_renewed_strength,
             pre_prune_invariants,
             volumes=renewed_volume,
         )
-        closed = vortex_invariants(renewed_position, renewed_strength)
-        conservation_residual = _invariant_residual(pre_prune_invariants, closed)
+    corrected_invariants = vortex_invariants(renewed_position, renewed_strength)
+    conservation_applied_correction = _invariant_residual(
+        raw_invariants,
+        corrected_invariants,
+    )
+    conservation_residual = _invariant_residual(pre_prune_invariants, corrected_invariants)
+    applied_particle_strength_fraction = float(
+        np.linalg.norm(renewed_strength - raw_renewed_strength, axis=1).sum(dtype=np.float64)
+        / (active_l1 + 1.0e-30)
+    )
 
     residual_after_prune: float | None = None
     if compute_diagnostics:
@@ -749,22 +776,100 @@ def renew_stable_overlap(
             / denominator
         )
 
-    renewed_volume = np.full(len(renewed_position), spacing**3, dtype=np.float64)
     renewed_radius = np.full(len(renewed_position), base_core_radius, dtype=np.float64)
-    if np.any(preserved_outer):
-        output_position = np.vstack((renewed_position, position[preserved_outer]))
-        output_strength = np.vstack((renewed_strength, tapered_strength[preserved_outer]))
+
+    # M4' support extends beyond the physical renewal belt.  A support value
+    # can therefore land on the same regular node as an existing persistent
+    # particle.  Merge only those exact lattice collisions after renewal
+    # closure; this keeps the configured persistence boundary unchanged and
+    # prevents duplicate co-located particles at the support seam.
+    preserved_for_append = preserved_outer.copy()
+    coalesced_outer_count = 0
+    coalesced_outer_input_indices = np.empty(0, dtype=np.int64)
+    if len(renewed_position) and np.any(preserved_outer):
+        outer_index = np.flatnonzero(preserved_outer)
+        lattice_maximum = lattice.origin + spacing * (np.asarray(lattice.shape) - 1)
+        position_tolerance = _ALIGNMENT_TOLERANCE_CELLS * spacing
+        inside_support = np.ones(len(outer_index), dtype=bool)
+        for axis in range(3):
+            coordinate = position[outer_index, axis]
+            inside_support &= coordinate >= lattice.origin[axis] - position_tolerance
+            inside_support &= coordinate <= lattice_maximum[axis] + position_tolerance
+        candidate_outer_index = outer_index[inside_support]
+        relative_outer = (position[candidate_outer_index] - lattice.origin) / spacing
+        nearest_outer = np.rint(relative_outer).astype(np.int64)
+        shape_array = np.asarray(lattice.shape, dtype=np.int64)
+        aligned_outer = (
+            np.max(np.abs(relative_outer - nearest_outer), axis=1) <= _ALIGNMENT_TOLERANCE_CELLS
+        )
+        aligned_outer &= np.all(
+            (nearest_outer >= 0) & (nearest_outer < shape_array),
+            axis=1,
+        )
+        aligned_candidate = np.flatnonzero(aligned_outer)
+        if len(aligned_candidate):
+            candidate_lattice_index = nearest_outer[aligned_candidate]
+            candidate_flat_index = np.ravel_multi_index(
+                candidate_lattice_index.T,
+                lattice.shape,
+            )
+            renewed_flat_index = np.flatnonzero(keep)
+            renewed_row = np.searchsorted(renewed_flat_index, candidate_flat_index)
+            valid_row = renewed_row < len(renewed_flat_index)
+            collision = np.zeros(len(renewed_row), dtype=bool)
+            collision[valid_row] = (
+                renewed_flat_index[renewed_row[valid_row]] == candidate_flat_index[valid_row]
+            )
+            if np.any(collision):
+                collided_outer_index = candidate_outer_index[aligned_candidate[collision]]
+                coalesced_invariants = vortex_invariants(
+                    renewed_position[renewed_row[collision]],
+                    tapered_strength[collided_outer_index],
+                )
+
+                def with_coalesced(base: VortexInvariants) -> VortexInvariants:
+                    return VortexInvariants(
+                        total_vortex_strength=(
+                            base.total_vortex_strength + coalesced_invariants.total_vortex_strength
+                        ),
+                        linear_impulse=base.linear_impulse + coalesced_invariants.linear_impulse,
+                        angular_impulse=(
+                            base.angular_impulse + coalesced_invariants.angular_impulse
+                        ),
+                    )
+
+                conservation_target_invariants = with_coalesced(conservation_target_invariants)
+                conservation_raw_invariants = with_coalesced(conservation_raw_invariants)
+                conservation_reference_strength_l1 += float(
+                    np.linalg.norm(
+                        tapered_strength[collided_outer_index],
+                        axis=1,
+                    ).sum(dtype=np.float64)
+                )
+                renewed_strength = renewed_strength.copy()
+                np.add.at(
+                    renewed_strength,
+                    renewed_row[collision],
+                    tapered_strength[collided_outer_index],
+                )
+                preserved_for_append[collided_outer_index] = False
+                coalesced_outer_count = int(len(collided_outer_index))
+                coalesced_outer_input_indices = collided_outer_index
+
+    if np.any(preserved_for_append):
+        output_position = np.vstack((renewed_position, position[preserved_for_append]))
+        output_strength = np.vstack((renewed_strength, tapered_strength[preserved_for_append]))
         output_volume = np.concatenate(
             (
                 renewed_volume,
-                np.full(np.count_nonzero(preserved_outer), spacing**3, dtype=np.float64),
+                np.full(np.count_nonzero(preserved_for_append), spacing**3, dtype=np.float64),
             )
         )
         output_radius = np.concatenate(
             (
                 renewed_radius,
                 np.full(
-                    np.count_nonzero(preserved_outer),
+                    np.count_nonzero(preserved_for_append),
                     base_core_radius,
                     dtype=np.float64,
                 ),
@@ -779,8 +884,12 @@ def renew_stable_overlap(
     population_pruned_count = 0
     population_pruned_fraction = 0.0
     population_velocity_bound = 0.0
+    population_conservation_raw_mismatch: dict[str, float] = {}
+    population_conservation_applied_correction: dict[str, float] = {}
+    population_conservation_residual: dict[str, float] = {}
+    population_applied_particle_strength_fraction = 0.0
     final_renewed_count = len(renewed_position)
-    final_outer_count = int(np.count_nonzero(preserved_outer))
+    final_outer_count = int(np.count_nonzero(preserved_for_append))
     if maximum_particle_count is not None and len(output_position) > maximum_particle_count:
         target_count = int(maximum_particle_count)
         combined_invariants = vortex_invariants(output_position, output_strength)
@@ -835,14 +944,32 @@ def renew_stable_overlap(
         final_renewed_count = int(np.count_nonzero(keep_indices < renewed_count))
         final_outer_count = int(len(keep_indices) - final_renewed_count)
         output_position = output_position[keep_indices]
-        output_strength = output_strength[keep_indices]
+        raw_population_strength = output_strength[keep_indices]
         output_volume = output_volume[keep_indices]
         output_radius = output_radius[keep_indices]
+        raw_population_invariants = vortex_invariants(output_position, raw_population_strength)
+        population_conservation_raw_mismatch = _invariant_residual(
+            combined_invariants,
+            raw_population_invariants,
+        )
         output_strength = recover_vortex_invariants(
             output_position,
-            output_strength,
+            raw_population_strength,
             combined_invariants,
             volumes=output_volume,
+        )
+        corrected_population_invariants = vortex_invariants(output_position, output_strength)
+        population_conservation_applied_correction = _invariant_residual(
+            raw_population_invariants,
+            corrected_population_invariants,
+        )
+        population_conservation_residual = _invariant_residual(
+            combined_invariants,
+            corrected_population_invariants,
+        )
+        population_applied_particle_strength_fraction = float(
+            np.linalg.norm(output_strength - raw_population_strength, axis=1).sum(dtype=np.float64)
+            / (float(combined_magnitude.sum(dtype=np.float64)) + 1.0e-30)
         )
 
     speed = _nonnegative_finite("freestream_speed", abs(float(freestream_speed)))
@@ -856,6 +983,8 @@ def renew_stable_overlap(
         renewed_input_count=int(np.count_nonzero(in_renewal_belt)),
         renewed_output_count=final_renewed_count,
         preserved_outer_count=final_outer_count,
+        coalesced_outer_count=coalesced_outer_count,
+        coalesced_outer_input_indices=coalesced_outer_input_indices,
         excluded_solid_count=int(np.count_nonzero(deep_solid)),
         pruned_node_count=int(np.count_nonzero(pruned)),
         pruned_vortex_strength_l1=pruned_l1,
@@ -864,7 +993,19 @@ def renew_stable_overlap(
         population_pruned_vortex_strength_fraction=population_pruned_fraction,
         population_pruned_velocity_bound=population_velocity_bound,
         transfer_cfl=float(transfer_cfl),
+        conservation_raw_mismatch=conservation_raw_mismatch,
+        conservation_applied_correction=conservation_applied_correction,
         conservation_residual=conservation_residual,
+        conservation_applied_particle_strength_fraction=applied_particle_strength_fraction,
+        conservation_target_invariants=conservation_target_invariants,
+        conservation_raw_invariants=conservation_raw_invariants,
+        conservation_reference_strength_l1=conservation_reference_strength_l1,
+        population_conservation_raw_mismatch=population_conservation_raw_mismatch,
+        population_conservation_applied_correction=population_conservation_applied_correction,
+        population_conservation_residual=population_conservation_residual,
+        population_conservation_applied_particle_strength_fraction=(
+            population_applied_particle_strength_fraction
+        ),
         representation_residual_before_prune=residual_before_prune,
         representation_residual_after_prune=residual_after_prune,
         maximum_transfer_amplification=blend.maximum_amplification,

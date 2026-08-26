@@ -104,6 +104,25 @@ def test_vpm_checkpoint_storage_policy_survives_setup_serialization():
     assert not restored.checkpoint_store_velocity_gradient
 
 
+@pytest.mark.parametrize("store_velocity_gradient", [True, False])
+def test_checkpoint_refresh_only_computes_gradients_when_stored(
+    tmp_path,
+    monkeypatch,
+    store_velocity_gradient,
+):
+    solver = _solver(tmp_path / "refresh", store_velocity_gradient=store_velocity_gradient)
+    calls = []
+    monkeypatch.setattr(
+        solver.stepper,
+        "_update_velocity_gradients",
+        lambda: calls.append("gradient"),
+    )
+
+    solver._refresh_checkpoint_particle_fields()
+
+    assert calls == (["gradient"] if store_velocity_gradient else [])
+
+
 def test_empty_vpm_checkpoint_is_still_paraview_readable(tmp_path):
     solver = _solver(tmp_path / "writer", store_velocity_gradient=False)
     checkpoint = tmp_path / "empty"

@@ -34,6 +34,23 @@ _GRID_TRANSFER_CHUNK = 65536
 # Vulkan fence-watchdog limit observed in the production coupled-cube case.
 _M4_SCATTER_BATCH_SIZE = 4096
 
+# The nine moment constraints need 27 coefficients per survivor when written
+# as one dense tensor.  Production clouds can contain O(10^6) survivors, so
+# form that tensor only in bounded host chunks while accumulating the fixed
+# 9x9 normal matrix and applying its correction.
+_GBD_MOMENT_CHUNK_SIZE = 65536
+_GBD_MOMENT_RCOND = 1.0e-12
+_GBD_MOMENT_CONDITION_LIMIT = 1.0e12
+_GBD_MOMENT_RESIDUAL_LIMIT = 1.0e-5
+# A deficient support normally needs at most three replacements.  Limit the
+# cap-full search to a small weakest-node frontier so each candidate is judged
+# with fixed 9x9 algebra instead of an O(N_retained) trial cloud.
+_GBD_MOMENT_REPLACEMENT_POOL_SIZE = 32
+# A recovery whose L1 change is comparable with the complete diffused field is
+# no longer a small pruning closure.  Stop before mutating the production grid
+# instead of accepting a numerically closed but physically amplified cloud.
+_GBD_MOMENT_CORRECTION_FRACTION_LIMIT = 0.5
+
 # Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * particle_spacing
 _REGEN_RADIUS_RATIO = 2.5
 
@@ -72,6 +89,100 @@ def _nearest_node_mapping(
     linear_index = selected[:, 0] * (ny * nz) + selected[:, 1] * nz + selected[:, 2]
     vortex_strength_weight = np.abs(np.asarray(vortex_strength)[valid]).sum(axis=1)
     return _NearestNodeMapping(valid, linear_index, vortex_strength_weight)
+
+
+def _gbd_moment_constraint_rows(scaled_position: np.ndarray) -> np.ndarray:
+    """Return one bounded chunk of the nine GBD moment constraints."""
+    radius_squared = np.einsum(
+        "ij,ij->i",
+        scaled_position,
+        scaled_position,
+    )
+    rows = np.zeros((len(scaled_position), 9, 3), dtype=np.float64)
+    rows[:, :3, :] = np.eye(3)
+    rows[:, 3, 1] = -scaled_position[:, 2]
+    rows[:, 3, 2] = scaled_position[:, 1]
+    rows[:, 4, 0] = scaled_position[:, 2]
+    rows[:, 4, 2] = -scaled_position[:, 0]
+    rows[:, 5, 0] = -scaled_position[:, 1]
+    rows[:, 5, 1] = scaled_position[:, 0]
+    rows[:, 6:, :] = (
+        np.einsum("ij,ik->ijk", scaled_position, scaled_position)
+        - radius_squared[:, None, None] * np.eye(3)
+    ) / 3.0
+    return rows
+
+
+def _gbd_moment_gram(
+    position: np.ndarray,
+    vortex_strength: np.ndarray,
+    particle_spacing: float,
+) -> tuple[np.ndarray, float, np.ndarray]:
+    """Build the bounded-memory weighted moment Gram matrix."""
+    weight_magnitude = np.linalg.norm(vortex_strength, axis=1)
+    weight_sum = float(weight_magnitude.sum(dtype=np.float64))
+    if not np.isfinite(weight_sum) or weight_sum <= 0.0:
+        raise RuntimeError("GBD moment support has no finite retained strength")
+    weights = weight_magnitude / weight_sum
+    length_scale = max(
+        float(
+            np.sqrt(
+                np.sum(
+                    weights
+                    * np.einsum(
+                        "ij,ij->i",
+                        position,
+                        position,
+                    )
+                )
+            )
+        ),
+        float(particle_spacing),
+    )
+    gram = np.zeros((9, 9), dtype=np.float64)
+    for start in range(0, len(position), _GBD_MOMENT_CHUNK_SIZE):
+        stop = min(start + _GBD_MOMENT_CHUNK_SIZE, len(position))
+        rows = _gbd_moment_constraint_rows(position[start:stop] / length_scale)
+        gram += np.einsum(
+            "i,ijk,ilk->jl",
+            weights[start:stop],
+            rows,
+            rows,
+        )
+    return gram, length_scale, weights
+
+
+def _gbd_moment_gram_quality(gram: np.ndarray) -> tuple[int, float]:
+    """Return numerical rank and condition under the production closure limits."""
+    if not np.all(np.isfinite(gram)):
+        return 0, float("inf")
+    singular_values = np.linalg.svd(gram, compute_uv=False)
+    if len(singular_values) == 0 or singular_values[0] <= 0.0:
+        return 0, float("inf")
+    cutoff = _GBD_MOMENT_RCOND * singular_values[0]
+    rank = int(np.count_nonzero(singular_values > cutoff))
+    condition = (
+        float("inf")
+        if singular_values[-1] <= 0.0
+        else float(singular_values[0] / singular_values[-1])
+    )
+    return rank, condition
+
+
+def _gbd_moment_support_quality(
+    position: np.ndarray,
+    vortex_strength: np.ndarray,
+    particle_spacing: float,
+) -> tuple[int, float]:
+    """Return closure rank/conditioning for one retained support cloud."""
+    if len(position) < 4:
+        return 0, float("inf")
+    gram, _length_scale, _weights = _gbd_moment_gram(
+        position,
+        vortex_strength,
+        particle_spacing,
+    )
+    return _gbd_moment_gram_quality(gram)
 
 
 def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
@@ -218,10 +329,18 @@ class _GridDiffusionMixin:
     # for particles, the treecode, evaluation fields and ndarray staging.
     _GRID_POOL_SHARE: float = 0.45
 
+    # Thresholding is a population-control operation, not a physical sink.
+    # Restore the discarded nodes onto the retained cloud while preserving the
+    # diffused field's circulation and impulse moments.  The long-running cube
+    # coupling method relied on this closure before it was removed during the
+    # later GBD simplification.
+    conserve_pruned_moments: bool = True
+
     def _init_grid_diffusion(self):
         """Initialize grid-based diffusion state."""
         self._grid_realloc_count: int = 0
         self._last_gbd_diffusion_substeps: int = 1
+        self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
 
         # Core radius assigned to regenerated particles (σ = ratio·particle_spacing).
         self.core_radius_ratio: float = _REGEN_RADIUS_RATIO
@@ -268,6 +387,31 @@ class _GridDiffusionMixin:
     def last_gbd_diffusion_substeps(self) -> int:
         """Exact explicit-Laplacian stage count used by the last GBD operation."""
         return self._last_gbd_diffusion_substeps
+
+    @staticmethod
+    def _empty_gbd_moment_recovery() -> dict[str, bool | int | float]:
+        return {
+            "applied": False,
+            "nonzero_node_count": 0,
+            "retained_node_count": 0,
+            "pruned_node_count": 0,
+            "support_augmented_node_count": 0,
+            "correction_fraction": 0.0,
+            "normalized_vortex_strength_residual": 0.0,
+            "normalized_linear_impulse_residual": 0.0,
+            "normalized_angular_impulse_residual": 0.0,
+        }
+
+    @property
+    def last_gbd_moment_recovery(self) -> dict[str, bool | int | float]:
+        """Return a copy of the most recent GBD pruning-closure diagnostic."""
+        return dict(
+            getattr(
+                self,
+                "_last_gbd_moment_recovery",
+                self._empty_gbd_moment_recovery(),
+            )
+        )
 
     @property
     def _other_grid(self):
@@ -883,6 +1027,628 @@ class _GridDiffusionMixin:
         threshold = float(vortex_strength_magnitude[ix_keep, iy_keep, iz_keep].min())
         return ix_keep, iy_keep, iz_keep, threshold, n_survivors
 
+    @staticmethod
+    def _augment_moment_recovery_support(
+        grid_np: np.ndarray,
+        vortex_strength_magnitude: np.ndarray,
+        ix: np.ndarray,
+        iy: np.ndarray,
+        iz: np.ndarray,
+        grid_min_np: np.ndarray,
+        particle_spacing: float,
+        cap: int,
+        labels: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, bool]:
+        """Introduce the strongest pruned nodes needed for a safe moment basis.
+
+        The threshold/cap selection remains the physical population-control
+        decision.  This method only augments that set when its geometry cannot
+        carry the nine historical recovery constraints.  It first fills unused
+        capacity, then (only when the cap is full) exchanges the weakest
+        retained node for the strongest discarded candidate that improves the
+        moment basis.  It never exceeds the cap.
+
+        The final boolean selects historical per-group recovery.  If any group
+        was sparse in the original threshold result, recovery remains global,
+        exactly matching the former sparse-group fallback.
+        """
+        shape = vortex_strength_magnitude.shape
+        flat_grid = grid_np.reshape(-1, 3)
+        flat_magnitude = vortex_strength_magnitude.reshape(-1)
+        retained_flat = np.ravel_multi_index((ix, iy, iz), shape).astype(np.int64)
+        nonzero_flat = np.flatnonzero(flat_magnitude > 0.0)
+        if len(retained_flat) >= len(nonzero_flat):
+            return ix, iy, iz, 0, False
+
+        retained_marker = np.zeros(flat_magnitude.shape, dtype=bool)
+        retained_marker[retained_flat] = True
+        candidate_flat = nonzero_flat[~retained_marker[nonzero_flat]]
+
+        flat_labels = None if labels is None else np.asarray(labels).reshape(-1)
+        preserve_groups = False
+        unique_labels: np.ndarray | None = None
+        if flat_labels is not None:
+            unique_labels = np.unique(flat_labels[nonzero_flat])
+            retained_labels = flat_labels[retained_flat]
+            preserve_groups = len(unique_labels) > 1 and all(
+                np.count_nonzero(retained_labels == label) >= 4 for label in unique_labels
+            )
+
+        selected = retained_flat.tolist()
+        selected_set = set(selected)
+        introduced: set[int] = set()
+        retired: set[int] = set()
+
+        def support_geometry(selected_flat: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            sx, sy, sz = np.unravel_index(selected_flat, shape)
+            position = np.stack(
+                [
+                    grid_min_np[0] + sx * particle_spacing,
+                    grid_min_np[1] + sy * particle_spacing,
+                    grid_min_np[2] + sz * particle_spacing,
+                ],
+                axis=1,
+            ).astype(np.float64)
+            strength = flat_grid[selected_flat].astype(np.float64)
+            return position, strength
+
+        def support_quality(selected_flat: np.ndarray) -> tuple[int, float]:
+            position, strength = support_geometry(selected_flat)
+            return _gbd_moment_support_quality(
+                position,
+                strength,
+                particle_spacing,
+            )
+
+        def quality_improves(
+            trial_rank: int,
+            trial_condition: float,
+            rank: int,
+            condition: float,
+        ) -> bool:
+            if trial_rank != rank:
+                return trial_rank > rank
+            if not np.isfinite(trial_condition):
+                return False
+            return not np.isfinite(condition) or trial_condition < condition * (1.0 - 1.0e-10)
+
+        def augment_scope(label: int | None) -> None:
+            def scope_selection(*, with_indices: bool = False) -> np.ndarray:
+                selected_array = np.asarray(selected, dtype=np.int64)
+                if label is None or flat_labels is None:
+                    selection = np.arange(len(selected_array), dtype=np.int64)
+                else:
+                    selection = np.flatnonzero(flat_labels[selected_array] == label)
+                return selection if with_indices else selected_array[selection]
+
+            scoped_candidates = candidate_flat
+            if label is not None and flat_labels is not None:
+                scoped_candidates = scoped_candidates[flat_labels[scoped_candidates] == label]
+            # Per-group closure does not require a basis for a group from which
+            # no node was pruned.
+            if len(scoped_candidates) == 0:
+                return
+
+            rank, condition = support_quality(scope_selection())
+            if rank == 9 and condition <= _GBD_MOMENT_CONDITION_LIMIT:
+                return
+
+            candidate_order = np.argsort(
+                -flat_magnitude[scoped_candidates],
+                kind="stable",
+            )
+            scoped_candidates = scoped_candidates[candidate_order]
+
+            for candidate in scoped_candidates:
+                if len(selected) >= cap:
+                    break
+                candidate_int = int(candidate)
+                if candidate_int in selected_set:
+                    continue
+                selected.append(candidate_int)
+                selected_set.add(candidate_int)
+                introduced.add(candidate_int)
+                rank, condition = support_quality(scope_selection())
+                if rank == 9 and condition <= _GBD_MOMENT_CONDITION_LIMIT:
+                    return
+            else:
+                # Every nonzero node in this scope is now retained, so there is
+                # no discarded strength for its moment basis to redistribute.
+                return
+
+            # The cap is full but its support can still be geometrically
+            # deficient (for example, four nearly collinear strongest nodes).
+            # Keep the strongest selected nodes whenever possible: examine a
+            # bounded weakest-node frontier and accept the first, strongest
+            # discarded candidate that gives a strict rank/condition gain.
+            while len(selected) >= cap:
+                scoped_flat = scope_selection()
+                if len(scoped_flat) < 4:
+                    break
+                position, strength = support_geometry(scoped_flat)
+                gram, length_scale, _weights = _gbd_moment_gram(
+                    position,
+                    strength,
+                    particle_spacing,
+                )
+                rank, condition = _gbd_moment_gram_quality(gram)
+                if rank == 9 and condition <= _GBD_MOMENT_CONDITION_LIMIT:
+                    return
+                raw_gram = gram * float(np.linalg.norm(strength, axis=1).sum(dtype=np.float64))
+
+                scope_indices = scope_selection(with_indices=True)
+                weakest_order = np.argsort(
+                    flat_magnitude[scoped_flat],
+                    kind="stable",
+                )[:_GBD_MOMENT_REPLACEMENT_POOL_SIZE]
+                replacement_indices = scope_indices[weakest_order]
+                replacement_flat = scoped_flat[weakest_order]
+                replacement_rows = _gbd_moment_constraint_rows(
+                    position[weakest_order] / length_scale
+                )
+                replacement_contributions = np.einsum(
+                    "i,ijk,ilk->ijl",
+                    np.linalg.norm(strength[weakest_order], axis=1),
+                    replacement_rows,
+                    replacement_rows,
+                )
+
+                accepted = False
+                for candidate in scoped_candidates:
+                    candidate_int = int(candidate)
+                    if candidate_int in selected_set or candidate_int in retired:
+                        continue
+                    cx, cy, cz = np.unravel_index(candidate_int, shape)
+                    candidate_position = np.asarray(
+                        [
+                            grid_min_np[0] + cx * particle_spacing,
+                            grid_min_np[1] + cy * particle_spacing,
+                            grid_min_np[2] + cz * particle_spacing,
+                        ],
+                        dtype=np.float64,
+                    )
+                    candidate_rows = _gbd_moment_constraint_rows(
+                        candidate_position[None, :] / length_scale
+                    )[0]
+                    candidate_contribution = flat_magnitude[candidate_int] * (
+                        candidate_rows @ candidate_rows.T
+                    )
+
+                    improving_replacements: list[int] = []
+                    for local_index, removed_contribution in enumerate(replacement_contributions):
+                        trial_gram = raw_gram - removed_contribution + candidate_contribution
+                        trial_rank, trial_condition = _gbd_moment_gram_quality(trial_gram)
+                        if not quality_improves(
+                            trial_rank,
+                            trial_condition,
+                            rank,
+                            condition,
+                        ):
+                            continue
+                        improving_replacements.append(local_index)
+                    if not improving_replacements:
+                        continue
+
+                    # ``weakest_order`` is ascending, so retain every stronger
+                    # threshold/cap winner unless replacing a weaker node does
+                    # not produce a genuine full-support improvement after the
+                    # exact length-scale normalization is recomputed.
+                    for local_index in improving_replacements:
+                        replacement_index = int(replacement_indices[local_index])
+                        removed_flat = int(replacement_flat[local_index])
+                        selected[replacement_index] = candidate_int
+                        trial_rank, trial_condition = support_quality(scope_selection())
+                        if not quality_improves(
+                            trial_rank,
+                            trial_condition,
+                            rank,
+                            condition,
+                        ):
+                            selected[replacement_index] = removed_flat
+                            continue
+
+                        selected_set.remove(removed_flat)
+                        selected_set.add(candidate_int)
+                        retired.add(removed_flat)
+                        introduced.discard(removed_flat)
+                        introduced.add(candidate_int)
+                        rank, condition = trial_rank, trial_condition
+                        accepted = True
+                        break
+                    if accepted:
+                        break
+                if not accepted:
+                    break
+                if rank == 9 and condition <= _GBD_MOMENT_CONDITION_LIMIT:
+                    return
+            scope_name = "the complete cloud" if label is None else f"group {label!r}"
+            raise RuntimeError(
+                "GBD moment recovery cannot form full-rank support within the "
+                f"regeneration cap for {scope_name}: rank={rank}/9, "
+                f"condition={condition:.6e}, retained={len(selected):,}, cap={cap:,}"
+            )
+
+        if preserve_groups:
+            assert unique_labels is not None
+            for label in unique_labels:
+                augment_scope(int(label))
+        else:
+            augment_scope(None)
+
+        augmented_flat = np.asarray(selected, dtype=np.int64)
+        augmented_ix, augmented_iy, augmented_iz = np.unravel_index(
+            augmented_flat,
+            shape,
+        )
+        return (
+            np.asarray(augmented_ix),
+            np.asarray(augmented_iy),
+            np.asarray(augmented_iz),
+            len(introduced),
+            preserve_groups,
+        )
+
+    @staticmethod
+    def _redistribute_pruned_moments(
+        grid_np: np.ndarray,
+        vortex_strength_magnitude: np.ndarray,
+        ix: np.ndarray,
+        iy: np.ndarray,
+        iz: np.ndarray,
+        grid_min_np: np.ndarray,
+        particle_spacing: float,
+        labels: np.ndarray | None = None,
+        diagnostics: dict[str, bool | int | float] | None = None,
+    ) -> np.ndarray:
+        """Coarsen pruned nodes locally while preserving diffusive moments.
+
+        The retained cloud preserves total vortex strength, linear impulse, and
+        angular impulse of the complete post-diffusion grid.  A nearest-node
+        coarsening first keeps discarded tail strength close to its physical
+        location; a weighted minimum-norm correction then closes the nine
+        moment constraints.  Discarded nodes alone are queried against the
+        retained-node tree, and the constraint algebra is evaluated in bounded
+        chunks so memory use does not grow by 27 float64 values per survivor.
+
+        The returned values have already been rounded to the storage dtype and
+        validated.  Singular geometry, excessive correction, or a failed
+        post-cast moment closure raises before the production grid is mutated.
+        """
+        retained_vortex_strength = grid_np[ix, iy, iz].astype(np.float64)
+        retained_position = np.stack(
+            [
+                grid_min_np[0] + ix * particle_spacing,
+                grid_min_np[1] + iy * particle_spacing,
+                grid_min_np[2] + iz * particle_spacing,
+            ],
+            axis=1,
+        ).astype(np.float64)
+
+        discarded_mask = vortex_strength_magnitude > 0.0
+        discarded_mask[ix, iy, iz] = False
+        discarded_i, discarded_j, discarded_k = np.where(discarded_mask)
+        if len(discarded_i) == 0:
+            if diagnostics is not None:
+                diagnostics.update(
+                    correction_fraction=0.0,
+                    normalized_vortex_strength_residual=0.0,
+                    normalized_linear_impulse_residual=0.0,
+                    normalized_angular_impulse_residual=0.0,
+                )
+            return retained_vortex_strength.astype(grid_np.dtype, copy=False)
+        discarded_vortex_strength = grid_np[
+            discarded_i,
+            discarded_j,
+            discarded_k,
+        ].astype(np.float64)
+        discarded_position = np.stack(
+            [
+                grid_min_np[0] + discarded_i * particle_spacing,
+                grid_min_np[1] + discarded_j * particle_spacing,
+                grid_min_np[2] + discarded_k * particle_spacing,
+            ],
+            axis=1,
+        ).astype(np.float64)
+
+        def moment_state(
+            position: np.ndarray,
+            vortex_strength: np.ndarray,
+        ) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], tuple[float, float, float]]:
+            linear_terms = np.cross(position, vortex_strength)
+            angular_terms = np.cross(position, linear_terms) / 3.0
+            moments = (
+                vortex_strength.sum(axis=0, dtype=np.float64),
+                linear_terms.sum(axis=0, dtype=np.float64),
+                angular_terms.sum(axis=0, dtype=np.float64),
+            )
+            scales = (
+                float(np.linalg.norm(vortex_strength, axis=1).sum(dtype=np.float64)),
+                float(np.linalg.norm(linear_terms, axis=1).sum(dtype=np.float64)),
+                float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
+            )
+            return moments, scales
+
+        def validate(
+            survivor_position: np.ndarray,
+            raw_survivor_strength: np.ndarray,
+            removed_position: np.ndarray,
+            removed_strength: np.ndarray,
+            corrected: np.ndarray,
+            *,
+            scope: str,
+            record_diagnostics: bool = False,
+        ) -> np.ndarray:
+            stored = corrected.astype(grid_np.dtype, copy=False)
+            stored_float64 = stored.astype(np.float64, copy=False)
+            if not np.all(np.isfinite(stored_float64)):
+                raise RuntimeError(f"GBD moment recovery produced non-finite strengths for {scope}")
+
+            survivor_moments, survivor_scales = moment_state(
+                survivor_position,
+                raw_survivor_strength,
+            )
+            removed_moments, removed_scales = moment_state(
+                removed_position,
+                removed_strength,
+            )
+            target_moments = tuple(
+                survivor + removed
+                for survivor, removed in zip(
+                    survivor_moments,
+                    removed_moments,
+                    strict=True,
+                )
+            )
+            target_scales = tuple(
+                survivor + removed
+                for survivor, removed in zip(
+                    survivor_scales,
+                    removed_scales,
+                    strict=True,
+                )
+            )
+            actual_moments, _actual_scales = moment_state(
+                survivor_position,
+                stored_float64,
+            )
+
+            complete_strength_scale = max(target_scales[0], np.finfo(np.float64).tiny)
+            position_scale = max(
+                float(
+                    np.sqrt(
+                        np.einsum(
+                            "ij,ij->i",
+                            survivor_position,
+                            survivor_position,
+                        ).mean()
+                    )
+                ),
+                float(particle_spacing),
+            )
+            normalization = (
+                complete_strength_scale,
+                max(target_scales[1], complete_strength_scale * position_scale),
+                max(target_scales[2], complete_strength_scale * position_scale**2),
+            )
+            relative_residual = np.asarray(
+                [
+                    np.linalg.norm(target - actual) / scale
+                    for target, actual, scale in zip(
+                        target_moments,
+                        actual_moments,
+                        normalization,
+                        strict=True,
+                    )
+                ],
+                dtype=np.float64,
+            )
+            if not np.all(np.isfinite(relative_residual)) or np.any(
+                relative_residual > _GBD_MOMENT_RESIDUAL_LIMIT
+            ):
+                raise RuntimeError(
+                    "GBD moment recovery failed its post-cast closure for "
+                    f"{scope}: normalized residuals "
+                    f"gamma={relative_residual[0]:.6e}, "
+                    f"linear={relative_residual[1]:.6e}, "
+                    f"angular={relative_residual[2]:.6e}, "
+                    f"limit={_GBD_MOMENT_RESIDUAL_LIMIT:.6e}"
+                )
+
+            correction_fraction = float(
+                np.linalg.norm(stored_float64 - raw_survivor_strength, axis=1).sum(dtype=np.float64)
+                / complete_strength_scale
+            )
+            if (
+                not np.isfinite(correction_fraction)
+                or correction_fraction > _GBD_MOMENT_CORRECTION_FRACTION_LIMIT
+            ):
+                raise RuntimeError(
+                    "GBD moment recovery requires an excessive strength correction for "
+                    f"{scope}: fraction={correction_fraction:.6e}, "
+                    f"limit={_GBD_MOMENT_CORRECTION_FRACTION_LIMIT:.6e}"
+                )
+            if record_diagnostics and diagnostics is not None:
+                diagnostics.update(
+                    correction_fraction=correction_fraction,
+                    normalized_vortex_strength_residual=float(relative_residual[0]),
+                    normalized_linear_impulse_residual=float(relative_residual[1]),
+                    normalized_angular_impulse_residual=float(relative_residual[2]),
+                )
+            return stored
+
+        def redistribute(
+            survivor_position: np.ndarray,
+            survivor_vortex_strength: np.ndarray,
+            removed_position: np.ndarray,
+            removed_vortex_strength: np.ndarray,
+            *,
+            scope: str,
+            record_diagnostics: bool = False,
+        ) -> np.ndarray:
+            weight_magnitude = np.linalg.norm(survivor_vortex_strength, axis=1)
+            weight_sum = float(weight_magnitude.sum())
+            if not np.isfinite(weight_sum) or weight_sum <= 0.0:
+                raise RuntimeError(
+                    f"GBD moment recovery has no finite retained strength for {scope}"
+                )
+            if len(removed_position) == 0:
+                return survivor_vortex_strength.astype(grid_np.dtype, copy=False)
+
+            from scipy.spatial import cKDTree
+
+            nearest = cKDTree(survivor_position, compact_nodes=False).query(
+                removed_position,
+                k=1,
+                workers=-1,
+            )[1]
+            corrected = survivor_vortex_strength.copy()
+            np.add.at(corrected, nearest, removed_vortex_strength)
+
+            survivor_moments, _survivor_scales = moment_state(
+                survivor_position,
+                survivor_vortex_strength,
+            )
+            removed_moments, _removed_scales = moment_state(
+                removed_position,
+                removed_vortex_strength,
+            )
+            corrected_moments, _corrected_scales = moment_state(
+                survivor_position,
+                corrected,
+            )
+            residuals = tuple(
+                survivor + removed - current
+                for survivor, removed, current in zip(
+                    survivor_moments,
+                    removed_moments,
+                    corrected_moments,
+                    strict=True,
+                )
+            )
+            if not any(np.any(np.abs(residual) > 0.0) for residual in residuals):
+                return validate(
+                    survivor_position,
+                    survivor_vortex_strength,
+                    removed_position,
+                    removed_vortex_strength,
+                    corrected,
+                    scope=scope,
+                    record_diagnostics=record_diagnostics,
+                )
+            if len(survivor_position) < 4:
+                raise RuntimeError(
+                    "GBD moment recovery requires at least four retained nodes "
+                    f"for {scope}; got {len(survivor_position)}"
+                )
+
+            gram, length_scale, weights = _gbd_moment_gram(
+                survivor_position,
+                survivor_vortex_strength,
+                particle_spacing,
+            )
+            right_hand_side = np.concatenate(
+                (
+                    residuals[0],
+                    residuals[1] / length_scale,
+                    residuals[2] / length_scale**2,
+                )
+            )
+            if not np.all(np.isfinite(gram)) or not np.all(np.isfinite(right_hand_side)):
+                raise RuntimeError(f"GBD moment recovery formed non-finite constraints for {scope}")
+
+            multipliers, _residual, rank, singular_values = np.linalg.lstsq(
+                gram,
+                right_hand_side,
+                rcond=_GBD_MOMENT_RCOND,
+            )
+            condition = (
+                float("inf")
+                if len(singular_values) == 0 or singular_values[-1] <= 0.0
+                else float(singular_values[0] / singular_values[-1])
+            )
+            if rank < 9 or not np.isfinite(condition) or condition > _GBD_MOMENT_CONDITION_LIMIT:
+                raise RuntimeError(
+                    "GBD moment recovery constraints are rank-deficient or ill-conditioned "
+                    f"for {scope}: rank={rank}/9, condition={condition:.6e}, "
+                    f"limit={_GBD_MOMENT_CONDITION_LIMIT:.6e}"
+                )
+            if not np.all(np.isfinite(multipliers)):
+                raise RuntimeError(
+                    f"GBD moment recovery produced non-finite multipliers for {scope}"
+                )
+
+            recovered = corrected.copy()
+            for start in range(0, len(survivor_position), _GBD_MOMENT_CHUNK_SIZE):
+                stop = min(start + _GBD_MOMENT_CHUNK_SIZE, len(survivor_position))
+                rows = _gbd_moment_constraint_rows(survivor_position[start:stop] / length_scale)
+                recovered[start:stop] += np.einsum(
+                    "i,ijk,j->ik",
+                    weights[start:stop],
+                    rows,
+                    multipliers,
+                )
+            return validate(
+                survivor_position,
+                survivor_vortex_strength,
+                removed_position,
+                removed_vortex_strength,
+                recovered,
+                scope=scope,
+                record_diagnostics=record_diagnostics,
+            )
+
+        if labels is None:
+            return redistribute(
+                retained_position,
+                retained_vortex_strength,
+                discarded_position,
+                discarded_vortex_strength,
+                scope="the complete cloud",
+                record_diagnostics=True,
+            )
+
+        survivor_labels = labels[ix, iy, iz]
+        discarded_labels = labels[discarded_i, discarded_j, discarded_k]
+        unique_labels = np.union1d(survivor_labels, discarded_labels)
+        if len(unique_labels) == 1:
+            return redistribute(
+                retained_position,
+                retained_vortex_strength,
+                discarded_position,
+                discarded_vortex_strength,
+                scope=f"group {unique_labels[0]!r}",
+                record_diagnostics=True,
+            )
+        corrected = np.zeros_like(retained_vortex_strength)
+        for label in unique_labels:
+            survivor_selection = survivor_labels == label
+            discarded_selection = discarded_labels == label
+            if np.count_nonzero(survivor_selection) < 4:
+                return redistribute(
+                    retained_position,
+                    retained_vortex_strength,
+                    discarded_position,
+                    discarded_vortex_strength,
+                    scope=f"the complete cloud (sparse group {label!r})",
+                    record_diagnostics=True,
+                )
+            corrected[survivor_selection] = redistribute(
+                retained_position[survivor_selection],
+                retained_vortex_strength[survivor_selection],
+                discarded_position[discarded_selection],
+                discarded_vortex_strength[discarded_selection],
+                scope=f"group {label!r}",
+            )
+        return validate(
+            retained_position,
+            retained_vortex_strength,
+            discarded_position,
+            discarded_vortex_strength,
+            corrected,
+            scope="the complete cloud after per-group recovery",
+            record_diagnostics=True,
+        )
+
     def _build_diffusion_particle_arrays(
         self,
         ix: np.ndarray,
@@ -1107,6 +1873,7 @@ class _GridDiffusionMixin:
         # operation. A completed Laplacian below replaces this with the exact
         # runtime stage count used by the current regeneration.
         self._last_gbd_diffusion_substeps = 1
+        self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
         N = particles.n_particles_total
         if N == 0:
             return None
@@ -1308,6 +2075,84 @@ class _GridDiffusionMixin:
                 ("strength fraction, net", f"{retained_total:.6f}"),
                 ("threshold", f"{threshold:.3e}"),
             )
+
+        nonzero_node_count = int(np.count_nonzero(vortex_strength_magnitude > 0.0))
+        support_augmented_node_count = 0
+        preserve_group_recovery = False
+        if self.conserve_pruned_moments and len(ix) < nonzero_node_count:
+            retained_before_support = len(ix)
+            (
+                ix,
+                iy,
+                iz,
+                support_augmented_node_count,
+                preserve_group_recovery,
+            ) = self._augment_moment_recovery_support(
+                grid_np,
+                vortex_strength_magnitude,
+                ix,
+                iy,
+                iz,
+                grid_min_np,
+                particle_spacing,
+                cap,
+                labels=group_winner_grid,
+            )
+            if support_augmented_node_count:
+                Logging.record(
+                    "gaussian blob diffusion moment support",
+                    ("nodes, threshold/cap result", f"{retained_before_support:,}"),
+                    ("nodes, support added", f"{support_augmented_node_count:,}"),
+                    ("nodes, final retained", f"{len(ix):,}"),
+                    ("regeneration cap", f"{cap:,}"),
+                )
+        recovery_diagnostics = self._empty_gbd_moment_recovery()
+        recovery_diagnostics.update(
+            nonzero_node_count=nonzero_node_count,
+            retained_node_count=int(len(ix)),
+            pruned_node_count=int(nonzero_node_count - len(ix)),
+            support_augmented_node_count=int(support_augmented_node_count),
+        )
+        self._last_gbd_moment_recovery = recovery_diagnostics
+        if self.conserve_pruned_moments and len(ix) < nonzero_node_count:
+            raw_retained = grid_np[ix, iy, iz].astype(np.float64)
+            closure_diagnostics: dict[str, bool | int | float] = {}
+            corrected_retained = self._redistribute_pruned_moments(
+                grid_np,
+                vortex_strength_magnitude,
+                ix,
+                iy,
+                iz,
+                grid_min_np,
+                particle_spacing,
+                labels=(group_winner_grid if preserve_group_recovery else None),
+                diagnostics=closure_diagnostics,
+            )
+            correction_l1 = float(
+                np.linalg.norm(corrected_retained.astype(np.float64) - raw_retained, axis=1).sum(
+                    dtype=np.float64
+                )
+            )
+            complete_net = grid_np.sum(axis=(0, 1, 2), dtype=np.float64)
+            raw_net = raw_retained.sum(axis=0, dtype=np.float64)
+            corrected_net = corrected_retained.sum(axis=0, dtype=np.float64)
+            net_scale = vortex_strength_total + 1.0e-30
+            Logging.record(
+                "gaussian blob diffusion moment recovery",
+                ("correction strength fraction", f"{correction_l1 / net_scale:.6e}"),
+                (
+                    "net residual, before",
+                    f"{np.linalg.norm(raw_net - complete_net) / net_scale:.6e}",
+                ),
+                (
+                    "net residual, after",
+                    f"{np.linalg.norm(corrected_net - complete_net) / net_scale:.6e}",
+                ),
+            )
+            grid_np[ix, iy, iz] = corrected_retained
+            recovery_diagnostics.update(closure_diagnostics)
+            recovery_diagnostics["applied"] = True
+            self._last_gbd_moment_recovery = recovery_diagnostics
 
         result = self._build_diffusion_particle_arrays(
             ix,

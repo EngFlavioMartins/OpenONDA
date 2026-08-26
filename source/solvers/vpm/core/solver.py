@@ -1592,7 +1592,7 @@ class VPMSolver:
                 N,
             )
         self.physics.compute_vorticities(self.particles)
-        if self.flow_model != "POTENTIAL":
+        if self.checkpoint_store_velocity_gradient and self.flow_model != "POTENTIAL":
             self.stepper._update_velocity_gradients()
 
     @staticmethod

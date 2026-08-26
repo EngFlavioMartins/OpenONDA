@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-import numpy as np
+from dataclasses import replace
 
+import numpy as np
+import pytest
+
+from source.coupler import vorticity_transfer as transfer_module
 from source.coupler.stable_renewal import (
     blend_represented_state,
     build_stable_renewal_lattice,
@@ -26,6 +30,62 @@ def _zero_target(points: np.ndarray) -> np.ndarray:
     return np.zeros((len(points), 3), dtype=np.float64)
 
 
+def test_applied_particle_reductions_are_chunked_and_match_direct_float64_diagnostics(
+    monkeypatch,
+):
+    rng = np.random.default_rng(20260826)
+    position = rng.uniform(-2.0, 3.0, size=(11, 3)).astype(np.float32)
+    strength = rng.normal(scale=0.02, size=(11, 3)).astype(np.float32)
+    reference = strength.astype(np.float64)
+    reference[:7] += rng.normal(scale=1.0e-9, size=(7, 3))
+    monkeypatch.setattr(transfer_module, "_PARTICLE_REDUCTION_CHUNK_SIZE", 3)
+
+    reduced = transfer_module._reduce_applied_particle_state(
+        position,
+        strength,
+        renewed_count=7,
+        reference_vortex_strength=reference,
+    )
+    expected = vortex_invariants(position[:7].astype(np.float64), strength[:7].astype(np.float64))
+
+    np.testing.assert_allclose(
+        reduced.renewed_invariants.total_vortex_strength,
+        expected.total_vortex_strength,
+        rtol=0.0,
+        atol=1.0e-16,
+    )
+    np.testing.assert_allclose(
+        reduced.renewed_invariants.linear_impulse,
+        expected.linear_impulse,
+        rtol=0.0,
+        atol=1.0e-16,
+    )
+    np.testing.assert_allclose(
+        reduced.renewed_invariants.angular_impulse,
+        expected.angular_impulse,
+        rtol=0.0,
+        atol=1.0e-16,
+    )
+    assert reduced.renewed_vortex_strength_l1 == pytest.approx(
+        np.linalg.norm(strength[:7].astype(np.float64), axis=1).sum()
+    )
+    assert reduced.cast_correction_l1 == pytest.approx(
+        np.linalg.norm(strength[:7].astype(np.float64) - reference[:7], axis=1).sum()
+    )
+    assert reduced.renewed_position_scale == pytest.approx(
+        np.linalg.norm(position[:7].astype(np.float64), axis=1).max()
+    )
+    np.testing.assert_allclose(
+        reduced.output_vortex_strength_net,
+        strength.sum(axis=0, dtype=np.float64),
+        rtol=0.0,
+        atol=1.0e-16,
+    )
+    assert reduced.maximum_output_vortex_strength == pytest.approx(
+        np.linalg.norm(strength.astype(np.float64), axis=1).max()
+    )
+
+
 class _Particles:
     def __init__(self, position: np.ndarray, vortex_strength: np.ndarray):
         self.position = np.asarray(position, dtype=np.float64).reshape(-1, 3)
@@ -44,7 +104,14 @@ class _GBDVPM:
     viscous_scheme = "GBD"
     np_dtype = np.float64
 
-    def __init__(self, position: np.ndarray, vortex_strength: np.ndarray):
+    def __init__(
+        self,
+        position: np.ndarray,
+        vortex_strength: np.ndarray,
+        *,
+        dtype=np.float64,
+    ):
+        self.np_dtype = np.dtype(dtype)
         self.particles = _Particles(position, vortex_strength)
         self.last_replacement: dict[str, np.ndarray | bool] | None = None
 
@@ -298,6 +365,68 @@ def test_whole_belt_remesh_preserves_outer_wake_and_does_not_accumulate():
         after.total_vortex_strength, before.total_vortex_strength, atol=2e-14
     )
     np.testing.assert_allclose(after.linear_impulse, before.linear_impulse, atol=2e-14)
+    assert first.conservation_raw_mismatch["total_vortex_strength"] < 2.0e-14
+    assert first.conservation_applied_correction["total_vortex_strength"] < 2.0e-14
+    assert first.conservation_residual["total_vortex_strength"] < 2.0e-14
+    assert first.conservation_applied_particle_strength_fraction < 2.0e-14
+
+
+def test_prune_diagnostics_expose_raw_mismatch_and_applied_closure():
+    spacing = 0.1
+    lattice = build_stable_renewal_lattice(
+        BOX,
+        spacing,
+        buffer_length=0.2,
+        authority_ramp_width=0.2,
+        lattice_anchor=np.zeros(3),
+        mesh_weight_at_node=lambda points: np.zeros(len(points)),
+    )
+    strong_position = np.array(
+        [[x, y, z] for x in (-0.1, 0.1) for y in (-0.1, 0.1) for z in (-0.1, 0.1)]
+    )
+    position = np.vstack((strong_position, np.array([[0.6, 0.6, 0.6]])))
+    strength = np.zeros_like(position)
+    strength[:-1, 2] = 1.0
+    strength[-1, 2] = 0.01
+
+    result = renew_stable_overlap(
+        position,
+        strength,
+        lattice,
+        fvm_vortex_strength_at_node=_zero_target,
+        prune_threshold=0.05,
+        amplification_cap=1.0,
+        compute_diagnostics=False,
+    )
+
+    assert result.conservation_raw_mismatch["total_vortex_strength"] > 1.0e-3
+    assert result.conservation_applied_correction["total_vortex_strength"] > 1.0e-3
+    assert result.conservation_residual["total_vortex_strength"] < 1.0e-12
+    assert result.conservation_raw_mismatch["linear_impulse"] > 1.0e-4
+    assert result.conservation_applied_correction["linear_impulse"] > 1.0e-4
+    assert result.conservation_residual["linear_impulse"] < 1.0e-12
+    assert result.conservation_applied_particle_strength_fraction > 0.0
+
+    vpm = _GBDVPM(position, strength)
+    with pytest.raises(RuntimeError, match="closure correction is excessive"):
+        replace_particles_from_buffered_m4_renewal(
+            vpm,
+            lattice=lattice,
+            fvm_vortex_strength_at_node=_zero_target,
+            particle_fluid_weight=None,
+            particle_in_solid=None,
+            prune_threshold=0.05,
+            core_radius_ratio=1.0,
+            amplification_cap=1.0,
+            boundary_prune_multiplier=1.0,
+            kinematic_viscosity=1.0e-3,
+            freestream_speed=1.0,
+            time_step_size=0.01,
+            compute_diagnostics=False,
+            maximum_closure_correction_fraction=1.0e-6,
+        )
+    np.testing.assert_array_equal(vpm.particles.position, position)
+    np.testing.assert_array_equal(vpm.particles.vortex_strength, strength)
 
 
 def test_repeated_fvm_renewal_has_a_fixed_population_and_base_radii():
@@ -370,6 +499,35 @@ def test_population_cap_preserves_total_strength_and_linear_impulse():
     )
     np.testing.assert_allclose(after.linear_impulse, before.linear_impulse, atol=1e-12)
     assert np.isfinite(result.population_pruned_velocity_bound)
+    assert result.population_conservation_raw_mismatch["total_vortex_strength"] > 0.0
+    assert result.population_conservation_applied_correction["total_vortex_strength"] > 0.0
+    assert result.population_conservation_residual["total_vortex_strength"] < 1.0e-12
+    assert result.population_conservation_raw_mismatch["linear_impulse"] > 0.0
+    assert result.population_conservation_applied_correction["linear_impulse"] > 0.0
+    assert result.population_conservation_residual["linear_impulse"] < 1.0e-12
+    assert result.population_conservation_applied_particle_strength_fraction > 0.0
+
+    vpm = _GBDVPM(position, strength)
+    vpm.particles.capacity = 4
+    with pytest.raises(RuntimeError, match="reached the VPM particle capacity"):
+        replace_particles_from_buffered_m4_renewal(
+            vpm,
+            lattice=lattice,
+            fvm_vortex_strength_at_node=_zero_target,
+            particle_fluid_weight=None,
+            particle_in_solid=None,
+            prune_threshold=0.0,
+            core_radius_ratio=1.0,
+            amplification_cap=1.0,
+            boundary_prune_multiplier=1.0,
+            kinematic_viscosity=1.0e-3,
+            freestream_speed=1.0,
+            time_step_size=0.01,
+            compute_diagnostics=False,
+            maximum_closure_correction_fraction=1.0e-6,
+        )
+    np.testing.assert_array_equal(vpm.particles.position, position)
+    np.testing.assert_array_equal(vpm.particles.vortex_strength, strength)
 
 
 def test_production_wrapper_replaces_one_complete_gbd_cloud_without_accumulation():
@@ -420,3 +578,251 @@ def test_production_wrapper_replaces_one_complete_gbd_cloud_without_accumulation
     outer = np.flatnonzero(np.isclose(vpm.particles.position[:, 0], 0.95))
     assert len(outer) == 1
     np.testing.assert_allclose(vpm.particles.vortex_strength[outer[0]], [0.0, 0.0, 2.0e-4])
+
+
+def test_production_wrapper_certifies_the_actual_float32_particle_state():
+    spacing = 0.1
+    lattice = build_stable_renewal_lattice(
+        BOX,
+        spacing,
+        buffer_length=0.2,
+        authority_ramp_width=0.2,
+        lattice_anchor=np.full(3, -0.05),
+    )
+
+    def target(points: np.ndarray) -> np.ndarray:
+        strength = np.empty_like(points)
+        strength[:, 0] = 1.0e-4 * (1.0 + 0.13 * points[:, 1])
+        strength[:, 1] = -2.0e-4 * (1.0 - 0.07 * points[:, 2])
+        strength[:, 2] = 3.0e-4 * (1.0 + 0.11 * points[:, 0])
+        return strength
+
+    numerical = renew_stable_overlap(
+        np.empty((0, 3)),
+        np.empty((0, 3)),
+        lattice,
+        fvm_vortex_strength_at_node=target,
+        prune_threshold=0.0,
+        amplification_cap=1.0,
+        compute_diagnostics=False,
+    )
+    assert numerical.conservation_target_invariants is not None
+    vpm = _GBDVPM(np.empty((0, 3)), np.empty((0, 3)), dtype=np.float32)
+
+    transfer = replace_particles_from_buffered_m4_renewal(
+        vpm,
+        lattice=lattice,
+        fvm_vortex_strength_at_node=target,
+        particle_fluid_weight=None,
+        particle_in_solid=None,
+        prune_threshold=0.0,
+        core_radius_ratio=1.0,
+        amplification_cap=1.0,
+        boundary_prune_multiplier=1.0,
+        kinematic_viscosity=1.0e-3,
+        freestream_speed=1.0,
+        time_step_size=0.01,
+        compute_diagnostics=False,
+        maximum_closure_correction_fraction=0.08,
+    )
+
+    actual = vortex_invariants(vpm.particles.position, vpm.particles.vortex_strength)
+    expected = numerical.conservation_target_invariants
+    strength_error = np.linalg.norm(actual.total_vortex_strength - expected.total_vortex_strength)
+    impulse_error = np.linalg.norm(actual.linear_impulse - expected.linear_impulse)
+    assert vpm.particles.vortex_strength.dtype == np.float32
+    assert transfer.renewal_conservation_error == pytest.approx(strength_error)
+    assert transfer.renewal_linear_impulse_error == pytest.approx(impulse_error)
+    assert transfer.renewal_conservation_error <= transfer.renewal_vortex_strength_tolerance
+    assert transfer.renewal_linear_impulse_error <= transfer.renewal_linear_impulse_tolerance
+
+
+def test_support_output_coalesces_with_a_persistent_particle_on_the_same_lattice_node():
+    spacing = 0.1
+    lattice = build_stable_renewal_lattice(
+        BOX,
+        spacing,
+        buffer_length=0.2,
+        authority_ramp_width=0.2,
+        lattice_anchor=np.full(3, -0.05),
+        mesh_weight_at_node=lambda points: np.zeros(len(points)),
+    )
+    position = np.array(
+        [
+            [0.699, -0.05, -0.05],
+            [0.75, -0.05, -0.05],
+        ]
+    )
+    strength = np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.2],
+        ]
+    )
+
+    result = renew_stable_overlap(
+        position,
+        strength,
+        lattice,
+        fvm_vortex_strength_at_node=_zero_target,
+        prune_threshold=0.0,
+        amplification_cap=1.0,
+        compute_diagnostics=False,
+    )
+
+    hits = np.all(np.isclose(result.position, position[1], rtol=0.0, atol=1.0e-14), axis=1)
+    assert np.count_nonzero(hits) == 1
+    assert result.coalesced_outer_count == 1
+    assert result.preserved_outer_count == 0
+    before = vortex_invariants(position, strength)
+    after = vortex_invariants(result.position, result.vortex_strength)
+    np.testing.assert_allclose(
+        after.total_vortex_strength,
+        before.total_vortex_strength,
+        rtol=0.0,
+        atol=2.0e-13,
+    )
+
+    vpm = _GBDVPM(position, strength)
+    transfer = replace_particles_from_buffered_m4_renewal(
+        vpm,
+        lattice=lattice,
+        fvm_vortex_strength_at_node=_zero_target,
+        particle_fluid_weight=None,
+        particle_in_solid=None,
+        prune_threshold=0.0,
+        core_radius_ratio=1.0,
+        amplification_cap=1.0,
+        boundary_prune_multiplier=1.0,
+        kinematic_viscosity=1.0e-3,
+        freestream_speed=1.0,
+        time_step_size=0.01,
+        compute_diagnostics=False,
+    )
+    assert transfer.coalesced_outer_particles == 1
+    assert transfer.n_particles_removed == 2
+    assert transfer.n_particles_retained == 0
+    assert (
+        transfer.n_particles_before - transfer.n_particles_removed + transfer.n_particles_injected
+        == transfer.n_particles_after
+    )
+
+
+def test_invalid_coalesced_input_index_is_rejected_before_vpm_mutation(monkeypatch):
+    spacing = 0.1
+    lattice = build_stable_renewal_lattice(
+        BOX,
+        spacing,
+        buffer_length=0.2,
+        authority_ramp_width=0.2,
+        lattice_anchor=np.full(3, -0.05),
+        mesh_weight_at_node=lambda points: np.zeros(len(points)),
+    )
+    position = np.array([[0.699, -0.05, -0.05], [0.75, -0.05, -0.05]])
+    strength = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 0.2]])
+    numerical = renew_stable_overlap(
+        position,
+        strength,
+        lattice,
+        fvm_vortex_strength_at_node=_zero_target,
+        prune_threshold=0.0,
+        amplification_cap=1.0,
+        compute_diagnostics=False,
+    )
+    invalid = replace(
+        numerical,
+        coalesced_outer_input_indices=np.array([len(position)], dtype=np.int64),
+    )
+    monkeypatch.setattr(transfer_module, "renew_stable_overlap", lambda *args, **kwargs: invalid)
+    vpm = _GBDVPM(position, strength)
+
+    with pytest.raises(RuntimeError, match="invalid coalesced input index"):
+        replace_particles_from_buffered_m4_renewal(
+            vpm,
+            lattice=lattice,
+            fvm_vortex_strength_at_node=_zero_target,
+            particle_fluid_weight=None,
+            particle_in_solid=None,
+            prune_threshold=0.0,
+            core_radius_ratio=1.0,
+            amplification_cap=1.0,
+            boundary_prune_multiplier=1.0,
+            kinematic_viscosity=1.0e-3,
+            freestream_speed=1.0,
+            time_step_size=0.01,
+            compute_diagnostics=False,
+        )
+
+    assert vpm.last_replacement is None
+    np.testing.assert_array_equal(vpm.particles.position, position)
+    np.testing.assert_array_equal(vpm.particles.vortex_strength, strength)
+
+
+def test_support_seam_coalesces_multiple_particles_but_preserves_a_near_miss_across_steps():
+    spacing = 0.1
+    lattice = build_stable_renewal_lattice(
+        BOX,
+        spacing,
+        buffer_length=0.2,
+        authority_ramp_width=0.2,
+        lattice_anchor=np.full(3, -0.05),
+        mesh_weight_at_node=lambda points: np.zeros(len(points)),
+    )
+    position = np.array(
+        [
+            [0.699, -0.05, -0.05],
+            [0.75, -0.05, -0.05],
+            [0.75, -0.05, -0.05],
+            [0.75001, -0.05, -0.05],
+        ]
+    )
+    strength = np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.2],
+            [0.0, 0.0, -0.05],
+            [0.0, 0.0, 0.03],
+        ]
+    )
+    vpm = _GBDVPM(position, strength)
+    counts: list[int] = []
+
+    for iteration in range(3):
+        transfer = replace_particles_from_buffered_m4_renewal(
+            vpm,
+            lattice=lattice,
+            fvm_vortex_strength_at_node=_zero_target,
+            particle_fluid_weight=None,
+            particle_in_solid=None,
+            prune_threshold=0.0,
+            core_radius_ratio=1.0,
+            amplification_cap=1.0,
+            boundary_prune_multiplier=1.0,
+            kinematic_viscosity=1.0e-3,
+            freestream_speed=1.0,
+            time_step_size=0.01,
+            compute_diagnostics=False,
+            maximum_closure_correction_fraction=1.0,
+        )
+        counts.append(transfer.n_particles_after)
+        exact_seam = np.all(
+            np.isclose(vpm.particles.position, position[1], rtol=0.0, atol=1.0e-14),
+            axis=1,
+        )
+        near_miss = np.all(
+            np.isclose(vpm.particles.position, position[3], rtol=0.0, atol=1.0e-14),
+            axis=1,
+        )
+        assert np.count_nonzero(exact_seam) == 1
+        assert np.count_nonzero(near_miss) == 1
+        assert len(np.unique(vpm.particles.position, axis=0)) == transfer.n_particles_after
+        assert (
+            transfer.n_particles_before
+            - transfer.n_particles_removed
+            + transfer.n_particles_injected
+            == transfer.n_particles_after
+        )
+        if iteration == 0:
+            assert transfer.coalesced_outer_particles == 2
+
+    assert counts[1:] == [counts[0], counts[0]]

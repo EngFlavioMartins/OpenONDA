@@ -32,6 +32,7 @@ from source.coupler.renewal_projection import (
 from source.coupler.reporting import format_coupler_log
 from source.coupler.stable_renewal import (
     StableRenewalLattice,
+    VortexInvariants,
     build_stable_renewal_lattice,
     renew_stable_overlap,
     vortex_strength_from_velocity_trace,
@@ -39,6 +40,8 @@ from source.coupler.stable_renewal import (
 from source.solvers.vpm.diagnostics.resolution import discretization_health
 
 logger = logging.getLogger("coupler")
+
+_PARTICLE_REDUCTION_CHUNK_SIZE = 65_536
 
 
 def _smoothstep(values: np.ndarray | float, lower: float, upper: float) -> np.ndarray:
@@ -158,6 +161,7 @@ class TransferResult:
     renewed_input_particles: int = 0
     renewed_output_particles: int = 0
     preserved_outer_particles: int = 0
+    coalesced_outer_particles: int = 0
     pruned_lattice_nodes: int = 0
     pruned_vortex_strength_l1: float = 0.0
     pruned_vortex_strength_fraction: float = 0.0
@@ -165,8 +169,25 @@ class TransferResult:
     population_pruned_vortex_strength_fraction: float = 0.0
     population_pruned_velocity_bound: float = 0.0
     renewal_cfl: float = 0.0
+    renewal_raw_vortex_strength_error: float = 0.0
+    renewal_applied_vortex_strength_correction: float = 0.0
     renewal_conservation_error: float = 0.0
+    renewal_vortex_strength_tolerance: float = 0.0
+    renewal_raw_linear_impulse_error: float = 0.0
+    renewal_applied_linear_impulse_correction: float = 0.0
     renewal_linear_impulse_error: float = 0.0
+    renewal_linear_impulse_tolerance: float = 0.0
+    renewal_raw_angular_impulse_error: float = 0.0
+    renewal_applied_angular_impulse_correction: float = 0.0
+    renewal_angular_impulse_error: float = 0.0
+    renewal_applied_particle_strength_fraction: float = 0.0
+    population_renewal_raw_vortex_strength_error: float = 0.0
+    population_renewal_applied_vortex_strength_correction: float = 0.0
+    population_renewal_conservation_error: float = 0.0
+    population_renewal_raw_linear_impulse_error: float = 0.0
+    population_renewal_applied_linear_impulse_correction: float = 0.0
+    population_renewal_linear_impulse_error: float = 0.0
+    population_renewal_applied_particle_strength_fraction: float = 0.0
     representation_residual_before_prune: float | None = None
     representation_residual_after_prune: float | None = None
     maximum_transfer_amplification: float = 0.0
@@ -229,6 +250,112 @@ def _restore_particle_state(vpm, snapshot: dict[str, np.ndarray]) -> None:
     replace(report_removal=False, **snapshot)
 
 
+def _vortex_invariant_residual(
+    target: VortexInvariants,
+    actual: VortexInvariants,
+) -> dict[str, float]:
+    return {
+        "total_vortex_strength": float(
+            np.linalg.norm(target.total_vortex_strength - actual.total_vortex_strength)
+        ),
+        "linear_impulse": float(np.linalg.norm(target.linear_impulse - actual.linear_impulse)),
+        "angular_impulse": float(np.linalg.norm(target.angular_impulse - actual.angular_impulse)),
+    }
+
+
+@dataclass(frozen=True)
+class _AppliedParticleReductions:
+    """Bounded-memory reductions of the particle state about to be uploaded."""
+
+    renewed_invariants: VortexInvariants
+    renewed_vortex_strength_l1: float
+    cast_correction_l1: float
+    renewed_position_scale: float
+    output_vortex_strength_net: np.ndarray
+    maximum_output_vortex_strength: float
+
+
+def _reduce_applied_particle_state(
+    position: np.ndarray,
+    vortex_strength: np.ndarray,
+    *,
+    renewed_count: int,
+    reference_vortex_strength: np.ndarray,
+) -> _AppliedParticleReductions:
+    """Reduce an applied storage-precision cloud without full float64 copies."""
+    applied_position = np.asarray(position)
+    applied_strength = np.asarray(vortex_strength)
+    reference_strength = np.asarray(reference_vortex_strength, dtype=np.float64).reshape(-1, 3)
+    if applied_position.ndim != 2 or applied_position.shape[1:] != (3,):
+        raise ValueError("applied particle position must have shape (N, 3)")
+    if applied_strength.shape != applied_position.shape:
+        raise ValueError("applied position and vortex strength must have one common shape")
+    if reference_strength.shape != applied_strength.shape:
+        raise ValueError("reference vortex strength must match the applied particle state")
+    count = len(applied_position)
+    renewed = int(renewed_count)
+    if not 0 <= renewed <= count:
+        raise ValueError("renewed_count must lie inside the applied particle state")
+
+    total = np.zeros(3, dtype=np.float64)
+    linear_impulse = np.zeros(3, dtype=np.float64)
+    angular_impulse = np.zeros(3, dtype=np.float64)
+    output_net = np.zeros(3, dtype=np.float64)
+    renewed_l1 = 0.0
+    cast_correction_l1 = 0.0
+    position_scale = 0.0
+    maximum_strength = 0.0
+    for start in range(0, count, _PARTICLE_REDUCTION_CHUNK_SIZE):
+        stop = min(start + _PARTICLE_REDUCTION_CHUNK_SIZE, count)
+        position_storage_chunk = applied_position[start:stop]
+        if not np.all(np.isfinite(position_storage_chunk)):
+            raise RuntimeError("buffered M4' renewal overflows VPM position storage precision")
+        strength_chunk = applied_strength[start:stop].astype(np.float64, copy=False)
+        if not np.all(np.isfinite(strength_chunk)):
+            raise RuntimeError("buffered M4' renewal overflows VPM storage precision")
+        magnitude = np.linalg.norm(strength_chunk, axis=1)
+        output_net += strength_chunk.sum(axis=0, dtype=np.float64)
+        maximum_strength = max(maximum_strength, float(magnitude.max(initial=0.0)))
+
+        renewed_stop = min(stop, renewed)
+        if renewed_stop <= start:
+            continue
+        local_count = renewed_stop - start
+        renewed_strength = strength_chunk[:local_count]
+        renewed_position = position_storage_chunk[:local_count].astype(np.float64, copy=False)
+        position_cross_strength = np.cross(renewed_position, renewed_strength)
+        total += renewed_strength.sum(axis=0, dtype=np.float64)
+        linear_impulse += 0.5 * position_cross_strength.sum(axis=0, dtype=np.float64)
+        angular_impulse += (1.0 / 3.0) * np.cross(
+            renewed_position,
+            position_cross_strength,
+        ).sum(axis=0, dtype=np.float64)
+        renewed_l1 += float(magnitude[:local_count].sum(dtype=np.float64))
+        cast_correction_l1 += float(
+            np.linalg.norm(
+                renewed_strength - reference_strength[start:renewed_stop],
+                axis=1,
+            ).sum(dtype=np.float64)
+        )
+        position_scale = max(
+            position_scale,
+            float(np.linalg.norm(renewed_position, axis=1).max(initial=0.0)),
+        )
+
+    return _AppliedParticleReductions(
+        renewed_invariants=VortexInvariants(
+            total_vortex_strength=total,
+            linear_impulse=linear_impulse,
+            angular_impulse=angular_impulse,
+        ),
+        renewed_vortex_strength_l1=renewed_l1,
+        cast_correction_l1=cast_correction_l1,
+        renewed_position_scale=position_scale,
+        output_vortex_strength_net=output_net,
+        maximum_output_vortex_strength=maximum_strength,
+    )
+
+
 def replace_particles_from_buffered_m4_renewal(
     vpm,
     *,
@@ -244,6 +371,7 @@ def replace_particles_from_buffered_m4_renewal(
     freestream_speed: float,
     time_step_size: float,
     compute_diagnostics: bool,
+    maximum_closure_correction_fraction: float | None = None,
 ) -> TransferResult:
     """Atomically apply the recovered whole-belt M4' renewal to a GBD cloud."""
     if str(getattr(vpm, "viscous_scheme", "")).upper() != "GBD":
@@ -251,6 +379,11 @@ def replace_particles_from_buffered_m4_renewal(
     viscosity = float(kinematic_viscosity)
     if not np.isfinite(viscosity) or viscosity < 0.0:
         raise ValueError("kinematic_viscosity must be finite and non-negative")
+    if maximum_closure_correction_fraction is not None and (
+        not np.isfinite(maximum_closure_correction_fraction)
+        or not 0.0 < maximum_closure_correction_fraction <= 1.0
+    ):
+        raise ValueError("maximum_closure_correction_fraction must lie in (0, 1]")
 
     particles = vpm.particles
     n_before = int(particles.n_particles_total)
@@ -277,6 +410,12 @@ def replace_particles_from_buffered_m4_renewal(
         time_step_size=time_step_size,
         compute_diagnostics=compute_diagnostics,
     )
+    if result.population_pruned_count:
+        raise RuntimeError(
+            "buffered M4' renewal reached the VPM particle capacity and would "
+            f"discard {result.population_pruned_count:,} particles; increase capacity "
+            "or reduce the physical particle population"
+        )
     n_after = result.particle_count
     if n_after > int(particles.capacity):
         raise RuntimeError(
@@ -285,12 +424,104 @@ def replace_particles_from_buffered_m4_renewal(
         )
 
     dtype = np.dtype(vpm.np_dtype)
+    applied_position = np.ascontiguousarray(result.position, dtype=dtype)
+    applied_strength = np.ascontiguousarray(result.vortex_strength, dtype=dtype)
+    applied_core_radius = np.ascontiguousarray(result.core_radius, dtype=dtype)
+    applied_particle_volume = np.ascontiguousarray(result.particle_volume, dtype=dtype)
+    renewed_output_count = min(int(result.renewed_output_count), n_after)
+    target_invariants = result.conservation_target_invariants
+    raw_invariants = result.conservation_raw_invariants
+    if target_invariants is None or raw_invariants is None:
+        raise RuntimeError("buffered M4' renewal omitted its conservation reference state")
+    reductions = _reduce_applied_particle_state(
+        applied_position,
+        applied_strength,
+        renewed_count=renewed_output_count,
+        reference_vortex_strength=result.vortex_strength,
+    )
+    applied_invariants = reductions.renewed_invariants
+    raw_conservation = _vortex_invariant_residual(target_invariants, raw_invariants)
+    applied_conservation = _vortex_invariant_residual(raw_invariants, applied_invariants)
+    conservation = _vortex_invariant_residual(target_invariants, applied_invariants)
+    closure_correction_fraction = float(
+        result.conservation_applied_particle_strength_fraction
+        + reductions.cast_correction_l1 / (result.conservation_reference_strength_l1 + 1.0e-30)
+    )
+    if not np.isfinite(closure_correction_fraction):
+        raise RuntimeError("buffered M4' renewal produced a non-finite closure correction")
+    if (
+        maximum_closure_correction_fraction is not None
+        and closure_correction_fraction > maximum_closure_correction_fraction
+    ):
+        raise RuntimeError(
+            "buffered M4' renewal closure correction is excessive: "
+            f"fraction={closure_correction_fraction:.6e}, "
+            f"limit={maximum_closure_correction_fraction:.6e}"
+        )
+    storage_epsilon = float(np.finfo(dtype).eps)
+    reference_strength_l1 = float(result.conservation_reference_strength_l1)
+    position_scale = max(
+        reductions.renewed_position_scale,
+        float(lattice.particle_spacing),
+    )
+    renewal_vortex_strength_tolerance = 32.0 * storage_epsilon * reference_strength_l1
+    renewal_linear_impulse_tolerance = (
+        32.0 * storage_epsilon * reference_strength_l1 * position_scale
+    )
+    strength_error = float(conservation["total_vortex_strength"])
+    impulse_error = float(conservation["linear_impulse"])
+    if strength_error > renewal_vortex_strength_tolerance + np.finfo(np.float64).tiny:
+        raise RuntimeError(
+            "buffered M4' renewal does not conserve vortex strength in storage precision: "
+            f"error={strength_error:.6e}, "
+            f"tolerance={renewal_vortex_strength_tolerance:.6e}"
+        )
+    if impulse_error > renewal_linear_impulse_tolerance + np.finfo(np.float64).tiny:
+        raise RuntimeError(
+            "buffered M4' renewal does not conserve linear impulse in storage precision: "
+            f"error={impulse_error:.6e}, "
+            f"tolerance={renewal_linear_impulse_tolerance:.6e}"
+        )
+
+    # Prepare and validate the complete replacement budget before mutating the
+    # VPM. A malformed renewal result must leave the prior cloud untouched.
+    removed_mask = np.ones(n_before, dtype=bool)
+    if n_before:
+        valid = np.ones(n_before, dtype=bool)
+        if particle_in_solid is not None:
+            solid_mask = np.asarray(
+                particle_in_solid(existing_position),
+                dtype=bool,
+            ).reshape(-1)
+            if len(solid_mask) != n_before:
+                raise RuntimeError("particle_in_solid must return one value per existing particle")
+            valid &= ~solid_mask
+        preserved = valid & ~np.all(
+            (existing_position >= lattice.renewal_bounds[::2])
+            & (existing_position <= lattice.renewal_bounds[1::2]),
+            axis=1,
+        )
+        removed_mask = ~preserved
+    coalesced_input = np.asarray(
+        result.coalesced_outer_input_indices,
+        dtype=np.int64,
+    ).reshape(-1)
+    if len(coalesced_input):
+        if np.any((coalesced_input < 0) | (coalesced_input >= n_before)):
+            raise RuntimeError("renewal returned an invalid coalesced input index")
+        removed_mask[coalesced_input] = True
+    removed_count = int(np.count_nonzero(removed_mask))
+    if n_before - removed_count + renewed_output_count != n_after:
+        raise RuntimeError("renewal returned an inconsistent particle budget")
+    replaced_strength = existing_strength[removed_mask]
+    input_net = existing_strength.sum(axis=0, dtype=np.float64)
+
     vpm.replace_vortex_particles(
-        position=np.ascontiguousarray(result.position, dtype=dtype),
+        position=applied_position,
         velocity=np.zeros((n_after, 3), dtype=dtype),
-        vortex_strength=np.ascontiguousarray(result.vortex_strength, dtype=dtype),
-        core_radius=np.ascontiguousarray(result.core_radius, dtype=dtype),
-        particle_volume=np.ascontiguousarray(result.particle_volume, dtype=dtype),
+        vortex_strength=applied_strength,
+        core_radius=applied_core_radius,
+        particle_volume=applied_particle_volume,
         kinematic_viscosity=np.full(n_after, viscosity, dtype=dtype),
         eddy_viscosity=np.zeros(n_after, dtype=dtype),
         group_id=np.zeros(n_after, dtype=np.int32),
@@ -303,35 +534,20 @@ def replace_particles_from_buffered_m4_renewal(
             f"{int(particles.n_particles_total)}, expected {n_after}"
         )
 
-    renewed_output_count = min(int(result.renewed_output_count), n_after)
-    renewed_strength = result.vortex_strength[:renewed_output_count]
-    removed_mask = np.ones(n_before, dtype=bool)
-    if n_before:
-        valid = np.ones(n_before, dtype=bool)
-        if particle_in_solid is not None:
-            valid &= ~np.asarray(particle_in_solid(existing_position), dtype=bool).reshape(-1)
-        preserved = valid & ~np.all(
-            (existing_position >= lattice.renewal_bounds[::2])
-            & (existing_position <= lattice.renewal_bounds[1::2]),
-            axis=1,
-        )
-        removed_mask = ~preserved
-    replaced_strength = existing_strength[removed_mask]
-    injected_net = renewed_strength.sum(axis=0, dtype=np.float64)
-    output_net = result.vortex_strength.sum(axis=0, dtype=np.float64)
-    input_net = existing_strength.sum(axis=0, dtype=np.float64)
-    conservation = result.conservation_residual
-    maximum_strength = float(np.linalg.norm(result.vortex_strength, axis=1).max(initial=0.0))
+    injected_net = reductions.renewed_invariants.total_vortex_strength
+    output_net = reductions.output_vortex_strength_net
+    population_raw_conservation = result.population_conservation_raw_mismatch
+    population_applied_conservation = result.population_conservation_applied_correction
+    population_conservation = result.population_conservation_residual
+    maximum_strength = reductions.maximum_output_vortex_strength
     return TransferResult(
         n_particles_before=n_before,
         n_particles_retained=int(result.preserved_outer_count),
-        n_particles_removed=int(np.count_nonzero(removed_mask)),
+        n_particles_removed=removed_count,
         n_particles_blended=int(result.renewed_input_count),
         n_particles_injected=renewed_output_count,
         n_particles_after=n_after,
-        injected_vortex_strength_l1=float(
-            np.linalg.norm(renewed_strength, axis=1).sum(dtype=np.float64)
-        ),
+        injected_vortex_strength_l1=reductions.renewed_vortex_strength_l1,
         injected_vortex_strength_net=injected_net,
         replaced_vortex_strength_l1=float(
             np.linalg.norm(replaced_strength, axis=1).sum(dtype=np.float64)
@@ -345,14 +561,13 @@ def replace_particles_from_buffered_m4_renewal(
         mapped_target_nodes=renewed_output_count,
         excluded_solid_target_nodes=int(np.count_nonzero(lattice.solid_interior)),
         excluded_solid_vortex_strength_l1=float(result.excluded_target_vortex_strength_l1),
-        mapped_target_vortex_strength_l1=float(
-            np.linalg.norm(renewed_strength, axis=1).sum(dtype=np.float64)
-        ),
+        mapped_target_vortex_strength_l1=reductions.renewed_vortex_strength_l1,
         mapped_target_vortex_strength_net=injected_net,
         maximum_mapped_vortex_strength=maximum_strength,
         renewed_input_particles=int(result.renewed_input_count),
         renewed_output_particles=renewed_output_count,
         preserved_outer_particles=int(result.preserved_outer_count),
+        coalesced_outer_particles=int(result.coalesced_outer_count),
         pruned_lattice_nodes=int(result.pruned_node_count),
         pruned_vortex_strength_l1=float(result.pruned_vortex_strength_l1),
         pruned_vortex_strength_fraction=float(result.pruned_vortex_strength_fraction),
@@ -362,8 +577,45 @@ def replace_particles_from_buffered_m4_renewal(
         ),
         population_pruned_velocity_bound=float(result.population_pruned_velocity_bound),
         renewal_cfl=float(result.transfer_cfl),
+        renewal_raw_vortex_strength_error=float(raw_conservation.get("total_vortex_strength", 0.0)),
+        renewal_applied_vortex_strength_correction=float(
+            applied_conservation.get("total_vortex_strength", 0.0)
+        ),
         renewal_conservation_error=float(conservation.get("total_vortex_strength", 0.0)),
+        renewal_vortex_strength_tolerance=renewal_vortex_strength_tolerance,
+        renewal_raw_linear_impulse_error=float(raw_conservation.get("linear_impulse", 0.0)),
+        renewal_applied_linear_impulse_correction=float(
+            applied_conservation.get("linear_impulse", 0.0)
+        ),
         renewal_linear_impulse_error=float(conservation.get("linear_impulse", 0.0)),
+        renewal_linear_impulse_tolerance=renewal_linear_impulse_tolerance,
+        renewal_raw_angular_impulse_error=float(raw_conservation.get("angular_impulse", 0.0)),
+        renewal_applied_angular_impulse_correction=float(
+            applied_conservation.get("angular_impulse", 0.0)
+        ),
+        renewal_angular_impulse_error=float(conservation.get("angular_impulse", 0.0)),
+        renewal_applied_particle_strength_fraction=closure_correction_fraction,
+        population_renewal_raw_vortex_strength_error=float(
+            population_raw_conservation.get("total_vortex_strength", 0.0)
+        ),
+        population_renewal_applied_vortex_strength_correction=float(
+            population_applied_conservation.get("total_vortex_strength", 0.0)
+        ),
+        population_renewal_conservation_error=float(
+            population_conservation.get("total_vortex_strength", 0.0)
+        ),
+        population_renewal_raw_linear_impulse_error=float(
+            population_raw_conservation.get("linear_impulse", 0.0)
+        ),
+        population_renewal_applied_linear_impulse_correction=float(
+            population_applied_conservation.get("linear_impulse", 0.0)
+        ),
+        population_renewal_linear_impulse_error=float(
+            population_conservation.get("linear_impulse", 0.0)
+        ),
+        population_renewal_applied_particle_strength_fraction=float(
+            result.population_conservation_applied_particle_strength_fraction
+        ),
         representation_residual_before_prune=result.representation_residual_before_prune,
         representation_residual_after_prune=result.representation_residual_after_prune,
         maximum_transfer_amplification=float(result.maximum_transfer_amplification),
@@ -958,30 +1210,51 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
             f"{result.excluded_solid_vortex_strength_l1:.3e}",
             "m^3/s",
         ),
-        (
-            "fvm map, net error",
-            f"{float(np.linalg.norm(result.fvm_mapped_vortex_strength_net - result.fvm_donor_vortex_strength_net)):.3e}",
-            "m^3/s",
-        ),
-        (
-            "fvm map, first-moment error",
-            f"{float(np.linalg.norm(result.fvm_mapped_first_moment - result.fvm_donor_first_moment)):.3e}",
-            "m^4/s",
-        ),
-        ("vortex strength replaced, l1", f"{result.replaced_vortex_strength_l1:.3e}", "m^3/s"),
-        (
-            "vortex strength mapped, l1",
-            f"{result.mapped_target_vortex_strength_l1:.3e}",
-            "m^3/s",
-        ),
-        ("vortex strength born, l1", f"{result.injected_vortex_strength_l1:.3e}", "m^3/s"),
-        ("vortex strength, max node", f"{result.maximum_mapped_vortex_strength:.3e}", "m^3/s"),
-        (
-            "vortex strength, net change",
-            f"{float(np.linalg.norm(result.state_change_vortex_strength_net)):.3e}",
-            "m^3/s",
-        ),
     ]
+    if result.transfer_method != "buffered_m4_renewal":
+        rows.extend(
+            (
+                (
+                    "fvm map, net error",
+                    f"{float(np.linalg.norm(result.fvm_mapped_vortex_strength_net - result.fvm_donor_vortex_strength_net)):.3e}",
+                    "m^3/s",
+                ),
+                (
+                    "fvm map, first-moment error",
+                    f"{float(np.linalg.norm(result.fvm_mapped_first_moment - result.fvm_donor_first_moment)):.3e}",
+                    "m^4/s",
+                ),
+            )
+        )
+    rows.extend(
+        (
+            (
+                "vortex strength replaced, l1",
+                f"{result.replaced_vortex_strength_l1:.3e}",
+                "m^3/s",
+            ),
+            (
+                "vortex strength mapped, l1",
+                f"{result.mapped_target_vortex_strength_l1:.3e}",
+                "m^3/s",
+            ),
+            (
+                "vortex strength born, l1",
+                f"{result.injected_vortex_strength_l1:.3e}",
+                "m^3/s",
+            ),
+            (
+                "vortex strength, max node",
+                f"{result.maximum_mapped_vortex_strength:.3e}",
+                "m^3/s",
+            ),
+            (
+                "vortex strength, net change",
+                f"{float(np.linalg.norm(result.state_change_vortex_strength_net)):.3e}",
+                "m^3/s",
+            ),
+        )
+    )
     if result.mapped_vorticity_divergence_error is not None:
         rows.extend(
             (
@@ -1024,6 +1297,7 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
                 ("renewal belt, input", f"{result.renewed_input_particles:,}"),
                 ("renewal belt, output", f"{result.renewed_output_particles:,}"),
                 ("outer wake, preserved", f"{result.preserved_outer_particles:,}"),
+                ("outer wake, coalesced at support seam", f"{result.coalesced_outer_particles:,}"),
                 ("lattice nodes, pruned", f"{result.pruned_lattice_nodes:,}"),
                 (
                     "pruned strength, fraction",
@@ -1032,12 +1306,41 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
                 ),
                 ("renewal CFL", f"{result.renewal_cfl:.3f}"),
                 (
-                    "renewal conservation, strength",
+                    "renewal closure, raw strength mismatch",
+                    f"{result.renewal_raw_vortex_strength_error:.3e}",
+                ),
+                (
+                    "renewal closure, applied strength correction",
+                    f"{result.renewal_applied_vortex_strength_correction:.3e}",
+                ),
+                (
+                    "renewal closure, corrected strength mismatch",
                     f"{result.renewal_conservation_error:.3e}",
                 ),
                 (
-                    "renewal conservation, impulse",
+                    "renewal closure, strength tolerance",
+                    f"{result.renewal_vortex_strength_tolerance:.3e}",
+                ),
+                (
+                    "renewal closure, raw impulse mismatch",
+                    f"{result.renewal_raw_linear_impulse_error:.3e}",
+                ),
+                (
+                    "renewal closure, applied impulse correction",
+                    f"{result.renewal_applied_linear_impulse_correction:.3e}",
+                ),
+                (
+                    "renewal closure, corrected impulse mismatch",
                     f"{result.renewal_linear_impulse_error:.3e}",
+                ),
+                (
+                    "renewal closure, impulse tolerance",
+                    f"{result.renewal_linear_impulse_tolerance:.3e}",
+                ),
+                (
+                    "renewal closure, particle-strength correction",
+                    f"{100.0 * result.renewal_applied_particle_strength_fraction:.3f}",
+                    "%",
                 ),
                 (
                     "transfer amplification, max",
@@ -1357,6 +1660,89 @@ class VorticityTransfer:
             if self._stable_renewal_lattice is not None
             else (0 if self._renewal_lattice is None else len(self._renewal_lattice.position))
         )
+        geometry_rows: list[log_style.Row] = []
+        if self._stable_renewal_lattice is not None:
+            velocity = np.asarray(self.config.freestream_velocity, dtype=np.float64)
+            streamwise_axis = int(np.argmax(np.abs(velocity)))
+            downstream_is_maximum = velocity[streamwise_axis] >= 0.0
+            axis_name = "xyz"[streamwise_axis]
+            lattice = self._stable_renewal_lattice
+            planes = lattice.origin[streamwise_axis] + self.particle_spacing * np.arange(
+                lattice.shape[streamwise_axis]
+            )
+            authority_grid = lattice.fvm_authority.reshape(lattice.shape)
+            plane_authority = np.max(
+                np.moveaxis(authority_grid, streamwise_axis, 0).reshape(len(planes), -1),
+                axis=1,
+            )
+            authoritative_planes = planes[plane_authority > 0.0]
+            face = self._box[2 * streamwise_axis + int(downstream_is_maximum)]
+            renewal_edge = lattice.renewal_bounds[2 * streamwise_axis + int(downstream_is_maximum)]
+            beyond_face = planes > face if downstream_is_maximum else planes < face
+            inside_renewal = (
+                planes <= renewal_edge if downstream_is_maximum else planes >= renewal_edge
+            )
+            beyond_renewal = ~inside_renewal
+            support_edge = renewal_edge + (
+                2.0 * self.particle_spacing
+                if downstream_is_maximum
+                else -2.0 * self.particle_spacing
+            )
+            inside_m4_support = (
+                planes <= support_edge if downstream_is_maximum else planes >= support_edge
+            )
+
+            def downstream_extreme(values: np.ndarray) -> float:
+                return float(values.max() if downstream_is_maximum else values.min())
+
+            def upstream_extreme(values: np.ndarray) -> float:
+                return float(values.min() if downstream_is_maximum else values.max())
+
+            donor_coordinate = self._cell_centre[self._authority_cell_mask, streamwise_axis]
+            geometry_rows.extend(
+                (
+                    (
+                        f"fvm last donor centre, {axis_name}",
+                        f"{downstream_extreme(donor_coordinate):.6f}",
+                        "m",
+                    ),
+                    (
+                        f"fvm authority boundary, {axis_name}",
+                        f"{face:.6f}",
+                        "m",
+                    ),
+                    (
+                        f"last fvm-authoritative plane, {axis_name}",
+                        f"{downstream_extreme(authoritative_planes):.6f}",
+                        "m",
+                    ),
+                    (
+                        f"first vpm-only release plane, {axis_name}",
+                        f"{upstream_extreme(planes[beyond_face]):.6f}",
+                        "m",
+                    ),
+                    (
+                        f"last renewed input plane, {axis_name}",
+                        f"{downstream_extreme(planes[inside_renewal]):.6f}",
+                        "m",
+                    ),
+                    (
+                        f"first persistent input plane, {axis_name}",
+                        f"{upstream_extreme(planes[beyond_renewal]):.6f}",
+                        "m",
+                    ),
+                    (
+                        f"last m4-prime-reachable plane, {axis_name}",
+                        f"{downstream_extreme(planes[inside_m4_support]):.6f}",
+                        "m",
+                    ),
+                    (
+                        f"allocated m4-prime guard endpoint, {axis_name}",
+                        f"{downstream_extreme(planes):.6f}",
+                        "m",
+                    ),
+                )
+            )
         logger.info(
             format_coupler_log(
                 "replacement region",
@@ -1369,6 +1755,7 @@ class VorticityTransfer:
                 ),
                 ("renewal buffer", f"{self.renewal_buffer_length:.4g}", "m"),
                 ("renewal lattice nodes", f"{lattice_count:,}"),
+                *geometry_rows,
                 (
                     "state",
                     (
@@ -2020,6 +2407,7 @@ class VorticityTransfer:
             freestream_speed=float(np.linalg.norm(self.config.freestream_velocity_vector)),
             time_step_size=self.coupling_time_step,
             compute_diagnostics=(self.step == 1 or self.step % self.diagnostic_interval == 0),
+            maximum_closure_correction_fraction=self.discretization_error_limit,
         )
 
     def transfer(self, vpm, velocity, velocity_gradient) -> TransferResult:

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 import logging
+from numbers import Integral
 import os
 from pathlib import Path
 import time
@@ -25,6 +26,7 @@ from source.coupler.boundary import (
     update_boundary_history_after_replacement,
 )
 from source.coupler.checkpoint import (
+    CHECKPOINT_DIRECTORY,
     load_coupled_state,
     save_coupled_state,
 )
@@ -45,6 +47,58 @@ if TYPE_CHECKING:
     from source.solvers.vpm import VPMSolver
 
 logger = logging.getLogger("coupler")
+
+
+def _validate_gbd_moment_recovery(
+    recovery: Mapping[str, bool | int | float] | None,
+    correction_limit: float,
+) -> None:
+    """Fail fast when the just-completed GBD prune is not trustworthy."""
+    if recovery is None:
+        return
+    numeric_names = (
+        "nonzero_node_count",
+        "retained_node_count",
+        "pruned_node_count",
+        "correction_fraction",
+        "normalized_vortex_strength_residual",
+        "normalized_linear_impulse_residual",
+        "normalized_angular_impulse_residual",
+    )
+    try:
+        values = {name: float(recovery[name]) for name in numeric_names}
+        values["support_augmented_node_count"] = float(
+            recovery.get("support_augmented_node_count", 0)
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError("GBD moment-recovery diagnostics are incomplete or invalid") from error
+    for name, value in values.items():
+        if not np.isfinite(value):
+            raise RuntimeError(f"GBD moment-recovery diagnostic {name!r} is non-finite")
+    for name in (
+        "nonzero_node_count",
+        "retained_node_count",
+        "pruned_node_count",
+        "support_augmented_node_count",
+    ):
+        if values[name] < 0.0:
+            raise RuntimeError(f"GBD moment-recovery diagnostic {name!r} is negative")
+
+    if values["pruned_node_count"] > 0.0 and not bool(recovery.get("applied", False)):
+        raise RuntimeError("GBD pruned vortex nodes without conservative moment recovery")
+    maximum_residual = max(
+        values["normalized_vortex_strength_residual"],
+        values["normalized_linear_impulse_residual"],
+        values["normalized_angular_impulse_residual"],
+    )
+    if maximum_residual > 1.0e-5:
+        raise RuntimeError("GBD moment recovery exceeds its precision-aware residual tolerance")
+    if values["correction_fraction"] > float(correction_limit):
+        raise RuntimeError(
+            "GBD pruning required an excessive particle-strength correction: "
+            f"fraction={values['correction_fraction']:.6e}, "
+            f"limit={float(correction_limit):.6e}"
+        )
 
 
 def _world_rank() -> int:
@@ -404,7 +458,6 @@ class FVMVPMCoupler:
                     ("particles", 0),
                 )
             )
-            write_run_metadata(self)
             logger.info(format_coupler_log("initialization complete"))
 
         self._initialize_run_state()
@@ -415,8 +468,15 @@ class FVMVPMCoupler:
         restart_from=None,
         *,
         restart_allowed_config_differences: Collection[str] = (),
-    ) -> None:
-        """Initialize and run the coupling loop."""
+        max_coupling_steps: int | None = None,
+        checkpoint_at_stop: bool = False,
+    ) -> int:
+        """Initialize and run a complete or explicitly bounded coupling segment.
+
+        ``max_coupling_steps`` is an execution limit, not part of the physical
+        solver configuration.  It therefore permits strict, same-configuration
+        checkpoint restarts without changing the configured end time.
+        """
         if self.vorticity_transfer is None:
             self.initialize()
         if restart_from is not None:
@@ -428,11 +488,72 @@ class FVMVPMCoupler:
             )
         elif restart_allowed_config_differences:
             raise ValueError("restart_allowed_config_differences requires restart_from")
-        self.solve(start_step=start_step)
+        return self.solve(
+            start_step=start_step,
+            max_coupling_steps=max_coupling_steps,
+            checkpoint_at_stop=checkpoint_at_stop,
+        )
 
-    def solve(self, start_step: int = 0) -> None:
-        """Run the FVM--VPM coupling loop."""
+    @staticmethod
+    def _validate_step_limit(max_coupling_steps: int | None) -> int | None:
+        if max_coupling_steps is None:
+            return None
+        if isinstance(max_coupling_steps, bool) or not isinstance(max_coupling_steps, Integral):
+            raise TypeError("max_coupling_steps must be a positive integer or None")
+        limit = int(max_coupling_steps)
+        if limit <= 0:
+            raise ValueError("max_coupling_steps must be positive")
+        return limit
+
+    def _validate_start_step(self, start_step: int, configured_end_step: int) -> int:
+        if isinstance(start_step, bool) or not isinstance(start_step, Integral):
+            raise TypeError("start_step must be a non-negative integer")
+        step = int(start_step)
+        if not 0 <= step <= configured_end_step:
+            raise ValueError(f"start_step must lie in [0, {configured_end_step}], got {step}")
+        assert self.fvm_solver is not None
+        expected_fvm_step = step * self.n_fvm_substeps
+        if int(self.fvm_solver.step) != expected_fvm_step:
+            raise ValueError(
+                "FVM state does not match start_step: "
+                f"step={self.fvm_solver.step}, expected={expected_fvm_step}"
+            )
+        if self._is_master:
+            assert self.vpm_solver is not None
+            if int(self.vpm_solver.step) != step:
+                raise ValueError(
+                    "VPM state does not match start_step: "
+                    f"step={self.vpm_solver.step}, expected={step}"
+                )
+        return step
+
+    def solve(
+        self,
+        start_step: int = 0,
+        *,
+        max_coupling_steps: int | None = None,
+        checkpoint_at_stop: bool = False,
+    ) -> int:
+        """Run the FVM--VPM coupling loop and return the final completed step."""
         face_geometry, n_steps = self._prepare_run()
+        start_step = self._validate_start_step(start_step, n_steps)
+        step_limit = self._validate_step_limit(max_coupling_steps)
+        if step_limit is not None and start_step == n_steps:
+            raise ValueError("No configured coupling steps remain after start_step")
+        stop_step = n_steps if step_limit is None else min(n_steps, start_step + step_limit)
+        self._n_steps = stop_step
+        if self._is_master:
+            write_run_metadata(self, start_step=start_step, stop_step=stop_step)
+            if stop_step < n_steps:
+                logger.info(
+                    format_coupler_log(
+                        "execution limit",
+                        ("start step", f"{start_step:,}"),
+                        ("stop step", f"{stop_step:,}"),
+                        ("steps this invocation", f"{stop_step - start_step:,}"),
+                        ("checkpoint at stop", "enabled" if checkpoint_at_stop else "disabled"),
+                    )
+                )
         if start_step == 0:
             # Every VPM interval must start from the FVM state at the same
             # physical time. This first synchronization also supports non-zero
@@ -442,7 +563,7 @@ class FVMVPMCoupler:
             self._last_transfer_result = initial_result
         initialize_vpm_boundary_history(self, *face_geometry)
         assert self.vpm_time_step_size is not None
-        for step in range(1 + start_step, n_steps + 1):
+        for step in range(1 + start_step, stop_step + 1):
             time_end = step * self.vpm_time_step_size
             vpm_time = self._advance_vpm(step, time_end)
             velocity_boundary_condition_old, next_velocity, boundary_time = evaluate_vpm_boundary(
@@ -470,8 +591,19 @@ class FVMVPMCoupler:
                 logger=logger,
                 comm=_mpi4py_comm,
             )
+        checkpoint_was_scheduled = (
+            self.setup.checkpoint_interval_steps > 0
+            and stop_step > start_step
+            and stop_step % self.setup.checkpoint_interval_steps == 0
+        )
+        if checkpoint_at_stop and stop_step > start_step and not checkpoint_was_scheduled:
+            self.save_state(
+                self.solution_dir / CHECKPOINT_DIRECTORY,
+                coupling_step=stop_step,
+            )
         if self._is_master:
             flush_log(logger)
+        return stop_step
 
     def _initialize_run_state(self) -> None:
         self._step_transfer_stats: dict[str, float | int] | None = None
@@ -524,6 +656,15 @@ class FVMVPMCoupler:
             with self.vpm_redirector:
                 self.vpm_solver.advance(defer_output=True)
             self.vpm_solver.synchronize()
+            if str(getattr(self.vpm_solver, "viscous_scheme", "")).upper() == "GBD":
+                _validate_gbd_moment_recovery(
+                    getattr(
+                        self.vpm_solver.physics,
+                        "last_gbd_moment_recovery",
+                        None,
+                    ),
+                    self.setup.transfer_discretization_error_limit,
+                )
         return time.perf_counter() - t0
 
     def _transfer_vorticity_to_vpm(

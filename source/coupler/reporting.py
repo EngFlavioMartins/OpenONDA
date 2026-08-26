@@ -116,14 +116,24 @@ def _domain_dict(box: np.ndarray) -> dict[str, float]:
     )
 
 
-def write_run_metadata(coupler) -> None:
+def write_run_metadata(
+    coupler,
+    *,
+    start_step: int = 0,
+    stop_step: int | None = None,
+) -> None:
     """Write the resolved solver and coupling state used by post-processing."""
     assert coupler.fvm_box is not None
     assert coupler.vpm_solver is not None
     viscous_config = asdict(coupler.vpm_solver.setup.viscous)
+    configured_end_step = coupler._derive_coupling_step_count(
+        coupler.end_time,
+        coupler.vpm_time_step_size,
+    )
+    resolved_stop_step = configured_end_step if stop_step is None else int(stop_step)
     metadata = {
-        "schema_version": 2,
-        "coupling_method": "absolute_common_m4_lattice_blend",
+        "schema_version": 3,
+        "coupling_method": coupler.setup.transfer_method,
         "generated_utc": datetime.now(UTC).isoformat(),
         "case_dir": str(coupler.case_dir),
         "physics": {
@@ -154,6 +164,14 @@ def write_run_metadata(coupler) -> None:
         **coupler.setup.to_dict(),
         "vpm_time_step_size": coupler.vpm_time_step_size,
         "n_fvm_substeps": coupler.n_fvm_substeps,
+        "execution": {
+            "start_coupling_step": int(start_step),
+            "stop_coupling_step": resolved_stop_step,
+            "configured_end_coupling_step": configured_end_step,
+            "start_time": float(start_step * coupler.vpm_time_step_size),
+            "stop_time": float(resolved_stop_step * coupler.vpm_time_step_size),
+            "is_limited": resolved_stop_step < configured_end_step,
+        },
     }
     (coupler.solution_dir / "run_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
@@ -217,6 +235,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "renewed_input_particles": 0,
             "renewed_output_particles": 0,
             "preserved_outer_particles": 0,
+            "coalesced_outer_particles": 0,
             "pruned_lattice_nodes": 0,
             "pruned_vortex_strength_l1": 0.0,
             "pruned_vortex_strength_fraction": 0.0,
@@ -224,8 +243,25 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "population_pruned_vortex_strength_fraction": 0.0,
             "population_pruned_velocity_bound": 0.0,
             "renewal_cfl": 0.0,
+            "renewal_raw_vortex_strength_error": 0.0,
+            "renewal_applied_vortex_strength_correction": 0.0,
             "renewal_conservation_error": 0.0,
+            "renewal_vortex_strength_tolerance": 0.0,
+            "renewal_raw_linear_impulse_error": 0.0,
+            "renewal_applied_linear_impulse_correction": 0.0,
             "renewal_linear_impulse_error": 0.0,
+            "renewal_linear_impulse_tolerance": 0.0,
+            "renewal_raw_angular_impulse_error": 0.0,
+            "renewal_applied_angular_impulse_correction": 0.0,
+            "renewal_angular_impulse_error": 0.0,
+            "renewal_applied_particle_strength_fraction": 0.0,
+            "population_renewal_raw_vortex_strength_error": 0.0,
+            "population_renewal_applied_vortex_strength_correction": 0.0,
+            "population_renewal_conservation_error": 0.0,
+            "population_renewal_raw_linear_impulse_error": 0.0,
+            "population_renewal_applied_linear_impulse_correction": 0.0,
+            "population_renewal_linear_impulse_error": 0.0,
+            "population_renewal_applied_particle_strength_fraction": 0.0,
             "representation_residual_before_prune": None,
             "representation_residual_after_prune": None,
             "maximum_transfer_amplification": 0.0,
@@ -272,13 +308,21 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "mapped_target_vortex_strength_net_y": float(mapped_target_net[1]),
             "mapped_target_vortex_strength_net_z": float(mapped_target_net[2]),
             "maximum_mapped_vortex_strength": float(result.maximum_mapped_vortex_strength),
-            "fvm_mapping_vortex_strength_error": float(
-                np.linalg.norm(
-                    result.fvm_mapped_vortex_strength_net - result.fvm_donor_vortex_strength_net
+            "fvm_mapping_vortex_strength_error": (
+                None
+                if result.transfer_method == "buffered_m4_renewal"
+                else float(
+                    np.linalg.norm(
+                        result.fvm_mapped_vortex_strength_net - result.fvm_donor_vortex_strength_net
+                    )
                 )
             ),
-            "fvm_mapping_first_moment_error": float(
-                np.linalg.norm(result.fvm_mapped_first_moment - result.fvm_donor_first_moment)
+            "fvm_mapping_first_moment_error": (
+                None
+                if result.transfer_method == "buffered_m4_renewal"
+                else float(
+                    np.linalg.norm(result.fvm_mapped_first_moment - result.fvm_donor_first_moment)
+                )
             ),
             "blend_cross_divergence_l2_before": float(result.blend_cross_divergence_l2_before),
             "blend_cross_divergence_l2_after": float(result.blend_cross_divergence_l2_after),
@@ -313,6 +357,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             "renewed_input_particles": int(result.renewed_input_particles),
             "renewed_output_particles": int(result.renewed_output_particles),
             "preserved_outer_particles": int(result.preserved_outer_particles),
+            "coalesced_outer_particles": int(result.coalesced_outer_particles),
             "pruned_lattice_nodes": int(result.pruned_lattice_nodes),
             "pruned_vortex_strength_l1": float(result.pruned_vortex_strength_l1),
             "pruned_vortex_strength_fraction": float(result.pruned_vortex_strength_fraction),
@@ -322,8 +367,47 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             ),
             "population_pruned_velocity_bound": float(result.population_pruned_velocity_bound),
             "renewal_cfl": float(result.renewal_cfl),
+            "renewal_raw_vortex_strength_error": float(result.renewal_raw_vortex_strength_error),
+            "renewal_applied_vortex_strength_correction": float(
+                result.renewal_applied_vortex_strength_correction
+            ),
             "renewal_conservation_error": float(result.renewal_conservation_error),
+            "renewal_vortex_strength_tolerance": float(result.renewal_vortex_strength_tolerance),
+            "renewal_raw_linear_impulse_error": float(result.renewal_raw_linear_impulse_error),
+            "renewal_applied_linear_impulse_correction": float(
+                result.renewal_applied_linear_impulse_correction
+            ),
             "renewal_linear_impulse_error": float(result.renewal_linear_impulse_error),
+            "renewal_linear_impulse_tolerance": float(result.renewal_linear_impulse_tolerance),
+            "renewal_raw_angular_impulse_error": float(result.renewal_raw_angular_impulse_error),
+            "renewal_applied_angular_impulse_correction": float(
+                result.renewal_applied_angular_impulse_correction
+            ),
+            "renewal_angular_impulse_error": float(result.renewal_angular_impulse_error),
+            "renewal_applied_particle_strength_fraction": float(
+                result.renewal_applied_particle_strength_fraction
+            ),
+            "population_renewal_raw_vortex_strength_error": float(
+                result.population_renewal_raw_vortex_strength_error
+            ),
+            "population_renewal_applied_vortex_strength_correction": float(
+                result.population_renewal_applied_vortex_strength_correction
+            ),
+            "population_renewal_conservation_error": float(
+                result.population_renewal_conservation_error
+            ),
+            "population_renewal_raw_linear_impulse_error": float(
+                result.population_renewal_raw_linear_impulse_error
+            ),
+            "population_renewal_applied_linear_impulse_correction": float(
+                result.population_renewal_applied_linear_impulse_correction
+            ),
+            "population_renewal_linear_impulse_error": float(
+                result.population_renewal_linear_impulse_error
+            ),
+            "population_renewal_applied_particle_strength_fraction": float(
+                result.population_renewal_applied_particle_strength_fraction
+            ),
             "representation_residual_before_prune": (
                 None
                 if result.representation_residual_before_prune is None
@@ -367,11 +451,51 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             str(name): float(value)
             for name, value in coupler.vorticity_transfer.last_vortex_line_closure.items()
         }
+    gbd_moment_recovery = {
+        "applied": False,
+        "nonzero_node_count": 0,
+        "retained_node_count": 0,
+        "pruned_node_count": 0,
+        "support_augmented_node_count": 0,
+        "correction_fraction": 0.0,
+        "normalized_vortex_strength_residual": 0.0,
+        "normalized_linear_impulse_residual": 0.0,
+        "normalized_angular_impulse_residual": 0.0,
+    }
+    vpm_solver = getattr(coupler, "vpm_solver", None)
+    if vpm_solver is not None:
+        recovery = getattr(vpm_solver.physics, "last_gbd_moment_recovery", None)
+        if recovery is not None:
+            gbd_moment_recovery = {
+                "applied": bool(recovery["applied"]),
+                "nonzero_node_count": int(recovery["nonzero_node_count"]),
+                "retained_node_count": int(recovery["retained_node_count"]),
+                "pruned_node_count": int(recovery["pruned_node_count"]),
+                "support_augmented_node_count": int(
+                    recovery.get("support_augmented_node_count", 0)
+                ),
+                "correction_fraction": float(recovery["correction_fraction"]),
+                "normalized_vortex_strength_residual": float(
+                    recovery["normalized_vortex_strength_residual"]
+                ),
+                "normalized_linear_impulse_residual": float(
+                    recovery["normalized_linear_impulse_residual"]
+                ),
+                "normalized_angular_impulse_residual": float(
+                    recovery["normalized_angular_impulse_residual"]
+                ),
+            }
+            numeric_recovery = [
+                value for name, value in gbd_moment_recovery.items() if name != "applied"
+            ]
+            if not all(np.isfinite(value) for value in numeric_recovery):
+                raise FloatingPointError("non-finite GBD moment-recovery diagnostic")
     return {
         "vpm_boundary_condition_flux": boundary_flux,
         "transfer": transfer,
         "boundary_normal_velocity": interface,
         "vortex_line_closure": closure,
+        "gbd_moment_recovery": gbd_moment_recovery,
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
         "n_transfer_particles": int(particle_count),
     }
