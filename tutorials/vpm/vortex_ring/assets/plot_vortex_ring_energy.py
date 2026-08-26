@@ -11,6 +11,7 @@ Saves: figures/vortex_ring_energy.png
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from ring_metrics import (
@@ -25,6 +26,35 @@ from ring_metrics import (
     load_theme,
     save_fig,
 )
+
+ZOOM_END = 3.2  # early window that holds the whole dns_direct / dns_mixed history
+ZOOM_BOX = (0.575, 0.545, 0.400, 0.415)  # inset rectangle in axes coordinates
+ZOOM_MARKER_SIZE = 2.0
+ZOOM_FLOOR = 1e-3  # clip magnitude before semilogy (guards the exact-zero t=0 sample)
+
+
+def line_style(st: dict, markevery: int, markersize: float | None = None) -> dict:
+    """Return the shared line keywords for one stretching variant."""
+    return {
+        "linestyle": st["linestyle"],
+        "color": st["color"],
+        "lw": st["linewidth"],
+        "marker": st["marker"],
+        "ms": st["markersize"] if markersize is None else markersize,
+        "markevery": markevery,
+        "mew": st["markeredgewidth"],
+    }
+
+
+def zoom_axes(ax, ylim: tuple[float, float]):
+    """Attach an early-time |rate| zoom inset to the top-right corner of ``ax``."""
+    inset = ax.inset_axes(ZOOM_BOX)
+    inset.set_xlim(0.0, ZOOM_END)
+    inset.set_yscale("log")
+    inset.set_ylim(*ylim)
+    inset.tick_params(labelsize=5, length=2, pad=1.5)
+    inset.text(0.05, 0.92, r"$|\cdot|$", fontsize=5, transform=inset.transAxes, va="top")
+    return inset
 
 
 def main() -> None:
@@ -41,6 +71,9 @@ def main() -> None:
     plot_end = 185
     n_skip = 14  # plot every n-th marker
 
+    zoom_de = zoom_axes(ax_de, ylim=(ZOOM_FLOOR, 3e-1))
+    zoom_nuens = zoom_axes(ax_nuens, ylim=(1e-2, 1e-1))
+
     # -- Energy diagnostics — all available variants -------------------------
     for variant, st in VARIANT_STYLE.items():
         csv_path = SAMPLES_DIR / variant / "flow_integrals.csv"
@@ -56,29 +89,17 @@ def main() -> None:
         label = VARIANT_LABEL[variant]
         print(f"  {variant}: {csv_path}")
         t = times / REFERENCE_TIME
-        (line,) = ax_de.plot(
+        (line,) = ax_de.plot(t, dedt / P_REF, label=label, **line_style(st, n_skip))
+        ax_nuens.plot(t, viscous_kinetic_energy_rate / P_REF, label=label, **line_style(st, n_skip))
+        zoom_de.semilogy(
             t,
-            dedt / P_REF,
-            linestyle=st["linestyle"],
-            color=st["color"],
-            lw=st["linewidth"],
-            marker=st["marker"],
-            ms=st["markersize"],
-            markevery=n_skip,
-            mew=st["markeredgewidth"],
-            label=label,
+            np.abs(dedt / P_REF).clip(min=ZOOM_FLOOR),
+            **line_style(st, 1, ZOOM_MARKER_SIZE),
         )
-        ax_nuens.plot(
+        zoom_nuens.semilogy(
             t,
-            viscous_kinetic_energy_rate / P_REF,
-            linestyle=st["linestyle"],
-            color=st["color"],
-            lw=st["linewidth"],
-            marker=st["marker"],
-            ms=st["markersize"],
-            markevery=n_skip,
-            mew=st["markeredgewidth"],
-            label=label,
+            np.abs(viscous_kinetic_energy_rate / P_REF).clip(min=ZOOM_FLOOR),
+            **line_style(st, 1, ZOOM_MARKER_SIZE),
         )
         legend_handles.append(line)
         legend_labels.append(label)
@@ -93,6 +114,8 @@ def main() -> None:
     ax_de.set_ylabel(r"$(dE/dt)\,T_0\,/\,(\Gamma^2 R_0)$")
     ax_nuens.set_title(r"Viscous dissipation versus time")
     ax_nuens.set_ylabel(r"$(-\nu\varepsilon)\,T_0\,/\,(\Gamma^2 R_0)$")
+    for inset in (zoom_de, zoom_nuens):
+        inset.set_xticks([0, 1, 2, 3])
     fig.legend(
         legend_handles,
         legend_labels,

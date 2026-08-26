@@ -22,6 +22,32 @@ from ring_metrics import (
     save_fig,
 )
 
+ZOOM_END = 3.2  # early window that holds the whole dns_direct / dns_mixed history
+ZOOM_BOX = (0.575, 0.545, 0.400, 0.415)  # inset rectangle in axes coordinates
+ZOOM_MARKER_SIZE = 2.0
+
+
+def line_style(st: dict, markevery: int, markersize: float | None = None) -> dict:
+    """Return the shared line keywords for one stretching variant."""
+    return {
+        "linestyle": st["linestyle"],
+        "color": st["color"],
+        "lw": st["linewidth"],
+        "marker": st["marker"],
+        "ms": st["markersize"] if markersize is None else markersize,
+        "markevery": markevery,
+        "mew": st["markeredgewidth"],
+    }
+
+
+def zoom_axes(ax, ylim: tuple[float, float]):
+    """Attach an early-time zoom inset to the top-right corner of ``ax``."""
+    inset = ax.inset_axes(ZOOM_BOX)
+    inset.set_xlim(0.0, ZOOM_END)
+    inset.set_ylim(*ylim)
+    inset.tick_params(labelsize=5, length=2, pad=1.5)
+    return inset
+
 
 def main() -> None:
     args = build_arg_parser(
@@ -39,6 +65,11 @@ def main() -> None:
 
     n_skip = 14  # plot every n-th marker
 
+    ax_sum.set_yscale("log")  # match before adding the log-scaled inset below
+    zoom_tube = zoom_axes(ax_tube, ylim=(0.98, 1.80))
+    zoom_sum = zoom_axes(ax_sum, ylim=(1e-8, 1e-2))
+    zoom_sum.set_yscale("log")
+
     for variant, st in VARIANT_STYLE.items():
         csv_path = SAMPLES_DIR / variant / "ring_diagnostics.csv"
         t, c = load_sampled_ring_circulation(csv_path)
@@ -46,31 +77,11 @@ def main() -> None:
             continue
         t_sum, sum_err = load_sampled_vector_circulation_error(csv_path)
         label = VARIANT_LABEL[variant]
-        (line,) = ax_tube.plot(
-            t,
-            c,
-            linestyle=st["linestyle"],
-            color=st["color"],
-            lw=st["linewidth"],
-            marker=st["marker"],
-            ms=st["markersize"],
-            markevery=n_skip,
-            mew=st["markeredgewidth"],
-            label=label,
-        )
+        (line,) = ax_tube.plot(t, c, label=label, **line_style(st, n_skip))
+        zoom_tube.plot(t, c, **line_style(st, 1, ZOOM_MARKER_SIZE))
         if t_sum.size:
-            ax_sum.semilogy(
-                t_sum,
-                sum_err.clip(min=1e-12),
-                linestyle=st["linestyle"],
-                color=st["color"],
-                lw=st["linewidth"],
-                marker=st["marker"],
-                ms=st["markersize"],
-                markevery=n_skip,
-                mew=st["markeredgewidth"],
-                label=label,
-            )
+            ax_sum.semilogy(t_sum, sum_err.clip(min=1e-12), label=label, **line_style(st, n_skip))
+            zoom_sum.semilogy(t_sum, sum_err.clip(min=1e-12), **line_style(st, 1, ZOOM_MARKER_SIZE))
         legend_handles.append(line)
         legend_labels.append(label)
 
@@ -85,6 +96,9 @@ def main() -> None:
     ax_sum.set_ylabel(r"$\|\Sigma\alpha-\Sigma\alpha_0\|\,/\,\Sigma|\alpha|_0$")
     ax_sum.set_ylim(1e-8, 1e-2)
     ax_sum.axhspan(1e-4, 1e-2, color=colors["background_light"], linewidth=0, zorder=0)
+    zoom_sum.axhspan(1e-4, 1e-2, color=colors["background_light"], linewidth=0, zorder=0)
+    zoom_tube.set_xticks([0, 1, 2, 3])
+    zoom_sum.set_xticks([0, 1, 2, 3])
 
     fig.legend(
         legend_handles,

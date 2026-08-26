@@ -124,6 +124,22 @@ def test_lamb_oseen_case_names_are_separate_from_energy_plot_metadata():
     assert diagnostics.CASES == ("vortex", "dipole", "merging")
     assert tuple(case_name for case_name, _, _ in diagnostics.ENERGY_CASES) == diagnostics.CASES
     assert all(isinstance(case_name, str) for case_name in diagnostics.CASES)
+    assert "is_pair_unresolved" in diagnostics.FIELD_CSV_COLUMNS
+    assert "is_merged" not in diagnostics.FIELD_CSV_COLUMNS
+
+
+def test_lamb_oseen_cs_is_always_the_top_comparison_layer():
+    diagnostics = _load_module(
+        TUTORIALS / "vpm/lamb_oseen_vortex/assets/vortex_diagnostics.py",
+        "lamb_oseen_plot_layer_contract",
+    )
+
+    assert set(diagnostics.SCHEME_DRAW_ORDER) == set(diagnostics.SCHEMES)
+    assert diagnostics.SCHEME_DRAW_ORDER[-1] == "cs"
+    assert diagnostics.scheme_zorder("cs") > max(
+        diagnostics.scheme_zorder(scheme) for scheme in diagnostics.SCHEMES if scheme != "cs"
+    )
+    assert diagnostics.scheme_zorder("cs") > 100  # analytic/reference curves
 
 
 def test_vpm_tutorials_keep_their_compact_sampling_budgets():
@@ -133,13 +149,28 @@ def test_vpm_tutorials_keep_their_compact_sampling_budgets():
     vortex_ring = (TUTORIALS / "vpm/vortex_ring/ring_setup.py").read_text(encoding="utf-8")
 
     assert "FIELD_SPACING = 0.16 * CORE_RADIUS" in lamb_oseen
-    assert "MERGING_SAMPLE_INTERVAL_TIME = SAMPLE_INTERVAL_TIME" in lamb_oseen
+    assert "MERGING_SAMPLE_INTERVAL_STEPS = 6" in lamb_oseen
+    assert "vpm.SamplingSchedule(every_n_steps=MERGING_SAMPLE_INTERVAL_STEPS)" in lamb_oseen
     assert 'field_padding = 0.0 if physics == "vortex" else 3.0 * final_core_radius' in lamb_oseen
     assert "bounds=field_bounds" in lamb_oseen
     assert "checkpoint_store_velocity_gradient=False" in lamb_oseen
     assert "SAMPLE_INTERVAL_TIME = 0.1" in vortex_ring
     assert "CHECKPOINT_INTERVAL_TIME = 0.5" in vortex_ring
     assert "checkpoint_store_velocity_gradient=False" in vortex_ring
+
+
+def test_vortex_ring_checkpoint_contract_follows_each_run_horizon():
+    postprocess = _load_module(
+        TUTORIALS / "vpm/vortex_ring/assets/postprocess.py",
+        "vortex_ring_postprocess_contract",
+    )
+
+    assert postprocess._expected_checkpoint_steps(45, 25) == {25}
+    assert postprocess._expected_checkpoint_steps(1629, 25) == set(range(25, 1626, 25))
+    assert postprocess._expected_checkpoint_steps(3000, 25) == set(range(25, 3001, 25))
+
+    with pytest.raises(ValueError, match="positive"):
+        postprocess._expected_checkpoint_steps(3000, 0)
 
 
 def test_vpm_tutorials_request_compact_restartable_checkpoints():

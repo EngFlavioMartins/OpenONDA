@@ -29,6 +29,7 @@ from matplotlib.lines import Line2D
 if __package__:
     from .vortex_diagnostics import (
         ENERGY_CASES,
+        SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
@@ -36,10 +37,12 @@ if __package__:
         load_theme,
         resolve_runtime_physics,
         save_fig,
+        scheme_zorder,
     )
 else:
     from vortex_diagnostics import (
         ENERGY_CASES,
+        SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
@@ -47,6 +50,7 @@ else:
         load_theme,
         resolve_runtime_physics,
         save_fig,
+        scheme_zorder,
     )
 
 
@@ -111,7 +115,7 @@ def plot_case_panel(
 ) -> float:
     ax.set_title(title)
     latest_tau = 0.0
-    for scheme in SCHEMES:
+    for scheme in SCHEME_DRAW_ORDER:
         csv_path = samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv"
         data = read_flow_integrals(csv_path)
         if data is None:
@@ -127,12 +131,17 @@ def plot_case_panel(
             "linewidth": 1.0,
             "alpha": 0.85,
         }
-        ax.plot(tau, data["kinetic_energy_rate"] / p_ref, zorder=10, **plot_kw)
+        ax.plot(
+            tau,
+            data["kinetic_energy_rate"] / p_ref,
+            zorder=scheme_zorder(scheme),
+            **plot_kw,
+        )
         ax.plot(
             tau,
             data["viscous_kinetic_energy_rate"] / p_ref,
             mfc="none",
-            zorder=100,
+            zorder=scheme_zorder(scheme, offset=1),
             **plot_kw,
         )
         latest_tau = max(latest_tau, float(tau.max()))
@@ -191,12 +200,13 @@ def plot_energy_enstrophy(args) -> int:
         return 0
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 L / a_{c,0}^2)$")
+    axes[0].set_ylim([-1e0, 1e-1])
 
     # sharey=True links the y-axes, so the scale and limits propagate.
     for ax in axes:
         ax.set_yscale("symlog", linthresh=0.01)
     for ax in axes:
-        ax.axhspan(0.0, 0.05, color=colors["background_light"], linewidth=0, zorder=0)
+        ax.axhspan(0.0, 1e-1, color=colors["background_light"], linewidth=0, zorder=0)
 
     available_schemes = [
         scheme

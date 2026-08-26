@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 
 if __package__:
     from .vortex_diagnostics import (
+        SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
@@ -29,9 +30,11 @@ if __package__:
         load_theme,
         resolve_runtime_physics,
         save_fig,
+        scheme_zorder,
     )
 else:
     from vortex_diagnostics import (
+        SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
@@ -39,6 +42,7 @@ else:
         load_theme,
         resolve_runtime_physics,
         save_fig,
+        scheme_zorder,
     )
 
 
@@ -92,7 +96,7 @@ def plot_dipole_case(args) -> int:
     fig.subplots_adjust(wspace=0.20, bottom=0.25, top=0.92, left=0.08, right=0.98)
 
     plotted_schemes = []
-    for scheme in SCHEMES:
+    for scheme in SCHEME_DRAW_ORDER:
         ts = extract_dipole_timeseries(samples_dir, scheme)
         if ts is None:
             print(f"  [dipole] skipping {scheme!r} — no data")
@@ -112,6 +116,7 @@ def plot_dipole_case(args) -> int:
             "markersize": 2.2,
             "linestyle": "None",
             "linewidth": 1.0,
+            "zorder": scheme_zorder(scheme),
         }
         if trajectory_mask.any():
             tau = run_kinematic_viscosity * t[trajectory_mask] / (a0**2)
@@ -138,7 +143,7 @@ def plot_dipole_case(args) -> int:
     axes[1].set_ylabel(r"$a_c / a_{c,0}$")
     axes[1].set_title(r"Core radius over time")
     axes[1].set_xlim([0.0, 3.8])
-    axes[1].set_ylim([0.8, 4.5])
+    axes[1].set_ylim([0.8, 4.0])
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:

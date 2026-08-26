@@ -3,7 +3,7 @@
 sampled-field readers, and the field-based centre/core-radius extraction
 algorithm.
 
-The centre/core-radius/vortex_separation/merged status for all three physics cases
+The centre/core-radius/vortex_separation/pair-resolution status for all three physics cases
 (single vortex, dipole, merging) are derived from the *sampled velocity
 field* itself (the ``*_zq_*.vts`` planes written by the ``SurfaceSampler``
 at z = +L/4) — one consistent method, independent of the viscous diffusion
@@ -42,6 +42,13 @@ REF_DIR = ASSETS_DIR / "references"
 
 # -- Tutorial constants -------------------------------------------------------
 SCHEMES = ("cs", "rwm", "dvh", "gbd")
+# Draw CS last so its circle markers remain visible wherever methods overlap.
+# The high CS layer also keeps the circles above analytic/reference curves.
+SCHEME_DRAW_ORDER = tuple(scheme for scheme in SCHEMES if scheme != "cs") + ("cs",)
+_SCHEME_ZORDER = {
+    scheme: (200 if scheme == "cs" else 10 + index)
+    for index, scheme in enumerate(SCHEME_DRAW_ORDER)
+}
 CASES = ("vortex", "dipole", "merging")
 ENERGY_CASES = (
     ("vortex", "Single vortex", 1),
@@ -73,7 +80,7 @@ FIELD_CSV_COLUMNS = [
     "core_radius_1",
     "mean_core_radius",
     "angle_radians",
-    "is_merged",
+    "is_pair_unresolved",
     "is_core_radius_0_boundary_limited",
     "is_core_radius_1_boundary_limited",
 ]
@@ -430,7 +437,7 @@ def _diagnostics_row(
         if np.isfinite(c0).all() and np.isfinite(c1).all()
         else float("nan")
     )
-    merged = physics == "merging" and not np.isfinite(vortex_separation)
+    pair_unresolved = physics == "merging" and not np.isfinite(vortex_separation)
 
     r_max = _search_radius(physics, vortex_separation)
     support0 = support1 = None
@@ -480,7 +487,7 @@ def _diagnostics_row(
         core_radius_1,
         mean_core_radius,
         angle,
-        merged,
+        pair_unresolved,
         limited0,
         limited1,
     ]
@@ -516,7 +523,7 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
         timeline = pvd_time_map(samples_dir, physics, scheme)
         rows = []
         previous_centres = None
-        merged_phase = False
+        unresolved_phase = False
         for path in vts:
             step = int(VTS_STEP_RE.search(path.name).group(1))
             try:
@@ -528,17 +535,17 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
                 continue
             field["step"] = step
             field["time"] = timeline.get(step, float("nan"))
-            if physics == "merging" and merged_phase:
-                # Merger is a topological event.  Treat it as an absorbing
-                # state: late-time grid noise must not resurrect a vortex
-                # pair and create a fictitious vortex_separation or angle history.
+            if physics == "merging" and unresolved_phase:
+                # Loss of a resolvable pair is absorbing for these pair
+                # observables: late-time grid noise must not resurrect two
+                # centres and create a fictitious separation or angle history.
                 row = _diagnostics_row(field, "vortex")
                 row[11] = True
             else:
                 row = _diagnostics_row(field, physics, previous_centres)
             rows.append(row)
             if physics == "merging" and bool(row[11]):
-                merged_phase = True
+                unresolved_phase = True
                 previous_centres = None
             elif np.isfinite(row[2:6]).all():
                 previous_centres = [np.asarray(row[2:4]), np.asarray(row[4:6])]
@@ -588,6 +595,11 @@ def load_theme() -> tuple[dict[str, str], object | None]:
 def build_style_map(colors: dict[str, str]) -> dict[str, dict]:
     """Map scheme names to plot style dicts (color, marker, label)."""
     return {name: dict(style) for name, style in _theme().LAMB_OSEEN_SCHEME_STYLE.items()}
+
+
+def scheme_zorder(scheme: str, offset: int = 0) -> int:
+    """Layer one scheme consistently, with CS above every comparison curve."""
+    return _SCHEME_ZORDER[scheme] + offset
 
 
 def figure_size(name: str = "single") -> tuple[float, float]:

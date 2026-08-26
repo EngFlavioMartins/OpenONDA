@@ -58,9 +58,9 @@ else:
 
 _LAYOUT = [
     ("gbd", "TL", r"$\mathrm{GBD}$", (-4.5, 4.5), "left", "top"),
-    ("cs", "TR", r"$\mathrm{CS}$", (4.5, 4.5), "right", "top"),
     ("rwm", "BL", r"$\mathrm{RWM}$", (-4.5, -4.5), "left", "bottom"),
     ("dvh", "BR", r"$\mathrm{DVH}$", (4.5, -4.5), "right", "bottom"),
+    ("cs", "TR", r"$\mathrm{CS}$", (4.5, 4.5), "right", "top"),
 ]
 
 

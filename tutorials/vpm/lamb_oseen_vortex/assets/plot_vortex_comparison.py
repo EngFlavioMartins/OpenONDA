@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 
 if __package__:
     from .vortex_diagnostics import (
+        SCHEME_DRAW_ORDER,
         SCHEMES,
         TOTAL_TIME,
         build_arg_parser,
@@ -32,9 +33,11 @@ if __package__:
         read_surface_field,
         resolve_runtime_physics,
         save_fig,
+        scheme_zorder,
     )
 else:
     from vortex_diagnostics import (
+        SCHEME_DRAW_ORDER,
         SCHEMES,
         TOTAL_TIME,
         build_arg_parser,
@@ -45,6 +48,7 @@ else:
         read_surface_field,
         resolve_runtime_physics,
         save_fig,
+        scheme_zorder,
     )
 
 from matplotlib.ticker import FormatStrFormatter
@@ -133,7 +137,7 @@ def load_profile(
 def latest_common_time(samples_dir: Path) -> float | None:
     """Latest physical time reached by every currently available method."""
     latest = []
-    for scheme in SCHEMES:
+    for scheme in SCHEME_DRAW_ORDER:
         timeline = pvd_time_map(samples_dir, "vortex", scheme)
         if timeline:
             latest.append(max(timeline.values()))
@@ -187,6 +191,7 @@ def plot_vortex_case(args) -> int:
             "markevery": 1,
             "linestyle": "None",
             "linewidth": 1.0,
+            "zorder": scheme_zorder(scheme),
         }
         axes[0].plot(x / ac0, uy / uc_ref, **plot_kw)
         axes[1].plot(x / ac0, oz / wc_ref, **plot_kw)

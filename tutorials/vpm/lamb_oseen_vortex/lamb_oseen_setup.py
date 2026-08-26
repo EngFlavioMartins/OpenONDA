@@ -42,7 +42,7 @@ FIELD_SPACING = 0.16 * CORE_RADIUS  # sampling field resolution for surface outp
 TIME_STEP_SIZE = 0.291 / 9.0  # Δt [s]
 TOTAL_TIME = 103.0 * 0.291  # total simulation time [s]
 SAMPLE_INTERVAL_TIME = 2.0 * 0.291  # time between field samples [s]
-MERGING_SAMPLE_INTERVAL_TIME = SAMPLE_INTERVAL_TIME  # time between merging-field samples [s]
+MERGING_SAMPLE_INTERVAL_STEPS = 6  # resolve the rapid final collapse of the two vorticity peaks
 CHECKPOINT_INTERVAL_TIME = 10.0 * 0.291  # time between snapshots [s]
 TREECODE_THETA = 0.30  # treecode accuracy parameter (higher = faster, less accurate)
 TREECODE_MULTIPOLE_ORDER = 3  # treecode multipole expansion order
@@ -149,14 +149,10 @@ def run_case(
     field_spacing = FIELD_SPACING
     circulation = abs(circulations[0])
     kinematic_viscosity = circulation / CIRCULATION_REYNOLDS_NUMBER  # ν = |Γ|/Re_Γ
-    sample_interval_time = (
-        MERGING_SAMPLE_INTERVAL_TIME if physics == "merging" else SAMPLE_INTERVAL_TIME
-    )
-
     # ---- Time stepping ----
     viscous = viscous_config(scheme, kinematic_viscosity, spacing)
     n_steps = round(TOTAL_TIME / TIME_STEP_SIZE)
-    sample_steps = round(sample_interval_time / TIME_STEP_SIZE)
+    sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
     checkpoint_interval_steps = round(CHECKPOINT_INTERVAL_TIME / TIME_STEP_SIZE)
 
     # ---- Initial vortex geometry ----
@@ -226,6 +222,11 @@ def run_case(
         spacing=field_spacing,
         file_name=f"{case_name}_zq",
         include_derivatives=False,
+        schedule=(
+            vpm.SamplingSchedule(every_n_steps=MERGING_SAMPLE_INTERVAL_STEPS)
+            if physics == "merging"
+            else None
+        ),
     )
     scheduled_samplers = [field_sampler]
     final_samplers = [field_sampler]
@@ -272,6 +273,9 @@ def run_case(
         "column_half_length": column_half_length,
         "end_time": TOTAL_TIME,
         "time_step_size": TIME_STEP_SIZE,
+        "field_sample_interval_steps": (
+            MERGING_SAMPLE_INTERVAL_STEPS if physics == "merging" else sample_steps
+        ),
     }
     metadata_path = samples_dir / "run_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")

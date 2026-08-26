@@ -127,9 +127,9 @@ def _single_vortex_errors() -> dict[str, tuple[float, float, float]]:
 
 def validate(pre_plot: bool) -> int:
     failures: list[str] = []
-    for physics in CASES:
+    for physics_id, _, _ in CASES:
         for scheme in SCHEMES:
-            name = f"{physics}_{scheme}"
+            name = f"{physics_id}_{scheme}"
             folder = SAMPLES_DIR / name
             metadata_path = folder / "run_metadata.json"
             if not metadata_path.is_file():
@@ -248,9 +248,9 @@ def _quality_warnings(scheme: str, metadata: dict, max_particles: float | None) 
 
 def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
     runs = {}
-    for case in CASES:
+    for case_id, _, _ in CASES:
         for scheme in SCHEMES:
-            name = f"{case}_{scheme}"
+            name = f"{case_id}_{scheme}"
             folder = samples_dir / name
             metadata = _metadata(folder / "run_metadata.json")
             field_rows, field_time = _last_time(folder / "field_diagnostics.csv", "time")

@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 if __package__:
     from .vortex_diagnostics import (
         REF_DIR,
+        SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
@@ -26,11 +27,13 @@ if __package__:
         load_theme,
         resolve_runtime_physics,
         save_fig,
+        scheme_zorder,
         unwrap_pair_orientation,
     )
 else:
     from vortex_diagnostics import (
         REF_DIR,
+        SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
@@ -38,6 +41,7 @@ else:
         load_theme,
         resolve_runtime_physics,
         save_fig,
+        scheme_zorder,
         unwrap_pair_orientation,
     )
 
@@ -81,6 +85,13 @@ def extract_merging_timeseries(
         "theta_deg": angle_degrees,
         "a_c2_over_b02": data["mean_core_radius"].to_numpy(float) ** 2 / vortex_separation**2,
         "b_over_b0": data["vortex_separation"].to_numpy(float) / vortex_separation,
+        "is_pair_unresolved": data[
+            "is_pair_unresolved" if "is_pair_unresolved" in data.columns else "is_merged"
+        ]
+        .astype(str)
+        .str.lower()
+        .isin(("true", "1"))
+        .to_numpy(bool),
     }
 
 
@@ -108,7 +119,7 @@ def plot_merging_case(args) -> int:
     fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.23, left=0.10, right=0.98)
 
     plotted_schemes = []
-    for scheme in SCHEMES:
+    for scheme in SCHEME_DRAW_ORDER:
         timeseries = extract_merging_timeseries(
             samples_dir,
             scheme,
@@ -127,10 +138,25 @@ def plot_merging_case(args) -> int:
             "markersize": 2.2,
             "linestyle": "None",
             "linewidth": 1.0,
+            "zorder": scheme_zorder(scheme),
         }
-        axes[0].plot(timeseries["tau"], timeseries["theta_deg"], **plot_options)
-        axes[1].plot(timeseries["tau"], timeseries["a_c2_over_b02"], **plot_options)
-        axes[2].plot(timeseries["tau"], timeseries["b_over_b0"], **plot_options)
+        tau = timeseries["tau"]
+        theta = timeseries["theta_deg"]
+        core_size = timeseries["a_c2_over_b02"]
+        separation = timeseries["b_over_b0"]
+        is_pair_unresolved = timeseries["is_pair_unresolved"]
+
+        # These panels describe the two-vortex merger.  Once the extractor
+        # can no longer resolve two centres, no pair angle or separation
+        # exists; continuing the middle series with a different, single-core
+        # meaning is misleading.
+        pair_mask = (
+            ~is_pair_unresolved & np.isfinite(tau) & np.isfinite(theta) & np.isfinite(separation)
+        )
+        core_mask = pair_mask & np.isfinite(core_size)
+        axes[0].plot(tau[pair_mask], theta[pair_mask], **plot_options)
+        axes[1].plot(tau[core_mask], core_size[core_mask], **plot_options)
+        axes[2].plot(tau[pair_mask], separation[pair_mask], **plot_options)
         plotted_schemes.append(scheme)
 
     reference_options = {
