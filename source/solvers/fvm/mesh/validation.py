@@ -383,16 +383,69 @@ def _polygon_area(vertices: np.ndarray) -> float:
     return area
 
 
+def _clip_polygon_to_axis_plane(
+    polygon: list[np.ndarray], axis: int, bound: float, keep_greater: bool
+) -> list[np.ndarray]:
+    """Sutherland--Hodgman clip of a 3-D polygon by one axis plane."""
+    if not polygon:
+        return []
+
+    def inside(point: np.ndarray) -> bool:
+        return bool(point[axis] >= bound if keep_greater else point[axis] <= bound)
+
+    output: list[np.ndarray] = []
+    previous = polygon[-1]
+    previous_inside = inside(previous)
+    for current in polygon:
+        current_inside = inside(current)
+        if current_inside != previous_inside:
+            denominator = current[axis] - previous[axis]
+            fraction = 0.0 if denominator == 0.0 else (bound - previous[axis]) / denominator
+            output.append(previous + fraction * (current - previous))
+        if current_inside:
+            output.append(current)
+        previous = current
+        previous_inside = current_inside
+    return output
+
+
+def _triangles_area_inside_bounds(triangles: np.ndarray, bounds) -> float:
+    """Area of a triangulated surface after clipping it to an AABB."""
+    total = 0.0
+    for triangle in triangles:
+        polygon = [vertex.copy() for vertex in triangle]
+        for axis in range(3):
+            polygon = _clip_polygon_to_axis_plane(
+                polygon, axis, float(bounds[2 * axis]), True
+            )
+            polygon = _clip_polygon_to_axis_plane(
+                polygon, axis, float(bounds[2 * axis + 1]), False
+            )
+        if len(polygon) < 3:
+            continue
+        origin = polygon[0]
+        for index in range(1, len(polygon) - 1):
+            total += 0.5 * float(
+                np.linalg.norm(np.cross(polygon[index] - origin, polygon[index + 1] - origin))
+            )
+    return total
+
+
 def validate_curved_wall_conformance(
-    mesh_data, surface_triangles, wall_patch_name: str, *, area_tolerance: float = 0.35
+    mesh_data,
+    surface_triangles,
+    wall_patch_name: str,
+    *,
+    area_tolerance: float = 0.35,
+    surface_clip_bounds=None,
 ) -> None:
     """Sanity gate for a general (curved) conformal mesh.
 
     Rejects any cell whose volume is non-positive after surface conformance,
     and rejects a wall patch whose total area deviates from the input STL's
-    own surface area by more than ``area_tolerance`` -- a coarse but
-    shape-agnostic conformance check (unlike the exact box path, a curved
-    wall cannot be checked against an analytic bound).
+    own surface area by more than ``area_tolerance``. If a closed surface
+    crosses the domain boundary, ``surface_clip_bounds`` limits the reference
+    area to the portion inside the solved domain.
     """
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     cell_vertex_indices = mesh_data.get("cell_vertex_indices")
@@ -407,23 +460,26 @@ def validate_curved_wall_conformance(
                 f"conformance; first ids {bad[:10]}"
             )
 
-    faces = np.asarray(mesh_data["faces"])
+    faces = mesh_data["faces"]
     (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
     first, count = int(wall["start_face"]), int(wall["n_faces"])
     mesh_area = sum(_polygon_area(points[face]) for face in faces[first : first + count])
 
     surface_triangles = np.asarray(surface_triangles, dtype=np.float64)
-    stl_area = 0.5 * float(
-        np.sum(
-            np.linalg.norm(
-                np.cross(
-                    surface_triangles[:, 1] - surface_triangles[:, 0],
-                    surface_triangles[:, 2] - surface_triangles[:, 0],
-                ),
-                axis=1,
+    if surface_clip_bounds is None:
+        stl_area = 0.5 * float(
+            np.sum(
+                np.linalg.norm(
+                    np.cross(
+                        surface_triangles[:, 1] - surface_triangles[:, 0],
+                        surface_triangles[:, 2] - surface_triangles[:, 0],
+                    ),
+                    axis=1,
+                )
             )
         )
-    )
+    else:
+        stl_area = _triangles_area_inside_bounds(surface_triangles, surface_clip_bounds)
     relative_error = abs(mesh_area - stl_area) / stl_area if stl_area > 0.0 else float("inf")
     if relative_error > area_tolerance:
         raise MeshValidationError(

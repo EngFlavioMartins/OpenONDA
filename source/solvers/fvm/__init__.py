@@ -24,6 +24,7 @@ from .core.state import FieldState
 from .factory import create_fvm_solver
 from .mesh.adaptive_cartesian import (
     AdaptiveCartesianMesher,
+    BoundaryLayerSpec,
     BoxRefinement,
 )
 from .sampling.fields import LineSampler, SurfaceSampler
@@ -40,6 +41,7 @@ __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 
 __all__ = [
     "AdaptiveCartesianMesher",
+    "BoundaryLayerSpec",
     "BoundaryConfig",
     "BoxRefinement",
     "ComputeConfig",

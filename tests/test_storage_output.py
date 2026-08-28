@@ -36,30 +36,15 @@ def _assert_appended_raw(path):
     assert b'compressor="vtkZLibDataCompressor"' in payload
 
 
-def _load_lamb_oseen_surface_plotter():
-    assets = Path(__file__).resolve().parents[1] / "tutorials/vpm/lamb_oseen_vortex/assets"
-    spec = importlib.util.spec_from_file_location(
-        "lamb_oseen_surface_plotter",
-        assets / "plot_vortex_surface_fields.py",
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, str(assets))
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.path.pop(0)
-    return module
-
-
 def _load_lamb_oseen_diagnostics():
     assets = Path(__file__).resolve().parents[1] / "tutorials/vpm/lamb_oseen_vortex/assets"
     spec = importlib.util.spec_from_file_location(
         "lamb_oseen_diagnostics",
-        assets / "vortex_diagnostics.py",
+        assets / "postprocess.py",
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -107,11 +92,11 @@ def test_surface_sampler_writes_compact_paraview_readable_vts(tmp_path):
     assert set(grid.point_data) == {"velocity", "vorticity"}
     assert grid.point_data["velocity"].dtype == np.float32
 
-    _x, _y, velocity_magnitude, _vorticity = _load_lamb_oseen_surface_plotter()._read_vts(output)
+    field = _load_lamb_oseen_diagnostics().read_surface_field(output)
+    velocity_magnitude = np.hypot(field["velocity_x"], field["velocity_y"])
     assert velocity_magnitude.shape == (3, 3)
     assert np.isfinite(velocity_magnitude).all()
 
-    field = _load_lamb_oseen_diagnostics().read_surface_field(output)
     assert field["velocity_x"].shape == (3, 3)
     assert field["vorticity_z"].shape == (3, 3)
 

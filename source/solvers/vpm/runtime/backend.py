@@ -38,15 +38,17 @@ def _clear_stale_taichi_cache() -> None:
     previous runs can cause ``Failed to allocate ext arr buffer`` errors even
     when ``offline_cache=False`` is passed to ``ti.init()``.
 
-    This function clears **both** the default location and any custom path
-    from the ``TI_OFFLINE_CACHE_FILE_PATH`` environment variable.
+    When ``TI_OFFLINE_CACHE_FILE_PATH`` is explicitly selected, this function
+    clears only that isolated path. It must not mutate the user's unrelated
+    global cache during a sandboxed or per-run calculation.
     """
-    dirs_to_clear = [
-        os.path.join(os.path.expanduser("~"), ".cache", "taichi", "ticache"),
-    ]
     custom = os.environ.get("TI_OFFLINE_CACHE_FILE_PATH")
     if custom and os.path.isabs(custom):
-        dirs_to_clear.append(custom)
+        dirs_to_clear = [custom]
+    else:
+        dirs_to_clear = [
+            os.path.join(os.path.expanduser("~"), ".cache", "taichi", "ticache"),
+        ]
 
     for cache_dir in dirs_to_clear:
         if os.path.isdir(cache_dir) and os.listdir(cache_dir):

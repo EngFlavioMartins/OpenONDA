@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Make every vortex-ring interaction figure (six-case diagnostics).
+# Plot the DNS--LES stability ladder for both ring interactions.
 #
 # Usage:
 #   ./allplot.sh        PNG figures (default)
@@ -15,25 +15,13 @@ case "$format" in
 esac
 
 mkdir -p figures
-
-echo
-echo "===== FIGURES ($format) ====="
-echo
-
-python assets/postprocess.py --pre-plot
+python_bin="${OPENONDA_PYTHON:-python}"
 
 plot() {
-    python "$@" --format "$format"
+    "$python_bin" "$@" --format "$format"
 }
 
 plot assets/plot_rings_circulation.py
-plot assets/plot_rings_energy_budget.py
 plot assets/plot_rings_energy.py
-plot assets/plot_rings_conservation.py
-plot assets/plot_rings_resolution.py
 plot assets/plot_rings_stability.py
 plot assets/plot_rings_trajectory.py
-
-echo
-echo "===== DONE ====="
-echo "Figures saved to: figures/"

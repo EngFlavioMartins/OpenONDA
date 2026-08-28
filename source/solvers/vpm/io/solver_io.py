@@ -214,6 +214,9 @@ class SolverIO:
             "total_enstrophy": solver.total_enstrophy,
             "test_filtered_enstrophy": solver._flow_integrals.get("test_filtered_enstrophy", 0.0),
             "kinetic_energy_rate": solver.kinetic_energy_rate,
+            "kinetic_energy_rate_source": solver._flow_integrals.get(
+                "kinetic_energy_rate_source", "unknown"
+            ),
             "viscous_kinetic_energy_rate": solver.viscous_kinetic_energy_rate,
             "total_helicity": solver.total_helicity,
             "vortex_strength_magnitude_sum": solver.vortex_strength_magnitude_sum,

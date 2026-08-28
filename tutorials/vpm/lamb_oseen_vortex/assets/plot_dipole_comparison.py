@@ -3,8 +3,12 @@
 
 Reads the field-based vortex diagnostics (``field_diagnostics.csv``, from the
 z=L/4 velocity/vorticity plane) for each viscous scheme and plots:
-  - core x-position  xc / b0  vs  ν t / b0²
-  - core radius       a_c / a_{c,0}  vs  ν t / b0²
+  - core x-position  xc / a_{c,0}  vs  ν t / a_{c,0}²
+  - core radius       a_c / a_{c,0}  vs  ν t / a_{c,0}²
+
+The trajectory panel also includes the analytical translation of the finite
+Lamb--Oseen vortex filaments.  The reference uses the fixed initial spacing
+between the two filaments and the plane's finite-filament endpoint factor.
 
 Saves: figures/dipole_comparison.png
 """
@@ -15,57 +19,38 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 if __package__:
-    from .vortex_diagnostics import (
+    from .postprocess import (
         SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
+        extract_dipole_timeseries,
         figure_size,
         load_theme,
         resolve_runtime_physics,
         save_fig,
         scheme_zorder,
+        theoretical_dipole_trajectory,
     )
 else:
-    from vortex_diagnostics import (
+    from postprocess import (
         SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
+        extract_dipole_timeseries,
         figure_size,
         load_theme,
         resolve_runtime_physics,
         save_fig,
         scheme_zorder,
+        theoretical_dipole_trajectory,
     )
-
-
-def extract_dipole_timeseries(
-    samples_dir: Path,
-    scheme: str,
-) -> dict | None:
-    path = samples_dir / f"dipole_{scheme}" / "field_diagnostics.csv"
-    if not path.is_file():
-        return None
-    try:
-        data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["time", "step"])
-    except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
-        print(f"  [dipole] skipping unreadable live CSV for {scheme!r}: {exc}")
-        return None
-    data = data.sort_values("step").drop_duplicates("step", keep="last")
-    if data.empty:
-        return None
-    return {
-        "t": data["time"].to_numpy(float),
-        "x_core": data["vortex_centre_0_x"].to_numpy(float),
-        "a_c": data["core_radius_0"].to_numpy(float),
-    }
 
 
 # =============================================================
@@ -89,11 +74,11 @@ def plot_dipole_case(args) -> int:
     )
     run_kinematic_viscosity = runtime["kinematic_viscosity"]
     a0 = runtime["velocity_peak_radius0"]
-    colors, _ = load_theme()
+    colors, theme = load_theme()
     style_map = build_style_map(colors)
 
     fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"))
-    fig.subplots_adjust(wspace=0.20, bottom=0.25, top=0.92, left=0.08, right=0.98)
+    fig.subplots_adjust(wspace=0.20, bottom=0.27, top=0.92, left=0.08, right=0.92)
 
     plotted_schemes = []
     for scheme in SCHEME_DRAW_ORDER:
@@ -116,14 +101,40 @@ def plot_dipole_case(args) -> int:
             "markersize": 2.2,
             "linestyle": "None",
             "linewidth": 1.0,
-            "zorder": scheme_zorder(scheme),
+            "zorder": 150 if scheme == "rwm" else scheme_zorder(scheme),
         }
         if trajectory_mask.any():
             tau = run_kinematic_viscosity * t[trajectory_mask] / (a0**2)
             axes[0].plot(tau, xc[trajectory_mask] / a0, **plot_kw)
+            if scheme == "rwm":
+                lower = ts["x_core_ci_lower"][trajectory_mask] / a0
+                upper = ts["x_core_ci_upper"][trajectory_mask] / a0
+                finite_interval = np.isfinite(lower) & np.isfinite(upper)
+                axes[0].fill_between(
+                    tau[finite_interval],
+                    lower[finite_interval],
+                    upper[finite_interval],
+                    color=st["color"],
+                    alpha=0.18,
+                    linewidth=0,
+                    zorder=scheme_zorder(scheme) - 1,
+                )
         if core_mask.any():
             tau = run_kinematic_viscosity * t[core_mask] / (a0**2)
             axes[1].plot(tau, a_c[core_mask] / a0, **plot_kw)
+            if scheme == "rwm":
+                lower = ts["a_c_ci_lower"][core_mask] / a0
+                upper = ts["a_c_ci_upper"][core_mask] / a0
+                finite_interval = np.isfinite(lower) & np.isfinite(upper)
+                axes[1].fill_between(
+                    tau[finite_interval],
+                    lower[finite_interval],
+                    upper[finite_interval],
+                    color=st["color"],
+                    alpha=0.18,
+                    linewidth=0,
+                    zorder=scheme_zorder(scheme) - 1,
+                )
         plotted_schemes.append(scheme)
 
     if not plotted_schemes:
@@ -134,16 +145,27 @@ def plot_dipole_case(args) -> int:
 
     print(f"  [dipole] plotting {len(plotted_schemes)}/{len(SCHEMES)} methods")
 
+    # The pair is initialized as two finite columns.  Evaluate the theory on
+    tau_ref = np.linspace(0.0, 3.8, 400)
+    time_ref = tau_ref * a0**2 / run_kinematic_viscosity
+    x_ref = theoretical_dipole_trajectory(
+        time_ref,
+        runtime["circulation"],
+        runtime["vortex_separation"],
+        run_kinematic_viscosity,
+        runtime["t0"],
+        runtime["column_length"],
+    )
+    reference_options = dict(theme.REFERENCE_STYLE)
+    reference_options.update(label=r"$\int_0^t U_b\,dt'$", zorder=100)
+    axes[0].plot(tau_ref, x_ref / a0, **reference_options)
+
     axes[0].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[0].set_ylabel(r"$x_c / a_{c,0}$")
     axes[0].set_title("Core trajectory over time")
-    axes[0].set_xlim([0.0, 3.8])
-    axes[0].set_ylim([0.0, 33.0])
     axes[1].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[1].set_ylabel(r"$a_c / a_{c,0}$")
     axes[1].set_title(r"Core radius over time")
-    axes[1].set_xlim([0.0, 3.8])
-    axes[1].set_ylim([0.8, 4.0])
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:

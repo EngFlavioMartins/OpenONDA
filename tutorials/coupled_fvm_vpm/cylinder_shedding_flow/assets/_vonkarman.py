@@ -30,7 +30,7 @@ from scipy.signal import find_peaks, periodogram
 SHEDDING_BAND = (0.08, 0.30)
 # Envelope level considered "well into nonlinear saturation".
 ONSET_AMPLITUDE_THRESHOLD = 0.25
-# Envelope level considered above the numerical/IBM noise floor.
+# Envelope level considered above the numerical start-up noise floor.
 NOISE_FLOOR = 1e-3
 # Shedding period tolerance for onset agreement (in periods).
 ONSET_PERIODS = 0.25

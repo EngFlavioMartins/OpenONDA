@@ -134,7 +134,7 @@ def run() -> None:
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="METAL",
+            compute_device="AUTO",
             turbulence=vpm.TurbulenceConfig.les_smagorinsky(
                 smagorinsky_coefficient=smagorinsky_coefficient
             ),

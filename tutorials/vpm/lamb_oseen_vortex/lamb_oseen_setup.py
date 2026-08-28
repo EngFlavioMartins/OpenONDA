@@ -141,7 +141,14 @@ def run_case(
     circulations: tuple[float, ...],
     case_name: str,
     compute_device: str = "AUTO",
+    random_seed: int = 42,
+    ensemble_member: int | None = None,
 ) -> None:
+    if ensemble_member is not None and scheme != "rwm":
+        raise ValueError("--ensemble-member is only valid with --viscous-scheme RWM")
+    if ensemble_member is not None and ensemble_member < 0:
+        raise ValueError("--ensemble-member must be non-negative")
+    is_rwm_ensemble = scheme == "rwm" and ensemble_member is not None
     # ---- Derived physical quantities ----
     spacing = SPACING
     column_spacing = COLUMN_SPACING
@@ -151,9 +158,14 @@ def run_case(
     kinematic_viscosity = circulation / CIRCULATION_REYNOLDS_NUMBER  # ν = |Γ|/Re_Γ
     # ---- Time stepping ----
     viscous = viscous_config(scheme, kinematic_viscosity, spacing)
-    n_steps = round(TOTAL_TIME / TIME_STEP_SIZE)
     sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
     checkpoint_interval_steps = round(CHECKPOINT_INTERVAL_TIME / TIME_STEP_SIZE)
+    field_interval_steps = MERGING_SAMPLE_INTERVAL_STEPS if physics == "merging" else sample_steps
+    if is_rwm_ensemble:
+        # The projected two-dimensional estimator is reconstructed from these
+        # compact particle checkpoints.  Online sampling of a single z-plane
+        # would store a noisy realization and is intentionally disabled.
+        checkpoint_interval_steps = field_interval_steps
 
     # ---- Initial vortex geometry ----
     y_positions = (0.0,) if physics == "vortex" else (SEPARATION / 2, -SEPARATION / 2)
@@ -215,21 +227,37 @@ def run_case(
     solution_dir = case_dir / "solution"
 
     sample_plane_fraction = 0.25  # sample at z = L/4
-    field_sampler = vpm.SurfaceSampler(
-        point=[0, 0, sample_plane_fraction * COLUMN_LENGTH],
-        normal=[0, 0, 1],
-        bounds=field_bounds,
-        spacing=field_spacing,
-        file_name=f"{case_name}_zq",
-        include_derivatives=False,
-        schedule=(
-            vpm.SamplingSchedule(every_n_steps=MERGING_SAMPLE_INTERVAL_STEPS)
-            if physics == "merging"
-            else None
-        ),
+    if is_rwm_ensemble:
+        scheduled_samplers = []
+        final_samplers = []
+    else:
+        field_sampler = vpm.SurfaceSampler(
+            point=[0, 0, sample_plane_fraction * COLUMN_LENGTH],
+            normal=[0, 0, 1],
+            bounds=field_bounds,
+            spacing=field_spacing,
+            file_name=f"{case_name}_zq",
+            include_derivatives=False,
+            schedule=(
+                vpm.SamplingSchedule(every_n_steps=MERGING_SAMPLE_INTERVAL_STEPS)
+                if physics == "merging"
+                else None
+            ),
+        )
+        scheduled_samplers = [field_sampler]
+        final_samplers = [field_sampler]
+
+    member_name = f"member_{ensemble_member:03d}" if is_rwm_ensemble else None
+    sample_subdirectory = (
+        str(Path("rwm_ensemble") / case_name / member_name)
+        if member_name is not None
+        else case_name
     )
-    scheduled_samplers = [field_sampler]
-    final_samplers = [field_sampler]
+    checkpoint_directory = (
+        solution_dir / "rwm_ensemble" / case_name / member_name
+        if member_name is not None
+        else solution_dir / case_name
+    )
 
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup.viscous_flow_simulation(
@@ -241,24 +269,28 @@ def run_case(
                 multipole_order=TREECODE_MULTIPOLE_ORDER,
                 sort_particle_targets=True,
             ),
-            logging_interval_steps=sample_steps,
+            logging_interval_steps=field_interval_steps if is_rwm_ensemble else sample_steps,
             checkpoint_interval_steps=checkpoint_interval_steps,
             checkpoint_name=case_name,
-            checkpoint_directory=str(solution_dir / case_name),
-            sample_subdirectory=case_name,
+            checkpoint_directory=str(checkpoint_directory),
+            sample_subdirectory=sample_subdirectory,
             samplers=scheduled_samplers,
             final_samplers=final_samplers,
             write_precision="f32",
             checkpoint_store_velocity_gradient=False,
             domain_bounds=domain_bounds,
             compute_device=compute_device,
-            random_seed=42,
+            random_seed=random_seed,
         ),
         case_dir=case_dir,
     )
+    # DVH may pin the requested advection step to an integer subdivision of
+    # its physical diffusion interval. The run horizon follows that applied
+    # step, not the value requested before the solver was constructed.
+    n_steps = round(TOTAL_TIME / solver.time_step_size)
 
     # ---- Metadata and vortex particle seeding ----
-    samples_dir = case_dir / "samples" / case_name
+    samples_dir = case_dir / "samples" / sample_subdirectory
     samples_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
         "status": "running",
@@ -272,9 +304,16 @@ def run_case(
         "vortex_separation": SEPARATION,
         "column_half_length": column_half_length,
         "end_time": TOTAL_TIME,
-        "time_step_size": TIME_STEP_SIZE,
+        "time_step_size": solver.time_step_size,
         "field_sample_interval_steps": (
-            MERGING_SAMPLE_INTERVAL_STEPS if physics == "merging" else sample_steps
+            field_interval_steps
+        ),
+        "random_seed": random_seed,
+        "ensemble_member": ensemble_member,
+        "raw_output_estimator": (
+            "particle_checkpoint_for_column_projection"
+            if is_rwm_ensemble
+            else "instantaneous_surface_field"
         ),
     }
     metadata_path = samples_dir / "run_metadata.json"
@@ -322,11 +361,31 @@ def run_case(
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     # ---- Time integration ----
+    checkpoint_base = checkpoint_directory / f"vpm_{case_name}"
     try:
-        solver.execute_final_samplers()
+        if is_rwm_ensemble:
+            if str(solver.compute_device).upper() == "METAL":
+                raise RuntimeError(
+                    "Seeded RWM ensembles are not supported on METAL because Taichi "
+                    "1.7 does not accept random_seed for that backend; use CPU, CUDA, or VULKAN."
+                )
+            solver.write_checkpoint(str(checkpoint_base))
+        else:
+            solver.execute_final_samplers()
         for _ in range(n_steps):
             solver.advance()
-        solver.execute_final_samplers()
+        if is_rwm_ensemble:
+            if solver.step % checkpoint_interval_steps != 0:
+                solver.write_checkpoint(str(checkpoint_base))
+            if solver.step % field_interval_steps != 0:
+                # The final checkpoint refreshes the particle velocity field;
+                # record the matching final-time integral state as well.
+                solver.record_diagnostics(refresh_fields=False)
+        else:
+            if solver.step % sample_steps != 0:
+                solver.record_diagnostics(refresh_fields=False)
+            if physics == "merging" and solver.step % MERGING_SAMPLE_INTERVAL_STEPS != 0:
+                solver.execute_final_samplers()
     except BaseException:
         metadata["status"] = "failed"
         metadata["completed"] = False
@@ -349,6 +408,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--viscous-scheme", choices=VISCOUS_SCHEMES, required=True)
     parser.add_argument("--case-name", required=True)
     parser.add_argument("--compute-device", default="AUTO")
+    parser.add_argument("--random-seed", type=int, default=42)
+    parser.add_argument(
+        "--ensemble-member",
+        type=int,
+        default=None,
+        help="zero-based RWM ensemble member; writes raw data under rwm_ensemble/",
+    )
     return parser.parse_args()
 
 
@@ -361,7 +427,13 @@ def main() -> int:
     else:
         physics, circulations = "merging", (args.circulation1, args.circulation2)
     run_case(
-        physics, args.viscous_scheme.lower(), circulations, args.case_name, args.compute_device
+        physics,
+        args.viscous_scheme.lower(),
+        circulations,
+        args.case_name,
+        args.compute_device,
+        args.random_seed,
+        args.ensemble_member,
     )
     return 0
 

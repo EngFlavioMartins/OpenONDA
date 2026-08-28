@@ -11,104 +11,40 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 if __package__:
-    from .vortex_diagnostics import (
-        REF_DIR,
+    from .postprocess import (
+        MERGING_NORMALIZED_END_TIME,
         SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
+        extract_merging_timeseries,
         figure_size,
+        load_merging_references,
         load_theme,
         resolve_runtime_physics,
         save_fig,
         scheme_zorder,
-        unwrap_pair_orientation,
     )
 else:
-    from vortex_diagnostics import (
-        REF_DIR,
+    from postprocess import (
+        MERGING_NORMALIZED_END_TIME,
         SCHEME_DRAW_ORDER,
         SCHEMES,
         build_arg_parser,
         build_style_map,
+        extract_merging_timeseries,
         figure_size,
+        load_merging_references,
         load_theme,
         resolve_runtime_physics,
         save_fig,
         scheme_zorder,
-        unwrap_pair_orientation,
     )
-
-
-THETA_REF = REF_DIR / "theta_vs_tau.csv"
-A2_REF = REF_DIR / "a2_over_b02.csv"
-B_REF = REF_DIR / "b_over_b0_tau.csv"
-
-
-def uniform_cadence_mask(step: np.ndarray) -> np.ndarray:
-    """Keep only the rows that fall on the run's dominant step cadence.
-
-    A scheme's fast-transient window can interleave an extra burst of
-    every-step samples (e.g. merging_cs around its core-overlap event);
-    those off-cadence rows plot as a dense cluster that skips at a
-    different pace than the uniformly sampled schemes.
-    """
-    if step.size < 2:
-        return np.ones_like(step, dtype=bool)
-    deltas = np.diff(step)
-    cadence = int(np.median(deltas[deltas > 0]))
-    return (step - step[0]) % cadence == 0
-
-
-def extract_merging_timeseries(
-    samples_dir: Path,
-    scheme: str,
-    kinematic_viscosity: float,
-    vortex_separation: float,
-    core_radius: float,
-) -> dict | None:
-    path = samples_dir / f"merging_{scheme}" / "field_diagnostics.csv"
-    if not path.is_file():
-        return None
-    try:
-        data = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["time", "step"])
-    except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
-        print(f"  [merging] skipping unreadable live CSV for {scheme!r}: {exc}")
-        return None
-    data = data.sort_values("step").drop_duplicates("step", keep="last")
-    if data.empty:
-        return None
-    data = data[uniform_cadence_mask(data["step"].to_numpy(int))]
-
-    angle = data["angle_radians"].to_numpy(float)
-    finite = np.isfinite(angle)
-    angle_degrees = np.full_like(angle, np.nan)
-    if finite.any():
-        # The axis joining identical vortices is undirected: swapping center
-        # labels changes phi by pi but must not change the physical angle.
-        unwrapped = unwrap_pair_orientation(angle[finite])
-        angle_degrees[finite] = np.degrees(unwrapped - unwrapped[0])
-
-    time = data["time"].to_numpy(float)
-    return {
-        "tau": kinematic_viscosity * time / core_radius**2,
-        "theta_deg": angle_degrees,
-        "a_c2_over_b02": data["mean_core_radius"].to_numpy(float) ** 2 / vortex_separation**2,
-        "b_over_b0": data["vortex_separation"].to_numpy(float) / vortex_separation,
-        "is_pair_unresolved": data[
-            "is_pair_unresolved" if "is_pair_unresolved" in data.columns else "is_merged"
-        ]
-        .astype(str)
-        .str.lower()
-        .isin(("true", "1"))
-        .to_numpy(bool),
-    }
 
 
 def plot_merging_case(args) -> int:
@@ -132,7 +68,7 @@ def plot_merging_case(args) -> int:
     b0 = runtime["vortex_separation"]
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.19, left=0.10, right=0.98)
+    fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.19, left=0.10, right=0.90)
 
     plotted_schemes = []
     for scheme in SCHEME_DRAW_ORDER:
@@ -160,19 +96,31 @@ def plot_merging_case(args) -> int:
         theta = timeseries["theta_deg"]
         core_size = timeseries["a_c2_over_b02"]
         separation = timeseries["b_over_b0"]
-        is_pair_unresolved = timeseries["is_pair_unresolved"]
-
-        # These panels describe the two-vortex merger.  Once the extractor
-        # can no longer resolve two centres, no pair angle or separation
-        # exists; continuing the middle series with a different, single-core
-        # meaning is misleading.
-        pair_mask = (
-            ~is_pair_unresolved & np.isfinite(tau) & np.isfinite(theta) & np.isfinite(separation)
-        )
-        core_mask = pair_mask & np.isfinite(core_size)
-        axes[0].plot(tau[pair_mask], theta[pair_mask], **plot_options)
+        angle_mask = np.isfinite(tau) & np.isfinite(theta)
+        core_mask = np.isfinite(tau) & np.isfinite(core_size)
+        separation_mask = np.isfinite(tau) & np.isfinite(separation)
+        axes[0].plot(tau[angle_mask], theta[angle_mask], **plot_options)
         axes[1].plot(tau[core_mask], core_size[core_mask], **plot_options)
-        axes[2].plot(tau[pair_mask], separation[pair_mask], **plot_options)
+        axes[2].plot(tau[separation_mask], separation[separation_mask], **plot_options)
+        if scheme == "rwm":
+            for axis, mask, lower_key, upper_key in (
+                (axes[0], angle_mask, "theta_ci_lower", "theta_ci_upper"),
+                (axes[1], core_mask, "a_c2_over_b02_ci_lower", "a_c2_over_b02_ci_upper"),
+                (axes[2], separation_mask, "b_over_b0_ci_lower", "b_over_b0_ci_upper"),
+            ):
+                lower = timeseries[lower_key]
+                upper = timeseries[upper_key]
+                finite_interval = mask & np.isfinite(lower) & np.isfinite(upper)
+                axis.fill_between(
+                    tau,
+                    lower,
+                    upper,
+                    where=finite_interval,
+                    color=style["color"],
+                    alpha=0.18,
+                    linewidth=0,
+                    zorder=scheme_zorder(scheme) - 1,
+                )
         plotted_schemes.append(scheme)
 
     reference_options = {
@@ -182,12 +130,15 @@ def plot_merging_case(args) -> int:
         "zorder": 100,
         "label": r"Cerretelli \& Williamson (2003)",
     }
-    scale = (a0 / b0) ** 2
-
-    for axis, path in ((axes[0], THETA_REF), (axes[1], A2_REF), (axes[2], B_REF)):
-        if path.exists():
-            reference = np.loadtxt(path, delimiter=",")
-            axis.plot(reference[:, 0] / scale, reference[:, 1], **reference_options)
+    references = load_merging_references(a0, b0)
+    for axis, name in (
+        (axes[0], "theta"),
+        (axes[1], "core"),
+        (axes[2], "separation"),
+    ):
+        if name in references:
+            reference = references[name]
+            axis.plot(reference[:, 0], reference[:, 1], **reference_options)
 
     axes[0].set_ylabel(r"$\theta$ [deg]")
     axes[0].set_title(r"Merging vortex characteristics")
@@ -196,7 +147,7 @@ def plot_merging_case(args) -> int:
 
     axes[2].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[2].set_ylabel(r"$b / b_0$")
-    axes[2].set_xlim([0, 3.2])
+    axes[2].set_xlim([0, MERGING_NORMALIZED_END_TIME + 0.1])
 
     handles, labels = axes[0].get_legend_handles_labels()
 

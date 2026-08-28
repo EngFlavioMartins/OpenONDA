@@ -7,9 +7,9 @@ the VPM solver when logging is active.
 Plots one panel for each physics case: single vortex, vortex dipole, and
 co-rotating merger.
 
-Filled markers show dE/dt (energy decay rate), hollow markers show -νΩ
-(viscous dissipation via enstrophy).  Colours are consistent per scheme
-across all three panels.
+Continuous lines show the enstrophy-based sink -2νZ. Sparse filled circles
+show finite-difference dE/dt while the unbounded direct-energy integral is
+available. Colours are consistent per scheme across all three panels.
 
 Saves: figures/lamboseen_energy.png
 """
@@ -20,14 +20,13 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 if __package__:
-    from .vortex_diagnostics import (
+    from .postprocess import (
         ENERGY_CASES,
         SCHEME_DRAW_ORDER,
         SCHEMES,
@@ -35,12 +34,14 @@ if __package__:
         build_style_map,
         figure_size,
         load_theme,
+        prepend_initial_point,
+        read_flow_integrals,
         resolve_runtime_physics,
         save_fig,
         scheme_zorder,
     )
 else:
-    from vortex_diagnostics import (
+    from postprocess import (
         ENERGY_CASES,
         SCHEME_DRAW_ORDER,
         SCHEMES,
@@ -48,6 +49,8 @@ else:
         build_style_map,
         figure_size,
         load_theme,
+        prepend_initial_point,
+        read_flow_integrals,
         resolve_runtime_physics,
         save_fig,
         scheme_zorder,
@@ -55,49 +58,8 @@ else:
 
 
 # =============================================================
-# CSV reader
-# =============================================================
-
-
-def read_flow_integrals(csv_path: Path) -> dict | None:
-    if not csv_path.is_file():
-        return None
-    try:
-        df = pd.read_csv(csv_path, on_bad_lines="skip").dropna(subset=["time"])
-    except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
-        print(f"  [energy] skipping unreadable live CSV {csv_path.name}: {exc}")
-        return None
-    if df.empty or "kinetic_energy_rate" not in df.columns:
-        return None
-    return {
-        "time": df["time"].to_numpy(),
-        "kinetic_energy_rate": df["kinetic_energy_rate"].to_numpy(),
-        "viscous_kinetic_energy_rate": df["viscous_kinetic_energy_rate"].to_numpy(),
-    }
-
-
-# =============================================================
 # Plot
 # =============================================================
-
-
-def prepend_initial_point(
-    data: dict,
-    circulation: float,
-    t0: float,
-    n_vortices: int,
-    column_length: float,
-) -> dict:
-    if len(data["time"]) == 0 or data["time"][0] == 0.0:
-        return data
-    initial_power = -n_vortices * circulation**2 * column_length / (8.0 * np.pi * t0)
-    return {
-        "time": np.insert(data["time"], 0, 0.0),
-        "kinetic_energy_rate": np.insert(data["kinetic_energy_rate"], 0, initial_power),
-        "viscous_kinetic_energy_rate": np.insert(
-            data["viscous_kinetic_energy_rate"], 0, initial_power
-        ),
-    }
 
 
 def plot_case_panel(
@@ -123,26 +85,51 @@ def plot_case_panel(
         data = prepend_initial_point(data, circulation, t0, n_vortices, column_length)
         st = style_map[scheme]
         tau = data["time"] * tau_scale
-        plot_kw = {
-            "color": st["color"],
-            "marker": st["marker"],
-            "markersize": 2.2,
-            "linestyle": "None",
-            "linewidth": 1.0,
-            "alpha": 0.85,
-        }
+        direct_rate = data["kinetic_energy_rate"] / p_ref
+        enstrophy_rate = data["viscous_kinetic_energy_rate"] / p_ref
+
         ax.plot(
             tau,
-            data["kinetic_energy_rate"] / p_ref,
+            enstrophy_rate,
+            color=st["color"],
+            linestyle="-",
+            linewidth=1.0,
+            alpha=0.85,
             zorder=scheme_zorder(scheme),
-            **plot_kw,
         )
+        if scheme == "rwm":
+            for measure in ("kinetic_energy_rate", "viscous_kinetic_energy_rate"):
+                lower_key = f"{measure}_ci_lower"
+                upper_key = f"{measure}_ci_upper"
+                if lower_key not in data or upper_key not in data:
+                    continue
+                lower = data[lower_key] / p_ref
+                upper = data[upper_key] / p_ref
+                finite_interval = np.isfinite(lower) & np.isfinite(upper)
+                ax.fill_between(
+                    tau[finite_interval],
+                    lower[finite_interval],
+                    upper[finite_interval],
+                    color=st["color"],
+                    alpha=0.10,
+                    linewidth=0,
+                    zorder=scheme_zorder(scheme) - 1,
+                )
+
+        finite_direct = np.flatnonzero(np.isfinite(direct_rate))
+        marker_stride = max(1, len(finite_direct) // 12)
+        marker_indices = finite_direct[::marker_stride]
+        if finite_direct.size and marker_indices[-1] != finite_direct[-1]:
+            marker_indices = np.append(marker_indices, finite_direct[-1])
         ax.plot(
-            tau,
-            data["viscous_kinetic_energy_rate"] / p_ref,
-            mfc="none",
+            tau[marker_indices],
+            direct_rate[marker_indices],
+            color=st["color"],
+            marker="o",
+            markersize=2.6,
+            linestyle="None",
+            alpha=0.90,
             zorder=scheme_zorder(scheme, offset=1),
-            **plot_kw,
         )
         latest_tau = max(latest_tau, float(tau.max()))
     return latest_tau
@@ -172,7 +159,7 @@ def plot_energy_enstrophy(args) -> int:
     # formula and its natural scale are per unit length, so both must carry L.
     p_ref = run_kinematic_viscosity * run_circulation**2 * column_length / (a0**2)
     fig, axes = plt.subplots(1, 3, figsize=figure_size("trajectory"), sharey=True)
-    fig.subplots_adjust(wspace=0.09, top=0.92, bottom=0.32, left=0.14, right=0.98)
+    fig.subplots_adjust(wspace=0.09, top=0.92, bottom=0.32, left=0.14, right=0.86)
 
     plotted = False
     for ax, (case_prefix, title, n_vortices) in zip(axes, ENERGY_CASES):
@@ -200,7 +187,7 @@ def plot_energy_enstrophy(args) -> int:
         return 0
 
     axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 L / a_{c,0}^2)$")
-    axes[0].set_ylim([-1e0, 1e-1])
+    axes[0].set_ylim([-5e-1, -5e-3])
 
     # sharey=True links the y-axes, so the scale and limits propagate.
     for ax in axes:
@@ -225,9 +212,8 @@ def plot_energy_enstrophy(args) -> int:
                 [0],
                 [0],
                 color=st["color"],
-                linestyle="None",
-                marker=st["marker"],
-                markersize=4,
+                linestyle="-",
+                marker="None",
                 linewidth=1.0,
                 label=st["label"],
             )
@@ -249,11 +235,10 @@ def plot_energy_enstrophy(args) -> int:
             [0],
             [0],
             color=colors["reference"],
-            linestyle="None",
-            marker="o",
-            markersize=4,
-            mfc="none",
-            label=r"$-\nu\Omega$",
+            linestyle="-",
+            marker="None",
+            linewidth=1.0,
+            label=r"$-2\nu Z$",
         )
     )
     fig.legend(

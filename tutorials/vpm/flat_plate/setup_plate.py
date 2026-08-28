@@ -187,7 +187,7 @@ def run_case(
         setup=vpm.VPMSetup.les_simulation(
             smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP_SIZE,
-            compute_device="METAL",
+            compute_device="AUTO",
             advection=vpm.AdvectionConfig(scheme="RK3"),
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(

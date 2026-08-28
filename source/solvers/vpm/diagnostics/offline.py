@@ -45,6 +45,8 @@ class FlowIntegrals:
     total_kinetic_energy: float
     total_helicity: float
     total_enstrophy: float
+    kinetic_energy_rate: float
+    kinetic_energy_rate_source: str
     viscous_kinetic_energy_rate: float
     vortex_strength_magnitude_sum: float
     net_vortex_strength: np.ndarray  # (3,) [m³/s]
@@ -207,6 +209,8 @@ class OfflineFlowDiagnostics:
                 total_kinetic_energy=0.0,
                 total_helicity=0.0,
                 total_enstrophy=0.0,
+                kinetic_energy_rate=0.0,
+                kinetic_energy_rate_source="empty_particle_field",
                 viscous_kinetic_energy_rate=0.0,
                 vortex_strength_magnitude_sum=0.0,
                 net_vortex_strength=np.zeros(3),
@@ -243,6 +247,8 @@ class OfflineFlowDiagnostics:
             total_kinetic_energy=results_dict["total_kinetic_energy"],
             total_helicity=results_dict["total_helicity"],
             total_enstrophy=results_dict["total_enstrophy"],
+            kinetic_energy_rate=results_dict["kinetic_energy_rate"],
+            kinetic_energy_rate_source=results_dict["kinetic_energy_rate_source"],
             viscous_kinetic_energy_rate=results_dict["viscous_kinetic_energy_rate"],
             vortex_strength_magnitude_sum=results_dict["vortex_strength_magnitude_sum"],
             net_vortex_strength=results_dict["net_vortex_strength"],
@@ -301,21 +307,8 @@ class OfflineFlowDiagnostics:
             return 10000
 
     def _compute_energy_dissipation_rate(self) -> np.ndarray:
-        """Compute dE/dt using centred finite differences (np.gradient).
-
-        ``np.gradient`` uses second-order accurate centred differences for all
-        interior points and one-sided stencils at the boundaries, with the
-        actual (possibly non-uniform) time spacing as the coordinate.  This is
-        more accurate than the previous backward-only BDF4 scheme, which (a)
-        assumed uniform spacing and (b) had no smoothing at all.
-        """
-        times = np.array([r.time for r in self.results])
-        energies = np.array([r.total_kinetic_energy for r in self.results])
-
-        if len(times) < 2:
-            return np.zeros(len(times))
-
-        return np.gradient(energies, times)
+        """Return only rates formed from one consistent direct-energy measure."""
+        return np.asarray([result.kinetic_energy_rate for result in self.results], dtype=float)
 
     def save(self, output_path: str | Path | None = None) -> Path:
         """

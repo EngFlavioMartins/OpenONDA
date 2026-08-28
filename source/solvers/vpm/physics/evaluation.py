@@ -87,7 +87,7 @@ class ParticleFieldEvaluation:
         self._host_scalar_chunks = {}
 
         # Initialize time tracking for energy dissipation rate
-        self._energy_history = []  # Store (time, energy) pairs
+        self._energy_history = []  # Store (time, energy, measurement) triples
         # Retain a short audit trail.  dE/dt uses only the latest interval so
         # its sign is consistent with the two energy samples being reported.
         self._max_history_length = 7
@@ -735,7 +735,7 @@ class ParticleFieldEvaluation:
         r = self.total_quantities_results[None]
         total_kinetic_energy = float(r.total_kinetic_energy)
         if record_history:
-            self._update_energy_history(time, total_kinetic_energy)
+            self._update_energy_history(time, total_kinetic_energy, "direct")
 
         # Compute kinetic energy dissipation rate using finite differences
         dE_dt = self._compute_energy_dissipation_rate()
@@ -747,6 +747,7 @@ class ParticleFieldEvaluation:
             "test_filtered_enstrophy": float(r.test_filtered_enstrophy),
             "viscous_kinetic_energy_rate": float(r.viscous_kinetic_energy_rate),
             "kinetic_energy_rate": dE_dt,
+            "kinetic_energy_rate_source": "direct_energy_backward_difference",
             "vortex_strength_magnitude_sum": float(r.vortex_strength_magnitude_sum),
             "net_vortex_strength": np.array(
                 [float(r.vortex_strength_x), float(r.vortex_strength_y), float(r.vortex_strength_z)]
@@ -780,7 +781,7 @@ class ParticleFieldEvaluation:
 
         total_kinetic_energy = spectral.total_kinetic_energy
         if record_history:
-            self._update_energy_history(time, total_kinetic_energy)
+            self._update_energy_history(time, total_kinetic_energy, "fourier_dynamic_box")
         total = vortex_strength.sum(axis=0, dtype=np.float64)
         impulse = 0.5 * np.cross(position, vortex_strength).sum(axis=0, dtype=np.float64)
         angular = np.cross(position, np.cross(position, vortex_strength)).sum(
@@ -792,7 +793,11 @@ class ParticleFieldEvaluation:
             "total_enstrophy": spectral.total_enstrophy,
             "test_filtered_enstrophy": spectral.test_filtered_enstrophy,
             "viscous_kinetic_energy_rate": spectral.viscous_kinetic_energy_rate,
-            "kinetic_energy_rate": self._compute_energy_dissipation_rate(),
+            # The temporary Fourier box follows the particle support. Its
+            # kinetic energy is a useful instantaneous audit, but values on
+            # different boxes do not define one differentiable time history.
+            "kinetic_energy_rate": float("nan"),
+            "kinetic_energy_rate_source": "undefined_dynamic_fourier_box",
             "vortex_strength_magnitude_sum": float(np.linalg.norm(vortex_strength, axis=1).sum()),
             "net_vortex_strength": total,
             "linear_impulse": impulse,
@@ -944,42 +949,51 @@ class ParticleFieldEvaluation:
 
     # ENERGY DISSIPATION RATE COMPUTATION
 
-    def _update_energy_history(self, time: float, total_kinetic_energy: float):
+    def _update_energy_history(
+        self,
+        time: float,
+        total_kinetic_energy: float,
+        measurement: str = "direct",
+    ):
         """
         Update the time history of kinetic energy.
 
         Args:
             time: Current simulation time [s]
             total_kinetic_energy: Current total kinetic energy [J]
+            measurement: Energy definition shared by comparable samples.
         """
         # Replace the latest entry when callers request diagnostics multiple
         # times at the same physical time. This keeps dE/dt finite differences
         # well-posed and avoids zero-dt history pairs.
         if self._energy_history and abs(self._energy_history[-1][0] - time) < 1e-12:
-            self._energy_history[-1] = (time, total_kinetic_energy)
+            self._energy_history[-1] = (time, total_kinetic_energy, measurement)
             return
 
         # Add new entry
-        self._energy_history.append((time, total_kinetic_energy))
+        self._energy_history.append((time, total_kinetic_energy, measurement))
 
         # Keep only the last N entries
         if len(self._energy_history) > self._max_history_length:
             self._energy_history.pop(0)
 
     def _compute_energy_dissipation_rate(self) -> float:
-        """Return the energy change over the latest diagnostic interval.
+        """Return the direct-energy change over the latest diagnostic interval.
 
         An endpoint derivative extrapolated from a higher-order polynomial can
         have the wrong sign even when every sampled energy decreases.  The
         backward secant is conservative, handles non-uniform output intervals,
         and makes the reported rate exactly consistent with the latest pair of
-        diagnostic states.
+        diagnostic states. A changing Fourier audit box is not one consistent
+        energy measure, so its time derivative is deliberately undefined.
         """
         if len(self._energy_history) < 2:
             return 0.0
 
-        previous_time, previous_energy = self._energy_history[-2]
-        current_time, current_energy = self._energy_history[-1]
+        previous_time, previous_energy, previous_measurement = self._energy_history[-2]
+        current_time, current_energy, current_measurement = self._energy_history[-1]
+        if previous_measurement != "direct" or current_measurement != "direct":
+            return float("nan")
         interval = current_time - previous_time
         if interval <= 0.0:
             return 0.0
@@ -994,6 +1008,7 @@ class ParticleFieldEvaluation:
             "test_filtered_enstrophy": 0.0,
             "viscous_kinetic_energy_rate": 0.0,
             "kinetic_energy_rate": 0.0,
+            "kinetic_energy_rate_source": "empty_particle_field",
             "vortex_strength_magnitude_sum": 0.0,
             "net_vortex_strength": np.array([0.0, 0.0, 0.0]),
             "linear_impulse": np.array([0.0, 0.0, 0.0]),

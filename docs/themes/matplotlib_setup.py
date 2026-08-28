@@ -160,10 +160,6 @@ COLORS = {
     "LESpurple": PALETTE["purple"],
     "LBMgray": REFERENCE_GRAY,
     "TheoryGray": REFERENCE_GRAY,
-    # Vortex-interaction baseline/LES/stabilized-LES comparison.
-    "case_dns": PALETTE["strong_gray"],
-    "case_les": PALETTE["dark"],
-    "case_les_stabilized": PALETTE["black"],
     "background": BACKGROUND_LIGHT,
     "background_light": BACKGROUND_LIGHT,
     "background_strong": BACKGROUND_STRONG,
@@ -194,23 +190,24 @@ COLORMAPS = {
     "vortex_vorticity": "inferno",
 }
 
-FAMILY_LINESTYLE = {"leapfrog": "-", "collide": "--"}
-FAMILY_LABEL = {"leapfrog": "Leapfrog", "collide": "Collision"}
-VARIANT_LABEL = {
-    "dns": "DNS",
-    "les": "LES",
-    "les_stabilized": "LES + stabilized",
-}
-VARIANT_ORDER = tuple(VARIANT_LABEL)
-VARIANT_STYLE = {
-    "dns": {"color": COLORS["case_dns"], "marker": "8"},
-    "les": {"color": COLORS["case_les"], "marker": "s"},
-    "les_stabilized": {"color": COLORS["case_les_stabilized"], "marker": "o"},
+# Vortex-interaction ladder. The two interaction families are plotted in
+# separate panels, so each method keeps the same style in both panels.
+VORTEX_INTERACTION_VARIANT_STYLE = {
+    "dns": {"label": "DNS", "color": COLORS["RefGray"], "marker": "o"},
+    "les": {"label": "LES", "color": COLORS["TUDcyan"], "marker": "s"},
+    "les_stabilized": {
+        "label": "LES + stabilization",
+        "color": COLORS["VPMpurple"],
+        "marker": "D",
+    },
 }
 INTENDED_CASE_ORDER = {
-    f"{family}_{variant}": family_i * len(VARIANT_ORDER) + variant_i
-    for family_i, family in enumerate(("leapfrog", "collide"))
-    for variant_i, variant in enumerate(VARIANT_ORDER)
+    f"{family}_{variant}": order
+    for order, (family, variant) in enumerate(
+        (family, variant)
+        for family in ("leapfrog", "collide")
+        for variant in VORTEX_INTERACTION_VARIANT_STYLE
+    )
 }
 
 VORTEX_RING_VARIANT_STYLE = {
@@ -315,25 +312,21 @@ def figure_size(name: str = "single") -> tuple[float, float]:
     return width_cm * CM, height_cm * CM
 
 
-def case_style(name: str, include_family: bool = True) -> dict:
+def case_style(name: str) -> dict:
     """Return the shared style for a vortex-interaction case name."""
-    family, _, variant = name.partition("_")
-    variant = variant or "les"
-    variant_style = VARIANT_STYLE.get(variant, {"color": COLORS["reference"], "marker": "o"})
-    variant_label = VARIANT_LABEL.get(variant, variant.replace("_", " ").title())
-    label = variant_label
-    if include_family:
-        label = f"{FAMILY_LABEL.get(family, family.title())} - {variant_label}"
+    _, _, variant = name.partition("_")
+    style = VORTEX_INTERACTION_VARIANT_STYLE.get(
+        variant,
+        {"label": variant.replace("_", " ").title(), "color": COLORS["reference"], "marker": "o"},
+    )
     return {
-        "color": variant_style["color"],
-        "linestyle": FAMILY_LINESTYLE.get(family, "-"),
+        "color": style["color"],
+        "linestyle": "-",
         "linewidth": LINE_WIDTH,
-        "marker": variant_style["marker"],
+        "marker": style["marker"],
         "markersize": MARKER_SIZE,
         "markeredgewidth": MARKER_EDGE_WIDTH,
-        "label": label,
-        "family": family,
-        "variant": variant,
+        "label": style["label"],
     }
 
 

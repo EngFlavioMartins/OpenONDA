@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 
 import numpy as np
 import pytest
@@ -14,6 +15,7 @@ from source.solvers.fvm import (
     FVMSetup,
     FVMSolver,
     LinearSolverConfig,
+    LineSampler,
     PimpleControl,
     TimeConfig,
     TransportConfig,
@@ -79,6 +81,24 @@ def test_restart_restores_backward_time_history(tmp_path):
         )
     assert resumed.time == pytest.approx(reference.time)
     assert resumed.step == reference.step
+
+
+def test_run_manifest_serializes_sampler_configuration(tmp_path):
+    setup = _setup()
+    setup.samplers = (
+        LineSampler(start=[0, 0, 0], end=[1, 0, 0], n_points=3, file_name="centreline"),
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = FVMSolver(setup, str(tmp_path), mesh_data=structured_box(2, 2, 2))
+    destination = tmp_path / "run_manifest.json"
+    solver.write_run_manifest(destination)
+    solver.close()
+
+    payload = json.loads(destination.read_text(encoding="utf-8"))
+    sampler = payload["configuration"]["samplers"][0]
+    assert sampler["type"] == "LineSampler"
+    assert sampler["file_name"] == "centreline"
+    assert sampler["n_points"] == 3
 
 
 def test_checkpoint_storage_codec_is_bit_exact_for_history_and_scalars():

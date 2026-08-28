@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Explicit cleanup for vortex_interactions.
+#
+# Unlike the single-case tutorial, this 6-case campaign runs for many minutes
+# each, so a bare `./allclean.sh` refuses to wipe everything by accident.
+# Clean one named case with `./allclean.sh CASE_NAME` or the whole set with
+# `./allclean.sh --all`. solution/ samples/ figures/ held results are never
+# overwritten by re-running.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

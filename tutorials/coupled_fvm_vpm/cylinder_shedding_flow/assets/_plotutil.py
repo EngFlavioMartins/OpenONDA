@@ -13,15 +13,25 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-SOLUTION = CASE_DIR / "solution"
-SAMPLES = CASE_DIR / "samples"
-REFERENCE_SAMPLES = CASE_DIR / "reference_flow" / "samples"
+os.environ.setdefault("MPLCONFIGDIR", str(CASE_DIR / ".matplotlib"))
+os.environ.setdefault("XDG_CACHE_HOME", str(CASE_DIR / ".cache"))
+Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+Path(os.environ["XDG_CACHE_HOME"]).mkdir(parents=True, exist_ok=True)
+
+import matplotlib  # noqa: E402
+
+COUPLED_CASE = CASE_DIR
+REFERENCE_CASE = CASE_DIR / "reference_flow"
+SOLUTION = COUPLED_CASE / "solution"
+SAMPLES = COUPLED_CASE / "samples"
+REFERENCE_SAMPLES = REFERENCE_CASE / "samples"
 FIGURES = CASE_DIR / "figures"
 
 # Physical problem (must match cylinder_shedding_flow_setup.py).
@@ -37,6 +47,33 @@ if _THEME_SPEC is None or _THEME_SPEC.loader is None:  # pragma: no cover
 _THEME = importlib.util.module_from_spec(_THEME_SPEC)
 _THEME_SPEC.loader.exec_module(_THEME)
 _THEME.set_style()
+
+CM = 1.0 / 2.54
+FIGURE_WIDTH_CM = 12.5
+FIGURE_WIDTH = FIGURE_WIDTH_CM * CM
+FIGURE_DPI = _THEME.DEFAULT_DPI
+EXPORT_FORMATS = _THEME.EXPORT_FORMATS
+FONT_SIZE_PT = _THEME.FONT_SIZE_PT
+
+matplotlib.rcParams.update(
+    {
+        "text.usetex": False,
+        "mathtext.fontset": "dejavuserif",
+        "font.family": "serif",
+        "font.serif": ["DejaVu Serif"],
+        "font.size": FONT_SIZE_PT,
+        "axes.labelsize": FONT_SIZE_PT,
+        "axes.titlesize": FONT_SIZE_PT,
+        "figure.titlesize": FONT_SIZE_PT,
+        "legend.fontsize": FONT_SIZE_PT,
+        "xtick.labelsize": FONT_SIZE_PT,
+        "ytick.labelsize": FONT_SIZE_PT,
+        "figure.dpi": FIGURE_DPI,
+        "savefig.dpi": FIGURE_DPI,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    }
+)
 
 COLORS = dict(_THEME.COLORS)
 COLORS.update(
@@ -77,9 +114,12 @@ def _path(source: str, name: str, suffix: str) -> Path:
 
 
 def metadata() -> dict:
-    """Return ``run_metadata.json`` as a dict (empty if not written)."""
-    path = SOLUTION / "run_metadata.json"
-    return json.loads(path.read_text()) if path.exists() else {}
+    """Return coupled benchmark metadata, falling back to coupler metadata."""
+    for name in ("benchmark_metadata.json", "run_metadata.json"):
+        path = SOLUTION / name
+        if path.exists():
+            return json.loads(path.read_text())
+    return {}
 
 
 def run_constants() -> dict:
@@ -95,17 +135,24 @@ def run_constants() -> dict:
         "freestream_speed": float(np.linalg.norm(freestream_velocity)) or 1.0,
         "freestream_velocity": freestream_velocity,
         "diameter": DIAMETER,
-        "reynolds": REYNOLDS,
+        "reynolds": float(phys.get("reynolds_number", REYNOLDS)),
         "kinematic_viscosity": kinematic_viscosity,
         "end_time": end_time,
-        "seed_amplitude": float(meta.get("seed_amplitude", 0.0)),
+        "seed_amplitude": float(phys.get("seed_amplitude", meta.get("seed_amplitude", 0.0))),
     }
 
 
-def save(fig, name: str, fmt: str, dpi: int) -> Path:
+def figure_size(height_cm: float) -> tuple[float, float]:
+    """Fixed 12.5 cm publication width and requested height in inches."""
+    return FIGURE_WIDTH, height_cm * CM
+
+
+def save(fig, name: str, fmt: str, dpi: int = FIGURE_DPI) -> Path:
+    if fmt not in EXPORT_FORMATS:
+        raise ValueError(f"Unsupported figure format: {fmt!r}")
     FIGURES.mkdir(parents=True, exist_ok=True)
     out = FIGURES / f"{name}.{fmt}"
-    _THEME.save_fig(fig, out, figure_format=fmt, dpi=dpi)
+    fig.savefig(out, format=fmt, dpi=dpi, bbox_inches=None, facecolor="white")
     print(f"  wrote {out.relative_to(CASE_DIR)}")
     return out
 
@@ -140,8 +187,13 @@ def load_probe(source: str, name: str = PROBE_NAME) -> dict[str, np.ndarray] | N
 
 
 def load_forces(source: str) -> dict[str, np.ndarray] | None:
-    """Load the IBM force history for one source using canonical field columns."""
-    table = _read_csv(_path(source, "ibm_forces_history", ".csv"))
+    """Load physical wall-patch forces from the reference or coupled FVM."""
+    path = (
+        REFERENCE_SAMPLES / "forces_history.csv"
+        if source == "reference"
+        else SAMPLES / "forces_history.csv"
+    )
+    table = _read_csv(path)
     if table is None:
         return None
     order = np.argsort(table["time"])
@@ -149,7 +201,6 @@ def load_forces(source: str) -> dict[str, np.ndarray] | None:
         "t": table["time"][order],
         "drag_coefficient": table["drag_coefficient"][order],
         "lift_coefficient": table["lift_coefficient"][order],
-        "slip_error": table["slip_error"][order],
     }
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import re
+import sys
 
 import numpy as np
 import pytest
@@ -17,6 +18,7 @@ def _load_module(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -92,32 +94,40 @@ def test_plotters_use_canonical_export_fields_and_valid_math_commands():
     assert offenders == []
 
 
-def test_vortex_interaction_postprocessor_uses_canonical_cadence_keys():
-    source = (TUTORIALS / "vpm/vortex_interactions/assets/postprocess.py").read_text(
+def test_lamb_oseen_postprocess_derives_speed_from_canonical_velocity_components():
+    source = (TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py").read_text(
         encoding="utf-8"
     )
 
-    assert re.search(r'manifest\.get\("checkpoint_interval_steps"(?:,\s*0)?\)', source)
-    assert 'manifest.get("snapshot_frequency")' not in source
-    assert re.search(
-        r'range\(ci,\s*manifest\["completed_steps"\]\s*\+\s*1,\s*ci\)',
-        source,
-    )
+    assert 'field["velocity_x"]' in source
+    assert 'field["velocity_y"]' in source
+    assert "np.hypot" in source
 
 
-def test_lamb_oseen_surface_plot_derives_speed_from_the_canonical_velocity_vector():
-    source = (TUTORIALS / "vpm/lamb_oseen_vortex/assets/plot_vortex_surface_fields.py").read_text(
-        encoding="utf-8"
-    )
+def test_lamb_oseen_has_separate_clean_plot_and_run_entry_points():
+    tutorial = TUTORIALS / "vpm/lamb_oseen_vortex"
+    shell_scripts = tuple(sorted(path.name for path in tutorial.glob("*.sh")))
+    allrun = (tutorial / "allrun.sh").read_text(encoding="utf-8")
+    allplot = (tutorial / "allplot.sh").read_text(encoding="utf-8")
+    allclean = (tutorial / "allclean.sh").read_text(encoding="utf-8")
 
-    assert 'GetArray("velocity")' in source
-    assert "np.linalg.norm(velocity, axis=2)" in source
-    assert 'GetArray("velocity_magnitude")' not in source
+    assert shell_scripts == ("allclean.sh", "allplot.sh", "allrun.sh")
+    assert "for " not in allrun
+    assert "while " not in allrun
+    assert "allplot.sh" not in allrun
+    assert "allrun_rwm_ensemble.sh" not in allrun
+    assert allrun.count("python -u lamb_oseen_setup.py") == 9
+    assert allrun.count("python -u lamb_oseen_rwm_setup.py") == 3
+    assert allrun.count("python assets/plot_") == 5
+    assert "lamb_oseen_setup.py" not in allplot
+    assert "lamb_oseen_rwm_setup.py" not in allplot
+    assert allplot.count("python assets/plot_") == 5
+    assert "python" not in allclean
 
 
 def test_lamb_oseen_case_names_are_separate_from_energy_plot_metadata():
     diagnostics = _load_module(
-        TUTORIALS / "vpm/lamb_oseen_vortex/assets/vortex_diagnostics.py",
+        TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py",
         "lamb_oseen_vortex_diagnostics_contract",
     )
 
@@ -130,7 +140,7 @@ def test_lamb_oseen_case_names_are_separate_from_energy_plot_metadata():
 
 def test_lamb_oseen_cs_is_always_the_top_comparison_layer():
     diagnostics = _load_module(
-        TUTORIALS / "vpm/lamb_oseen_vortex/assets/vortex_diagnostics.py",
+        TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py",
         "lamb_oseen_plot_layer_contract",
     )
 
@@ -154,6 +164,8 @@ def test_vpm_tutorials_keep_their_compact_sampling_budgets():
     assert 'field_padding = 0.0 if physics == "vortex" else 3.0 * final_core_radius' in lamb_oseen
     assert "bounds=field_bounds" in lamb_oseen
     assert "checkpoint_store_velocity_gradient=False" in lamb_oseen
+    assert "n_steps = round(TOTAL_TIME / solver.time_step_size)" in lamb_oseen
+    assert "if solver.step % sample_steps != 0:" in lamb_oseen
     assert "SAMPLE_INTERVAL_TIME = 0.1" in vortex_ring
     assert "CHECKPOINT_INTERVAL_TIME = 0.5" in vortex_ring
     assert "checkpoint_store_velocity_gradient=False" in vortex_ring

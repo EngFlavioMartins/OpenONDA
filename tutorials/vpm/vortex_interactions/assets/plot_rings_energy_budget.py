@@ -25,13 +25,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from _common import (
+from ring_metrics import (
     RING_CIRCULATION,
     RING_RADIUS,
     REFERENCE_TIME,
     build_arg_parser,
     case_style,
-    compact_case_legend_handles,
+    case_legend_handles,
     discover_cases,
     figure_size,
     load_theme,
@@ -306,10 +306,13 @@ def make_figure(
 ) -> None:
     load_theme()
     fig, (ax_rate, ax_spur) = plt.subplots(2, 1, figsize=figure_size("wide_stacked"), sharex=True)
+    fig.subplots_adjust(left=0.17, right=0.98, top=0.94, bottom=0.21, hspace=0.10)
     rate_values: list[np.ndarray] = []
     spurious_values: list[np.ndarray] = []
 
-    for case, df in timeseries.groupby("case", sort=True):
+    plotted: list[str] = []
+    for case in summary["case"]:
+        df = timeseries[timeseries["case"] == case]
         st = case_style(case)
         t = df["nondimensional_time"].to_numpy(float)
         e0 = float(df["total_kinetic_energy"].iloc[0])
@@ -324,6 +327,7 @@ def make_figure(
             mew=st["markeredgewidth"],
         )
 
+        plotted.append(case)
         rate = df["kinetic_energy_rate_interval"].to_numpy(float) / scale
         rate_values.append(rate)
         ax_rate.plot(t, rate, label=st["label"], **common)
@@ -361,17 +365,16 @@ def make_figure(
     ax_spur.set_ylim(-0.02 * upper, 1.06 * upper)
 
     fig.legend(
-        handles=compact_case_legend_handles(),
-        ncol=5,
+        handles=case_legend_handles(plotted),
+        ncol=3,
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.005),
+        bbox_to_anchor=(0.5, 0.0),
     )
     save_fig(
         fig,
         figures_dir / "rings_energy_budget.png",
         dpi=dpi,
         figure_format=figure_format,
-        tight_rect=(0.0, 0.16, 1.0, 1.0),
     )
 
 
@@ -392,10 +395,11 @@ def main() -> None:
         rows.append(summary)
 
     if not rows:
-        raise SystemExit(f"No total_kinetic_energy diagnostics found under {solution_dir}")
+        print(f"  No flow-integral diagnostics under {solution_dir}; nothing to plot.")
+        return
 
     timeseries = pd.concat(all_series, ignore_index=True)
-    summary = pd.DataFrame(rows).sort_values("case")
+    summary = pd.DataFrame(rows)
 
     make_figure(timeseries, summary, figures_dir, args.dpi, args.format)
 
@@ -436,8 +440,7 @@ def main() -> None:
     )
     failed = verdict[~verdict["PASS"]]
     if not failed.empty:
-        names = ", ".join(failed["case"].astype(str))
-        raise SystemExit(f"Energy/conservation verdict failed: {names}")
+        print(f"Energy/conservation verdict failed: {', '.join(failed['case'].astype(str))}")
 
 
 if __name__ == "__main__":

@@ -14,7 +14,43 @@
   "column_half_length": 2.5,
   "end_time": 29.973,
   "time_step_size": 0.03233333333333333,
+  "field_sample_interval_steps": 6,
+  "raw_output_estimator": "particle_checkpoints_for_column_projection",
   "initial_n_particles_total": 3916,
   "final_time": 29.973,
-  "compute_device": "METAL"
+  "compute_device": "CPU",
+  "statistical_estimator": "fixed_time_seed_ensemble_mean_of_column_projected_fields",
+  "ensemble_size": 8,
+  "ensemble_member_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "random_seeds": [
+    42000,
+    42001,
+    42002,
+    42003,
+    42004,
+    42005,
+    42006,
+    42007
+  ],
+  "confidence_level": 0.95,
+  "confidence_multiplier": 2.364624251592784,
+  "column_projection": "omega_bar_z(x,y)=L^-1 integral omega_z(x,y,z) dz, reconstructed from Gaussian particle checkpoints; velocity from free-space 2-D Biot-Savart",
+  "feature_definitions": {
+    "vortex_centre": "centre_of_connected_area_inside_80_percent_peak_vorticity_contour",
+    "vortex_separation": "distance_between_vorticity_centres_before_peak_coalescence; zero thereafter",
+    "orientation": "undirected_axis_joining_centres before merger; vorticity-quadrupole major axis of merged ellipse after merger",
+    "core_radius": "radius_of_maximum_outward_semicircle_mean_azimuthal_velocity_before_merger; full_circle_mean_after_merger",
+    "pair_resolution": "peak_to_saddle_contrast_exceeds_95_percent_ensemble_uncertainty"
+  },
+  "uncertainty": "pointwise Student-t intervals across independent seeds; delete-one-member jackknife intervals for nonlinear extracted features",
+  "minimum_absolute_circulation_capture_fraction": 0.9995985160133578
 }

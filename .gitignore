@@ -20,6 +20,7 @@ __pycache__/
 .claude
 .mypy_cache
 .matplotlib/
+.cache/
 
 dist/
 build/
@@ -59,6 +60,8 @@ venv/
 *.jsonl
 *.tmp
 *.bak
+**/.openonda_run.lock
+**/.openonda_run.lock
 
 # ===============================
 # Build artifacts
@@ -120,6 +123,7 @@ log.*
 # Fixed geometry inputs required by the native cube_flow tutorials
 !tutorials/coupled_fvm_vpm/cube_flow/assets/cube.stl
 !tutorials/coupled_fvm_vpm/cube_flow/reference_flow/assets/cube.stl
+!tutorials/coupled_fvm_vpm/cylinder_shedding_flow/assets/cylinder_long.stl
 
 # Other simulation data
 *.xdmf

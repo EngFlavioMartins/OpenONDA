@@ -21,127 +21,41 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 if __package__:
-    from .vortex_diagnostics import (
+    from .postprocess import (
         SCHEME_DRAW_ORDER,
         SCHEMES,
         TOTAL_TIME,
         build_arg_parser,
         build_style_map,
         figure_size,
+        lamb_oseen_gradient,
+        lamb_oseen_profile,
+        latest_common_time,
+        load_profile,
         load_theme,
-        pvd_time_map,
-        read_surface_field,
         resolve_runtime_physics,
         save_fig,
         scheme_zorder,
     )
 else:
-    from vortex_diagnostics import (
+    from postprocess import (
         SCHEME_DRAW_ORDER,
         SCHEMES,
         TOTAL_TIME,
         build_arg_parser,
         build_style_map,
         figure_size,
+        lamb_oseen_gradient,
+        lamb_oseen_profile,
+        latest_common_time,
+        load_profile,
         load_theme,
-        pvd_time_map,
-        read_surface_field,
         resolve_runtime_physics,
         save_fig,
         scheme_zorder,
     )
 
 from matplotlib.ticker import FormatStrFormatter
-
-
-# =============================================================
-# Theory
-# =============================================================
-
-
-def lamb_oseen_profile(r: np.ndarray, t: float, circulation: float, kinematic_viscosity: float):
-    rc2 = 4.0 * kinematic_viscosity * t
-    rc = np.sqrt(rc2)
-    oz = (circulation / (np.pi * rc2)) * np.exp(-(r**2) / rc2)
-    vel = np.zeros_like(r)
-    mask = np.abs(r) > 1e-12
-    vel[mask] = circulation / (2.0 * np.pi * r[mask]) * (1.0 - np.exp(-(r[mask] ** 2) / rc2))
-    return vel, oz, rc
-
-
-def lamb_oseen_gradient(
-    r: np.ndarray, t: float, circulation: float, kinematic_viscosity: float
-) -> np.ndarray:
-    rc2 = 4.0 * kinematic_viscosity * t
-    grad = np.zeros_like(r)
-    mask = np.abs(r) > 1e-12
-    exp_t = np.exp(-(r[mask] ** 2) / rc2)
-    grad[mask] = (circulation / (2.0 * np.pi)) * (2.0 * exp_t / rc2 - (1.0 - exp_t) / r[mask] ** 2)
-    grad[~mask] = circulation / (2.0 * np.pi * rc2)
-    return grad
-
-
-# =============================================================
-# Data loader
-# =============================================================
-
-
-def load_profile(
-    samples_dir: Path,
-    scheme: str,
-    target_time: float | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, float] | None:
-    """Slice y≈0 at the latest, or nearest requested, sampled time."""
-
-    timeline = pvd_time_map(samples_dir, "vortex", scheme)
-    if not timeline:
-        return None
-    if target_time is None:
-        ordered_steps = sorted(timeline, key=timeline.get, reverse=True)
-    else:
-        # During a sequential allrun, completed methods may be far ahead of
-        # the method currently running. Select the snapshot nearest the latest
-        # time common to every available method so the comparison is physical.
-        ordered_steps = sorted(
-            timeline,
-            key=lambda step: (abs(timeline[step] - target_time), timeline[step] > target_time),
-        )
-
-    field = None
-    selected_step = None
-    for step in ordered_steps:
-        vts = samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{step:06d}.vts"
-        if not vts.is_file():
-            continue
-        try:
-            field = read_surface_field(vts)
-            selected_step = step
-            break
-        except Exception as exc:
-            print(f"  [vortex] skipping unreadable live sample {vts.name}: {exc}")
-    if field is None or selected_step is None:
-        return None
-    if np.abs(field["velocity_y"]).max() <= 1e-10:
-        return None
-
-    # SurfaceSampler's grid is built with np.arange, so an exact y=0 row
-    # isn't guaranteed — take the row nearest to it.
-    y_1d = field["y"][0, :]
-    j0 = int(np.argmin(np.abs(y_1d)))
-    x = field["x"][:, j0]
-    uy = field["velocity_y"][:, j0]
-    oz = field["vorticity_z"][:, j0]
-    return x, uy, oz, timeline[selected_step]
-
-
-def latest_common_time(samples_dir: Path) -> float | None:
-    """Latest physical time reached by every currently available method."""
-    latest = []
-    for scheme in SCHEME_DRAW_ORDER:
-        timeline = pvd_time_map(samples_dir, "vortex", scheme)
-        if timeline:
-            latest.append(max(timeline.values()))
-    return min(latest) if latest else None
 
 
 # =============================================================
@@ -162,7 +76,6 @@ def plot_vortex_case(args) -> int:
     )
     run_kinematic_viscosity = runtime["kinematic_viscosity"]
     run_t0 = runtime["t0"]
-    # All benchmark figures use the same literature/diagnostic definition:
     # a_c is the radius of maximum azimuthal velocity.
     ac0 = runtime["velocity_peak_radius0"]
     run_circulation = runtime["circulation"]
@@ -172,15 +85,15 @@ def plot_vortex_case(args) -> int:
     gc_ref = uc_ref / ac0
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.19, left=0.12, right=0.98)
+    fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.19, left=0.12, right=0.88)
 
     comparison_time = latest_common_time(samples_dir)
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
-        profile = load_profile(samples_dir, scheme, comparison_time)
+        profile = load_profile(samples_dir, scheme, comparison_time, include_uncertainty=True)
         if profile is None:
             continue
-        x, uy, oz, t = profile
+        x, uy, oz, t, velocity_se, vorticity_se, gradient_se, multiplier = profile
         dvx = np.gradient(uy, x)
         st = style_map[scheme]
         plot_kw = {
@@ -196,6 +109,24 @@ def plot_vortex_case(args) -> int:
         axes[0].plot(x / ac0, uy / uc_ref, **plot_kw)
         axes[1].plot(x / ac0, oz / wc_ref, **plot_kw)
         axes[2].plot(x / ac0, dvx / gc_ref, **plot_kw)
+        if scheme == "rwm":
+            for axis, mean, standard_error, scale in (
+                (axes[0], uy, velocity_se, uc_ref),
+                (axes[1], oz, vorticity_se, wc_ref),
+                (axes[2], dvx, gradient_se, gc_ref),
+            ):
+                lower = (mean - multiplier * standard_error) / scale
+                upper = (mean + multiplier * standard_error) / scale
+                finite_interval = np.isfinite(lower) & np.isfinite(upper)
+                axis.fill_between(
+                    x[finite_interval] / ac0,
+                    lower[finite_interval],
+                    upper[finite_interval],
+                    color=st["color"],
+                    alpha=0.18,
+                    linewidth=0,
+                    zorder=scheme_zorder(scheme) - 1,
+                )
         scheme_data.append((scheme, t, x, uy, oz, dvx))
 
     if scheme_data:

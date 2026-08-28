@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """z = L/4 field comparison for the single Lamb-Oseen vortex.
 
-Each of the four viscous schemes (GBD, CS, RWM, DVH-R) contributes **one
+Each of the four viscous schemes (GBD, CS, RWM, DVH) contributes **one
 quadrant** of the plane.  The quadrants tile into a seamless image of
 the full field, making it immediately clear which scheme over- or
 under-diffuses relative to the others.
@@ -12,7 +12,7 @@ Quadrant layout
   ----------------------------------
         GBD       |      CS
   ----------------------------------
-        RWM      |     DVH-R
+        RWM      |      DVH
   ----------------------------------
   x <= 0, y <= 0  |  x >= 0, y <= 0
 
@@ -36,24 +36,24 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
 if __package__:
-    from .vortex_diagnostics import (
+    from .postprocess import (
         SCHEMES,
         build_arg_parser,
         figure_size,
         load_theme,
-        pvd_time_map,
         resolve_runtime_physics,
         save_fig,
+        surface_plot_tiles,
     )
 else:
-    from vortex_diagnostics import (
+    from postprocess import (
         SCHEMES,
         build_arg_parser,
         figure_size,
         load_theme,
-        pvd_time_map,
         resolve_runtime_physics,
         save_fig,
+        surface_plot_tiles,
     )
 
 _LAYOUT = [
@@ -62,120 +62,6 @@ _LAYOUT = [
     ("dvh", "BR", r"$\mathrm{DVH}$", (4.5, -4.5), "right", "bottom"),
     ("cs", "TR", r"$\mathrm{CS}$", (4.5, 4.5), "right", "top"),
 ]
-
-
-# =============================================================
-# Grid helpers
-# =============================================================
-
-
-def _quad_split(X: np.ndarray, Y: np.ndarray) -> tuple[int, int]:
-    """Return ``(row0, col0)`` where the y/x coordinates first reach 0."""
-    row0 = int(np.searchsorted(Y[:, 0], 0.0))
-    col0 = int(np.searchsorted(X[0], 0.0))
-    return row0, col0
-
-
-def _boundary_edges(field: np.ndarray, row0: int, col0: int, tx: float, ty: float):
-    """Field values interpolated onto the x = 0 column and y = 0 row.
-
-    The grid has no node exactly at 0, so the tiled quadrants would leave a
-    one-cell white seam.  ``bcol``/``brow``/``corner`` linearly interpolate the
-    field on those lines so the four tiles meet without a gap.
-    """
-    bcol = field[:, col0 - 1] * (1.0 - tx) + field[:, col0] * tx
-    brow = field[row0 - 1, :] * (1.0 - ty) + field[row0, :] * ty
-    corner = brow[col0 - 1] * (1.0 - tx) + brow[col0] * tx
-    return bcol, brow, corner
-
-
-def _tile_coords(xs: np.ndarray, ys: np.ndarray, qid: str, col0: int, row0: int):
-    """1D coordinates of one quadrant, padded with its 0-coordinate edges."""
-    if qid == "TL":
-        return np.append(xs[:col0], 0.0), np.insert(ys[row0:], 0, 0.0)
-    if qid == "TR":
-        return np.insert(xs[col0:], 0, 0.0), np.insert(ys[row0:], 0, 0.0)
-    if qid == "BL":
-        return np.append(xs[:col0], 0.0), np.append(ys[:row0], 0.0)
-    if qid == "BR":
-        return np.insert(xs[col0:], 0, 0.0), np.append(ys[:row0], 0.0)
-    raise ValueError(f"Unknown quadrant id: {qid!r}")
-
-
-def _tile(field: np.ndarray, qid: str, col0: int, row0: int, bcol, brow, corner):
-    """One quadrant of ``field`` with interpolated x = 0 / y = 0 edges."""
-    if qid == "TL":
-        tile = np.column_stack([field[row0:, :col0], bcol[row0:, None]])
-        return np.vstack([np.append(brow[:col0], corner)[None, :], tile])
-    if qid == "TR":
-        tile = np.column_stack([bcol[row0:, None], field[row0:, col0:]])
-        return np.vstack([np.insert(brow[col0:], 0, corner)[None, :], tile])
-    if qid == "BL":
-        tile = np.column_stack([field[:row0, :col0], bcol[:row0, None]])
-        return np.vstack([tile, np.append(brow[:col0], corner)[None, :]])
-    if qid == "BR":
-        tile = np.column_stack([bcol[:row0, None], field[:row0, col0:]])
-        return np.vstack([tile, np.insert(brow[col0:], 0, corner)[None, :]])
-    raise ValueError(f"Unknown quadrant id: {qid!r}")
-
-
-def _read_vts(path: Path):
-    import vtk
-    import vtk.util.numpy_support as ns
-
-    reader = vtk.vtkXMLStructuredGridReader()
-    reader.SetFileName(str(path))
-    reader.Update()
-    grid = reader.GetOutput()
-
-    dims = [0, 0, 0]
-    grid.GetDimensions(dims)
-    nx_d, ny_d = dims[0], dims[1]
-    n = grid.GetNumberOfPoints()
-    pts = np.array([grid.GetPoint(i) for i in range(n)]).reshape(ny_d, nx_d, 3)
-    X = pts[:, :, 0]
-    Y = pts[:, :, 1]
-
-    pd = grid.GetPointData()
-    velocity = ns.vtk_to_numpy(pd.GetArray("velocity")).reshape(ny_d, nx_d, 3)
-    vel_mag = np.linalg.norm(velocity, axis=2)
-    vort = ns.vtk_to_numpy(pd.GetArray("vorticity")).reshape(ny_d, nx_d, 3)
-    vort_z = vort[:, :, 2]
-
-    return X, Y, np.clip(vel_mag, 0.0, None), np.clip(vort_z, 0.0, None)
-
-
-# =============================================================
-# Data loading
-# =============================================================
-
-
-def _find_surface_vts(
-    samples_dir: Path,
-    scheme: str,
-    target_time: float | None = None,
-) -> tuple[Path | None, float | None]:
-    folder = samples_dir / f"vortex_{scheme}"
-    time_by_step = pvd_time_map(samples_dir, "vortex", scheme)
-    if not time_by_step:
-        return None, None
-
-    if target_time is None:
-        ordered_steps = sorted(time_by_step, key=time_by_step.get, reverse=True)
-    else:
-        ordered_steps = sorted(
-            time_by_step,
-            key=lambda step: (
-                abs(time_by_step[step] - target_time),
-                time_by_step[step] > target_time,
-            ),
-        )
-
-    for selected_step in ordered_steps:
-        path = folder / f"vortex_{scheme}_zq_{selected_step:06d}.vts"
-        if path.is_file():
-            return path, time_by_step[selected_step]
-    return None, None
 
 
 # =============================================================
@@ -197,52 +83,11 @@ def plot_surface_fields(args) -> int:
     uc_ref = run_circulation / (2.0 * np.pi * ac0)
     wc_ref = run_circulation / (np.pi * ac0**2)
 
-    # During a sequential allrun, compare all available methods at the
-    # latest time reached by every one of them. This prevents a completed
-    # method from being tiled beside a much younger running solution.
-    latest_times = []
-    for scheme, *_ in _LAYOUT:
-        timeline = pvd_time_map(samples_dir, "vortex", scheme)
-        if timeline:
-            latest_times.append(max(timeline.values()))
-    comparison_time = min(latest_times) if latest_times else None
-
-    # -- Load each scheme's surface data ----------------------------------
-    datasets: dict[str, dict] = {}
-    for scheme, qid, *_ in _LAYOUT:
-        vts, sample_time = _find_surface_vts(samples_dir, scheme, comparison_time)
-        if vts is None:
-            print(f"  [surface] no requested VTS for {scheme!r} — skipping quadrant")
-            continue
-        try:
-            X, Y, vm, wz = _read_vts(vts)
-        except Exception as exc:
-            print(f"  [surface] read error {vts.name}: {exc}")
-            continue
-        step = int(vts.stem.split("_")[-1])
-        datasets[scheme] = dict(
-            X=X,
-            Y=Y,
-            vel_mag=vm,
-            vort_z=wz,
-            step=step,
-            time=sample_time,
-        )
-
-    if not datasets:
+    tiles, _ = surface_plot_tiles(samples_dir, _LAYOUT, ac0, uc_ref, wc_ref)
+    if not tiles:
         out.unlink(missing_ok=True)
         print("  [surface] no sampled fields; figure not generated")
         return 0
-
-    selected_times = [float(data["time"]) for data in datasets.values()]
-    sample_time = (
-        comparison_time if comparison_time is not None else float(np.median(selected_times))
-    )
-    print(
-        f"  [surface] plotting {len(datasets)}/{len(SCHEMES)} methods "
-        f"at common t={sample_time:.3g}s "
-        f"(selected samples {min(selected_times):.3g}–{max(selected_times):.3g}s)"
-    )
 
     # -- Shared normalisation limits ------------------------------------
     v_norm = mcolors.Normalize(vmin=0.0, vmax=0.2)
@@ -261,25 +106,12 @@ def plot_surface_fields(args) -> int:
         constrained_layout=True,
     )
 
-    for scheme, qid, label, (_tx_frac, _ty_frac), ha, va in _LAYOUT:
-        if scheme not in datasets:
-            continue
-        d = datasets[scheme]
-        Xn = d["X"] / ac0
-        Yn = d["Y"] / ac0
-        row0, col0 = _quad_split(Xn, Yn)
-        xs, ys = Xn[0], Yn[:, 0]
-        tx = -xs[col0 - 1] / (xs[col0] - xs[col0 - 1])
-        ty = -ys[row0 - 1] / (ys[row0] - ys[row0 - 1])
-        Xg, Yg = np.meshgrid(*_tile_coords(xs, ys, qid, col0, row0))
-        vm_field = d["vel_mag"] / uc_ref
-        wz_field = d["vort_z"] / wc_ref
-        vms = _tile(vm_field, qid, col0, row0, *_boundary_edges(vm_field, row0, col0, tx, ty))
-        wzs = _tile(wz_field, qid, col0, row0, *_boundary_edges(wz_field, row0, col0, tx, ty))
-
+    labels = {scheme: (label, ha, va) for scheme, _, label, _, ha, va in _LAYOUT}
+    for tile in tiles:
+        label, ha, va = labels[tile["scheme"]]
         pcm_kw = dict(shading="gouraud", rasterized=True)
-        ax_v.pcolormesh(Xg, Yg, vms, cmap=v_cmap, norm=v_norm, **pcm_kw)
-        ax_w.pcolormesh(Xg, Yg, wzs, cmap=w_cmap, norm=w_norm, **pcm_kw)
+        ax_v.pcolormesh(tile["x"], tile["y"], tile["velocity"], cmap=v_cmap, norm=v_norm, **pcm_kw)
+        ax_w.pcolormesh(tile["x"], tile["y"], tile["vorticity"], cmap=w_cmap, norm=w_norm, **pcm_kw)
 
         tx = -0.85 * ax_lim if ha == "left" else 0.85 * ax_lim
         ty = 0.85 * ax_lim if va == "top" else -0.85 * ax_lim

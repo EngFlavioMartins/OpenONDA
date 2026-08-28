@@ -109,7 +109,7 @@ def run() -> None:
     solver = vpm.VPMSolver(
         setup=vpm.VPMSetup(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="METAL",
+            compute_device="AUTO",
             vlm=vlm_setup,
             stretching=vpm.StretchingConfig.disabled(),
             viscous=vpm.ViscousConfig.cs(

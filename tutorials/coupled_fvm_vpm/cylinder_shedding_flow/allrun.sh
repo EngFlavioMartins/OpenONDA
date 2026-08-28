@@ -2,25 +2,22 @@
 # Run the coupled cylinder-shedding case.
 #
 # Usage:
-#   ./allrun.sh                       unseeded validation run
-#   OPENONDA_SEED_AMPLITUDE=1e-4 ./allrun.sh
-#   OPENONDA_SMOKE=1 ./allrun.sh      short smoke run
+#   ./allrun.sh
+#   OPENONDA_GRID=g1 ./allrun.sh
+#   OPENONDA_SMOKE=1 ./allrun.sh
 set -euo pipefail
 
 cd "$(dirname "$0")"
-
-echo
-echo "===== CLEAN ====="
-echo
 ./allclean.sh
+mkdir -p solution
 
 echo
-echo "===== SIMULATE (hybrid) ====="
+echo "===== SIMULATE (CUT-CELL FVM-VPM) ====="
 echo
-mkdir -p solution
-python -u cylinder_shedding_flow_setup.py 2>&1 | tee solution/cylinder_shedding_flow.log
+echo "Output: $PWD/solution and $PWD/samples"
+python -u cylinder_shedding_flow_setup.py 2>&1 | tee solution/cylinder_shedding_flow.stdout.log
 
 echo
 echo "===== DONE ====="
 echo
-echo "Simulation completed. Run ./allvalidate.sh for the full analysis."
+echo "Simulation completed. Run ./allplot.sh for figures or ./allvalidate.sh for the full gate."

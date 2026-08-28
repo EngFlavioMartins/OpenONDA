@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
-"""Total particle-strength variation — ``rings_circulation.png``.
-
-Plots Σ|Γᵢ|/Σ|Γᵢ|₀ versus normalised time for every case discovered under
-``solution/``, read from the VPM flow-integral sampler.
-This total variation is a stretching/resolution diagnostic, not a conserved
-circulation invariant for a three-dimensional vortex-particle field.
-
-Color encodes the numerical method, linestyle the interaction family - the
-same key shared by every comparison figure (see ``_common.case_style``).
-"""
+"""Total particle strength for the two vortex-ring interactions."""
 
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from _common import (
+from ring_metrics import (
+    FAMILIES,
+    FAMILY_LABELS,
     build_arg_parser,
     case_style,
-    compact_case_legend_handles,
+    case_legend_handles,
     discover_cases,
     figure_size,
     load_theme,
@@ -31,43 +24,39 @@ def main() -> None:
     args = build_arg_parser("Total circulation Σ|Γᵢ|/Σ|Γᵢ|₀ vs t*.").parse_args()
 
     load_theme()
-    fig, ax = plt.subplots(figsize=figure_size("wide_short"))
+    fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"), sharey=True)
 
-    plotted = False
-    max_ratio = 1.0
-    for case_dir in discover_cases(args.solution_dir):
-        nondimensional_time, vortex_strength_magnitude_sum = read_metric(
-            case_dir, "vortex_strength_magnitude_sum"
-        )
-        if nondimensional_time.size == 0 or vortex_strength_magnitude_sum[0] <= 0.0:
-            continue
-        st = case_style(case_dir.name)
-        ratio = vortex_strength_magnitude_sum / vortex_strength_magnitude_sum[0]
-        ax.plot(
-            nondimensional_time,
-            ratio,
-            color=st["color"],
-            linestyle=st["linestyle"],
-            lw=st["linewidth"],
-            marker=st["marker"],
-            ms=st["markersize"],
-            markevery=mark_every(),
-            mew=st["markeredgewidth"],
-            label=st["label"],
-        )
-        max_ratio = max(max_ratio, float(ratio.max()))
-        plotted = True
+    plotted: list[str] = []
+    for ax, family in zip(axes, FAMILIES, strict=True):
+        for case_dir in discover_cases(args.solution_dir, family=family):
+            time, strength = read_metric(case_dir, "vortex_strength_magnitude_sum")
+            if time.size == 0 or strength[0] <= 0.0:
+                continue
+            style = case_style(case_dir.name)
+            ax.plot(
+                time,
+                strength / strength[0],
+                color=style["color"],
+                linestyle=style["linestyle"],
+                lw=style["linewidth"],
+                marker=style["marker"],
+                ms=style["markersize"],
+                markevery=mark_every(),
+                mew=style["markeredgewidth"],
+            )
+            plotted.append(case_dir.name)
+        ax.axhline(1.0, color="0.55", linestyle=":", linewidth=0.8)
+        ax.set_title(FAMILY_LABELS[family])
+        ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
+        ax.margins(y=0.08)
 
-    ax.axhline(1.0, color="0.55", linestyle=":", linewidth=0.8)
-    ax.set_ylim(0.0, 1.05 * max_ratio)
-    ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
-    ax.set_ylabel(r"Strength variation, $S_\alpha/S_{\alpha,0}$")
+    axes[0].set_ylabel(r"Total strength, $\sum|\alpha_i|/\sum|\alpha_i|_0$")
     if plotted:
         fig.legend(
-            handles=compact_case_legend_handles(),
-            ncol=5,
+            handles=case_legend_handles(plotted),
+            ncol=3,
             loc="lower center",
-            bbox_to_anchor=(0.5, 0.005),
+            bbox_to_anchor=(0.5, 0.01),
         )
 
     save_fig(
@@ -75,7 +64,7 @@ def main() -> None:
         Path("figures") / "rings_circulation.png",
         dpi=args.dpi,
         figure_format=args.format,
-        tight_rect=(0.0, 0.27, 1.0, 1.0),
+        tight_rect=(0.0, 0.14, 1.0, 1.0),
     )
 
 

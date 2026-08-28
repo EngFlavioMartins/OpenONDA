@@ -1,10 +1,9 @@
 #!/bin/sh
-# Remove all generated output from the cylinder FVM-VPM case (both the coupled
-# case and its fully meshed reference), including archived runs.
+# Remove generated coupled output while preserving reference_flow/.
 cd "$(dirname "$0")" || exit 1
 
-rm -rf solution constant samples figures runs .matplotlib
-rm -rf __pycache__ assets/__pycache__ reference_flow/solution reference_flow/constant reference_flow/__pycache__
-rm -f ./*.log reference_flow/*.log
+rm -rf solution samples constant figures .matplotlib .cache .taichi_cache
+rm -rf __pycache__ assets/__pycache__ reference_flow/__pycache__
+rm -f ./*.log .openonda_run.lock
 
-echo "Cleaned: solution/ constant/ samples/ figures/ runs/ reference_flow output, caches, and logs."
+echo "Cleaned root solution/, samples/, constant/, figures/, and caches; preserved reference_flow/."

@@ -52,7 +52,7 @@ def main() -> None:
     load_theme()
 
     fig, ax = plt.subplots(figsize=figure_size("single_tall"))
-    fig.subplots_adjust(wspace=0.10, hspace=0.10, left=0.10, right=0.97, top=0.92, bottom=0.13)
+    fig.subplots_adjust(wspace=0.10, hspace=0.10, left=0.10, right=0.90, top=0.92, bottom=0.13)
 
     zoom = zoom_axes(ax, ylim=(0.90, 1.00))
 

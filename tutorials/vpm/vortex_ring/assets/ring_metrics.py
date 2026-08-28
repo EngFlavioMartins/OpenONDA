@@ -384,13 +384,22 @@ def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarra
     data = load_sampled_ring_data(csv_path)
     if data is None:
         return np.array([]), np.array([])
+    time = data[_sample_time_column(data)].to_numpy(float)
     circulation = data["tube_circulation"].to_numpy(float)
-    valid = np.isfinite(circulation) & (circulation > 0.0)
+    valid = np.isfinite(time) & np.isfinite(circulation) & (circulation > 0.0)
     if not valid.any():
         return np.array([]), np.array([])
-    time = data[_sample_time_column(data)].to_numpy(float)[valid]
-    normalized = circulation[valid] / circulation[valid][0]
-    keep = time > 0.0
+    initial_circulation = circulation[valid][0]
+    time = time[valid]
+    normalized = circulation[valid] / initial_circulation
+    # The t=0 row is an initialization sample rather than an evolved point.
+    # Also keep the log/linear plot free of any non-positive placeholders.
+    keep = (
+        np.isfinite(time)
+        & (time > 0.0)
+        & np.isfinite(normalized)
+        & (normalized > 0.0)
+    )
     return time[keep] / REFERENCE_TIME, normalized[keep]
 
 
@@ -407,7 +416,9 @@ def load_sampled_vector_circulation_error(csv_path: Path) -> tuple[np.ndarray, n
         return np.array([]), np.array([])
     time = data[_sample_time_column(data)].to_numpy(float)
     error = np.linalg.norm(vector - vector[0], axis=1) / strength0
-    keep = time > 0.0
+    # Exclude initialization and zero placeholders; zero cannot be shown on
+    # the logarithmic axis without replacing it by an artificial clipped value.
+    keep = np.isfinite(time) & (time > 0.0) & np.isfinite(error) & (error > 0.0)
     return time[keep] / REFERENCE_TIME, error[keep]
 
 

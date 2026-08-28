@@ -57,7 +57,7 @@ def report(reference: Series, hybrid: Series) -> dict:
 
     lines = [
         "\n===== VON KARMAN INSTABILITY REPORT =====",
-        f"  Case: infinite cylinder, Re=150  |  seed amplitude eps={seed:g}",
+        f"  Case: 4D spanwise cylinder segment, Re=150  |  seed amplitude eps={seed:g}",
         "",
         f"  {'Quantity':<28}{'Reference FVM':>18}{'Coupled hybrid':>18}",
         f"  {'sigma [1/s]':<28}{_fmt(ref.growth['growth_rate']):>18}{_fmt(hyb.growth['growth_rate']):>18}",

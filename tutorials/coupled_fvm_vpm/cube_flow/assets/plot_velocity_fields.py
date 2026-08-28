@@ -166,7 +166,7 @@ def _field_figure(
         rf"$p_{{95}}={p95:.1f}\%$" "\n" rf"max $={maximum:.1f}\%$",
         transform=axes[2].transAxes,
         va="top",
-        fontsize=7,
+        fontsize=util.FONT_SIZE_PT,
         bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.5},
     )
     _style_axes(

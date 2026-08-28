@@ -11,8 +11,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+# Matplotlib must see the case-local cache before its first import.  This keeps
+# plotting reproducible on compute nodes with a read-only home directory.
+_CASE_DIR = Path(__file__).resolve().parents[1]
+os.environ.setdefault("MPLCONFIGDIR", str(_CASE_DIR / ".matplotlib"))
+os.environ.setdefault("XDG_CACHE_HOME", str(_CASE_DIR / ".cache"))
+Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+Path(os.environ["XDG_CACHE_HOME"]).mkdir(parents=True, exist_ok=True)
 
 import matplotlib
 
@@ -25,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _plotutil as util  # noqa: E402
 from _vonkarman import SHEDDING_BAND, Series, analyse_series, resample_uniform  # noqa: E402
 
-FIGURE_DPI = 300
+FIGURE_DPI = util.FIGURE_DPI
 RADIUS = 0.5  # cylinder radius (D/2) for midspan masking
 
 
@@ -46,7 +55,9 @@ def _series(source: str) -> Series | None:
 
 
 def plot_lift_history(figure_format: str) -> None:
-    fig, axes = plt.subplots(2, 1, figsize=(8.0, 5.4), dpi=FIGURE_DPI, sharex=True)
+    fig, axes = plt.subplots(
+        2, 1, figsize=util.figure_size(12.0), dpi=FIGURE_DPI, sharex=True
+    )
     for source in ("reference", "fvm"):
         forces = util.load_forces(source)
         if forces is None:
@@ -67,16 +78,17 @@ def plot_lift_history(figure_format: str) -> None:
         )
     axes[0].set(ylabel=r"$C_D$", title="Drag coefficient history")
     axes[1].set(ylabel=r"$C_L$", xlabel=r"$t\,U_\infty/D$", title="Lift coefficient history")
+    axes[1].ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
     for ax in axes:
-        ax.legend(loc="upper right", fontsize=8)
+        ax.legend(loc="upper right")
         ax.grid(True, which="both", alpha=0.3)
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.17, right=0.98, bottom=0.10, top=0.94, hspace=0.42)
     util.save(fig, "lift_history", figure_format, FIGURE_DPI)
     plt.close(fig)
 
 
 def plot_probe_growth(figure_format: str) -> None:
-    fig, ax = plt.subplots(figsize=(8.0, 3.4), dpi=FIGURE_DPI)
+    fig, ax = plt.subplots(figsize=util.figure_size(7.0), dpi=FIGURE_DPI)
     for source in ("reference", "fvm"):
         probe = util.load_probe(source)
         if probe is None:
@@ -91,18 +103,19 @@ def plot_probe_growth(figure_format: str) -> None:
     ax.axhline(0.0, color="k", lw=0.5, alpha=0.5)
     ax.set(
         xlabel=r"$t\,U_\infty/D$",
-        ylabel=r"$q = u_y/U_\infty$ at $x/D=1.5,\,z=0$",
+        ylabel=r"$u_y/U_\infty$",
         title="Midspan wake probe: antisymmetric-mode growth",
     )
-    ax.legend(loc="upper left", fontsize=8)
+    ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
+    ax.legend(loc="upper left")
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.16, right=0.98, bottom=0.22, top=0.88)
     util.save(fig, "midspan_probe_growth", figure_format, FIGURE_DPI)
     plt.close(fig)
 
 
 def plot_growth_fit(figure_format: str) -> None:
-    fig, ax = plt.subplots(figsize=(8.0, 3.8), dpi=FIGURE_DPI)
+    fig, ax = plt.subplots(figsize=util.figure_size(7.5), dpi=FIGURE_DPI)
     for source in ("reference", "fvm"):
         series = _series(source)
         if series is None:
@@ -144,9 +157,9 @@ def plot_growth_fit(figure_format: str) -> None:
         ylabel=r"envelope amplitude $A$ (log)",
         title="Exponential growth: $\\ln A = \\ln A_0 + \\sigma t$",
     )
-    ax.legend(loc="lower right", fontsize=8)
+    ax.legend(loc="lower right")
     ax.grid(True, which="both", alpha=0.3)
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.16, right=0.98, bottom=0.20, top=0.88)
     util.save(fig, "linear_growth_fit", figure_format, FIGURE_DPI)
     plt.close(fig)
 
@@ -168,7 +181,9 @@ def plot_onset_alignment(figure_format: str) -> None:
         else np.nan
     )
 
-    fig, axes = plt.subplots(2, 1, figsize=(8.0, 5.6), dpi=FIGURE_DPI, sharex=True)
+    fig, axes = plt.subplots(
+        2, 1, figsize=util.figure_size(12.5), dpi=FIGURE_DPI, sharex=True
+    )
     window = (
         np.nanmin([ref.onset_time, hyb.onset_time]) - 10.0,
         np.nanmax([ref.onset_time, hyb.onset_time]) + 10.0,
@@ -193,7 +208,7 @@ def plot_onset_alignment(figure_format: str) -> None:
             lw=1.0,
         )
     ax.set(title="Raw onset: reference and hybrid reach $A^*$ at different times", ylabel=r"$q$")
-    ax.legend(loc="upper right", fontsize=8)
+    ax.legend(loc="upper right")
 
     ax = axes[1]
     mask = (reference.normalized_transverse_velocity_time >= window[0]) & (
@@ -226,14 +241,14 @@ def plot_onset_alignment(figure_format: str) -> None:
         xlabel=r"$t\,U_\infty/D$",
         ylabel=r"$q$",
     )
-    ax.legend(loc="upper right", fontsize=8)
-    fig.tight_layout()
+    ax.legend(loc="upper right")
+    fig.subplots_adjust(left=0.14, right=0.98, bottom=0.10, top=0.94, hspace=0.42)
     util.save(fig, "onset_alignment", figure_format, FIGURE_DPI)
     plt.close(fig)
 
 
 def plot_spectrum(figure_format: str) -> None:
-    fig, ax = plt.subplots(figsize=(8.0, 3.6), dpi=FIGURE_DPI)
+    fig, ax = plt.subplots(figsize=util.figure_size(7.0), dpi=FIGURE_DPI)
     for source in ("reference", "fvm"):
         series = _series(source)
         if series is None:
@@ -265,9 +280,9 @@ def plot_spectrum(figure_format: str) -> None:
         title="Saturated-window spectrum (probe $q$)",
         xlim=SHEDDING_BAND,
     )
-    ax.legend(loc="upper right", fontsize=8)
+    ax.legend(loc="upper right")
     ax.grid(True, which="both", alpha=0.3)
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.16, right=0.98, bottom=0.22, top=0.88)
     util.save(fig, "shedding_spectrum", figure_format, FIGURE_DPI)
     plt.close(fig)
 
@@ -278,7 +293,9 @@ def plot_spanwise_coherence(figure_format: str) -> None:
         raise SystemExit("spanwise_coherence needs reference frames past t=35 s")
     picks = times[:: max(1, times.size // 5)][:3]
 
-    fig, axes = plt.subplots(2, 1, figsize=(8.0, 5.6), dpi=FIGURE_DPI, sharex=True)
+    fig, axes = plt.subplots(
+        2, 1, figsize=util.figure_size(12.5), dpi=FIGURE_DPI, sharex=True
+    )
     ax = axes[0]
     for source in ("reference", "fvm"):
         frame = util.load_line(source, "spanwise_line", picks[-1])
@@ -291,9 +308,9 @@ def plot_spanwise_coherence(figure_format: str) -> None:
             lw=0.9,
             label=util.label(source),
         )
-    ax.axvspan(-5.0, 5.0, color=util.COLORS["box"], alpha=0.35, label="cylinder span")
+    ax.axvspan(-2.0, 2.0, color=util.COLORS["box"], alpha=0.35, label="cylinder span")
     ax.set(ylabel=r"$u_y/U_\infty$", title="Midspan coherence: $u_y(z)$ at $x/D=1.5$")
-    ax.legend(loc="upper right", fontsize=8)
+    ax.legend(loc="upper right")
 
     ax = axes[1]
     for source in ("reference", "fvm"):
@@ -321,7 +338,7 @@ def plot_spanwise_coherence(figure_format: str) -> None:
         title="Spanwise profiles, saturated window (all frames overlaid)",
     )
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.16, right=0.98, bottom=0.10, top=0.94, hspace=0.40)
     util.save(fig, "spanwise_coherence", figure_format, FIGURE_DPI)
     plt.close(fig)
 
@@ -341,7 +358,7 @@ def plot_midspan(figure_format: str, times: tuple[float, ...]) -> None:
         levels = np.linspace(-vmax, vmax, 33)
 
         fig, axes = plt.subplots(
-            1, 3, figsize=(12.0, 3.6), dpi=FIGURE_DPI, sharex=True, sharey=True
+            1, 3, figsize=util.figure_size(6.5), dpi=FIGURE_DPI, sharex=True, sharey=True
         )
         for ax, source in zip(axes, ("reference", "fvm", "vpm")):
             frame = frames[source]
@@ -357,7 +374,7 @@ def plot_midspan(figure_format: str, times: tuple[float, ...]) -> None:
             )
             ax.add_patch(plt.Circle((0.0, 0.0), RADIUS, color="0.9", ec="k", lw=0.8, zorder=3))
             ax.set_aspect("equal")
-            ax.set_title(util.label(source), fontsize=9)
+            ax.set_title(util.label(source))
             if source == "reference":
                 ax.set_ylabel(r"$y/D$")
             ax.set_xlabel(r"$x/D$")
@@ -367,9 +384,8 @@ def plot_midspan(figure_format: str, times: tuple[float, ...]) -> None:
         fig.suptitle(
             rf"Midspan vorticity at $t\,U_\infty/D={time:g}$ — identical levels "
             r"($\pm$" + f"{vmax:.2f})",
-            fontsize=10,
         )
-        fig.tight_layout(rect=(0, 0, 1, 0.96))
+        fig.subplots_adjust(left=0.10, right=0.98, bottom=0.24, top=0.80, wspace=0.18)
         util.save(fig, f"vorticity_midspan_t{int(round(time)):02d}", figure_format, FIGURE_DPI)
         plt.close(fig)
 

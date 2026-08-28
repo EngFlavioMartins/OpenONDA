@@ -2,6 +2,7 @@
 
 from source.solvers.fvm import (
     AdaptiveCartesianMesher,
+    BoundaryLayerSpec,
     BoundaryConfig,
     BoxRefinement,
     ComputeConfig,
@@ -45,6 +46,7 @@ from source.solvers.fvm.sampling.base import SamplingSchedule
 
 __all__ = [
     "AdaptiveCartesianMesher",
+    "BoundaryLayerSpec",
     "BoundaryConfig",
     "BoxRefinement",
     "ComputeConfig",

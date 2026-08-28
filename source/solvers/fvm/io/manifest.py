@@ -35,6 +35,8 @@ def _git_identity(repository: Path) -> tuple[str | None, bool | None]:
 
 def build_manifest(solver) -> dict[str, Any]:
     """Collect source, environment, execution, mesh, and configuration identity."""
+    from source.solvers.fvm.sampling.base import sampler_to_dict
+
     packages: dict[str, str | None] = {}
     for name in ("numpy", "scipy", "numba", "pyamg", "mpi4py", "petsc4py", "taichi"):
         try:
@@ -43,6 +45,11 @@ def build_manifest(solver) -> dict[str, Any]:
             packages[name] = None
     repository = Path(__file__).resolve().parents[4]
     revision, dirty = _git_identity(repository)
+    configuration = asdict(solver.setup)
+    if solver.setup.samplers:
+        configuration["samplers"] = [
+            sampler_to_dict(sampler) for sampler in solver.setup.samplers
+        ]
     return {
         "schema_version": 1,
         "distribution_version": metadata.version("OpenONDA"),
@@ -50,7 +57,7 @@ def build_manifest(solver) -> dict[str, Any]:
         "git_dirty": dirty,
         "config_hash": config_hash(solver.setup),
         "mesh_hash": mesh_hash(solver.mesh_data),
-        "configuration": asdict(solver.setup),
+        "configuration": configuration,
         "execution": asdict(solver.setup.execution),
         "mesh_quality": solver.mesh_quality,
         "mesh": {

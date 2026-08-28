@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Leapfrogging-ring trajectory comparison.
-
-Overlays the circulation-weighted ring trajectory (R/R₀ vs x/R₀) sampled by
-the VPM solver for every leapfrogging case. Each case keeps one colour and
-linestyle for both rings.
-"""
+"""Ring trajectories for the leapfrogging and collision cases."""
 
 from __future__ import annotations
 
@@ -13,11 +8,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from _common import (
+from ring_metrics import (
+    FAMILIES,
+    FAMILY_LABELS,
     RING_RADIUS,
     build_arg_parser,
     case_style,
-    compact_case_legend_handles,
+    case_legend_handles,
     discover_cases,
     figure_size,
     load_theme,
@@ -46,39 +43,39 @@ def main() -> None:
     args = parser.parse_args()
 
     load_theme()
-    fig, ax = plt.subplots(figsize=figure_size("trajectory"))
+    fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"), sharey=True)
 
-    plotted = False
-    for case_dir in discover_cases(args.solution_dir, family="leapfrog"):
-        trajectory = load_trajectory(case_dir)
-        if not trajectory:
-            continue
-        st = case_style(case_dir.name, include_family=False)
-        for axial_position, ring_radius in trajectory.values():
-            ax.plot(
-                axial_position,
-                ring_radius,
-                color=st["color"],
-                linestyle=st["linestyle"],
-                lw=st["linewidth"],
-                marker=st["marker"],
-                ms=st["markersize"],
-                markevery=mark_every("trajectory"),
-                mew=st["markeredgewidth"],
-            )
-        plotted = True
+    plotted: list[str] = []
+    for ax, family in zip(axes, FAMILIES, strict=True):
+        for case_dir in discover_cases(args.solution_dir, family=family):
+            trajectory = load_trajectory(case_dir)
+            if not trajectory:
+                continue
+            style = case_style(case_dir.name)
+            for axial_position, ring_radius in trajectory.values():
+                ax.plot(
+                    axial_position,
+                    ring_radius,
+                    color=style["color"],
+                    linestyle=style["linestyle"],
+                    lw=style["linewidth"],
+                    marker=style["marker"],
+                    ms=style["markersize"],
+                    markevery=mark_every("trajectory"),
+                    mew=style["markeredgewidth"],
+                )
+            plotted.append(case_dir.name)
+        ax.set_title(FAMILY_LABELS[family])
+        ax.set_xlabel(r"Axial position, $x/R_0$")
+        ax.margins(y=0.08)
 
-    legend_handles = compact_case_legend_handles(include_families=False) if plotted else []
-
-    ax.set_xlabel(r"Axial position, $x/R_0$")
-    ax.set_ylabel(r"Ring radius, $R/R_0$")
-    ax.set_ylim([0.5, 1.5])
-    if legend_handles:
+    axes[0].set_ylabel(r"Ring radius, $R/R_0$")
+    if plotted:
         fig.legend(
-            handles=legend_handles,
-            ncol=4,
+            handles=case_legend_handles(plotted),
+            ncol=3,
             loc="lower center",
-            bbox_to_anchor=(0.5, 0.005),
+            bbox_to_anchor=(0.5, 0.01),
         )
 
     save_fig(
@@ -86,7 +83,7 @@ def main() -> None:
         Path("figures") / "rings_trajectory.png",
         dpi=args.dpi,
         figure_format=args.format,
-        tight_rect=(0.0, 0.22, 1.0, 1.0),
+        tight_rect=(0.0, 0.14, 1.0, 1.0),
     )
 
 

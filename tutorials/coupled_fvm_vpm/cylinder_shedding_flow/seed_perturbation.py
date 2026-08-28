@@ -114,3 +114,54 @@ def build_seed_velocity(
     )
     seed = normalise_seed(raw, epsilon=float(epsilon), freestream_speed=freestream_speed)
     return base + seed
+
+
+def build_cylinder_initial_state(
+    cell_centre: np.ndarray,
+    *,
+    freestream_velocity,
+    diameter: float,
+    seed_amplitude: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return a divergence-free no-slip-compatible cylinder start.
+
+    The streamfunction ``psi = U y (1 - a^2/r^2)^2`` gives zero radial and
+    tangential velocity at ``r=a`` and approaches uniform flow smoothly.  It
+    avoids the singular pressure impulse produced by initializing uniform flow
+    through a no-slip cylinder.  A Bernoulli pressure estimate and the shared
+    antisymmetric wake seed complete the deterministic initial state.
+    """
+    points = np.asarray(cell_centre, dtype=np.float64).reshape(-1, 3)
+    freestream = np.asarray(freestream_velocity, dtype=np.float64)
+    if freestream.shape != (3,) or not np.allclose(freestream[1:], 0.0):
+        raise ValueError("Cylinder initial state requires an x-directed freestream")
+    radius = 0.5 * float(diameter)
+    x = points[:, 0]
+    y = points[:, 1]
+    radial_squared = x * x + y * y
+    if np.any(radial_squared <= radius * radius):
+        raise ValueError("Cylinder initial state received a cell centre inside the solid")
+    radial = np.sqrt(radial_squared)
+    ratio = radius * radius / radial_squared
+    shape = (1.0 - ratio) ** 2
+    shape_derivative = 4.0 * radius * radius * (1.0 - ratio) / radial**3
+
+    velocity = np.zeros_like(points)
+    velocity[:, 0] = freestream[0] * (shape + y * y * shape_derivative / radial)
+    velocity[:, 1] = -freestream[0] * x * y * shape_derivative / radial
+    if seed_amplitude > 0.0:
+        raw_seed = streamfunction_perturbation(
+            points,
+            epsilon=seed_amplitude,
+            freestream_speed=abs(float(freestream[0])),
+            diameter=diameter,
+        )
+        velocity += normalise_seed(
+            raw_seed,
+            epsilon=seed_amplitude,
+            freestream_speed=abs(float(freestream[0])),
+        )
+    pressure = 0.5 * (float(np.dot(freestream, freestream)) - np.einsum(
+        "ij,ij->i", velocity, velocity
+    ))
+    return velocity, pressure

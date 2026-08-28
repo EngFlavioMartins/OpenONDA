@@ -13,9 +13,10 @@ The workflow is inspired by the open-source cfMesh Cartesian mesher by Dr.
 Franjo Juretic and Creative Fields, Ltd.  cfMesh creates an octree template,
 extracts a predominantly hexahedral/polyhedral mesh, maps it to the input
 surface, and optionally creates boundary layers.  This is an independent
-Python implementation of the axis-aligned template/extraction stages; it does
-not copy cfMesh source code and does not yet implement arbitrary surface
-mapping or boundary-layer extrusion.
+Python implementation of the template/extraction stages; it does not copy
+cfMesh source code. Boundary-layer extrusion currently supports a straight
+z-aligned circular-cylinder STL through a conformal O-grid insert. Other
+curved surfaces retain the projection-based conformal path.
 
 Both cfMesh and OpenONDA are distributed under GPL-3.0-or-later.  See
 ``CFMESH_ATTRIBUTION.md`` beside this file for upstream links and the precise
@@ -33,6 +34,12 @@ from typing import cast
 
 import numpy as np
 
+from .boundary_layer import (
+    BoundaryLayerSpec,
+    build_cylinder_layer_mesh,
+    cylinder_interface_bounds,
+    stitch_boundary_layer,
+)
 from .surface_classification import SurfaceIndex
 from .triangulated_surface import SurfaceBounds as Bounds
 from .triangulated_surface import TriangulatedSurface
@@ -120,8 +127,14 @@ class _SurfaceSolid:
 
     def contains(self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool:
         lo, hi = self._world_bounds(x0, x1, y0, y1, z0, z1)
-        if self.index.box_intersects_surface(lo, hi):
-            return False
+        # Classify a general-surface leaf by its centre, as cfMesh-style
+        # Cartesian extraction does before mapping the retained fluid-side
+        # boundary onto the STL. Keeping every intersected leaf -- including
+        # leaves whose centres are solid -- creates a layer of nominal fluid
+        # cells inside curved bodies. At lattice-aligned caps it can also
+        # collapse adjacent interior faces when those cells are projected.
+        # ``overlaps`` still drives full surface refinement; this predicate
+        # decides only which side of the interface owns the leaf.
         centre = 0.5 * (lo + hi)
         return bool(self.index.is_inside(centre[None, :])[0])
 
@@ -377,8 +390,11 @@ def _conform_wall_to_surface(
 ) -> None:
     """Snap wall-patch corner points onto the true curved surface.
 
-    Every wall-adjacent point that is still (numerically) inside the solid is
-    projected onto the nearest point of the triangulated surface.  A snap is
+    Every extracted wall-adjacent point is projected onto the nearest point of
+    the triangulated surface. Centre-based solid classification places the
+    initial Cartesian wall within half a cell on either side of the surface,
+    so restricting projection to points already inside the solid would retain
+    the outside half of the staircase. A snap is
     rejected, leaving the point on its original Cartesian lattice position,
     if it would drive any cell referencing that point to a non-positive
     volume or shrink it by more than ``min_volume_ratio`` of its original
@@ -399,10 +415,13 @@ def _conform_wall_to_surface(
         for corner in corners:
             point_cells.setdefault(int(corner), []).append(cell_id)
 
-    inside = surface_index.is_inside(points[wall_point_ids])
-    for point_id, is_inside_solid in zip(wall_point_ids, inside, strict=True):
-        if not is_inside_solid:
-            continue
+    accepted = 0
+    rejected_nonpositive = 0
+    rejected_volume_ratio = 0
+    maximum_requested_displacement = 0.0
+    maximum_rejected_displacement = 0.0
+    rejection_examples: list[dict] = []
+    for point_id in wall_point_ids:
         affected = point_cells.get(int(point_id), [])
         if not affected:
             continue
@@ -411,13 +430,122 @@ def _conform_wall_to_surface(
             continue
         target, _distance = surface_index.nearest_point(points[point_id])
         original = points[point_id].copy()
+        requested_displacement = float(np.linalg.norm(target - original))
+        maximum_requested_displacement = max(
+            maximum_requested_displacement, requested_displacement
+        )
         points[point_id] = target
         after = [_hex_volume(points[cell_vertex_indices[c]]) for c in affected]
-        if (
-            min(after) <= 0.0
-            or min(a / b for a, b in zip(after, before, strict=True)) < min_volume_ratio
-        ):
+        minimum_after = min(after)
+        minimum_ratio = min(a / b for a, b in zip(after, before, strict=True))
+        if minimum_after <= 0.0 or minimum_ratio < min_volume_ratio:
             points[point_id] = original
+            if minimum_after <= 0.0:
+                rejected_nonpositive += 1
+                reason = "nonpositive_volume"
+            else:
+                rejected_volume_ratio += 1
+                reason = "volume_ratio"
+            maximum_rejected_displacement = max(
+                maximum_rejected_displacement, requested_displacement
+            )
+            if len(rejection_examples) < 16:
+                rejection_examples.append(
+                    {
+                        "point_id": int(point_id),
+                        "reason": reason,
+                        "original": original.tolist(),
+                        "target": target.tolist(),
+                        "requested_displacement": requested_displacement,
+                        "minimum_after_volume": float(minimum_after),
+                        "minimum_volume_ratio": float(minimum_ratio),
+                    }
+                )
+        else:
+            accepted += 1
+
+    mesh_data["mesh_generation"]["surface_projection"] = {
+        "attempted_points": int(len(wall_point_ids)),
+        "accepted_points": accepted,
+        "rejected_nonpositive_volume": rejected_nonpositive,
+        "rejected_volume_ratio": rejected_volume_ratio,
+        "maximum_requested_displacement": maximum_requested_displacement,
+        "maximum_rejected_displacement": maximum_rejected_displacement,
+        "rejection_examples": rejection_examples,
+    }
+
+
+def _compact_conformed_topology(mesh_data: dict, *, tolerance: float = 1.0e-12) -> None:
+    """Merge coincident projected points and turn collapsed quads into polygons.
+
+    Mapping a Cartesian wall to a curved feature can make two corners of one
+    wall quad coincide (notably where a cylindrical side meets an exactly
+    aligned cap). The physical face is then a valid triangle, but retaining a
+    four-node row gives a zero area vector or a self-touching polygon. Merge
+    geometrically coincident point ids, remove repeated nodes from each face,
+    and switch the conformed mesh to the solver's native variable-face
+    polyhedron representation.
+    """
+    points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
+    scale = max(float(np.ptp(points, axis=0).max()), 1.0)
+    quantum = max(tolerance * scale, np.finfo(np.float64).eps * scale * 32.0)
+    quantized = np.rint(points / quantum).astype(np.int64)
+    _, first, inverse = np.unique(
+        quantized, axis=0, return_index=True, return_inverse=True
+    )
+    unique_points = points[first]
+
+    cell_corners = np.asarray(mesh_data["cell_vertex_indices"], dtype=np.int64)
+    remapped_cell_corners = inverse[cell_corners]
+    provisional_cell_centres = unique_points[remapped_cell_corners].mean(axis=1)
+    n_internal = int(mesh_data["n_interior_faces"])
+    owners = np.asarray(mesh_data["owners"], dtype=np.int64)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
+
+    compact_faces: list[np.ndarray] = []
+    for face_id, face in enumerate(mesh_data["faces"]):
+        remapped = inverse[np.asarray(face, dtype=np.int64)]
+        compact: list[int] = []
+        for node in remapped:
+            value = int(node)
+            if value not in compact:
+                compact.append(value)
+        if len(compact) < 3:
+            raise ValueError(
+                f"Curved-surface projection collapsed face {face_id} to "
+                f"{len(compact)} unique nodes"
+            )
+        compact_array = np.asarray(compact, dtype=np.int32)
+        coordinates = unique_points[compact_array]
+        face_centre = coordinates.mean(axis=0)
+        area_vector = np.zeros(3, dtype=np.float64)
+        for index in range(len(coordinates)):
+            area_vector += 0.5 * np.cross(
+                coordinates[index] - face_centre,
+                coordinates[(index + 1) % len(coordinates)] - face_centre,
+            )
+        if face_id < n_internal:
+            direction = (
+                provisional_cell_centres[neighbours[face_id]]
+                - provisional_cell_centres[owners[face_id]]
+            )
+        else:
+            direction = face_centre - provisional_cell_centres[owners[face_id]]
+        if float(np.dot(area_vector, direction)) < 0.0:
+            compact_array = compact_array[::-1].copy()
+        compact_faces.append(compact_array)
+
+    widths = {len(face) for face in compact_faces}
+    mesh_data["faces"] = (
+        np.ascontiguousarray(compact_faces, dtype=np.int32)
+        if len(widths) == 1
+        else compact_faces
+    )
+    mesh_data["vertex_position"] = np.ascontiguousarray(unique_points)
+    mesh_data["n_points"] = len(unique_points)
+    # Projected boundary cells are polyhedra, not axis-aligned VTK hexes.
+    mesh_data.pop("cell_vertex_indices", None)
+    mesh_data.pop("cell_type_code", None)
 
 
 class AdaptiveCartesianMesher:
@@ -432,19 +560,30 @@ class AdaptiveCartesianMesher:
         Background cell size.  Every domain extent must be an integer multiple
         of this value, which keeps the outer coupling lattice exact.
     surface_file:
-        Location of the watertight STL surface that defines the solid. The
-        current Cartesian subset supports closed axis-aligned solids.
+        Location of the watertight STL surface that defines the solid.
     wall_patch_name:
         Boundary-patch name assigned to faces extracted from ``surface_file``.
         It must be supplied together with the surface location.
     surface_cell_size:
         Requested size in the first fluid-cell layer around the STL surface.
         Refinement coarsens outwards in automatically generated 2:1 bands.
+    boundary_layer:
+        Optional body-fitted wall-normal layers. The current implementation
+        supports a straight z-aligned circular-cylinder STL and joins its
+        O-grid to a lattice-aligned square in the Cartesian mesh.
     refinements:
         Additional box refinements, such as a resolved wake region.
     merge_outer_patch:
         Merge the six outer sides into one patch (the coupled FVM--VPM case),
         or leave the conventional inlet/outlet/ymin/ymax/zmin/zmax patches.
+    preserve_outer_patches:
+        Outer sides excluded from ``merge_outer_patch``; useful for cyclic,
+        slip, or empty spanwise boundaries in a coupled case.
+    surface_may_cross_domain_boundary:
+        Permit a closed general surface to extend outside the mesh domain.
+        This supports an infinite-cylinder segment whose remote STL caps lie
+        outside the solved span. Outer patches retain precedence where the
+        domain clips the solid.
     preserve_body_geometry:
         Guarantee that the input body coordinates are immutable.  The body
         faces become exact Cartesian lattice planes, the outer domain is padded
@@ -473,8 +612,11 @@ class AdaptiveCartesianMesher:
         surface_file: str | Path | None = None,
         wall_patch_name: str | None = None,
         surface_cell_size: float | None = None,
+        boundary_layer: BoundaryLayerSpec | None = None,
         refinements: tuple[BoxRefinement, ...] = (),
         merge_outer_patch: str | None = None,
+        preserve_outer_patches: tuple[str, ...] = (),
+        surface_may_cross_domain_boundary: bool = False,
         include_cell_vertex_indices: bool = True,
         preserve_body_geometry: bool = True,
     ) -> None:
@@ -485,12 +627,21 @@ class AdaptiveCartesianMesher:
             raise ValueError("surface_file and wall_patch_name must be supplied together")
         if surface_file is None and surface_cell_size is not None:
             raise ValueError("surface_cell_size requires surface_file")
+        if boundary_layer is not None and (surface_file is None or surface_cell_size is None):
+            raise ValueError("boundary_layer requires surface_file and surface_cell_size")
+        if boundary_layer is not None and not include_cell_vertex_indices:
+            raise ValueError("boundary_layer requires include_cell_vertex_indices=True")
         if wall_patch_name is not None and not wall_patch_name.strip():
             raise ValueError("wall_patch_name must not be empty")
 
         requested_domain: Bounds = cast(Bounds, tuple(float(value) for value in domain))
         surface = TriangulatedSurface.from_stl(surface_file) if surface_file is not None else None
-        if surface is not None:
+        if boundary_layer is not None:
+            boundary_layer.validate()
+            if surface is None or surface.kind != "general":
+                raise ValueError("boundary_layer currently requires a curved cylinder STL")
+            cylinder_interface_bounds(surface, requested_domain, boundary_layer)
+        if surface is not None and not surface_may_cross_domain_boundary:
             surface_bounds = surface.bounds
             if not all(
                 requested_domain[2 * axis]
@@ -500,8 +651,24 @@ class AdaptiveCartesianMesher:
                 for axis in range(3)
             ):
                 raise ValueError("STL surface must lie strictly inside domain")
+        elif surface is not None:
+            if surface.kind != "general":
+                raise ValueError(
+                    "surface_may_cross_domain_boundary requires a general curved surface"
+                )
+            if not all(
+                requested_domain[2 * axis] < surface.bounds[2 * axis + 1]
+                and surface.bounds[2 * axis] < requested_domain[2 * axis + 1]
+                for axis in range(3)
+            ):
+                raise ValueError("STL surface does not overlap the requested domain")
         if wall_patch_name is not None and merge_outer_patch == wall_patch_name:
             raise ValueError("Outer and wall patch names must differ")
+        unknown_preserved = sorted(set(preserve_outer_patches) - set(OUTER_PATCH_NAMES))
+        if unknown_preserved:
+            raise ValueError(f"Unknown preserved outer patches: {unknown_preserved}")
+        if preserve_outer_patches and merge_outer_patch is None:
+            raise ValueError("preserve_outer_patches requires merge_outer_patch")
         for refinement in refinements:
             _validate_bounds(refinement.bounds, f"{refinement.name}.bounds")
             if not all(
@@ -574,9 +741,12 @@ class AdaptiveCartesianMesher:
         self.surface_file = str(surface.path) if surface is not None else None
         self.surface_bounds = surface.bounds if surface is not None else None
         self.surface_cell_size = float(surface_cell_size) if surface_cell_size is not None else None
+        self.boundary_layer = boundary_layer
         self.refinements = tuple(refinements)
         self.wall_patch_name = wall_patch_name or ""
         self.merge_outer_patch = merge_outer_patch
+        self.preserve_outer_patches = tuple(dict.fromkeys(preserve_outer_patches))
+        self.surface_may_cross_domain_boundary = bool(surface_may_cross_domain_boundary)
         self.include_cell_vertex_indices = include_cell_vertex_indices
         self.preserve_body_geometry = preserve_body_geometry
 
@@ -751,6 +921,327 @@ class AdaptiveCartesianMesher:
             raise ValueError("Meshing configuration removed every fluid cell")
         return leaves[:n_leaves].copy()
 
+    def _build_extruded_leaves(
+        self,
+        base_counts: tuple[int, int],
+        max_level: int,
+        solid: _IntegerBox,
+        regions: tuple[tuple[_IntegerBox, int], ...],
+    ) -> np.ndarray:
+        """Build one adaptive x-y slice for uniform spanwise extrusion."""
+        base_width = 2**max_level
+        capacity = max(1024, math.prod(base_counts))
+        leaves = np.empty((capacity, 4), dtype=np.int32)
+        n_leaves = 0
+
+        def append_leaf(x0: int, y0: int, width: int, level: int) -> None:
+            nonlocal capacity, leaves, n_leaves
+            if n_leaves == capacity:
+                new_capacity = int(capacity * 1.5) + 1
+                grown = np.empty((new_capacity, 4), dtype=np.int32)
+                grown[:n_leaves] = leaves[:n_leaves]
+                leaves = grown
+                capacity = new_capacity
+            leaves[n_leaves] = (x0, y0, width, level)
+            n_leaves += 1
+
+        def overlaps_xy(box: _IntegerBox, x0: int, x1: int, y0: int, y1: int) -> bool:
+            return x0 < box.x1 and x1 > box.x0 and y0 < box.y1 and y1 > box.y0
+
+        def visit(x0: int, y0: int, width: int, level: int) -> None:
+            x1, y1 = x0 + width, y0 + width
+            if x0 >= solid.x0 and x1 <= solid.x1 and y0 >= solid.y0 and y1 <= solid.y1:
+                return
+
+            target = level
+            for region, region_level in regions:
+                if region_level <= target:
+                    break
+                if overlaps_xy(region, x0, x1, y0, y1):
+                    target = region_level
+                    break
+            if level < target:
+                child = width // 2
+                for dy in (0, child):
+                    for dx in (0, child):
+                        visit(x0 + dx, y0 + dy, child, level + 1)
+                return
+
+            overlap_x = min(x1, solid.x1) - max(x0, solid.x0)
+            overlap_y = min(y1, solid.y1) - max(y0, solid.y0)
+            if overlap_x > 0 and overlap_y > 0:
+                raise ValueError(
+                    "Boundary-layer interface cuts an extruded Cartesian leaf; "
+                    "choose lattice-aligned interface bounds"
+                )
+            append_leaf(x0, y0, width, level)
+
+        nx, ny = base_counts
+        for j in range(ny):
+            for i in range(nx):
+                visit(i * base_width, j * base_width, base_width, 0)
+        if not n_leaves:
+            raise ValueError("Meshing configuration removed every fluid cell")
+        return leaves[:n_leaves].copy()
+
+    def _extract_extruded_topology(
+        self,
+        leaves: np.ndarray,
+        max_level: int,
+        limits: tuple[int, int],
+        z_cells: int,
+    ) -> tuple[
+        np.ndarray,
+        np.ndarray,
+        np.ndarray,
+        list[dict],
+        np.ndarray,
+        np.ndarray,
+    ]:
+        """Extrude an adaptive x-y slice into native 3D finite-volume cells."""
+        n_slice_cells = len(leaves)
+        n_cells = n_slice_cells * z_cells
+        nx, ny = limits
+        max_point_code = (nx + 1) * (ny + 1) * (z_cells + 1) - 1
+        code_dtype = np.int32 if max_point_code <= np.iinfo(np.int32).max else np.int64
+        point_strides = (nx + 1, ny + 1)
+
+        level_maps: list[dict[int, int]] = [{} for _ in range(max_level + 1)]
+        for slice_id, (x0, y0, _width, level) in enumerate(leaves):
+            level_maps[int(level)][int(x0) + nx * int(y0)] = slice_id
+
+        def find_cell(x: int, y: int) -> int:
+            if x < 0 or y < 0 or x >= nx or y >= ny:
+                return -1
+            for level in range(max_level, -1, -1):
+                width = 2 ** (max_level - level)
+                ox, oy = (x // width) * width, (y // width) * width
+                found = level_maps[level].get(ox + nx * oy)
+                if found is not None:
+                    return found
+            return -1
+
+        def cell_id(z_index: int, slice_id: int) -> int:
+            return z_index * n_slice_cells + slice_id
+
+        capacity = max(16, int(math.ceil(3.35 * n_cells)))
+        interior_codes = np.empty((capacity, 4), dtype=code_dtype)
+        interior_owners = np.empty(capacity, dtype=np.int32)
+        interior_neighbours = np.empty(capacity, dtype=np.int32)
+        n_interior = 0
+
+        boundary_names = (
+            (self.merge_outer_patch, *self.preserve_outer_patches)
+            if self.merge_outer_patch
+            else OUTER_PATCH_NAMES
+        )
+        patch_codes: dict[str, list[tuple[int, int, int, int]]] = {
+            name: [] for name in boundary_names
+        }
+        patch_owners: dict[str, list[int]] = {name: [] for name in boundary_names}
+        patch_codes[self.wall_patch_name] = []
+        patch_owners[self.wall_patch_name] = []
+
+        def grow() -> None:
+            nonlocal capacity, interior_codes, interior_owners, interior_neighbours
+            new_capacity = int(capacity * 1.35) + 1
+            codes = np.empty((new_capacity, 4), dtype=code_dtype)
+            codes[:capacity] = interior_codes
+            interior_codes = codes
+            owners = np.empty(new_capacity, dtype=np.int32)
+            owners[:capacity] = interior_owners
+            interior_owners = owners
+            neighbours = np.empty(new_capacity, dtype=np.int32)
+            neighbours[:capacity] = interior_neighbours
+            interior_neighbours = neighbours
+            capacity = new_capacity
+
+        def emit_interior(
+            owner: int,
+            neighbour: int,
+            axis: int,
+            coordinate: int,
+            a0: int,
+            a1: int,
+            b0: int,
+            b1: int,
+        ) -> None:
+            nonlocal n_interior
+            if n_interior == capacity:
+                grow()
+            interior_codes[n_interior] = self._face_codes(
+                axis, coordinate, a0, a1, b0, b1, point_strides, True
+            )
+            interior_owners[n_interior] = owner
+            interior_neighbours[n_interior] = neighbour
+            n_interior += 1
+
+        def patch_for(axis: int, positive: bool, coordinate: int) -> str:
+            axis_limit = (nx, ny, z_cells)[axis]
+            if coordinate == (axis_limit if positive else 0):
+                outer_name = OUTER_PATCH_NAMES[2 * axis + int(positive)]
+                if outer_name in self.preserve_outer_patches:
+                    return outer_name
+                return self.merge_outer_patch or outer_name
+            return self.wall_patch_name
+
+        def samples(lo: int, width: int) -> tuple[int, ...]:
+            if width == 1:
+                return (lo,)
+            return (lo + width // 4, lo + 3 * width // 4)
+
+        for z_index in range(z_cells):
+            for slice_id, (x0v, y0v, widthv, levelv) in enumerate(leaves):
+                x0, y0, width, level = map(int, (x0v, y0v, widthv, levelv))
+                x1, y1 = x0 + width, y0 + width
+                owner = cell_id(z_index, slice_id)
+
+                for axis in (0, 1):
+                    lo, hi = (y0, y1) if axis == 0 else (x0, x1)
+                    positive_coordinate = x1 if axis == 0 else y1
+                    neighbour_ids = {
+                        find_cell(positive_coordinate, sample)
+                        if axis == 0
+                        else find_cell(sample, positive_coordinate)
+                        for sample in samples(lo, width)
+                    }
+                    neighbour_ids.discard(-1)
+                    if neighbour_ids:
+                        for neighbour_slice in sorted(neighbour_ids):
+                            nx0, ny0, nw, neighbour_level = map(
+                                int, leaves[neighbour_slice]
+                            )
+                            if abs(level - neighbour_level) > 1:
+                                raise RuntimeError("Extruded refinement transition is not 2:1")
+                            if axis == 0:
+                                a0, a1 = max(y0, ny0), min(y1, ny0 + nw)
+                            else:
+                                a0, a1 = max(x0, nx0), min(x1, nx0 + nw)
+                            emit_interior(
+                                owner,
+                                cell_id(z_index, neighbour_slice),
+                                axis,
+                                positive_coordinate,
+                                a0,
+                                a1,
+                                z_index,
+                                z_index + 1,
+                            )
+                    else:
+                        name = patch_for(axis, True, positive_coordinate)
+                        patch_codes[name].append(
+                            self._face_codes(
+                                axis,
+                                positive_coordinate,
+                                lo,
+                                hi,
+                                z_index,
+                                z_index + 1,
+                                point_strides,
+                                True,
+                            )
+                        )
+                        patch_owners[name].append(owner)
+
+                    negative_coordinate = x0 if axis == 0 else y0
+                    negative_neighbours = {
+                        find_cell(negative_coordinate - 1, sample)
+                        if axis == 0
+                        else find_cell(sample, negative_coordinate - 1)
+                        for sample in samples(lo, width)
+                    }
+                    negative_neighbours.discard(-1)
+                    if not negative_neighbours:
+                        name = patch_for(axis, False, negative_coordinate)
+                        patch_codes[name].append(
+                            self._face_codes(
+                                axis,
+                                negative_coordinate,
+                                lo,
+                                hi,
+                                z_index,
+                                z_index + 1,
+                                point_strides,
+                                False,
+                            )
+                        )
+                        patch_owners[name].append(owner)
+
+                if z_index + 1 < z_cells:
+                    emit_interior(
+                        owner,
+                        cell_id(z_index + 1, slice_id),
+                        2,
+                        z_index + 1,
+                        x0,
+                        x1,
+                        y0,
+                        y1,
+                    )
+                else:
+                    name = patch_for(2, True, z_cells)
+                    patch_codes[name].append(
+                        self._face_codes(
+                            2, z_cells, x0, x1, y0, y1, point_strides, True
+                        )
+                    )
+                    patch_owners[name].append(owner)
+                if z_index == 0:
+                    name = patch_for(2, False, 0)
+                    patch_codes[name].append(
+                        self._face_codes(2, 0, x0, x1, y0, y1, point_strides, False)
+                    )
+                    patch_owners[name].append(owner)
+
+        face_blocks = [interior_codes[:n_interior]]
+        owner_blocks = [interior_owners[:n_interior]]
+        boundary: list[dict] = []
+        start = n_interior
+        ordered_names = [*boundary_names, self.wall_patch_name]
+        for name in ordered_names:
+            codes = np.asarray(patch_codes[name], dtype=code_dtype).reshape(-1, 4)
+            owners = np.asarray(patch_owners[name], dtype=np.int32)
+            face_blocks.append(codes)
+            owner_blocks.append(owners)
+            boundary.append(
+                {
+                    "name": name,
+                    "start_face": start,
+                    "n_faces": len(codes),
+                    "type": "wall" if name == self.wall_patch_name else "patch",
+                }
+            )
+            start += len(codes)
+
+        def point_code(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> np.ndarray:
+            return x + (nx + 1) * (y + (ny + 1) * z)
+
+        z_index = np.repeat(np.arange(z_cells), n_slice_cells)
+        tiled = np.tile(leaves, (z_cells, 1))
+        x0, y0, width = (tiled[:, index].astype(np.int64) for index in range(3))
+        x1, y1 = x0 + width, y0 + width
+        encoded_cells = np.column_stack(
+            (
+                point_code(x0, y0, z_index),
+                point_code(x1, y0, z_index),
+                point_code(x1, y1, z_index),
+                point_code(x0, y1, z_index),
+                point_code(x0, y0, z_index + 1),
+                point_code(x1, y0, z_index + 1),
+                point_code(x1, y1, z_index + 1),
+                point_code(x0, y1, z_index + 1),
+            )
+        ).astype(code_dtype)
+        levels = np.tile(leaves[:, 3], z_cells).astype(np.int8)
+        return (
+            np.ascontiguousarray(np.vstack(face_blocks), dtype=code_dtype),
+            np.ascontiguousarray(np.concatenate(owner_blocks), dtype=np.int32),
+            np.ascontiguousarray(interior_neighbours[:n_interior], dtype=np.int32),
+            boundary,
+            levels,
+            encoded_cells,
+        )
+
     @staticmethod
     def _face_codes(
         axis: int,
@@ -832,7 +1323,11 @@ class AdaptiveCartesianMesher:
         interior_neighbours = np.empty(capacity, dtype=np.int32)
         n_interior = 0
 
-        boundary_names = (self.merge_outer_patch,) if self.merge_outer_patch else OUTER_PATCH_NAMES
+        boundary_names = (
+            (self.merge_outer_patch, *self.preserve_outer_patches)
+            if self.merge_outer_patch
+            else OUTER_PATCH_NAMES
+        )
         patch_codes: dict[str, list[tuple[int, int, int, int]]] = {
             name: [] for name in boundary_names
         }
@@ -878,9 +1373,12 @@ class AdaptiveCartesianMesher:
         def patch_for(axis: int, positive: bool, coordinate: int) -> str:
             limit = limits[axis] if positive else 0
             if coordinate == limit:
+                outer_name = OUTER_PATCH_NAMES[2 * axis + int(positive)]
+                if outer_name in self.preserve_outer_patches:
+                    return outer_name
                 if self.merge_outer_patch:
                     return self.merge_outer_patch
-                return OUTER_PATCH_NAMES[2 * axis + int(positive)]
+                return outer_name
             if self.surface is None:
                 raise RuntimeError("Adaptive mesh contains an unexplained internal boundary")
             return self.wall_patch_name
@@ -1010,6 +1508,131 @@ class AdaptiveCartesianMesher:
         neighbour_array = np.ascontiguousarray(interior_neighbours[:n_interior], dtype=np.int32)
         return encoded_faces, owners, neighbour_array, boundary, levels
 
+    def _build_spanwise_extruded(
+        self,
+        base_counts: tuple[int, int, int],
+        max_level: int,
+        h_min: float,
+        solid: _IntegerBox,
+        regions: tuple[tuple[_IntegerBox, int], ...],
+    ) -> dict:
+        """Build and validate a full-span cylinder mesh with independent z spacing."""
+        assert self.boundary_layer is not None
+        assert self.boundary_layer.spanwise_cell_size is not None
+        assert self.surface is not None and self._surface_index is not None
+        span = self.domain[5] - self.domain[4]
+        z_value = span / self.boundary_layer.spanwise_cell_size
+        z_cells = int(round(z_value))
+        if z_cells < 1 or not math.isclose(z_value, z_cells, rel_tol=0.0, abs_tol=1.0e-9):
+            raise ValueError("Mesh span must be divisible by boundary-layer spanwise_cell_size")
+
+        base_width = 2**max_level
+        limits_xy = (base_counts[0] * base_width, base_counts[1] * base_width)
+        leaves = self._build_extruded_leaves(
+            base_counts[:2], max_level, solid, regions
+        )
+        encoded_faces, owners, neighbours, boundary, levels, encoded_cells = (
+            self._extract_extruded_topology(leaves, max_level, limits_xy, z_cells)
+        )
+
+        point_codes = np.unique(encoded_faces)
+        faces = np.empty(encoded_faces.shape, dtype=np.int32)
+        for start in range(0, len(encoded_faces), 250_000):
+            stop = min(start + 250_000, len(encoded_faces))
+            faces[start:stop] = np.searchsorted(
+                point_codes, encoded_faces[start:stop]
+            ).astype(np.int32)
+        nx, ny = limits_xy
+        sx, sy = nx + 1, ny + 1
+        px = point_codes % sx
+        yz = point_codes // sx
+        py = yz % sy
+        pz = yz // sy
+        points = np.column_stack(
+            (
+                self.domain[0] + px * h_min,
+                self.domain[2] + py * h_min,
+                self.domain[4] + pz * (span / z_cells),
+            )
+        ).astype(np.float64)
+        cell_vertex_indices = np.searchsorted(point_codes, encoded_cells)
+        if np.any(cell_vertex_indices >= len(point_codes)) or not np.array_equal(
+            point_codes[cell_vertex_indices], encoded_cells
+        ):
+            raise RuntimeError("An extruded Cartesian cell corner is absent from face points")
+
+        n_cells = len(levels)
+        mesh_data = {
+            "vertex_position": np.ascontiguousarray(points),
+            "faces": np.ascontiguousarray(faces, dtype=np.int32),
+            "owners": owners,
+            "neighbours": neighbours,
+            "boundary": boundary,
+            "n_cells": n_cells,
+            "n_faces": len(faces),
+            "n_interior_faces": len(neighbours),
+            "n_points": len(points),
+            "cell_levels": levels,
+            "cell_sizes": np.asarray(
+                self.max_cell_size / np.power(2.0, levels), dtype=np.float32
+            ),
+            "cell_vertex_indices": np.ascontiguousarray(
+                cell_vertex_indices, dtype=np.int32
+            ),
+            "cell_type_code": np.full(n_cells, 5, dtype=np.int32),
+            "mesh_generation": {
+                "method": "spanwise_extruded_adaptive_cartesian",
+                "max_cell_size": self.max_cell_size,
+                "requested_max_cell_size": self.requested_max_cell_size,
+                "finest_cell_size": h_min,
+                "spanwise_cell_size": span / z_cells,
+                "spanwise_cells": z_cells,
+                "max_level": max_level,
+                "base_counts": (*base_counts[:2], z_cells),
+                "requested_domain": self.requested_domain,
+                "effective_domain": self.effective_domain,
+                "padding_per_face": self.padding_per_face,
+                "preserve_body_geometry": self.preserve_body_geometry,
+                "surface_file": self.surface_file,
+                "surface_sha256": self.surface.sha256,
+                "surface_bounds": self.surface_bounds,
+                "surface_triangle_count": len(self.surface.triangles),
+                "wall_patch_name": self.wall_patch_name,
+                "surface_may_cross_domain_boundary": self.surface_may_cross_domain_boundary,
+                "preserve_outer_patches": self.preserve_outer_patches,
+                "attribution": "Inspired by cfMesh cartesianMesh (Franjo Juretic / Creative Fields)",
+            },
+        }
+
+        interface_patch_name = "__boundary_layer_interface__"
+        wall_patch = next(
+            (patch for patch in mesh_data["boundary"] if patch["name"] == self.wall_patch_name),
+            None,
+        )
+        if wall_patch is None:
+            raise RuntimeError("Cartesian boundary-layer interface patch is missing")
+        wall_patch["name"] = interface_patch_name
+        wall_patch["type"] = "patch"
+        layer_mesh = build_cylinder_layer_mesh(
+            self.surface,
+            self._surface_index,
+            self.domain,
+            h_min,
+            self.boundary_layer,
+            self.wall_patch_name,
+            interface_patch_name,
+        )
+        mesh_data = stitch_boundary_layer(mesh_data, layer_mesh, interface_patch_name)
+        validate_curved_wall_conformance(
+            mesh_data,
+            self.surface.triangles,
+            self.wall_patch_name,
+            surface_clip_bounds=(
+                self.domain if self.surface_may_cross_domain_boundary else None
+            ),
+        )
+        return mesh_data
+
     def build(self) -> dict:
         """Generate and return a solver-native ``mesh_data`` dictionary.
 
@@ -1032,7 +1655,29 @@ class AdaptiveCartesianMesher:
         base_width = 2**max_level
         limits = tuple(count * base_width for count in base_counts)
         body_region: _IntegerBox | None
-        if (
+        if self.boundary_layer is not None:
+            if self.surface is None or self._surface_index is None:
+                raise RuntimeError("Boundary-layer surface data are missing")
+            interface_bounds = cylinder_interface_bounds(
+                self.surface, self.domain, self.boundary_layer
+            )
+            for axis in range(3):
+                origin = self.domain[2 * axis]
+                for coordinate in interface_bounds[2 * axis : 2 * axis + 2]:
+                    lattice_coordinate = (coordinate - origin) / h_min
+                    if not math.isclose(
+                        lattice_coordinate,
+                        round(lattice_coordinate),
+                        rel_tol=0.0,
+                        abs_tol=1.0e-9,
+                    ):
+                        raise ValueError(
+                            "Boundary-layer interface is not aligned with the finest "
+                            "Cartesian lattice"
+                        )
+            solid = self._integer_box(interface_bounds, h_min)
+            body_region = solid
+        elif (
             self.surface_bounds is not None
             and self.surface is not None
             and self.surface.kind == "box"
@@ -1049,6 +1694,15 @@ class AdaptiveCartesianMesher:
             solid = None
             body_region = None
         regions = self._refinement_regions(h_min, max_level, limits, body_region)
+        if (
+            self.boundary_layer is not None
+            and self.boundary_layer.spanwise_cell_size is not None
+        ):
+            if not isinstance(solid, _IntegerBox):
+                raise RuntimeError("Spanwise extrusion requires a lattice-aligned interface")
+            return self._build_spanwise_extruded(
+                base_counts, max_level, h_min, solid, regions
+            )
         leaves = self._build_leaves(base_counts, max_level, solid, regions)
         encoded_faces, owners, neighbours, boundary, levels = self._extract_topology(
             leaves, max_level, limits
@@ -1105,6 +1759,8 @@ class AdaptiveCartesianMesher:
                     len(self.surface.triangles) if self.surface is not None else 0
                 ),
                 "wall_patch_name": self.wall_patch_name or None,
+                "surface_may_cross_domain_boundary": self.surface_may_cross_domain_boundary,
+                "preserve_outer_patches": self.preserve_outer_patches,
                 "attribution": "Inspired by cfMesh cartesianMesh (Franjo Juretic / Creative Fields)",
             },
         }
@@ -1143,13 +1799,48 @@ class AdaptiveCartesianMesher:
             mesh_data["cell_vertex_indices"] = cell_vertex_indices
             mesh_data["cell_type_code"] = np.full(len(leaves), 5, dtype=np.int32)
 
-        if self.surface_bounds is not None and self.surface.kind == "box":
+        if self.boundary_layer is not None:
+            interface_patch_name = "__boundary_layer_interface__"
+            for patch in mesh_data["boundary"]:
+                if patch["name"] == self.wall_patch_name:
+                    patch["name"] = interface_patch_name
+                    patch["type"] = "patch"
+                    break
+            else:
+                raise RuntimeError("Cartesian boundary-layer interface patch is missing")
+            layer_mesh = build_cylinder_layer_mesh(
+                self.surface,
+                self._surface_index,
+                self.domain,
+                h_min,
+                self.boundary_layer,
+                self.wall_patch_name,
+                interface_patch_name,
+            )
+            mesh_data = stitch_boundary_layer(
+                mesh_data, layer_mesh, interface_patch_name
+            )
+            validate_curved_wall_conformance(
+                mesh_data,
+                self.surface.triangles,
+                self.wall_patch_name,
+                surface_clip_bounds=(
+                    self.domain if self.surface_may_cross_domain_boundary else None
+                ),
+            )
+        elif self.surface_bounds is not None and self.surface.kind == "box":
             validate_no_fluid_solid_overlap(mesh_data, self.surface_bounds)
             _validate_wall_on_surface(mesh_data, self.surface_bounds, self.wall_patch_name)
         elif self._surface_index is not None:
             _conform_wall_to_surface(mesh_data, self._surface_index, self.wall_patch_name)
+            _compact_conformed_topology(mesh_data)
             validate_curved_wall_conformance(
-                mesh_data, self.surface.triangles, self.wall_patch_name
+                mesh_data,
+                self.surface.triangles,
+                self.wall_patch_name,
+                surface_clip_bounds=(
+                    self.domain if self.surface_may_cross_domain_boundary else None
+                ),
             )
 
         return mesh_data
@@ -1168,4 +1859,10 @@ def adaptive_cartesian_mesh(
     return AdaptiveCartesianMesher(domain, max_cell_size, **kwargs).build()
 
 
-__all__ = ["AdaptiveCartesianMesher", "Bounds", "BoxRefinement", "adaptive_cartesian_mesh"]
+__all__ = [
+    "AdaptiveCartesianMesher",
+    "BoundaryLayerSpec",
+    "Bounds",
+    "BoxRefinement",
+    "adaptive_cartesian_mesh",
+]

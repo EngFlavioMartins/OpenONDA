@@ -69,7 +69,7 @@ def _full_range_inset(ax, series: list[tuple[np.ndarray, np.ndarray]], end_time:
     for (time, cd), (colour, linestyle) in zip(series, styles, strict=True):
         inset.plot(time, cd, color=colour, linestyle=linestyle, linewidth=0.7)
     inset.set_xlim(0.0, max(end_time, 0.1))
-    inset.tick_params(labelsize=5, length=2)
+    inset.tick_params(labelsize=util.FONT_SIZE_PT, length=2)
 
 
 def _profile(ax, name: str, time: float, consts: dict, title: str, ylim: tuple[float, float]):

@@ -1,9 +1,8 @@
 #!/bin/sh
-# Remove all generated output from the reference_flow case.
+# Remove the generated conventional-FVM reference output.
 cd "$(dirname "$0")" || exit 1
 
-rm -rf solution constant samples figures .matplotlib
-rm -rf __pycache__ assets/__pycache__
-rm -f ./*.log
+rm -rf solution samples constant .matplotlib __pycache__
+rm -f ./*.log .openonda_run.lock
 
-echo "Cleaned: reference_flow solution/ constant/ samples/ figures, caches, and logs."
+echo "Cleaned reference_flow/solution, reference_flow/samples, and caches."

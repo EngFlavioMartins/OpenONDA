@@ -27,7 +27,7 @@ from ring_metrics import (
 )
 
 ZOOM_END = 5
-ZOOM_BOX = (0.55, 0.12, 0.35, 0.30)
+ZOOM_BOX = (0.42, 0.12, 0.50, 0.35)
 ZOOM_MARKER_SIZE = 2.0
 ZOOM_FLOOR = 1e-3
 
@@ -62,7 +62,7 @@ def main() -> None:
     colors, _ = load_theme()
 
     fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=figure_size("wide_short"), sharex=True)
-    fig.subplots_adjust(wspace=0.42, left=0.14, right=0.98, top=0.92, bottom=0.29)
+    fig.subplots_adjust(wspace=0.50, left=0.14, right=0.87, top=0.92, bottom=0.29)
     legend_handles = []
     legend_labels = []
     plot_end = 185
@@ -93,10 +93,9 @@ def main() -> None:
         legend_labels.append(label)
 
     for ax in (ax_de, ax_nuens):
-        ax.set_xlabel(r"$t\,\Gamma / R_0^2$")
+        ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
         ax.set_yscale("symlog", linthresh=ZOOM_FLOOR)
-        ax.set_ylim(-2e-1, 2e-4)
-        ax.axhspan(0.0, 2e-4, color=colors["background_light"], linewidth=0, zorder=0)
+        ax.set_ylim(-5e-1, -5e-4)
 
     ax_de.set_title(r"Energy rate versus time")
     ax_de.set_ylabel(r"$(dE/dt)\,T_0\,/\,(\Gamma^2 R_0)$")

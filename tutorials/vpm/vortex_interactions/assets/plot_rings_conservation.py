@@ -1,18 +1,39 @@
 #!/usr/bin/env python3
-"""Particle count and all conserved vector moments."""
+"""Particle count and all conserved vector moments — ``rings_conservation.png``.
+
+Four stacked panels, one per family-independent quantity, from the VPM
+flow-integral sampler:
+
+  (top)     Particle count     N/N₀
+  (2nd)     Net vortex strength |ΣΓ - ΣΓ₀|/Γ₀
+  (3rd)     Linear impulse     |I - I₀|/(Γ₀R₀²)
+  (bottom)  Angular impulse    |A - A₀|/(Γ₀R₀³)
+
+For a closed system of vortex rings the momentum analogues — net vortex
+strength, linear impulse and finite-core angular impulse — are conserved by
+the inviscid dynamics, so their drift is a direct measure of numerical
+(dish)honesty. Closed rings can carry a nearly zero net vector moment, so each
+drift is scaled by a physical ring scale (Γ₀, Γ₀R₀², Γ₀R₀³) rather than by a
+cancellation-prone initial norm. Particle count is included because it exposes
+the difference between the fixed-cloud baselines (constant N) and the
+stabilized LES, which splits filaments and grows N.
+
+Every case carries its own colour, marker and legend entry — the same key
+shared by every comparison figure (see ``ring_metrics.case_style``).
+"""
 
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from _common import (
+from ring_metrics import (
     RING_CIRCULATION,
     RING_RADIUS,
     REFERENCE_TIME,
     build_arg_parser,
     case_style,
-    compact_case_legend_handles,
+    case_legend_handles,
     discover_cases,
     figure_size,
     load_theme,
@@ -28,10 +49,11 @@ def main() -> None:
     ).parse_args()
 
     load_theme()
-    fig, axes = plt.subplots(4, 1, figsize=(8.4, 9.0), sharex=True)
+    fig, axes = plt.subplots(4, 1, figsize=figure_size("stacked"), sharex=True)
+    fig.subplots_adjust(left=0.16, right=0.98, top=0.93, bottom=0.19, hspace=0.12)
     ax_n, ax_circ, ax_imp, ax_ang = axes
 
-    plotted = False
+    plotted: list[str] = []
     for case_dir in discover_cases(args.solution_dir):
         df = read_integrals(case_dir)
         if df is None or len(df) == 0:
@@ -52,9 +74,9 @@ def main() -> None:
             n = df["n_particles_total"].to_numpy(float)
             if np.isfinite(n[0]) and n[0] > 0:
                 ax_n.plot(nondimensional_time, n / n[0], label=st["label"], **common)
-                plotted = True
+                plotted.append(case_dir.name)
 
-        imp_cols = [f"impulse_{axis}" for axis in "xyz"]
+        imp_cols = [f"linear_impulse_{axis}" for axis in "xyz"]
         strength_cols = [f"net_vortex_strength_{axis}" for axis in "xyz"]
         if all(col in df.columns for col in strength_cols):
             net_vortex_strength = df[strength_cols].to_numpy(float)
@@ -77,22 +99,22 @@ def main() -> None:
             drift = np.linalg.norm(angular - angular[0], axis=1) / scale
             ax_ang.plot(nondimensional_time, np.maximum(drift, 1e-12), **common)
 
-    ax_n.set_ylabel(r"Particle count, $N/N_0$")
-    ax_n.set_title("Conservation contract")
+    ax_n.set_ylabel(r"$N/N_0$")
+    ax_n.set_title("Conservation")
     for axis in (ax_circ, ax_imp, ax_ang):
         axis.set_yscale("log")
-    ax_circ.set_ylabel(r"$|\sum\Gamma-\sum\Gamma_0|/\Gamma_0$")
+    ax_circ.set_ylabel(r"$|\Delta\sum\Gamma|/\Gamma_0$")
     ax_imp.set_yscale("log")
-    ax_imp.set_ylabel(r"$|I-I_0|/(\Gamma_0R_0^2)$")
+    ax_imp.set_ylabel(r"$|\Delta I|/(\Gamma_0R_0^2)$")
     ax_ang.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
-    ax_ang.set_ylabel(r"$|A-A_0|/(\Gamma_0R_0^3)$")
+    ax_ang.set_ylabel(r"$|\Delta A|/(\Gamma_0R_0^3)$")
 
     if plotted:
         fig.legend(
-            handles=compact_case_legend_handles(),
-            ncol=5,
+            handles=case_legend_handles(plotted),
+            ncol=3,
             loc="lower center",
-            bbox_to_anchor=(0.5, 0.005),
+            bbox_to_anchor=(0.5, 0.0),
         )
 
     save_fig(
@@ -100,7 +122,6 @@ def main() -> None:
         Path("figures") / "rings_conservation.png",
         dpi=args.dpi,
         figure_format=args.format,
-        tight_rect=(0.0, 0.10, 1.0, 1.0),
     )
 
 

@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Transposed DNS/LES vortex-ring interactions and conditional stabilization.
+"""DNS, LES and stabilized LES for two interacting vortex rings.
 
-The four primary cases compare co-rotating leapfrogging rings and
-counter-rotating colliding rings with transposed DNS and calibrated transposed
-LES.  A stabilized LES variant for each family uses overshoot-gated filament
-splitting (no remesh, no relaxation) to extend the simulation through the
-turbulent-transition horizon when the plain LES terminates early.
+The rings either leapfrog or collide. Stabilized LES adds filament splitting
+to the calibrated LES model used by the single-ring case.
 
 Usage:
     python rings_setup.py --case leapfrog_dns
@@ -23,52 +20,34 @@ import openonda.vpm as vpm
 
 CASE_DIR = Path(__file__).resolve().parent
 
-RING_RADIUS = 1.0
-RING_CIRCULATION = np.pi
-CORE_RADIUS = 0.1
-KINEMATIC_VISCOSITY = RING_CIRCULATION / 3000.0
+# Physics
+RING_RADIUS = 1.0  # ring major radius [m]
+RING_CIRCULATION = np.pi  # tube circulation [m²/s]
+CORE_RADIUS = 0.1  # initial Gaussian core radius [m]
+KINEMATIC_VISCOSITY = RING_CIRCULATION / 3000.0  # ν = Γ/Re [m²/s], Re = 3000
 
-# Match the calibrated single-ring campaign at the same circulation Reynolds
-# number.  This gives 5.71 intervals across the physical core diameter and
-# about 7.9 particle spacings per wavelength near the predicted m=23 Widnall
-# mode, while retaining complete azimuthal particle orbits.
-PARTICLE_SPACING = 0.035
-PARTICLE_RADIUS = 2.0 * PARTICLE_SPACING
-TAIL_FRACTION = 0.05
-# The nondimensional step is 20 h^2=0.0245.  The final horizon
-# t Gamma/R^2=147 is long enough to include loss of coherent leapfrogging and
-# the subsequent disordered motion if the numerical method survives it.
-TIME_STEP_SIZE = 20.0 * PARTICLE_SPACING**2 / RING_CIRCULATION
-NUM_STEPS = 6000
-END_TIME = NUM_STEPS * TIME_STEP_SIZE
-# Integral histories resolve the energy budget; particle snapshots resolve the
-# ring motion for visualization. Their cadences are intentionally independent.
-DIAGNOSTIC_INTERVAL_STEPS = 5
-CHECKPOINT_INTERVAL_STEPS = 50
+# Numerics match the single-ring calibration.
+PARTICLE_SPACING = 0.035  # in-plane particle spacing [m]
+PARTICLE_RADIUS = 2.0 * PARTICLE_SPACING  # Gaussian blob radius = 2h [m]
+TAIL_FRACTION = 0.05  # toroidal particle distribution tail fraction
+TIME_STEP_SIZE = 20.0 * PARTICLE_SPACING**2 / RING_CIRCULATION  # Δt = 20 h²/Γ [s]
+NUM_STEPS = 6000  # total number of time steps
+DIAGNOSTIC_INTERVAL_STEPS = 5  # flow-integral / ring-diagnostic cadence
+CHECKPOINT_INTERVAL_STEPS = 50  # HDF5/XDMF particle-snapshot cadence
 
-# The two fixed-particle baselines stop when vortex-line alignment or the
-# reconstructed divergence says the cloud is no longer resolved.  Peak
-# particle strength is intentionally not a stop: physical filament stretching
-# can increase it.  Stabilized LES must reach END_TIME without this allowance.
-BASELINE_MISALIGNMENT_LIMIT = 45.0
-BASELINE_DIVERGENCE_LIMIT = 0.12
+WIDNALL_AMPLITUDE = 0.05  # broadband centreline perturbation amplitude
+WIDNALL_MODES = 24  # number of azimuthal bending modes
+RING_SEEDS = (7, 19)  # reproducible per-ring perturbation phases
 
-# Use the exact broadband perturbation calibrated by the single-ring case.
-WIDNALL_AMPLITUDE = 0.05
-WIDNALL_MODES = 24
-RING_SEEDS = (7, 19)
+LES_COEFFICIENT = {"leapfrog": 0.20, "collide": 0.20}  # Smagorinsky C_s per family
+FILAMENT_REFINEMENT_INTERVAL_STEPS = 25  # overshoot-splitting check cadence
+FILAMENT_REFINEMENT_STRENGTH_FACTOR = 3.0  # strength multiple that triggers a split
+FILAMENT_REFINEMENT_OFFSET_FRACTION = 0.25  # transverse offset of the split cloud
+STABILIZED_MAX_PARTICLES = 100_000  # particle-count guard for stabilized LES
+BASELINE_MAX_PARTICLES = 20_000  # particle-count guard for fixed-particle baselines
 
-LES_COEFFICIENT = {"leapfrog": 0.20, "collide": 0.20}
-FILAMENT_REFINEMENT_INTERVAL_STEPS = 5
-FILAMENT_REFINEMENT_STRENGTH_FACTOR = 2.0
-FILAMENT_REFINEMENT_OFFSET_FRACTION = 0.25
-STABILIZED_MAX_PARTICLES = 100_000
-BASELINE_MAX_PARTICLES = 20_000
-
-COMPUTE_DEVICE = "METAL"
-PRECISION = "f32" if COMPUTE_DEVICE == "METAL" else "f64"
 VELOCITY_METHOD = "treecode"
-TREECODE_THETA = 0.30
+TREECODE_THETA = 0.30  # treecode accuracy parameter
 
 CASES = {
     "leapfrog_dns": ("leapfrog", "dns"),
@@ -121,11 +100,7 @@ def solver_setup(case_name: str, output_dir: Path) -> vpm.VPMSetup:
         coupled_max_strain_increment=0.15,
         coupled_max_advection_fraction=0.5,
         advection=vpm.AdvectionConfig(scheme="RK2"),
-        stretching=vpm.StretchingConfig.transposed(
-            scheme="RK2",
-            conserve_moments=True,
-            conserve_energy=True,
-        ),
+        stretching=vpm.StretchingConfig.transposed(scheme="RK2"),
         viscous=viscous_diffusion(),
         turbulence=turbulence(family, variant),
         stabilization=stabilization(family, variant),
@@ -139,8 +114,6 @@ def solver_setup(case_name: str, output_dir: Path) -> vpm.VPMSetup:
             else vpm.VelocityConfig.direct()
         ),
         particle_kernel="GAUSSIAN",
-        precision=PRECISION,
-        compute_device=COMPUTE_DEVICE,
         write_precision="f32",
         checkpoint_store_velocity_gradient=False,
         max_n_particles=(
@@ -230,59 +203,37 @@ def run_case(case_name: str, *, n_steps: int = NUM_STEPS) -> None:
         "requested_steps": n_steps,
         "diagnostic_interval_steps": DIAGNOSTIC_INTERVAL_STEPS,
         "checkpoint_interval_steps": CHECKPOINT_INTERVAL_STEPS,
-        "particle_spacing": PARTICLE_SPACING,
-        "precision": PRECISION,
-        "write_precision": solver.write_precision,
-        "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
-        "compute_device": COMPUTE_DEVICE,
-        "velocity_method": VELOCITY_METHOD,
-        "smagorinsky_coefficient": 0.0 if variant == "dns" else LES_COEFFICIENT[family],
-        "stabilization_mechanism": (
-            "overshoot_gated_filament_refinement" if variant == "les_stabilized" else "disabled"
-        ),
     }
     manifest_path = output_dir / "run_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
     solver.record_diagnostics(refresh_fields=True)
     solver.save_state(str(output_dir / f"vpm_{case_name}"))
-    resolution_lost = False
+    initial_strength = np.linalg.norm(solver.particles.vortex_strength_cpu(), axis=1).max()
+    stopped = False
     for _ in range(n_steps):
         solver.advance()
-        if variant == "les_stabilized" or solver.step % DIAGNOSTIC_INTERVAL_STEPS:
+        if solver.step % DIAGNOSTIC_INTERVAL_STEPS:
             continue
-        health = solver._discretization_health
-        misalignment = float(health["vortex_strength_misalignment_degrees"])
-        divergence = float(health["vorticity_divergence_error"])
-        if misalignment <= BASELINE_MISALIGNMENT_LIMIT and divergence <= BASELINE_DIVERGENCE_LIMIT:
-            continue
-        resolution_lost = True
-        print(
-            "RESOLUTION LIMIT "
-            f"step={solver.step} time={solver.time:.8e} "
-            f"misalignment_deg={misalignment:.8e} "
-            f"divergence={divergence:.8e}",
-            flush=True,
-        )
-        break
-    if not resolution_lost and solver.step % DIAGNOSTIC_INTERVAL_STEPS:
+        peak_strength = np.linalg.norm(solver.particles.vortex_strength_cpu(), axis=1).max()
+        if not np.isfinite(peak_strength) or peak_strength > 50 * initial_strength:
+            print(f"Stopping {case_name} at step {solver.step}: particle strength diverged.")
+            stopped = True
+            break
+    if solver.step % DIAGNOSTIC_INTERVAL_STEPS:
         solver.record_diagnostics(refresh_fields=True)
     solver.save_state(str(output_dir / f"vpm_{case_name}_final"))
 
     manifest.update(
-        status="resolution_lost" if resolution_lost else "completed",
+        status="stopped" if stopped else "completed",
         completed_steps=solver.step,
         end_time=solver.time,
-        particles=len(solver.particles),
+        n_particles_total=len(solver.particles),
     )
-    if resolution_lost:
-        manifest["termination_reason"] = (
-            "vortex-line alignment or divergence exceeded the baseline resolution limit"
-        )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--case",
@@ -292,7 +243,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     run_case(args.case)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

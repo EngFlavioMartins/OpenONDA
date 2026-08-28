@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import matplotlib
+from functools import lru_cache
 from pathlib import Path
 import re
 
@@ -43,6 +44,9 @@ FIGURE_WIDTH_CM = 12.5
 FIGURE_WIDTH = FIGURE_WIDTH_CM * CM
 FIGURE_DPI = _THEME.DEFAULT_DPI
 EXPORT_FORMATS = _THEME.EXPORT_FORMATS
+# The Lamb--Oseen figures use one 10 pt type scale for all publication text.
+# Exported cube-flow figures must remain interchangeable with that set.
+FONT_SIZE_PT = _THEME.FONT_SIZE_PT
 
 # Use the bundled DejaVu Serif face for both normal text and MathText.  This
 # preserves the OpenONDA serif typography without launching an external LaTeX
@@ -53,13 +57,13 @@ matplotlib.rcParams.update(
         "mathtext.fontset": "dejavuserif",
         "font.family": "serif",
         "font.serif": ["DejaVu Serif"],
-        "font.size": _THEME.FONT_SIZE_PT,
-        "axes.labelsize": _THEME.FONT_SIZE_PT,
-        "axes.titlesize": _THEME.FONT_SIZE_PT,
-        "figure.titlesize": _THEME.FONT_SIZE_PT,
-        "legend.fontsize": 8,
-        "xtick.labelsize": 8,
-        "ytick.labelsize": 8,
+        "font.size": FONT_SIZE_PT,
+        "axes.labelsize": FONT_SIZE_PT,
+        "axes.titlesize": FONT_SIZE_PT,
+        "figure.titlesize": FONT_SIZE_PT,
+        "legend.fontsize": FONT_SIZE_PT,
+        "xtick.labelsize": FONT_SIZE_PT,
+        "ytick.labelsize": FONT_SIZE_PT,
         "figure.dpi": FIGURE_DPI,
         "savefig.dpi": FIGURE_DPI,
         "pdf.fonttype": 42,
@@ -206,6 +210,7 @@ def save(fig, name: str, fmt: str, dpi: int = FIGURE_DPI) -> Path:
 # ---- Line samplers -------------------------------------------------------
 
 
+@lru_cache(maxsize=None)
 def _read_line_csv(path: Path) -> dict[str, np.ndarray]:
     """Load a line sample into the canonical in-memory field schema."""
     with path.open(encoding="utf-8") as stream:
@@ -276,6 +281,7 @@ def load_line(
 # ---- Surface samplers ----------------------------------------------------
 
 
+@lru_cache(maxsize=None)
 def slice_frames(source: str, name: str = "slice_z0") -> list[tuple[float, Path]]:
     """Return (time, path) for every slice snapshot listed in the PVD index."""
     pvd = _path(source, name, ".pvd")
@@ -418,6 +424,12 @@ def _validate_metadata_provenance(meta: dict) -> None:
         )
 
 
+def _is_lfs_pointer(path: Path) -> bool:
+    """Return whether ``path`` is an unhydrated Git-LFS pointer file."""
+    with path.open("rb") as stream:
+        return stream.readline().startswith(b"version https://git-lfs.github.com/spec/")
+
+
 def validate_plot_inputs() -> dict[str, float]:
     """Validate source provenance and exact cross-solver sample times."""
     meta = metadata()
@@ -445,6 +457,12 @@ def validate_plot_inputs() -> dict[str, float]:
     missing = [path for path in required_files if not path.is_file()]
     if missing:
         raise FileNotFoundError(f"Missing plotting input: {missing[0]}")
+    unhydrated = [path for path in required_files if _is_lfs_pointer(path)]
+    if unhydrated:
+        raise FileNotFoundError(
+            "Plotting input is an unhydrated Git-LFS pointer: "
+            f"{unhydrated[0]}. Run `git lfs pull --include='**/samples/**'`."
+        )
 
     profile_times = _require_coincident_overlap(
         "Profile",
@@ -478,6 +496,11 @@ def validate_plot_inputs() -> dict[str, float]:
         for _, path in slice_frames(source):
             if not path.is_file():
                 raise FileNotFoundError(f"PVD index references a missing field sample: {path}")
+            if _is_lfs_pointer(path):
+                raise FileNotFoundError(
+                    "Field sample is an unhydrated Git-LFS pointer: "
+                    f"{path}. Run `git lfs pull --include='**/samples/**'`."
+                )
 
     return {
         "latest_profile_time": float(profile_times[-1]),

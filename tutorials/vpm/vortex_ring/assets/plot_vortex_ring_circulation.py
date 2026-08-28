@@ -58,7 +58,7 @@ def main() -> None:
     colors, _ = load_theme()
 
     fig, (ax_tube, ax_sum) = plt.subplots(1, 2, figsize=figure_size("single_tall"), sharex=True)
-    fig.subplots_adjust(wspace=0.32, hspace=0.10, left=0.09, right=0.98, top=0.92, bottom=0.30)
+    fig.subplots_adjust(wspace=0.32, hspace=0.10, left=0.09, right=0.91, top=0.92, bottom=0.30)
     legend_handles = []
     legend_labels = []
 

@@ -1,36 +1,38 @@
 #!/usr/bin/env bash
+# Run the Lamb--Oseen vortex, dipole, and merging-vortex comparisons.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-python_bin="${OPENONDA_PYTHON:-python}"
+rm -rf solution samples figures
+mkdir -p solution samples figures
 
-./allclean.sh                                          # wipe previous solution/, samples/, figures/
-mkdir -p solution
+# Isolated vortex: Γ₂ = 0
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 0 --viscous-scheme CS --case-name vortex_cs
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 0 --viscous-scheme DVH --case-name vortex_dvh
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 0 --viscous-scheme GBD --case-name vortex_gbd
+python -u lamb_oseen_rwm_setup.py --case vortex --number-of-realizations 8
 
-# Three physics: vortex (Γ₂=0, isolated), dipole (Γ₂<0, counter-rotating), merging (Γ₂>0, co-rotating)
-echo "===== CS cases ====="                             # Core Spreading — deterministic particle redistribution
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 0 --viscous-scheme CS --case-name vortex_cs --compute-device METAL
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 -1 --viscous-scheme CS --case-name dipole_cs --compute-device METAL
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 +1 --viscous-scheme CS --case-name merging_cs --compute-device METAL
+# Counter-rotating vortex pair: Γ₂ = -Γ₁
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 -1 --viscous-scheme CS --case-name dipole_cs
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 -1 --viscous-scheme DVH --case-name dipole_dvh
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 -1 --viscous-scheme GBD --case-name dipole_gbd
+python -u lamb_oseen_rwm_setup.py --case dipole --number-of-realizations 12
 
-echo "===== RWM cases ====="                            # Random Walk Method — stochastic particle displacement
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 0 --viscous-scheme RWM --case-name vortex_rwm --compute-device METAL
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 -1 --viscous-scheme RWM --case-name dipole_rwm --compute-device METAL
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 +1 --viscous-scheme RWM --case-name merging_rwm --compute-device METAL
+# Co-rotating vortex pair: Γ₂ = Γ₁
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 +1 --viscous-scheme CS --case-name merging_cs
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 +1 --viscous-scheme DVH --case-name merging_dvh
+python -u lamb_oseen_setup.py --circulation1 +1 --circulation2 +1 --viscous-scheme GBD --case-name merging_gbd
+python -u lamb_oseen_rwm_setup.py --case merging --number-of-realizations 8
 
-echo "===== DVH cases ====="                            # Diffusion via Vorticity Hierarchy — adaptive octree grid
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 0 --viscous-scheme DVH --case-name vortex_dvh --compute-device METAL
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 -1 --viscous-scheme DVH --case-name dipole_dvh --compute-device METAL
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 +1 --viscous-scheme DVH --case-name merging_dvh --compute-device METAL
-
-echo "===== GBD cases ====="                            # Grid-Based Diffusion — fixed Eulerian grid
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 0 --viscous-scheme GBD --case-name vortex_gbd --compute-device METAL
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 -1 --viscous-scheme GBD --case-name dipole_gbd --compute-device METAL
-"$python_bin" -u lamb_oseen_setup.py --circulation1 +1 --circulation2 +1 --viscous-scheme GBD --case-name merging_gbd --compute-device METAL
-
-# Post-processing: field plots (png, pdf) and strict integral validation against analytic solution
-"$python_bin" assets/postprocess.py --pre-plot
-./allplot.sh png
-./allplot.sh pdf
-"$python_bin" assets/postprocess.py
+# Ensemble means, physical diagnostics, and figures
+python assets/postprocess.py --aggregate-rwm --expected-rwm-vortex-members 8 --expected-rwm-dipole-members 12 --expected-rwm-merging-members 8
+python assets/postprocess.py --extract-fields
+python assets/postprocess.py --pre-plot
+python assets/plot_vortex_comparison.py
+python assets/plot_dipole_comparison.py
+python assets/plot_merging_comparison.py
+python assets/plot_vortex_surface_fields.py
+python assets/plot_lamboseen_energy.py
+python assets/postprocess.py --manifest
+python assets/postprocess.py

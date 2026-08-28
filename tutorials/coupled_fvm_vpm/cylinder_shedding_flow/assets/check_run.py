@@ -23,15 +23,14 @@ Exit code 1 on any failure; 0 on pass.
 from __future__ import annotations
 
 import csv
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-REFERENCE_DIR = CASE_DIR / "reference_flow"
+COUPLED_CASE = CASE_DIR
+REFERENCE_CASE = CASE_DIR / "reference_flow"
 
 Z_FACE_LEAK_LIMIT = 0.25
 Z_SLIP_LIMIT = 0.05
@@ -54,7 +53,13 @@ def _json_lines(path: Path) -> list[dict]:
 def _check_solver_history(diagnostics: list[dict], label: str) -> tuple[float, float]:
     max_courant_number = max(float(record["max_courant_number"]) for record in diagnostics)
     max_continuity = max(float(record["max_continuity_error"]) for record in diagnostics)
-    if any(int(record["nonfinite_count"]) != 0 for record in diagnostics):
+    nonfinite = [
+        record.get("n_nonfinite_values", record.get("nonfinite_count"))
+        for record in diagnostics
+    ]
+    if any(value is None for value in nonfinite):
+        raise SystemExit(f"FAIL ({label}): FVM diagnostics omit the non-finite-value count")
+    if any(int(value) != 0 for value in nonfinite):
         raise SystemExit(f"FAIL ({label}): non-finite FVM fields were detected")
     failed = [
         (record["step"], solve.get("equation", "unknown"))
@@ -182,50 +187,56 @@ def _load_forces(path: Path, expected_end: float) -> np.ndarray:
     return forces
 
 
-def _load_setup_constants(path: Path) -> dict:
-    spec = importlib.util.spec_from_file_location("case_setup", path)
-    module = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, str(path.parent))
-    sys.path.insert(0, str(path.parents[1]))
-    spec.loader.exec_module(module)
-    return module
+def _metadata(run_dir: Path) -> dict:
+    path = run_dir / "solution" / "benchmark_metadata.json"
+    if not path.is_file():
+        raise SystemExit(f"FAIL: benchmark metadata was not written: {path}")
+    return json.loads(path.read_text())
 
 
 def _check_lattice_coincidence() -> None:
     """Hybrid and reference fine lattices must coincide exactly.
 
-    Both cases refine to the same finest cell size around the body.  Because
-    the two domains have different origins, the refined cells coincide only if
-    the origin offsets are integer multiples of that finest size.  The offsets
-    are verified against the case configuration and against the coupled run's
-    recorded FVM domain.
+    Both cases use the same surface/refinement sizes. Because their domains
+    have different origins, their adaptive trees coincide only if the origin
+    offsets are integer multiples of the common background lattice spacing.
     """
-    hybrid_setup = _load_setup_constants(CASE_DIR / "cylinder_shedding_flow_setup.py")
-    reference_setup = _load_setup_constants(REFERENCE_DIR / "reference_flow_setup.py")
-    h = float(getattr(hybrid_setup, "FVM_BODY_CELL_SIZE"))
-    ref_h = float(getattr(reference_setup, "FVM_BODY_CELL_SIZE"))
-    if abs(h - ref_h) > 1e-12:
-        raise SystemExit(f"FAIL: hybrid and reference body cell sizes differ ({h:g} vs {ref_h:g})")
-    hybrid_box = tuple(float(v) for v in getattr(hybrid_setup, "FVM_BOX"))
-    reference_box = tuple(float(v) for v in getattr(reference_setup, "FVM_DOMAIN"))
+    hybrid_meta = _metadata(COUPLED_CASE)
+    reference_meta = _metadata(REFERENCE_CASE)
+    hybrid = hybrid_meta["fvm"]
+    reference = reference_meta["mesh"]
+    if hybrid["grid"] != reference["grid"]:
+        raise SystemExit(
+            f"FAIL: coupled/reference grids differ ({hybrid['grid']} vs {reference['grid']})"
+        )
+    if hybrid["surface_sha256"] != reference["surface_sha256"]:
+        raise SystemExit("FAIL: coupled/reference cylinder STL hashes differ")
+    sizes = (
+        "background_cell_size",
+        "surface_cell_size",
+        "shear_layer_cell_size",
+        "near_wake_cell_size",
+        "downstream_wake_cell_size",
+    )
+    mismatched = [
+        name
+        for name in sizes
+        if not np.isclose(float(hybrid[name]), float(reference[name]), rtol=0.0, atol=1e-12)
+    ]
+    if mismatched:
+        raise SystemExit(f"FAIL: coupled/reference mesh sizes differ: {', '.join(mismatched)}")
+    h = float(reference["background_cell_size"])
+    hybrid_box = tuple(float(v) for v in hybrid["domain"])
+    reference_box = tuple(float(v) for v in reference["effective_domain"])
     offsets = tuple((a - b) / h for a, b in zip(hybrid_box[::2], reference_box[::2]))
     integer_offsets = tuple(abs(offset - round(offset)) < 1e-6 for offset in offsets)
-    meta = json.loads((CASE_DIR / "solution" / "run_metadata.json").read_text())
-    recorded = meta.get("fvm_solver", {}).get("fvm_domain", {})
-    recorded_box = tuple(
-        float(recorded[k]) for k in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
-    )
-    if recorded_box and tuple(recorded_box[i] for i in (0, 2, 4)) != tuple(
-        hybrid_box[i] for i in (0, 2, 4)
-    ):
-        raise SystemExit(f"FAIL: hybrid FVM domain does not match configuration: {recorded_box}")
     if not all(integer_offsets):
         raise SystemExit(
-            "FAIL: hybrid/reference fine lattice does not coincide — origin offsets "
-            f"{offsets} are not integer multiples of the finest cell size {h:g}"
+            "FAIL: coupled/reference adaptive lattices do not coincide — origin offsets "
+            f"{offsets} are not integer multiples of background spacing {h:g}"
         )
     print(
-        "  lattice coincidence: fine cell size "
+        "  lattice coincidence: common background spacing "
         f"{h:g}; origin offsets (x, y, z) = "
         + " ".join(f"{o:g} h" for o in offsets)
         + " (integer multiples)"
@@ -233,30 +244,28 @@ def _check_lattice_coincidence() -> None:
 
 
 def main() -> None:
-    metadata_path = CASE_DIR / "solution" / "run_metadata.json"
-    if not metadata_path.is_file():
-        raise SystemExit("FAIL: coupled run metadata was not written")
-    expected_end = float(json.loads(metadata_path.read_text())["physics"]["end_time"])
+    expected_end = float(_metadata(COUPLED_CASE)["physics"]["end_time"])
 
     print("== solver integrity (coupled) ==")
-    hybrid_diag = _json_lines(CASE_DIR / "solution" / "diagnostics.jsonl")
+    hybrid_diag = _json_lines(COUPLED_CASE / "solution" / "diagnostics.jsonl")
     max_courant_number, max_continuity = _check_solver_history(hybrid_diag, "coupled")
 
     print("== solver integrity (reference) ==")
-    ref_diag = _json_lines(REFERENCE_DIR / "solution" / "diagnostics.jsonl")
+    ref_diag = _json_lines(REFERENCE_CASE / "solution" / "diagnostics.jsonl")
     ref_cfl, ref_continuity = _check_solver_history(ref_diag, "reference")
 
     print("== coupling integrity ==")
-    coupling = _json_lines(CASE_DIR / "solution" / "coupler_diagnostics.jsonl")
+    coupling = _json_lines(COUPLED_CASE / "solution" / "coupler_diagnostics.jsonl")
     _check_coupling_history(coupling)
 
     print("== force histories ==")
-    hybrid_forces = _load_forces(CASE_DIR / "samples" / "fvm_ibm_forces_history.csv", expected_end)
-    ref_forces = _load_forces(REFERENCE_DIR / "samples" / "ibm_forces_history.csv", expected_end)
+    hybrid_forces = _load_forces(COUPLED_CASE / "samples" / "forces_history.csv", expected_end)
+    ref_forces = _load_forces(REFERENCE_CASE / "samples" / "forces_history.csv", expected_end)
 
-    overlap = (ref_forces[:, 0] >= expected_end - 20.0) & (ref_forces[:, 0] <= expected_end)
-    hybrid_sat = np.mean(hybrid_forces[overlap, 1]) if np.count_nonzero(overlap) else np.nan
-    ref_sat = np.mean(ref_forces[overlap, 1]) if np.count_nonzero(overlap) else np.nan
+    hybrid_window = hybrid_forces[:, 0] >= expected_end - 20.0
+    reference_window = ref_forces[:, 0] >= expected_end - 20.0
+    hybrid_sat = np.mean(hybrid_forces[hybrid_window, 1]) if np.any(hybrid_window) else np.nan
+    ref_sat = np.mean(ref_forces[reference_window, 1]) if np.any(reference_window) else np.nan
     if expected_end < 20.0:
         # Smoke runs stop before any saturation window exists; the last-20-unit
         # mean would be the impulsive-start transient, not the shedding mean.
