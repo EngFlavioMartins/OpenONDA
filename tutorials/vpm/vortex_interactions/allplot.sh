@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Plot the DNS--LES stability ladder for both ring interactions.
+# Plot the reported LES and stabilization cases.
 #
 # Usage:
 #   ./allplot.sh        PNG figures (default)

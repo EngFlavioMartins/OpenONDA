@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Peak particle strength for the DNS--LES stability ladder."""
+"""Peak particle strength for the LES stabilization comparison."""
 
 from pathlib import Path
 
@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from ring_metrics import (
     FAMILIES,
+    FAMILY_FILE_STEMS,
     FAMILY_LABELS,
     build_arg_parser,
     case_style,
@@ -24,15 +25,16 @@ BLOWUP_FACTOR = 50.0
 
 
 def main() -> None:
-    args = build_arg_parser("Peak circulation max|Γᵢ|/max|Γᵢ|₀ vs t*.").parse_args()
+    args = build_arg_parser(
+        "Peak particle-strength magnitude versus t Gamma_0 / R_0^2."
+    ).parse_args()
 
     load_theme()
-    fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"), sharey=True)
-
-    plotted: list[str] = []
-    min_ratio = 1.0
-    max_ratio = BLOWUP_FACTOR
-    for ax, family in zip(axes, FAMILIES, strict=True):
+    for family in FAMILIES:
+        fig, ax = plt.subplots(figsize=figure_size("single"))
+        plotted: list[str] = []
+        min_ratio = 1.0
+        max_ratio = BLOWUP_FACTOR
         for case_dir in discover_cases(args.solution_dir, family=family):
             time, peak_strength = read_metric(case_dir, "max_vortex_strength_magnitude")
             if time.size == 0 or peak_strength[0] <= 0.0:
@@ -58,27 +60,25 @@ def main() -> None:
         ax.set_yscale("log")
         ax.set_title(FAMILY_LABELS[family])
         ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
-
-    upper = max(100.0, 1.1 * max_ratio)
-    for ax in axes:
+        ax.set_ylabel(
+            r"Peak particle strength, "
+            r"$\max_p|\boldsymbol{\alpha}_p|/\max_p|\boldsymbol{\alpha}_{p,0}|$"
+        )
+        upper = max(100.0, 1.1 * max_ratio)
         ax.axhspan(BLOWUP_FACTOR, upper, **reference_fill_style("strong"))
         ax.set_ylim(max(1e-3, 0.8 * min_ratio), upper)
-    axes[0].set_ylabel(r"Peak strength, $\alpha_{\max}/\alpha_{\max,0}$")
-    if plotted:
-        fig.legend(
-            handles=case_legend_handles(plotted),
-            ncol=3,
-            loc="lower center",
-            bbox_to_anchor=(0.5, 0.01),
-        )
+        if plotted:
+            ax.legend(
+                handles=case_legend_handles(plotted),
+                loc="best",
+            )
 
-    save_fig(
-        fig,
-        Path("figures") / "rings_stability.png",
-        dpi=args.dpi,
-        figure_format=args.format,
-        tight_rect=(0.0, 0.14, 1.0, 1.0),
-    )
+        save_fig(
+            fig,
+            Path("figures") / f"{FAMILY_FILE_STEMS[family]}_stability.png",
+            dpi=args.dpi,
+            figure_format=args.format,
+        )
 
 
 if __name__ == "__main__":

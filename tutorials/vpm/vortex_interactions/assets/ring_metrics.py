@@ -18,6 +18,19 @@ RING_CIRCULATION = np.pi
 REFERENCE_TIME = RING_RADIUS**2 / RING_CIRCULATION
 FAMILIES = ("leapfrog", "collide")
 FAMILY_LABELS = {"leapfrog": "Leapfrogging", "collide": "Collision"}
+FAMILY_FILE_STEMS = {"leapfrog": "leapfrogging", "collide": "collision"}
+INTENDED_CASE_ORDER = {
+    name: order
+    for order, name in enumerate(
+        (
+            "leapfrog_les",
+            "leapfrog_les_splitting",
+            "leapfrog_les_realignment",
+            "collide_les",
+            "collide_les_realignment",
+        )
+    )
+}
 
 _THEME_MODULE = None
 
@@ -116,7 +129,31 @@ def _case_parts(name: str) -> tuple[str, str]:
 
 def case_style(name: str) -> dict:
     """Return a consistent style dictionary from the shared plot theme."""
-    return _theme().case_style(name)
+    theme = _theme()
+    _, variant = _case_parts(name)
+    styles = {
+        "les": {"label": "LES", "color": theme.COLORS["TUDcyan"], "marker": "s"},
+        "les_splitting": {
+            "label": "LES + splitting",
+            "color": theme.COLORS["VPMpurple"],
+            "marker": "D",
+        },
+        "les_realignment": {
+            "label": "LES + realignment",
+            "color": theme.COLORS["FVMorange"],
+            "marker": "^",
+        },
+    }
+    style = styles[variant]
+    return {
+        "color": style["color"],
+        "linestyle": "-",
+        "linewidth": theme.LINE_WIDTH,
+        "marker": style["marker"],
+        "markersize": theme.MARKER_SIZE,
+        "markeredgewidth": theme.MARKER_EDGE_WIDTH,
+        "label": style["label"],
+    }
 
 
 def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
@@ -125,7 +162,7 @@ def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
     if not solution.is_dir():
         return []
     cases = []
-    intended = _theme().INTENDED_CASE_ORDER
+    intended = INTENDED_CASE_ORDER
     for case_dir in solution.iterdir():
         if not case_dir.is_dir() or case_dir.name not in intended:
             continue

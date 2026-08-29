@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from ring_metrics import (
     FAMILIES,
+    FAMILY_FILE_STEMS,
     FAMILY_LABELS,
     REFERENCE_TIME,
     build_arg_parser,
@@ -22,13 +23,12 @@ from ring_metrics import (
 
 
 def main() -> None:
-    args = build_arg_parser("Kinetic energy E/E₀ vs t*.").parse_args()
+    args = build_arg_parser("Kinetic energy E/E_0 versus t Gamma_0 / R_0^2.").parse_args()
 
     load_theme()
-    fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"), sharey=True)
-
-    plotted: list[str] = []
-    for ax, family in zip(axes, FAMILIES, strict=True):
+    for family in FAMILIES:
+        fig, ax = plt.subplots(figsize=figure_size("single"))
+        plotted: list[str] = []
         for case_dir in discover_cases(args.solution_dir, family=family):
             df = read_integrals(case_dir)
             if df is None or len(df) == 0:
@@ -52,24 +52,20 @@ def main() -> None:
         ax.axhline(1.0, color="0.55", linestyle=":", linewidth=0.8)
         ax.set_title(FAMILY_LABELS[family])
         ax.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
+        ax.set_ylabel(r"Kinetic energy, $E/E_0$")
         ax.margins(y=0.08)
+        if plotted:
+            ax.legend(
+                handles=case_legend_handles(plotted),
+                loc="best",
+            )
 
-    axes[0].set_ylabel(r"Kinetic energy, $E/E_0$")
-    if plotted:
-        fig.legend(
-            handles=case_legend_handles(plotted),
-            ncol=3,
-            loc="lower center",
-            bbox_to_anchor=(0.5, 0.01),
+        save_fig(
+            fig,
+            Path("figures") / f"{FAMILY_FILE_STEMS[family]}_energy.png",
+            dpi=args.dpi,
+            figure_format=args.format,
         )
-
-    save_fig(
-        fig,
-        Path("figures") / "rings_energy.png",
-        dpi=args.dpi,
-        figure_format=args.format,
-        tight_rect=(0.0, 0.14, 1.0, 1.0),
-    )
 
 
 if __name__ == "__main__":

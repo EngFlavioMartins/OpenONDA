@@ -4,10 +4,10 @@
 Four stacked panels, one per family-independent quantity, from the VPM
 flow-integral sampler:
 
-  (top)     Particle count     N/N₀
-  (2nd)     Net vortex strength |ΣΓ - ΣΓ₀|/Γ₀
-  (3rd)     Linear impulse     |I - I₀|/(Γ₀R₀²)
-  (bottom)  Angular impulse    |A - A₀|/(Γ₀R₀³)
+  (top)     Particle count     N_p/N_{p,0}
+  (2nd)     Total-vorticity drift ||Delta Gamma_tot,h||/Gamma_0
+  (3rd)     Linear impulse     ||Delta I||/(Gamma_0 R_0^2)
+  (bottom)  Angular impulse    ||Delta A||/(Gamma_0 R_0^3)
 
 For a closed system of vortex rings the momentum analogues — net vortex
 strength, linear impulse and finite-core angular impulse — are conserved by
@@ -16,7 +16,7 @@ the inviscid dynamics, so their drift is a direct measure of numerical
 drift is scaled by a physical ring scale (Γ₀, Γ₀R₀², Γ₀R₀³) rather than by a
 cancellation-prone initial norm. Particle count is included because it exposes
 the difference between the fixed-cloud baselines (constant N) and the
-stabilized LES, which splits filaments and grows N.
+an adaptive stabilized method, if selected, and the fixed-particle baselines.
 
 Every case carries its own colour, marker and legend entry — the same key
 shared by every comparison figure (see ``ring_metrics.case_style``).
@@ -99,15 +99,15 @@ def main() -> None:
             drift = np.linalg.norm(angular - angular[0], axis=1) / scale
             ax_ang.plot(nondimensional_time, np.maximum(drift, 1e-12), **common)
 
-    ax_n.set_ylabel(r"$N/N_0$")
+    ax_n.set_ylabel(r"$N_p/N_{p,0}$")
     ax_n.set_title("Conservation")
     for axis in (ax_circ, ax_imp, ax_ang):
         axis.set_yscale("log")
-    ax_circ.set_ylabel(r"$|\Delta\sum\Gamma|/\Gamma_0$")
+    ax_circ.set_ylabel(r"$\|\Delta\boldsymbol{\Gamma}_{\mathrm{tot},h}\|/\Gamma_0$")
     ax_imp.set_yscale("log")
-    ax_imp.set_ylabel(r"$|\Delta I|/(\Gamma_0R_0^2)$")
+    ax_imp.set_ylabel(r"$\|\Delta\mathbf{I}\|/(\Gamma_0R_0^2)$")
     ax_ang.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
-    ax_ang.set_ylabel(r"$|\Delta A|/(\Gamma_0R_0^3)$")
+    ax_ang.set_ylabel(r"$\|\Delta\mathbf{A}\|/(\Gamma_0R_0^3)$")
 
     if plotted:
         fig.legend(

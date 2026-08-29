@@ -6,10 +6,10 @@ structure-preserving scheme holds those whether or not the particle field still
 resolves the flow, so on its own it cannot distinguish a trustworthy run from a
 conservative-but-wrong one.  This one shows the resolution instead:
 
-* particle overlap ``h/sigma`` — quadrature converges only while blobs overlap;
+* particle overlap ``h/sigma_p`` — quadrature converges only while blobs overlap;
 * ``||div w|| / ||grad w||`` — the exact vorticity field is solenoidal, the
   discrete one is not, and stretching amplifies precisely its divergent part;
-* the angle between ``alpha_p`` and ``w(x_p)`` — parallel in the continuum.
+* the angle between ``alpha_p`` and ``omega(x_p)`` — parallel in the continuum.
 
 Shaded bands mark the indicated resolution limits.
 
@@ -43,7 +43,7 @@ MAX_MISALIGNMENT_DEG = 45.0
 
 def main() -> None:
     args = build_arg_parser(
-        "Particle overlap, vorticity-divergence error and Gamma-omega misalignment."
+        "Particle overlap, vorticity-divergence error and alpha-omega misalignment."
     ).parse_args()
 
     load_theme()
@@ -82,17 +82,22 @@ def main() -> None:
             axis.plot(nondimensional_time, series, label=st["label"], **common)
         plotted.append(case_dir.name)
 
-    ax_overlap.set_ylabel(r"$h_{nn}/\sigma$")
+    ax_overlap.set_ylabel(r"$h_{\mathrm{nn}}/\sigma_p$")
     ax_overlap.set_title("Discretization health")
     ax_overlap.axhspan(MAX_OVERLAP_RATIO, 10.0, **reference_fill_style("strong"))
     ax_overlap.set_ylim(0.0, 1.2)
 
     ax_divergence.set_yscale("log")
-    ax_divergence.set_ylabel(r"$\|\nabla\!\cdot\!\omega\|\,/\,\|\nabla\omega\|$")
+    ax_divergence.set_ylabel(
+        r"$\|\nabla\!\cdot\!\boldsymbol{\omega}\|"
+        r"\,/\,\|\nabla\boldsymbol{\omega}\|$"
+    )
     ax_divergence.axhspan(MAX_DIVERGENCE_ERROR, 10.0, **reference_fill_style("strong"))
 
     ax_angle.set_yscale("log")
-    ax_angle.set_ylabel(r"$\angle(\alpha_p,\omega_p)$ [deg]")
+    ax_angle.set_ylabel(
+        r"$\angle(\boldsymbol{\alpha}_p,\boldsymbol{\omega}_p)$ [deg]"
+    )
     ax_angle.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
     ax_angle.axhspan(MAX_MISALIGNMENT_DEG, 180.0, **reference_fill_style("strong"))
 

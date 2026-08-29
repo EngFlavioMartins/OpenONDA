@@ -7,9 +7,13 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from matplotlib.lines import Line2D
 
 from ring_metrics import (
+    ASSETS_DIR,
     FAMILIES,
+    FAMILY_FILE_STEMS,
     FAMILY_LABELS,
     RING_RADIUS,
     build_arg_parser,
@@ -20,8 +24,12 @@ from ring_metrics import (
     load_theme,
     mark_every,
     read_ring_diagnostics,
+    reference_style,
     save_fig,
 )
+
+REFERENCE = ASSETS_DIR / "references" / "leapfrogging_lbm_trajectory.csv"
+REFERENCE_INITIAL_MIDPOINT_OVER_R0 = 2.5
 
 
 def load_trajectory(case_dir: Path) -> dict[int, tuple[np.ndarray, np.ndarray]]:
@@ -38,15 +46,35 @@ def load_trajectory(case_dir: Path) -> dict[int, tuple[np.ndarray, np.ndarray]]:
     }
 
 
+def plot_leapfrogging_reference(ax) -> bool:
+    """Plot the Cheng et al. LBM core-centre trajectories when available."""
+    if not REFERENCE.is_file():
+        return False
+    reference = pd.read_csv(REFERENCE)
+    required = {"ring", "x_over_R0", "R_over_R0"}
+    if not required.issubset(reference.columns):
+        missing = sorted(required - set(reference.columns))
+        raise ValueError(f"Missing columns in {REFERENCE}: {missing}")
+    style = reference_style()
+    for _, ring in reference.groupby("ring", sort=True):
+        ax.plot(
+            ring["x_over_R0"] - REFERENCE_INITIAL_MIDPOINT_OVER_R0,
+            ring["R_over_R0"],
+            zorder=1,
+            **style,
+        )
+    return True
+
+
 def main() -> None:
     parser = build_arg_parser(__doc__)
     args = parser.parse_args()
 
     load_theme()
-    fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"), sharey=True)
-
-    plotted: list[str] = []
-    for ax, family in zip(axes, FAMILIES, strict=True):
+    for family in FAMILIES:
+        fig, ax = plt.subplots(figsize=figure_size("single"))
+        has_reference = family == "leapfrog" and plot_leapfrogging_reference(ax)
+        plotted: list[str] = []
         for case_dir in discover_cases(args.solution_dir, family=family):
             trajectory = load_trajectory(case_dir)
             if not trajectory:
@@ -67,24 +95,30 @@ def main() -> None:
             plotted.append(case_dir.name)
         ax.set_title(FAMILY_LABELS[family])
         ax.set_xlabel(r"Axial position, $x/R_0$")
+        ax.set_ylabel(r"Ring radius, $R/R_0$")
         ax.margins(y=0.08)
+        handles = case_legend_handles(plotted)
+        if has_reference:
+            handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    label="LBM, Cheng et al. (2015)",
+                    **reference_style(),
+                )
+            )
+        if handles:
+            ax.legend(
+                handles=handles,
+                loc="best",
+            )
 
-    axes[0].set_ylabel(r"Ring radius, $R/R_0$")
-    if plotted:
-        fig.legend(
-            handles=case_legend_handles(plotted),
-            ncol=3,
-            loc="lower center",
-            bbox_to_anchor=(0.5, 0.01),
+        save_fig(
+            fig,
+            Path("figures") / f"{FAMILY_FILE_STEMS[family]}_trajectory.png",
+            dpi=args.dpi,
+            figure_format=args.format,
         )
-
-    save_fig(
-        fig,
-        Path("figures") / "rings_trajectory.png",
-        dpi=args.dpi,
-        figure_format=args.format,
-        tight_rect=(0.0, 0.14, 1.0, 1.0),
-    )
 
 
 if __name__ == "__main__":

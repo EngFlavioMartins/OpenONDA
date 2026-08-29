@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""DNS, LES and stabilized LES for two interacting vortex rings.
+"""LES stabilization comparison for two interacting vortex rings.
 
-The rings either leapfrog or collide. Stabilized LES adds filament splitting
-to the calibrated LES model used by the single-ring case.
+Leapfrogging compares filament splitting and vortex realignment. The better
+method is then applied to the colliding rings. DNS cases remain available as
+historical baselines but are not included in the reported comparison.
 
 Usage:
-    python rings_setup.py --case leapfrog_dns
+    python rings_setup.py --case leapfrog_les_realignment
 """
 
 from __future__ import annotations
@@ -40,10 +41,12 @@ WIDNALL_MODES = 24  # number of azimuthal bending modes
 RING_SEEDS = (7, 19)  # reproducible per-ring perturbation phases
 
 LES_COEFFICIENT = {"leapfrog": 0.20, "collide": 0.20}  # Smagorinsky C_s per family
-FILAMENT_REFINEMENT_INTERVAL_STEPS = 25  # overshoot-splitting check cadence
-FILAMENT_REFINEMENT_STRENGTH_FACTOR = 3.0  # strength multiple that triggers a split
-FILAMENT_REFINEMENT_OFFSET_FRACTION = 0.25  # transverse offset of the split cloud
-STABILIZED_MAX_PARTICLES = 100_000  # particle-count guard for stabilized LES
+SPLITTING_INTERVAL_STEPS = 25
+SPLITTING_STRENGTH_FACTOR = 5.0
+SPLITTING_OFFSET_FRACTION = 0.25
+REALIGNMENT_FACTOR = 0.005
+REALIGNMENT_INTERVAL_STEPS = 25
+STABILIZED_MAX_PARTICLES = 100_000
 BASELINE_MAX_PARTICLES = 20_000  # particle-count guard for fixed-particle baselines
 
 VELOCITY_METHOD = "treecode"
@@ -52,10 +55,12 @@ TREECODE_THETA = 0.30  # treecode accuracy parameter
 CASES = {
     "leapfrog_dns": ("leapfrog", "dns"),
     "leapfrog_les": ("leapfrog", "les"),
-    "leapfrog_les_stabilized": ("leapfrog", "les_stabilized"),
+    "leapfrog_les_splitting": ("leapfrog", "les_splitting"),
+    "leapfrog_les_realignment": ("leapfrog", "les_realignment"),
     "collide_dns": ("collide", "dns"),
     "collide_les": ("collide", "les"),
-    "collide_les_stabilized": ("collide", "les_stabilized"),
+    "collide_les_splitting": ("collide", "les_splitting"),
+    "collide_les_realignment": ("collide", "les_realignment"),
 }
 
 
@@ -73,14 +78,20 @@ def turbulence(family: str, variant: str) -> vpm.TurbulenceConfig:
 
 def stabilization(family: str, variant: str) -> vpm.StabilizationConfig:
     del family
-    if variant == "les_stabilized":
+    if variant == "les_splitting":
         return vpm.StabilizationConfig(
             filament_refinement=vpm.FilamentRefinementConfig.adaptive(
-                interval_steps=FILAMENT_REFINEMENT_INTERVAL_STEPS,
-                max_vortex_strength_factor=FILAMENT_REFINEMENT_STRENGTH_FACTOR,
-                offset_fraction=FILAMENT_REFINEMENT_OFFSET_FRACTION,
+                interval_steps=SPLITTING_INTERVAL_STEPS,
+                max_vortex_strength_factor=SPLITTING_STRENGTH_FACTOR,
+                offset_fraction=SPLITTING_OFFSET_FRACTION,
                 max_n_particles=STABILIZED_MAX_PARTICLES,
             )
+        )
+    if variant == "les_realignment":
+        return vpm.StabilizationConfig.pedrizzetti_relaxation(
+            factor=REALIGNMENT_FACTOR,
+            interval_steps=REALIGNMENT_INTERVAL_STEPS,
+            preserve_vortex_strength=True,
         )
     return vpm.StabilizationConfig.disabled()
 
@@ -117,7 +128,7 @@ def solver_setup(case_name: str, output_dir: Path) -> vpm.VPMSetup:
         write_precision="f32",
         checkpoint_store_velocity_gradient=False,
         max_n_particles=(
-            STABILIZED_MAX_PARTICLES if variant == "les_stabilized" else BASELINE_MAX_PARTICLES
+            STABILIZED_MAX_PARTICLES if variant == "les_splitting" else BASELINE_MAX_PARTICLES
         ),
         checkpoint_directory=str(output_dir),
         checkpoint_name=case_name,
