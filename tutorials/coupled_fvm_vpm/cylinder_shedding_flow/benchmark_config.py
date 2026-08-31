@@ -1,27 +1,8 @@
-"""Shared geometry, physics, mesh, timing, and sampling for the cylinder benchmark.
+"""Single source of truth for the cylinder reference-flow grid study.
 
-The fully meshed reference and coupled replacement import this module so the
-cylinder STL, Reynolds number, cut-cell resolution, seed, and physical sample
-times cannot silently diverge.  Environment variables select a documented
-verification variant without editing the case:
-
-``OPENONDA_GRID``
-    ``g0``, ``g1`` (default), ``g2``, or ``smoke``.
-``OPENONDA_DOMAIN``
-    ``baseline`` (default) or ``large`` for the fully meshed reference.
-``OPENONDA_DT_SCALE``
-    Positive multiplier applied to the grid's nominal FVM time step.
-``OPENONDA_END_TIME``
-    Override the production horizon (default 60 convective units).
-``OPENONDA_SEED_AMPLITUDE``
-    Shared divergence-free antisymmetric seed (default 5e-2).
-``OPENONDA_FIELD_OUTPUT_INTERVAL``
-    Physical interval between compressed full-field/checkpoint backups
-    (default 2 convective units).
-``OPENONDA_REFERENCE_CASE_DIR``
-    Optional dedicated output case containing ``solution/`` and ``samples/``.
-    Sequential verification members use it so canonical G1 fields are never
-    overwritten.
+``reference_flow/reference_flow.py --dx <wall-size> -name <case>`` selects
+the explicit four-zone mesh used by the study.  The named legacy grids remain
+available only for the coupled tutorial; they are not used by the grid runner.
 """
 
 from __future__ import annotations
@@ -38,24 +19,16 @@ import openonda.fvm as fvm
 SOURCE_DIR = Path(__file__).resolve().parent
 CYLINDER_STL = SOURCE_DIR / "assets" / "cylinder_long.stl"
 
-# Dimensional values are also the non-dimensional reference scales.
 DIAMETER = 1.0
 CYLINDER_LENGTH = 4.0
 CYLINDER_Z_BOUNDS = (-0.5 * CYLINDER_LENGTH, 0.5 * CYLINDER_LENGTH)
 STL_CYLINDER_LENGTH = 12.0
-CYLINDER_STL_BOUNDS = (
-    -0.5 * DIAMETER,
-    0.5 * DIAMETER,
-    -0.5 * DIAMETER,
-    0.5 * DIAMETER,
-    -0.5 * STL_CYLINDER_LENGTH,
-    0.5 * STL_CYLINDER_LENGTH,
-)
+CYLINDER_STL_BOUNDS = (-0.5, 0.5, -0.5, 0.5, -6.0, 6.0)
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
-FREESTREAM_SPEED = float(np.linalg.norm(FREESTREAM_VELOCITY))
+FREESTREAM_SPEED = 1.0
 DENSITY = 1.0
 REYNOLDS = 150.0
-KINEMATIC_VISCOSITY = FREESTREAM_SPEED * DIAMETER / REYNOLDS
+KINEMATIC_VISCOSITY = 1.0 / REYNOLDS
 REFERENCE_AREA = DIAMETER * CYLINDER_LENGTH
 REFERENCE_LENGTH = DIAMETER
 INITIAL_VELOCITY = FREESTREAM_VELOCITY
@@ -65,25 +38,17 @@ REFERENCE_DOMAINS = {
     "large": (-10.0, 25.0, -12.0, 12.0, -2.0, 2.0),
 }
 
-# These boxes stay fixed in the domain study.  The additional far-field cells
-# therefore test blockage/outlet placement without changing near-body physics.
-SHEAR_LAYER_BOX = (-0.75, 1.25, -0.90, 0.90, -2.25, 2.25)
-# Keep the strongly resolved near wake around the vortex cores without paying
-# for that isotropic resolution all the way to the spanwise slip planes. The
-# wall and separating shear layers remain fine across the complete span.
-NEAR_WAKE_BOX = (-0.75, 4.0, -1.25, 1.25, -1.50, 1.50)
-DOWNSTREAM_WAKE_BOX = (3.5, 12.0, -2.0, 2.0, -2.75, 2.75)
-
-# The coupled box is aligned with the baseline reference's 0.5-D background
-# lattice.  Hence all near-body cut cells share the same Cartesian ancestry.
+# Retained only for the coupled tutorial's pre-existing entry point.
 COUPLED_FVM_BOX = (-3.0, 4.5, -3.5, 3.5, -2.0, 2.0)
-TRANSFER_REGION_BOX = (-2.75, 4.25, -3.25, 3.25, -1.50, 1.50)
+TRANSFER_REGION_BOX = (-2.75, 4.25, -3.25, 3.25, -1.5, 1.5)
 VPM_DOMAIN = (-8.0, 20.0, -8.0, 8.0, -4.0, 4.0)
+
+SPANWISE_CELL_SIZE = 0.5
 
 
 @dataclass(frozen=True)
 class GridSpec:
-    """One ratio-two spatial/temporal verification level."""
+    """Mesh and time-step parameters for one reference-flow calculation."""
 
     name: str
     background: float
@@ -97,56 +62,74 @@ class GridSpec:
     wall_layers: int
     layer_growth: float
     transition_layers: int
+    study_dx: float | None = None
 
 
-# Let h denote tangential cylinder resolution. G0/G1/G2 keep the wall-normal
-# first cell at h/8. A diagnostic G2 variant that retained G1's 1/128-D first
-# wall height became coherently unstable at t=0.14 even after exact spanwise
-# projection; its pressure range grew from O(1) to O(10^3) while CFL crossed
-# the fixed gate. Restore the original G2 wall-normal profile, which completed
-# a healthy Euler trajectory to t=6. Its separate nonphysical spanwise drift
-# is controlled by the audited conservative invariant projection at Re=150.
-# The quiet far field remains at 0.5D and is connected by balanced transitions.
+# These values keep the coupled tutorial importable.  The grid study always
+# goes through :func:`grid_study_spec`, which uses the explicit mesh contract.
 GRID_SPECS = {
-    "smoke": GridSpec(
-        "smoke", 0.5, 0.125, 0.25, 0.25, 0.5, 0.005, 100_000,
-        1.0 / 64.0, 4, 1.10, 4,
-    ),
-    "g0": GridSpec(
-        "g0", 0.5, 0.125, 0.25, 0.25, 0.5, 0.004, 100_000,
-        1.0 / 64.0, 6, 1.10, 10,
-    ),
-    "g1": GridSpec(
-        "g1", 0.5, 1.0 / 16.0, 1.0 / 8.0, 1.0 / 8.0, 1.0 / 4.0, 0.002, 300_000,
-        1.0 / 128.0, 8, 1.12, 10,
-    ),
-    "g2": GridSpec(
-        "g2", 0.5, 1.0 / 32.0, 1.0 / 16.0, 1.0 / 16.0, 1.0 / 8.0, 0.001, 725_000,
-        1.0 / 256.0, 10, 1.20, 8,
-    ),
+    "smoke": GridSpec("smoke", 0.5, 0.125, 0.25, 0.25, 0.5, 0.005, 100_000, 1 / 64, 4, 1.1, 4),
+    "g0": GridSpec("g0", 0.5, 0.125, 0.25, 0.25, 0.5, 0.004, 100_000, 1 / 64, 6, 1.1, 10),
+    "g1": GridSpec("g1", 0.5, 1 / 16, 1 / 8, 1 / 8, 1 / 4, 0.002, 300_000, 1 / 128, 8, 1.12, 10),
 }
 
-BOUNDARY_LAYER_INTERFACE_HALF_WIDTH = 0.75
-# Re=150 is below the secondary three-dimensional wake instability. Keep the
-# complete 4D physical span, but avoid duplicating the x-y refinement in z.
-# Eight native hexahedral slabs retain a genuinely 3-D mesh and are qualified
-# against the sixteen-slab variant before production.
-SPANWISE_CELL_SIZE = float(
-    (os.environ.get("OPENONDA_SPANWISE_CELL_SIZE") or "0.5").strip()
-)
-if not math.isfinite(SPANWISE_CELL_SIZE) or SPANWISE_CELL_SIZE <= 0.0:
-    raise ValueError("OPENONDA_SPANWISE_CELL_SIZE must be finite and positive")
+
+def positive_environment_float(name: str, default: float) -> float:
+    """Read one finite, strictly positive floating-point environment value."""
+    value = float((os.environ.get(name) or str(default)).strip())
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(f"{name} must be finite and positive, got {value}")
+    return value
 
 
 def _choice(name: str, values: dict, default: str):
     selected = (os.environ.get(name) or default).strip().lower()
     if selected not in values:
-        choices = ", ".join(values)
-        raise ValueError(f"{name}={selected!r} is invalid; choose one of {choices}")
+        raise ValueError(f"{name}={selected!r} is invalid; choose one of {', '.join(values)}")
     return selected, values[selected]
 
 
+def grid_study_spec(dx: float, name: str) -> GridSpec:
+    """Return the exact four-zone body-fitted grid requested for this study.
+
+    The only free spatial value is the wall spacing ``dx``.  It applies on
+    the cylinder O-grid and its collar; the other Cartesian zones are exactly
+    ``2*dx``, ``4*dx``, and ``12*dx``.  ``dx=D/(12 n)`` is required so that
+    every study-zone interface aligns with the baseline-domain lattice.
+    """
+    dx = float(dx)
+    if not math.isfinite(dx) or dx <= 0.0:
+        raise ValueError("Grid-study dx must be finite and positive")
+    ratio = 1.0 / (12.0 * dx)
+    if not np.isclose(ratio, round(ratio), rtol=0.0, atol=1.0e-10):
+        raise ValueError(
+            "Grid-study dx must be D/(12 n) so the 1:2:4:12 zones align exactly; "
+            f"received dx={dx:g}"
+        )
+    if not name or any(character in name for character in "/\\"):
+        raise ValueError("Grid-study case name must be a non-empty simple directory name")
+    return GridSpec(
+        name=name,
+        background=12.0 * dx,
+        surface=dx,
+        shear_layer=2.0 * dx,
+        near_wake=4.0 * dx,
+        downstream_wake=4.0 * dx,
+        time_step=0.001,
+        target_cells=1_000_000,
+        first_cell_height=dx,
+        wall_layers=1,
+        layer_growth=1.0,
+        transition_layers=1,
+        study_dx=dx,
+    )
+
+
 def selected_grid() -> GridSpec:
+    study_dx = os.environ.get("OPENONDA_GRID_STUDY_DX", "").strip()
+    if study_dx:
+        name = os.environ.get("OPENONDA_GRID_STUDY_NAME", "grid_study").strip()
+        return grid_study_spec(float(study_dx), name)
     default = "smoke" if os.environ.get("OPENONDA_SMOKE", "0") == "1" else "g1"
     return _choice("OPENONDA_GRID", GRID_SPECS, default)[1]
 
@@ -159,23 +142,16 @@ def selected_domain_name() -> str:
     return _choice("OPENONDA_DOMAIN", REFERENCE_DOMAINS, "baseline")[0]
 
 
-def positive_environment_float(name: str, default: float) -> float:
-    value = float((os.environ.get(name) or str(default)).strip())
-    if not math.isfinite(value) or value <= 0.0:
-        raise ValueError(f"{name} must be finite and positive, got {value}")
-    return value
-
-
 def end_time() -> float:
-    # Ten smoke-grid FVM steps exercise force/probe and line sampling as well
-    # as mesh construction and linear solves.
-    smoke_default = 0.2 if os.environ.get("OPENONDA_SMOKE", "0") == "1" else 60.0
-    return positive_environment_float("OPENONDA_END_TIME", smoke_default)
+    default = 0.2 if os.environ.get("OPENONDA_SMOKE", "0") == "1" else 60.0
+    return positive_environment_float("OPENONDA_END_TIME", default)
 
 
 def minimum_available_memory_gib(grid: GridSpec) -> float:
-    """Conservative serial-run memory floor for this 14-GiB workstation."""
-    return {"smoke": 2.0, "g0": 4.0, "g1": 6.0, "g2": 8.0}[grid.name]
+    """A practical free-memory floor before constructing one study mesh."""
+    if grid.study_dx is not None:
+        return 4.0 if grid.study_dx >= 1.0 / 36.0 else 6.0
+    return {"smoke": 2.0, "g0": 4.0, "g1": 6.0}[grid.name]
 
 
 def fvm_time_step(grid: GridSpec) -> float:
@@ -190,75 +166,16 @@ def seed_amplitude() -> float:
 
 
 def sampling_interval() -> float:
-    """Force/probe period shared by every grid and both solvers."""
-    # 0.1 is exactly representable on G0/G1/G2 and on the coupled VPM clock.
-    # It still gives about 55 force samples per Re=150 shedding period.
-    return 0.1
+    """Frequent force/probe cadence for Cd/Cl and shedding-frequency estimates."""
+    return 0.02
 
 
 def field_output_interval() -> float:
-    """Shared coarse full-field/checkpoint cadence in convective units."""
-    return positive_environment_float("OPENONDA_FIELD_OUTPUT_INTERVAL", 2.0)
-
-
-def _clip_box(box: tuple[float, ...], domain: tuple[float, ...]) -> tuple[float, ...]:
-    clipped = []
-    for axis in range(3):
-        clipped.extend(
-            (
-                max(box[2 * axis], domain[2 * axis]),
-                min(box[2 * axis + 1], domain[2 * axis + 1]),
-            )
-        )
-    if not all(clipped[2 * axis] < clipped[2 * axis + 1] for axis in range(3)):
-        raise ValueError(f"Refinement box {box} does not overlap domain {domain}")
-    return tuple(clipped)
-
-
-def build_mesh(
-    domain: tuple[float, ...],
-    grid: GridSpec,
-    *,
-    merge_outer_patch: str | None = None,
-) -> fvm.AdaptiveCartesianMesher:
-    """Construct the native cfMesh-derived conformal cylinder mesh."""
-    if not CYLINDER_STL.is_file():
-        raise FileNotFoundError(
-            f"Missing {CYLINDER_STL}; run `python assets/generate_cylinder_stl.py`"
-        )
-    return fvm.AdaptiveCartesianMesher(
-        domain=domain,
-        max_cell_size=grid.background,
-        surface_file=CYLINDER_STL,
-        wall_patch_name="cylinder",
-        surface_cell_size=grid.surface,
-        boundary_layer=fvm.BoundaryLayerSpec(
-            first_cell_height=grid.first_cell_height,
-            layers=grid.wall_layers,
-            growth_ratio=grid.layer_growth,
-            transition_layers=grid.transition_layers,
-            interface_half_width=BOUNDARY_LAYER_INTERFACE_HALF_WIDTH,
-            spanwise_cell_size=SPANWISE_CELL_SIZE,
-        ),
-        surface_may_cross_domain_boundary=True,
-        refinements=(
-            fvm.BoxRefinement(
-                _clip_box(SHEAR_LAYER_BOX, domain), grid.shear_layer, "shearLayerBox"
-            ),
-            fvm.BoxRefinement(_clip_box(NEAR_WAKE_BOX, domain), grid.near_wake, "nearWakeBox"),
-            fvm.BoxRefinement(
-                _clip_box(DOWNSTREAM_WAKE_BOX, domain),
-                grid.downstream_wake,
-                "downstreamWakeBox",
-            ),
-        ),
-        merge_outer_patch=merge_outer_patch,
-        preserve_outer_patches=("zmin", "zmax") if merge_outer_patch else (),
-    )
+    """Sparse inspectable full-field and checkpoint cadence."""
+    return positive_environment_float("OPENONDA_FIELD_OUTPUT_INTERVAL", 2.5)
 
 
 def physical_sample_steps(dt: float, period: float | None = None) -> int:
-    """Resolve an exact integer cadence or reject a time-grid mismatch."""
     requested = sampling_interval() if period is None else float(period)
     steps = int(round(requested / dt))
     if steps < 1 or not np.isclose(steps * dt, requested, rtol=0.0, atol=1.0e-12):
@@ -270,12 +187,78 @@ def reference_run_id(grid: GridSpec, domain_name: str, dt_scale: float) -> str:
     return f"{grid.name}_{domain_name}_dt{dt_scale:g}".replace(".", "p")
 
 
-__all__ = [name for name in globals() if name.isupper()] + [
+def build_mesh(
+    domain: tuple[float, ...],
+    grid: GridSpec,
+    *,
+    merge_outer_patch: str | None = None,
+) -> fvm.AdaptiveCartesianMesher | fvm.ExplicitCylinderGridMesher:
+    """Build the requested body-fitted mesh without any IBM treatment."""
+    if not CYLINDER_STL.is_file():
+        raise FileNotFoundError(f"Missing cylinder surface: {CYLINDER_STL}")
+    if grid.study_dx is not None:
+        if merge_outer_patch is not None:
+            raise ValueError("The reference grid study does not merge outer patches")
+        return fvm.ExplicitCylinderGridMesher(
+            domain=domain,
+            surface_file=CYLINDER_STL,
+            wall_patch_name="cylinder",
+            wall_cell_size=grid.study_dx,
+            near_body_half_width=2.0,
+            wake_half_width=4.0,
+            wake_xmin=-4.0,
+            interface_half_width=2.0 / 3.0,
+            spanwise_cell_size=SPANWISE_CELL_SIZE,
+        )
+
+    # Compatibility mesh for the independent coupled tutorial; this is not a
+    # member of the reference-flow grid study.
+    return fvm.AdaptiveCartesianMesher(
+        domain=domain,
+        max_cell_size=grid.background,
+        surface_file=CYLINDER_STL,
+        wall_patch_name="cylinder",
+        surface_cell_size=grid.surface,
+        boundary_layer=fvm.BoundaryLayerSpec(
+            first_cell_height=grid.first_cell_height,
+            layers=grid.wall_layers,
+            growth_ratio=grid.layer_growth,
+            transition_layers=grid.transition_layers,
+            interface_half_width=0.75,
+            spanwise_cell_size=SPANWISE_CELL_SIZE,
+        ),
+        surface_may_cross_domain_boundary=True,
+        refinements=(),
+        merge_outer_patch=merge_outer_patch,
+        preserve_outer_patches=("zmin", "zmax") if merge_outer_patch else (),
+    )
+
+
+__all__ = [
+    "COUPLED_FVM_BOX",
+    "CYLINDER_LENGTH",
+    "CYLINDER_STL",
+    "CYLINDER_STL_BOUNDS",
+    "CYLINDER_Z_BOUNDS",
+    "DENSITY",
+    "DIAMETER",
+    "FREESTREAM_SPEED",
+    "FREESTREAM_VELOCITY",
+    "GRID_SPECS",
     "GridSpec",
+    "INITIAL_VELOCITY",
+    "KINEMATIC_VISCOSITY",
+    "REFERENCE_AREA",
+    "REFERENCE_LENGTH",
+    "REYNOLDS",
+    "SPANWISE_CELL_SIZE",
+    "TRANSFER_REGION_BOX",
+    "VPM_DOMAIN",
     "build_mesh",
     "end_time",
     "field_output_interval",
     "fvm_time_step",
+    "grid_study_spec",
     "minimum_available_memory_gib",
     "physical_sample_steps",
     "positive_environment_float",

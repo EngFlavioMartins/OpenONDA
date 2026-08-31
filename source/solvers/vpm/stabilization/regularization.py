@@ -58,6 +58,28 @@ class RegularizationOutcome:
         )
 
 
+def _regularization_triggered(
+    health: dict[str, float],
+    core_radius: np.ndarray,
+    *,
+    divergence_trigger: float | None,
+    misalignment_trigger: float | None,
+    core_radius_trigger: float | None,
+    energy_growth: bool,
+) -> bool:
+    """Return whether any enabled cloud-health trigger requests redistribution."""
+    divergence_exceeded = divergence_trigger is not None and (
+        health["vorticity_divergence_error"] > divergence_trigger
+    )
+    misalignment_exceeded = misalignment_trigger is not None and (
+        health["vortex_strength_misalignment_degrees"] > misalignment_trigger
+    )
+    radius_exceeded = core_radius_trigger is not None and (
+        float(np.max(core_radius, initial=0.0)) >= core_radius_trigger
+    )
+    return divergence_exceeded or misalignment_exceeded or radius_exceeded or energy_growth
+
+
 def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> RegularizationOutcome | None:
     """Redistribute the cloud if its health has fallen below the triggers.
 
@@ -108,17 +130,17 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         if at_capacity and cfg.regularization_capacity_misalignment_trigger is not None
         else cfg.regularization_misalignment_trigger
     )
-    energy_rate_trigger = (
-        cfg.regularization_capacity_energy_rate_trigger if at_capacity else None
-    )
+    energy_rate_trigger = cfg.regularization_capacity_energy_rate_trigger if at_capacity else None
     energy_growth = (
-        energy_rate_trigger is not None
-        and float(ctx.kinetic_energy_rate()) > energy_rate_trigger
+        energy_rate_trigger is not None and float(ctx.kinetic_energy_rate()) > energy_rate_trigger
     )
-    if (
-        before_health["vorticity_divergence_error"] <= divergence_trigger
-        and before_health["vortex_strength_misalignment_degrees"] <= misalignment_trigger
-        and not energy_growth
+    if not _regularization_triggered(
+        before_health,
+        core_radius,
+        divergence_trigger=divergence_trigger,
+        misalignment_trigger=misalignment_trigger,
+        core_radius_trigger=cfg.regularization_core_radius_trigger,
+        energy_growth=energy_growth,
     ):
         return
 
@@ -142,9 +164,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     removed_before = ctx.particles_removed()
     vortex_strength_removed_before = ctx.vortex_strength_removed().copy()
     mean_kinematic_viscosity = float(kinematic_viscosity.mean())
-    projection_only = (
-        max_particles is not None and len(position) > max_particles
-    )
+    projection_only = max_particles is not None and len(position) > max_particles
     if projection_only:
         proposal = old_state.copy()
     else:

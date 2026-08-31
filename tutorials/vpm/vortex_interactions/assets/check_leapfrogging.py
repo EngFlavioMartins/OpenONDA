@@ -37,9 +37,7 @@ def radius_rmse(diagnostics: pd.DataFrame, reference: pd.DataFrame) -> list[floa
     errors = []
     mapping = {0: 2, 1: 1}
     for group_id, reference_ring in mapping.items():
-        numerical = diagnostics[diagnostics.group_id == group_id].sort_values(
-            "vortex_centroid_x"
-        )
+        numerical = diagnostics[diagnostics.group_id == group_id].sort_values("vortex_centroid_x")
         target = reference[reference.ring == reference_ring].sort_values("x_over_R0")
         target_x = target.x_over_R0.to_numpy() - REFERENCE_ORIGIN
         lower = max(numerical.vortex_centroid_x.min(), target_x.min())
@@ -57,26 +55,20 @@ def radius_rmse(diagnostics: pd.DataFrame, reference: pd.DataFrame) -> list[floa
 
 
 def main() -> None:
-    case_name = sys.argv[1] if len(sys.argv) > 1 else "leapfrog_les_rvpm_sfs"
+    case_name = sys.argv[1] if len(sys.argv) > 1 else "leapfrog_les"
     diagnostics_path = CASE_DIR / "samples" / case_name / "ring_diagnostics.csv"
     integrals_path = CASE_DIR / "samples" / case_name / "flow_integrals.csv"
     diagnostics = pd.read_csv(diagnostics_path)
     integrals = pd.read_csv(integrals_path)
-    diagnostics = (
-        diagnostics.sort_values("step", kind="stable")
-        .drop_duplicates(["step", "group_id"], keep="last")
+    diagnostics = diagnostics.sort_values("step", kind="stable").drop_duplicates(
+        ["step", "group_id"], keep="last"
     )
-    integrals = (
-        integrals.sort_values("step", kind="stable")
-        .drop_duplicates("step", keep="last")
-    )
+    integrals = integrals.sort_values("step", kind="stable").drop_duplicates("step", keep="last")
     reference = pd.read_csv(REFERENCE)
 
     passes = pass_positions(diagnostics)
     errors = radius_rmse(diagnostics, reference)
-    last_x = float(
-        diagnostics.groupby("step").vortex_centroid_x.mean().iloc[-1]
-    )
+    last_x = float(diagnostics.groupby("step").vortex_centroid_x.mean().iloc[-1])
     net_columns = [f"net_vortex_strength_{axis}" for axis in "xyz"]
     net_strength = integrals[net_columns].to_numpy(float)
     net_strength_drift = float(
@@ -94,9 +86,7 @@ def main() -> None:
     print(f"maximum kinetic-energy growth: {energy_growth:+.2%}")
 
     pass_error = (
-        float(np.max(np.abs(passes[:3] - REFERENCE_PASS_POSITIONS)))
-        if len(passes) >= 3
-        else np.inf
+        float(np.max(np.abs(passes[:3] - REFERENCE_PASS_POSITIONS))) if len(passes) >= 3 else np.inf
     )
     if (
         len(passes) < 3

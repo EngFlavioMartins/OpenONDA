@@ -651,19 +651,15 @@ class Logging:
             capacity_core = getattr(cfg, "regularization_capacity_core_radius", None)
             if capacity_core is not None:
                 rows.append(("  capacity core", f"{capacity_core:.3e}", "m"))
-            rows.append(
-                (
-                    "  trigger, divergence",
-                    f"{getattr(cfg, 'regularization_divergence_trigger', 0.0):.3f}",
-                )
-            )
-            rows.append(
-                (
-                    "  trigger, misalignment",
-                    f"{getattr(cfg, 'regularization_misalignment_trigger', 0.0):.1f}",
-                    "deg",
-                )
-            )
+            radius_trigger = getattr(cfg, "regularization_core_radius_trigger", None)
+            if radius_trigger is not None:
+                rows.append(("  trigger, core radius", f"{radius_trigger:.3e}", "m"))
+            divergence_trigger = getattr(cfg, "regularization_divergence_trigger", None)
+            if divergence_trigger is not None:
+                rows.append(("  trigger, divergence", f"{divergence_trigger:.3f}"))
+            misalignment_trigger = getattr(cfg, "regularization_misalignment_trigger", None)
+            if misalignment_trigger is not None:
+                rows.append(("  trigger, misalignment", f"{misalignment_trigger:.1f}", "deg"))
         else:
             rows.append(("conservative filter", "disabled"))
         bounds = getattr(cfg, "remove_particles_by_bounds", None)

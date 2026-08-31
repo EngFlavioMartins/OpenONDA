@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Plot the reported LES and stabilization cases.
+# Plot the four leapfrogging LES and stabilization cases.
 #
 # Usage:
 #   ./allplot.sh        PNG figures (default)

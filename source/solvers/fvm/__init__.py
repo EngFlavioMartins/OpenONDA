@@ -26,6 +26,7 @@ from .mesh.adaptive_cartesian import (
     AdaptiveCartesianMesher,
     BoundaryLayerSpec,
     BoxRefinement,
+    ExplicitCylinderGridMesher,
 )
 from .sampling.fields import LineSampler, SurfaceSampler
 from .sampling.forces import (
@@ -49,6 +50,7 @@ __all__ = [
     "FVMSetup",
     "FVMSolver",
     "FieldState",
+    "ExplicitCylinderGridMesher",
     "ForceSampler",
     "IBMForceSampler",
     "LinearSolveResult",

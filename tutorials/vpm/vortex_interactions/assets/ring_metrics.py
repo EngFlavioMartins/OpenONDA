@@ -17,18 +17,17 @@ THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 RING_RADIUS = 1.0
 RING_CIRCULATION = np.pi
 REFERENCE_TIME = RING_RADIUS**2 / RING_CIRCULATION
-FAMILIES = ("leapfrog", "collide")
-FAMILY_LABELS = {"leapfrog": "Leapfrogging", "collide": "Collision"}
-FAMILY_FILE_STEMS = {"leapfrog": "leapfrogging", "collide": "collision"}
+FAMILIES = ("leapfrog",)
+FAMILY_LABELS = {"leapfrog": "Leapfrogging"}
+FAMILY_FILE_STEMS = {"leapfrog": "leapfrogging"}
 INTENDED_CASE_ORDER = {
     name: order
     for order, name in enumerate(
         (
             "leapfrog_les",
-            "leapfrog_les_rvpm",
-            "leapfrog_les_rvpm_sfs",
-            "collide_les",
-            "collide_les_rvpm_sfs",
+            "leapfrog_les_splitting",
+            "leapfrog_les_sfs",
+            "leapfrog_les_splitting_remeshing",
         )
     )
 }
@@ -139,29 +138,14 @@ def case_style(name: str) -> dict:
             "color": theme.COLORS["VPMpurple"],
             "marker": "D",
         },
-        "les_realignment": {
-            "label": "LES + realignment",
-            "color": theme.COLORS["FVMorange"],
+        "les_sfs": {
+            "label": "LES + SFS",
+            "color": theme.COLORS["AccentGreen"],
             "marker": "^",
         },
-        "les_remeshing": {
-            "label": "LES + remeshing",
-            "color": theme.COLORS["AccentGreen"],
-            "marker": "v",
-        },
-        "les_combined": {
-            "label": "LES + combined",
+        "les_splitting_remeshing": {
+            "label": "LES + splitting + remeshing",
             "color": theme.COLORS["TUDdark"],
-            "marker": "o",
-        },
-        "les_rvpm": {
-            "label": "Reformulated VPM",
-            "color": theme.COLORS["VPMpurple"],
-            "marker": "D",
-        },
-        "les_rvpm_sfs": {
-            "label": "Reformulated VPM + SFS",
-            "color": theme.COLORS["AccentGreen"],
             "marker": "o",
         },
     }

@@ -16,7 +16,7 @@ align those positions with the present centres at `x/R0 = -0.5` and `0.5`.
 Only the arbitrary axial origin is changed.
 
 The source case has `Re_Gamma = 3000`, `a0/R0 = 0.1`, and `h0/R0 = 1`, which
-match the present leapfrogging geometry. It is a kinematic reference rather
-than a pointwise validation solution: the trajectories in Fig. 5 are from the
-paper's essentially axisymmetric leapfrogging calculation, whereas the present
-case uses a reproducible broadband azimuthal perturbation.
+match the present leapfrogging geometry. The present initialization also uses
+the single disturbance reported for the LBM comparison: amplitude
+`epsilon/R0 = 0.05` and azimuthal mode `n = 8`. The disturbance phase is
+arbitrary under rotation and is fixed to zero in `interactions_setup.py`.

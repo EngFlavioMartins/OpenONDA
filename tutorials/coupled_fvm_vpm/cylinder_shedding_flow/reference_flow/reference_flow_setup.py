@@ -131,7 +131,7 @@ _RUN_LOCK = (
 FVM_MESH = cfg.build_mesh(FVM_DOMAIN, GRID) if IS_ROOT else None
 
 FORCE_INTERVAL_STEPS = cfg.physical_sample_steps(FVM_TIME_STEP_SIZE)
-LINE_INTERVAL_STEPS = cfg.physical_sample_steps(FVM_TIME_STEP_SIZE, 0.2)
+LINE_INTERVAL_STEPS = cfg.physical_sample_steps(FVM_TIME_STEP_SIZE, 0.1)
 SLICE_INTERVAL_STEPS = cfg.physical_sample_steps(FVM_TIME_STEP_SIZE, 0.5)
 FIELD_BACKUP_STEPS = cfg.physical_sample_steps(FVM_TIME_STEP_SIZE, cfg.field_output_interval())
 FORCE_SCHEDULE = fvm.SamplingSchedule(every_n_steps=FORCE_INTERVAL_STEPS)
@@ -436,6 +436,25 @@ def _write_metadata(mesh_data: dict) -> None:
             "cell_order": "morton",
             "cell_count": int(mesh_data["n_cells"]),
             "target_cell_count": GRID.target_cells,
+            "grid_study": (
+                None
+                if GRID.study_dx is None
+                else {
+                    "contract": "wall=dx, near_body=2dx, wake=4dx, far_field=12dx",
+                    "wall_dx": GRID.study_dx,
+                    "near_body_dx": 2.0 * GRID.study_dx,
+                    "wake_dx": 4.0 * GRID.study_dx,
+                    "far_field_dx": 12.0 * GRID.study_dx,
+                    "near_body_box": [-2.0, 2.0, -2.0, 2.0],
+                    "wake_box": [-4.0, FVM_DOMAIN[1], -4.0, 4.0],
+                    "storage": {
+                        "force_probe_interval": FORCE_INTERVAL_STEPS * FVM_TIME_STEP_SIZE,
+                        "line_interval": LINE_INTERVAL_STEPS * FVM_TIME_STEP_SIZE,
+                        "slice_interval": SLICE_INTERVAL_STEPS * FVM_TIME_STEP_SIZE,
+                        "field_checkpoint_interval": FIELD_BACKUP_STEPS * FVM_TIME_STEP_SIZE,
+                    },
+                }
+            ),
         },
         "forces": {
             "method": "pressure_and_viscous_traction_on_cylinder_wall_patch",

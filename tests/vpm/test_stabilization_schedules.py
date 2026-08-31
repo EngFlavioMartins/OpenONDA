@@ -13,6 +13,7 @@ from source.solvers.vpm.stabilization.filament_refinement import (
     split_stretched_filaments,
 )
 from source.solvers.vpm.stabilization.manager import StabilizationManager
+from source.solvers.vpm.stabilization.regularization import _regularization_triggered
 
 
 def test_combined_stabilization_schedule_is_representable():
@@ -71,8 +72,9 @@ def test_pedrizzetti_relaxation_stops_at_end_step():
         particles=object(),
     )
     manager.operators = SimpleNamespace(
-        apply_pedrizzetti_relaxation=lambda *args, **kwargs: calls.append(state["step"])
-        or {"pedrizzetti_misalignment_deg": 10.0}
+        apply_pedrizzetti_relaxation=lambda *args, **kwargs: (
+            calls.append(state["step"]) or {"pedrizzetti_misalignment_deg": 10.0}
+        )
     )
     manager.measure = lambda: object()
     manager.accept = lambda *args, **kwargs: None
@@ -153,6 +155,22 @@ def test_regularization_event_limit_stops_the_schedule(monkeypatch):
 
     assert len(calls) == 2
     assert manager.regularization_events == 2
+
+
+def test_regularization_can_be_triggered_only_by_core_radius():
+    health = {
+        "vorticity_divergence_error": 1.0,
+        "vortex_strength_misalignment_degrees": 90.0,
+    }
+    arguments = {
+        "divergence_trigger": None,
+        "misalignment_trigger": None,
+        "core_radius_trigger": 0.2,
+        "energy_growth": False,
+    }
+
+    assert not _regularization_triggered(health, np.array([0.1, 0.199]), **arguments)
+    assert _regularization_triggered(health, np.array([0.1, 0.2]), **arguments)
 
 
 def test_filament_refinement_prioritizes_strongest_particles_at_capacity():

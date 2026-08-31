@@ -1,23 +1,15 @@
 #!/usr/bin/env bash
+# Run the four leapfrogging LES stabilization comparisons.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-python_bin="${OPENONDA_PYTHON:-python}"
+rm -rf solution samples figures
+mkdir -p solution samples figures
 
-cases=(
-    leapfrog_les leapfrog_les_rvpm leapfrog_les_rvpm_sfs
-    collide_les collide_les_rvpm_sfs
-)
+python -u interactions_setup.py --case leapfrog_les
+python -u interactions_setup.py --case leapfrog_les_splitting
+python -u interactions_setup.py --case leapfrog_les_sfs
+python -u interactions_setup.py --case leapfrog_les_splitting_remeshing
 
-for case_name in "${cases[@]}"; do
-    if [[ -d "solution/$case_name" ]]; then
-        echo "Skipping existing case: $case_name"
-        continue
-    fi
-    "$python_bin" -u rings_setup.py --case "$case_name"
-done
-
-"$python_bin" assets/check_leapfrogging.py
 ./allplot.sh png
-./allplot.sh pdf

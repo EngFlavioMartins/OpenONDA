@@ -7,10 +7,14 @@ import json
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from source.solvers.fvm.fields.spanwise_projection import SpanwiseInvariantProjector
 from source.solvers.fvm.sampling.base import sampler_from_dict, sampler_to_dict
 from source.solvers.fvm.sampling.fields import LineSampler, SurfaceSampler
+from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.assets.analyse_grid_study import (
+    build_report,
+)
 from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.assets.analyse_reference import (
     _extrema,
     analyse,
@@ -31,7 +35,10 @@ from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.assets.prune_restart_tail 
 from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.assets.save_verification_case import (
     preserve,
 )
-from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.benchmark_config import GRID_SPECS
+from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.benchmark_config import (
+    GRID_SPECS,
+    grid_study_spec,
+)
 from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.seed_perturbation import (
     _affine_interpolate_2d,
 )
@@ -118,6 +125,72 @@ def test_reference_analysis_requires_stable_complete_cycles(tmp_path):
     np.testing.assert_allclose(report["latest_strouhal_number"], 0.2, atol=2.0e-3)
     assert len(report["complete_cycles"]) >= 10
     assert "NaN" not in (solution / "reference_diagnostics.json").read_text()
+
+
+def test_grid_study_force_report_uses_one_common_statistics_window(tmp_path):
+    reference = tmp_path / "reference_flow"
+    time = np.arange(0.0, 40.0 + 1.0e-12, 0.1)
+    omega = 2.0 * np.pi * 0.2
+    for number, (case, dx) in enumerate(
+        (("very_coarse", 1 / 12), ("coarse", 1 / 24), ("medium", 1 / 36), ("fine", 1 / 48)),
+        start=1,
+    ):
+        samples = reference / "samples" / case
+        solution = reference / "solution" / case
+        samples.mkdir(parents=True)
+        solution.mkdir(parents=True)
+        drag = 1.3 + (0.03 / number) * np.cos(2.0 * omega * time)
+        lift = (0.4 / number) * np.sin(omega * time)
+        with (samples / "forces_history.csv").open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(
+                stream, fieldnames=("time", "patch", "drag_coefficient", "lift_coefficient")
+            )
+            writer.writeheader()
+            writer.writerows(
+                {
+                    "time": sample_time,
+                    "patch": "cylinder",
+                    "drag_coefficient": cd,
+                    "lift_coefficient": cl,
+                }
+                for sample_time, cd, cl in zip(time, drag, lift, strict=True)
+            )
+        (solution / "benchmark_metadata.json").write_text(
+            json.dumps(
+                {
+                    "mesh": {
+                        "cell_count": 1_000 * number,
+                        "grid_study": {
+                            "wall_dx": dx,
+                            "near_body_dx": 2 * dx,
+                            "wake_dx": 4 * dx,
+                            "far_field_dx": 12 * dx,
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    report = build_report(reference, ("very_coarse", "coarse", "medium", "fine"), 30.0)
+
+    assert report["status"] == "evidence_ready"
+    assert report["common_statistics_window"] == {"start": 10.0, "end": 40.0, "duration": 30.0}
+    np.testing.assert_allclose(report["cases"]["fine"]["force_statistics"]["mean_cd"], 1.3)
+    np.testing.assert_allclose(report["cases"]["medium"]["force_statistics"]["strouhal"], 0.2)
+    assert len(report["sequential_relative_changes"]) == 3
+
+
+def test_grid_study_spec_enforces_the_exact_1_2_4_12_contract():
+    grid = grid_study_spec(1 / 24, "coarse")
+    assert (grid.surface, grid.shear_layer, grid.near_wake, grid.background) == (
+        1 / 24,
+        2 / 24,
+        4 / 24,
+        12 / 24,
+    )
+    with pytest.raises(ValueError, match="D/\\(12 n\\)"):
+        grid_study_spec(1 / 16, "invalid")
 
 
 def test_reference_extrema_accepts_single_startup_sample():

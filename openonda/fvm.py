@@ -2,11 +2,12 @@
 
 from source.solvers.fvm import (
     AdaptiveCartesianMesher,
-    BoundaryLayerSpec,
     BoundaryConfig,
+    BoundaryLayerSpec,
     BoxRefinement,
     ComputeConfig,
     DiscretizationConfig,
+    ExplicitCylinderGridMesher,
     FieldState,
     ForceSampler,
     FVMSetup,
@@ -51,6 +52,7 @@ __all__ = [
     "BoxRefinement",
     "ComputeConfig",
     "DiscretizationConfig",
+    "ExplicitCylinderGridMesher",
     "FieldState",
     "ForceSampler",
     "FVMSetup",

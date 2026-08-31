@@ -44,8 +44,9 @@ class StabilizationConfig:
     regularization_max_events: int | None = None
     regularization_total_kinetic_energy_dissipation_limit: float = 0.15
     regularization_total_enstrophy_dissipation_limit: float = 0.15
-    regularization_divergence_trigger: float = 0.04
-    regularization_misalignment_trigger: float = 20.0
+    regularization_divergence_trigger: float | None = 0.04
+    regularization_misalignment_trigger: float | None = 20.0
+    regularization_core_radius_trigger: float | None = None
     regularization_capacity_divergence_trigger: float | None = None
     regularization_capacity_misalignment_trigger: float | None = None
     regularization_capacity_energy_rate_trigger: float | None = None
@@ -82,8 +83,7 @@ class StabilizationConfig:
             raise ValueError("stretching_viscosity_feedback_growth_limit must lie in (0, 1]")
         if self.stretching_viscosity_max_coefficient is not None and (
             not np.isfinite(self.stretching_viscosity_max_coefficient)
-            or self.stretching_viscosity_max_coefficient
-            < self.stretching_viscosity_coefficient
+            or self.stretching_viscosity_max_coefficient < self.stretching_viscosity_coefficient
         ):
             raise ValueError(
                 "stretching_viscosity_max_coefficient must be finite and no smaller "
@@ -142,13 +142,20 @@ class StabilizationConfig:
             )
         if not 0.0 < self.regularization_total_enstrophy_dissipation_limit < 1.0:
             raise ValueError("regularization_total_enstrophy_dissipation_limit must lie in (0, 1)")
-        if (
+        if self.regularization_divergence_trigger is not None and (
             not np.isfinite(self.regularization_divergence_trigger)
             or self.regularization_divergence_trigger < 0.0
         ):
-            raise ValueError("regularization_divergence_trigger must be non-negative")
-        if not 0.0 <= self.regularization_misalignment_trigger <= 180.0:
-            raise ValueError("regularization_misalignment_trigger must lie in [0, 180]")
+            raise ValueError("regularization_divergence_trigger must be non-negative or None")
+        if self.regularization_misalignment_trigger is not None and not (
+            0.0 <= self.regularization_misalignment_trigger <= 180.0
+        ):
+            raise ValueError("regularization_misalignment_trigger must lie in [0, 180] or be None")
+        if self.regularization_core_radius_trigger is not None and (
+            not np.isfinite(self.regularization_core_radius_trigger)
+            or self.regularization_core_radius_trigger <= 0.0
+        ):
+            raise ValueError("regularization_core_radius_trigger must be finite and positive")
         if (
             self.regularization_capacity_divergence_trigger is not None
             and self.regularization_capacity_divergence_trigger < 0.0
@@ -257,8 +264,9 @@ class StabilizationConfig:
         tail_budget: float = 3.0e-3,
         total_kinetic_energy_dissipation_limit: float = 0.15,
         total_enstrophy_dissipation_limit: float = 0.15,
-        divergence_trigger: float = 0.04,
-        misalignment_trigger: float = 20.0,
+        divergence_trigger: float | None = 0.04,
+        misalignment_trigger: float | None = 20.0,
+        core_radius_trigger: float | None = None,
         capacity_divergence_trigger: float | None = None,
         capacity_misalignment_trigger: float | None = None,
         capacity_fraction: float = 1.0,
@@ -284,6 +292,7 @@ class StabilizationConfig:
             regularization_total_enstrophy_dissipation_limit=(total_enstrophy_dissipation_limit),
             regularization_divergence_trigger=divergence_trigger,
             regularization_misalignment_trigger=misalignment_trigger,
+            regularization_core_radius_trigger=core_radius_trigger,
             regularization_capacity_divergence_trigger=(capacity_divergence_trigger),
             regularization_capacity_misalignment_trigger=(capacity_misalignment_trigger),
             regularization_capacity_fraction=capacity_fraction,
