@@ -37,6 +37,8 @@ if TYPE_CHECKING:
     from ..config.types import StabilizationConfig
     from .context import StabilizationContext
 
+ENSTROPHY_RESTORATION_TOLERANCE = 1.0e-4  # float32 reduction roundoff scale
+
 
 @dataclass(frozen=True)
 class RegularizationOutcome:
@@ -86,6 +88,11 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             int(np.ceil(cfg.regularization_capacity_fraction * cfg.regularization_max_particles)),
         )
     at_capacity = capacity_count is not None and len(position) >= capacity_count
+    max_particles = (
+        cfg.regularization_capacity_max_particles
+        if at_capacity and cfg.regularization_capacity_max_particles is not None
+        else cfg.regularization_max_particles
+    )
     spacing = float(
         cfg.regularization_capacity_grid_spacing
         if at_capacity and cfg.regularization_capacity_grid_spacing is not None
@@ -101,9 +108,17 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         if at_capacity and cfg.regularization_capacity_misalignment_trigger is not None
         else cfg.regularization_misalignment_trigger
     )
+    energy_rate_trigger = (
+        cfg.regularization_capacity_energy_rate_trigger if at_capacity else None
+    )
+    energy_growth = (
+        energy_rate_trigger is not None
+        and float(ctx.kinetic_energy_rate()) > energy_rate_trigger
+    )
     if (
         before_health["vorticity_divergence_error"] <= divergence_trigger
         and before_health["vortex_strength_misalignment_degrees"] <= misalignment_trigger
+        and not energy_growth
     ):
         return
 
@@ -128,8 +143,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     vortex_strength_removed_before = ctx.vortex_strength_removed().copy()
     mean_kinematic_viscosity = float(kinematic_viscosity.mean())
     projection_only = (
-        cfg.regularization_max_particles is not None
-        and len(position) > cfg.regularization_max_particles
+        max_particles is not None and len(position) > max_particles
     )
     if projection_only:
         proposal = old_state.copy()
@@ -144,7 +158,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             regen_threshold_mode="budget",
             rd_ratio=4.0,
             effective_viscosity=None,
-            max_nodes=cfg.regularization_max_particles,
+            max_nodes=max_particles,
         )
     if proposal is None:
         raise RuntimeError("conservative regularization produced no particle field")
@@ -367,7 +381,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                     -cfg.regularization_total_kinetic_energy_dissipation_limit
                     <= trial_energy_change
                     <= 1.0e-7
-                    and abs(trial_enstrophy_change) <= 5.0e-6
+                    and abs(trial_enstrophy_change) <= ENSTROPHY_RESTORATION_TOLERANCE
                 ):
                     admissible.append((trial_energy_change, uploaded.copy(), trial_integrals))
                 else:
@@ -446,7 +460,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     if not (
         -cfg.regularization_total_enstrophy_dissipation_limit
         <= total_enstrophy_change_relative
-        <= 5.0e-6
+        <= ENSTROPHY_RESTORATION_TOLERANCE
     ):
         restore_old_field()
         raise RuntimeError(

@@ -117,6 +117,7 @@ class TaichiTreecode:
         self.node_net_vortex_strength = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_avg_radius = ti.field(dtype=ti.f32, shape=max_nodes)
+        self.node_max_radius = ti.field(dtype=ti.f32, shape=max_nodes)
         # Higher-order moments are sized by the requested order: at the default
         # order 1 they would otherwise cost 36 + 108 bytes/node (144 MB at 1e6
         # nodes) for fields no kernel ever reads.  Allocating one element keeps
@@ -823,6 +824,7 @@ class TaichiTreecode:
             self._combine_level_kernel(N, level)
 
         self.n_nodes[None] = 2 * N - 1
+        ti.sync()
 
     # -- AABB kernel --------------------------------------------------
 
@@ -905,6 +907,7 @@ class TaichiTreecode:
             p = self.sorted_indices[j]
             self.node_net_vortex_strength[j] = self.vortex_strength[p]
             self.node_avg_radius[j] = self.core_radius[p]
+            self.node_max_radius[j] = self.core_radius[p]
             self.node_com[j] = self.position[p]
             if self.multipole_order[None] >= 2:
                 self.node_vortex_strength_dipole[j] = ti.Matrix.zero(ti.f32, 3, 3)
@@ -1030,6 +1033,9 @@ class TaichiTreecode:
                 self.node_avg_radius[left] * count_l + self.node_avg_radius[right] * count_r
             ) / total_count
             self.node_avg_radius[idx] = average_core_radius
+            self.node_max_radius[idx] = ti.max(
+                self.node_max_radius[left], self.node_max_radius[right]
+            )
 
             aabb_min = ti.Vector([0.0, 0.0, 0.0])
             aabb_max = ti.Vector([0.0, 0.0, 0.0])
@@ -1409,6 +1415,91 @@ class TaichiTreecode:
                 )
         return gradu
 
+    @ti.func
+    def _leaf_vortex_stretching_sfs_sum(
+        self,
+        node: int,
+        target_position: ti.template(),
+        target_gradient: ti.template(),
+        support_radius_ratio: ti.f32,
+        mode: ti.i32,
+    ) -> ti.math.vec3:
+        modeled_stretching = ti.Vector([0.0, 0.0, 0.0])
+        start = self.node_particle_start[node]
+        count = self.node_particle_count[node]
+        for k in range(count):
+            j = self.leaf_particles[start + k]
+            sigma_j = self.core_radius[j]
+            displacement = target_position - self.position[j]
+            distance_sq = displacement.dot(displacement)
+            support = support_radius_ratio * sigma_j
+            if sigma_j > 1.0e-12 and distance_sq < support * support:
+                gradient_difference = target_gradient - self.velocity_gradient[j]
+                source_strength = self.vortex_strength[j]
+                contraction = source_strength * 0.0
+                if mode == 0:
+                    contraction = gradient_difference @ source_strength
+                elif mode == 1:
+                    contraction = gradient_difference.transpose() @ source_strength
+                else:
+                    contraction = (
+                        0.5
+                        * (gradient_difference + gradient_difference.transpose())
+                        @ source_strength
+                    )
+                distance_ratio = ti.sqrt(distance_sq) / sigma_j
+                modeled_stretching += (
+                    self.zeta_kernel(distance_ratio) / sigma_j**3 * contraction
+                )
+        return modeled_stretching
+
+    @ti.func
+    def _node_distance_sq(self, target_position: ti.template(), node: int) -> ti.f32:
+        distance_sq = 0.0
+        for component in ti.static(range(3)):
+            offset = ti.max(
+                self._node_aabb_min[node][component] - target_position[component],
+                0.0,
+            ) + ti.max(
+                target_position[component] - self._node_aabb_max[node][component],
+                0.0,
+            )
+            distance_sq += offset * offset
+        return distance_sq
+
+    @ti.func
+    def _traverse_particle_vortex_stretching_sfs(
+        self,
+        i: int,
+        support_radius_ratio: ti.f32,
+        mode: ti.i32,
+        n_nodes: int,
+    ) -> ti.math.vec3:
+        modeled_stretching = ti.Vector([0.0, 0.0, 0.0])
+        target_position = self.position[i]
+        target_gradient = self.velocity_gradient[i]
+        self.traversal_stack[i, 0] = self._root[None]
+        stack_ptr = 1
+        while stack_ptr > 0:
+            stack_ptr -= 1
+            node = self.traversal_stack[i, stack_ptr]
+            if node < 0 or node >= n_nodes:
+                continue
+            support = support_radius_ratio * self.node_max_radius[node]
+            if self._node_distance_sq(target_position, node) > support * support:
+                continue
+            if self.node_is_leaf[node] == 1:
+                modeled_stretching += self._leaf_vortex_stretching_sfs_sum(
+                    node,
+                    target_position,
+                    target_gradient,
+                    support_radius_ratio,
+                    mode,
+                )
+            else:
+                stack_ptr = self._push_children_particle(i, node, stack_ptr)
+        return modeled_stretching
+
     # TRAVERSAL — Binary-tree stack-based
 
     @ti.func
@@ -1643,6 +1734,45 @@ class TaichiTreecode:
             self.strain_rate[i] = strain
 
     @ti.kernel
+    def apply_vortex_stretching_sfs_kernel(
+        self,
+        vortex_strength_rate: ti.template(),
+        sfs_rate_out: ti.template(),
+        coefficient: ti.f32,
+        support_radius_ratio: ti.f32,
+        mode: ti.i32,
+        start_slot: ti.i32,
+        count: ti.i32,
+    ):
+        """Apply the exact compact SFS sum using the existing LBVH."""
+        n_nodes = self.n_nodes[None]
+        zeta_zero = self.zeta_kernel(0.0)
+        if ti.static(self.traversal_block_dim > 0):
+            ti.loop_config(block_dim=self.traversal_block_dim)
+        for local_slot in range(count):
+            slot = start_slot + local_slot
+            i = slot
+            if self.sort_particle_targets[None] != 0:
+                i = self.sorted_indices[slot]
+            modeled_stretching = self._traverse_particle_vortex_stretching_sfs(
+                i,
+                support_radius_ratio,
+                mode,
+                n_nodes,
+            )
+            correction = modeled_stretching * 0.0
+            # Keep forward transfer only: Gamma . correction <= 0.
+            if coefficient * self.vortex_strength[i].dot(modeled_stretching) >= 0.0:
+                correction = (
+                    -coefficient
+                    * self.core_radius[i] ** 3
+                    / zeta_zero
+                    * modeled_stretching
+                )
+                vortex_strength_rate[i] += correction
+            sfs_rate_out[i] = correction
+
+    @ti.kernel
     def _copy_freestream_from_field(self, src: ti.template()):
         """Device-to-device copy of a 0-d vec3, avoiding a host round-trip."""
         self.freestream_velocity[None] = src[None]
@@ -1727,6 +1857,29 @@ class TaichiTreecode:
             self._download_matrix_field(self.velocity_gradient, N),
             self._download_matrix_field(self.strain_rate, N),
         )
+
+    def apply_vortex_stretching_sfs(
+        self,
+        vortex_strength_rate,
+        sfs_rate_out,
+        coefficient: float,
+        support_radius_ratio: float,
+        mode: int,
+    ) -> None:
+        """Apply the near-field SFS correction from the current tree state."""
+        n_particles = int(self.n_particles_total[None])
+        for start in range(0, n_particles, _TRAVERSAL_BATCH_SIZE):
+            count = min(_TRAVERSAL_BATCH_SIZE, n_particles - start)
+            self.apply_vortex_stretching_sfs_kernel(
+                vortex_strength_rate,
+                sfs_rate_out,
+                coefficient,
+                support_radius_ratio,
+                mode,
+                start,
+                count,
+            )
+            ti.sync()
 
     # TARGET POINT EVALUATIONS
 

@@ -339,6 +339,7 @@ def split_stretched_filaments(
     max_stretch_factor: float,
     offset_fraction: float = 0.25,
     max_n_particles: int | None = None,
+    max_absolute_vortex_strength: float | None = None,
 ) -> FilamentRefinementResult:
     """Bisect over-stretched particles along their vortex-line direction.
 
@@ -371,6 +372,11 @@ def split_stretched_filaments(
         raise ValueError("reference_vortex_strength and reference_length must both have shape (N,)")
     if max_stretch_factor <= 1.0:
         raise ValueError("max_stretch_factor must be greater than one")
+    if max_absolute_vortex_strength is not None and (
+        not np.isfinite(max_absolute_vortex_strength)
+        or max_absolute_vortex_strength <= 0.0
+    ):
+        raise ValueError("max_absolute_vortex_strength must be finite and positive")
     if not 0.0 <= offset_fraction <= 0.5:
         raise ValueError("offset_fraction must be in [0, 0.5]")
     if (
@@ -395,14 +401,17 @@ def split_stretched_filaments(
 
     magnitude = np.linalg.norm(vortex_strength, axis=1)
     stretch_ratio = magnitude / reference_vortex_strength
-    selected = np.flatnonzero(stretch_ratio > max_stretch_factor)
+    risk = stretch_ratio / max_stretch_factor
+    if max_absolute_vortex_strength is not None:
+        risk = np.maximum(risk, magnitude / max_absolute_vortex_strength)
+    eligible = np.flatnonzero(risk > 1.0)
+    selected = eligible
+    if max_n_particles is not None:
+        available = max(0, max_n_particles - len(position))
+        if len(selected) > available:
+            priority = np.lexsort((selected, -risk[selected]))
+            selected = selected[priority[:available]]
     refined_count = len(selected)
-    final_count = len(position) + refined_count
-    if max_n_particles is not None and final_count > max_n_particles:
-        raise FilamentRefinementError(
-            f"filament refinement requires {final_count} particles, exceeding "
-            f"the declared budget {max_n_particles}"
-        )
 
     if refined_count == 0:
         source = np.arange(len(position), dtype=np.int64)
@@ -424,7 +433,9 @@ def split_stretched_filaments(
             isolated_kinetic_energy_change=0.0,
         )
 
-    retained = np.flatnonzero(stretch_ratio <= max_stretch_factor)
+    retained_mask = np.ones(len(position), dtype=bool)
+    retained_mask[selected] = False
+    retained = np.flatnonzero(retained_mask)
     direction = vortex_strength[selected] / magnitude[selected, None]
     current_line_length = reference_length[selected] * stretch_ratio[selected]
     displacement_magnitude = offset_fraction * current_line_length

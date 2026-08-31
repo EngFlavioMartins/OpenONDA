@@ -180,6 +180,13 @@ class VPMSolver:
             final_setup.stretching, "conserve_moments", False
         )
         self.stretching_conserve_energy = getattr(final_setup.stretching, "conserve_energy", False)
+        self.stretching_reformulated = getattr(final_setup.stretching, "reformulated", False)
+        self.vortex_stretching_sfs_coefficient = float(
+            final_setup.turbulence.vortex_stretching_sfs_coefficient
+        )
+        self.vortex_stretching_sfs_cutoff = float(
+            final_setup.turbulence.vortex_stretching_sfs_cutoff
+        )
         self.compute_device = final_setup.compute_device.upper()
         self.flow_model = final_setup.turbulence.flow_model.upper()
         self.viscous_scheme = final_setup.viscous.scheme
@@ -310,6 +317,12 @@ class VPMSolver:
                 particle_kernel=self.particle_kernel,
                 smagorinsky_coefficient=final_setup.turbulence.smagorinsky_coefficient,
                 subgrid_dissipation_coefficient=final_setup.turbulence.subgrid_dissipation_coefficient,
+                vortex_stretching_sfs_coefficient=(
+                    final_setup.turbulence.vortex_stretching_sfs_coefficient
+                ),
+                vortex_stretching_sfs_cutoff=(
+                    final_setup.turbulence.vortex_stretching_sfs_cutoff
+                ),
                 accumulator_dtype=self.accumulator_dtype,
             )
         self.stretching_enabled = final_setup.stretching.enabled
@@ -379,6 +392,8 @@ class VPMSolver:
                 set_domain_bounds_enforced=lambda value: setattr(
                     self, "_domain_bounds_enforced_this_step", bool(value)
                 ),
+                kinetic_energy_rate=lambda: self.kinetic_energy_rate,
+                viscous_kinetic_energy_rate=lambda: self.viscous_kinetic_energy_rate,
             )
         )
         active = self.stabilization.active_mechanisms()

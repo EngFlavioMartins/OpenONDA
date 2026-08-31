@@ -204,8 +204,16 @@ class SolverIO:
         angular_impulse = solver._flow_integrals.get("angular_impulse", np.zeros(3))
         net_vortex_strength = solver._flow_integrals.get("net_vortex_strength", np.zeros(3))
         particle_vortex_strength = solver.particle_vortex_strength
+        particle_core_radius = solver.particle_core_radius
         eddy_viscosity = solver.particles.eddy_viscosity_cpu()
         effective_viscosity = solver.particles.effective_viscosity_cpu()
+        n_particles = solver.particles.n_particles_total
+        if solver.vortex_stretching_sfs_coefficient > 0.0:
+            sfs_rate = solver.physics.sfs_rate_temp.to_numpy()[:n_particles]
+        else:
+            sfs_rate = np.zeros_like(particle_vortex_strength)
+        sfs_rate_magnitude = np.linalg.norm(sfs_rate, axis=1)
+        active_sfs = sfs_rate_magnitude > 0.0
 
         row = {
             "time": solver.time,
@@ -233,6 +241,13 @@ class SolverIO:
             "max_vortex_strength_magnitude": float(
                 np.linalg.norm(particle_vortex_strength, axis=1).max(initial=0.0)
             ),
+            "min_particle_core_radius": float(particle_core_radius.min())
+            if len(particle_core_radius)
+            else 0.0,
+            "mean_particle_core_radius": float(particle_core_radius.mean())
+            if len(particle_core_radius)
+            else 0.0,
+            "max_particle_core_radius": float(particle_core_radius.max(initial=0.0)),
             "mean_eddy_viscosity": float(eddy_viscosity.mean()) if len(eddy_viscosity) else 0.0,
             "max_eddy_viscosity": float(eddy_viscosity.max(initial=0.0)),
             "mean_effective_viscosity": float(effective_viscosity.mean())
@@ -242,6 +257,13 @@ class SolverIO:
             "invariant_projection_correction_ratio": float(
                 solver.physics.rate_projection_max_correction_ratio
             ),
+            "vortex_stretching_sfs_strength_transfer": float(
+                np.sum(particle_vortex_strength * sfs_rate)
+            ),
+            "vortex_stretching_sfs_active_fraction": float(active_sfs.mean())
+            if len(active_sfs)
+            else 0.0,
+            "max_vortex_stretching_sfs_rate": float(sfs_rate_magnitude.max(initial=0.0)),
         }
         row.update(solver._discretization_health)
         row.update(solver.stabilization.diagnostics)

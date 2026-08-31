@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-Self-induced velocity U/U₀ vs t*.
+Self-induced velocity U_ring/U_ref,0 versus normalized time t Gamma/R0^2.
 
-Compares DNS and LES (transposed stretching) ring self-induced velocity
+Compares DNS and LES vortex-ring self-induced velocity
 against the analytical Saffman model with Gaussian core diffusion.
 
 Saves: figures/vortex_ring_motion.png
 """
-
-from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -43,7 +41,9 @@ def zoom_axes(ax, ylim: tuple[float, float]):
 
 
 def main() -> None:
-    args = build_arg_parser("Self-induced velocity U/U₀ vs t*.").parse_args()
+    args = build_arg_parser(
+        "Self-induced velocity U_ring/U_ref,0 versus normalized time t Gamma/R0^2."
+    ).parse_args()
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
     n_skip = 7  # plot every n-th marker
@@ -102,8 +102,8 @@ def main() -> None:
     zoom.plot(saffman_t, saffman_nondimensional_velocity, **reference_style(), zorder=5)
 
     ax.set_title(r"Self-induced speed versus time")
-    ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
-    ax.set_ylabel(r"Self-induced speed, $U_\Gamma / U_{\text{ref},0}$")
+    ax.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
+    ax.set_ylabel(r"Self-induced speed, $U_{\rm ring}/U_{\rm ref,0}$")
     ax.set_ylim(0.25, 1.0)
     ax.set_xlim(0, plot_end)
     zoom.set_xticks([0, 1, 2, 3])

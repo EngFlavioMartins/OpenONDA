@@ -36,7 +36,7 @@ from scipy.optimize import root
 from scipy.sparse.linalg import LinearOperator, cg
 
 from ..numerics.fourier_integrals import gaussian_fourier_integrals
-from .filament_refinement import gaussian_particle_moments
+from .filament_refinement import gaussian_particle_moments, particle_moments
 
 
 class DivergenceRelaxationError(RuntimeError):
@@ -391,6 +391,44 @@ class _MomentNullspace:
 
     def to_correction(self, transformed: np.ndarray) -> np.ndarray:
         return self.sqrt_volume[:, None] * self.project_transformed(transformed)
+
+
+def restore_particle_moments(
+    position: np.ndarray,
+    vortex_strength: np.ndarray,
+    core_radius: np.ndarray,
+    particle_volume: np.ndarray,
+    reference_vortex_strength: np.ndarray,
+    *,
+    angular_core_coefficient: float,
+) -> tuple[np.ndarray, float]:
+    """Restore vector strength and both impulses with a minimum-norm correction."""
+
+    target = particle_moments(
+        position,
+        reference_vortex_strength,
+        core_radius,
+        angular_core_coefficient=angular_core_coefficient,
+    )
+    current = particle_moments(
+        position,
+        vortex_strength,
+        core_radius,
+        angular_core_coefficient=angular_core_coefficient,
+    )
+    moment_change = np.concatenate(
+        (target[0] - current[0], target[2] - current[2], target[3] - current[3])
+    )
+    correction = _MomentNullspace(
+        invariant_rows(
+            position,
+            core_radius,
+            angular_core_coefficient=angular_core_coefficient,
+        ),
+        particle_volume,
+    ).correction_for_moment_change(moment_change)
+    scale = max(np.linalg.norm(vortex_strength), np.finfo(float).tiny)
+    return vortex_strength + correction, float(np.linalg.norm(correction) / scale)
 
 
 def _constrained_divergence_relaxation_once(

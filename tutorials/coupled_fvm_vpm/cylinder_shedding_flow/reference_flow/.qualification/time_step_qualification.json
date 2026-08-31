@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "case": "fully_meshed_body_fitted_reference",
+  "grid": "g1",
+  "reynolds_number": 150.0,
+  "seed_amplitude": 0.05,
+  "production_selection": {
+    "time_step": 0.002,
+    "status": "accepted_through_developing_wake",
+    "qualified_through_time": 12.0
+  },
+  "trials": [
+    {
+      "time_step": 0.004,
+      "status": "rejected",
+      "last_step": 82,
+      "last_time": 0.328,
+      "maximum_courant_number": 2.814,
+      "maximum_continuity_error": 2.8e-05,
+      "reason": "CFL exceeded the hard 1.5 acceptance gate",
+      "evidence": "g1_seed0p05_dt0p004_rejected/solution/fvm.log"
+    },
+    {
+      "time_step": 0.002,
+      "status": "accepted_through_developing_wake",
+      "last_step": 6000,
+      "last_time": 12.0,
+      "maximum_courant_number": 0.1169849144068329,
+      "maximum_continuity_error": 5.707632585156432e-08,
+      "nonfinite_values": 0,
+      "drag_coefficient_at_last_step": 1.1014070842806682,
+      "checkpoint": "g1_pre_sampling_fix_t12/solution/checkpoint"
+    }
+  ],
+  "note": "Final temporal-independence acceptance still requires saturated-force comparison with a smaller time step."
+}

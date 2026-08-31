@@ -56,6 +56,7 @@ venv/
 # ===============================
 # Logs and temporary files
 # ===============================
+tmp/
 *.log
 *.jsonl
 *.tmp

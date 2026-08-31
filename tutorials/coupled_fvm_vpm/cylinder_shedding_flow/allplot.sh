@@ -23,6 +23,12 @@ echo
 echo "===== FIGURES ($format) ====="
 echo
 
+python assets/plot_reference_mesh.py --format "$format"
+if [ -f reference_flow/solution/grid_independence.json ]; then
+    python assets/plot_grid_independence.py --format "$format"
+else
+    echo "Skipping grid_independence: final convergence report is not available yet."
+fi
 python assets/plot_von_karman.py --format "$format"
 
 echo

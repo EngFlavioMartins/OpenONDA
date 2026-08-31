@@ -4,7 +4,7 @@ Pure analysis library over the probe and force time series; no solver, no
 matplotlib.  The central quantities are:
 
 ``normalized_transverse_velocity(t) = Uy(1.5D, 0, 0)/Uinf``  the primary instability observable, sampled
-every 0.05 s by both the hybrid and the fully meshed reference.
+every 0.1 convective unit by both the hybrid and the fully meshed reference.
 
 ``sigma``      linear growth rate of the envelope (ln A = ln initial_amplitude + sigma t)
 ``initial_amplitude``         initial antisymmetric amplitude extrapolated to t = 0

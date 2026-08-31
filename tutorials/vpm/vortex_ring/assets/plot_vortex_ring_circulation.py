@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-Vortex-ring tube circulation and vector-sum conservation vs t*.
+Vortex-ring tube circulation and vector-sum conservation versus t Gamma/R0^2.
 
 Saves: figures/vortex_ring_circulation.png
 """
-
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 
@@ -23,7 +21,7 @@ from ring_metrics import (
 )
 
 ZOOM_END = 3.2
-ZOOM_BOX = (0.54, 0.58, 0.40, 0.38)
+ZOOM_BOX = (0.54, 0.64, 0.40, 0.32)
 ZOOM_MARKER_SIZE = 2.0
 
 
@@ -50,15 +48,15 @@ def zoom_axes(ax, ylim: tuple[float, float]):
 
 def main() -> None:
     args = build_arg_parser(
-        "Tube circulation and vector-sum conservation — DNS & LES, all stretching variants."
+        "Tube-circulation estimate and vector-strength drift for all vortex-ring variants."
     ).parse_args()
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
-    colors, _ = load_theme()
+    load_theme()
 
     fig, (ax_tube, ax_sum) = plt.subplots(1, 2, figsize=figure_size("single_tall"), sharex=True)
-    fig.subplots_adjust(wspace=0.32, hspace=0.10, left=0.09, right=0.91, top=0.92, bottom=0.30)
+    fig.subplots_adjust(wspace=0.35, hspace=0.10, left=0.09, right=0.91, top=0.92, bottom=0.30)
     legend_handles = []
     legend_labels = []
 
@@ -66,7 +64,7 @@ def main() -> None:
 
     ax_sum.set_yscale("log")
     zoom_tube = zoom_axes(ax_tube, ylim=(0.98, 1.80))
-    zoom_sum = zoom_axes(ax_sum, ylim=(1e-8, 1e-2))
+    zoom_sum = zoom_axes(ax_sum, ylim=(1e-9, 1e-1))
     zoom_sum.set_yscale("log")
 
     for variant, st in VARIANT_STYLE.items():
@@ -85,13 +83,16 @@ def main() -> None:
         legend_labels.append(label)
 
     for ax in (ax_tube, ax_sum):
-        ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
+        ax.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
 
-    ax_tube.set_title(r"Tube circulation")
+    ax_tube.set_title(r"Tube-circulation estimate")
     ax_tube.set_ylabel(r"$\Gamma_{\rm tube}/\Gamma_{\rm tube,0}$")
     ax_tube.set_ylim(1.0, 1.6)
-    ax_sum.set_title(r"Vector-sum conservation")
-    ax_sum.set_ylabel(r"$\|\Sigma\alpha-\Sigma\alpha_0\|\,/\,\Sigma|\alpha|_0$")
+    ax_sum.set_title(r"Total-strength-vector drift")
+    ax_sum.set_ylabel(
+        r"$\|\sum_p\boldsymbol{\alpha}_p-\sum_p\boldsymbol{\alpha}_{p,0}\|"
+        r"\,/\,\sum_p|\boldsymbol{\alpha}_{p,0}|$"
+    )
     ax_sum.set_ylim(1e-9, 1e-1)
 
     fig.legend(

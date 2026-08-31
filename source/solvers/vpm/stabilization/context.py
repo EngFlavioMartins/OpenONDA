@@ -40,3 +40,6 @@ class StabilizationContext:
 
     domain_bounds_enforced: Callable[[], bool]
     set_domain_bounds_enforced: Callable[[bool], None]
+
+    kinetic_energy_rate: Callable[[], float] = lambda: 0.0
+    viscous_kinetic_energy_rate: Callable[[], float] = lambda: 0.0

@@ -12,6 +12,9 @@ from source.solvers.fvm.mesh.adaptive_cartesian import (
 )
 from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 from source.solvers.fvm.mesh.validation import validate_geometry, validate_topology
+from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.seed_perturbation import (
+    build_cylinder_initial_state,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 CASE_DIR = REPOSITORY_ROOT / "tutorials" / "coupled_fvm_vpm" / "cylinder_shedding_flow"
@@ -121,12 +124,33 @@ def test_cylinder_boundary_layer_supports_independent_spanwise_extrusion():
     assert quality["max_skewness"] < 0.5
 
 
+def test_cylinder_initial_state_and_seed_vanish_at_the_wall():
+    angle = np.linspace(0.0, 2.0 * np.pi, 32, endpoint=False)
+    radius = 0.5 + 1.0e-8
+    wall_points = np.column_stack(
+        [radius * np.cos(angle), radius * np.sin(angle), np.zeros_like(angle)]
+    )
+    x, y = np.meshgrid(np.linspace(-1.0, 2.0, 49), np.linspace(-1.0, 1.0, 33))
+    wake_points = np.column_stack([x.ravel(), y.ravel(), np.zeros(x.size)])
+    wake_points = wake_points[np.linalg.norm(wake_points[:, :2], axis=1) > 0.5]
+    points = np.vstack([wall_points, wake_points])
+    velocity, pressure = build_cylinder_initial_state(
+        points,
+        freestream_velocity=(1.0, 0.0, 0.0),
+        diameter=1.0,
+        seed_amplitude=0.05,
+    )
+    assert np.max(np.linalg.norm(velocity[: wall_points.shape[0]], axis=1)) < 1.0e-5
+    assert np.all(np.isfinite(pressure))
+
+
 def test_cylinder_tutorial_uses_stl_wall_patch_and_field_backups():
     reference = (CASE_DIR / "reference_flow" / "reference_flow_setup.py").read_text()
     assert CYLINDER_STL.is_file()
     assert "surface_file=" in (CASE_DIR / "benchmark_config.py").read_text()
     assert 'BoundaryConfig.wall("cylinder")' in reference
     assert "ForceSampler(" in reference
+    assert "spacing=cfg.SPANWISE_CELL_SIZE" in reference
     assert "cfg.field_output_interval()" in reference
     assert "ImmersedBody" not in reference
     assert "IBMForceSampler" not in reference
@@ -136,6 +160,7 @@ def test_cylinder_tutorial_uses_stl_wall_patch_and_field_backups():
     assert 'BoundaryConfig.wall("cylinder")' in coupled
     assert 'BoundaryConfig.slip("zmin")' in coupled
     assert 'BoundaryConfig.slip("zmax")' in coupled
+    assert "spacing=cfg.SPANWISE_CELL_SIZE" in coupled
     assert "cfg.field_output_interval()" in coupled
     assert "checkpoint_at_stop=True" in coupled
     assert "ImmersedBody" not in coupled
@@ -148,11 +173,12 @@ def test_cylinder_tutorial_matches_cube_flow_output_layout():
     reference_run = (CASE_DIR / "reference_flow" / "allrun.sh").read_text()
     coupled_run = (CASE_DIR / "allrun.sh").read_text()
 
-    assert "CASE_DIR = SOURCE_DIR" in reference
+    assert "OPENONDA_REFERENCE_CASE_DIR" in reference
+    assert "else SOURCE_DIR" in reference
     assert "CASE_DIR = SOURCE_DIR" in coupled
     assert "OPENONDA_RUN_DIR" not in reference
     assert "OPENONDA_RUN_DIR" not in coupled
-    assert "solution/reference_flow.stdout.log" in reference_run
+    assert '"$case_dir/solution/reference_flow.stdout.log"' in reference_run
     assert "solution/cylinder_shedding_flow.stdout.log" in coupled_run
 
     source_files = (

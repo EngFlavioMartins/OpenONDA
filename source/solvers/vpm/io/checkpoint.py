@@ -30,11 +30,13 @@ _COMPRESSION = {
 }
 _STABILIZATION_DIAGNOSTIC_NAMES = (
     "n_stabilization_events",
+    "n_regularization_events",
     "last_stabilization_mechanism",
     "stabilization_vortex_strength_error",
     "stabilization_vortex_strength_growth",
     "stabilization_vorticity_growth",
     "max_stabilization_vorticity_growth",
+    "stretching_viscosity_feedback_coefficient",
 )
 
 

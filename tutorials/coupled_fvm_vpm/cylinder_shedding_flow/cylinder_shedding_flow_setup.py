@@ -67,9 +67,7 @@ SEED_AMPLITUDE = cfg.seed_amplitude()
 FVM_TIME_STEP_SIZE = cfg.fvm_time_step(GRID)
 VPM_TIME_STEP_SIZE = 0.1 if GRID.name in {"smoke", "g0"} else 0.05
 VPM_SUBSTEPS = int(round(VPM_TIME_STEP_SIZE / FVM_TIME_STEP_SIZE))
-if not np.isclose(
-    VPM_SUBSTEPS * FVM_TIME_STEP_SIZE, VPM_TIME_STEP_SIZE, rtol=0.0, atol=1.0e-12
-):
+if not np.isclose(VPM_SUBSTEPS * FVM_TIME_STEP_SIZE, VPM_TIME_STEP_SIZE, rtol=0.0, atol=1.0e-12):
     raise ValueError("VPM time step must be an integer multiple of the FVM time step")
 
 if int(os.environ.get("OPENONDA_FVM_CORES", "1")) != 1:
@@ -83,12 +81,8 @@ FVM_LINE_STEPS = cfg.physical_sample_steps(FVM_TIME_STEP_SIZE, 0.2)
 VPM_LINE_STEPS = cfg.physical_sample_steps(VPM_TIME_STEP_SIZE, 0.2)
 FVM_SLICE_STEPS = cfg.physical_sample_steps(FVM_TIME_STEP_SIZE, 0.5)
 VPM_SLICE_STEPS = cfg.physical_sample_steps(VPM_TIME_STEP_SIZE, 0.5)
-FVM_BACKUP_STEPS = cfg.physical_sample_steps(
-    FVM_TIME_STEP_SIZE, cfg.field_output_interval()
-)
-VPM_BACKUP_STEPS = cfg.physical_sample_steps(
-    VPM_TIME_STEP_SIZE, cfg.field_output_interval()
-)
+FVM_BACKUP_STEPS = cfg.physical_sample_steps(FVM_TIME_STEP_SIZE, cfg.field_output_interval())
+VPM_BACKUP_STEPS = cfg.physical_sample_steps(VPM_TIME_STEP_SIZE, cfg.field_output_interval())
 
 FVM_FORCE_SCHEDULE = fvm.SamplingSchedule(every_n_steps=FVM_SAMPLE_STEPS)
 FVM_LINE_SCHEDULE = fvm.SamplingSchedule(every_n_steps=FVM_LINE_STEPS)
@@ -115,6 +109,8 @@ def _fvm_line_x(x: float, name: str) -> fvm.LineSampler:
         start=[x, WAKE_Y_BOUNDS[0], 0.0],
         end=[x, WAKE_Y_BOUNDS[1], 0.0],
         spacing=SAMPLE_SPACING,
+        k=12,
+        reconstruction="affine",
         file_name=f"fvm_{name}",
         schedule=FVM_LINE_SCHEDULE,
     )
@@ -144,6 +140,8 @@ FVM_SAMPLERS = (
         start=[1.5, 0.0, 0.0],
         end=[1.5, 0.0, 0.0],
         n_points=1,
+        k=12,
+        reconstruction="affine",
         file_name="fvm_midspan_probe",
         schedule=FVM_FORCE_SCHEDULE,
     ),
@@ -151,6 +149,8 @@ FVM_SAMPLERS = (
         start=[WAKE_X_BOUNDS[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SAMPLE_SPACING,
+        k=12,
+        reconstruction="affine",
         file_name="fvm_centreline",
         schedule=FVM_LINE_SCHEDULE,
     ),
@@ -158,9 +158,11 @@ FVM_SAMPLERS = (
     _fvm_line_x(2.0, "transverse_x2"),
     _fvm_line_x(4.0, "transverse_x4"),
     fvm.LineSampler(
-        start=[1.5, 0.0, -1.75],
-        end=[1.5, 0.0, 1.75],
-        spacing=SAMPLE_SPACING,
+        start=[1.5, 0.0, cfg.CYLINDER_Z_BOUNDS[0] + 0.5 * cfg.SPANWISE_CELL_SIZE],
+        end=[1.5, 0.0, cfg.CYLINDER_Z_BOUNDS[1] - 0.5 * cfg.SPANWISE_CELL_SIZE],
+        spacing=cfg.SPANWISE_CELL_SIZE,
+        k=12,
+        reconstruction="affine",
         file_name="fvm_spanwise_line",
         schedule=FVM_LINE_SCHEDULE,
     ),
@@ -169,9 +171,12 @@ FVM_SAMPLERS = (
         normal=[0.0, 0.0, 1.0],
         bounds=[FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]],
         spacing=SAMPLE_SPACING,
+        k=12,
+        reconstruction="affine",
         file_name="fvm_slice_z0",
         schedule=FVM_SLICE_SCHEDULE,
         body_bounds=FVM_MESH.surface_bounds,
+        body_geometry="cylinder_z",
     ),
 )
 

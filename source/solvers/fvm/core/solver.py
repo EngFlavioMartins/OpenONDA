@@ -547,6 +547,11 @@ class FVMSolver(CouplerInterfaceMixin):
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
         self._coupling_consistency_filter = None
+        # Optional conservative field projection applied after the pressure-
+        # velocity solve and before diagnostics, sampling, history commit, and
+        # output. Benchmarks can use this to enforce a known invariant
+        # subspace without bypassing the solver's normal bookkeeping.
+        self._post_solve_state_callback = None
         self._n_committed_time_steps = 0  # number of committed time steps (BDF2 startup gate)
         self._accepted_time_step_size = self.time_step_size
         self._last_residuals = None
@@ -770,6 +775,18 @@ class FVMSolver(CouplerInterfaceMixin):
         )
         self.state = FieldState(self.velocity, self.kinematic_pressure, self.volumetric_face_flux)
 
+    def set_post_solve_state_callback(self, callback) -> None:
+        """Set a state projection called before accepted-step diagnostics.
+
+        The callback receives this solver and may update owned cell values and
+        face fluxes in place. The solver then exchanges cell halos and rebuilds
+        velocity and pressure boundary ghosts before evaluating continuity,
+        forces, samplers, and output. Passing ``None`` disables the hook.
+        """
+        if callback is not None and not callable(callback):
+            raise TypeError("post-solve state callback must be callable or None")
+        self._post_solve_state_callback = callback
+
     def _initialize_turbulence(self):
         """Initialise the turbulence / LES model if configured.
 
@@ -960,6 +977,26 @@ class FVMSolver(CouplerInterfaceMixin):
                 ),
             )
         )
+        if self._post_solve_state_callback is not None:
+            self._post_solve_state_callback(self)
+            n_cells = self.mesh_data["n_cells"]
+            if self.parallel.is_partitioned:
+                self.parallel.exchange_halo(self.velocity[:n_cells])
+                self.parallel.exchange_halo(self.kinematic_pressure[:n_cells])
+            _enforce_velocity_boundary_constraints(
+                self.velocity,
+                self.boundaries,
+                n_cells,
+                self.mesh_data,
+                self.geo_data,
+            )
+            simple_solver.update_scalar_boundaries(
+                self.kinematic_pressure,
+                self.mesh_data,
+                self.boundaries,
+                "kinematic_pressure",
+                volumetric_face_flux=self.volumetric_face_flux,
+            )
         self._invalidate_derived_fields()
         self.state = FieldState(self.velocity, self.kinematic_pressure, self.volumetric_face_flux)
         self._last_residuals = residuals
@@ -1065,6 +1102,16 @@ class FVMSolver(CouplerInterfaceMixin):
             self.geo_data["cell_volume"],
             n_owned,
         )
+        projection_diagnostics = {}
+        if self._post_solve_state_callback is not None:
+            projection_diagnostics = {
+                str(name): float(value)
+                for name, value in getattr(
+                    self._post_solve_state_callback,
+                    "last_removed_maximum",
+                    {},
+                ).items()
+            }
         return StepDiagnostics(
             algorithm=self.setup.pimple.algorithm.upper(),
             step=self.step + 1,
@@ -1088,6 +1135,7 @@ class FVMSolver(CouplerInterfaceMixin):
             total_enstrophy=float(self.parallel.global_sum(local_enstrophy_integral)),
             min_eddy_viscosity=min_eddy_viscosity,
             max_eddy_viscosity=max_eddy_viscosity,
+            state_projection=projection_diagnostics,
         )
 
     def _enforce_acceptance_policy(self, diagnostics) -> None:

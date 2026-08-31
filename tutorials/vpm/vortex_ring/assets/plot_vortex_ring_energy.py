@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""
-Energy dissipation dE/dt and −kinematic_viscosityΩ vs t*.
+"""Resolved and modeled viscous energy rates for the vortex-ring cases.
 
-Compares DNS and LES (transposed stretching) energy diagnostics parsed
-from the solver log files for a single vortex ring.
+The resolved rate is a backward difference of the reconstructed-field kinetic
+energy.  The modeled viscous rate is evaluated directly with each particle's
+effective viscosity, including the Smagorinsky contribution in the LES case.
 
 Saves: figures/vortex_ring_energy.png
 """
-
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -55,11 +53,11 @@ def zoom_axes(ax, ylim: tuple[float, float]):
 
 
 def main() -> None:
-    args = build_arg_parser("Energy dissipation dE/dt & -kinematic_viscosityΩ vs t*.").parse_args()
+    args = build_arg_parser("Resolved and modeled viscous energy rates versus normalized time.").parse_args()
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 
-    colors, _ = load_theme()
+    load_theme()
 
     fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=figure_size("wide_short"), sharex=True)
     fig.subplots_adjust(wspace=0.50, left=0.14, right=0.87, top=0.92, bottom=0.29)
@@ -93,14 +91,14 @@ def main() -> None:
         legend_labels.append(label)
 
     for ax in (ax_de, ax_nuens):
-        ax.set_xlabel(r"Normalized time, $t\,\Gamma / R_0^2$")
+        ax.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
         ax.set_yscale("symlog", linthresh=ZOOM_FLOOR)
         ax.set_ylim(-5e-1, -5e-4)
 
-    ax_de.set_title(r"Energy rate versus time")
-    ax_de.set_ylabel(r"$(dE/dt)\,T_0\,/\,(\Gamma^2 R_0)$")
-    ax_nuens.set_title(r"Viscous dissipation versus time")
-    ax_nuens.set_ylabel(r"$(-\nu\varepsilon)\,T_0\,/\,(\Gamma^2 R_0)$")
+    ax_de.set_title(r"Resolved energy rate")
+    ax_de.set_ylabel(r"$(\Delta E_h/\Delta t)\,/(\Gamma^3/R_0)$")
+    ax_nuens.set_title(r"Modeled viscous energy rate")
+    ax_nuens.set_ylabel(r"$(\mathrm{d}E_h/\mathrm{d}t)_{\nu}\,/(\Gamma^3/R_0)$")
     fig.legend(
         legend_handles,
         legend_labels,

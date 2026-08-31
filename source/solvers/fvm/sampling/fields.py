@@ -2,8 +2,9 @@
 
 ``LineSampler`` probes a line segment into a growing time-aware CSV;
 ``SurfaceSampler`` probes an axis-aligned plane into per-event ``.vts``
-snapshots plus a PVD index.  Both interpolate solver cell fields at fixed
-probe points by inverse distance weighting over the nearest cell cell_centre.
+snapshots plus a PVD index. Both reconstruct solver cell fields at fixed probe
+points with inverse-distance weighting by default; a linear-exact local affine
+reconstruction is available for anisotropic probe layouts.
 
 Sampling is partition-aware: in a partitioned run the owned cell cell_centre and
 the required owned fields are gathered to root whenever a sampler is due, so
@@ -72,6 +73,7 @@ class _PointProbe(Sampler):
         points: np.ndarray,
         k: int = 5,
         inverse_distance_power: float = 2.0,
+        reconstruction: str = "idw",
         file_name: str | None = None,
         schedule=None,
     ):
@@ -79,23 +81,76 @@ class _PointProbe(Sampler):
         self.points = np.asarray(points, dtype=float)
         self.k = int(k)
         self.power = float(inverse_distance_power)
+        self.reconstruction = str(reconstruction).strip().lower()
+        if self.reconstruction not in {"idw", "affine"}:
+            raise ValueError("reconstruction must be 'idw' or 'affine'")
         self._tree = None
         self._tree_key = None
+        self._stencil = None
 
-    def _interpolate(self, field, cell_centre) -> np.ndarray:
-        # The key is derived from content so the tree survives across events
-        # even when the gathered cell-centre array is rebuilt on every step.
-        key = (len(cell_centre), tuple(np.asarray(cell_centre[0], dtype=float)))
+    def _interpolation_stencil(self, cell_centre: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Return cached neighbour indices and linear-exact MLS weights."""
+        cell_centre = np.asarray(cell_centre, dtype=float)
+        key = (
+            len(cell_centre),
+            tuple(cell_centre[0]),
+            tuple(cell_centre[-1]),
+        )
         if self._tree is None or self._tree_key != key:
             self._tree = cKDTree(cell_centre)
             self._tree_key = key
+            self._stencil = None
+        if self._stencil is not None:
+            return self._stencil
+
         k = min(self.k, len(cell_centre))
         dists, indices = self._tree.query(self.points, k=k)
         if k == 1:
             dists = dists[:, np.newaxis]
             indices = indices[:, np.newaxis]
-        weights = 1.0 / (dists + 1e-12) ** self.power
-        weights /= weights.sum(axis=1, keepdims=True)
+        idw = 1.0 / (dists + 1.0e-12) ** self.power
+        idw /= np.sum(idw, axis=1, keepdims=True)
+        if self.reconstruction == "idw":
+            self._stencil = (indices, idw)
+            return self._stencil
+
+        offsets = cell_centre[indices] - self.points[:, np.newaxis, :]
+        coordinate_scale = np.max(np.abs(offsets), axis=1)
+        coordinate_scale[coordinate_scale < 1.0e-12] = 1.0
+        design = np.concatenate(
+            (
+                np.ones((*offsets.shape[:2], 1), dtype=float),
+                offsets / coordinate_scale[:, np.newaxis, :],
+            ),
+            axis=2,
+        )
+        normal = np.einsum("nki,nk,nkj->nij", design, idw, design)
+        inverse = np.linalg.pinv(normal, rcond=1.0e-12)
+        intercept_column = inverse[:, :, 0]
+        weights = idw * np.einsum("nki,ni->nk", design, intercept_column)
+
+        # Constant fields must be reproduced exactly. A very ill-conditioned
+        # local cloud can produce large signed extrapolation weights; retain
+        # the bounded IDW result in that rare case.
+        weight_sum = np.sum(weights, axis=1, keepdims=True)
+        valid = (
+            np.all(np.isfinite(weights), axis=1)
+            & (np.abs(weight_sum[:, 0]) > 1.0e-12)
+            & (np.sum(np.abs(weights), axis=1) < 10.0)
+        )
+        weights[valid] /= weight_sum[valid]
+        weights[~valid] = idw[~valid]
+
+        exact_rows = np.any(dists <= MAX_EXACT_DISTANCE, axis=1)
+        if np.any(exact_rows):
+            weights[exact_rows] = 0.0
+            nearest = np.argmin(dists[exact_rows], axis=1)
+            weights[np.flatnonzero(exact_rows), nearest] = 1.0
+        self._stencil = (indices, weights)
+        return self._stencil
+
+    def _interpolate(self, field, cell_centre) -> np.ndarray:
+        indices, weights = self._interpolation_stencil(cell_centre)
         values = np.asarray(field)[indices]
         if np.asarray(field).ndim == 1:
             return np.sum(weights * values, axis=1)
@@ -150,6 +205,7 @@ class LineSampler(_PointProbe):
         spacing: float | None = None,
         k: int = 5,
         inverse_distance_power: float = 2.0,
+        reconstruction: str = "idw",
         file_name: str | None = None,
         schedule=None,
     ):
@@ -162,6 +218,7 @@ class LineSampler(_PointProbe):
             spacing: Point spacing; alternative to ``n_points``.
             k: Number of nearest neighbours used for interpolation.
             inverse_distance_power: Exponent used for inverse-distance weighting.
+            reconstruction: ``"idw"`` or linear-exact ``"affine"``.
             file_name: Base name for the output CSV.
             schedule: Optional :class:`~.base.SamplingSchedule`.
         """
@@ -177,6 +234,7 @@ class LineSampler(_PointProbe):
             start + np.outer(t, end - start),
             k=k,
             inverse_distance_power=inverse_distance_power,
+            reconstruction=reconstruction,
             file_name=file_name,
             schedule=schedule,
         )
@@ -192,7 +250,8 @@ class LineSampler(_PointProbe):
                 "end": self.end.tolist(),
                 "n_points": self.n_points,
                 "k": self.k,
-                "power": self.power,
+                "inverse_distance_power": self.power,
+                "reconstruction": self.reconstruction,
             }
         )
         return spec
@@ -243,9 +302,11 @@ class SurfaceSampler(_PointProbe):
         spacing: float,
         k: int = 5,
         inverse_distance_power: float = 2.0,
+        reconstruction: str = "idw",
         file_name: str | None = None,
         schedule=None,
         body_bounds=None,
+        body_geometry: str = "box",
     ):
         """Initialize the surface sampler.
 
@@ -258,6 +319,7 @@ class SurfaceSampler(_PointProbe):
             spacing: Grid point spacing.
             k: Number of nearest neighbours used for interpolation.
             inverse_distance_power: Exponent used for inverse-distance weighting.
+            reconstruction: ``"idw"`` or linear-exact ``"affine"``.
             file_name: Base name for the output files.
             schedule: Optional :class:`~.base.SamplingSchedule`.
             body_bounds: Optional axis-aligned solid bounds ``(xmin, xmax,
@@ -265,6 +327,9 @@ class SurfaceSampler(_PointProbe):
                 the body are masked in the output (``vtkValidPointMask`` zero,
                 NaN field values) so the slice never shows a flow field inside
                 the solid.
+            body_geometry: ``"box"`` masks the complete bounding box;
+                ``"cylinder_z"`` interprets equal x/y half-widths as a circular
+                cylinder radius and retains the supplied z bounds.
         """
         point = np.asarray(point, dtype=float)
         normal = np.asarray(normal, dtype=float)
@@ -289,6 +354,7 @@ class SurfaceSampler(_PointProbe):
             points,
             k=k,
             inverse_distance_power=inverse_distance_power,
+            reconstruction=reconstruction,
             file_name=file_name,
             schedule=schedule,
         )
@@ -298,18 +364,33 @@ class SurfaceSampler(_PointProbe):
         self.spacing = float(spacing)
         self.grid_shape = C1.shape
         self._pvd_entries: list[tuple[float, str]] = []
+        body_geometry = str(body_geometry).strip().lower()
+        if body_geometry not in {"box", "cylinder_z"}:
+            raise ValueError("body_geometry must be 'box' or 'cylinder_z'")
+        self._body_geometry = body_geometry
         if body_bounds is not None:
             body_bounds = np.asarray(body_bounds, dtype=float)
             if body_bounds.shape != (6,):
                 raise ValueError("body_bounds must contain six coordinates")
-            inside = (
-                (points[:, 0] > body_bounds[0])
-                & (points[:, 0] < body_bounds[1])
-                & (points[:, 1] > body_bounds[2])
-                & (points[:, 1] < body_bounds[3])
-                & (points[:, 2] > body_bounds[4])
-                & (points[:, 2] < body_bounds[5])
-            )
+            inside_z = (points[:, 2] > body_bounds[4]) & (points[:, 2] < body_bounds[5])
+            if body_geometry == "cylinder_z":
+                centre_x = 0.5 * (body_bounds[0] + body_bounds[1])
+                centre_y = 0.5 * (body_bounds[2] + body_bounds[3])
+                radius_x = 0.5 * (body_bounds[1] - body_bounds[0])
+                radius_y = 0.5 * (body_bounds[3] - body_bounds[2])
+                if not np.isclose(radius_x, radius_y, rtol=1.0e-12, atol=1.0e-12):
+                    raise ValueError("cylinder_z body bounds must have equal x/y radii")
+                inside = (
+                    (points[:, 0] - centre_x) ** 2 + (points[:, 1] - centre_y) ** 2 < radius_x**2
+                ) & inside_z
+            else:
+                inside = (
+                    (points[:, 0] > body_bounds[0])
+                    & (points[:, 0] < body_bounds[1])
+                    & (points[:, 1] > body_bounds[2])
+                    & (points[:, 1] < body_bounds[3])
+                    & inside_z
+                )
             self._body_bounds = body_bounds
             self._inside_mask = inside
         else:
@@ -325,10 +406,12 @@ class SurfaceSampler(_PointProbe):
                 "bounds": self.bounds.tolist(),
                 "spacing": self.spacing,
                 "k": self.k,
-                "power": self.power,
+                "inverse_distance_power": self.power,
+                "reconstruction": self.reconstruction,
                 "body_bounds": self._body_bounds.tolist()
                 if self._body_bounds is not None
                 else None,
+                "body_geometry": self._body_geometry,
             }
         )
         return spec
@@ -367,8 +450,10 @@ class SurfaceSampler(_PointProbe):
         if self._inside_mask is not None:
             # Probe points inside the body have no physical fluid value; mark
             # them invalid and blank their fields so the slice never appears to
-            # contain a flow inside the solid.
-            inside = self._inside_mask
+            # contain a flow inside the solid.  Point fields have already been
+            # converted from the sampler's C-order plane to VTK's Fortran
+            # ordering, so the geometric mask must undergo the same mapping.
+            inside = _field(self._inside_mask).astype(bool)
             valid_mask[inside] = 0
             velocity[inside] = np.nan
             vorticity[inside] = np.nan

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import numpy as np
@@ -24,10 +25,10 @@ INTENDED_CASE_ORDER = {
     for order, name in enumerate(
         (
             "leapfrog_les",
-            "leapfrog_les_splitting",
-            "leapfrog_les_realignment",
+            "leapfrog_les_rvpm",
+            "leapfrog_les_rvpm_sfs",
             "collide_les",
-            "collide_les_realignment",
+            "collide_les_rvpm_sfs",
         )
     )
 }
@@ -143,6 +144,26 @@ def case_style(name: str) -> dict:
             "color": theme.COLORS["FVMorange"],
             "marker": "^",
         },
+        "les_remeshing": {
+            "label": "LES + remeshing",
+            "color": theme.COLORS["AccentGreen"],
+            "marker": "v",
+        },
+        "les_combined": {
+            "label": "LES + combined",
+            "color": theme.COLORS["TUDdark"],
+            "marker": "o",
+        },
+        "les_rvpm": {
+            "label": "Reformulated VPM",
+            "color": theme.COLORS["VPMpurple"],
+            "marker": "D",
+        },
+        "les_rvpm_sfs": {
+            "label": "Reformulated VPM + SFS",
+            "color": theme.COLORS["AccentGreen"],
+            "marker": "o",
+        },
     }
     style = styles[variant]
     return {
@@ -196,6 +217,21 @@ def _trim_to_last_monotone_segment(df: pd.DataFrame, time_column: str) -> pd.Dat
     return df
 
 
+def _merge_checkpoint_restarts(df: pd.DataFrame, case_dir: str | Path) -> pd.DataFrame:
+    """Merge identical checkpoint continuations while keeping their latest samples."""
+    manifest_path = Path(case_dir) / "run_manifest.json"
+    if "step" not in df.columns or not manifest_path.is_file():
+        return df
+    manifest = json.loads(manifest_path.read_text())
+    if "restart_from" not in manifest:
+        return df
+    return (
+        df.sort_values("step", kind="stable")
+        .drop_duplicates("step", keep="last")
+        .reset_index(drop=True)
+    )
+
+
 def read_integrals(case_dir) -> pd.DataFrame | None:
     """Return the VPM flow-integral history."""
     path = _samples_dir(case_dir) / "flow_integrals.csv"
@@ -207,7 +243,9 @@ def read_integrals(case_dir) -> pd.DataFrame | None:
     diagnostics = diagnostics.dropna(subset=["time", "total_kinetic_energy"])
     if diagnostics.empty:
         return None
-    return _trim_to_last_monotone_segment(diagnostics.reset_index(drop=True), "time")
+    diagnostics = diagnostics.reset_index(drop=True)
+    diagnostics = _merge_checkpoint_restarts(diagnostics, case_dir)
+    return _trim_to_last_monotone_segment(diagnostics, "time")
 
 
 def read_metric(case_dir, column: str):
@@ -232,6 +270,7 @@ def read_ring_diagnostics(case_dir) -> pd.DataFrame | None:
     if diagnostics.empty or not set(required).issubset(diagnostics.columns):
         return None
     diagnostics = diagnostics.dropna(subset=required)
+    diagnostics = _merge_checkpoint_restarts(diagnostics, case_dir)
     diagnostics = _trim_to_last_monotone_segment(diagnostics, "time")
     return (
         diagnostics.sort_values(["step", "group_id"], kind="stable")
@@ -254,4 +293,5 @@ def save_fig(
         figure_format=figure_format,
         dpi=dpi,
         tight_rect=tight_rect,
+        bbox_inches=None,
     )

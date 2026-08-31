@@ -18,10 +18,16 @@ class ParticlesLES:
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
+        vortex_stretching_sfs_coefficient: float = 0.0,
+        vortex_stretching_sfs_cutoff: float = 4.0,
     ) -> None:
         self.model_name = model_name.upper()
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.upper()
+        self.vortex_stretching_sfs_coefficient = float(
+            vortex_stretching_sfs_coefficient
+        )
+        self.vortex_stretching_sfs_cutoff = float(vortex_stretching_sfs_cutoff)
 
         if self.model_name not in {"SMAGORINSKY", "LES_SMAGORINSKY"}:
             raise ValueError(f"Unknown LES model: {model_name!r}")
@@ -44,7 +50,16 @@ class ParticlesLES:
 
     def report_rows(self) -> list:
         """Return the active turbulence model's configuration as log detail rows."""
-        return self.model.report_rows()
+        rows = self.model.report_rows()
+        if self.vortex_stretching_sfs_coefficient > 0.0:
+            rows.extend(
+                [
+                    ("vortex-stretching SFS, c_d", f"{self.vortex_stretching_sfs_coefficient:.4f}"),
+                    ("SFS support", f"{self.vortex_stretching_sfs_cutoff:.2f} sigma"),
+                    ("SFS backscatter", "clipped"),
+                ]
+            )
+        return rows
 
     @classmethod
     def rebuild(
@@ -64,6 +79,12 @@ class ParticlesLES:
             subgrid_dissipation_coefficient=getattr(
                 turbulence_config, "subgrid_dissipation_coefficient", 1.048
             ),
+            vortex_stretching_sfs_coefficient=getattr(
+                turbulence_config, "vortex_stretching_sfs_coefficient", 0.0
+            ),
+            vortex_stretching_sfs_cutoff=getattr(
+                turbulence_config, "vortex_stretching_sfs_cutoff", 4.0
+            ),
             accumulator_dtype=accumulator_dtype,
         )
 
@@ -75,6 +96,12 @@ class ParticlesLES:
         particles,
         time_step_size: float | None = None,
     ) -> None:
+        if self.model.smagorinsky_coefficient == 0.0:
+            self.min_eddy_viscosity = 0.0
+            self.max_eddy_viscosity = 0.0
+            self.min_eddy_viscosity_ratio = 0.0
+            self.max_eddy_viscosity_ratio = 0.0
+            return
         self.model.compute(particles, time_step_size)
         self.update_turbulence_statistics(particles)
 
@@ -94,6 +121,7 @@ class ParticlesLES:
             particles.eddy_viscosity,
             n_particles_total,
         )
+        ti.sync()
 
         self.min_eddy_viscosity = float(self._min_eddy_viscosity_field[None])
         self.max_eddy_viscosity = float(self._max_eddy_viscosity_field[None])
@@ -122,6 +150,7 @@ class ParticlesLES:
         eddy_viscosity: ti.template(),
         n_particles_total: ti.i32,
     ):
+        ti.loop_config(serialize=True)
         for i in range(n_particles_total):
-            ti.atomic_min(minimum[None], eddy_viscosity[i])
-            ti.atomic_max(maximum[None], eddy_viscosity[i])
+            minimum[None] = ti.min(minimum[None], eddy_viscosity[i])
+            maximum[None] = ti.max(maximum[None], eddy_viscosity[i])

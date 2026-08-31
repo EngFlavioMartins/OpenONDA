@@ -14,10 +14,14 @@ verification variant without editing the case:
 ``OPENONDA_END_TIME``
     Override the production horizon (default 60 convective units).
 ``OPENONDA_SEED_AMPLITUDE``
-    Shared divergence-free antisymmetric seed (default 1e-3).
+    Shared divergence-free antisymmetric seed (default 5e-2).
 ``OPENONDA_FIELD_OUTPUT_INTERVAL``
     Physical interval between compressed full-field/checkpoint backups
     (default 2 convective units).
+``OPENONDA_REFERENCE_CASE_DIR``
+    Optional dedicated output case containing ``solution/`` and ``samples/``.
+    Sequential verification members use it so canonical G1 fields are never
+    overwritten.
 """
 
 from __future__ import annotations
@@ -95,6 +99,14 @@ class GridSpec:
     transition_layers: int
 
 
+# Let h denote tangential cylinder resolution. G0/G1/G2 keep the wall-normal
+# first cell at h/8. A diagnostic G2 variant that retained G1's 1/128-D first
+# wall height became coherently unstable at t=0.14 even after exact spanwise
+# projection; its pressure range grew from O(1) to O(10^3) while CFL crossed
+# the fixed gate. Restore the original G2 wall-normal profile, which completed
+# a healthy Euler trajectory to t=6. Its separate nonphysical spanwise drift
+# is controlled by the audited conservative invariant projection at Re=150.
+# The quiet far field remains at 0.5D and is connected by balanced transitions.
 GRID_SPECS = {
     "smoke": GridSpec(
         "smoke", 0.5, 0.125, 0.25, 0.25, 0.5, 0.005, 100_000,
@@ -116,9 +128,14 @@ GRID_SPECS = {
 
 BOUNDARY_LAYER_INTERFACE_HALF_WIDTH = 0.75
 # Re=150 is below the secondary three-dimensional wake instability. Keep the
-# complete 4D physical span, but avoid duplicating the x-y refinement in z:
-# sixteen native hexahedral slabs are sufficient to verify spanwise uniformity.
-SPANWISE_CELL_SIZE = 0.25
+# complete 4D physical span, but avoid duplicating the x-y refinement in z.
+# Eight native hexahedral slabs retain a genuinely 3-D mesh and are qualified
+# against the sixteen-slab variant before production.
+SPANWISE_CELL_SIZE = float(
+    (os.environ.get("OPENONDA_SPANWISE_CELL_SIZE") or "0.5").strip()
+)
+if not math.isfinite(SPANWISE_CELL_SIZE) or SPANWISE_CELL_SIZE <= 0.0:
+    raise ValueError("OPENONDA_SPANWISE_CELL_SIZE must be finite and positive")
 
 
 def _choice(name: str, values: dict, default: str):
@@ -166,7 +183,7 @@ def fvm_time_step(grid: GridSpec) -> float:
 
 
 def seed_amplitude() -> float:
-    value = float((os.environ.get("OPENONDA_SEED_AMPLITUDE") or "1e-3").strip())
+    value = float((os.environ.get("OPENONDA_SEED_AMPLITUDE") or "5e-2").strip())
     if not math.isfinite(value) or value < 0.0:
         raise ValueError("OPENONDA_SEED_AMPLITUDE must be finite and non-negative")
     return value

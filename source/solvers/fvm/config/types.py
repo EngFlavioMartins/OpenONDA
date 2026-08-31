@@ -267,6 +267,7 @@ class PimpleControl:
     tolerance: float = 1e-6
     velocity_relaxation: float = 1.0
     pressure_relaxation: float = 1.0
+    ddt_corr: bool = True
     ibm_forcing_loops: int = 2
     ibm_second_solve: bool = True
 

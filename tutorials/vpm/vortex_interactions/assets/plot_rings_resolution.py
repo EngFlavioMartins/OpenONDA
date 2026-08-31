@@ -22,6 +22,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from ring_metrics import (
+    FAMILIES,
+    FAMILY_FILE_STEMS,
+    FAMILY_LABELS,
     REFERENCE_TIME,
     build_arg_parser,
     case_style,
@@ -47,74 +50,84 @@ def main() -> None:
     ).parse_args()
 
     load_theme()
-    fig, axes = plt.subplots(3, 1, figsize=figure_size("stacked"), sharex=True)
-    fig.subplots_adjust(left=0.16, right=0.98, top=0.93, bottom=0.19, hspace=0.12)
-    ax_overlap, ax_divergence, ax_angle = axes
-
-    panels = (
-        (ax_overlap, "mean_overlap_ratio", False),
-        (ax_divergence, "vorticity_divergence_error", True),
-        (ax_angle, "vortex_strength_misalignment_degrees", True),
-    )
-
-    plotted: list[str] = []
-    for case_dir in discover_cases(args.solution_dir):
-        df = read_integrals(case_dir)
-        if df is None or len(df) == 0:
-            continue
-        st = case_style(case_dir.name)
-        nondimensional_time = df["time"].to_numpy(float) / REFERENCE_TIME
-        common = dict(
-            color=st["color"],
-            linestyle=st["linestyle"],
-            lw=st["linewidth"],
-            marker=st["marker"],
-            ms=st["markersize"],
-            markevery=mark_every("total_kinetic_energy"),
-            mew=st["markeredgewidth"],
+    for family in FAMILIES:
+        width, height = figure_size("stacked")
+        fig, axes = plt.subplots(
+            4,
+            1,
+            figsize=(width, 1.2 * height),
+            sharex=True,
+            gridspec_kw={"height_ratios": (0.75, 1.0, 1.0, 1.0)},
         )
-        for axis, column, positive_only in panels:
-            if column not in df.columns:
+        fig.suptitle(f"{FAMILY_LABELS[family]}: discretization health")
+        ax_legend, ax_overlap, ax_divergence, ax_angle = axes
+        ax_legend.axis("off")
+
+        panels = (
+            (ax_overlap, "mean_overlap_ratio", False),
+            (ax_divergence, "vorticity_divergence_error", True),
+            (ax_angle, "vortex_strength_misalignment_degrees", True),
+        )
+
+        plotted: list[str] = []
+        for case_dir in discover_cases(args.solution_dir, family=family):
+            df = read_integrals(case_dir)
+            if df is None or len(df) == 0:
                 continue
-            series = df[column].to_numpy(float)
-            if positive_only:
-                series = series.clip(min=1e-12)
-            axis.plot(nondimensional_time, series, label=st["label"], **common)
-        plotted.append(case_dir.name)
+            st = case_style(case_dir.name)
+            nondimensional_time = df["time"].to_numpy(float) / REFERENCE_TIME
+            common = dict(
+                color=st["color"],
+                linestyle=st["linestyle"],
+                lw=st["linewidth"],
+                marker=st["marker"],
+                ms=st["markersize"],
+                markevery=mark_every("total_kinetic_energy"),
+                mew=st["markeredgewidth"],
+            )
+            for axis, column, positive_only in panels:
+                if column not in df.columns:
+                    continue
+                series = df[column].to_numpy(float)
+                if positive_only:
+                    series = series.clip(min=1e-12)
+                axis.plot(nondimensional_time, series, **common)
+            plotted.append(case_dir.name)
 
-    ax_overlap.set_ylabel(r"$h_{\mathrm{nn}}/\sigma_p$")
-    ax_overlap.set_title("Discretization health")
-    ax_overlap.axhspan(MAX_OVERLAP_RATIO, 10.0, **reference_fill_style("strong"))
-    ax_overlap.set_ylim(0.0, 1.2)
+        ax_overlap.set_ylabel(r"$h_{\mathrm{nn}}/\sigma_p$")
+        ax_overlap.axhspan(MAX_OVERLAP_RATIO, 10.0, **reference_fill_style("strong"))
+        ax_overlap.set_ylim(0.0, 1.2)
 
-    ax_divergence.set_yscale("log")
-    ax_divergence.set_ylabel(
-        r"$\|\nabla\!\cdot\!\boldsymbol{\omega}\|"
-        r"\,/\,\|\nabla\boldsymbol{\omega}\|$"
-    )
-    ax_divergence.axhspan(MAX_DIVERGENCE_ERROR, 10.0, **reference_fill_style("strong"))
-
-    ax_angle.set_yscale("log")
-    ax_angle.set_ylabel(
-        r"$\angle(\boldsymbol{\alpha}_p,\boldsymbol{\omega}_p)$ [deg]"
-    )
-    ax_angle.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
-    ax_angle.axhspan(MAX_MISALIGNMENT_DEG, 180.0, **reference_fill_style("strong"))
-
-    if plotted:
-        fig.legend(
-            handles=case_legend_handles(plotted),
-            ncol=3,
-            loc="lower center",
-            bbox_to_anchor=(0.5, 0.0),
+        ax_divergence.set_yscale("log")
+        ax_divergence.set_ylabel(
+            r"$\|\nabla\!\cdot\!\boldsymbol{\omega}\|"
+            r"\,/\,\|\nabla\boldsymbol{\omega}\|$"
         )
+        ax_divergence.axhspan(MAX_DIVERGENCE_ERROR, 10.0, **reference_fill_style("strong"))
 
-    save_fig(
-        fig,
-        Path("figures") / "rings_resolution.png",
-        dpi=args.dpi,
-        figure_format=args.format,
-    )
+        ax_angle.set_yscale("log")
+        ax_angle.set_ylabel(
+            r"$\angle(\boldsymbol{\alpha}_p,\boldsymbol{\omega}_p)$ [deg]"
+        )
+        ax_angle.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
+        ax_angle.axhspan(MAX_MISALIGNMENT_DEG, 180.0, **reference_fill_style("strong"))
+
+        if plotted:
+            many_methods = len(plotted) > 3
+            ax_legend.legend(
+                handles=case_legend_handles(plotted),
+                ncol=2 if many_methods else len(plotted),
+                loc="center",
+                columnspacing=1.0,
+                handletextpad=0.5,
+            )
+
+        save_fig(
+            fig,
+            Path("figures") / f"{FAMILY_FILE_STEMS[family]}_resolution.png",
+            dpi=args.dpi,
+            figure_format=args.format,
+        )
 
 
 if __name__ == "__main__":

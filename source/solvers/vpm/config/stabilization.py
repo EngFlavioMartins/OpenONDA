@@ -13,11 +13,18 @@ class StabilizationConfig:
     """Optional VPM stabilization and particle-retention policy."""
 
     stretching_viscosity_coefficient: float = 0.0
+    stretching_viscosity_start_step: int = 0
+    stretching_viscosity_feedback_gain: float = 0.0
+    stretching_viscosity_feedback_interval_steps: int = 5
+    stretching_viscosity_feedback_growth_limit: float = 0.25
+    stretching_viscosity_max_coefficient: float | None = None
 
     pedrizzetti_relaxation_factor: float = 0.0
     pedrizzetti_relaxation_interval_steps: int = 1
     pedrizzetti_relaxation_start_step: int = 0
+    pedrizzetti_relaxation_end_step: int | None = None
     pedrizzetti_relaxation_preserve_vortex_strength: bool = True
+    pedrizzetti_relaxation_preserve_moments: bool = False
 
     filament_refinement: FilamentRefinementConfig = field(
         default_factory=FilamentRefinementConfig.disabled
@@ -33,12 +40,15 @@ class StabilizationConfig:
     regularization_grid_spacing: float | None = None
     regularization_tail_budget: float = 3.0e-3
     regularization_max_particles: int | None = None
+    regularization_capacity_max_particles: int | None = None
+    regularization_max_events: int | None = None
     regularization_total_kinetic_energy_dissipation_limit: float = 0.15
     regularization_total_enstrophy_dissipation_limit: float = 0.15
     regularization_divergence_trigger: float = 0.04
     regularization_misalignment_trigger: float = 20.0
     regularization_capacity_divergence_trigger: float | None = None
     regularization_capacity_misalignment_trigger: float | None = None
+    regularization_capacity_energy_rate_trigger: float | None = None
     regularization_capacity_fraction: float = 1.0
     regularization_capacity_grid_spacing: float | None = None
     regularization_core_radius: float | None = None
@@ -56,6 +66,29 @@ class StabilizationConfig:
             or self.stretching_viscosity_coefficient < 0.0
         ):
             raise ValueError("stretching_viscosity_coefficient must be finite and non-negative")
+        if self.stretching_viscosity_start_step < 0:
+            raise ValueError("stretching_viscosity_start_step must be non-negative")
+        if (
+            not np.isfinite(self.stretching_viscosity_feedback_gain)
+            or self.stretching_viscosity_feedback_gain < 0.0
+        ):
+            raise ValueError("stretching_viscosity_feedback_gain must be finite and non-negative")
+        if self.stretching_viscosity_feedback_interval_steps < 1:
+            raise ValueError("stretching_viscosity_feedback_interval_steps must be at least one")
+        if (
+            not np.isfinite(self.stretching_viscosity_feedback_growth_limit)
+            or not 0.0 < self.stretching_viscosity_feedback_growth_limit <= 1.0
+        ):
+            raise ValueError("stretching_viscosity_feedback_growth_limit must lie in (0, 1]")
+        if self.stretching_viscosity_max_coefficient is not None and (
+            not np.isfinite(self.stretching_viscosity_max_coefficient)
+            or self.stretching_viscosity_max_coefficient
+            < self.stretching_viscosity_coefficient
+        ):
+            raise ValueError(
+                "stretching_viscosity_max_coefficient must be finite and no smaller "
+                "than stretching_viscosity_coefficient"
+            )
         if (
             not np.isfinite(self.pedrizzetti_relaxation_factor)
             or not 0.0 <= self.pedrizzetti_relaxation_factor <= 1.0
@@ -65,6 +98,12 @@ class StabilizationConfig:
             raise ValueError("pedrizzetti_relaxation_interval_steps must be at least one")
         if self.pedrizzetti_relaxation_start_step < 0:
             raise ValueError("pedrizzetti_relaxation_start_step must be non-negative")
+        if self.pedrizzetti_relaxation_end_step is not None and (
+            self.pedrizzetti_relaxation_end_step < self.pedrizzetti_relaxation_start_step
+        ):
+            raise ValueError(
+                "pedrizzetti_relaxation_end_step must be no smaller than the start step"
+            )
 
         if self.remove_particles_by_bounds is not None:
             bounds = tuple(float(value) for value in self.remove_particles_by_bounds)
@@ -88,6 +127,13 @@ class StabilizationConfig:
             raise ValueError("enabled regularization requires finite positive grid spacing")
         if self.regularization_max_particles is not None and self.regularization_max_particles <= 0:
             raise ValueError("regularization_max_particles must be positive or None")
+        if (
+            self.regularization_capacity_max_particles is not None
+            and self.regularization_capacity_max_particles <= 0
+        ):
+            raise ValueError("regularization_capacity_max_particles must be positive or None")
+        if self.regularization_max_events is not None and self.regularization_max_events <= 0:
+            raise ValueError("regularization_max_events must be positive or None")
         if not 0.0 < self.regularization_tail_budget < 1.0:
             raise ValueError("regularization_tail_budget must lie in (0, 1)")
         if not 0.0 < self.regularization_total_kinetic_energy_dissipation_limit < 1.0:
@@ -112,6 +158,11 @@ class StabilizationConfig:
             0.0 <= self.regularization_capacity_misalignment_trigger <= 180.0
         ):
             raise ValueError("regularization_capacity_misalignment_trigger must lie in [0, 180]")
+        if self.regularization_capacity_energy_rate_trigger is not None and (
+            not np.isfinite(self.regularization_capacity_energy_rate_trigger)
+            or self.regularization_capacity_energy_rate_trigger < 0.0
+        ):
+            raise ValueError("regularization_capacity_energy_rate_trigger must be non-negative")
         if not 0.0 < self.regularization_capacity_fraction <= 1.0:
             raise ValueError("regularization_capacity_fraction must lie in (0, 1]")
         if self.regularization_capacity_grid_spacing is not None and (
@@ -165,9 +216,13 @@ class StabilizationConfig:
     @staticmethod
     def stretching_viscosity(
         coefficient: float = 0.5,
+        start_step: int = 0,
     ) -> "StabilizationConfig":
         """Enable stretching-aware residual viscosity."""
-        return StabilizationConfig(stretching_viscosity_coefficient=coefficient)
+        return StabilizationConfig(
+            stretching_viscosity_coefficient=coefficient,
+            stretching_viscosity_start_step=start_step,
+        )
 
     @staticmethod
     def pedrizzetti_relaxation(
@@ -175,14 +230,18 @@ class StabilizationConfig:
         factor: float = 0.3,
         interval_steps: int = 1,
         start_step: int = 0,
+        end_step: int | None = None,
         preserve_vortex_strength: bool = True,
+        preserve_moments: bool = False,
     ) -> "StabilizationConfig":
         """Enable Pedrizzetti relaxation at a fixed step interval."""
         return StabilizationConfig(
             pedrizzetti_relaxation_factor=factor,
             pedrizzetti_relaxation_interval_steps=interval_steps,
             pedrizzetti_relaxation_start_step=start_step,
+            pedrizzetti_relaxation_end_step=end_step,
             pedrizzetti_relaxation_preserve_vortex_strength=(preserve_vortex_strength),
+            pedrizzetti_relaxation_preserve_moments=preserve_moments,
         )
 
     @staticmethod
@@ -193,6 +252,8 @@ class StabilizationConfig:
         start_step: int,
         grid_spacing: float,
         max_n_particles: int,
+        capacity_max_n_particles: int | None = None,
+        max_events: int | None = None,
         tail_budget: float = 3.0e-3,
         total_kinetic_energy_dissipation_limit: float = 0.15,
         total_enstrophy_dissipation_limit: float = 0.15,
@@ -214,6 +275,8 @@ class StabilizationConfig:
             regularization_start_step=start_step,
             regularization_grid_spacing=grid_spacing,
             regularization_max_particles=max_n_particles,
+            regularization_capacity_max_particles=capacity_max_n_particles,
+            regularization_max_events=max_events,
             regularization_tail_budget=tail_budget,
             regularization_total_kinetic_energy_dissipation_limit=(
                 total_kinetic_energy_dissipation_limit

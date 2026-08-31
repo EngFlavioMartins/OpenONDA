@@ -467,6 +467,11 @@ class EvolutionStepper:
             treecode_theta=self.stretching_treecode_theta,
             conserve_moments=self.stretching_conserve_moments,
             conserve_energy=self.stretching_conserve_energy,
+            reformulated=self.stretching_reformulated,
+            vortex_stretching_sfs_coefficient=(
+                self.vortex_stretching_sfs_coefficient
+            ),
+            vortex_stretching_sfs_cutoff=self.vortex_stretching_sfs_cutoff,
             axisymmetric_axis=self.axisymmetric_axis,
             precomputed_velocity_k1=precomputed_velocity_k1,
         )
@@ -683,6 +688,32 @@ class EvolutionStepper:
             new_core_radius,
             angular_core_coefficient=core_coefficient,
         )
+        impulse_scale = max(
+            0.5 * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum()),
+            np.finfo(float).tiny,
+        )
+        angular_terms = (
+            np.cross(position, np.cross(position, vortex_strength)) / 3.0
+            - core_coefficient * core_radius[:, None] ** 2 * vortex_strength
+        )
+        angular_scale = max(
+            float(np.linalg.norm(angular_terms, axis=1).sum()),
+            np.finfo(float).tiny,
+        )
+        roundoff_limit = 4096.0 * np.finfo(self.np_dtype).eps
+        uncorrected_errors = (
+            float(np.linalg.norm(uncorrected[0] - before[0]))
+            / max(before[1], np.finfo(float).tiny),
+            float(np.linalg.norm(uncorrected[2] - before[2])) / impulse_scale,
+            float(np.linalg.norm(uncorrected[3] - before[3])) / angular_scale,
+        )
+        if max(uncorrected_errors) <= roundoff_limit:
+            # Closed vortex fields acquire only a sub-precision angular defect
+            # from core spreading. Avoid solving an increasingly ill-conditioned
+            # moment system when there is no resolvable correction to make.
+            self.solver.core_spreading_correction_relative = 0.0
+            return
+
         moment_change = np.concatenate(
             (before[0] - uncorrected[0], before[2] - uncorrected[2], before[3] - uncorrected[3])
         )
@@ -710,25 +741,12 @@ class EvolutionStepper:
             new_core_radius,
             angular_core_coefficient=core_coefficient,
         )
-        impulse_scale = max(
-            0.5 * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum()),
-            np.finfo(float).tiny,
-        )
-        angular_terms = (
-            np.cross(position, np.cross(position, vortex_strength)) / 3.0
-            - core_coefficient * core_radius[:, None] ** 2 * vortex_strength
-        )
-        angular_scale = max(
-            float(np.linalg.norm(angular_terms, axis=1).sum()),
-            np.finfo(float).tiny,
-        )
         errors = {
             "vortex_strength": float(np.linalg.norm(after[0] - before[0]))
             / max(before[1], np.finfo(float).tiny),
             "linear_impulse": float(np.linalg.norm(after[2] - before[2])) / impulse_scale,
             "angular_impulse": float(np.linalg.norm(after[3] - before[3])) / angular_scale,
         }
-        roundoff_limit = 4096.0 * np.finfo(self.np_dtype).eps
         if max(errors.values()) > roundoff_limit:
             raise RuntimeError(
                 "core-spreading moment projection exceeded its roundoff allowance: "

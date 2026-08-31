@@ -1,0 +1,202 @@
+{
+  "schema": "openonda-cylinder-mesh-audit/1",
+  "passed": true,
+  "grid": "g1",
+  "domain": "baseline",
+  "surface_sha256": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+  "surface_triangles": 1280,
+  "topology": {
+    "n_points": 44487,
+    "n_cells": 37712,
+    "n_faces": 119682,
+    "n_internal_faces": 108078,
+    "n_boundary_patches": 7
+  },
+  "quality": {
+    "min_volume": 0.00012871286632786867,
+    "max_volume": 0.125,
+    "min_face_area": 0.00025742573265573755,
+    "max_non_orthogonality_deg": 43.08218169118039,
+    "mean_non_orthogonality_deg": 3.2076150354035793,
+    "out_of_bounds_interpolation_weights": 0,
+    "max_skewness": 0.47756142300741167,
+    "max_aspect_ratio": 64.2002254839597,
+    "max_lsq_condition": null,
+    "rank_deficient_lsq_cells": 0,
+    "svd_lsq_cells": 0
+  },
+  "cell_count": 37712,
+  "target_cell_count": 300000,
+  "positive_minimum_cell_volume": 0.00012871286632786867,
+  "solid_cell_centres": 0,
+  "wall_faces": 768,
+  "wall_vertices": 864,
+  "wall_area": 12.561955463576659,
+  "stl_area": 39.2654925896713,
+  "ideal_cylinder_area": 12.566370614359172,
+  "wall_area_relative_error_vs_solved_span": 0.0003513465357665304,
+  "complete_stl_area": 39.2654925896713,
+  "wall_distance_to_ideal_cylinder": {
+    "mean": 8.923541993183642e-05,
+    "p95": 0.00013385313002778343,
+    "maximum": 0.00013385313002783894,
+    "p95_over_surface_h": 0.002141650080444535,
+    "maximum_over_surface_h": 0.002141650080445423,
+    "worst_vertices": [
+      {
+        "position": [
+          0.30429836107348524,
+          -0.39657114397623966,
+          2.0
+        ],
+        "distance": 0.00013385313002783894,
+        "distance_over_surface_h": 0.002141650080445423
+      },
+      {
+        "position": [
+          -0.3042983610734854,
+          -0.39657114397623955,
+          0.5
+        ],
+        "distance": 0.00013385313002783894,
+        "distance_over_surface_h": 0.002141650080445423
+      },
+      {
+        "position": [
+          0.30429836107348524,
+          -0.39657114397623966,
+          -2.0
+        ],
+        "distance": 0.00013385313002783894,
+        "distance_over_surface_h": 0.002141650080445423
+      },
+      {
+        "position": [
+          -0.3042983610734854,
+          -0.39657114397623955,
+          -2.0
+        ],
+        "distance": 0.00013385313002783894,
+        "distance_over_surface_h": 0.002141650080445423
+      },
+      {
+        "position": [
+          -0.3042983610734851,
+          0.39657114397623977,
+          1.0
+        ],
+        "distance": 0.00013385313002783894,
+        "distance_over_surface_h": 0.002141650080445423
+      },
+      {
+        "position": [
+          -0.3042983610734851,
+          0.39657114397623977,
+          0.5
+        ],
+        "distance": 0.00013385313002783894,
+        "distance_over_surface_h": 0.002141650080445423
+      },
+      {
+        "position": [
+          -0.3042983610734851,
+          0.39657114397623977,
+          -1.5
+        ],
+        "distance": 0.00013385313002783894,
+        "distance_over_surface_h": 0.002141650080445423
+      },
+      {
+        "position": [
+          -0.3042983610734851,
+          0.39657114397623977,
+          2.0
+        ],
+        "distance": 0.00013385313002783894,
+        "distance_over_surface_h": 0.002141650080445423
+      }
+    ]
+  },
+  "wall_normals": {
+    "fraction_into_solid": 1.0,
+    "median_fluid_vs_body_normal_cosine": -0.9999916202731898,
+    "maximum_fluid_vs_body_normal_cosine": -0.9999916202730826
+  },
+  "surface_projection": {},
+  "boundary_layer": {
+    "method": "cylinder_boundary_layer",
+    "cylinder_centre": [
+      0.0,
+      0.0
+    ],
+    "cylinder_radius": 0.5,
+    "interface_bounds": [
+      -0.75,
+      0.75,
+      -0.75,
+      0.75,
+      -2.0,
+      2.0
+    ],
+    "theta_cells": 96,
+    "z_cells": 8,
+    "spanwise_cell_size": 0.5,
+    "radial_cells": 18,
+    "wall_layers": 8,
+    "transition_layers": 10,
+    "first_cell_height": 0.0078125,
+    "growth_ratio": 1.12,
+    "layer_heights": [
+      0.0078125,
+      0.00875,
+      0.009800000000000001,
+      0.010976000000000003,
+      0.012293120000000005,
+      0.013768294400000006,
+      0.015420489728000008,
+      0.01727094849536001
+    ],
+    "layer_thickness": 0.09609135262336004,
+    "interface_half_width": 0.75,
+    "expected_cells_per_ring": 768,
+    "cell_count_by_wall_layer": {
+      "0": 768,
+      "1": 768,
+      "2": 768,
+      "3": 768,
+      "4": 768,
+      "5": 768,
+      "6": 768,
+      "7": 768
+    },
+    "first_cell_height_measured": {
+      "minimum": 0.007812500000073108,
+      "median": 0.00794635312952699,
+      "maximum": 0.00794635313038089,
+      "p99_relative_error": 0.017133200688753902
+    },
+    "wall_normal_alignment_cosine": {
+      "minimum": 0.9999923833880235,
+      "p01": 0.9999923833880237,
+      "median": 0.9999923833881209
+    }
+  },
+  "refinement": {
+    "background_cell_size": 0.5,
+    "surface_target_cell_size": 0.0625,
+    "shear_layer_target_cell_size": 0.125,
+    "near_wake_target_cell_size": 0.125,
+    "downstream_wake_target_cell_size": 0.25,
+    "cell_count_by_level": {
+      "0": 12768,
+      "1": 4688,
+      "2": 4768,
+      "3": 15488
+    },
+    "wall_owner_level_minimum": 3,
+    "wall_owner_level_maximum": 3,
+    "wall_owner_cell_size_minimum": 0.0625,
+    "wall_owner_cell_size_maximum": 0.0625
+  },
+  "violations": []
+}

@@ -226,9 +226,9 @@ VORTEX_RING_VARIANT_LABEL = {
     "dns_direct": "DNS Direct",
     "dns_transposed": "DNS Transposed",
     "dns_mixed": "DNS Mixed",
-    "les_direct": "LES Direct",
-    "les_transposed": "LES Transposed",
-    "les_mixed": "LES Mixed",
+    "les_direct": "Direct + LES",
+    "les_transposed": "Transposed + LES",
+    "les_mixed": "Mixed + LES",
 }
 
 LAMB_OSEEN_SCHEME_STYLE = {

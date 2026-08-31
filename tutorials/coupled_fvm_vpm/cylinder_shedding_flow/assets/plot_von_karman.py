@@ -55,9 +55,7 @@ def _series(source: str) -> Series | None:
 
 
 def plot_lift_history(figure_format: str) -> None:
-    fig, axes = plt.subplots(
-        2, 1, figsize=util.figure_size(12.0), dpi=FIGURE_DPI, sharex=True
-    )
+    fig, axes = plt.subplots(2, 1, figsize=util.figure_size(12.0), dpi=FIGURE_DPI, sharex=True)
     for source in ("reference", "fvm"):
         forces = util.load_forces(source)
         if forces is None:
@@ -104,12 +102,12 @@ def plot_probe_growth(figure_format: str) -> None:
     ax.set(
         xlabel=r"$t\,U_\infty/D$",
         ylabel=r"$u_y/U_\infty$",
-        title="Midspan wake probe: antisymmetric-mode growth",
+        title="Antisymmetric wake-mode growth",
     )
     ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useMathText=True)
     ax.legend(loc="upper left")
     ax.grid(True, alpha=0.3)
-    fig.subplots_adjust(left=0.16, right=0.98, bottom=0.22, top=0.88)
+    fig.subplots_adjust(left=0.16, right=0.98, bottom=0.22, top=0.84)
     util.save(fig, "midspan_probe_growth", figure_format, FIGURE_DPI)
     plt.close(fig)
 
@@ -154,12 +152,12 @@ def plot_growth_fit(figure_format: str) -> None:
     ax.axhline(0.25, color="k", lw=0.6, ls=":", label=r"$A^*=0.25$")
     ax.set(
         xlabel=r"$t\,U_\infty/D$",
-        ylabel=r"envelope amplitude $A$ (log)",
+        ylabel=r"Envelope amplitude $A$",
         title="Exponential growth: $\\ln A = \\ln A_0 + \\sigma t$",
     )
     ax.legend(loc="lower right")
     ax.grid(True, which="both", alpha=0.3)
-    fig.subplots_adjust(left=0.16, right=0.98, bottom=0.20, top=0.88)
+    fig.subplots_adjust(left=0.18, right=0.98, bottom=0.20, top=0.84)
     util.save(fig, "linear_growth_fit", figure_format, FIGURE_DPI)
     plt.close(fig)
 
@@ -168,7 +166,8 @@ def plot_onset_alignment(figure_format: str) -> None:
     reference = _series("reference")
     hybrid = _series("fvm")
     if reference is None or hybrid is None:
-        raise SystemExit("onset_alignment requires both cases to have run")
+        print("  skip onset_alignment: both reference and coupled histories are required")
+        return
     ref = analyse_series(reference)
     hyb = analyse_series(hybrid)
     mean_growth_rate = 0.5 * (ref.growth["growth_rate"] + hyb.growth["growth_rate"])
@@ -181,9 +180,7 @@ def plot_onset_alignment(figure_format: str) -> None:
         else np.nan
     )
 
-    fig, axes = plt.subplots(
-        2, 1, figsize=util.figure_size(12.5), dpi=FIGURE_DPI, sharex=True
-    )
+    fig, axes = plt.subplots(2, 1, figsize=util.figure_size(12.5), dpi=FIGURE_DPI, sharex=True)
     window = (
         np.nanmin([ref.onset_time, hyb.onset_time]) - 10.0,
         np.nanmax([ref.onset_time, hyb.onset_time]) + 10.0,
@@ -249,6 +246,7 @@ def plot_onset_alignment(figure_format: str) -> None:
 
 def plot_spectrum(figure_format: str) -> None:
     fig, ax = plt.subplots(figsize=util.figure_size(7.0), dpi=FIGURE_DPI)
+    plotted = False
     for source in ("reference", "fvm"):
         series = _series(source)
         if series is None:
@@ -274,6 +272,11 @@ def plot_spectrum(figure_format: str) -> None:
         ax.semilogy(freq[band], power[band], color=util.colour(source), lw=1.2, label=result.label)
         pk = np.argmax(power[band])
         ax.axvline(freq[band][pk], color=util.colour(source), ls=":", lw=1.0)
+        plotted = True
+    if not plotted:
+        plt.close(fig)
+        print("  skip shedding_spectrum: no statistically saturated history is available")
+        return
     ax.set(
         xlabel=r"$f\,D/U_\infty$",
         ylabel="PSD",
@@ -290,12 +293,11 @@ def plot_spectrum(figure_format: str) -> None:
 def plot_spanwise_coherence(figure_format: str) -> None:
     times = np.asarray([t for t in util.slice_times("reference") if t > 35.0])
     if times.size == 0:
-        raise SystemExit("spanwise_coherence needs reference frames past t=35 s")
+        print("  skip spanwise_coherence: reference frames past t=35 are required")
+        return
     picks = times[:: max(1, times.size // 5)][:3]
 
-    fig, axes = plt.subplots(
-        2, 1, figsize=util.figure_size(12.5), dpi=FIGURE_DPI, sharex=True
-    )
+    fig, axes = plt.subplots(2, 1, figsize=util.figure_size(12.5), dpi=FIGURE_DPI, sharex=True)
     ax = axes[0]
     for source in ("reference", "fvm"):
         frame = util.load_line(source, "spanwise_line", picks[-1])
@@ -345,22 +347,42 @@ def plot_spanwise_coherence(figure_format: str) -> None:
 
 def plot_midspan(figure_format: str, times: tuple[float, ...]) -> None:
     for time in times:
-        frames = {}
-        for source in ("reference", "fvm", "vpm"):
-            frames[source] = util.load_slice(source, time)
-        if any(frames[s] is None for s in frames):
+        frames = {
+            source: frame
+            for source in ("reference", "fvm", "vpm")
+            if (frame := util.load_slice(source, time)) is not None
+        }
+        if "reference" not in frames:
             print(f"  skip vorticity_midspan_t{int(round(time)):02d}: missing slice frames")
             continue
         vmax = 0.0
         for source, frame in frames.items():
             vorticity = np.abs(frame["vorticity_z"])
-            vmax = max(vmax, float(np.nanmax(vorticity[np.isfinite(vorticity)])))
+            wake = (
+                (frame["x"] > 0.5)
+                & (frame["x"] < 12.0)
+                & (np.abs(frame["y"]) < 2.0)
+                & np.isfinite(vorticity)
+            )
+            if np.any(wake):
+                vmax = max(vmax, float(np.nanpercentile(vorticity[wake], 99.5)))
+        if not np.isfinite(vmax) or vmax <= 0.0:
+            print(f"  skip vorticity_midspan_t{int(round(time)):02d}: no finite wake values")
+            continue
         levels = np.linspace(-vmax, vmax, 33)
 
+        sources = tuple(source for source in ("reference", "fvm", "vpm") if source in frames)
         fig, axes = plt.subplots(
-            1, 3, figsize=util.figure_size(6.5), dpi=FIGURE_DPI, sharex=True, sharey=True
+            1,
+            len(sources),
+            figsize=util.figure_size(6.5),
+            dpi=FIGURE_DPI,
+            sharex=True,
+            sharey=True,
+            squeeze=False,
         )
-        for ax, source in zip(axes, ("reference", "fvm", "vpm")):
+        axes = axes.ravel()
+        for ax, source in zip(axes, sources):
             frame = frames[source]
             cy = frame["y"] ** 2 + frame["x"] ** 2 < RADIUS**2
             masked = np.ma.masked_where(cy, frame["vorticity_z"])
@@ -375,17 +397,22 @@ def plot_midspan(figure_format: str, times: tuple[float, ...]) -> None:
             ax.add_patch(plt.Circle((0.0, 0.0), RADIUS, color="0.9", ec="k", lw=0.8, zorder=3))
             ax.set_aspect("equal")
             ax.set_title(util.label(source))
-            if source == "reference":
+            if ax is axes[0]:
                 ax.set_ylabel(r"$y/D$")
             ax.set_xlabel(r"$x/D$")
+        colorbar_axis = fig.add_axes((0.20, 0.085, 0.60, 0.045))
         fig.colorbar(
-            cf, ax=axes, orientation="horizontal", fraction=0.03, pad=0.14, label=r"$\omega_z$"
+            cf,
+            cax=colorbar_axis,
+            orientation="horizontal",
+            ticks=np.linspace(-vmax, vmax, 5),
+            label=r"$\omega_z D/U_\infty$",
         )
         fig.suptitle(
-            rf"Midspan vorticity at $t\,U_\infty/D={time:g}$ — identical levels "
-            r"($\pm$" + f"{vmax:.2f})",
+            rf"Midspan vorticity at $t\,U_\infty/D={time:g}$ "
+            r"($|\omega_z|_\mathrm{scale}=" + f"{vmax:.2f}$)",
         )
-        fig.subplots_adjust(left=0.10, right=0.98, bottom=0.24, top=0.80, wspace=0.18)
+        fig.subplots_adjust(left=0.10, right=0.98, bottom=0.30, top=0.78, wspace=0.18)
         util.save(fig, f"vorticity_midspan_t{int(round(time)):02d}", figure_format, FIGURE_DPI)
         plt.close(fig)
 
@@ -404,6 +431,8 @@ def main() -> None:
     times = [t for t in util.slice_times("vpm", "slice_z0") if t > 35.0]
     if not times:
         times = [t for t in util.slice_times("reference") if t > 35.0]
+    if not times:
+        times = list(util.slice_times("reference"))
     plot_midspan(args.format, tuple(times[-1:]) if times else ())
     print("All figures written.")
 

@@ -48,21 +48,34 @@ python assets/generate_cylinder_stl.py
 The reference mesh uses a `0.5D` background grid and fixed nested refinement
 boxes around the shear layers and wake. The ratio-two family is:
 
-| Grid | Surface `h/D` | Shear layer `h/D` | Near wake `h/D` | Downstream wake `h/D` | `dt U/D` | Cell cap |
-|---|---:|---:|---:|---:|---:|---:|
-| smoke | 1/8 | 1/4 | 1/4 | 1/2 | 0.02 | 100,000 |
-| G0 | 1/16 | 1/8 | 1/8 | 1/4 | 0.01 | 150,000 |
-| G1 | 1/32 | 1/16 | 1/8 | 1/4 | 0.005 | 350,000 |
-| G2 | 1/64 | 1/32 | 1/16 | 1/8 | 0.0025 | 700,000 |
+| Grid | Surface `h/D` | First wall cell `h_1/D` | Wall layers | Shear / near wake | Downstream wake | Far field | `dt U/D` | Qualified cells |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| smoke | 1/8 | 1/64 | 4 | `2h` | `4h` | `4h` | 0.005 | developer only |
+| G0 | 1/8 | 1/64 | 6 | `2h` | `4h` | `4h` | 0.004 | 22,448 |
+| G1 | 1/16 | 1/128 | 8 | `2h` | `4h` | `8h` | 0.002 | 37,712 |
+| G2 | 1/32 | 1/256 | 10 | `2h` | `4h` | `16h` | 0.001 | 82,880 |
 
-The fine wall spacing is applied only to STL-intersecting cells and its 2:1
-transition band. It is not propagated through the domain. Likewise, the shear
-layers, near wake, and downstream street use progressively coarser dedicated
-boxes before returning to the `0.5D` far field. Thus G1 resolves the no-slip
-wall with `h_w=D/32` while avoiding a globally fine Cartesian mesh; G2 checks
-that result with `h_w=D/64`. G0 is the coarse convergence member, not the final
-wall-resolution authority. `assets/audit_mesh_geometry.py` writes `mesh.vtu`
-with `refinementLevel` and `wallAdjacent` cell arrays for direct inspection.
+The cylinder has a fitted O-grid boundary layer stitched into the adaptive
+Cartesian far field. The first-cell height is confined to the wall-normal
+layers and is not propagated through the domain. Likewise, the shear layers,
+near wake, and downstream street use progressively coarser dedicated boxes
+before returning through balanced 2:1 transitions to the `0.5D` far field.
+This anisotropic hierarchy is intentional: the small first-cell height
+resolves the wall-normal gradient, while isotropic `2h` and `4h` cells track
+separation and the vortex street without exporting wall resolution throughout
+the domain. G1 therefore reaches `h_1=D/128`
+without a globally fine mesh; G2 checks it at `D/256`. G0 is the coarse
+convergence member, not the final wall-resolution authority.
+`assets/audit_mesh_geometry.py` writes `mesh.vtu` with `refinementLevel` and
+`wallAdjacent` cell arrays for direct inspection.
+
+All three production meshes passed strict topology and geometry checks. Their
+maximum non-orthogonality is below `43.1 deg`, maximum skewness below `0.479`,
+and circular wall-area error below `0.09%`. The full `4D` span uses eight
+native hexahedral slabs; comparison against sixteen slabs changed drag by at
+most `0.614%`, mean streamwise wake velocity by `0.00191%`, and mean
+transverse wake velocity by only `7.9e-7 U_inf`. The reconstructed in-plane
+velocity range across either span was below `2.3e-6 U_inf`.
 
 The production matrix contains `G0`, `G1`, and `G2`, plus a `G1` half-time-step
 case and a `G1` enlarged-domain case. The baseline domain is
@@ -75,23 +88,46 @@ The reference gate uses the last 30 convective units (never earlier than
 changes to satisfy:
 
 - mean drag coefficient and lift harmonic amplitude: `< 1%`;
+- drag peak-to-peak amplitude: `< 2%`;
 - Strouhal number: `< 0.5%`;
 - finite fields, converged linear solves, controlled CFL and continuity;
 - valid cut-cell topology, positive volume, correct wall normals, and wall
-  area within `1%` of the analytic circular side-wall area.
+area within `1%` of the analytic circular side-wall area.
+
+For cost control, the saturated G0-to-G1 comparison is also used as a
+preliminary mesh-sizing bracket. Differences of `2%` or less in Strouhal
+number, mean drag, drag peak-to-peak amplitude, and lift amplitude indicate
+that the planned ratio-two G2 refinement is a credible final verification
+mesh. This bracket guides sizing only: it does not replace the G0/G1/G2,
+half-time-step, and large-domain independence gate above.
+
+`assets/save_verification_case.py` preserves each statistically ready variant's
+force history, performance history, metadata, diagnostics, and sample audit in
+`reference_flow/solution/verification/` without replacing existing evidence.
+The final `grid_independence` figure plots `St`, mean drag, drag peak-to-peak
+amplitude, lift harmonic amplitude, measured solver wall time, and actual cell
+count against the surface resolution `D/h`.
 
 Every reference run also aborts if the instantaneous CFL exceeds `1.5`.
-This caught an initially proposed G0 step of `0.02`; the production family
-above keeps the same conservative `dt/h_surface=0.16` as the stable smoke
-case. Both FVM paths use the bounded second-order `limitedLinear` TVD
-convection scheme and least-squares gradients, which are the robust choices
-for the non-orthogonal wall-adjacent polyhedra.
+A G1 production-seed trial at `dt=0.004` failed this gate at `t=0.328`
+(`CFL=2.814`); `dt=0.002` remains below `CFL=0.12` through the developing
+wake and is the accepted production step pending the final half-step
+comparison. Both FVM paths use the bounded second-order `limitedLinear` TVD
+convection scheme and least-squares gradients, which are robust on the
+non-orthogonal wall-adjacent polyhedra.
 
 The coupled comparison then reports the same quantities plus lift RMS,
 phase/frequency alignment, centerline and transverse velocity errors,
 spanwise coherence, circulation transfer, population pruning, and hand-off
 boundary leakage. Sub-1% coupled force/frequency agreement is the target, not
 an assumed result.
+
+Field probes use a distance-weighted, local affine reconstruction, which is
+exact for constant and linear fields. The spanwise FVM line samples the eight
+extruded slab centres directly; this avoids manufacturing spanwise modulation
+by applying different nearest-cell stencils between slab centres. Midspan VTK
+slices carry a `vtkValidPointMask` for the true circular cross-section, not its
+square bounding box.
 
 ## Running the case
 
@@ -114,10 +150,26 @@ Run the conventional full-domain reference:
 OPENONDA_GRID=g1 ./reference_flow/allrun.sh
 ```
 
-The reference script cleans only `reference_flow/solution/` and
-`reference_flow/samples/`; it never touches the coupled root output. Mesh,
-time-step, and domain sensitivity calculations are run one at a time through
-the same conventional case:
+The production reference defaults to six MPI ranks. On the qualifying laptop,
+the most sustainable affinity uses six efficiency cores:
+
+```bash
+OPENONDA_GRID=g1 \
+OPENONDA_FVM_CORES=6 \
+OPENONDA_RANK_CPUS=12,13,14,15,16,17 \
+./reference_flow/allrun.sh
+```
+
+The case reads the stable Linux `TCPU` sensor when available and leaves a
+complete checkpoint before thermally pausing. `OPENONDA_MAX_CPU_TEMP_C` and
+`OPENONDA_RESUME_CPU_TEMP_C` control that workstation safeguard; it does not
+change the flow equations or accepted time step.
+
+The reference script cleans generated files only from `reference_flow/solution/`
+and `reference_flow/samples/`; it preserves the small
+`reference_flow/solution/verification/` histories and never touches the
+coupled root output. Mesh, time-step, and domain sensitivity calculations are
+run one at a time through the same conventional case:
 
 ```bash
 OPENONDA_GRID=g1 OPENONDA_DOMAIN=baseline OPENONDA_DT_SCALE=1 ./reference_flow/allrun.sh
@@ -141,15 +193,42 @@ python assets/analyse_coupled_benchmark.py
 
 For a bounded integration test, set `OPENONDA_SMOKE=1`. Optional
 `OPENONDA_MAX_STEPS` and `OPENONDA_MAX_COUPLING_STEPS` bounds are available for
-developer checks. Production runs intentionally require one FVM core and use a
-memory-availability gate. The independent documentation, static checks, and
-post-processing may run concurrently, but large mesh builds and solvers should
-remain serial on a 14-GiB workstation.
+developer checks. Production runs use a memory-availability gate. Independent
+documentation, static checks, and lightweight post-processing may run during a
+solver, but multiple large mesh builds or flow solvers should not compete on a
+14-GiB workstation.
 
 Compressed FVM volume fields and complete coupled restart checkpoints are
 written every `2 D/U_inf`; smoke or bounded runs also write their terminal
 state. Override the cadence with `OPENONDA_FIELD_OUTPUT_INTERVAL` when a denser
 inspection sequence is needed.
+
+After an interrupted restart, trim only uncheckpointed tail records with:
+
+```bash
+python assets/prune_restart_tail.py reference_flow
+```
+
+Reference-only force and solver diagnostics are generated with:
+
+```bash
+python assets/analyse_reference.py --require-ready reference_flow
+python assets/audit_reference_samples.py reference_flow
+```
+
+The completed G0, G2, half-time-step, and large-domain force histories are
+retained under `reference_flow/solution/verification/` with the simple names
+used by `allvalidate.sh`. The selected G1 history remains canonical at
+`reference_flow/samples/forces_history.csv`. Once those histories reach the
+common horizon, validate without cleaning or launching any solver:
+
+```bash
+./allvalidate.sh reference
+```
+
+After the coupled root case is complete, `./allvalidate.sh all` applies both
+the reference-independence gate and the coupled comparison. Validation never
+deletes or replaces solution data.
 
 ## Outputs
 

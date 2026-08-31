@@ -257,6 +257,18 @@ class VPMSetup:
                 )
         elif self.stretching.conserve_moments or self.stretching.conserve_energy:
             raise ValueError("stretching invariant projection requires COUPLED time integration")
+        elif self.stretching.reformulated:
+            raise ValueError("reformulated stretching requires COUPLED time integration")
+
+        if self.turbulence.vortex_stretching_sfs_coefficient > 0.0:
+            if not self.stretching.reformulated:
+                raise ValueError(
+                    "vortex-stretching SFS requires reformulated VPM stretching"
+                )
+            if self.particle_kernel.upper() != "GAUSSIAN":
+                raise ValueError(
+                    "vortex-stretching SFS currently requires GAUSSIAN particles"
+                )
 
         if self.axisymmetric_no_swirl_axis is not None:
             axis = self.axisymmetric_no_swirl_axis.lower()
@@ -350,18 +362,25 @@ class VPMSetup:
             raise ValueError("divergence relaxation requires filament refinement")
         if self.stabilization.regularization_interval_steps > 0 and particle_kernel != "GAUSSIAN":
             raise ValueError("conservative regularization currently requires GAUSSIAN particles")
-        if self.stabilization.regularization_interval_steps > 0 and (
-            self.stabilization.filament_refinement.enabled
-            or self.stabilization.divergence_relaxation.enabled
+        if (
+            self.stabilization.regularization_interval_steps > 0
+            and self.stabilization.divergence_relaxation.enabled
         ):
             raise ValueError(
-                "conservative regularization replaces refinement and divergence relaxation"
+                "conservative regularization cannot be combined with divergence relaxation"
             )
         if (
             self.stabilization.regularization_max_particles is not None
             and self.stabilization.regularization_max_particles > self.max_n_particles
         ):
             raise ValueError("regularization_max_particles cannot exceed VPMSetup.max_n_particles")
+        if (
+            self.stabilization.regularization_capacity_max_particles is not None
+            and self.stabilization.regularization_capacity_max_particles > self.max_n_particles
+        ):
+            raise ValueError(
+                "regularization_capacity_max_particles cannot exceed VPMSetup.max_n_particles"
+            )
         if (
             self.stabilization.filament_refinement.max_n_particles is not None
             and self.stabilization.filament_refinement.max_n_particles > self.max_n_particles

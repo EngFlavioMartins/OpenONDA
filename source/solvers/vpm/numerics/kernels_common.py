@@ -819,6 +819,97 @@ def _make_gradient_contraction_kernel():
     return gradient_contraction_rate_kernel
 
 
+def _make_reformulated_stretching_kernel():
+    """Couple vortex-strength and core-size evolution under stretching."""
+
+    @ti.kernel
+    def reformulated_stretching_rate_kernel(
+        vortex_strength: ti.template(),
+        core_radius: ti.template(),
+        vortex_strength_rate: ti.template(),
+        core_radius_rate: ti.template(),
+        n_particles_total: ti.i32,
+    ):  # type: ignore
+        for i in range(n_particles_total):
+            strength = vortex_strength[i]
+            strength_norm_sq = strength.dot(strength)
+            core_radius_rate[i] = 0.0
+            if strength_norm_sq > EPSILON * EPSILON:
+                inverse_strength_norm = ti.rsqrt(strength_norm_sq)
+                direction = strength * inverse_strength_norm
+                axial_rate = vortex_strength_rate[i].dot(direction)
+                # Reformulated VPM coefficients f=0 and g=1/5.
+                vortex_strength_rate[i] -= 0.6 * axial_rate * direction
+                core_radius_rate[i] = (
+                    -0.2 * core_radius[i] * axial_rate * inverse_strength_norm
+                )
+
+    return reformulated_stretching_rate_kernel
+
+
+def _make_vortex_stretching_sfs_kernel(zeta_):
+    """Model unresolved vortex stretching from velocity-gradient differences."""
+
+    @ti.kernel
+    def vortex_stretching_sfs_rate_kernel(
+        position: ti.template(),
+        vortex_strength: ti.template(),
+        core_radius: ti.template(),
+        velocity_gradient: ti.template(),
+        vortex_strength_rate: ti.template(),
+        sfs_rate_out: ti.template(),
+        coefficient: ti.f32,
+        support_radius_ratio: ti.f32,
+        mode: ti.i32,
+        n_particles_total: ti.i32,
+    ):  # type: ignore
+        zeta_zero = zeta_(0.0)
+        for i in range(n_particles_total):
+            position_i = position[i]
+            gradient_i = velocity_gradient[i]
+            modeled_stretching = vortex_strength[i] * 0.0
+
+            for j in range(n_particles_total):
+                sigma_j = core_radius[j]
+                displacement = position_i - position[j]
+                distance_sq = displacement.dot(displacement)
+                support = support_radius_ratio * sigma_j
+                if sigma_j > EPSILON and distance_sq < support * support:
+                    gradient_difference = gradient_i - velocity_gradient[j]
+                    source_strength = vortex_strength[j]
+                    contraction = source_strength * 0.0
+                    if mode == 0:
+                        contraction = gradient_difference @ source_strength
+                    elif mode == 1:
+                        contraction = gradient_difference.transpose() @ source_strength
+                    else:
+                        contraction = (
+                            0.5
+                            * (gradient_difference + gradient_difference.transpose())
+                            @ source_strength
+                        )
+                    distance_ratio = ti.sqrt(distance_sq) / sigma_j
+                    modeled_stretching += (
+                        zeta_(distance_ratio) / (sigma_j * sigma_j * sigma_j) * contraction
+                    )
+
+            correction = modeled_stretching * 0.0
+            # Keep forward transfer only: Gamma . correction <= 0.
+            if coefficient * vortex_strength[i].dot(modeled_stretching) >= 0.0:
+                correction = (
+                    -coefficient
+                    * core_radius[i]
+                    * core_radius[i]
+                    * core_radius[i]
+                    / zeta_zero
+                    * modeled_stretching
+                )
+                vortex_strength_rate[i] += correction
+            sfs_rate_out[i] = correction
+
+    return vortex_stretching_sfs_rate_kernel
+
+
 def _create_stretching_kernels(kernel_functions):
     """Create kernels for vortex stretching computations."""
     q_ = kernel_functions["q_"]
@@ -828,6 +919,8 @@ def _create_stretching_kernels(kernel_functions):
         "compute_stretching_rate_kernel": _make_stretching_rate_kernel(q_, zeta_),
         "compute_stretching_rate_batch_kernel": _make_stretching_rate_batch_kernel(q_, zeta_),
         "gradient_contraction_rate_kernel": _make_gradient_contraction_kernel(),
+        "reformulated_stretching_rate_kernel": _make_reformulated_stretching_kernel(),
+        "vortex_stretching_sfs_rate_kernel": _make_vortex_stretching_sfs_kernel(zeta_),
     }
 
 

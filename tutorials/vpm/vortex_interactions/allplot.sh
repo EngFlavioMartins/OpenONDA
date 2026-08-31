@@ -22,6 +22,8 @@ plot() {
 }
 
 plot assets/plot_rings_circulation.py
+plot assets/plot_rings_conservation.py
 plot assets/plot_rings_energy.py
+plot assets/plot_rings_resolution.py
 plot assets/plot_rings_stability.py
 plot assets/plot_rings_trajectory.py

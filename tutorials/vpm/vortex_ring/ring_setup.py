@@ -4,8 +4,8 @@
 An initially-Gaussian vortex ring is advanced with the vortex particle method.
 Four physics variants are provided:
 
-  * ``dns_direct`` / ``dns_transposed`` / ``dns_mixed``: the three vortex
-    stretching formulations at DNS resolution;
+  * ``dns_direct`` / ``dns_transposed`` / ``dns_mixed``: DNS with the three
+    vortex-stretching formulations;
   * ``les_transposed``: the transposed stretching with a Smagorinsky model.
 
 Each case samples the ring motion, energy, and circulation that the
@@ -24,7 +24,6 @@ from pathlib import Path
 import numpy as np
 
 from assets.ring_diagnostics import RingDiagnosticsSampler, RingModeDiagnosticsSampler
-from assets.ring_initialization import initialize_single_mode_toroidal_ring
 import openonda.vpm as vpm
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
@@ -40,7 +39,6 @@ CORE_RADIUS = 0.1  # initial Gaussian core radius [m]
 PARTICLE_SPACING = 0.035  # in-plane particle spacing [m]
 TIME_STEP_SIZE = 0.02  # Δt [s]
 N_STEPS = 3000  # total number of time steps
-DOMAIN_BOUNDS = (-0.15, 0.15, -1.5, 1.5, -1.5, 1.5)  # bounding box [m]
 SAMPLE_INTERVAL_TIME = 0.1  # write a sample every this many seconds
 CHECKPOINT_INTERVAL_TIME = 0.5  # keep an animation frame every this many seconds
 WIDNALL_MODES = 24  # number of azimuthal bending modes
@@ -207,13 +205,32 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
         group_id=0,
     )
 
-    # -- Metadata (minimal: only what postprocess.py needs) -------------------
+    # -- Reproducibility metadata ---------------------------------------------
     manifest = {
         "status": "running",
         "variant": variant,
         "requested_steps": N_STEPS,
         "time_step_size": TIME_STEP_SIZE,
         "compute_device": solver.compute_device,
+        "ring_radius": RING_RADIUS,
+        "tube_circulation": RING_STRENGTH,
+        "vortex_reynolds_number": REYNOLDS_NUMBER,
+        "kinematic_viscosity": KINEMATIC_VISCOSITY,
+        "initial_physical_core_radius": CORE_RADIUS,
+        "particle_spacing": PARTICLE_SPACING,
+        "particle_core_radius": particle_core_radius,
+        "particle_count": len(position),
+        "sample_interval_time": SAMPLE_INTERVAL_TIME,
+        "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,
+        "widnall_modes": WIDNALL_MODES,
+        "widnall_rms_amplitude": DEFAULT_WIDNALL_AMPLITUDE,
+        "treecode_theta": TREECODE_THETA,
+        "smagorinsky_coefficient": smagorinsky_coefficient,
+        "time_integration": "FRACTIONAL",
+        "advection_scheme": "RK3",
+        "stretching_scheme": "RK3",
+        "viscous_scheme": "CS",
+        "write_precision": "f32",
     }
     manifest_path = output_directory / f"run_manifest_{variant}.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

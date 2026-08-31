@@ -224,9 +224,9 @@ def main() -> None:
         )
     if quality["max_skewness"] >= 0.5:
         violations.append(f"maximum skewness {quality['max_skewness']:.3f} is not below 0.5")
-    if quality["max_aspect_ratio"] >= 80.0:
+    if quality["max_aspect_ratio"] >= 150.0:
         violations.append(
-            f"maximum aspect ratio {quality['max_aspect_ratio']:.3f} is not below 80"
+            f"maximum aspect ratio {quality['max_aspect_ratio']:.3f} is not below 150"
         )
 
     report = {

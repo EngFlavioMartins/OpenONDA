@@ -30,6 +30,7 @@ from dataclasses import dataclass
 import math
 import os
 from typing import Any, ClassVar
+import xml.etree.ElementTree as ET
 
 # Canonical CSV column order for FVM field samplers. The leading coordinates
 # and vector components match the VPM sampler so one reader serves both
@@ -221,15 +222,34 @@ def append_csv_rows(
 
 
 def write_pvd(samples_dir: str, name: str, entries: list[tuple[float, str]]) -> None:
-    """Write a ParaView Data Collection index for time-series playback."""
+    """Atomically merge a ParaView time-series index across restarts."""
+    destination = os.path.join(samples_dir, f"{name}.pvd")
+    merged: dict[str, float] = {}
+    if os.path.isfile(destination):
+        tree = ET.parse(destination)
+        for dataset in tree.findall(".//DataSet"):
+            filename = dataset.attrib.get("file")
+            timestep = dataset.attrib.get("timestep")
+            if filename is not None and timestep is not None:
+                merged[filename] = float(timestep)
+    for time_val, filename in entries:
+        merged[str(filename)] = float(time_val)
+    ordered = sorted(
+        ((time_val, filename) for filename, time_val in merged.items()),
+        key=lambda item: (item[0], item[1]),
+    )
     lines = [
         '<?xml version="1.0"?>',
         '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">',
         "  <Collection>",
     ]
     lines += [
-        f'    <DataSet timestep="{time_val}" file="{filename}"/>' for time_val, filename in entries
+        f'    <DataSet timestep="{time_val}" file="{filename}"/>' for time_val, filename in ordered
     ]
     lines += ["  </Collection>", "</VTKFile>"]
-    with open(os.path.join(samples_dir, f"{name}.pvd"), "w") as stream:
-        stream.write("\n".join(lines))
+    temporary = destination + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as stream:
+        stream.write("\n".join(lines) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, destination)

@@ -30,6 +30,7 @@ REFERENCE_TIME = RING_RADIUS**2 / RING_CIRCULATION  # T₀ = R₀²/Γ  [s]
 _eps0 = CORE_RADIUS / RING_RADIUS
 _C0 = 0.558 + 1.12 * _eps0**2 + 5.0 * _eps0**4
 REFERENCE_VELOCITY = RING_CIRCULATION / (4.0 * np.pi * RING_RADIUS) * (np.log(8.0 / _eps0) - _C0)
+CIRCULATION_RELAXATION_SAMPLES = 3
 
 # Reference energy & dissipation rate scales (per unit density)
 REFERENCE_KINETIC_ENERGY = (
@@ -380,26 +381,35 @@ def load_sampled_ring_speed(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
 
 
 def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Return sampled normalized tube circulation."""
+    """Return the tube-circulation estimate after its initialization transient.
+
+    The sampler writes an unevolved row at ``t=0``.  The first two evolved
+    samples still contain the short adjustment of the discretized toroidal
+    field.  They are omitted, and the third evolved sample defines both the
+    start of the plotted record and ``circulation_tube,0``.  With the canonical
+    cadence this reference is step 15, ``t=0.3 s``
+    (``t Gamma/R0^2=0.942``).
+    """
     data = load_sampled_ring_data(csv_path)
     if data is None:
         return np.array([]), np.array([])
     time = data[_sample_time_column(data)].to_numpy(float)
     circulation = data["tube_circulation"].to_numpy(float)
-    valid = np.isfinite(time) & np.isfinite(circulation) & (circulation > 0.0)
-    if not valid.any():
-        return np.array([]), np.array([])
-    initial_circulation = circulation[valid][0]
-    time = time[valid]
-    normalized = circulation[valid] / initial_circulation
-    # The t=0 row is an initialization sample rather than an evolved point.
-    # Also keep the log/linear plot free of any non-positive placeholders.
-    keep = (
+    valid = (
         np.isfinite(time)
         & (time > 0.0)
-        & np.isfinite(normalized)
-        & (normalized > 0.0)
+        & np.isfinite(circulation)
+        & (circulation > 0.0)
     )
+    if not valid.any():
+        return np.array([]), np.array([])
+    time = time[valid]
+    circulation = circulation[valid]
+    reference_index = min(CIRCULATION_RELAXATION_SAMPLES - 1, len(time) - 1)
+    time = time[reference_index:]
+    circulation = circulation[reference_index:]
+    normalized = circulation / circulation[0]
+    keep = np.isfinite(normalized) & (normalized > 0.0)
     return time[keep] / REFERENCE_TIME, normalized[keep]
 
 

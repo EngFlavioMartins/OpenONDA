@@ -77,6 +77,7 @@ def _force_metrics(table: dict[str, np.ndarray], start: float) -> dict[str, floa
         "window_end": float(time.max()),
         "sample_count": int(len(time)),
         "mean_cd": float(np.mean(drag)),
+        "cd_peak_to_peak": float(np.ptp(drag)),
         "cd_rms": float(np.std(drag)),
         "cl_rms": float(np.std(lift)),
         "strouhal": frequency,
@@ -287,7 +288,13 @@ def main() -> None:
     coupled = _force_metrics(coupled_force, start)
     force_errors = {
         name: _relative(float(coupled[name]), float(reference[name]))
-        for name in ("mean_cd", "cl_rms", "strouhal", "cl_first_harmonic")
+        for name in (
+            "mean_cd",
+            "cd_peak_to_peak",
+            "cl_rms",
+            "strouhal",
+            "cl_first_harmonic",
+        )
     }
     phase_error = float(
         np.angle(

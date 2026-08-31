@@ -47,9 +47,7 @@ def build_manifest(solver) -> dict[str, Any]:
     revision, dirty = _git_identity(repository)
     configuration = asdict(solver.setup)
     if solver.setup.samplers:
-        configuration["samplers"] = [
-            sampler_to_dict(sampler) for sampler in solver.setup.samplers
-        ]
+        configuration["samplers"] = [sampler_to_dict(sampler) for sampler in solver.setup.samplers]
     return {
         "schema_version": 1,
         "distribution_version": metadata.version("OpenONDA"),
@@ -57,6 +55,10 @@ def build_manifest(solver) -> dict[str, Any]:
         "git_dirty": dirty,
         "config_hash": config_hash(solver.setup),
         "mesh_hash": mesh_hash(solver.mesh_data),
+        "active_components": {
+            "immersed_boundary": getattr(solver, "ibm", None) is not None,
+            "turbulence": getattr(solver, "turbulence", None) is not None,
+        },
         "configuration": configuration,
         "execution": asdict(solver.setup.execution),
         "mesh_quality": solver.mesh_quality,

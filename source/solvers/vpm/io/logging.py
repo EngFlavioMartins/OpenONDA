@@ -388,6 +388,8 @@ class Logging:
             if getattr(system, "stretching_conserve_energy", False):
                 projection += " + energy"
             rows.append(("  invariant projection", projection))
+        if getattr(system, "stretching_reformulated", False):
+            rows.append(("  formulation", "reformulated VPM"))
         vel_cfg = getattr(getattr(system, "setup", None), "velocity", None)
         if vel_cfg is not None and vel_cfg.method == "TREECODE":
             rows.append(("  velocity", f"treecode, Barnes-Hut, theta {vel_cfg.theta:g}"))
@@ -708,6 +710,8 @@ class Logging:
             if getattr(system, "stretching_conserve_energy", False):
                 projection += " + energy"
             rows.append(("  invariant projection", projection))
+        if getattr(system, "stretching_reformulated", False):
+            rows.append(("  formulation", "reformulated VPM"))
         axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             rows.append(("  symmetry", f"axisymmetric no-swirl about {axis}"))

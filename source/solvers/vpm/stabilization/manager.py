@@ -143,6 +143,7 @@ class StabilizationManager:
             context.compute_dtype, int(context.particles._max_particles)
         )
         self.events = 0
+        self.regularization_events = 0
         # A readable placeholder rather than "": the record goes to CSV, and an
         # empty field reads back as a missing value.
         self.last_mechanism = "none"
@@ -150,6 +151,8 @@ class StabilizationManager:
         self.last_strength_growth = 0.0
         self.last_vorticity_growth = 0.0
         self.max_vorticity_growth = 0.0
+        self.residual_viscosity_coefficient = self.config.stretching_viscosity_coefficient
+        self._last_residual_feedback_step = -1
         # Lineage and reference state the workers need across events.  It is
         # part of the restart state, so the checkpoint reads and writes it.
         self.reference_vortex_strength: np.ndarray | None = None
@@ -235,17 +238,30 @@ class StabilizationManager:
         """The compact per-step record exported with the flow integrals."""
         return {
             "n_stabilization_events": self.events,
+            "n_regularization_events": self.regularization_events,
             "last_stabilization_mechanism": self.last_mechanism,
             "stabilization_vortex_strength_error": self.last_vortex_strength_error,
             "stabilization_vortex_strength_growth": self.last_strength_growth,
             "stabilization_vorticity_growth": self.last_vorticity_growth,
             "max_stabilization_vorticity_growth": self.max_vorticity_growth,
+            "stretching_viscosity_feedback_coefficient": (
+                self.residual_viscosity_coefficient
+            ),
         }
 
     def restore_diagnostics(self, values: dict) -> None:
         """Reload the master's record from a checkpoint."""
         self.events = int(values.get("n_stabilization_events", self.events))
+        self.regularization_events = int(
+            values.get("n_regularization_events", self.regularization_events)
+        )
         self.last_mechanism = str(values.get("last_stabilization_mechanism", self.last_mechanism))
+        self.residual_viscosity_coefficient = float(
+            values.get(
+                "stretching_viscosity_feedback_coefficient",
+                self.residual_viscosity_coefficient,
+            )
+        )
         for key, attribute in (
             ("stabilization_vortex_strength_error", "last_vortex_strength_error"),
             ("stabilization_vortex_strength_growth", "last_strength_growth"),
@@ -336,7 +352,37 @@ class StabilizationManager:
 
     def update_residual_viscosity(self) -> None:
         """Add the configured stretching-aware residual viscosity to ``effective_viscosity``."""
-        coefficient = self.config.stretching_viscosity_coefficient
+        cfg = self.config
+        step = self.ctx.step()
+        if step < cfg.stretching_viscosity_start_step:
+            return
+        if (
+            cfg.stretching_viscosity_feedback_gain > 0.0
+            and step != self._last_residual_feedback_step
+            and self._due(
+                cfg.stretching_viscosity_feedback_interval_steps,
+                cfg.stretching_viscosity_start_step,
+            )
+        ):
+            energy_rate = float(self.ctx.kinetic_energy_rate())
+            viscous_rate = float(self.ctx.viscous_kinetic_energy_rate())
+            if np.isfinite(energy_rate) and np.isfinite(viscous_rate):
+                scale = max(abs(viscous_rate), np.finfo(float).eps)
+                adjustment = np.clip(
+                    1.0 + cfg.stretching_viscosity_feedback_gain * energy_rate / scale,
+                    0.80,
+                    1.0 + cfg.stretching_viscosity_feedback_growth_limit,
+                )
+                upper = (
+                    cfg.stretching_viscosity_max_coefficient
+                    if cfg.stretching_viscosity_max_coefficient is not None
+                    else np.inf
+                )
+                self.residual_viscosity_coefficient = float(
+                    np.clip(self.residual_viscosity_coefficient * adjustment, 0.0, upper)
+                )
+            self._last_residual_feedback_step = step
+        coefficient = self.residual_viscosity_coefficient
         if coefficient <= 0.0:
             return
         self.operators.apply_stretching_viscosity(self.ctx.particles, coefficient)
@@ -346,14 +392,17 @@ class StabilizationManager:
 
         The particle field is a vorticity field only while ``alpha_p`` stays
         parallel to the vorticity it induces, and the divergence of the
-        discrete field grows exactly where it does not.  The rotation carries
-        vector strength with it, so the master reports that transfer instead
-        of gating it.
+        discrete field grows exactly where it does not. Optional moment
+        restoration removes the global impulse introduced by that rotation.
         """
         cfg = self.config
         if (
             not cfg.pedrizzetti_relaxation_enabled
             or self.ctx.flow_model == "POTENTIAL"
+            or (
+                cfg.pedrizzetti_relaxation_end_step is not None
+                and self.ctx.step() >= cfg.pedrizzetti_relaxation_end_step
+            )
             or not self._due(
                 cfg.pedrizzetti_relaxation_interval_steps, cfg.pedrizzetti_relaxation_start_step
             )
@@ -361,6 +410,15 @@ class StabilizationManager:
             return
 
         before = self.measure()
+        reference_vortex_strength = None
+        if cfg.pedrizzetti_relaxation_preserve_moments:
+            particles = self.ctx.particles
+            position = particles.position_cpu(use_cache=False).astype(np.float64)
+            reference_vortex_strength = particles.vortex_strength_cpu(use_cache=False).astype(
+                np.float64
+            )
+            core_radius = particles.core_radius_cpu(use_cache=False).astype(np.float64)
+            particle_volume = particles.particle_volume_cpu(use_cache=False).astype(np.float64)
         statistics = self.operators.apply_pedrizzetti_relaxation(
             self.ctx.particles,
             cfg.pedrizzetti_relaxation_factor,
@@ -368,13 +426,30 @@ class StabilizationManager:
                 cfg.pedrizzetti_relaxation_preserve_vortex_strength
             ),
         )
+        correction_relative = 0.0
+        if reference_vortex_strength is not None:
+            from .divergence_relaxation import restore_particle_moments
+
+            relaxed = self.ctx.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
+            corrected, correction_relative = restore_particle_moments(
+                position,
+                relaxed,
+                core_radius,
+                particle_volume,
+                reference_vortex_strength,
+                angular_core_coefficient=self.ctx.physics._angular_core_coefficient,
+            )
+            self.ctx.set_particles_properties(
+                vortex_strength=corrected.astype(self.ctx.np_dtype)
+            )
         self.accept(
             "Pedrizzetti relaxation",
             before,
-            conserves_vortex_strength=False,
+            conserves_vortex_strength=reference_vortex_strength is not None,
             detail=(
                 f"f={cfg.pedrizzetti_relaxation_factor:.3f}, "
-                f"misalignment={statistics['pedrizzetti_misalignment_deg']:.2f} deg"
+                f"misalignment={statistics['pedrizzetti_misalignment_deg']:.2f} deg, "
+                f"moment correction={correction_relative:.2e}"
             ),
         )
 
@@ -382,7 +457,15 @@ class StabilizationManager:
         """Bisect over-stretched Lagrangian elements at the configured cadence."""
         ctx = self.ctx
         cfg = self.config.filament_refinement
-        if not cfg.enabled or ctx.step() % cfg.interval_steps != 0:
+        interval_steps = cfg.interval_steps
+        late_stage = cfg.late_start_step is not None and ctx.step() >= cfg.late_start_step
+        if late_stage:
+            interval_steps = int(cfg.late_interval_steps)
+        if (
+            not cfg.enabled
+            or (cfg.end_step is not None and ctx.step() >= cfg.end_step)
+            or ctx.step() % interval_steps != 0
+        ):
             return
 
         from .filament_refinement import FilamentRefinementError, split_stretched_filaments
@@ -411,9 +494,12 @@ class StabilizationManager:
             particles.particle_volume_cpu(),
             reference_vortex_strength=self.reference_vortex_strength,
             reference_length=self.reference_lengths,
-            max_stretch_factor=cfg.max_vortex_strength_factor,
+            max_stretch_factor=(
+                np.inf if late_stage and cfg.late_absolute_only else cfg.max_vortex_strength_factor
+            ),
             offset_fraction=cfg.offset_fraction,
             max_n_particles=capacity,
+            max_absolute_vortex_strength=cfg.max_absolute_vortex_strength,
         )
         if result.refined_particles == 0:
             return
@@ -515,7 +601,13 @@ class StabilizationManager:
     def apply_regularization(self) -> None:
         """Redistribute a distorted cloud when its discretization health demands it."""
         cfg = self.config
-        if not self._due(cfg.regularization_interval_steps, cfg.regularization_start_step):
+        if (
+            (
+                cfg.regularization_max_events is not None
+                and self.regularization_events >= cfg.regularization_max_events
+            )
+            or not self._due(cfg.regularization_interval_steps, cfg.regularization_start_step)
+        ):
             return
 
         from .regularization import regularize
@@ -536,6 +628,7 @@ class StabilizationManager:
             preserves_discretization=False,
             detail=outcome.detail,
         )
+        self.regularization_events += 1
 
     def apply_retention(self) -> None:
         """Remove particles that have left the configured VPM domain."""

@@ -5,6 +5,8 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
@@ -22,6 +24,7 @@ from source.solvers.fvm import (
 )
 from source.solvers.fvm.io.checkpoint import decode_state, encode_state
 from source.solvers.fvm.mesh.cartesian import structured_box
+from source.solvers.fvm.sampling.base import write_pvd
 
 
 def _setup() -> FVMSetup:
@@ -95,10 +98,24 @@ def test_run_manifest_serializes_sampler_configuration(tmp_path):
     solver.close()
 
     payload = json.loads(destination.read_text(encoding="utf-8"))
+    assert payload["active_components"]["immersed_boundary"] is False
     sampler = payload["configuration"]["samplers"][0]
     assert sampler["type"] == "LineSampler"
     assert sampler["file_name"] == "centreline"
     assert sampler["n_points"] == 3
+
+
+def test_pvd_index_merges_existing_frames_across_restart(tmp_path):
+    write_pvd(tmp_path, "slice", [(0.5, "slice_000050.vts"), (1.0, "slice_000100.vts")])
+    write_pvd(tmp_path, "slice", [(1.5, "slice_000150.vts")])
+    write_pvd(tmp_path, "slice", [(1.0, "slice_000100.vts")])
+
+    datasets = ET.parse(Path(tmp_path) / "slice.pvd").findall(".//DataSet")
+    assert [(float(item.attrib["timestep"]), item.attrib["file"]) for item in datasets] == [
+        (0.5, "slice_000050.vts"),
+        (1.0, "slice_000100.vts"),
+        (1.5, "slice_000150.vts"),
+    ]
 
 
 def test_checkpoint_storage_codec_is_bit_exact_for_history_and_scalars():

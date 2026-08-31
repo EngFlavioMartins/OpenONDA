@@ -78,6 +78,9 @@ class StepDiagnostics:
         Volume-integrated enstrophy.
     min_eddy_viscosity / max_eddy_viscosity : float or None
         Eddy-viscosity extrema (``None`` for DNS/ILES).
+    state_projection : dict[str, float]
+        Maximum amplitudes removed by an optional accepted-state projection.
+        Empty when no projection is installed.
     warnings : tuple[str, ...]
         Human-readable warnings that did not trigger an abort.
     """
@@ -102,4 +105,5 @@ class StepDiagnostics:
     total_enstrophy: float
     min_eddy_viscosity: float | None = None
     max_eddy_viscosity: float | None = None
+    state_projection: dict[str, float] = field(default_factory=dict)
     warnings: tuple[str, ...] = field(default_factory=tuple)

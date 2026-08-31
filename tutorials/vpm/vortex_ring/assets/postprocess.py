@@ -95,7 +95,7 @@ def _run_contract(name: str) -> tuple[dict, set[int], list[str]]:
         if not manifest.get("termination_reason"):
             failures.append(f"{name}: resolution_lost status has no termination_reason")
     if name == "les_transposed" and status != "completed":
-        failures.append(f"{name}: calibrated LES run must complete")
+        failures.append(f"{name}: reference LES run did not reach its requested horizon")
 
     if manifest.get("variant") != name:
         failures.append(f"{name}: manifest variant is {manifest.get('variant')!r}")
