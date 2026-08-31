@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from openonda.vpm import Backup, Samplers
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 

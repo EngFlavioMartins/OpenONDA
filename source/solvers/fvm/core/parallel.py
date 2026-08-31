@@ -173,31 +173,43 @@ class ParallelContext:
 
     def barrier(self) -> None:
         if self.is_parallel:
+            if self.comm is None:
+                raise RuntimeError("Parallel context has no MPI communicator")
             self.comm.Barrier()
 
     def bcast(self, value, root: int = 0):
         if not self.is_parallel:
             return value
+        if self.comm is None:
+            raise RuntimeError("Parallel context has no MPI communicator")
         return self.comm.bcast(value, root=root)
 
     def global_sum(self, value):
         if not self.is_parallel:
             return value
+        if self.comm is None or self.mpi is None:
+            raise RuntimeError("Parallel context has no MPI reduction objects")
         return self.comm.allreduce(value, op=self.mpi.SUM)
 
     def global_max(self, value):
         if not self.is_parallel:
             return value
+        if self.comm is None or self.mpi is None:
+            raise RuntimeError("Parallel context has no MPI reduction objects")
         return self.comm.allreduce(value, op=self.mpi.MAX)
 
     def global_min(self, value):
         if not self.is_parallel:
             return value
+        if self.comm is None or self.mpi is None:
+            raise RuntimeError("Parallel context has no MPI reduction objects")
         return self.comm.allreduce(value, op=self.mpi.MIN)
 
     def global_all(self, value: bool) -> bool:
         if not self.is_parallel:
             return bool(value)
+        if self.comm is None or self.mpi is None:
+            raise RuntimeError("Parallel context has no MPI reduction objects")
         return bool(self.comm.allreduce(bool(value), op=self.mpi.LAND))
 
     def root_view(self, values, *, trailing_shape=(), dtype=np.float64):

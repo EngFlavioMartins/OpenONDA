@@ -415,12 +415,8 @@ def _triangles_area_inside_bounds(triangles: np.ndarray, bounds) -> float:
     for triangle in triangles:
         polygon = [vertex.copy() for vertex in triangle]
         for axis in range(3):
-            polygon = _clip_polygon_to_axis_plane(
-                polygon, axis, float(bounds[2 * axis]), True
-            )
-            polygon = _clip_polygon_to_axis_plane(
-                polygon, axis, float(bounds[2 * axis + 1]), False
-            )
+            polygon = _clip_polygon_to_axis_plane(polygon, axis, float(bounds[2 * axis]), True)
+            polygon = _clip_polygon_to_axis_plane(polygon, axis, float(bounds[2 * axis + 1]), False)
         if len(polygon) < 3:
             continue
         origin = polygon[0]

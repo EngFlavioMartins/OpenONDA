@@ -25,9 +25,7 @@ RELAXED_SAMPLE_INDEX = 3
 
 
 def main() -> None:
-    args = build_arg_parser(
-        "Tube circulation versus t Gamma_0 / R_0^2."
-    ).parse_args()
+    args = build_arg_parser("Tube circulation versus t Gamma_0 / R_0^2.").parse_args()
 
     load_theme()
     for family in FAMILIES:

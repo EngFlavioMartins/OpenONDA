@@ -21,7 +21,13 @@ import numpy as np
 OUTER_PATCH_NAMES = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
 
 
-def stretched(start: float, end: float, h0: float, ratio: float, h_max: float | None = None):
+def stretched(
+    start: float,
+    end: float,
+    h0: float,
+    ratio: float,
+    h_max: float | None = None,
+) -> np.ndarray:
     """Node positions from ``start`` to ``end`` with sizes growing
     geometrically from ``h0*ratio`` (capped at ``h_max``); the last sliver is
     merged into the final cell.  ``end`` may be below ``start`` (leftward run).

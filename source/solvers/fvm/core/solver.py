@@ -14,6 +14,7 @@ from ..sampling.executor import FVMSamplerExecutor
 from ..solve import pimple_solver, simple_solver
 from .parallel import ParallelContext
 from .state import FieldState
+from .time_step import maximum_courant_time_step_size
 
 
 def _load_velocity_field(setup, case_dir: str, n_total: int, mesh_data: dict) -> np.ndarray:
@@ -230,6 +231,17 @@ class FVMSolver(CouplerInterfaceMixin):
             mesh_data: Solver-native mesh dictionary. Required on the root rank.
         """
         self.setup = setup
+        # Capture immutable construction-time controls. The running solver owns
+        # its evolving time state while these values remain fixed.
+        self._time_config = setup.time
+        self._output_schedule = setup.time.output_schedule
+        self._backup_config = setup.backup
+        self._samplers = tuple(setup.samplers or ())
+        self._sampler_schedules = {
+            id(sampler): sampler.schedule
+            for sampler in self._samplers
+            if getattr(sampler, "schedule", None) is not None
+        }
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
         self.solution_dir = os.path.abspath(solution_dir or os.path.join(self.case_dir, "solution"))
         self.samples_dir = os.path.abspath(samples_dir or os.path.join(self.case_dir, "samples"))
@@ -283,7 +295,7 @@ class FVMSolver(CouplerInterfaceMixin):
             validate_turbulence,
         )
 
-        validate_solver_params(SimpleNamespace(**self.setup.algorithm_params()), self.setup.time)
+        validate_solver_params(SimpleNamespace(**self.setup.algorithm_params()), self._time_config)
         validate_turbulence(self.setup.turbulence)
         validate_acceptance_limits(self.setup.acceptance)
         if self.parallel.is_partitioned and self.setup.turbulence is not None:
@@ -551,7 +563,6 @@ class FVMSolver(CouplerInterfaceMixin):
         self.ibm = None
         self.forces_history_path = None
         self.max_courant_number = 0.0
-        self._time_since_last_write = 0.0
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
         self._coupling_consistency_filter = None
@@ -562,6 +573,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self._post_solve_state_callback = None
         self._n_committed_time_steps = 0  # number of committed time steps (BDF2 startup gate)
         self._accepted_time_step_size = self.time_step_size
+        self._previous_time_step_size = self.time_step_size
         self._last_residuals = None
         self.last_diagnostics = None
         self._derived_fields: dict[object, np.ndarray] = {}
@@ -815,9 +827,9 @@ class FVMSolver(CouplerInterfaceMixin):
                 )
 
         # Sync state
-        self.time = self.setup.time.start_time
+        self.time = self._time_config.start_time
         self.step = 0
-        self.time_step_size = self.setup.time.time_step_size
+        self.time_step_size = self._time_config.time_step_size
 
     def compute_effective_viscosity(self):
         """Compute the effective viscosity (molecular + turbulent).
@@ -983,8 +995,12 @@ class FVMSolver(CouplerInterfaceMixin):
                 volumetric_face_flux_older=(
                     self.volumetric_face_flux_older if self._n_committed_time_steps >= 1 else None
                 ),
+                previous_time_step_size=(
+                    self._previous_time_step_size if self._n_committed_time_steps >= 1 else None
+                ),
             )
         )
+        residuals = {str(name): float(value) for name, value in residuals.items()}
         if self._post_solve_state_callback is not None:
             self._post_solve_state_callback(self)
             n_cells = self.mesh_data["n_cells"]
@@ -1051,10 +1067,7 @@ class FVMSolver(CouplerInterfaceMixin):
         n_owned = self.parallel.n_owned if self.parallel.is_partitioned else n_cells
         interior_velocity = np.asarray(self.velocity[:n_owned])
         interior_kinematic_pressure = np.asarray(self.kinematic_pressure[:n_owned])
-        courant_number_field = self._courant_field(step_time_step_size)
-        self.max_courant_number = float(
-            self.parallel.global_max(float(np.max(courant_number_field[:n_owned])))
-        )
+        self.max_courant_number = self._measure_maximum_courant_number(step_time_step_size)
         local_nonfinite = int(
             np.count_nonzero(~np.isfinite(interior_velocity))
             + np.count_nonzero(~np.isfinite(interior_kinematic_pressure))
@@ -1134,8 +1147,16 @@ class FVMSolver(CouplerInterfaceMixin):
                 self.parallel.global_sum(float(np.sum(self.volumetric_face_flux[n_interior:])))
             ),
             max_courant_number=self.max_courant_number,
-            min_velocity=tuple(float(value) for value in min_velocity),
-            max_velocity=tuple(float(value) for value in max_velocity),
+            min_velocity=(
+                float(min_velocity[0]),
+                float(min_velocity[1]),
+                float(min_velocity[2]),
+            ),
+            max_velocity=(
+                float(max_velocity[0]),
+                float(max_velocity[1]),
+                float(max_velocity[2]),
+            ),
             min_kinematic_pressure=min_kinematic_pressure,
             max_kinematic_pressure=max_kinematic_pressure,
             n_nonfinite_values=n_nonfinite_values,
@@ -1193,31 +1214,77 @@ class FVMSolver(CouplerInterfaceMixin):
         self.last_diagnostics = replace(diagnostics, warnings=tuple(warnings))
         self.logger.warnings_info(tuple(warnings))
 
-    def advance(self, time_step_size: float | None = None) -> None:
-        """Advance the simulation by one full time step (= solve_pimple + advance_time).
+    def _measure_maximum_courant_number(self, time_step_size: float) -> float:
+        """Return the global maximum CFL for the current field state."""
+        n_owned = (
+            self.parallel.n_owned if self.parallel.is_partitioned else self.mesh_data["n_cells"]
+        )
+        courant_number_field = self._courant_field(time_step_size)
+        local_maximum = float(np.max(courant_number_field[:n_owned])) if n_owned > 0 else 0.0
+        return float(self.parallel.global_max(local_maximum))
 
-        Args:
-            time_step_size: Optional override for the time step size [s].
+    def _select_time_step_size(self) -> float:
+        """Select one solver-owned step and cap it at the run horizon.
+
+        Fixed stepping reads the immutable construction value; automatic
+        stepping applies the configured maximum-Courant control.
         """
-        from ..fields import diagnostics
-
-        # --- CFL-based adaptive time-step adjustment (before step) ---
-        cfg_time = self.setup.time
-        if (
-            time_step_size is None
-            and cfg_time.adjust_time_step
-            and self.max_courant_number > 0
-            and self.step > 1
-        ):
-            ratio = cfg_time.max_courant_number / max(self.max_courant_number, 1e-8)
-            ratio = min(ratio, cfg_time.time_step_size_adjust_coeff)
-            self.time_step_size = np.clip(
-                self.time_step_size * ratio,
-                cfg_time.min_time_step_size,
-                cfg_time.max_time_step_size,
+        control = self._time_config.adjustment
+        if control is None:
+            selected = float(self.time_step_size)
+        else:
+            current_courant_number = self._measure_maximum_courant_number(self.time_step_size)
+            selected = maximum_courant_time_step_size(
+                self.time_step_size,
+                current_courant_number,
+                control,
             )
 
-        step_time_step_size = time_step_size if time_step_size is not None else self.time_step_size
+            # OpenFOAM's adjustableRunTime pattern: CFL remains the stability
+            # ceiling, but a shorter accepted step lands exactly on the next
+            # time-based output, log, sample, or restart event.
+            for schedule in self._run_event_schedules():
+                next_event_time = schedule.next_time_after(self.time)
+                if next_event_time is not None:
+                    selected = min(selected, next_event_time - self.time)
+
+        # Lifecycle-managed runs land exactly on their physical horizon.
+        remaining = float(self._time_config.end_time - self.time)
+        tolerance = max(1.0e-14, abs(self._time_config.end_time) * 1.0e-12)
+        if remaining > tolerance:
+            selected = min(selected, remaining)
+        self.time_step_size = selected
+        return selected
+
+    def _run_event_schedules(self) -> tuple:
+        """Return construction-time schedules that constrain adaptive steps."""
+        schedules = [self.logger.schedule]
+        if self.auto_write:
+            schedules.append(self._output_schedule)
+        if self._backup_config.schedule is not None:
+            schedules.append(self._backup_config.schedule)
+        for sampler in self._samplers:
+            schedule = self._sampler_schedules.get(id(sampler))
+            if schedule is not None:
+                schedules.append(schedule)
+        return tuple(schedules)
+
+    def run(self) -> None:
+        """Run from the current clock to the configured end time.
+
+        The lifecycle writes the initial state, advances only accepted steps,
+        and delegates periodic output and sampling to the solver-owned output
+        controller.
+        """
+        self.write_vtk()
+        end_time = float(self._time_config.end_time)
+        tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
+        while self.time < end_time - tolerance:
+            self.advance()
+
+    def advance(self) -> None:
+        """Advance the simulation by one configured FVM time step."""
+        step_time_step_size = self._select_time_step_size()
         self.profiler.begin_step(
             step=self.step + 1,
             time=self.time + step_time_step_size,
@@ -1228,24 +1295,10 @@ class FVMSolver(CouplerInterfaceMixin):
 
         self.solve_pimple(step_time_step_size)
 
-        # Compute CFL after step (for next step's time-step adjustment)
-        if cfg_time.adjust_time_step:
-            courant_number_field = diagnostics.compute_courant_number(
-                self.velocity,
-                self.volumetric_face_flux,
-                step_time_step_size,
-                self.mesh_data,
-                self.geo_data,
-            )
-            n_owned = (
-                self.parallel.n_owned if self.parallel.is_partitioned else self.mesh_data["n_cells"]
-            )
-            self.max_courant_number = float(
-                self.parallel.global_max(float(np.max(courant_number_field[:n_owned])))
-            )
+        adjustment = self._time_config.adjustment
         self.logger.courant_info(
             self.max_courant_number,
-            cfg_time.max_courant_number if cfg_time.adjust_time_step else None,
+            adjustment.maximum if adjustment is not None else None,
         )
 
         self.advance_time()
@@ -1271,7 +1324,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.step += 1
         self.time += self._accepted_time_step_size
         step_time_step_size = self._accepted_time_step_size
-        cfg_time = self.setup.time
+        self._previous_time_step_size = step_time_step_size
         logging.Timer.log("Field history commit", sink=self.logger)
 
         logging.Timer.start("Diagnostics file")
@@ -1313,19 +1366,32 @@ class FVMSolver(CouplerInterfaceMixin):
                 )
         logging.Timer.log("Turbulence statistics", sink=self.logger)
 
-        # Output control — time-based if write_interval_time is set, else step-based
+        # Visualization cadence is deterministic from accepted step/time state;
+        # physical-time events have already constrained adaptive step selection.
         logging.Timer.start("Visualization output")
-        if (self.parallel.is_root or self.parallel.is_partitioned) and self.auto_write:
-            wrt_time = cfg_time.output_interval_time
-            if wrt_time is not None:
-                self._time_since_last_write += step_time_step_size
-                if self._time_since_last_write >= wrt_time:
-                    self.write_vtk()
-                    self._time_since_last_write = 0.0
-            else:
-                if self.step % cfg_time.output_interval_steps == 0:
-                    self.write_vtk()
+        if (
+            (self.parallel.is_root or self.parallel.is_partitioned)
+            and self.auto_write
+            and self._output_schedule.is_due(self.step, self.time, step_time_step_size)
+        ):
+            self.write_vtk()
         logging.Timer.log("Visualization output", sink=self.logger)
+
+        logging.Timer.start("Restart backup")
+        backup_schedule = self._backup_config.schedule
+        scheduled_backup = backup_schedule is not None and backup_schedule.is_due(
+            self.step, self.time, step_time_step_size
+        )
+        end_tolerance = max(1.0e-14, abs(self._time_config.end_time) * 1.0e-12)
+        final_backup = self._backup_config.write_at_end and (
+            self.time >= self._time_config.end_time - end_tolerance
+        )
+        if scheduled_backup or final_backup:
+            backup_path = self._backup_config.path
+            if not os.path.isabs(backup_path):
+                backup_path = os.path.join(self.solution_dir, backup_path)
+            self.save_state(backup_path)
+        logging.Timer.log("Restart backup", sink=self.logger)
 
         # Courant/gradient/vorticity caches describe this accepted state and
         # remain valid until ``solve_pimple`` starts the next mutation.  In a
@@ -1340,14 +1406,18 @@ class FVMSolver(CouplerInterfaceMixin):
         if self.parallel.is_partitioned:
             from ..io.partitioned import save_partitioned_solver_backup
 
-            return str(save_partitioned_solver_backup(self, path))
-        from ..io.backup import save_backup
+            saved_path = str(save_partitioned_solver_backup(self, path))
+        else:
+            from ..io.backup import save_backup
 
-        saved = None
+            saved = None
+            if self.parallel.is_root:
+                saved = save_backup(self, path)
+            self.parallel.barrier()
+            saved_path = str(saved if saved is not None else path)
         if self.parallel.is_root:
-            saved = save_backup(self, path)
-        self.parallel.barrier()
-        return str(saved if saved is not None else path)
+            self.logger.output_info(f"Restart backup written: {saved_path}")
+        return saved_path
 
     def write_run_manifest(self, path=None) -> str:
         """Write source, dependency, backend, mesh, and configuration identity."""

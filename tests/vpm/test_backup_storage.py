@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import multiprocessing
 from pathlib import Path
 
 import h5py
@@ -85,6 +86,20 @@ def _advance(solver: VPMSolver, steps: int) -> None:
             solver.advance(defer_output=True)
 
 
+def _write_rwm_process_result(case_directory: str, output_file: str) -> None:
+    """Run one seeded RWM trajectory in a fresh spawned Python process."""
+    solver = _solver(
+        Path(case_directory),
+        advection=AdvectionConfig("NONE"),
+        viscous=ViscousConfig.rwm(kinematic_viscosity=0.01, particle_spacing=0.2),
+        velocity=VelocityConfig.direct(),
+        random_seed=42,
+    )
+    _add_counter_rotating_pair(solver)
+    _advance(solver, 4)
+    np.save(output_file, solver.particle_position)
+
+
 def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
     solver = _solver(tmp_path / "writer")
     solver.add_vortex_particles(
@@ -145,7 +160,7 @@ def test_vpm_restart_preserves_compute_precision_and_freestream(tmp_path):
         particle_volume=np.array([0.008], dtype=np.float32),
         kinematic_viscosity=np.array([0.01], dtype=np.float32),
     )
-    solver.set_freestream_velocity([0.12345679, -0.25, 0.5])
+    solver._set_freestream_velocity([0.12345679, -0.25, 0.5])
     with contextlib.redirect_stdout(io.StringIO()):
         solver.save_backup()
     backup = tmp_path / "writer" / "solution" / "vpm_000000"
@@ -155,7 +170,7 @@ def test_vpm_restart_preserves_compute_precision_and_freestream(tmp_path):
         np.testing.assert_array_equal(archive["particles"]["position"][:], position)
 
     restored = _solver(tmp_path / "reader")
-    restored.set_freestream_velocity([9.0, 8.0, 7.0])
+    restored._set_freestream_velocity([9.0, 8.0, 7.0])
     with contextlib.redirect_stdout(io.StringIO()):
         restored.load_backup(str(backup))
 
@@ -277,6 +292,7 @@ def test_split_run_matches_each_deterministic_advection_scheme(tmp_path, advecti
     [
         ViscousConfig.inviscid(particle_spacing=0.2),
         ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.2),
+        ViscousConfig.rwm(kinematic_viscosity=0.01, particle_spacing=0.2),
         ViscousConfig.dvh(
             particle_spacing=0.2,
             padding=3.0,
@@ -292,10 +308,10 @@ def test_split_run_matches_each_deterministic_advection_scheme(tmp_path, advecti
             max_nodes=5_000,
         ),
     ],
-    ids=("none", "core-spreading", "dvh", "gbd"),
+    ids=("none", "core-spreading", "rwm", "dvh", "gbd"),
 )
 def test_split_run_matches_each_deterministic_viscous_scheme(tmp_path, viscous):
-    """Same-backend backups preserve all deterministic viscous state machines."""
+    """Same-backend backups preserve every viscous state machine, including RWM."""
     _assert_split_run_matches(
         tmp_path,
         {
@@ -304,6 +320,26 @@ def test_split_run_matches_each_deterministic_viscous_scheme(tmp_path, viscous):
             "velocity": VelocityConfig.direct(),
         },
     )
+
+
+@pytest.mark.qualification
+@pytest.mark.stochastic
+def test_seeded_rwm_matches_across_fresh_processes(tmp_path):
+    """The declared seed produces the same trajectory in fresh interpreters."""
+    context = multiprocessing.get_context("spawn")
+    outputs = []
+    for index in range(2):
+        output = tmp_path / f"rwm_{index}.npy"
+        process = context.Process(
+            target=_write_rwm_process_result,
+            args=(str(tmp_path / f"case_{index}"), str(output)),
+        )
+        process.start()
+        process.join(timeout=60.0)
+        assert process.exitcode == 0
+        outputs.append(np.load(output))
+
+    np.testing.assert_array_equal(outputs[0], outputs[1])
 
 
 def test_truncated_backup_is_rejected_before_state_mutation(tmp_path):

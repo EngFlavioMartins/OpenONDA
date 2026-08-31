@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -177,12 +178,12 @@ def compute_geometry(
         area_sum = np.zeros(stop - start, dtype=np.float64)
         for index in range(max_nodes):
             point1 = face_coords[:, index, :]
-            is_last = index == count_block - 1
+            is_last = np.equal(index, count_block - 1)
             point2_raw = (
                 face_coords[:, index + 1, :] if index + 1 < max_nodes else face_coords[:, 0, :]
             )
             point2 = np.where(is_last[:, np.newaxis], face_coords[:, 0, :], point2_raw)
-            valid_triangle = (index < count_block)[:, np.newaxis]
+            valid_triangle = np.less(index, count_block)[:, np.newaxis]
             local_sf = 0.5 * np.cross(point1 - local_centre, point2 - local_centre)
             local_area = np.linalg.norm(local_sf, axis=1)
             face_centre_sum += (
@@ -210,8 +211,10 @@ def compute_geometry(
     # counts persist globally; padded connectivity and all gathered face
     # tensors are bounded to one block.
     cell_face_indices_are_csr = isinstance(cell_face_indices, tuple)
+    cell_face_offset: np.ndarray | None = None
     if cell_face_indices_are_csr:
-        cell_face_indices, cell_face_offset = cell_face_indices
+        cell_face_indices, raw_cell_face_offset = cell_face_indices
+        cell_face_offset = np.asarray(raw_cell_face_offset)
         cell_counts = np.diff(cell_face_offset).astype(np.int32, copy=False)
         max_faces = int(np.max(cell_counts, initial=0))
     else:
@@ -224,6 +227,8 @@ def compute_geometry(
         count_block = cell_counts[start:stop]
         padded = np.full((stop - start, max_faces), -1, dtype=np.int32)
         if cell_face_indices_are_csr:
+            if cell_face_offset is None:
+                raise RuntimeError("CSR cell-face offsets are missing")
             first_entry = int(cell_face_offset[start])
             last_entry = int(cell_face_offset[stop])
             if last_entry > first_entry:
@@ -348,7 +353,7 @@ def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, compute_lsq=Tru
         mesh_data["cell_face_indices"] = cell_face_indices
         mesh_data["cell_face_offset"] = cell_face_offset
 
-    geo_data = compute_geometry(
+    geo_data: dict[str, Any] = compute_geometry(
         mesh_data["vertex_position"],
         mesh_data["faces"],
         mesh_data["owners"],

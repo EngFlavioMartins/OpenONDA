@@ -395,12 +395,7 @@ def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarra
         return np.array([]), np.array([])
     time = data[_sample_time_column(data)].to_numpy(float)
     circulation = data["tube_circulation"].to_numpy(float)
-    valid = (
-        np.isfinite(time)
-        & (time > 0.0)
-        & np.isfinite(circulation)
-        & (circulation > 0.0)
-    )
+    valid = np.isfinite(time) & (time > 0.0) & np.isfinite(circulation) & (circulation > 0.0)
     if not valid.any():
         return np.array([]), np.array([])
     time = time[valid]

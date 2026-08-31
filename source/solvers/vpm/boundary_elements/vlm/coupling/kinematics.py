@@ -10,8 +10,12 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from ..solver.vlm_solver import VLMSolver
 
 
 class VLMKinematics(ABC):
@@ -98,7 +102,13 @@ class StaticVLM(VLMKinematics):
         """Return zero angular velocity (static)."""
         return np.zeros(3)
 
-    def update(self, vlm_solver, time: float, time_step_size: float, panel_range: tuple = None):
+    def update(
+        self,
+        vlm_solver: "VLMSolver",
+        time: float,
+        time_step_size: float,
+        panel_range: tuple[int, int] | None = None,
+    ) -> None:
         """No update needed for static case."""
         pass
 
@@ -134,7 +144,13 @@ class TranslatingVLM(VLMKinematics):
         """Return zero angular velocity."""
         return np.zeros(3)
 
-    def update(self, vlm_solver, time: float, time_step_size: float, panel_range: tuple = None):
+    def update(
+        self,
+        vlm_solver: "VLMSolver",
+        time: float,
+        time_step_size: float,
+        panel_range: tuple[int, int] | None = None,
+    ) -> None:
         """
         Translate VLM geometry.
         """
@@ -222,7 +238,13 @@ class RotatingVLM(VLMKinematics):
         )
         return rotation_matrix
 
-    def update(self, vlm_solver, time: float, time_step_size: float, panel_range: tuple = None):
+    def update(
+        self,
+        vlm_solver: "VLMSolver",
+        time: float,
+        time_step_size: float,
+        panel_range: tuple[int, int] | None = None,
+    ) -> None:
         """
         Rotate VLM geometry.
         """
@@ -307,7 +329,13 @@ class ManeuverVLM(VLMKinematics):
         )
         return rotation_matrix
 
-    def update(self, vlm_solver, time: float, time_step_size: float, panel_range: tuple = None):
+    def update(
+        self,
+        vlm_solver: "VLMSolver",
+        time: float,
+        time_step_size: float,
+        panel_range: tuple[int, int] | None = None,
+    ) -> None:
         """
         Update VLM geometry for maneuver (rotation + translation).
         """
@@ -843,7 +871,13 @@ class SmoothRampVLM(VLMKinematics):
         """Return zero angular velocity (pure translation)."""
         return np.zeros(3)
 
-    def update(self, vlm_solver, time: float, time_step_size: float, panel_range: tuple = None):
+    def update(
+        self,
+        vlm_solver: "VLMSolver",
+        time: float,
+        time_step_size: float,
+        panel_range: tuple[int, int] | None = None,
+    ) -> None:
         """
         Update VLM geometry using sin² velocity integration.
 

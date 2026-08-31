@@ -25,9 +25,9 @@ def _ensure_cpu_runtime() -> None:
 
 @ti.kernel
 def _reduce_kernel(
-    slots: ti.types.ndarray(dtype=ti.i64, ndim=1),
-    contributions: ti.types.ndarray(dtype=ti.f64, ndim=1),
-    result: ti.types.ndarray(dtype=ti.f64, ndim=1),
+    slots: ti.types.ndarray(dtype=ti.i64, ndim=1),  # type: ignore[invalid-annotation]
+    contributions: ti.types.ndarray(dtype=ti.f64, ndim=1),  # type: ignore[invalid-annotation]
+    result: ti.types.ndarray(dtype=ti.f64, ndim=1),  # type: ignore[invalid-annotation]
 ):
     for index in range(contributions.shape[0]):
         ti.atomic_add(result[slots[index]], contributions[index])
@@ -35,11 +35,11 @@ def _reduce_kernel(
 
 @ti.kernel
 def _rhs_kernel(
-    flux: ti.types.ndarray(dtype=ti.f64, ndim=1),
-    owners: ti.types.ndarray(dtype=ti.i64, ndim=1),
-    neighbours: ti.types.ndarray(dtype=ti.i64, ndim=1),
+    flux: ti.types.ndarray(dtype=ti.f64, ndim=1),  # type: ignore[invalid-annotation]
+    owners: ti.types.ndarray(dtype=ti.i64, ndim=1),  # type: ignore[invalid-annotation]
+    neighbours: ti.types.ndarray(dtype=ti.i64, ndim=1),  # type: ignore[invalid-annotation]
     n_interior: ti.i64,
-    result: ti.types.ndarray(dtype=ti.f64, ndim=1),
+    result: ti.types.ndarray(dtype=ti.f64, ndim=1),  # type: ignore[invalid-annotation]
 ):
     for face in range(flux.shape[0]):
         ti.atomic_sub(result[owners[face]], flux[face])

@@ -431,9 +431,7 @@ def _conform_wall_to_surface(
         target, _distance = surface_index.nearest_point(points[point_id])
         original = points[point_id].copy()
         requested_displacement = float(np.linalg.norm(target - original))
-        maximum_requested_displacement = max(
-            maximum_requested_displacement, requested_displacement
-        )
+        maximum_requested_displacement = max(maximum_requested_displacement, requested_displacement)
         points[point_id] = target
         after = [_hex_volume(points[cell_vertex_indices[c]]) for c in affected]
         minimum_after = min(after)
@@ -490,9 +488,7 @@ def _compact_conformed_topology(mesh_data: dict, *, tolerance: float = 1.0e-12) 
     scale = max(float(np.ptp(points, axis=0).max()), 1.0)
     quantum = max(tolerance * scale, np.finfo(np.float64).eps * scale * 32.0)
     quantized = np.rint(points / quantum).astype(np.int64)
-    _, first, inverse = np.unique(
-        quantized, axis=0, return_index=True, return_inverse=True
-    )
+    _, first, inverse = np.unique(quantized, axis=0, return_index=True, return_inverse=True)
     unique_points = points[first]
 
     cell_corners = np.asarray(mesh_data["cell_vertex_indices"], dtype=np.int64)
@@ -512,8 +508,7 @@ def _compact_conformed_topology(mesh_data: dict, *, tolerance: float = 1.0e-12) 
                 compact.append(value)
         if len(compact) < 3:
             raise ValueError(
-                f"Curved-surface projection collapsed face {face_id} to "
-                f"{len(compact)} unique nodes"
+                f"Curved-surface projection collapsed face {face_id} to {len(compact)} unique nodes"
             )
         compact_array = np.asarray(compact, dtype=np.int32)
         coordinates = unique_points[compact_array]
@@ -537,9 +532,7 @@ def _compact_conformed_topology(mesh_data: dict, *, tolerance: float = 1.0e-12) 
 
     widths = {len(face) for face in compact_faces}
     mesh_data["faces"] = (
-        np.ascontiguousarray(compact_faces, dtype=np.int32)
-        if len(widths) == 1
-        else compact_faces
+        np.ascontiguousarray(compact_faces, dtype=np.int32) if len(widths) == 1 else compact_faces
     )
     mesh_data["vertex_position"] = np.ascontiguousarray(unique_points)
     mesh_data["n_points"] = len(unique_points)
@@ -839,7 +832,7 @@ class AdaptiveCartesianMesher:
         self,
         base_counts: tuple[int, int, int],
         max_level: int,
-        solid: _IntegerBox | None,
+        solid: _IntegerBox | _SurfaceSolid | None,
         regions: tuple[tuple[_IntegerBox, int], ...],
     ) -> np.ndarray:
         base_width = 2**max_level
@@ -1108,9 +1101,7 @@ class AdaptiveCartesianMesher:
                     neighbour_ids.discard(-1)
                     if neighbour_ids:
                         for neighbour_slice in sorted(neighbour_ids):
-                            nx0, ny0, nw, neighbour_level = map(
-                                int, leaves[neighbour_slice]
-                            )
+                            nx0, ny0, nw, neighbour_level = map(int, leaves[neighbour_slice])
                             if abs(level - neighbour_level) > 1:
                                 raise RuntimeError("Extruded refinement transition is not 2:1")
                             if axis == 0:
@@ -1181,9 +1172,7 @@ class AdaptiveCartesianMesher:
                 else:
                     name = patch_for(2, True, z_cells)
                     patch_codes[name].append(
-                        self._face_codes(
-                            2, z_cells, x0, x1, y0, y1, point_strides, True
-                        )
+                        self._face_codes(2, z_cells, x0, x1, y0, y1, point_strides, True)
                     )
                     patch_owners[name].append(owner)
                 if z_index == 0:
@@ -1528,9 +1517,7 @@ class AdaptiveCartesianMesher:
 
         base_width = 2**max_level
         limits_xy = (base_counts[0] * base_width, base_counts[1] * base_width)
-        leaves = self._build_extruded_leaves(
-            base_counts[:2], max_level, solid, regions
-        )
+        leaves = self._build_extruded_leaves(base_counts[:2], max_level, solid, regions)
         encoded_faces, owners, neighbours, boundary, levels, encoded_cells = (
             self._extract_extruded_topology(leaves, max_level, limits_xy, z_cells)
         )
@@ -1539,9 +1526,9 @@ class AdaptiveCartesianMesher:
         faces = np.empty(encoded_faces.shape, dtype=np.int32)
         for start in range(0, len(encoded_faces), 250_000):
             stop = min(start + 250_000, len(encoded_faces))
-            faces[start:stop] = np.searchsorted(
-                point_codes, encoded_faces[start:stop]
-            ).astype(np.int32)
+            faces[start:stop] = np.searchsorted(point_codes, encoded_faces[start:stop]).astype(
+                np.int32
+            )
         nx, ny = limits_xy
         sx, sy = nx + 1, ny + 1
         px = point_codes % sx
@@ -1573,12 +1560,8 @@ class AdaptiveCartesianMesher:
             "n_interior_faces": len(neighbours),
             "n_points": len(points),
             "cell_levels": levels,
-            "cell_sizes": np.asarray(
-                self.max_cell_size / np.power(2.0, levels), dtype=np.float32
-            ),
-            "cell_vertex_indices": np.ascontiguousarray(
-                cell_vertex_indices, dtype=np.int32
-            ),
+            "cell_sizes": np.asarray(self.max_cell_size / np.power(2.0, levels), dtype=np.float32),
+            "cell_vertex_indices": np.ascontiguousarray(cell_vertex_indices, dtype=np.int32),
             "cell_type_code": np.full(n_cells, 5, dtype=np.int32),
             "mesh_generation": {
                 "method": "spanwise_extruded_adaptive_cartesian",
@@ -1627,9 +1610,7 @@ class AdaptiveCartesianMesher:
             mesh_data,
             self.surface.triangles,
             self.wall_patch_name,
-            surface_clip_bounds=(
-                self.domain if self.surface_may_cross_domain_boundary else None
-            ),
+            surface_clip_bounds=(self.domain if self.surface_may_cross_domain_boundary else None),
         )
         return mesh_data
 
@@ -1688,21 +1669,19 @@ class AdaptiveCartesianMesher:
             solid = _IntegerBox(*(index * scale for index in self._body_lattice_indices))
             body_region = solid
         elif self._surface_index is not None:
-            solid = _SurfaceSolid(self._surface_index, h_min, self.domain[::2])
+            if self.surface_bounds is None:
+                raise RuntimeError("Surface bounds are missing for the curved body")
+            origin = (self.domain[0], self.domain[2], self.domain[4])
+            solid = _SurfaceSolid(self._surface_index, h_min, origin)
             body_region = self._integer_box(self.surface_bounds, h_min)
         else:
             solid = None
             body_region = None
         regions = self._refinement_regions(h_min, max_level, limits, body_region)
-        if (
-            self.boundary_layer is not None
-            and self.boundary_layer.spanwise_cell_size is not None
-        ):
+        if self.boundary_layer is not None and self.boundary_layer.spanwise_cell_size is not None:
             if not isinstance(solid, _IntegerBox):
                 raise RuntimeError("Spanwise extrusion requires a lattice-aligned interface")
-            return self._build_spanwise_extruded(
-                base_counts, max_level, h_min, solid, regions
-            )
+            return self._build_spanwise_extruded(base_counts, max_level, h_min, solid, regions)
         leaves = self._build_leaves(base_counts, max_level, solid, regions)
         encoded_faces, owners, neighbours, boundary, levels = self._extract_topology(
             leaves, max_level, limits
@@ -1800,6 +1779,8 @@ class AdaptiveCartesianMesher:
             mesh_data["cell_type_code"] = np.full(len(leaves), 5, dtype=np.int32)
 
         if self.boundary_layer is not None:
+            if self.surface is None or self._surface_index is None:
+                raise RuntimeError("Boundary-layer surface data are missing")
             interface_patch_name = "__boundary_layer_interface__"
             for patch in mesh_data["boundary"]:
                 if patch["name"] == self.wall_patch_name:
@@ -1817,9 +1798,7 @@ class AdaptiveCartesianMesher:
                 self.wall_patch_name,
                 interface_patch_name,
             )
-            mesh_data = stitch_boundary_layer(
-                mesh_data, layer_mesh, interface_patch_name
-            )
+            mesh_data = stitch_boundary_layer(mesh_data, layer_mesh, interface_patch_name)
             validate_curved_wall_conformance(
                 mesh_data,
                 self.surface.triangles,
@@ -1828,10 +1807,16 @@ class AdaptiveCartesianMesher:
                     self.domain if self.surface_may_cross_domain_boundary else None
                 ),
             )
-        elif self.surface_bounds is not None and self.surface.kind == "box":
+        elif (
+            self.surface_bounds is not None
+            and self.surface is not None
+            and self.surface.kind == "box"
+        ):
             validate_no_fluid_solid_overlap(mesh_data, self.surface_bounds)
             _validate_wall_on_surface(mesh_data, self.surface_bounds, self.wall_patch_name)
         elif self._surface_index is not None:
+            if self.surface is None:
+                raise RuntimeError("Surface data are missing for the curved body")
             _conform_wall_to_surface(mesh_data, self._surface_index, self.wall_patch_name)
             _compact_conformed_topology(mesh_data)
             validate_curved_wall_conformance(
@@ -1877,9 +1862,7 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
     ) -> None:
         if not math.isfinite(wall_cell_size) or wall_cell_size <= 0.0:
             raise ValueError("wall_cell_size must be finite and positive")
-        if not (
-            0.0 < interface_half_width < near_body_half_width < wake_half_width
-        ):
+        if not (0.0 < interface_half_width < near_body_half_width < wake_half_width):
             raise ValueError(
                 "Require 0 < interface_half_width < near_body_half_width < wake_half_width"
             )
@@ -1970,7 +1953,9 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
                 raise ValueError("Grid-study regions must remain inside the requested domain")
         if not (0 < x_wake < x_near_lo < x_interface_lo < x_interface_hi < x_near_hi < nx):
             raise ValueError("Invalid x-direction grid-study region ordering")
-        if not (0 < y_wake_lo < y_near_lo < y_interface_lo < y_interface_hi < y_near_hi < y_wake_hi < ny):
+        if not (
+            0 < y_wake_lo < y_near_lo < y_interface_lo < y_interface_hi < y_near_hi < y_wake_hi < ny
+        ):
             raise ValueError("Invalid y-direction grid-study region ordering")
 
         coverage = np.zeros((ny, nx), dtype=np.int8)
@@ -2304,8 +2289,7 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
             "n_interior_faces": len(neighbours),
             "n_points": len(points),
             "cell_levels": levels,
-            "cell_sizes": np.tile(leaves[:, 2], z_cells).astype(np.float32)
-            * self.wall_cell_size,
+            "cell_sizes": np.tile(leaves[:, 2], z_cells).astype(np.float32) * self.wall_cell_size,
             "cell_vertex_indices": np.ascontiguousarray(cell_vertex_indices),
             "cell_type_code": np.full(len(levels), 5, dtype=np.int32),
             "mesh_generation": {

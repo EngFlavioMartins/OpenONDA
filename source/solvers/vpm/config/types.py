@@ -12,12 +12,7 @@ from .divergence_relaxation import DivergenceRelaxationConfig
 from .filament_refinement import FilamentRefinementConfig
 from .health import HealthLimits
 from .stabilization import StabilizationConfig
-from .state import (
-    ParticlesState,
-    SolverState,
-    cached_particle_property,
-    set_flow_model,
-)
+from .state import cached_particle_property, set_flow_model
 from .stretching import StretchingConfig
 from .turbulence import TurbulenceConfig
 from .velocity import VelocityConfig
@@ -30,8 +25,6 @@ __all__ = [
     "FilamentRefinementConfig",
     "HealthLimits",
     "Numerics",
-    "ParticlesState",
-    "SolverState",
     "StabilizationConfig",
     "StretchingConfig",
     "TurbulenceConfig",

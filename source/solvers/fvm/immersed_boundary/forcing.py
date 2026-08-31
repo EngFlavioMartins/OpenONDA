@@ -23,7 +23,7 @@ import warnings
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import MatrixRankWarning, spsolve
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # type: ignore[missing-module-attribute]
 
 from .body import ImmersedBody
 

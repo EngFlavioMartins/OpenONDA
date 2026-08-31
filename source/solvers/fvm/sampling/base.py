@@ -1,7 +1,7 @@
 """Common sampler abstraction shared by every FVM sampler.
 
 A sampler is a small object that owns its output file name, its geometry and
-its own deterministic cadence (:class:`SamplingSchedule`).  Sampling is driven
+its own deterministic cadence (:class:`RunSchedule`).  Sampling is driven
 by the :class:`~source.solvers.fvm.sampling.executor.FVMSamplerExecutor`,
 which runs after every accepted solver step and lets each sampler decide
 whether it is due.  The same samplers drive live runs and offline
@@ -15,23 +15,23 @@ individual samplers, so a named study case can route every sample coherently.
 
 Examples
 --------
->>> schedule = SamplingSchedule(every_n_steps=10)   # due at steps 0, 10, 20, ...
+>>> schedule = RunSchedule(every_n_steps=10)   # due at steps 0, 10, 20, ...
 >>> schedule.is_due(0, 0.0, 0.01)
 True
 >>> schedule.is_due(5, 0.05, 0.01)
 False
->>> SamplingSchedule(every_time=0.1).is_due(15, 0.15, 0.01)
+>>> RunSchedule(every_time=0.1).is_due(15, 0.15, 0.01)
 True
 """
 
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
-import math
 import os
 from typing import Any, ClassVar
 import xml.etree.ElementTree as ET
+
+from ..config.scheduling import RunSchedule
 
 # Canonical CSV column order for FVM field samplers. The leading coordinates
 # and vector components match the VPM sampler so one reader serves both
@@ -53,63 +53,6 @@ SAMPLER_CSV_COLUMNS = [
 def samples_dir(case_dir: str) -> str:
     """Return the default sampler output directory for offline post-processing."""
     return os.path.join(case_dir, "samples")
-
-
-@dataclass(frozen=True)
-class SamplingSchedule:
-    """Deterministic sampling cadence owned by one sampler.
-
-    Provide exactly one of ``every_n_steps`` (sample when
-    ``step % every_n_steps == 0``) or ``every_time`` (sample on the first
-    accepted step that steps over an integer multiple of ``every_time``).
-    Because the decision depends only on ``step``/``time``/``time_step_size``, a
-    live simulation and an offline ``PostProcess`` over archived snapshots
-    produce identical events.
-
-    The ``every_time`` criterion is a *crossing* test — a multiple of
-    ``every_time`` lies inside ``(time - dt, time]`` — so a slowly
-    stepping solver fires once per interval instead of twice around the target.
-
-    Examples
-    --------
-    >>> SamplingSchedule(every_n_steps=10)
-    SamplingSchedule(every_n_steps=10, every_time=None)
-    >>> SamplingSchedule(every_time=0.1)
-    SamplingSchedule(every_n_steps=None, every_time=0.1)
-    """
-
-    every_n_steps: int | None = None
-    every_time: float | None = None
-
-    def __post_init__(self) -> None:
-        if (self.every_n_steps is None) == (self.every_time is None):
-            raise ValueError("Provide exactly one of every_n_steps or every_time")
-        if self.every_n_steps is not None and int(self.every_n_steps) < 1:
-            raise ValueError("every_n_steps must be a positive integer")
-        if self.every_time is not None and float(self.every_time) <= 0.0:
-            raise ValueError("every_time must be positive")
-
-    def to_dict(self) -> dict:
-        return {"every_n_steps": self.every_n_steps, "every_time": self.every_time}
-
-    @classmethod
-    def from_dict(cls, data: dict) -> SamplingSchedule:
-        return cls(**data)
-
-    def is_due(self, step: int, time: float, time_step_size: float | None = None) -> bool:
-        """Whether a sampling event at the given state should run."""
-        if self.every_n_steps is not None:
-            return int(step) % int(self.every_n_steps) == 0
-        if time_step_size is None or time_step_size <= 0.0 or self.every_time is None:
-            return False
-        interval = float(self.every_time)
-
-        # Crossing test: an interval boundary lies in (t - dt, t].  Uses an
-        # epsilon so exact multiples and accumulated float error stay robust.
-        def bucket(t):
-            return math.floor(t / interval + 1e-9)
-
-        return bucket(time) != bucket(time - time_step_size)
 
 
 class Sampler:
@@ -139,10 +82,10 @@ class Sampler:
     def __init__(
         self,
         file_name: str | None = None,
-        schedule: SamplingSchedule | None = None,
+        schedule: RunSchedule | None = None,
     ) -> None:
         self.file_name = file_name
-        self.schedule = schedule if schedule is not None else SamplingSchedule(every_n_steps=1)
+        self.schedule = schedule if schedule is not None else RunSchedule(every_n_steps=1)
 
     @property
     def name(self) -> str:
@@ -180,7 +123,7 @@ class Sampler:
     def from_config(cls, data: dict) -> Sampler:
         data = dict(data)
         schedule = data.pop("schedule", None)
-        return cls(**data, schedule=SamplingSchedule.from_dict(schedule))
+        return cls(**data, schedule=RunSchedule.from_dict(schedule))
 
 
 _SAMPLER_REGISTRY: dict[str, type[Sampler]] = {}

@@ -277,10 +277,10 @@ def main() -> None:
     )
     case.VPM_CASE = replace(
         case.VPM_CASE,
-        output=replace(
-            case.VPM_CASE.output,
-            backup=replace(case.VPM_CASE.output.backup, directory="solution"),
-            logging=replace(case.VPM_CASE.output.logging, directory="solution"),
+        backup=replace(
+            case.VPM_CASE.backup,
+            directory="solution",
+            log_directory="solution",
         ),
         run=replace(case.VPM_CASE.run, steps=round(arguments.end_time / case.VPM_TIME_STEP_SIZE)),
         directory=case.CASE_DIR,

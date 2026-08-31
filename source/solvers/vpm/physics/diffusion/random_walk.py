@@ -11,8 +11,15 @@ management.
 """
 
 
-def apply_random_walk(owner, particles, time_step_size: float):
-    """Apply Random Walk Method diffusion to ``particles`` over ``time_step_size``."""
+def apply_random_walk(
+    owner,
+    particles,
+    time_step_size: float,
+    *,
+    random_seed: int,
+    accepted_step: int,
+):
+    """Apply deterministic counter-based RWM diffusion for one accepted step."""
     N = len(particles)
     if N == 0 or time_step_size <= 0.0:
         return
@@ -20,5 +27,10 @@ def apply_random_walk(owner, particles, time_step_size: float):
     owner._resize_temp_fields(N)
     # No temp field is touched, so the temp-field zeroing is deliberately skipped.
     owner.update_position_rwm_kernel(
-        particles.position, particles.effective_viscosity, time_step_size, N
+        particles.position,
+        particles.effective_viscosity,
+        time_step_size,
+        N,
+        random_seed,
+        accepted_step,
     )

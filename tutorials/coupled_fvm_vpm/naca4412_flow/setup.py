@@ -18,7 +18,7 @@ import numpy as np
 import openonda.fvm as fvm
 import openonda.coupler as coupling
 import openonda.vpm as vpm
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from openonda.vpm import Backup, Samplers
 
 CASE_DIR = Path(__file__).resolve().parent
 # Physical parameters -----------------------------------------------------
@@ -96,14 +96,14 @@ FVM_SAMPLERS = (
     fvm.IBMForceSampler(
         reference_velocity=float(np.linalg.norm(FREESTREAM_VELOCITY)),
         reference_area=CHORD * SPAN,
-        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
+        schedule=fvm.RunSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
     ),
     fvm.LineSampler(
         start=[FVM_BOX[0], 0.0, 0.0],
         end=[FVM_BOX[1], 0.0, 0.0],
         spacing=SPACING,
         file_name="fvm_centreline",
-        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
+        schedule=fvm.RunSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
     ),
     fvm.SurfaceSampler(
         point=[0.0, 0.0, 0.0],
@@ -111,7 +111,7 @@ FVM_SAMPLERS = (
         bounds=[FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]],
         spacing=SPACING,
         file_name="fvm_slice_z0",
-        schedule=fvm.SamplingSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
+        schedule=fvm.RunSchedule(every_n_steps=FVM_LOGGING_INTERVAL_STEPS),
     ),
 )
 
@@ -146,8 +146,7 @@ FVM_SETUP = fvm.FVMSetup(
     time=fvm.TimeConfig(
         time_step_size=FVM_TIME_STEP_SIZE,
         end_time=END_TIME,
-        output_interval_steps=10**9,
-        output_interval_time=WRITE_INTERVAL_TIME,
+        output_schedule=fvm.RunSchedule(every_time=WRITE_INTERVAL_TIME),
     ),
     schemes=fvm.DiscretizationConfig(
         convection_scheme="limitedLinear",

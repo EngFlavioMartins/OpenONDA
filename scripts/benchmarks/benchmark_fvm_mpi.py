@@ -24,6 +24,7 @@ from source.solvers.fvm import (
     FVMSolver,
     LinearSolverConfig,
     PimpleControl,
+    RunSchedule,
     TimeConfig,
     TransportConfig,
 )
@@ -55,7 +56,11 @@ def main() -> None:
     config = FVMSetup(
         case_name="partitioned-weak-scaling",
         execution=execution,
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.01, write_interval=10**9),
+        time=TimeConfig(
+            time_step_size=0.01,
+            end_time=0.01,
+            output_schedule=RunSchedule(every_n_steps=10**9),
+        ),
         schemes=DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
         linear=LinearSolverConfig(
             momentum_solver="bicgstab",

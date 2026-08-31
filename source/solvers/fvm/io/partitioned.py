@@ -18,7 +18,7 @@ from .backup import decode_state, encode_state
 from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter, atomic_write_text
 
-PARTITIONED_BACKUP_VERSION = 6
+PARTITIONED_BACKUP_VERSION = 8
 
 
 def _resolve_backup_file(target: Path, name: str) -> Path:
@@ -105,8 +105,8 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
         "n_committed_time_steps": np.asarray(solver._n_committed_time_steps),
         "time_step_size": np.asarray(solver.time_step_size),
         "accepted_time_step_size": np.asarray(solver._accepted_time_step_size),
+        "previous_time_step_size": np.asarray(solver._previous_time_step_size),
         "max_courant_number": np.asarray(solver.max_courant_number),
-        "time_since_last_write": np.asarray(solver._time_since_last_write),
         "n_consecutive_accepted_steps": np.asarray(
             [
                 solver._n_consecutive_accepted_steps[name]
@@ -245,8 +245,8 @@ def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bo
         "n_committed_time_steps",
         "time_step_size",
         "accepted_time_step_size",
+        "previous_time_step_size",
         "max_courant_number",
-        "time_since_last_write",
         "n_consecutive_accepted_steps",
     }
     state.pop("storage_layout", None)
@@ -286,8 +286,8 @@ def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bo
     solver.time = float(state["time"])
     solver.time_step_size = float(state["time_step_size"])
     solver._accepted_time_step_size = float(state["accepted_time_step_size"])
+    solver._previous_time_step_size = float(state["previous_time_step_size"])
     solver.max_courant_number = float(state["max_courant_number"])
-    solver._time_since_last_write = float(state["time_since_last_write"])
     solver.step = int(state["step"])
     solver._n_committed_time_steps = int(state["n_committed_time_steps"])
     acceptance_names = sorted(solver._n_consecutive_accepted_steps)
@@ -298,6 +298,7 @@ def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bo
     )
     solver._last_residuals = None
     solver.last_diagnostics = None
+    solver._invalidate_derived_fields()
     solver.parallel.barrier()
 
 

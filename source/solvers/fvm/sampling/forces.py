@@ -13,25 +13,30 @@ same mathematics.
 
 Examples
 --------
->>> from source.solvers.fvm.sampling.base import SamplingSchedule
+>>> from source.solvers.fvm.config import RunSchedule
 >>> forces = ForceSampler(
 ...     patch_names=["cube"],
 ...     reference_velocity=1.0, reference_area=1.0, reference_length=1.0,
 ...     moment_centre=[0, 0, 0],
 ...     file_name="forces_history",
-...     schedule=SamplingSchedule(every_n_steps=10),
+...     schedule=RunSchedule(every_n_steps=10),
 ... )
 >>> y_plus = YPlusSampler(patch_names=["cube"])
 """
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from ..fields import diagnostics
 from .base import Sampler, _register_sampler, append_csv_rows
+
+if TYPE_CHECKING:
+    from ..config.scheduling import RunSchedule
+    from ..core.solver import FVMSolver
 
 FORCES_HEADER = [
     "time",
@@ -95,14 +100,14 @@ class ForceSampler(Sampler):
 
     def __init__(
         self,
-        patch_names=None,
+        patch_names: Sequence[str] | None = None,
         reference_velocity: float = 1.0,
         reference_area: float = 1.0,
         reference_length: float = 1.0,
-        moment_centre=(0.0, 0.0, 0.0),
+        moment_centre: Sequence[float] = (0.0, 0.0, 0.0),
         file_name: str = "forces_history",
-        schedule=None,
-    ):
+        schedule: RunSchedule | None = None,
+    ) -> None:
         """Initialize the force sampler.
 
         Args:
@@ -113,7 +118,7 @@ class ForceSampler(Sampler):
             reference_length: Reference length for moment coefficients.
             moment_centre: Moment reference point [x, y, z].
             file_name: Base name for the output CSV.
-            schedule: Optional :class:`~.base.SamplingSchedule`.
+            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
         """
         super().__init__(file_name=file_name, schedule=schedule)
         self.patch_names = patch_names
@@ -135,7 +140,7 @@ class ForceSampler(Sampler):
         )
         return spec
 
-    def sample(self, context) -> dict[str, dict[str, Any]]:
+    def sample(self, context: FVMSolver) -> dict[str, dict[str, Any]]:
         """Compute per-patch forces/coefficients for the current state.
 
         Uses the LES-aware effective viscosity (molecular plus ``eddy_viscosity``) that the
@@ -164,7 +169,7 @@ class ForceSampler(Sampler):
             forces = diagnostics.merge_partition_forces(context.parallel.comm.allgather(forces))
         return forces
 
-    def write_csv(self, context, samples_dir: str, forces: dict) -> None:
+    def write_csv(self, context: FVMSolver, samples_dir: str, forces: dict) -> None:
         """Append one row per patch for an already-sampled ``forces`` dict."""
         rows = []
         for pname, fdata in forces.items():
@@ -221,8 +226,8 @@ class YPlusSampler(Sampler):
         self,
         patch_names=None,
         file_name: str | None = None,
-        schedule=None,
-    ):
+        schedule: RunSchedule | None = None,
+    ) -> None:
         """Initialize the y+ sampler.
 
         Args:
@@ -230,7 +235,7 @@ class YPlusSampler(Sampler):
                 wall patches.
             file_name: Optional base name for a y+ history CSV; ``None``
                 disables file output.
-            schedule: Optional :class:`~.base.SamplingSchedule`.
+            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
         """
         super().__init__(file_name=file_name, schedule=schedule)
         self.patch_names = patch_names
@@ -288,15 +293,15 @@ class IBMForceSampler(Sampler):
         reference_velocity: float = 1.0,
         reference_area: float = 1.0,
         file_name: str = "ibm_forces_history",
-        schedule=None,
-    ):
+        schedule: RunSchedule | None = None,
+    ) -> None:
         """Initialize the IBM force sampler.
 
         Args:
             reference_velocity: Reference velocity for coefficient calculation.
             reference_area: Reference area for coefficient calculation.
             file_name: Base name for the output CSV.
-            schedule: Optional :class:`~.base.SamplingSchedule`.
+            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
         """
         super().__init__(file_name=file_name, schedule=schedule)
         self.reference_velocity = reference_velocity
@@ -309,7 +314,7 @@ class IBMForceSampler(Sampler):
         )
         return spec
 
-    def sample(self, context) -> dict[str, np.ndarray]:
+    def sample(self, context: FVMSolver) -> dict[str, np.ndarray]:
         """Compute per-body forces and slip for the current state."""
         if context.parallel.is_partitioned:
             raise NotImplementedError(
@@ -326,13 +331,17 @@ class IBMForceSampler(Sampler):
             "slip_error": ibm.slip_error(context.velocity),
         }
 
-    def summary(self, context, data: dict) -> dict[str, tuple[float, float]]:
+    def summary(
+        self,
+        context: FVMSolver,
+        data: dict,
+    ) -> dict[str, tuple[float, float]]:
         """Return per-body ``(Cd, Cl)`` pairs for logging."""
         density = context.setup.transport.density
         q = 0.5 * density * self.reference_velocity**2 * self.reference_area
         return {name: (float(F[0] / q), float(F[1] / q)) for name, F in data["forces"].items()}
 
-    def write_csv(self, context, samples_dir: str, data: dict) -> None:
+    def write_csv(self, context: FVMSolver, samples_dir: str, data: dict) -> None:
         """Append one row per body to ``<samples_dir>/<name>.csv``."""
         density = context.setup.transport.density
         q = 0.5 * density * self.reference_velocity**2 * self.reference_area

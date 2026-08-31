@@ -14,7 +14,7 @@ import json
 import logging
 import os
 from time import perf_counter
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import taichi as ti
@@ -57,6 +57,11 @@ from .mesh import load_and_audit_body_stl, upload_body_to_lattice
 from .vtk_export import panel_mesh_to_vtp
 
 logger = logging.getLogger("vpm")
+
+if TYPE_CHECKING:
+    from source.solvers.vpm.config.setup import VPMSetup
+    from source.solvers.vpm.particles.container import Particles
+    from source.solvers.vpm.physics.engine import PhysicsEngine
 
 
 @dataclass
@@ -185,7 +190,7 @@ class PanelSolver:
         far_field_min_panels: int = 256,
         reuse_constrained_factorization: bool = True,
         collect_timing: bool = False,
-    ):
+    ) -> None:
         self.max_n_panels = max_n_panels
         self.float_dtype = float_dtype
         self.linear_solver_name = linear_solver
@@ -340,7 +345,7 @@ class PanelSolver:
         self,
         uid: str,
         stl_path: str,
-        kinematics: Any = None,
+        kinematics: kin_module.PanelKinematics | None = None,
         group_id: int = 0,
         validate: bool = True,
         translation: tuple[float, float, float] | None = None,
@@ -442,7 +447,7 @@ class PanelSolver:
         rotation = cls._build_rotation_matrix(rotation_degrees)
         return (vertex_position - centre) @ rotation.T + centre + translation_vec
 
-    def load_scene(self, layout_file: str):
+    def load_scene(self, layout_file: str) -> None:
         """
         Load a complete scene (assembly of bodies) from a JSON layout file.
 
@@ -548,6 +553,7 @@ class PanelSolver:
         )
 
     def initialize(self, force: bool = False) -> None:
+        """Assemble or refresh the active aerodynamic influence matrix."""
         self._ensure_initialized()
         self._last_aic_assembly_seconds = 0.0
         self._last_aic_rebuilt = False
@@ -743,7 +749,13 @@ class PanelSolver:
             latest.update(analysis)
         return analysis
 
-    def solve(self, freestream_velocity: np.ndarray, wake_velocity: Any, time: float) -> None:
+    def solve(
+        self,
+        freestream_velocity: np.ndarray,
+        wake_velocity: object | None,
+        time: float,
+    ) -> None:
+        """Solve panel strengths for the declared freestream and wake state."""
         self._ensure_initialized()
         n = self.lattice.n_panels
         timings = {
@@ -1081,6 +1093,7 @@ class PanelSolver:
             )
 
     def ensure_mesh_generated(self) -> None:
+        """Require at least one loaded panel before a solve or advance."""
         self._ensure_initialized()
         if self.lattice.n_panels <= 0:
             raise RuntimeError(
@@ -1095,13 +1108,13 @@ class PanelSolver:
                 return body
         raise ValueError(f"No panel body has range [{start_idx}, {end_idx})")
 
-    def get_body_pose(self, body_range) -> BodyPose:
+    def get_body_pose(self, body_range: tuple[int, int]) -> BodyPose:
         """Return a copy of the current complete pose for one body."""
         self._ensure_initialized()
         pose = self._body_for_range(body_range).pose
         return BodyPose() if pose is None else pose.copy()
 
-    def apply_body_pose(self, pose: BodyPose, body_range) -> None:
+    def apply_body_pose(self, pose: BodyPose, body_range: tuple[int, int]) -> None:
         """Apply one authoritative geometry/body-velocity update to a body."""
         self._ensure_initialized()
         body = self._body_for_range(body_range)
@@ -1123,7 +1136,10 @@ class PanelSolver:
             self._factorization_geometry_revision = -1
 
     def apply_translation_update(
-        self, displacement: np.ndarray, linear_velocity: np.ndarray, body_range
+        self,
+        displacement: np.ndarray,
+        linear_velocity: np.ndarray,
+        body_range: tuple[int, int],
     ) -> None:
         """Compatibility wrapper that updates only the translational pose terms."""
         self._ensure_initialized()
@@ -1137,7 +1153,7 @@ class PanelSolver:
         rotation_matrix: np.ndarray,
         angular_velocity: np.ndarray,
         rotation_centre: np.ndarray,
-        body_range,
+        body_range: tuple[int, int],
     ) -> None:
         """Compatibility wrapper that updates only rotational pose terms."""
         self._ensure_initialized()
@@ -1218,7 +1234,7 @@ class PanelSolver:
     def compute_forces(
         self,
         freestream_velocity: np.ndarray,
-        wake_velocity: Any,
+        wake_velocity: object | None,
         time_step_size: float,
         density: float,
     ) -> dict[int, np.ndarray]:
@@ -1294,13 +1310,15 @@ class PanelSolver:
     def compute_loads(
         self,
         freestream_velocity: np.ndarray,
-        wake_velocity: Any,
+        wake_velocity: object | None,
         time_step_size: float,
         density: float,
     ) -> dict[int, np.ndarray]:
+        """Compute the configured integrated force for each panel group."""
         return self.compute_forces(freestream_velocity, wake_velocity, time_step_size, density)
 
     def compute_induced_velocity(self, points: np.ndarray) -> np.ndarray:
+        """Evaluate panel-induced velocity at an ``(N, 3)`` point cloud."""
         self._ensure_initialized()
         dtype = np.float32 if self.float_dtype == "f32" else np.float64
         points = np.asarray(points, dtype=dtype)
@@ -1405,11 +1423,11 @@ class PanelSolver:
 
     def advance(
         self,
-        particles: Any = None,
-        physics: Any = None,
-        config: Any = None,
+        particles: "Particles | None" = None,
+        physics: "PhysicsEngine | None" = None,
+        config: "VPMSetup | None" = None,
         freestream_velocity: np.ndarray | None = None,
-        wake_velocity: Any = None,
+        wake_velocity: object | None = None,
         time_step_size: float | None = None,
         time: float | None = None,
         step: int | None = None,
@@ -1543,8 +1561,8 @@ class PanelSolver:
     def refresh_coupled_solution(
         self,
         *,
-        particles: Any,
-        physics: Any,
+        particles: "Particles",
+        physics: "PhysicsEngine",
         freestream_velocity: np.ndarray,
         time: float,
     ) -> None:
@@ -1627,7 +1645,7 @@ class PanelSolver:
                 )
         self.solve(freestream_velocity, wake_velocity, current_time)
 
-    def compute_induced_velocity_direct(self, particles) -> None:
+    def compute_induced_velocity_direct(self, particles: "Particles") -> None:
         """Add panel-induced velocity to every active particle, on device.
 
         Called by the core VPM solver to couple the panel method to the
@@ -1660,7 +1678,10 @@ class PanelSolver:
         )
 
     def accumulate_induced_velocity_on_field(
-        self, target_position, target_velocity, n_targets: int
+        self,
+        target_position: object,
+        target_velocity: object,
+        n_targets: int,
     ) -> None:
         """Add panel-induced velocity into a Taichi vec3 field, in place."""
         if self.lattice is None or n_targets <= 0:
@@ -1728,7 +1749,7 @@ class PanelSolver:
                 n_targets,
             )
 
-    def absorb_particles(self, particles, tolerance: float = 0.05) -> int:
+    def absorb_particles(self, particles: "Particles", tolerance: float = 0.05) -> int:
         """
         Detect and remove particles colliding with the panel surface.
 

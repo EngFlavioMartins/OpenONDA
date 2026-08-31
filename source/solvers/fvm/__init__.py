@@ -4,17 +4,20 @@ from source.version import __version__
 
 from . import io
 from .config import (
+    BackupConfig,
     BoundaryConfig,
     ComputeConfig,
     DiscretizationConfig,
     FVMSetup,
     LinearSolverConfig,
     LoggingConfig,
+    MaximumCourantTimeStep,
     MeshMotionConfig,
     MeshQualityConfig,
     OutputConfig,
     PimpleControl,
     RunAcceptanceLimits,
+    RunSchedule,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
@@ -42,6 +45,7 @@ __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 
 __all__ = [
     "AdaptiveCartesianMesher",
+    "BackupConfig",
     "BoundaryLayerSpec",
     "BoundaryConfig",
     "BoxRefinement",
@@ -57,11 +61,13 @@ __all__ = [
     "LinearSolverConfig",
     "LineSampler",
     "LoggingConfig",
+    "MaximumCourantTimeStep",
     "MeshMotionConfig",
     "MeshQualityConfig",
     "OutputConfig",
     "PimpleControl",
     "RunAcceptanceLimits",
+    "RunSchedule",
     "StepDiagnostics",
     "SurfaceSampler",
     "TimeConfig",

@@ -15,7 +15,7 @@ import numpy as np
 import openonda.coupler as coupling
 import openonda.fvm as fvm
 import openonda.vpm as vpm
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from openonda.vpm import Backup, Samplers
 
 CASE_DIR = Path(__file__).resolve().parent
 CYLINDER_STL = CASE_DIR / "assets" / "cylinder_long.stl"
@@ -78,13 +78,13 @@ FVM_MESH = fvm.AdaptiveCartesianMesher(
     preserve_outer_patches=("zmin", "zmax"),
 )
 
-FVM_FORCE_SCHEDULE = fvm.SamplingSchedule(
+FVM_FORCE_SCHEDULE = fvm.RunSchedule(
     every_n_steps=interval_steps(FORCE_INTERVAL_TIME, FVM_TIME_STEP_SIZE)
 )
-FVM_LINE_SCHEDULE = fvm.SamplingSchedule(
+FVM_LINE_SCHEDULE = fvm.RunSchedule(
     every_n_steps=interval_steps(LINE_INTERVAL_TIME, FVM_TIME_STEP_SIZE)
 )
-FVM_SLICE_SCHEDULE = fvm.SamplingSchedule(
+FVM_SLICE_SCHEDULE = fvm.RunSchedule(
     every_n_steps=interval_steps(SLICE_INTERVAL_TIME, FVM_TIME_STEP_SIZE)
 )
 VPM_LINE_SCHEDULE = vpm.EverySteps(interval_steps(LINE_INTERVAL_TIME, VPM_TIME_STEP_SIZE))
@@ -130,8 +130,9 @@ FVM_SETUP = fvm.FVMSetup(
         time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=TOTAL_TIME,
-        output_interval_steps=interval_steps(FIELD_INTERVAL_TIME, FVM_TIME_STEP_SIZE),
-        adjust_time_step=False,
+        output_schedule=fvm.RunSchedule(
+            every_n_steps=interval_steps(FIELD_INTERVAL_TIME, FVM_TIME_STEP_SIZE)
+        ),
     ),
     schemes=fvm.DiscretizationConfig(
         convection_scheme="limitedLinear",

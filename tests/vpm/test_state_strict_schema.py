@@ -1,27 +1,25 @@
-"""The canonical VPM state models reject unknown (obsolete) fields."""
+"""The VPM exposes one canonical runtime-state model."""
 
 from __future__ import annotations
 
-from pydantic import ValidationError
 import pytest
 
-from source.solvers.vpm.config.state import ParticlesState, SolverState
+from source.solvers.vpm.config import RestartState
+from source.solvers.vpm.config import state as state_module
 
 
-def test_solver_state_rejects_obsolete_processing_unit():
-    with pytest.raises(ValidationError):
-        SolverState(time_step_size=0.01, unsupported_backend_key="CUDA")
+def test_duplicate_snapshot_models_are_not_exposed():
+    assert not hasattr(state_module, "SolverState")
+    assert not hasattr(state_module, "ParticlesState")
 
 
-def test_particles_state_rejects_legacy_circulation_field():
-    with pytest.raises(ValidationError):
-        ParticlesState(
-            position=[[0.0, 0.0, 0.0]],
-            circulation=[1.0],
-            core_radius=[0.05],
-        )
+def test_restart_state_rejects_negative_clock_values():
+    with pytest.raises(ValueError, match="time"):
+        RestartState(time=-0.01)
+    with pytest.raises(ValueError, match="step"):
+        RestartState(step=-1)
 
 
 def test_canonical_fields_still_validate():
-    state = SolverState(time_step_size=0.01, time=0.02, step=2)
+    state = RestartState(time=0.02, step=2)
     assert state.step == 2

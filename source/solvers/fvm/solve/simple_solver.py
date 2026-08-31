@@ -113,13 +113,14 @@ def compute_ddt_flux_correction(
     geo_data,
     boundaries,
     ddt_scheme,
+    previous_time_step_size=None,
 ):
     r"""Return the transient Rhie--Chow face-history correction.
 
     This is the limited difference between the committed face flux and the
     flux obtained by interpolating the committed cell velocity, divided by the
-    time step.  BDF2 uses the same two-level history combination as the cell
-    derivative, and every non-coupled boundary contribution is zero.
+    time step.  Variable-step BDF2 uses the same two-level history combination
+    as the cell derivative, and every non-coupled boundary contribution is zero.
 
     Fully periodic domains are special here: their conservative face flux is
     already the complete old-time history used by this solver's H/A
@@ -142,9 +143,13 @@ def compute_ddt_flux_correction(
     n_interior = mesh_data["n_interior_faces"]
 
     if str(ddt_scheme).lower() in ("backward", "bdf2") and (
-        velocity_older is not None and volumetric_face_flux_older is not None
+        velocity_older is not None
+        and volumetric_face_flux_older is not None
+        and previous_time_step_size is not None
     ):
-        coefft0, coefft00 = 2.0, 0.5
+        from ..assemble.time_integration import backward_coefficients
+
+        _, coefft0, coefft00 = backward_coefficients(time_step_size, previous_time_step_size)
     else:
         coefft0, coefft00 = 1.0, 0.0
 
@@ -1962,11 +1967,13 @@ class SIMPLESolver:
         source_implicit=None,
         volumetric_face_flux_old=None,
         volumetric_face_flux_older=None,
+        previous_time_step_size=None,
     ):
         """Perform one SIMPLE pressure–velocity correction.
 
-        ``velocity_older`` and the flux histories are accepted for interface parity
-        with the transient driver but are unused by steady SIMPLE.
+        ``velocity_older``, the flux histories, and ``previous_time_step_size``
+        are accepted for interface parity with the transient driver but are
+        unused by steady SIMPLE.
         ``source_explicit``/``source_implicit`` are optional volumetric momentum
         sources forwarded to the momentum predictor.
 
@@ -1983,6 +1990,7 @@ class SIMPLESolver:
                 from the kinematic-pressure flow equations.
             kinematic_viscosity: Positive kinematic viscosity [m²/s].
             velocity_older: Older velocity [m/s], unused by steady SIMPLE.
+            previous_time_step_size: Previous step size [s], unused by steady SIMPLE.
             source_explicit: Explicit acceleration source [m/s²].
             source_implicit: Non-negative implicit source coefficient [1/s].
 
@@ -2177,6 +2185,9 @@ class SIMPLESolver:
             velocity, self.mesh_data, self.geo_data
         )
 
+        kinematic_pressure_residual = float("inf")
+        velocity_residual = float("inf")
+        continuity = float("inf")
         for iteration in range(int(self.params["max_iterations"])):
             velocity, kinematic_pressure, volumetric_face_flux, residuals = self.step(
                 velocity,

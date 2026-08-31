@@ -32,9 +32,7 @@ def test_column_projection_recovers_one_gaussian_blob_and_circulation(tmp_path):
     with h5py.File(backup, "w") as handle:
         particles = handle.create_group("particles")
         particles.create_dataset("position", data=np.array([[0.0, 0.0, 0.0]]))
-        particles.create_dataset(
-            "vortex_strength", data=np.array([[0.0, 0.0, column_length]])
-        )
+        particles.create_dataset("vortex_strength", data=np.array([[0.0, 0.0, column_length]]))
         particles.create_dataset("core_radius", data=np.array([sigma]))
         solver = handle.create_group("solver")
         solver.attrs["step"] = 0
@@ -122,8 +120,6 @@ def test_merging_separation_reference_uses_original_figure_four_samples():
     np.testing.assert_allclose(reference[:, 1], dimensional[:, 1])
     np.testing.assert_allclose(
         reference[:, 0],
-        dimensional[:, 0]
-        * diagnostics.REFERENCE_VISCOUS_TIME_PER_SECOND
-        / 0.125**2,
+        dimensional[:, 0] * diagnostics.REFERENCE_VISCOUS_TIME_PER_SECOND / 0.125**2,
     )
     np.testing.assert_allclose(reference[-1, 0], 0.04744 / 0.125**2)

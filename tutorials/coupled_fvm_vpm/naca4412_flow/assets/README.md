@@ -20,9 +20,9 @@ and coupling check is available as:
 OPENONDA_SMOKE=1 ./allrun.sh
 ```
 
-`OPENONDA_COMPUTE_DEVICE=CPU` explicitly selects the CPU when no supported
-GPU is available. Generated fields are written below `solution/`, sampling
-histories below `samples/`, and plots below `figures/`.
+The public `compute_device` field in `VPM_CASE.numerics` explicitly selects the
+CPU when no supported GPU is available. Generated fields are written below
+`solution/`, sampling histories below `samples/`, and plots below `figures/`.
 
 `OPENONDA_FVM_TIME_STEP_SIZE`, `OPENONDA_VPM_TIME_STEP_SIZE`,
 `OPENONDA_T_END`, `OPENONDA_SPACING`,

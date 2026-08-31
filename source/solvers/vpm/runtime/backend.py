@@ -394,11 +394,10 @@ def initialize_taichi_backend(
               Taichi's internal memory pool (default 0.5).  Lower this
               value (e.g. 0.3) if you see ``Failed to allocate ext arr
               buffer`` errors.  Clamped to [0.1, 0.7].
-          random_seed: Seed for Taichi's RNG (default 42).  The Random Walk
-              Method draws its Brownian displacements from it, so a fixed seed
-              makes a run reproducible but makes every run of an ensemble
-              identical; vary it across members to average the stochastic
-              diffusion.  Ignored on Metal, which does not accept the kwarg.
+          random_seed: Seed for backend algorithms that use Taichi's RNG
+              (default 42). RWM uses its own counter-based generator keyed by
+              this declared seed and does not depend on a backend RNG cursor.
+              Ignored by Taichi initialization on Metal.
 
     Returns:
           str: Name of the successfully initialised backend
@@ -410,11 +409,6 @@ def initialize_taichi_backend(
 
     if precision not in _PRECISION_MAP:
         raise ValueError(f"precision must be 'f32' or 'f64', got '{precision}'")
-
-    _VALID_ENV_KEYS = {"AUTO", "CPU", "METAL", "VULKAN", "CUDA"}
-    env_unit = os.environ.get("OPENONDA_COMPUTE_DEVICE", "").strip().upper()
-    if preferred_backend == "AUTO" and env_unit in _VALID_ENV_KEYS:
-        preferred_backend = env_unit
 
     # Build the ordered list of compatible backends.
     chain = _build_backend_chain(preferred_backend, precision)
@@ -462,10 +456,6 @@ def initialize_taichi_backend(
         if name != "METAL":
             init_kwargs["random_seed"] = random_seed
             init_kwargs["advanced_optimization"] = True
-        if name == "CPU":
-            cpu_threads = os.environ.get("OPENONDA_CPU_THREADS", "").strip()
-            if cpu_threads:
-                init_kwargs["cpu_max_num_threads"] = max(1, int(cpu_threads))
         if memory_kwargs:
             init_kwargs.update(memory_kwargs)
         constants_module.TAICHI_POOL_BYTES = _pool_bytes_from_kwargs(memory_kwargs, name)

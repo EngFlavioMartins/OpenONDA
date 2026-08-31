@@ -27,11 +27,12 @@ from openonda.fvm import (
     ComputeConfig,
     DiscretizationConfig,
     FVMSetup,
-    FVMSolver,
     LinearSolverConfig,
     PimpleControl,
+    RunSchedule,
     TimeConfig,
     TransportConfig,
+    create_fvm_solver,
     periodic_square_mesh,
 )
 
@@ -120,7 +121,11 @@ def _run(
     config = FVMSetup(
         case_name=f"benchmark_{n}",
         execution=ComputeConfig(operator_backend=operator_backend),
-        time=TimeConfig(time_step_size=0.001, end_time=0.001, output_interval_steps=2),
+        time=TimeConfig(
+            time_step_size=0.001,
+            end_time=0.001,
+            output_schedule=RunSchedule(every_n_steps=2),
+        ),
         schemes=params_schemes,
         linear=params_linear,
         pimple=params_pimple,
@@ -138,7 +143,7 @@ def _run(
     output = contextlib.nullcontext() if verbose else contextlib.redirect_stdout(io.StringIO())
     with tempfile.TemporaryDirectory(prefix="openonda-fvm-benchmark-") as case_dir, output:
         start = time.perf_counter()
-        solver = FVMSolver(config, case_dir=case_dir, mesh_data=mesh)
+        solver = create_fvm_solver(config, case_dir=case_dir, mesh=mesh)
         initialization = time.perf_counter() - start
         solver.auto_write = False
 

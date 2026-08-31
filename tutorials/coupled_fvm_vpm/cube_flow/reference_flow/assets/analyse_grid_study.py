@@ -512,12 +512,10 @@ def analyse(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     output.with_suffix(".md").write_text(_markdown(report), encoding="utf-8")
-    recommendation_path = output.parent / "grid_recommendation.env"
+    recommendation_path = output.parent / "grid_recommendation.json"
     if recommendation:
         recommendation_path.write_text(
-            "# Generated load-convergence recommendation; source before allrun.sh.\n"
-            f"OPENONDA_REFERENCE_SURFACE_CELL_SIZE={recommendation['surface_cell_size']:.12g}\n"
-            f"OPENONDA_REFERENCE_BACKGROUND_CELL_SIZE={recommendation['background_cell_size']:.12g}\n",
+            json.dumps(recommendation, indent=2, allow_nan=False) + "\n",
             encoding="utf-8",
         )
     elif recommendation_path.exists():

@@ -26,10 +26,17 @@ Examples
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
 import numpy as np
 from scipy.spatial import cKDTree  # type: ignore
 
 from .base import SAMPLER_CSV_COLUMNS, Sampler, _register_sampler, append_csv_rows
+
+if TYPE_CHECKING:
+    from ..config.scheduling import RunSchedule
+    from ..core.solver import FVMSolver
 
 MAX_EXACT_DISTANCE = 1e-12
 
@@ -199,16 +206,16 @@ class LineSampler(_PointProbe):
 
     def __init__(
         self,
-        start,
-        end,
+        start: Sequence[float] | np.ndarray,
+        end: Sequence[float] | np.ndarray,
         n_points: int | None = None,
         spacing: float | None = None,
         k: int = 5,
         inverse_distance_power: float = 2.0,
         reconstruction: str = "idw",
         file_name: str | None = None,
-        schedule=None,
-    ):
+        schedule: RunSchedule | None = None,
+    ) -> None:
         """Initialize the line sampler.
 
         Args:
@@ -220,7 +227,7 @@ class LineSampler(_PointProbe):
             inverse_distance_power: Exponent used for inverse-distance weighting.
             reconstruction: ``"idw"`` or linear-exact ``"affine"``.
             file_name: Base name for the output CSV.
-            schedule: Optional :class:`~.base.SamplingSchedule`.
+            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
         """
         if (n_points is None) == (spacing is None):
             raise ValueError("Provide exactly one of n_points or spacing")
@@ -256,7 +263,11 @@ class LineSampler(_PointProbe):
         )
         return spec
 
-    def write_csv(self, context, samples_dir: str) -> dict[str, np.ndarray] | None:
+    def write_csv(
+        self,
+        context: FVMSolver,
+        samples_dir: str,
+    ) -> dict[str, np.ndarray] | None:
         """Append the current step's samples to ``<samples_dir>/<name>.csv``."""
         data = self.sample(context)
         if data is None:
@@ -278,7 +289,7 @@ class SurfaceSampler(_PointProbe):
 
     Writes one ``.vts`` structured grid per sampling event and a ``<name>.pvd``
     index, using the same point-array names as the VPM ``SurfaceSampler``.
-    Cadence is owned entirely by the :class:`~.base.SamplingSchedule` — there
+    Cadence is owned entirely by :class:`~source.solvers.fvm.config.RunSchedule` — there
     is no separate ``stride`` counter, so live and offline runs select the
     same physical states.
 
@@ -288,7 +299,7 @@ class SurfaceSampler(_PointProbe):
     ...     point=[0, 0, 0.5], normal=[0, 0, 1],
     ...     bounds=[0, 1, 0, 1], spacing=0.25,
     ...     file_name="slice_z0",
-    ...     schedule=SamplingSchedule(every_n_steps=2),
+    ...     schedule=RunSchedule(every_n_steps=2),
     ... )
     """
 
@@ -296,18 +307,18 @@ class SurfaceSampler(_PointProbe):
 
     def __init__(
         self,
-        point,
-        normal,
-        bounds,
+        point: Sequence[float] | np.ndarray,
+        normal: Sequence[float] | np.ndarray,
+        bounds: Sequence[float] | np.ndarray,
         spacing: float,
         k: int = 5,
         inverse_distance_power: float = 2.0,
         reconstruction: str = "idw",
         file_name: str | None = None,
-        schedule=None,
-        body_bounds=None,
+        schedule: RunSchedule | None = None,
+        body_bounds: Sequence[float] | np.ndarray | None = None,
         body_geometry: str = "box",
-    ):
+    ) -> None:
         """Initialize the surface sampler.
 
         Args:
@@ -321,7 +332,7 @@ class SurfaceSampler(_PointProbe):
             inverse_distance_power: Exponent used for inverse-distance weighting.
             reconstruction: ``"idw"`` or linear-exact ``"affine"``.
             file_name: Base name for the output files.
-            schedule: Optional :class:`~.base.SamplingSchedule`.
+            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
             body_bounds: Optional axis-aligned solid bounds ``(xmin, xmax,
                 ymin, ymax, zmin, zmax)``.  Probe points geometrically inside
                 the body are masked in the output (``vtkValidPointMask`` zero,
@@ -416,7 +427,11 @@ class SurfaceSampler(_PointProbe):
         )
         return spec
 
-    def save_vts(self, context, filepath: str) -> dict[str, np.ndarray] | None:
+    def save_vts(
+        self,
+        context: FVMSolver,
+        filepath: str,
+    ) -> dict[str, np.ndarray] | None:
         """Write one structured-grid snapshot of the sampled plane."""
         import pyvista as pv
 

@@ -109,6 +109,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         source_implicit=None,
         volumetric_face_flux_old=None,
         volumetric_face_flux_older=None,
+        previous_time_step_size=None,
     ):
         """Perform one PIMPLE time step.
 
@@ -123,6 +124,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             kinematic_viscosity: Positive kinematic viscosity [m²/s].
             velocity_older: Velocity two committed time levels ago [m/s], required
                 after BDF2 startup.
+            previous_time_step_size: Preceding accepted step size [s], required
+                with ``velocity_older`` for variable-step BDF2.
             source_explicit: Explicit acceleration source [m/s²].
             source_implicit: Non-negative implicit source coefficient [1/s].
 
@@ -171,6 +174,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 self.geo_data,
                 self.boundaries,
                 ddt_scheme,
+                previous_time_step_size=previous_time_step_size,
             )
 
         simple_solver.update_scalar_boundaries(
@@ -231,6 +235,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     time_step_size=time_step_size,
                     velocity_old=velocity_old,
                     velocity_older=velocity_older,
+                    previous_time_step_size=previous_time_step_size,
                     ddt_scheme=ddt_scheme,
                     source_explicit=src_explicit,
                     source_implicit=source_implicit,

@@ -6,7 +6,7 @@ exclusively to ``<case_root>/samples/``.  Offline post-processing
 snapshots, so live and archived output are byte-for-byte comparable.
 """
 
-from .base import SAMPLER_CSV_COLUMNS, Sampler, SamplingSchedule, samples_dir
+from .base import SAMPLER_CSV_COLUMNS, Sampler, samples_dir
 from .executor import FVMSamplerExecutor
 from .fields import LineSampler, SurfaceSampler
 from .forces import ForceSampler, IBMForceSampler, YPlusSampler
@@ -20,7 +20,6 @@ __all__ = [
     "LineSampler",
     "PostProcess",
     "Sampler",
-    "SamplingSchedule",
     "SnapshotContext",
     "SurfaceSampler",
     "YPlusSampler",

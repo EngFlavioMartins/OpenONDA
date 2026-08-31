@@ -99,8 +99,7 @@ def main() -> None:
                 "coarser": coarser["case"],
                 "finer": finer["case"],
                 "relative_change": {
-                    metric: abs(finer[metric] - coarser[metric])
-                    / max(abs(finer[metric]), 1.0e-14)
+                    metric: abs(finer[metric] - coarser[metric]) / max(abs(finer[metric]), 1.0e-14)
                     for metric in metrics
                 },
             }

@@ -66,8 +66,8 @@ def _wait_for_temperature(maximum_c: float, resume_c: float, *, is_root: bool) -
 
 
 def _samplers(force_interval: float, line_interval: float):
-    force_schedule = case.fvm.SamplingSchedule(every_time=force_interval)
-    line_schedule = case.fvm.SamplingSchedule(every_time=line_interval)
+    force_schedule = case.fvm.RunSchedule(every_time=force_interval)
+    line_schedule = case.fvm.RunSchedule(every_time=line_interval)
     return (
         case.fvm.ForceSampler(
             patch_names=["cube"],
@@ -161,14 +161,16 @@ def main() -> None:
         case.FVM_SETUP.time,
         start_time=0.0,
         end_time=end_time,
-        output_interval_steps=total_steps + 1,
-        output_interval_time=None,
+        output_schedule=case.fvm.RunSchedule(every_n_steps=total_steps + 1),
     )
     setup = replace(
         case.FVM_SETUP,
         case_name=f"reference_flow_grid_{arguments.grid_name}",
         cores=arguments.cores,
-        logging=replace(case.FVM_SETUP.logging, interval_steps=25),
+        logging=replace(
+            case.FVM_SETUP.logging,
+            schedule=case.fvm.RunSchedule(every_n_steps=25),
+        ),
         time=time_config,
         samplers=samplers,
     )

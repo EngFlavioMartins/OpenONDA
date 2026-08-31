@@ -29,9 +29,8 @@ MARKER_ALPHA = 1.0  # marker spacing / grid spacing ratio
 
 # ---- Time stepping and numerics ------------------------------------------
 TIME_STEP_SIZE = 0.01  # initial time step [s]
-MAX_COURANT_NUMBER = 0.5  # target maximum Courant number (see below)
+MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.03  # upper bound on the adapted time step [s]
-MIN_TIME_STEP_SIZE = 1e-5  # lower bound on the adapted time step [s]
 MAX_FORCING_FOURIER = 0.1  # Fo = nu*dt/h^2 stability cap for the IBM
 OUTPUT_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
 PISO_CORRECTORS = 2
@@ -62,12 +61,11 @@ def create_fvm_setup(
             time_step_size=time_step_size,
             start_time=0.0,
             end_time=end_time,
-            output_interval_steps=10**9,
-            output_interval_time=OUTPUT_INTERVAL_TIME,
-            adjust_time_step=True,
-            max_courant_number=MAX_COURANT_NUMBER,
-            max_time_step_size=max_time_step_size,
-            min_time_step_size=MIN_TIME_STEP_SIZE,
+            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
+            adjustment=fvm.MaximumCourantTimeStep(
+                maximum=MAX_COURANT_NUMBER,
+                maximum_time_step_size=max_time_step_size,
+            ),
         ),
         schemes=schemes,
         linear=linear,
@@ -90,8 +88,8 @@ def create_fvm_setup(
 def main() -> None:
     case_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # The direct-forcing feedback loop is stable only for Fo = nu*dt/h^2 <~ 0.1
-    # (in addition to Co <= 0.5); above it a slow sawtooth develops in Cd and
+    # The direct-forcing feedback loop is stable only for Fo = nu*dt/h^2 <~ 0.1;
+    # above it a slow sawtooth develops in Cd and
     # in the marker slip error. Cap dt accordingly (this binds at low Re).
     kinematic_viscosity = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS_NUMBER
     max_time_step_size = MAX_TIME_STEP_SIZE
@@ -117,7 +115,7 @@ def main() -> None:
     fvm_setup = create_fvm_setup(
         REYNOLDS_NUMBER, FINAL_TIME, depth, time_step_size, max_time_step_size
     )
-    fvm_solver = fvm.FVMSolver(fvm_setup, case_dir, mesh_data=mesh_data)
+    fvm_solver = fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh_data)
 
     print("---- Setting the immersed cylinder ----")
     body = fvm.ImmersedBody.cylinder_z(
@@ -140,9 +138,7 @@ def main() -> None:
         comments="",
     )
 
-    fvm_solver.write_vtk()
-    while fvm_solver.time < fvm_setup.time.end_time:
-        fvm_solver.advance()
+    fvm_solver.run()
 
     print("\n===== DONE =====")
     print("Simulation completed successfully. Run ./allplot.sh to make the figures.")

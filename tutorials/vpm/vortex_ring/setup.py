@@ -24,7 +24,7 @@ import numpy as np
 
 from assets.ring_diagnostics import RingDiagnosticsSampler, vortex_ring_mode_sampler
 import openonda.vpm as vpm
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from openonda.vpm import Backup, Samplers
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 

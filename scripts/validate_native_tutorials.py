@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -44,14 +43,14 @@ def _worker(
         end=[0.25, 0.0, 0.0],
         n_points=3,
         file_name="centreline",
-        schedule=fvm.SamplingSchedule(every_n_steps=1),
+        schedule=fvm.RunSchedule(every_n_steps=1),
     )
     fvm_setup = fvm.FVMSetup(
         case_name="native_tutorial_validation",
         time=fvm.TimeConfig(
             time_step_size=fvm_time_step_size,
             end_time=2.0 * vpm_time_step_size,
-            output_interval_steps=10**9,
+            output_schedule=fvm.RunSchedule(every_n_steps=10**9),
         ),
         transport=fvm.TransportConfig(kinematic_viscosity=0.01),
         boundaries=[
@@ -178,8 +177,6 @@ def main(argv: list[str] | None = None) -> int:
     script = Path(__file__).resolve()
     with tempfile.TemporaryDirectory(prefix="openonda-native-tutorial-") as temporary:
         case_dir = Path(temporary).resolve()
-        environment = os.environ.copy()
-        environment["OPENONDA_COMPUTE_DEVICE"] = args.compute_device
         result = subprocess.run(
             [
                 sys.executable,
@@ -190,7 +187,6 @@ def main(argv: list[str] | None = None) -> int:
                 args.compute_device,
             ],
             cwd=case_dir,
-            env=environment,
             text=True,
         )
         if result.returncode != 0:

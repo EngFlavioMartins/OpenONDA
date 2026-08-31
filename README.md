@@ -113,13 +113,11 @@ python scripts/validate_native_tutorials.py --compute-device METAL  # Apple Sili
 
 ### CPU and GPU execution
 
-VPM selects a compatible Taichi backend automatically. To choose one explicitly:
+VPM selects a compatible Taichi backend automatically. For an explicit backend,
+set ``compute_device`` on the case's public ``vpm.Numerics`` configuration:
 
-```bash
-OPENONDA_COMPUTE_DEVICE=CPU ./allrun.sh
-OPENONDA_COMPUTE_DEVICE=METAL ./allrun.sh    # Apple Silicon
-OPENONDA_COMPUTE_DEVICE=VULKAN ./allrun.sh   # Linux with a Vulkan driver
-OPENONDA_COMPUTE_DEVICE=CUDA ./allrun.sh     # Linux with NVIDIA CUDA
+```python
+numerics = vpm.Numerics(compute_device="CPU")  # CPU, METAL, VULKAN, CUDA, or AUTO
 ```
 
 `AUTO` selects Metal on macOS and a compatible GPU backend on Linux. Taichi

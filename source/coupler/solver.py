@@ -125,7 +125,12 @@ class FVMVPMCoupler:
     FVM-VPM coupler for boundary exchange and absolute overlap synchronization.
     """
 
-    def __init__(self, fvm_solver, vpm_solver, coupler_setup: CouplerSetup):
+    def __init__(
+        self,
+        fvm_solver: FVMSolver,
+        vpm_solver: VPMSolver | None,
+        coupler_setup: CouplerSetup,
+    ) -> None:
         """Build a coupler from externally configured FVM and VPM solvers.
 
         The FVM solver is required on every rank. The VPM solver is required
@@ -329,8 +334,16 @@ class FVMVPMCoupler:
         """Read fluid properties, time integration, and domain from the FVM."""
         assert self.fvm_solver is not None
         fvm_cfg = self.fvm_solver.setup
-        self.fvm_time_step_size = float(fvm_cfg.time.time_step_size)
-        self.end_time = float(fvm_cfg.time.end_time)
+        time_config = self.fvm_solver._time_config
+        if time_config.adjustment is not None:
+            raise ValueError(
+                "FVM-VPM coupling currently requires a fixed FVM time step: "
+                "adaptive FVM substeps would no longer partition each immutable "
+                "VPM coupling interval exactly. Use MaximumCourantTimeStep only "
+                "for standalone FVM and reference-flow runs."
+            )
+        self.fvm_time_step_size = float(time_config.time_step_size)
+        self.end_time = float(time_config.end_time)
         self.kinematic_viscosity = float(fvm_cfg.transport.kinematic_viscosity)
         self.density = float(fvm_cfg.transport.density)
         self.fvm_box = self._derive_fvm_box()
@@ -483,7 +496,7 @@ class FVMVPMCoupler:
     def run(
         self,
         start_step: int = 0,
-        restart_from=None,
+        restart_from: str | Path | None = None,
         *,
         restart_allowed_config_differences: Collection[str] = (),
         max_coupling_steps: int | None = None,
@@ -668,7 +681,7 @@ class FVMVPMCoupler:
         if self._is_master:
             assert self.vpm_solver is not None
             with self.vpm_redirector:
-                self.vpm_solver.set_freestream_velocity(self.setup.freestream_velocity)
+                self.vpm_solver._set_freestream_velocity(self.setup.freestream_velocity)
             logger.info(format_coupler_step(step, self._n_steps, time_end))
 
             with self.vpm_redirector:
@@ -747,7 +760,12 @@ class FVMVPMCoupler:
             self.fvm_solver.get_velocity_gradient_field_into(self._velocity_gradient_global_buffer)
         return self._velocity_gradient_global_buffer
 
-    def save_backup(self, directory, *, coupling_step: int | None = None) -> Path:
+    def save_backup(
+        self,
+        directory: str | Path,
+        *,
+        coupling_step: int | None = None,
+    ) -> Path:
         """Write a complete coupled backup."""
         backup = save_coupled_backup(self, directory, coupling_step=coupling_step)
         if self._is_master:
@@ -756,7 +774,7 @@ class FVMVPMCoupler:
 
     def load_backup(
         self,
-        directory,
+        directory: str | Path,
         *,
         allowed_config_differences: Collection[str] = (),
     ) -> int:

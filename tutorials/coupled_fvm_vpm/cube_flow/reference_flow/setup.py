@@ -8,7 +8,6 @@ Usage:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
@@ -18,51 +17,34 @@ import openonda.fvm as fvm
 CASE_DIR = Path(__file__).resolve().parent
 CUBE_STL = CASE_DIR / "assets" / "cube.stl"
 
-
-def _positive_environment_float(name: str, default: float) -> float:
-    value = float(os.environ.get(name, str(default)))
-    if not np.isfinite(value) or value <= 0.0:
-        raise ValueError(f"{name} must be finite and positive, got {value}")
-    return value
-
-
-def _positive_environment_int(name: str, default: int) -> int:
-    value = int(os.environ.get(name, str(default)))
-    if value < 1:
-        raise ValueError(f"{name} must be at least one, got {value}")
-    return value
-
-
 # Physical problem
 CUBE_SIDE = 1.0
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
 DENSITY = 1.0
-REYNOLDS = _positive_environment_float("OPENONDA_REFERENCE_REYNOLDS", 1000.0)
+REYNOLDS = 1000.0
 KINEMATIC_VISCOSITY = float(np.linalg.norm(FREESTREAM_VELOCITY)) * CUBE_SIDE / REYNOLDS
 SMAGORINSKY_CK = 0.094
 SMAGORINSKY_CE = 1.048
 INITIAL_VELOCITY = (1.0, 0.0, 0.0)
-FVM_TIME_STEP_SIZE = _positive_environment_float("OPENONDA_REFERENCE_DT", 0.01)
-END_TIME = _positive_environment_float("OPENONDA_REFERENCE_END_TIME", 20.0)
-FVM_CORES = _positive_environment_int("OPENONDA_FVM_CORES", 4)
+FVM_TIME_STEP_SIZE = 0.01
+MAX_FVM_TIME_STEP_SIZE = 4.0 * FVM_TIME_STEP_SIZE
+MAX_COURANT_NUMBER = 0.9
+END_TIME = 20.0
+FVM_CORES = 4
 FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
 WAKE_BOX = (-1.25, 4.25, -1.25, 1.25, -1.25, 1.25)
 DOWNSTREAM_WAKE_BOX = (-1.5, 10.0, -1.5, 1.5, -1.5, 1.5)
 DEFAULT_SURFACE_CELL_SIZE = 0.015625
 DEFAULT_BACKGROUND_CELL_SIZE = 0.5
-SURFACE_CELL_SIZE = _positive_environment_float(
-    "OPENONDA_REFERENCE_SURFACE_CELL_SIZE", DEFAULT_SURFACE_CELL_SIZE
-)
-BACKGROUND_CELL_SIZE = _positive_environment_float(
-    "OPENONDA_REFERENCE_BACKGROUND_CELL_SIZE", DEFAULT_BACKGROUND_CELL_SIZE
-)
-SAMPLE_SPACING = _positive_environment_float("OPENONDA_REFERENCE_SAMPLE_SPACING", 0.04)
+SURFACE_CELL_SIZE = DEFAULT_SURFACE_CELL_SIZE
+BACKGROUND_CELL_SIZE = DEFAULT_BACKGROUND_CELL_SIZE
+SAMPLE_SPACING = 0.04
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
 
 SAMPLING_INTERVAL_TIME = 0.050
 BACKUP_INTERVAL_TIME = 1.0
-SAMPLE_SCHEDULE = fvm.SamplingSchedule(every_time=SAMPLING_INTERVAL_TIME)
+SAMPLE_SCHEDULE = fvm.RunSchedule(every_time=SAMPLING_INTERVAL_TIME)
 
 SAMPLERS = (
     fvm.ForceSampler(
@@ -130,12 +112,20 @@ FVM_SETUP = fvm.FVMSetup(
         asynchronous=True,
         ghost_layers=0,
     ),
+    logging=fvm.LoggingConfig(schedule=fvm.RunSchedule(every_time=0.25)),
+    backup=fvm.BackupConfig(
+        schedule=fvm.RunSchedule(every_time=BACKUP_INTERVAL_TIME),
+        write_at_end=True,
+    ),
     time=fvm.TimeConfig(
         time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=END_TIME,
-        output_interval_time=BACKUP_INTERVAL_TIME,
-        adjust_time_step=False,
+        output_schedule=fvm.RunSchedule(every_time=BACKUP_INTERVAL_TIME),
+        adjustment=fvm.MaximumCourantTimeStep(
+            maximum=MAX_COURANT_NUMBER,
+            maximum_time_step_size=MAX_FVM_TIME_STEP_SIZE,
+        ),
     ),
     schemes=fvm.DiscretizationConfig(
         # Match the coupled reference-flow discretisation exactly.
@@ -186,12 +176,10 @@ FVM_SETUP = fvm.FVMSetup(
 
 def main() -> None:
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
-    fvm_solver.write_vtk()
-
-    while fvm_solver.time < FVM_SETUP.time.end_time:
-        fvm_solver.advance()
-
-    fvm_solver.close()
+    try:
+        fvm_solver.run()
+    finally:
+        fvm_solver.close()
 
 
 if __name__ == "__main__":

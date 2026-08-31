@@ -641,7 +641,7 @@ class _BackupIO:
             # Freestream is part of the advection state.  Restore it before any
             # velocity-derived fields are refreshed below, including for an
             # otherwise empty cloud.
-            solver.set_freestream_velocity(
+            solver._set_freestream_velocity(
                 np.asarray(
                     _read_attribute(solver_group, "freestream_velocity"),
                     dtype=_restart_dtype(solver),

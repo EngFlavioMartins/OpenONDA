@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
+from typing import Protocol
 import warnings
 
 import numpy as np
@@ -28,7 +29,12 @@ def config_mapping_digest(config: dict) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def config_digest(config: object) -> str:
+class _MappingConfig(Protocol):
+    def to_dict(self) -> dict:
+        """Return the object's serialized configuration mapping."""
+
+
+def config_digest(config: _MappingConfig) -> str:
     """Hash an internal configuration object that provides a mapping contract."""
     return config_mapping_digest(config.to_dict())
 

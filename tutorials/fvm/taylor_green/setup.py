@@ -29,6 +29,7 @@ NUMBER_OF_CELLS = 24
 KINEMATIC_VISCOSITY = 0.1
 TIME_STEP_SIZE = 0.005
 FINAL_TIME = 0.05
+MAX_COURANT_NUMBER = 0.9
 CONVECTION_SCHEME = "central"
 
 
@@ -79,7 +80,13 @@ def main() -> None:
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
             end_time=FINAL_TIME,
-            output_interval_steps=nsteps,
+            output_schedule=fvm.RunSchedule(every_n_steps=nsteps),
+            adjustment=fvm.MaximumCourantTimeStep(
+                maximum=MAX_COURANT_NUMBER,
+                # Preserve this verification case's nominal time resolution;
+                # CFL control may reduce it but does not coarsen it.
+                maximum_time_step_size=TIME_STEP_SIZE,
+            ),
         ),
         schemes=schemes,
         linear=linear,
@@ -90,7 +97,7 @@ def main() -> None:
 
     solution_dir = CASE_DIR / "solution"
     solution_dir.mkdir(parents=True, exist_ok=True)
-    fvm_solver = fvm.FVMSolver(fvm_setup, case_dir=str(CASE_DIR), mesh_data=mesh)
+    fvm_solver = fvm.create_fvm_solver(fvm_setup, case_dir=CASE_DIR, mesh=mesh)
     centres = fvm_solver.geo_data["cell_centre"]
     cell_volume = fvm_solver.geo_data["cell_volume"]
     fvm_solver.set_initial_velocity(exact_velocity(centres, 0.0, KINEMATIC_VISCOSITY))
@@ -159,7 +166,7 @@ def main() -> None:
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         writer.writerow(row())
-        for _ in range(nsteps):
+        while fvm_solver.time < FINAL_TIME - 1.0e-14:
             fvm_solver.advance()
             writer.writerow(row())
 

@@ -292,7 +292,9 @@ class Logging:
         self.enabled = bool(enabled)
         self.console = bool(console)
         self.mode = resolve_mode("simple" if config is None else str(config.mode))
-        self.interval_steps = 1 if config is None else int(config.interval_steps)
+        from ..config.scheduling import RunSchedule
+
+        self.schedule = RunSchedule(every_n_steps=1) if config is None else config.schedule
         self.profiler: Any | None = None
         self.log_file_path: Path | None = None
 
@@ -457,9 +459,9 @@ class Logging:
         self._flush_step()
 
     def _reportable(self, record: _StepRecord) -> bool:
-        if record.warnings or self._reported_steps == 0 or self.interval_steps <= 1:
+        if record.warnings:
             return True
-        return record.step % self.interval_steps == 0
+        return self.schedule.is_due(record.step, record.time, record.time_step_size)
 
     def _flush_step(self) -> None:
         record, self._step = self._step, None
@@ -609,7 +611,10 @@ class Logging:
                     ("solution directory", str(solver.solution_dir)),
                     ("log file", str(log_file_path or "disabled")),
                     ("log mode", str(getattr(sink, "mode", "simple"))),
-                    ("log interval", f"{getattr(sink, 'interval_steps', 1)}", "steps"),
+                    (
+                        "log interval",
+                        getattr(getattr(sink, "schedule", None), "describe", lambda: "unknown")(),
+                    ),
                     ("visualization", "VTK XML, cell-centred, appended binary"),
                     ("output compression", str(config.output.compression).upper()),
                     (
@@ -617,6 +622,15 @@ class Logging:
                         "asynchronous"
                         if config.output.asynchronous and not parallel.is_partitioned
                         else "synchronous",
+                    ),
+                    ("visualization cadence", solver._output_schedule.describe()),
+                    (
+                        "restart cadence",
+                        (
+                            solver._backup_config.schedule.describe()
+                            if solver._backup_config.schedule is not None
+                            else "disabled"
+                        ),
                     ),
                     ("visualization ghost layers", str(config.output.ghost_layers)),
                     ("initialization time", f"{initialization_time:.3e}", "s"),

@@ -30,7 +30,6 @@ SPACING = 0.0625  # core grid spacing next to the cylinder [m]
 TIME_STEP_SIZE = 0.02  # initial time step [s]
 MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.05  # upper bound on the adapted time step [s]
-MIN_TIME_STEP_SIZE = 1e-5  # lower bound on the adapted time step [s]
 OUTPUT_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
 PISO_CORRECTORS = 2
 OUTER_CORRECTORS = 1
@@ -67,12 +66,11 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
             time_step_size=TIME_STEP_SIZE,
             start_time=0.0,
             end_time=FINAL_TIME,
-            output_interval_steps=10**9,
-            output_interval_time=OUTPUT_INTERVAL_TIME,
-            adjust_time_step=True,
-            max_courant_number=MAX_COURANT_NUMBER,
-            max_time_step_size=MAX_TIME_STEP_SIZE,
-            min_time_step_size=MIN_TIME_STEP_SIZE,
+            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
+            adjustment=fvm.MaximumCourantTimeStep(
+                maximum=MAX_COURANT_NUMBER,
+                maximum_time_step_size=MAX_TIME_STEP_SIZE,
+            ),
         ),
         schemes=schemes,
         linear=linear,
@@ -120,11 +118,8 @@ def main() -> None:
 
     print("\n===== SIMULATION =====")
     fvm_setup = create_fvm_setup(depth)
-    fvm_solver = fvm.FVMSolver(fvm_setup, case_dir, mesh_data=mesh_data)
-
-    fvm_solver.write_vtk()
-    while fvm_solver.time < fvm_setup.time.end_time:
-        fvm_solver.advance()
+    fvm_solver = fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh_data)
+    fvm_solver.run()
 
     print("\n===== DONE =====")
     print("Simulation completed successfully. Run ./allplot.sh to make the figures.")

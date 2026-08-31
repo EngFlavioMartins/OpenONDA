@@ -175,7 +175,10 @@ class CouplerSetup:
     def freestream_velocity_vector(self) -> np.ndarray:
         return np.asarray(self.freestream_velocity, dtype=np.float64)
 
-    def validate_transfer_region_box(self, fvm_box) -> None:
+    def validate_transfer_region_box(
+        self,
+        fvm_box: tuple[float, float, float, float, float, float] | np.ndarray,
+    ) -> None:
         """Require the vorticity-transfer region to lie inside the FVM domain."""
         outer = np.asarray(fvm_box, dtype=np.float64)
         if self.transfer_method == "projected_renewal" and self.transfer_region_bounds is None:
@@ -201,6 +204,7 @@ class CouplerSetup:
                 )
 
     def to_dict(self) -> dict:
+        """Serialize coupling-owned settings for restart identity checks."""
         transfer_region_bounds = None
         if self.transfer_region_bounds is not None:
             transfer_region_bounds = dict(

@@ -57,7 +57,11 @@ def compute_courant_number(velocity, volumetric_face_flux, time_step_size, mesh_
     return courant_number
 
 
-def compute_continuity_error(volumetric_face_flux, mesh_data, geo_data):
+def compute_continuity_error(
+    volumetric_face_flux: np.ndarray,
+    mesh_data: dict,
+    geo_data: dict,
+) -> np.ndarray:
     """Per-cell continuity residual ∮ velocity·dS [m³/s].
 
     For a discretely divergence-free (incompressible) solution this net face
@@ -85,7 +89,11 @@ def compute_continuity_error(volumetric_face_flux, mesh_data, geo_data):
     return div
 
 
-def compute_kinetic_energy(velocity, geo_data, density=1.0):
+def compute_kinetic_energy(
+    velocity: np.ndarray,
+    geo_data: dict,
+    density: float | np.ndarray = 1.0,
+) -> float:
     """Return volume-integrated kinetic energy for the interior cells."""
     cell_volume = np.asarray(geo_data["cell_volume"], dtype=np.float64)
     velocity = np.asarray(velocity[: len(cell_volume)], dtype=np.float64)
@@ -101,7 +109,11 @@ def compute_kinetic_energy(velocity, geo_data, density=1.0):
     return 0.5 * float(np.sum(density * cell_volume * np.sum(velocity * velocity, axis=1)))
 
 
-def compute_enstrophy(velocity, mesh_data, geo_data):
+def compute_enstrophy(
+    velocity: np.ndarray,
+    mesh_data: dict,
+    geo_data: dict,
+) -> float:
     """Return ``0.5 ∫ |curl(velocity)|² dV`` over the interior cells."""
     vorticity = compute_vorticity(velocity, mesh_data, geo_data)
     cell_volume = np.asarray(geo_data["cell_volume"], dtype=np.float64)

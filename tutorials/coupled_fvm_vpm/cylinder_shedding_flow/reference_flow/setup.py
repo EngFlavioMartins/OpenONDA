@@ -2,7 +2,7 @@
 """Body-fitted Re=150 cylinder reference used by the grid study.
 
 Example:
-    python -u setup.py --dx 0.041666666666666664 \
+    python -u setup.py --dx 0.0417 \
         --case-name coarse
 """
 
@@ -26,6 +26,8 @@ DOMAIN = (-8.0, 20.0, -8.0, 8.0, -2.0, 2.0)
 
 # ---- Time and output -----------------------------------------------------
 TIME_STEP_SIZE = 0.001
+MAX_TIME_STEP_SIZE = 4.0 * TIME_STEP_SIZE
+MAX_COURANT_NUMBER = 0.9
 TOTAL_TIME = 30.0
 FORCE_INTERVAL_TIME = 0.02
 LINE_INTERVAL_TIME = 0.1
@@ -40,13 +42,6 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--dx", required=True, type=float, help="cylinder-wall cell size in D")
     parser.add_argument("--case-name", required=True, help="solution/ and samples/ subdirectory")
     return parser.parse_args()
-
-
-def interval_steps(interval: float) -> int:
-    steps = round(interval / TIME_STEP_SIZE)
-    if abs(steps * TIME_STEP_SIZE - interval) > 1.0e-12:
-        raise ValueError(f"Output interval {interval:g} is not divisible by dt={TIME_STEP_SIZE:g}")
-    return steps
 
 
 def grid_mesh(dx: float) -> fvm.ExplicitCylinderGridMesher:
@@ -65,9 +60,9 @@ def grid_mesh(dx: float) -> fvm.ExplicitCylinderGridMesher:
 
 
 def samplers(dx: float) -> tuple:
-    force_schedule = fvm.SamplingSchedule(every_n_steps=interval_steps(FORCE_INTERVAL_TIME))
-    line_schedule = fvm.SamplingSchedule(every_n_steps=interval_steps(LINE_INTERVAL_TIME))
-    slice_schedule = fvm.SamplingSchedule(every_n_steps=interval_steps(SLICE_INTERVAL_TIME))
+    force_schedule = fvm.RunSchedule(every_time=FORCE_INTERVAL_TIME)
+    line_schedule = fvm.RunSchedule(every_time=LINE_INTERVAL_TIME)
+    slice_schedule = fvm.RunSchedule(every_time=SLICE_INTERVAL_TIME)
     sample_spacing = min(0.125, 2.0 * dx)
     return (
         fvm.ForceSampler(
@@ -153,12 +148,20 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
             asynchronous=False,
             ghost_layers=0,
         ),
+        logging=fvm.LoggingConfig(schedule=fvm.RunSchedule(every_time=0.1)),
+        backup=fvm.BackupConfig(
+            schedule=fvm.RunSchedule(every_time=FIELD_INTERVAL_TIME),
+            write_at_end=True,
+        ),
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
             start_time=0.0,
             end_time=TOTAL_TIME,
-            output_interval_steps=interval_steps(FIELD_INTERVAL_TIME),
-            adjust_time_step=False,
+            output_schedule=fvm.RunSchedule(every_time=FIELD_INTERVAL_TIME),
+            adjustment=fvm.MaximumCourantTimeStep(
+                maximum=MAX_COURANT_NUMBER,
+                maximum_time_step_size=MAX_TIME_STEP_SIZE,
+            ),
         ),
         schemes=fvm.DiscretizationConfig(
             convection_scheme="limitedLinear",
@@ -218,16 +221,7 @@ def main() -> None:
     )
     try:
         solver.write_run_manifest()
-        solver.write_vtk()
-        number_of_steps = round(TOTAL_TIME / TIME_STEP_SIZE)
-        backup_interval = interval_steps(FIELD_INTERVAL_TIME)
-        for _ in range(number_of_steps):
-            solver.advance()
-            if solver.step % backup_interval == 0:
-                solver.save_state(solution_dir / "backup")
-        if solver.step % backup_interval:
-            solver.write_vtk()
-            solver.save_state(solution_dir / "backup")
+        solver.run()
     finally:
         solver.close()
 

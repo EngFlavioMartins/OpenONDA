@@ -15,6 +15,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import csv
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -22,6 +23,9 @@ from source.vtk_output import write_vtk_dataset
 from source.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write
 
 from .schedule import OutputSchedule
+
+if TYPE_CHECKING:
+    from ...core.solver import VPMSolver
 
 try:
     from scipy.spatial import cKDTree
@@ -362,7 +366,7 @@ class SurfaceSampler:
         normal_velocity = np.einsum("ij,ij->i", wall_velocity, wall_normal)[:, None]
         velocity[global_index] = wall_velocity - normal_velocity * wall_normal
 
-    def sample(self, solver) -> dict[str, np.ndarray]:
+    def sample(self, solver: "VPMSolver") -> dict[str, np.ndarray]:
         """
         Compute induced fields at all grid points.
 
@@ -468,7 +472,7 @@ class SurfaceSampler:
 
     def save_csv(
         self,
-        solver,
+        solver: "VPMSolver",
         filepath: str | Path,
         time: float | None = None,
     ) -> Path:
@@ -508,7 +512,7 @@ class SurfaceSampler:
 
     def save_vtp(
         self,
-        solver,
+        solver: "VPMSolver",
         filepath: str | Path,
         time: float | None = None,
     ) -> Path:
@@ -806,7 +810,7 @@ class LineSampler:
         normal_velocity = np.einsum("ij,ij->i", wall_velocity, wall_normal)[:, None]
         velocity[global_index] = wall_velocity - normal_velocity * wall_normal
 
-    def sample(self, solver) -> dict[str, np.ndarray]:
+    def sample(self, solver: "VPMSolver") -> dict[str, np.ndarray]:
         """
         Compute induced fields at all line points.
 
@@ -912,7 +916,7 @@ class LineSampler:
 
     def save_csv(
         self,
-        solver,
+        solver: "VPMSolver",
         filepath: str | Path,
         time: float | None = None,
     ) -> Path:

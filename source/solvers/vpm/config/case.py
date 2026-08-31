@@ -9,6 +9,8 @@ defines the finite simulation lifecycle.  Runtime clocks belong to
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
+from numbers import Real
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -36,7 +38,7 @@ class Numerics:
     """Immutable numerical and physical controls for a VPM case.
 
     Runtime clock values and output destinations are intentionally absent.
-    ``to_runtime_setup`` is private framework plumbing that adapts this typed
+    ``_to_runtime_setup`` is private framework plumbing that adapts this typed
     public object to the still-internal numerical engine configuration.
 
     ``time_step_size`` is the accepted-step duration in seconds and must be
@@ -81,9 +83,9 @@ class Numerics:
         # The mature validator remains the single source of numerical truth
         # while the compute engine is being separated from its legacy setup
         # carrier.  No runtime or output state is retained by Numerics.
-        self.to_runtime_setup()
+        self._to_runtime_setup()
 
-    def to_runtime_setup(
+    def _to_runtime_setup(
         self, backup: Backup | None = None, samplers: Samplers | None = None
     ) -> VPMSetup:
         """Build the private engine configuration for this immutable case."""
@@ -184,10 +186,12 @@ class VPMCase:
 
     ``numerics`` is required and is the only numerical construction object.
     ``backup`` owns restart and log destinations, ``samplers`` owns scientific
-    samples, and ``run`` supplies the finite
-    lifecycle; and ``directory`` is the case root (default current directory)
-    below which framework-owned artifacts are written.  Invalid nested plans
-    or an empty directory raise :class:`TypeError` or :class:`ValueError`.
+    samples, and ``run`` supplies the finite lifecycle.
+    ``initial_weak_particle_percent`` optionally removes particles below that
+    percentage of the assembled cloud's maximum vortex-strength magnitude.
+    ``directory`` is the case root (default current directory) below which
+    framework-owned artifacts are written. Invalid nested plans or an empty
+    directory raise :class:`TypeError` or :class:`ValueError`.
     """
 
     numerics: Numerics
@@ -195,6 +199,7 @@ class VPMCase:
     backup: Backup = field(default_factory=Backup)
     samplers: Samplers = field(default_factory=Samplers)
     run: RunPlan = field(default_factory=lambda: RunPlan(steps=0))
+    initial_weak_particle_percent: float = 0.0
     directory: str | Path = "."
 
     def __post_init__(self) -> None:
@@ -206,6 +211,12 @@ class VPMCase:
             raise TypeError("VPMCase.backup must be a Backup instance")
         if not isinstance(self.samplers, Samplers):
             raise TypeError("VPMCase.samplers must be a Samplers instance")
+        percent = self.initial_weak_particle_percent
+        if isinstance(percent, bool) or not isinstance(percent, Real):
+            raise TypeError("initial_weak_particle_percent must be a real number")
+        if not math.isfinite(percent) or percent < 0.0 or percent > 100.0:
+            raise ValueError("initial_weak_particle_percent must be finite and between 0 and 100")
+        object.__setattr__(self, "initial_weak_particle_percent", float(percent))
         object.__setattr__(self, "initial_conditions", tuple(self.initial_conditions))
         directory = Path(self.directory)
         if not str(directory).strip():

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""LES stabilization comparison for two leapfrogging vortex rings.
+"""Particle-stabilization comparison for two leapfrogging vortex rings.
 
 Usage:
-    python setup.py --case leapfrog_les
+    python setup.py --case leapfrog_les_splitting_remeshing
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from openonda.vpm import Backup, Samplers
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 
@@ -39,9 +39,11 @@ DIAGNOSTIC_INTERVAL_STEPS = 5
 BACKUP_INTERVAL_STEPS = 50
 TREECODE_THETA = 0.30
 MAXIMUM_PARTICLES = 120_000
-MAX_LAGRANGIAN_CFL = 0.15
+# The historical 0.15 value limited internal coupled substeps; it is not a
+# calibrated rejection threshold for the complete accepted macro-step.
+MAX_LAGRANGIAN_CFL: float | None = None
 
-# ---- LES and stabilization -------------------------------------------------
+# ---- Common LES closure and independently varied stabilization ------------
 SMAGORINSKY_COEFFICIENT = 0.20
 
 # Split when |alpha_p| exceeds twice the largest initial |alpha_p|.
@@ -62,6 +64,7 @@ REMESH_TAIL_BUDGET = 1.0e-3
 CASES = {
     "leapfrog_les": (False, False),
     "leapfrog_les_splitting": (True, False),
+    "leapfrog_les_remeshing": (False, True),
     "leapfrog_les_splitting_remeshing": (True, True),
 }
 
@@ -133,7 +136,7 @@ def stabilization(case_name: str) -> vpm.StabilizationConfig:
 
 
 def build_case(case_name: str) -> vpm.VPMCase:
-    """Build one of the three declarative comparison cases."""
+    """Build one of the four declarative stabilization comparisons."""
     initial_conditions = tuple(
         create_ring(centre_x, group_id=group_id)
         for group_id, centre_x in enumerate((-0.5 * RING_SEPARATION, 0.5 * RING_SEPARATION))
@@ -142,8 +145,8 @@ def build_case(case_name: str) -> vpm.VPMCase:
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             time_integration="COUPLED",
-            advection=vpm.AdvectionConfig(scheme="RK2"),
-            stretching=vpm.StretchingConfig.transposed(scheme="RK2"),
+            advection=vpm.AdvectionConfig(scheme="RK3"),
+            stretching=vpm.StretchingConfig.transposed(scheme="RK3"),
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=PARTICLE_SPACING,
@@ -178,13 +181,22 @@ def build_case(case_name: str) -> vpm.VPMCase:
             directory=case_name,
         ),
         run=vpm.RunPlan(steps=NUMBER_OF_STEPS),
+        initial_weak_particle_percent=WEAK_PARTICLE_PERCENT,
         directory=TUTORIAL_DIR,
     )
 
 
 def run_case(case_name: str) -> None:
-    """Run one comparison case through the framework-owned lifecycle."""
-    vpm.VPMSolver(build_case(case_name)).run()
+    """Run one case and retain its terminal manifest beside its backups."""
+    root_manifest = TUTORIAL_DIR / "run_manifest.json"
+    case_manifest = TUTORIAL_DIR / "solution" / case_name / "run_manifest.json"
+    root_manifest.unlink(missing_ok=True)
+    try:
+        vpm.VPMSolver(build_case(case_name)).run()
+    finally:
+        if root_manifest.is_file():
+            case_manifest.parent.mkdir(parents=True, exist_ok=True)
+            root_manifest.replace(case_manifest)
 
 
 def main() -> int:

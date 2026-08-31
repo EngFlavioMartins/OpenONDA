@@ -585,17 +585,17 @@ class CouplerInterfaceMixin:
 
     # ── setters: scalar parameters ───────────────────────────────────────────
     def set_time_step(self, time_step_size):
-        """Override the solver time-step size.
+        """Reject post-construction changes to the FVM time-step contract.
 
-        Args:
-            time_step_size: New time-step value (seconds).
+        Configure ``TimeConfig.time_step_size`` and its optional
+        ``MaximumCourantTimeStep`` before solver creation. Mutating the
+        persistent policy would invalidate BDF history and restart identity.
         """
-        time_step_size = float(time_step_size)
-        if not np.isfinite(time_step_size) or time_step_size <= 0.0:
-            raise ValueError(f"Time step must be finite and positive; got {time_step_size!r}")
-        self.time_step_size = time_step_size
-        self._accepted_time_step_size = time_step_size
-        self.setup.time.time_step_size = time_step_size
+        del time_step_size
+        raise RuntimeError(
+            "FVM time-step policy is immutable after solver creation; "
+            "configure TimeConfig before constructing the solver"
+        )
 
     def set_kinematic_viscosity(self, kinematic_viscosity):
         """Override the fluid kinematic viscosity.

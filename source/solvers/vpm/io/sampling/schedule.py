@@ -53,6 +53,7 @@ class EverySteps:
         return False
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
+        """Return true when ``step`` reaches this schedule's cadence."""
         del time_step_size
         return (
             step > 0
@@ -89,6 +90,7 @@ class EveryTime:
         return False
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
+        """Return true when the accepted step crosses a time boundary."""
         if step <= 0 or time < self.start_time:
             return False
         previous_time = time - time_step_size
@@ -111,5 +113,6 @@ class FinalOnly:
         return True
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
+        """Return false; final events are dispatched explicitly by the manager."""
         del step, time, time_step_size
         return False

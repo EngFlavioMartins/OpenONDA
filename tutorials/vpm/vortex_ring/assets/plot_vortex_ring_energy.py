@@ -53,7 +53,9 @@ def zoom_axes(ax, ylim: tuple[float, float]):
 
 
 def main() -> None:
-    args = build_arg_parser("Resolved and modeled viscous energy rates versus normalized time.").parse_args()
+    args = build_arg_parser(
+        "Resolved and modeled viscous energy rates versus normalized time."
+    ).parse_args()
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
 

@@ -28,6 +28,7 @@ class BoundaryLayerSpec:
     spanwise_cell_size: float | None = None
 
     def validate(self) -> None:
+        """Reject non-physical layer counts, sizes, and growth controls."""
         if not math.isfinite(self.first_cell_height) or self.first_cell_height <= 0.0:
             raise ValueError("first_cell_height must be finite and positive")
         if self.layers < 1:
@@ -48,9 +49,11 @@ class BoundaryLayerSpec:
         """Total requested thickness of the constant-growth wall layers."""
         if math.isclose(self.growth_ratio, 1.0):
             return self.layers * self.first_cell_height
-        return self.first_cell_height * (
-            self.growth_ratio**self.layers - 1.0
-        ) / (self.growth_ratio - 1.0)
+        return (
+            self.first_cell_height
+            * (self.growth_ratio**self.layers - 1.0)
+            / (self.growth_ratio - 1.0)
+        )
 
 
 def _cylinder_geometry(
@@ -229,9 +232,7 @@ def build_cylinder_layer_mesh(
     transition_start = rings[spec.layers].copy()
     for layer in range(1, spec.transition_layers + 1):
         fraction = layer / spec.transition_layers
-        rings[spec.layers + layer] = (
-            (1.0 - fraction) * transition_start + fraction * square
-        )
+        rings[spec.layers + layer] = (1.0 - fraction) * transition_start + fraction * square
 
     z_coordinates = np.linspace(domain[4], domain[5], z_points)
     points = np.empty((z_points, radial_points, theta_cells, 3), dtype=np.float64)
@@ -246,9 +247,7 @@ def build_cylinder_layer_mesh(
         return (z_index * radial_cells + radial_index) * theta_cells + theta_index
 
     z_index = np.repeat(np.arange(z_cells), radial_cells * theta_cells)
-    radial_index = np.tile(
-        np.repeat(np.arange(radial_cells), theta_cells), z_cells
-    )
+    radial_index = np.tile(np.repeat(np.arange(radial_cells), theta_cells), z_cells)
     theta_index = np.tile(np.arange(theta_cells), z_cells * radial_cells)
     next_theta = (theta_index + 1) % theta_cells
     cells = np.column_stack(
@@ -271,9 +270,7 @@ def build_cylinder_layer_mesh(
 
     # Faces between radial layers.
     zz = np.repeat(np.arange(z_cells), (radial_cells - 1) * theta_cells)
-    rr = np.tile(
-        np.repeat(np.arange(1, radial_cells), theta_cells), z_cells
-    )
+    rr = np.tile(np.repeat(np.arange(1, radial_cells), theta_cells), z_cells)
     tt = np.tile(np.arange(theta_cells), z_cells * (radial_cells - 1))
     nt = (tt + 1) % theta_cells
     faces = np.column_stack(
@@ -311,9 +308,7 @@ def build_cylinder_layer_mesh(
 
     # Faces between spanwise cells.
     zz = np.repeat(np.arange(1, z_cells), radial_cells * theta_cells)
-    rr = np.tile(
-        np.repeat(np.arange(radial_cells), theta_cells), z_cells - 1
-    )
+    rr = np.tile(np.repeat(np.arange(radial_cells), theta_cells), z_cells - 1)
     tt = np.tile(np.arange(theta_cells), (z_cells - 1) * radial_cells)
     nt = (tt + 1) % theta_cells
     faces = np.column_stack(
@@ -467,9 +462,7 @@ def _morton_order(points: np.ndarray, cells: np.ndarray) -> np.ndarray:
         centres[start:stop] = points[cells[start:stop]].mean(axis=1)
     lower = centres.min(axis=0)
     extent = np.maximum(centres.max(axis=0) - lower, 1.0e-30)
-    coordinates = np.clip(
-        np.floor((centres - lower) / extent * 1023.0), 0, 1023
-    ).astype(np.uint64)
+    coordinates = np.clip(np.floor((centres - lower) / extent * 1023.0), 0, 1023).astype(np.uint64)
 
     def split(value: np.ndarray) -> np.ndarray:
         value = value & np.uint64(0x3FF)
@@ -493,9 +486,7 @@ def _reorder_cells_for_partitioning(mesh: dict) -> None:
     order = _morton_order(np.asarray(mesh["vertex_position"]), cells)
     new_id = np.empty(len(order), dtype=np.int32)
     new_id[order] = np.arange(len(order), dtype=np.int32)
-    mesh["owners"] = np.ascontiguousarray(
-        new_id[np.asarray(mesh["owners"])], dtype=np.int32
-    )
+    mesh["owners"] = np.ascontiguousarray(new_id[np.asarray(mesh["owners"])], dtype=np.int32)
     mesh["neighbours"] = np.ascontiguousarray(
         new_id[np.asarray(mesh["neighbours"])], dtype=np.int32
     )
@@ -538,9 +529,7 @@ def stitch_boundary_layer(outer: dict, layer: dict, interface_patch_name: str) -
     layer_faces = layer_point_map[np.asarray(layer["faces"], dtype=np.int32)]
     layer_cells = layer_point_map[np.asarray(layer["cell_vertex_indices"], dtype=np.int32)]
 
-    outer_interface_faces, outer_interface_owners = _patch_rows(
-        outer, interface_patch_name
-    )
+    outer_interface_faces, outer_interface_owners = _patch_rows(outer, interface_patch_name)
     layer_interface_faces, layer_interface_owners = _patch_rows(
         {**layer, "faces": layer_faces}, interface_patch_name
     )
@@ -594,11 +583,19 @@ def stitch_boundary_layer(outer: dict, layer: dict, interface_patch_name: str) -
                 continue
             if name not in patch_data:
                 patch_order.append(name)
-                patch_data[name] = {"type": str(patch.get("type", "patch")), "faces": [], "owners": []}
+                patch_data[name] = {
+                    "type": str(patch.get("type", "patch")),
+                    "faces": [],
+                    "owners": [],
+                }
             start = int(patch["start_face"])
             stop = start + int(patch["n_faces"])
-            patch_data[name]["faces"].append(np.asarray(faces[start:stop], dtype=np.int32))
-            patch_data[name]["owners"].append(
+            face_blocks = patch_data[name]["faces"]
+            owner_blocks = patch_data[name]["owners"]
+            if not isinstance(face_blocks, list) or not isinstance(owner_blocks, list):
+                raise RuntimeError("Boundary patch storage is internally inconsistent")
+            face_blocks.append(np.asarray(faces[start:stop], dtype=np.int32))
+            owner_blocks.append(
                 np.asarray(mesh["owners"][start:stop], dtype=np.int32) + owner_offset
             )
 
@@ -610,8 +607,12 @@ def stitch_boundary_layer(outer: dict, layer: dict, interface_patch_name: str) -
     start_face = len(internal_faces)
     for name in patch_order:
         entry = patch_data[name]
-        faces = np.vstack(entry["faces"])
-        owners = np.concatenate(entry["owners"])
+        entry_faces = entry["faces"]
+        entry_owners = entry["owners"]
+        if not isinstance(entry_faces, list) or not isinstance(entry_owners, list):
+            raise RuntimeError("Boundary patch storage is internally inconsistent")
+        faces = np.vstack(entry_faces)
+        owners = np.concatenate(entry_owners)
         face_blocks.append(faces)
         owner_blocks.append(owners)
         boundary.append(

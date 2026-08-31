@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
 
 from openonda import vpm
 from source.solvers.vpm.core.solver import VPMSolver
@@ -89,3 +93,59 @@ def test_run_owns_the_complete_event_lifecycle() -> None:
         ("completed", None),
         "close",
     ]
+
+
+def test_initial_conditions_are_globally_pruned_once_after_assembly() -> None:
+    events: list[object] = []
+
+    class InitialCondition:
+        def __init__(self, group_id: int) -> None:
+            self.group_id = group_id
+
+        def build(self):
+            events.append(("build", self.group_id))
+            return SimpleNamespace(
+                position=np.zeros((1, 3)),
+                velocity=np.zeros((1, 3)),
+                vortex_strength=np.array([[float(self.group_id + 1), 0.0, 0.0]]),
+                core_radius=np.ones(1),
+                particle_volume=np.ones(1),
+                kinematic_viscosity=np.zeros(1),
+                group_id=np.array([self.group_id], dtype=np.int32),
+                zone_id=None,
+            )
+
+    solver = object.__new__(VPMSolver)
+    solver.case = vpm.VPMCase(
+        numerics=vpm.Numerics(),
+        initial_conditions=(InitialCondition(0), InitialCondition(1)),
+        initial_weak_particle_percent=5.0,
+    )
+    solver._initial_conditions_built = False
+    solver.add_vortex_particles = lambda **values: events.append(
+        ("add", int(values["group_id"][0]))
+    )
+    solver.remove_weak_particles = lambda percent: events.append(("prune", percent))
+
+    VPMSolver._build_initial_conditions(solver)
+
+    assert events == [
+        ("build", 0),
+        ("add", 0),
+        ("build", 1),
+        ("add", 1),
+        ("prune", 5.0),
+    ]
+    assert solver._initial_conditions_built
+
+
+@pytest.mark.parametrize("percent", [-1.0, 100.1, np.inf, np.nan])
+def test_initial_weak_particle_percent_is_bounded(percent: float) -> None:
+    with pytest.raises(ValueError, match="initial_weak_particle_percent"):
+        vpm.VPMCase(numerics=vpm.Numerics(), initial_weak_particle_percent=percent)
+
+
+@pytest.mark.parametrize("percent", [True, "5", None])
+def test_initial_weak_particle_percent_must_be_numeric(percent: object) -> None:
+    with pytest.raises(TypeError, match="initial_weak_particle_percent"):
+        vpm.VPMCase(numerics=vpm.Numerics(), initial_weak_particle_percent=percent)

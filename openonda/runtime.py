@@ -94,10 +94,11 @@ class RunConfig:
         return self.cpu_cores > 1
 
     def _set_thread_count(self, count: int) -> None:
-        for name in (*_THREAD_VARIABLES, "OPENONDA_CPU_THREADS"):
+        for name in _THREAD_VARIABLES:
             os.environ[name] = str(count)
 
     def ensure_mpi(self, script: str | Path) -> None:
+        """Re-execute ``script`` under MPI when multiple ranks are requested."""
         size = _world_size()
         if size > 1:
             if size != self.cpu_cores:
@@ -126,6 +127,7 @@ class RunConfig:
         os.execvpe(command[0], command, environment)
 
     def ensure_runtime(self, script: str | Path) -> None:
+        """Configure the declared threaded or MPI process runtime."""
         if self.parallel_mode == "mpi":
             self.ensure_mpi(script)
             return

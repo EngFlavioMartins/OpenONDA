@@ -65,7 +65,14 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
 
     # RANDOM WALK METHOD (RWM)
 
-    def random_walk_method_diffusion(self, particles, time_step_size: float):
+    def random_walk_method_diffusion(
+        self,
+        particles,
+        time_step_size: float,
+        *,
+        random_seed: int,
+        accepted_step: int,
+    ):
         """
         Apply viscous diffusion using Random Walk Method.
 
@@ -90,6 +97,12 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
             particles: Particle container
             time_step_size: Time step size [s]
         """
-        apply_random_walk(self, particles, time_step_size)
+        apply_random_walk(
+            self,
+            particles,
+            time_step_size,
+            random_seed=random_seed,
+            accepted_step=accepted_step,
+        )
 
     # VOLUME UPDATE FROM DIVERGENCE

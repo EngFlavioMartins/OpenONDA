@@ -829,7 +829,12 @@ class EvolutionStepper:
                 ("scheme", "RWM"),
                 ("time step", f"{time_step_size:.3e}", "s"),
             )
-            self.physics.random_walk_method_diffusion(self.particles, time_step_size=time_step_size)
+            self.physics.random_walk_method_diffusion(
+                self.particles,
+                time_step_size=time_step_size,
+                random_seed=self.setup.random_seed,
+                accepted_step=self.step,
+            )
         elif self.viscous_scheme in ("DVH", "GBD"):
             # DVH fires only when its fixed diffusion increment has accumulated.
             diffusion_time_step_size = time_step_size

@@ -29,7 +29,7 @@ import pandas as pd
 
 from assets.generate_surface import create_flat_plate, save_surface
 import openonda.vpm as vpm
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from openonda.vpm import Backup, Samplers
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 

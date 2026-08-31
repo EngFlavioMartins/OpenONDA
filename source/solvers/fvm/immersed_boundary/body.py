@@ -11,6 +11,8 @@ al. 2010; Constant et al. Table 1), which the factory methods enforce.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 
@@ -74,8 +76,8 @@ class ImmersedBody:
     def __init__(
         self,
         name: str,
-        position: np.ndarray,
-        prescribed_velocity: np.ndarray | None = None,
+        position: Sequence[Sequence[float]] | np.ndarray,
+        prescribed_velocity: Sequence[float] | np.ndarray | None = None,
         *,
         geometry: dict | None = None,
     ):
@@ -116,7 +118,12 @@ class ImmersedBody:
         bounds = self._geometry.get("bounds")
         return None if bounds is None else np.asarray(bounds, dtype=np.float64).copy()
 
-    def contains(self, points, *, include_boundary: bool = False) -> np.ndarray:
+    def contains(
+        self,
+        points: Sequence[Sequence[float]] | np.ndarray,
+        *,
+        include_boundary: bool = False,
+    ) -> np.ndarray:
         """Return which query points lie in the represented solid.
 
         The marker cloud remains the IBM forcing representation.  This exact
@@ -167,7 +174,10 @@ class ImmersedBody:
             return planar & z_mask
         raise ValueError(f"Unsupported immersed-body geometry type {geometry_type!r}")
 
-    def signed_distance(self, points) -> np.ndarray:
+    def signed_distance(
+        self,
+        points: Sequence[Sequence[float]] | np.ndarray,
+    ) -> np.ndarray:
         """Signed distance to the solid surface: positive in the fluid.
 
         Feeds the C1 wall taper. Exact outside, a lower bound inside.
@@ -228,7 +238,7 @@ class ImmersedBody:
     @classmethod
     def cylinder_z(
         cls,
-        centre,
+        centre: Sequence[float] | np.ndarray,
         diameter: float,
         grid_spacing: float,
         marker_spacing_ratio: float = 1.0,
@@ -287,9 +297,9 @@ class ImmersedBody:
     @classmethod
     def extruded_cylinder_z(
         cls,
-        centre,
+        centre: Sequence[float] | np.ndarray,
         diameter: float,
-        z_bounds,
+        z_bounds: Sequence[float] | np.ndarray,
         grid_spacing: float,
         marker_spacing_ratio: float = 1.0,
         name: str = "cylinder",
@@ -374,7 +384,7 @@ class ImmersedBody:
     @classmethod
     def sphere(
         cls,
-        centre,
+        centre: Sequence[float] | np.ndarray,
         diameter: float,
         grid_spacing: float,
         marker_spacing_ratio: float = 1.0,
@@ -427,7 +437,7 @@ class ImmersedBody:
     @classmethod
     def rectangle_z(
         cls,
-        centre,
+        centre: Sequence[float] | np.ndarray,
         width: float,
         height: float,
         grid_spacing: float,
@@ -485,8 +495,8 @@ class ImmersedBody:
     @classmethod
     def extruded_polygon_z(
         cls,
-        vertex_position,
-        z_bounds,
+        vertex_position: Sequence[Sequence[float]] | np.ndarray,
+        z_bounds: Sequence[float] | np.ndarray,
         grid_spacing: float,
         marker_spacing_ratio: float = 1.0,
         name: str = "polygon",
@@ -574,8 +584,8 @@ class ImmersedBody:
     @classmethod
     def from_points(
         cls,
-        position,
-        prescribed_velocity=None,
+        position: Sequence[Sequence[float]] | np.ndarray,
+        prescribed_velocity: Sequence[float] | np.ndarray | None = None,
         name: str = "body",
         *,
         geometry: dict | None = None,

@@ -35,7 +35,7 @@ for required_file in \
 done
 
 if ! preflight_output=$("$python_bin" -c \
-    'import openonda.coupler, openonda.fvm, openonda.vpm, scipy, taichi; import setup as c; assert c.END_TIME == 20.0; assert c.FVM_TIME_STEP_SIZE == 0.010; assert c.VPM_TIME_STEP_SIZE == 0.050; assert c.VPM_PARTICLE_SPACING == 0.03125; assert c.VPM_VISCOUS_SCHEME == "GBD"; assert c.VPM_PANEL_SOLVER.linear_solver_name == "SCIPY"; assert c.VPM_PANEL_SOLVER.coupling_scope == "vpm_boundary_condition"; assert c.COUPLER_SETUP.transfer_method == "buffered_m4_renewal"; assert c.COUPLER_SETUP.eta_blend_width == 6 * c.VPM_PARTICLE_SPACING; assert c.VPM_CASE.numerics.write_precision == "f32"; assert c.VPM_CASE.output.backup.interval_steps == 0' \
+    'import openonda.coupler, openonda.fvm, openonda.vpm, scipy, taichi; import setup as c; assert c.END_TIME == 20.0; assert c.FVM_TIME_STEP_SIZE == 0.010; assert c.VPM_TIME_STEP_SIZE == 0.050; assert c.VPM_PARTICLE_SPACING == 0.03125; assert c.VPM_VISCOUS_SCHEME == "GBD"; assert c.VPM_PANEL_SOLVER.linear_solver_name == "SCIPY"; assert c.VPM_PANEL_SOLVER.coupling_scope == "vpm_boundary_condition"; assert c.COUPLER_SETUP.transfer_method == "buffered_m4_renewal"; assert c.COUPLER_SETUP.eta_blend_width == 6 * c.VPM_PARTICLE_SPACING; assert c.VPM_CASE.numerics.write_precision == "f32"; assert c.VPM_CASE.backup.interval_steps == 0' \
     2>&1); then
     printf '%s\n' "$preflight_output" >&2
     echo "[FAIL] Cube-flow Python/configuration preflight failed." >&2

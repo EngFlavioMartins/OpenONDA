@@ -35,6 +35,43 @@ def test_leapfrogging_ring_pair_is_a_translated_symmetric_initial_condition():
     np.testing.assert_array_equal(right.group_id, np.ones(len(right), dtype=np.int32))
 
 
+def test_case_restores_global_weak_particle_pruning():
+    setup = _load_setup()
+    case = setup.build_case("leapfrog_les")
+
+    assert case.initial_weak_particle_percent == setup.WEAK_PARTICLE_PERCENT == 5.0
+
+
+def test_case_keeps_transposed_rk3_without_an_uncalibrated_macro_step_cfl_gate():
+    setup = _load_setup()
+    case = setup.build_case("leapfrog_les")
+
+    assert case.numerics.time_integration == "COUPLED"
+    assert case.numerics.advection.scheme == "RK3"
+    assert case.numerics.stretching.scheme == "RK3"
+    assert case.numerics.stretching.mode == "TRANSPOSED"
+    assert case.numerics.health_limits.lagrangian_cfl.maximum is None
+
+
+def test_cases_compare_only_supported_particle_stabilization_mechanisms():
+    setup = _load_setup()
+    expected = {
+        "leapfrog_les": (False, False),
+        "leapfrog_les_splitting": (True, False),
+        "leapfrog_les_remeshing": (False, True),
+        "leapfrog_les_splitting_remeshing": (True, True),
+    }
+
+    assert expected == setup.CASES
+    for name, (has_splitting, has_remeshing) in expected.items():
+        case = setup.build_case(name)
+        stabilization = case.numerics.stabilization
+        assert stabilization.filament_refinement.enabled is has_splitting
+        assert (stabilization.regularization_interval_steps > 0) is has_remeshing
+        assert case.numerics.turbulence.model == "LES_SMAGORINSKY"
+        assert case.numerics.turbulence.smagorinsky_coefficient == setup.SMAGORINSKY_COEFFICIENT
+
+
 def test_widnall_mode_changes_vorticity_without_moving_quadrature_nodes():
     setup = _load_setup()
     disturbed = setup.create_ring(-0.5).build()

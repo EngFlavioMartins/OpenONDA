@@ -35,7 +35,7 @@ positionally and the optional directory is placed inside the constructor:
 
 ```python
 samplers=vpm.Samplers(
-    vpm.FlowIntegralsSampler(schedule=vpm.SamplingSchedule(every_n_steps=10)),
+    vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(10)),
     directory="run_a",
 )
 ```

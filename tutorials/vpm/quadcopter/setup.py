@@ -18,7 +18,7 @@ import numpy as np
 
 from assets.generate_blade import create_rotor_blade, save_blade
 import openonda.vpm as vpm
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from openonda.vpm import Backup, Samplers
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 CASE_NAME = "quadcopter"

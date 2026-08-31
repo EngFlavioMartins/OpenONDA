@@ -259,10 +259,9 @@ fi
 echo
 echo "===== GRID STUDY COMPLETE ====="
 echo "Report: $samples_root/grid_convergence_report.md"
-if [ -f "$samples_root/grid_recommendation.env" ]; then
-    echo "Load-converged settings: $samples_root/grid_recommendation.env"
-    echo "To use them for a production reference run:"
-    echo "  set -a; . samples/grid_recommendation.env; set +a; ./allrun.sh"
+if [ -f "$samples_root/grid_recommendation.json" ]; then
+    echo "Load-converged settings: $samples_root/grid_recommendation.json"
+    echo "Review them, then update the explicit mesh constants in setup.py."
 else
     echo "No mesh recommendation was emitted; inspect the report before extending the study."
 fi

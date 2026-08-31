@@ -32,12 +32,14 @@ class WidnallDisturbance:
 
     @classmethod
     def single_mode(cls, *, amplitude: float, mode: int, phase: float = 0.0) -> WidnallDisturbance:
+        """Create one sinusoidal azimuthal ring mode."""
         return cls(amplitude=amplitude, mode=mode, phase=phase)
 
     @classmethod
     def broadband(
         cls, *, amplitude: float, number_of_modes: int = 24, seed: int = 42
     ) -> WidnallDisturbance:
+        """Create a reproducible equal-weight broadband disturbance."""
         return cls(amplitude=amplitude, number_of_modes=number_of_modes, seed=seed)
 
     def centreline(self, azimuth: np.ndarray, ring_radius: float) -> tuple[np.ndarray, np.ndarray]:

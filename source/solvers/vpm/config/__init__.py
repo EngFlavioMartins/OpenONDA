@@ -22,7 +22,6 @@ from .health import (
 )
 from .setup import PanelBodySetup
 from .stabilization import StabilizationConfig
-from .state import ParticlesState, SolverState
 from .stretching import StretchingConfig
 from .turbulence import TurbulenceConfig
 from .velocity import VelocityConfig
@@ -37,7 +36,6 @@ __all__ = [
     "FiniteStateCheck",
     "FilamentRefinementConfig",
     "Numerics",
-    "ParticlesState",
     "PanelBodySetup",
     "GrowthLimit",
     "HealthError",
@@ -48,7 +46,6 @@ __all__ = [
     "RestartState",
     "RunPlan",
     "Samplers",
-    "SolverState",
     "StabilizationConfig",
     "StretchingConfig",
     "TurbulenceConfig",

@@ -10,6 +10,7 @@ eligible only when the current basis fails the requested physical-field gate.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 from scipy import sparse
@@ -150,7 +151,7 @@ def sparse_gaussian_vorticity_basis(
     distance = distance[retain]
     local_radius = local_radius[retain]
     value = np.exp(-((distance / local_radius) ** 2)) / (np.pi**1.5 * local_radius**3)
-    return sparse.coo_matrix((value, (row, column)), shape=shape).tocsr()
+    return sparse.csr_matrix(sparse.coo_matrix((value, (row, column)), shape=shape).tocsr())
 
 
 def evaluate_sparse_gaussian_vorticity(
@@ -519,7 +520,7 @@ def solve_advected_renewal_projection(
         fitted_velocity=fitted_velocity,
         fitted_normal_velocity=fitted_normal_velocity,
         singular_values=np.asarray(singular_values, dtype=np.float64),
-        rank=int(rank),
+        rank=cast(int, rank),
         condition_number=condition_number,
         vorticity_relative_error=vorticity_error,
         velocity_relative_error=velocity_error,

@@ -329,12 +329,19 @@ def _solve_petsc(
         nnz=max_row_nnz,
         comm=PETSc.COMM_WORLD,
     )
-    mat.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+    mat.setOption(  # type: ignore[bad-argument-type]
+        PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR,  # type: ignore[bad-argument-type]
+        False,
+    )
     row_start, row_end = mat.getOwnershipRange()
     for row in range(row_start, row_end):
         start, end = A_csr.indptr[row], A_csr.indptr[row + 1]
         if end > start:
-            mat.setValues(row, A_csr.indices[start:end], A_csr.data[start:end])
+            mat.setValues(  # type: ignore[bad-argument-type]
+                row,  # type: ignore[bad-argument-type]
+                A_csr.indices[start:end],
+                A_csr.data[start:end],
+            )
     mat.assemblyBegin()
     mat.assemblyEnd()
 
@@ -349,7 +356,10 @@ def _solve_petsc(
     rhs_start, rhs_end = rhs.getOwnershipRange()
     if rhs_end > rhs_start:
         rows = np.arange(rhs_start, rhs_end, dtype=PETSc.IntType)
-        rhs.setValues(rows, b_array[rhs_start:rhs_end])
+        rhs.setValues(  # type: ignore[bad-argument-type]
+            rows,  # type: ignore[bad-argument-type]
+            b_array[rhs_start:rhs_end],  # type: ignore[bad-argument-type]
+        )
     rhs.assemblyBegin()
     rhs.assemblyEnd()
     if petsc_nullspace is not None:
@@ -362,7 +372,10 @@ def _solve_petsc(
     sol_start, sol_end = solution.getOwnershipRange()
     if sol_end > sol_start:
         rows = np.arange(sol_start, sol_end, dtype=PETSc.IntType)
-        solution.setValues(rows, initial[sol_start:sol_end])
+        solution.setValues(  # type: ignore[bad-argument-type]
+            rows,  # type: ignore[bad-argument-type]
+            initial[sol_start:sol_end],  # type: ignore[bad-argument-type]
+        )
     solution.assemblyBegin()
     solution.assemblyEnd()
 
@@ -415,21 +428,21 @@ def _solve_petsc(
     solve_start = time.perf_counter()
     ksp.solve(rhs, solution)
     solve_seconds = time.perf_counter() - solve_start
-    reason_code = int(ksp.getConvergedReason())
+    reason_code = int(ksp.getConvergedReason())  # type: ignore[bad-argument-type]
     iterations = int(ksp.getIterationNumber())
 
     scatter, solution_all = PETSc.Scatter.toAll(solution)
     scatter.begin(
         solution,
         solution_all,
-        addv=PETSc.InsertMode.INSERT_VALUES,
-        mode=PETSc.ScatterMode.FORWARD,
+        addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[bad-argument-type]
+        mode=PETSc.ScatterMode.FORWARD,  # type: ignore[bad-argument-type]
     )
     scatter.end(
         solution,
         solution_all,
-        addv=PETSc.InsertMode.INSERT_VALUES,
-        mode=PETSc.ScatterMode.FORWARD,
+        addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[bad-argument-type]
+        mode=PETSc.ScatterMode.FORWARD,  # type: ignore[bad-argument-type]
     )
     x = solution_all.getArray(readonly=True).copy()
     if nullspace == "constant":
@@ -550,6 +563,8 @@ def _get_or_build_amg(A, pyamg, reuse_tol=0.05, force_rebuild=False, amg_key=Non
             _AMG_CACHE.pop(next(iter(_AMG_CACHE)))
         _AMG_CACHE[key] = (hierarchy, diagonal.copy())
         return hierarchy, True
+    if cached is None:
+        raise RuntimeError("AMG cache entry disappeared before reuse")
     return cached[0], False
 
 

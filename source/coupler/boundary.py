@@ -672,10 +672,11 @@ def apply_fvm_boundary(
 
     coupler.fvm_solver.solve_pimple()
 
-    time_config = coupler.fvm_solver.setup.time
+    time_config = coupler.fvm_solver._time_config
+    adjustment = time_config.adjustment
     coupler.fvm_solver.logger.courant_info(
         coupler.fvm_solver.max_courant_number,
-        time_config.max_courant_number if time_config.adjust_time_step else None,
+        adjustment.maximum if adjustment is not None else None,
     )
 
     coupler.fvm_solver.advance_time()

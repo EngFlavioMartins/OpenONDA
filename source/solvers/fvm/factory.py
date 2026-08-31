@@ -6,11 +6,14 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openonda.runtime import RunConfig
 
 from .config import FVMSetup
+
+if TYPE_CHECKING:
+    from .core.solver import FVMSolver
 
 MeshSource = (
     str
@@ -95,7 +98,7 @@ def create_fvm_solver(
     solution_dir: str | Path | None = None,
     samples_dir: str | Path | None = None,
     mesh: MeshSource | None = None,
-):
+) -> FVMSolver:
     """Construct an FVM solver from an ``FVMSetup``."""
     RunConfig(
         cpu_cores=setup.cores,
@@ -118,9 +121,7 @@ def create_fvm_solver(
     return FVMSolver(
         runtime_setup,
         case_dir=(str(Path(case_dir).resolve()) if case_dir is not None else None),
-        solution_dir=(
-            str(Path(solution_dir).resolve()) if solution_dir is not None else None
-        ),
+        solution_dir=(str(Path(solution_dir).resolve()) if solution_dir is not None else None),
         samples_dir=(str(Path(samples_dir).resolve()) if samples_dir is not None else None),
         mesh_data=_materialize_mesh(
             mesh,

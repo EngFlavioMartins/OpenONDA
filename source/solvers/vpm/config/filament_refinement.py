@@ -60,8 +60,7 @@ class FilamentRefinementConfig:
             self.late_start_step is None or self.max_absolute_vortex_strength is None
         ):
             raise ValueError(
-                "late_absolute_only requires late_start_step and "
-                "max_absolute_vortex_strength"
+                "late_absolute_only requires late_start_step and max_absolute_vortex_strength"
             )
         if self.end_step is not None and self.end_step < 0:
             raise ValueError("end_step must be non-negative or None")

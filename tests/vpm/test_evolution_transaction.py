@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from source.solvers.vpm.core.evolution import EvolutionStepper
+from source.solvers.vpm.core.solver import VPMSolver
 
 
 class _Particles:
@@ -85,3 +86,17 @@ def test_failed_physical_phase_does_not_commit_solver_clock():
         stepper.advance()
 
     assert (solver.step, solver.time) == (4, 0.4)
+
+
+def test_failed_physical_phase_makes_solver_terminally_invalid():
+    solver = object.__new__(VPMSolver)
+    solver._evolution_failure = None
+    solver.stepper = SimpleNamespace(
+        advance=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        VPMSolver.advance(solver)
+
+    with pytest.raises(RuntimeError, match="terminally invalid"):
+        VPMSolver.advance(solver)

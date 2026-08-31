@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from ..io.sampling.schedule import OutputSchedule
+
+if TYPE_CHECKING:
+    from ..core.solver import VPMSolver
+    from ..io.sampler import SamplingContext
 
 RING_DIAGNOSTIC_COLUMNS = (
     "time",
@@ -51,12 +56,13 @@ class RingDiagnosticsSampler:
 
     def save_csv(
         self,
-        solver,
+        solver: VPMSolver,
         path: Path,
         *,
         time: float,
         step: int | None = None,
     ) -> None:
+        """Append per-ring diagnostics for one solver state."""
         position = np.asarray(solver.particle_position, dtype=np.float64)
         vortex_strength = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         particle_group_id = np.asarray(solver.particle_group_id, dtype=np.int32)
@@ -72,7 +78,7 @@ class RingDiagnosticsSampler:
                 row = self._sample_group(position[selected], vortex_strength[selected])
                 writer.writerow([time, step, int(group_id), *row])
 
-    def write(self, context) -> None:
+    def write(self, context: SamplingContext) -> None:
         """Write one atomic, monotonic ring-diagnostics event."""
         path = context.output_directory / f"{self.file_name}.csv"
         existing: list[list[str]] = []

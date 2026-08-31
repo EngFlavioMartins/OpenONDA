@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 
 try:
@@ -228,7 +230,7 @@ class GmshImporter:
     - Owner < Neighbour for internal faces.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialise the importer and start the Gmsh API.
 
         Gmsh is lazily initialised if it has not been started yet.  Call
@@ -239,20 +241,21 @@ class GmshImporter:
             raise ImportError(
                 "Gmsh support requires the optional FVM dependencies: pip install 'OpenONDA[fvm]'"
             )
-        if not gmsh.isInitialized():
-            gmsh.initialize()
+        self._gmsh: Any = gmsh
+        if not self._gmsh.isInitialized():
+            self._gmsh.initialize()
         self.source_path = None
 
-    def finalize(self):
+    def finalize(self) -> None:
         """Finalize the Gmsh API.
 
         Safe to call multiple times; only the first call shuts down the
         Gmsh kernel.
         """
-        if gmsh is not None and gmsh.isInitialized():
-            gmsh.finalize()
+        if self._gmsh.isInitialized():
+            self._gmsh.finalize()
 
-    def load_mesh(self, filename: str):
+    def load_mesh(self, filename: str) -> None:
         """Open and load a Gmsh mesh file.
 
         Args:
@@ -263,7 +266,7 @@ class GmshImporter:
             FileNotFoundError: If the file does not exist.
             gmsh.GmshException: If Gmsh cannot parse the file.
         """
-        gmsh.open(filename)
+        self._gmsh.open(filename)
         self.source_path = str(filename)
 
     def get_mesh_data(self) -> dict:
@@ -288,7 +291,7 @@ class GmshImporter:
             - n_interior_faces: int.
             - n_elements:     int.
         """
-        model = gmsh.model
+        model = self._gmsh.model
 
         # 1. Get Nodes
         node_tags, coords, _ = model.mesh.getNodes()
@@ -411,8 +414,8 @@ class GmshImporter:
             "global_face_id": np.arange(len(final_faces), dtype=np.int64),
             "provenance": {
                 "format": "gmsh",
-                "api_version": getattr(gmsh, "__version__", "unknown"),
-                "mesh_file_version": float(gmsh.option.getNumber("Mesh.MshFileVersion")),
+                "api_version": getattr(self._gmsh, "__version__", "unknown"),
+                "mesh_file_version": float(self._gmsh.option.getNumber("Mesh.MshFileVersion")),
                 "schema": "gmsh-api-first-order-3d-v1",
                 "source": self.source_path,
             },

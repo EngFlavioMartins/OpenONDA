@@ -133,16 +133,6 @@ def validate_solver_params(solver, time=None) -> None:
         value = getattr(solver, name, None)
         if value is not None and (not isinstance(value, int) or value < 1):
             errors.append(f"  {name}={value!r} must be an integer >= 1 when set")
-    time_scheme = str(getattr(solver, "time_scheme", "euler_implicit")).lower()
-    if (
-        time is not None
-        and time_scheme in {"backward", "bdf2"}
-        and bool(getattr(time, "adjust_time_step", False))
-    ):
-        errors.append(
-            "  adaptive time stepping with BDF2 is unsupported until "
-            "variable-step coefficients are implemented"
-        )
     if time is not None:
         if not float(time.time_step_size) > 0.0:
             errors.append(f"  time_step_size={time.time_step_size!r} must be > 0")
@@ -150,13 +140,6 @@ def validate_solver_params(solver, time=None) -> None:
             errors.append(
                 f"  end_time={time.end_time!r} must be greater than start_time={time.start_time!r}"
             )
-        if not isinstance(time.output_interval_steps, int) or time.output_interval_steps < 1:
-            errors.append(f"  write_interval={time.write_interval!r} must be an integer >= 1")
-        if bool(time.adjust_time_step):
-            if not 0.0 < float(time.min_time_step_size) <= float(time.max_time_step_size):
-                errors.append("  adaptive time-step bounds must satisfy 0 < min_dt <= max_dt")
-            if not float(time.max_courant_number) > 0.0:
-                errors.append(f"  max_courant_number={time.max_courant_number!r} must be > 0")
     if errors:
         raise ValueError("Invalid solver scheme selection:\n" + "\n".join(errors))
 

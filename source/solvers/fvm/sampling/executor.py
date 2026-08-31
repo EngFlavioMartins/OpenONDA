@@ -2,7 +2,7 @@
 
 :class:`FVMSamplerExecutor` runs after every accepted solver step (and once at
 initialisation).  Each sampler decides, through its own
-:class:`~.base.SamplingSchedule`, whether it is due; the executor never applies
+:class:`~source.solvers.fvm.config.RunSchedule`, whether it is due; the executor never applies
 a global force cadence.
 
 Force, y+ and IBM sampling are MPI-collective in partitioned runs and are never
@@ -29,7 +29,7 @@ class FVMSamplerExecutor:
 
     @staticmethod
     def execute(solver, *, strict: bool = True) -> None:
-        samplers = list(getattr(solver.setup, "samplers", ()) or ())
+        samplers = list(getattr(solver, "_samplers", getattr(solver.setup, "samplers", ())) or ())
         auto_yplus = getattr(solver, "_default_yplus_sampler", None)
         if auto_yplus is not None and auto_yplus not in samplers:
             samplers.append(auto_yplus)
@@ -48,10 +48,14 @@ class FVMSamplerExecutor:
             os.makedirs(samples_dir, exist_ok=True)
 
         for sampler in samplers:
-            is_due = getattr(sampler, "is_due", None)
-            if is_due is not None and not is_due(
-                solver.step, solver.time, solver._accepted_time_step_size
-            ):
+            captured_schedules = getattr(solver, "_sampler_schedules", {})
+            schedule = captured_schedules.get(id(sampler))
+            due = (
+                schedule.is_due(solver.step, solver.time, solver._accepted_time_step_size)
+                if schedule is not None
+                else sampler.is_due(solver.step, solver.time, solver._accepted_time_step_size)
+            )
+            if not due:
                 continue
             if isinstance(sampler, ForceSampler):
                 forces = sampler.sample(solver)

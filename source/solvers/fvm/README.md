@@ -23,8 +23,23 @@ setup = fvm.FVMSetup(
         asynchronous=True,
         ghost_layers=1,
     ),
-    logging=fvm.LoggingConfig(mode="simple", interval_steps=1),
-    time=fvm.TimeConfig.transient(time_step_size=1e-3, duration=1.0),
+    logging=fvm.LoggingConfig(
+        mode="simple",
+        schedule=fvm.RunSchedule(every_time=0.05),
+    ),
+    backup=fvm.BackupConfig(
+        schedule=fvm.RunSchedule(every_time=0.25),
+        write_at_end=True,
+    ),
+    time=fvm.TimeConfig(
+        time_step_size=1e-3,
+        end_time=1.0,
+        output_schedule=fvm.RunSchedule(every_n_steps=20),
+        adjustment=fvm.MaximumCourantTimeStep(
+            maximum=0.9,
+            maximum_time_step_size=5e-3,
+        ),
+    ),
     schemes=fvm.DiscretizationConfig(
         convection_scheme="limitedLinear",
         gradient_scheme="lsq",
@@ -44,13 +59,25 @@ setup = fvm.FVMSetup(
 )
 # ``mesh`` may also be a mesh dictionary or a callable returning one.
 with fvm.create_fvm_solver(setup, case_dir="path/to/case", mesh="mesh.msh") as solver:
-    while solver.time < setup.time.end_time:
-        solver.advance()
+    solver.run()
 ```
 
 Configuration is provided entirely through `FVMSetup`. Initial velocity and
 pressure values are supplied through `FVMSetup.initial_velocity` and
 `FVMSetup.initial_kinematic_pressure`.
+`TimeConfig` and `MaximumCourantTimeStep` are immutable construction objects.
+The latter uses OpenFOAM-style damped growth (at most 20% per accepted step),
+immediate CFL-driven reductions, an optional maximum step, and exact final-time
+clipping. The running solver owns the evolving step size; it cannot be changed
+through the post-construction coupling setter.
+`RunSchedule` is the common immutable cadence for visualization, logging,
+sampling, and automatic restart backups. Use `every_n_steps=N` to count
+accepted steps or `every_time=T` for physical seconds. With maximum-Courant
+control, time-based schedules constrain the selected step just like
+OpenFOAM's `adjustableRunTime`, so events land on their requested times instead
+of drifting to the first step after them. Cadence decisions are derived from
+the accepted step/time state, so restart continuation needs no mutable output
+counter.
 Nonzero `relTol` values are supported, and separate final-stage values may
 override the relative tolerances for the final momentum and pressure solves.
 

@@ -58,34 +58,14 @@ class SolverIO:
     def time(self) -> float:
         return self.solver.time
 
-    def should_backup(self, step: int | None = None) -> bool:
-        """
-        Check if a backup should be written at the given timestep.
-
-        Args:
-            step: Step index to check (default: current solver step)
-
-        Returns:
-            True if a backup should be written
-        """
-        ts = step if step is not None else self.step
-        interval_steps = self.solver.setup.backup.interval_steps
-        return interval_steps > 0 and ts % interval_steps == 0
-
-    def _write_scheduled_backup(self, verbose: bool = True) -> None:
-        """Write only numerical restart state when its cadence is due.
+    def write_backup(self, verbose: bool = True) -> None:
+        """Write numerical restart state selected by the output manager.
 
         Visualization, panel loads, and VLM result files are scientific output,
         not restart state. They need explicitly configured samplers with their
         own schedules rather than inheriting the backup cadence.
         """
-        if not self.should_backup():
-            return
-
-        # Ensure export directory exists
         os.makedirs(self.export_dir, exist_ok=True)
-
-        # 1. HDF5 backup (for restart)
         backup_path = os.path.join(self.export_dir, self.vpm_prefix)
         _BackupIO.save(self.solver, backup_path, verbose=verbose)
 

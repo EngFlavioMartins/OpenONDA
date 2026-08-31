@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Plot the three leapfrogging LES and stabilization cases.
+# Plot the four leapfrogging particle-stabilization cases.
 #
 # Usage:
 #   ./allplot.sh        PNG figures (default)

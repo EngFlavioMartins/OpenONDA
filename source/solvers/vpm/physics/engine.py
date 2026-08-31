@@ -140,7 +140,14 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         """
         self._diffusion.core_spreading_diffusion(particles, time_step_size)
 
-    def random_walk_method_diffusion(self, particles, time_step_size: float):
+    def random_walk_method_diffusion(
+        self,
+        particles,
+        time_step_size: float,
+        *,
+        random_seed: int,
+        accepted_step: int,
+    ):
         """
         Apply Random Walk Method diffusion.
 
@@ -150,7 +157,12 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             particles: Particle container
             time_step_size: Time step size [s]
         """
-        self._diffusion.random_walk_method_diffusion(particles, time_step_size)
+        self._diffusion.random_walk_method_diffusion(
+            particles,
+            time_step_size,
+            random_seed=random_seed,
+            accepted_step=accepted_step,
+        )
 
     # STRETCHING INTERFACE
 
@@ -669,9 +681,22 @@ class _DiffusionHandler:
         """Core spreading diffusion."""
         apply_core_spreading(self._parent, particles, time_step_size)
 
-    def random_walk_method_diffusion(self, particles, time_step_size: float):
+    def random_walk_method_diffusion(
+        self,
+        particles,
+        time_step_size: float,
+        *,
+        random_seed: int,
+        accepted_step: int,
+    ):
         """Random walk diffusion."""
-        apply_random_walk(self._parent, particles, time_step_size)
+        apply_random_walk(
+            self._parent,
+            particles,
+            time_step_size,
+            random_seed=random_seed,
+            accepted_step=accepted_step,
+        )
 
 
 class _StretchingHandler:

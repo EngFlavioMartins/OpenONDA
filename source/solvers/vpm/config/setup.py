@@ -63,10 +63,8 @@ class PanelBodySetup:
 class VPMSetup:
     """Complete immutable setup for a VPM simulation."""
 
-    # Time
+    # Accepted-step duration. Runtime time and step are owned by VPMSolver.
     time_step_size: float = DEFAULT_TIME_STEP
-    time: float = 0.0
-    step: int = 0
 
     # Evolution
     time_integration: Literal["FRACTIONAL", "COUPLED"] = "FRACTIONAL"
@@ -172,10 +170,6 @@ class VPMSetup:
         """Validate cross-subsystem setup constraints."""
         if self.time_step_size <= 0.0:
             raise ValueError("time_step_size must be positive")
-        if self.time < 0.0:
-            raise ValueError("time must be non-negative")
-        if self.step < 0:
-            raise ValueError("step must be non-negative")
 
         integration = self.time_integration.upper()
         if integration not in {"FRACTIONAL", "COUPLED"}:

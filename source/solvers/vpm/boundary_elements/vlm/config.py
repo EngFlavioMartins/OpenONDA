@@ -15,6 +15,7 @@ class ForceConfig:
 
     @staticmethod
     def kutta_joukowski(*, smoothing: bool = False) -> ForceConfig:
+        """Configure Kutta–Joukowski force evaluation."""
         return ForceConfig(kj_smoothing=smoothing)
 
 
@@ -38,6 +39,7 @@ class VLMMeshSetup:
         *,
         region: Literal["start", "end", "both"] = "both",
     ) -> VLMMeshSetup:
+        """Configure geometric panel spacing toward the selected region."""
         return VLMMeshSetup(spacing="geometric", ratio=ratio, region=region)
 
 
@@ -45,7 +47,7 @@ class VLMMeshSetup:
 class VLMSurfaceSetup:
     """One lifting surface and all of its placement/coupling metadata."""
 
-    surface: Any
+    surface: object
     name: str | None = None
     kinematics: Any | None = None
     translation: tuple[float, float, float] | None = None

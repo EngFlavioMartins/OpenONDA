@@ -107,6 +107,13 @@ class OutputManager:
         for sampler in self._selected(event):
             self._execute_one(sampler, event)
 
+    def write_all(self, event: OutputEvent = OutputEvent.INITIAL) -> None:
+        """Write every configured sampler once for an explicit manual event."""
+        if event is OutputEvent.FAILED:
+            raise ValueError("manual sampler execution cannot use the failed event")
+        for sampler in self.samplers.samples:
+            self._execute_one(sampler, event)
+
     def _backup_due(self) -> bool:
         interval = self.solver.setup.backup.interval_steps
         return interval > 0 and self.solver.step > 0 and self.solver.step % interval == 0
@@ -295,40 +302,3 @@ class OutputManager:
         if entries != sorted(entries) or len({filename for _, filename in entries}) != len(entries):
             raise ValueError(f"PVD index {pvd_path} is not monotonic and unique")
         return entries
-
-
-class SamplerExecutor:
-    """Compatibility facade delegating sampler work to :class:`OutputManager`."""
-
-    @staticmethod
-    def _manager(solver: SamplerRuntimeSolver) -> OutputManager:
-        manager = getattr(solver, "output_manager", None)
-        return manager if isinstance(manager, OutputManager) else OutputManager(solver)
-
-    @staticmethod
-    def selected(solver: SamplerRuntimeSolver, mode: str) -> tuple[object, ...]:
-        manager = SamplerExecutor._manager(solver)
-        event = {"scheduled": OutputEvent.ACCEPTED_STEP, "final": OutputEvent.FINAL}.get(mode)
-        if event is None:
-            return tuple(manager.samplers.samples) if mode == "manual" else ()
-        return manager._selected(event)
-
-    @staticmethod
-    def any_due(solver: SamplerRuntimeSolver, step: int, time: float) -> bool:
-        return SamplerExecutor._manager(solver).any_due(step, time)
-
-    @staticmethod
-    def flow_integrals_due(solver: SamplerRuntimeSolver, step: int, time: float) -> bool:
-        return SamplerExecutor._manager(solver).flow_integrals_due(step, time)
-
-    @staticmethod
-    def execute(solver: SamplerRuntimeSolver, *, mode: str) -> None:
-        manager = SamplerExecutor._manager(solver)
-        if mode == "manual":
-            for sampler in manager.samplers.samples:
-                manager._execute_one(sampler, OutputEvent.INITIAL)
-            return
-        event = {"scheduled": OutputEvent.ACCEPTED_STEP, "final": OutputEvent.FINAL}.get(mode)
-        if event is None:
-            raise ValueError(f"Unknown sampler execution mode {mode!r}")
-        manager.dispatch(event)

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from source.solvers.vpm.config.artifacts import Samplers
-from source.solvers.vpm.io.sampler import SamplerExecutor
+from source.solvers.vpm.io.sampler import OutputManager
 from source.solvers.vpm.io.solver_io import SolverIO
 
 
@@ -42,7 +42,7 @@ def _solver(tmp_path, samples: tuple[object, ...]):
 def test_empty_particle_state_still_executes_configured_sampler(tmp_path):
     sample = _Sample()
 
-    SamplerExecutor.execute(_solver(tmp_path, (sample,)), mode="manual")
+    OutputManager(_solver(tmp_path, (sample,))).write_all()
 
     assert sample.calls == 1
 
@@ -51,7 +51,7 @@ def test_sampler_failure_is_fatal_by_default(tmp_path):
     sample = _Sample(error=OSError("disk full"))
 
     with pytest.raises(RuntimeError, match="Sampler 'probe' failed at step 4") as error:
-        SamplerExecutor.execute(_solver(tmp_path, (sample,)), mode="manual")
+        OutputManager(_solver(tmp_path, (sample,))).write_all()
 
     assert isinstance(error.value.__cause__, OSError)
 
@@ -59,7 +59,7 @@ def test_sampler_failure_is_fatal_by_default(tmp_path):
 def test_sampler_failure_is_reported(tmp_path):
     sample = _Sample(error=OSError("disk full"))
     with pytest.raises(RuntimeError, match="disk full"):
-        SamplerExecutor.execute(_solver(tmp_path, (sample,)), mode="manual")
+        OutputManager(_solver(tmp_path, (sample,))).write_all()
     assert sample.calls == 1
 
 
@@ -70,7 +70,7 @@ def test_individual_sampler_can_declare_an_unmet_prerequisite(tmp_path):
 
     sample = _PrerequisiteSample()
 
-    SamplerExecutor.execute(_solver(tmp_path, (sample,)), mode="manual")
+    OutputManager(_solver(tmp_path, (sample,))).write_all()
 
     assert sample.calls == 0
 
@@ -93,6 +93,6 @@ def test_scheduled_backup_does_not_dispatch_scientific_output(tmp_path, monkeypa
     monkeypatch.setattr(io, "_export_panel_loads", lambda *_args: calls.append("panel"))
     monkeypatch.setattr(io, "_export_vlm_results", lambda *_args: calls.append("vlm"))
 
-    io._write_scheduled_backup()
+    io.write_backup()
 
     assert calls == ["backup"]

@@ -13,7 +13,7 @@ import numpy as np
 
 from .storage import require_free_space
 
-FORMAT_VERSION = 8
+FORMAT_VERSION = 10
 
 # Deflate finds almost nothing in raw float64: the mantissa bytes look like
 # noise. Two lossless transforms expose the structure that is really there.
@@ -173,8 +173,8 @@ def save_backup(solver, path) -> Path:
         "n_committed_time_steps": np.asarray(solver._n_committed_time_steps),
         "time_step_size": np.asarray(solver.time_step_size),
         "accepted_time_step_size": np.asarray(solver._accepted_time_step_size),
+        "previous_time_step_size": np.asarray(solver._previous_time_step_size),
         "max_courant_number": np.asarray(solver.max_courant_number),
-        "time_since_last_write": np.asarray(solver._time_since_last_write),
         "n_consecutive_accepted_steps": np.asarray(
             [
                 solver._n_consecutive_accepted_steps[name]
@@ -228,8 +228,8 @@ def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
         "n_committed_time_steps",
         "time_step_size",
         "accepted_time_step_size",
+        "previous_time_step_size",
         "max_courant_number",
-        "time_since_last_write",
         "n_consecutive_accepted_steps",
         "storage_layout",
     }
@@ -311,8 +311,8 @@ def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
     solver._n_committed_time_steps = int(state["n_committed_time_steps"])
     solver.time_step_size = float(state["time_step_size"])
     solver._accepted_time_step_size = float(state["accepted_time_step_size"])
+    solver._previous_time_step_size = float(state["previous_time_step_size"])
     solver.max_courant_number = float(state["max_courant_number"])
-    solver._time_since_last_write = float(state["time_since_last_write"])
     acceptance_names = sorted(solver._n_consecutive_accepted_steps)
     if state["n_consecutive_accepted_steps"].shape != (len(acceptance_names),):
         raise ValueError("Backup acceptance-limit state is incompatible")
@@ -321,3 +321,4 @@ def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
     )
     solver._last_residuals = None
     solver.last_diagnostics = None
+    solver._invalidate_derived_fields()

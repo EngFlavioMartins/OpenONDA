@@ -32,9 +32,8 @@ N_HEIGHT = 16  # cells across the inlet channel height h
 
 # ---- Time stepping and numerics ------------------------------------------
 TIME_STEP_SIZE = 0.02  # initial time step [s]
-MAX_COURANT_NUMBER = 0.7  # target maximum Courant number
+MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.05  # upper bound on the adapted time step [s]
-MIN_TIME_STEP_SIZE = 1e-6  # lower bound on the adapted time step [s]
 OUTPUT_INTERVAL_TIME = 2.0  # save a snapshot every this many seconds
 PISO_CORRECTORS = 2
 OUTER_CORRECTORS = 1
@@ -164,12 +163,11 @@ def create_fvm_setup(
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
             end_time=end_time,
-            output_interval_steps=10**9,
-            output_interval_time=OUTPUT_INTERVAL_TIME,
-            adjust_time_step=True,
-            max_courant_number=MAX_COURANT_NUMBER,
-            max_time_step_size=MAX_TIME_STEP_SIZE,
-            min_time_step_size=MIN_TIME_STEP_SIZE,
+            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
+            adjustment=fvm.MaximumCourantTimeStep(
+                maximum=MAX_COURANT_NUMBER,
+                maximum_time_step_size=MAX_TIME_STEP_SIZE,
+            ),
         ),
         schemes=schemes,
         linear=linear,
@@ -208,7 +206,7 @@ def main() -> None:
     kinematic_viscosity = MEAN_VELOCITY * STEP_HEIGHT / REYNOLDS_NUMBER
     inlet_values = inlet_velocity(mesh_data, geo_data)
     fvm_setup = create_fvm_setup(REYNOLDS_NUMBER, FINAL_TIME, inlet_values, kinematic_viscosity)
-    fvm_solver = fvm.FVMSolver(fvm_setup, case_dir, mesh_data=mesh_data)
+    fvm_solver = fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh_data)
     fvm_solver.set_initial_velocity(initial_velocity(geo_data, mesh_data["n_cells"]))
     fvm_solver.write_vtk()
 

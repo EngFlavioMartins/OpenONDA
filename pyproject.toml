@@ -46,7 +46,6 @@ dependencies = [
     "numpy-stl>=3.2",
     "scipy>=1.11.0",
     "matplotlib>=3.8.0",
-    "pydantic>=2.5.0",
     "h5py>=3.10.0",
     "numba>=0.59.0; platform_system!='Darwin' or platform_machine!='x86_64'",
     "numba>=0.59.0,<0.63; platform_system=='Darwin' and platform_machine=='x86_64'",
@@ -151,7 +150,7 @@ ignore = [
     "N815",   # mixed-case variable in class — scientific conventions
     "N999",   # module name invalid — tutorial/script names
     "E402",   # module-level import not at top — intentional conditional imports
-    "B008",   # function call in default argument — Taichi/pydantic patterns
+    "B008",   # function call in default argument — Taichi patterns
 ]
 
 [tool.ruff.lint.per-file-ignores]

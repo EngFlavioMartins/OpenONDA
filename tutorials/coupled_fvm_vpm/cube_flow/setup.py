@@ -21,7 +21,7 @@ import numpy as np
 import openonda.fvm as fvm
 import openonda.coupler as coupling
 import openonda.vpm as vpm
-from source.solvers.vpm.config.artifacts import Backup, Samplers
+from openonda.vpm import Backup, Samplers
 
 
 def resolve_case_timing(
@@ -139,7 +139,7 @@ FVM_MESH = fvm.AdaptiveCartesianMesher(
 
 # refinements=(fvm.BoxRefinement(FVM_WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),),
 
-FVM_SAMPLING_SCHEDULE = fvm.SamplingSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
+FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
 VPM_SAMPLING_SCHEDULE = vpm.EverySteps(VPM_SAMPLING_INTERVAL_STEPS)
 
 FVM_SAMPLERS = (
@@ -193,8 +193,7 @@ FVM_SETUP = fvm.FVMSetup(
         time_step_size=FVM_TIME_STEP_SIZE,
         start_time=0.0,
         end_time=END_TIME,
-        output_interval_steps=FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
-        adjust_time_step=False,
+        output_schedule=fvm.RunSchedule(every_n_steps=FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS),
     ),
     schemes=fvm.DiscretizationConfig(
         convection_scheme="linearUpwind",

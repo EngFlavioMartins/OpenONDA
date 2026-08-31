@@ -106,9 +106,7 @@ def main() -> None:
         ax_divergence.axhspan(MAX_DIVERGENCE_ERROR, 10.0, **reference_fill_style("strong"))
 
         ax_angle.set_yscale("log")
-        ax_angle.set_ylabel(
-            r"$\angle(\boldsymbol{\alpha}_p,\boldsymbol{\omega}_p)$ [deg]"
-        )
+        ax_angle.set_ylabel(r"$\angle(\boldsymbol{\alpha}_p,\boldsymbol{\omega}_p)$ [deg]")
         ax_angle.set_xlabel(r"Normalized time, $t\,\Gamma_0 / R_0^2$")
         ax_angle.axhspan(MAX_MISALIGNMENT_DEG, 180.0, **reference_fill_style("strong"))
 

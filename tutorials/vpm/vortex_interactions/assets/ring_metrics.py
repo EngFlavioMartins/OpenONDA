@@ -26,6 +26,7 @@ INTENDED_CASE_ORDER = {
         (
             "leapfrog_les",
             "leapfrog_les_splitting",
+            "leapfrog_les_remeshing",
             "leapfrog_les_splitting_remeshing",
         )
     )
@@ -136,6 +137,11 @@ def case_style(name: str) -> dict:
             "label": "LES + splitting",
             "color": theme.COLORS["VPMpurple"],
             "marker": "D",
+        },
+        "les_remeshing": {
+            "label": "LES + remeshing",
+            "color": theme.COLORS["AccentGreen"],
+            "marker": "^",
         },
         "les_splitting_remeshing": {
             "label": "LES + splitting + remeshing",

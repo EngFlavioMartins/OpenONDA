@@ -19,6 +19,7 @@ from source.solvers.fvm import (
     LinearSolverConfig,
     LineSampler,
     PimpleControl,
+    RunSchedule,
     TimeConfig,
     TransportConfig,
 )
@@ -30,7 +31,11 @@ from source.solvers.fvm.sampling.base import write_pvd
 def _setup() -> FVMSetup:
     return FVMSetup(
         case_name="restart_test",
-        time=TimeConfig.transient(time_step_size=0.01, duration=0.1, output_interval_steps=100),
+        time=TimeConfig(
+            time_step_size=0.01,
+            end_time=0.1,
+            output_schedule=RunSchedule(every_n_steps=100),
+        ),
         schemes=DiscretizationConfig(convection_scheme="upwind", time_scheme="backward"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2),

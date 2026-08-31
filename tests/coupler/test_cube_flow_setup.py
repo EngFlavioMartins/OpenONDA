@@ -68,9 +68,10 @@ def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
         for sampler in setup.VPM_SAMPLERS
     )
     assert (
-        setup.FVM_SETUP.time.output_interval_steps == setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
+        setup.FVM_SETUP.time.output_schedule.every_n_steps
+        == setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
     )
-    assert setup.FVM_SETUP.time.output_interval_time is None
+    assert setup.FVM_SETUP.time.output_schedule.every_time is None
     assert setup.VPM_CASE.backup.interval_steps == 0
     assert setup.VPM_CASE.numerics.write_precision == "f32"
     assert setup.VPM_CASE.backup.directory == "solution"
@@ -104,9 +105,8 @@ def test_cube_flow_viscous_config_factory_builds_each_supported_scheme(scheme):
     assert viscous.core_radius_ratio == pytest.approx(setup.VPM_CORE_RADIUS_RATIO)
     if scheme != "NONE":
         assert viscous.kinematic_viscosity == pytest.approx(setup.KINEMATIC_VISCOSITY)
-    replace(setup.VPM_CASE.numerics, viscous=viscous).to_runtime_setup(
-        setup.VPM_CASE.backup, setup.VPM_CASE.samplers
-    )._validate_config()
+    # Construction itself is the sole validation boundary.
+    replace(setup.VPM_CASE.numerics, viscous=viscous)
 
 
 @pytest.mark.parametrize("scheme", ["CS", "RWM", "DVH", "NONE"])
@@ -385,4 +385,5 @@ def test_reference_flow_uses_the_same_sampling_and_backup_cadence():
         sampler.schedule.every_time == reference.SAMPLING_INTERVAL_TIME
         for sampler in reference.SAMPLERS
     )
-    assert reference.FVM_SETUP.time.output_interval_time == reference.BACKUP_INTERVAL_TIME
+    assert reference.FVM_SETUP.time.output_schedule.every_time == reference.BACKUP_INTERVAL_TIME
+    assert reference.FVM_SETUP.backup.schedule.every_time == reference.BACKUP_INTERVAL_TIME

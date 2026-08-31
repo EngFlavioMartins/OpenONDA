@@ -98,3 +98,17 @@ def test_resume_rejects_nonmonotonic_csv_event(tmp_path):
 
     with pytest.raises(RuntimeError, match="duplicate or nonmonotonic"):
         manager.dispatch(OutputEvent.ACCEPTED_STEP)
+
+
+def test_output_manager_is_the_only_backup_cadence_owner(tmp_path):
+    solver = _solver(tmp_path, Samplers())
+    solver.setup.backup = Backup(interval_steps=2)
+    solver._write_backup = lambda: setattr(solver, "backups", solver.backups + 1)
+    manager = OutputManager(solver)
+
+    solver.step = 1
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+    solver.step = 2
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+
+    assert solver.backups == 1

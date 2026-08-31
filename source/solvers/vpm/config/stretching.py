@@ -212,6 +212,7 @@ class StretchingConfig:
 
     @staticmethod
     def disabled() -> StretchingConfig:
+        """Disable vortex stretching while retaining a typed configuration."""
         return StretchingConfig(enabled=False)
 
 

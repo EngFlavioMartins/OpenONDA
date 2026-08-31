@@ -1,5 +1,7 @@
 """Gauss and inverse-distance least-squares gradients."""
 
+from typing import Any
+
 import numpy as np
 
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
@@ -242,7 +244,7 @@ def compute_gauss_gradient(field_values, mesh_data, geo_data):
     return field_gradient
 
 
-def compute_lsq_geometry(mesh_data, geo_data):
+def compute_lsq_geometry(mesh_data, geo_data) -> dict[str, Any]:
     """Precompute inverse-distance LSQ stencils and 3×3 inverses.
 
     Distances are in metres. ``least_squares_neighbour_weighted_displacement`` therefore has units 1/m and

@@ -551,6 +551,23 @@ def scan_paths(root: Path) -> list[str]:
     return findings
 
 
+def _parse_xml_artifact(path: Path) -> ET.ElementTree | ET.Element:
+    """Parse XML, stripping opaque raw VTK appended data when necessary."""
+    try:
+        return ET.parse(path)
+    except ET.ParseError:
+        payload = path.read_bytes()
+        appended_start = payload.find(b"<AppendedData")
+        appended_end = payload.rfind(b"</AppendedData>")
+        if appended_start < 0 or appended_end < appended_start:
+            raise
+        header_end = payload.find(b">", appended_start)
+        if header_end < 0:
+            raise
+        sanitized = payload[: header_end + 1] + b"_" + payload[appended_end:]
+        return ET.fromstring(sanitized)
+
+
 def scan_xml_field_names(root: Path, *, include_generated: bool = False) -> list[str]:
     """Reject generic particle-volume field names in XML-family artifacts."""
     findings: list[str] = []
@@ -561,7 +578,7 @@ def scan_xml_field_names(root: Path, *, include_generated: bool = False) -> list
             continue
         relative = path.relative_to(root).as_posix()
         try:
-            document = ET.parse(path)
+            document = _parse_xml_artifact(path)
         except (ET.ParseError, OSError) as error:
             findings.append(f"{relative}:cannot parse XML artifact: {error}")
             continue

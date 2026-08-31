@@ -34,8 +34,9 @@ jobs:
       - run: ruff format --check source tests tutorials scripts openonda
       - name: Enforce canonical nomenclature, paths, and stored artifact fields
         run: python scripts/check_nomenclature.py --paths --generated
-      - name: Pyrefly report (existing baseline; do not grow it)
-        continue-on-error: true
+      - name: Enforce documented and typed public API completeness
+        run: python scripts/check_api_completeness.py
+      - name: Enforce Python type safety
         run: pyrefly check
       - run: python -m build
       - run: twine check dist/*

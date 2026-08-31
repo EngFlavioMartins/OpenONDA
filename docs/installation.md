@@ -51,14 +51,11 @@ implementations agree.
 ## Select a VPM compute device
 
 VPM uses Taichi and defaults to `AUTO`, which selects Metal on macOS and a
-compatible GPU backend on Linux. Select a backend explicitly when needed:
+compatible GPU backend on Linux. Select a backend explicitly in the public
+case configuration when needed:
 
-```bash
-OPENONDA_COMPUTE_DEVICE=METAL python tutorials/vpm/vortex_ring/ring_setup.py \
-  --variant dns_transposed --number-of-steps 1
-OPENONDA_COMPUTE_DEVICE=VULKAN ./tutorials/vpm/delta_wing/allrun.sh
-OPENONDA_COMPUTE_DEVICE=CUDA ./tutorials/vpm/delta_wing/allrun.sh
-OPENONDA_COMPUTE_DEVICE=CPU ./tutorials/vpm/delta_wing/allrun.sh
+```python
+numerics = vpm.Numerics(compute_device="METAL")
 ```
 
 Metal supports the normal `f32` VPM path. Use the CPU backend for `f64`, which
@@ -104,5 +101,5 @@ build its wheel with `python -m build --wheel`, place that wheel in
   restricted container or sandbox does not establish that Metal is absent;
   repeat the probe from a normal terminal where Taichi can access its cache and
   the GPU device.
-- GPU execution is optional. Set `OPENONDA_COMPUTE_DEVICE=CPU` to use the
-  portable Taichi CPU backend while diagnosing driver problems.
+- GPU execution is optional. Set `compute_device="CPU"` in `vpm.Numerics` to
+  use the portable Taichi CPU backend while diagnosing driver problems.

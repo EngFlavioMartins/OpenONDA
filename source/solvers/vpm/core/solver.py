@@ -7,7 +7,7 @@ Author: Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 License: GPL-3.0-or-later
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 import json
 from pathlib import Path
 from typing import Protocol, TypeAlias
@@ -35,7 +35,7 @@ from ..io.backup import _BackupIO
 from ..io.logging import Logging, print_openonda_header
 from ..io.physics_events import LoggingPhysicsEventObserver
 from ..io.runtime_profiler import RuntimeProfiler
-from ..io.sampler import OutputEvent, OutputManager, SamplerExecutor
+from ..io.sampler import OutputEvent, OutputManager
 from ..io.solver_io import SolverIO
 from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
@@ -93,6 +93,7 @@ class VPMSolver:
         self._initial_conditions_built = False
         self._run_started = False
         self._run_finished = False
+        self._evolution_failure: BaseException | None = None
         final_setup = self._init_setup(case)
         self._init_io_and_backend(final_setup, final_setup.debug_mode)
         self._init_particles_and_physics(final_setup)
@@ -117,8 +118,7 @@ class VPMSolver:
 
     def _init_setup(self, case: VPMCase) -> VPMSetup:
         """Validate the setup and initialize scalar solver state."""
-        final_setup = case.numerics.to_runtime_setup(case.backup, case.samplers)
-        final_setup._validate_config()
+        final_setup = case.numerics._to_runtime_setup(case.backup, case.samplers)
         self.setup = final_setup
         self.numerics = case.numerics
         self.time_step_size = final_setup.time_step_size
@@ -567,7 +567,19 @@ class VPMSolver:
         ``defer_output=True`` and write scheduled output after synchronizing
         the particle state at the new time level.
         """
-        self.stepper.advance(defer_output=defer_output)
+        if self._evolution_failure is not None:
+            raise RuntimeError(
+                "VPMSolver is terminally invalid after a failed physical step; "
+                "construct a new solver and load the last accepted backup"
+            ) from self._evolution_failure
+        try:
+            self.stepper.advance(defer_output=defer_output)
+        except BaseException as exc:
+            # The accepted clock is transactional, but backend kernels may have
+            # partially mutated particle fields before raising.  Make that state
+            # explicitly unusable instead of silently allowing continuation.
+            self._evolution_failure = exc
+            raise
         if defer_output:
             return
         self._refresh_accepted_step_health()
@@ -628,6 +640,8 @@ class VPMSolver:
                 group_id=particles.group_id,
                 zone_id=particles.zone_id,
             )
+        if self.case.initial_weak_particle_percent > 0.0:
+            self.remove_weak_particles(self.case.initial_weak_particle_percent)
         self._initial_conditions_built = True
 
     def _write_run_manifest(self, status: str, failure: BaseException | None) -> None:
@@ -656,11 +670,10 @@ class VPMSolver:
         reset_taichi_backend()
 
     def _refresh_particle_diagnostic_fields(self) -> None:
-        """Refresh particle fields consumed by solver-owned diagnostics."""
+        """Refresh derived diagnostic fields without changing future evolution."""
         if self.particles.n_particles_total:
             self.stepper._update_velocity_and_gradients()
             self.stepper._update_les_state()
-            self.stabilization.update_residual_viscosity()
 
     def _refresh_accepted_step_health(self) -> None:
         """Refresh and validate diagnostics for one accepted physical state."""
@@ -710,10 +723,6 @@ class VPMSolver:
     def execute_final_samples(self) -> None:
         """Execute samplers carrying a final-only schedule."""
         self.output_manager.dispatch(OutputEvent.FINAL)
-
-    def _write_pvd_file(self, output_dir, name_prefix, entries):
-        """Delegate to SamplerExecutor."""
-        SamplerExecutor._write_pvd(output_dir, name_prefix, entries)
 
     # Particle properties
     def _get_particle_field(self, method_name: str) -> np.ndarray:
@@ -1064,7 +1073,10 @@ class VPMSolver:
             include_body=True,
         )
 
-    def set_body_induced_velocity(self, fn) -> None:
+    def set_body_induced_velocity(
+        self,
+        fn: Callable[[np.ndarray], np.ndarray] | None,
+    ) -> None:
         """Set the optional boundary-element velocity callback.
 
         The callback must map an ``(N, 3)`` point array to an ``(N, 3)`` velocity
@@ -1364,7 +1376,7 @@ class VPMSolver:
         )
 
     # Diagnostics
-    def info(self):
+    def info(self) -> None:
         """Print a summary of the solver configuration and current state."""
         info_str = Logging.solver_info(self)
         Logging.message(info_str)
@@ -1534,16 +1546,6 @@ class VPMSolver:
         """Load particle field from file."""
         self.io.load_particle_field(particle_file_name, remove_current_particles)
 
-    def set_time_step_size(self, time_step_size: float) -> None:
-        """Set the positive simulation time-step size [s]."""
-        if time_step_size <= 0:
-            raise ValueError("Time step size must be positive")
-        self.time_step_size = time_step_size
-
-    def get_time_step_size(self) -> float:
-        """Return the current time-step size [s]."""
-        return self.time_step_size
-
     @staticmethod
     def _validate_particle_property(
         prop_name: str,
@@ -1581,7 +1583,7 @@ class VPMSolver:
             )
         return prop_value
 
-    def set_particles_properties(self, **properties) -> None:
+    def set_particles_properties(self, **properties: object) -> None:
         "Update canonical particle fields after validating shape and finiteness."
         if not properties:
             return
@@ -1661,13 +1663,9 @@ class VPMSolver:
         )
 
     def _write_backup(self) -> None:
-        """Write a scheduled solver backup when one is due."""
-        if not self.io.should_backup():
-            return
-
+        """Write the backup selected by the sole output-schedule owner."""
         self._refresh_backup_particle_fields()
-
-        self.io._write_scheduled_backup()
+        self.io.write_backup()
 
     def _refresh_backup_particle_fields(self) -> None:
         """Refresh derived fields before writing a numerical restart backup.
@@ -1709,8 +1707,8 @@ class VPMSolver:
 
     # Particle updates
 
-    def set_freestream_velocity(self, velocity: list[float] | np.ndarray) -> None:
-        """Set the uniform background velocity vector [m/s]."""
+    def _set_freestream_velocity(self, velocity: list[float] | np.ndarray) -> None:
+        """Set framework-owned uniform background velocity state [m/s]."""
         dtype = np.float64 if self.precision == "f64" else np.float32
         velocity_arr = np.array(velocity, dtype=dtype)
 

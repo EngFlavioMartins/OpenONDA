@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import json
+import math
+from numbers import Real
 from typing import Any, Literal
 
 from source.write_precision import (
@@ -11,6 +13,8 @@ from source.write_precision import (
     WritePrecision,
     validate_write_precision,
 )
+
+from .scheduling import RunSchedule
 
 
 @dataclass
@@ -130,47 +134,80 @@ class MeshQualityConfig:
     max_lsq_condition: float | None = None
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
+class MaximumCourantTimeStep:
+    """Automatic FVM time-step control based on the maximum Courant number.
+
+    ``maximum`` is the target cell Courant number.  Before every transient
+    solve, the solver measures the Courant number of the current face-flux
+    field and selects the next time step with OpenFOAM's damped adjustment:
+    reductions may take effect immediately, while increases are limited to
+    twenty percent per accepted step and are additionally damped near the
+    target.  ``maximum_time_step_size`` provides the optional ``maxDeltaT``
+    equivalent in seconds.
+
+    This object and :class:`TimeConfig` are immutable.  Time-step policy is a
+    numerical construction choice: configure it before creating the solver;
+    the solver alone owns the evolving runtime time-step size afterward.
+    """
+
+    maximum: float = 0.9
+    maximum_time_step_size: float | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.maximum, bool) or not isinstance(self.maximum, Real):
+            raise TypeError("MaximumCourantTimeStep.maximum must be a real number")
+        if not math.isfinite(self.maximum) or self.maximum <= 0.0:
+            raise ValueError("MaximumCourantTimeStep.maximum must be finite and positive")
+        object.__setattr__(self, "maximum", float(self.maximum))
+
+        maximum_time_step_size = self.maximum_time_step_size
+        if maximum_time_step_size is None:
+            return
+        if isinstance(maximum_time_step_size, bool) or not isinstance(maximum_time_step_size, Real):
+            raise TypeError(
+                "MaximumCourantTimeStep.maximum_time_step_size must be a real number or None"
+            )
+        if not math.isfinite(maximum_time_step_size) or maximum_time_step_size <= 0.0:
+            raise ValueError(
+                "MaximumCourantTimeStep.maximum_time_step_size must be finite and positive"
+            )
+        object.__setattr__(self, "maximum_time_step_size", float(maximum_time_step_size))
+
+
+@dataclass(frozen=True, slots=True)
 class TimeConfig:
-    """Time integration and output cadence."""
+    """Immutable time integration, output cadence, and step-control policy.
+
+    ``time_step_size`` is the initial step size.  Fixed stepping is used when
+    ``adjustment`` is ``None``; pass :class:`MaximumCourantTimeStep` to make
+    step selection a solver-owned maximum-Courant policy.
+    """
 
     time_step_size: float = 0.01
     start_time: float = 0.0
     end_time: float = 1.0
-    output_interval_steps: int = 10
-    output_interval_time: float | None = None
-    adjust_time_step: bool = False
-    max_courant_number: float = 1.0
-    max_time_step_size: float = 0.1
-    min_time_step_size: float = 1e-4
-    time_step_size_adjust_coeff: float = 1.2
+    output_schedule: RunSchedule = field(default_factory=lambda: RunSchedule(every_n_steps=10))
+    adjustment: MaximumCourantTimeStep | None = None
 
-    @staticmethod
-    def steady(
-        max_iterations: int = 1000,
-        output_interval_steps: int = 100,
-    ) -> TimeConfig:
-        """Return a steady SIMPLE time configuration."""
-        return TimeConfig(
-            time_step_size=1.0,
-            start_time=0.0,
-            end_time=float(max_iterations),
-            output_interval_steps=output_interval_steps,
-        )
-
-    @staticmethod
-    def transient(
-        time_step_size: float,
-        duration: float,
-        output_interval_steps: int = 10,
-    ) -> TimeConfig:
-        """Return a transient time configuration."""
-        return TimeConfig(
-            time_step_size=time_step_size,
-            start_time=0.0,
-            end_time=duration,
-            output_interval_steps=output_interval_steps,
-        )
+    def __post_init__(self) -> None:
+        for name in ("time_step_size", "start_time", "end_time"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, Real):
+                raise TypeError(f"TimeConfig.{name} must be a real number")
+            if not math.isfinite(value):
+                raise ValueError(f"TimeConfig.{name} must be finite")
+            object.__setattr__(self, name, float(value))
+        if self.time_step_size <= 0.0:
+            raise ValueError("TimeConfig.time_step_size must be positive")
+        if self.end_time <= self.start_time:
+            raise ValueError("TimeConfig.end_time must be greater than start_time")
+        if self.adjustment is not None and not isinstance(self.adjustment, MaximumCourantTimeStep):
+            raise TypeError(
+                "TimeConfig.adjustment must be a MaximumCourantTimeStep instance or None"
+            )
+        if not isinstance(self.output_schedule, RunSchedule):
+            raise TypeError("TimeConfig.output_schedule must be a RunSchedule")
 
 
 @dataclass
@@ -502,24 +539,44 @@ class RunAcceptanceLimits:
 
 @dataclass
 class LoggingConfig:
-    """Console and log-file verbosity."""
+    """Console and log-file verbosity with step- or time-based reporting."""
 
     mode: Literal["simple", "debug"] = "simple"
-    interval_steps: int = 1
+    schedule: RunSchedule = field(default_factory=lambda: RunSchedule(every_n_steps=1))
     console: bool = True
     filename: str = "fvm.log"
 
     def __post_init__(self) -> None:
         if self.mode not in {"simple", "debug"}:
             raise ValueError("log mode must be 'simple' or 'debug'")
-        if isinstance(self.interval_steps, bool) or not isinstance(self.interval_steps, int):
-            raise TypeError("logging interval must be an integer")
-        if self.interval_steps < 1:
-            raise ValueError("logging interval must be at least one")
+        if not isinstance(self.schedule, RunSchedule):
+            raise TypeError("LoggingConfig.schedule must be a RunSchedule")
         if not isinstance(self.console, bool):
             raise TypeError("console must be a boolean")
         if not self.filename:
             raise ValueError("log filename must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class BackupConfig:
+    """Automatic restart-backup policy.
+
+    ``schedule=None`` disables periodic backups.  A relative ``path`` is
+    resolved beneath the solver's solution directory.  ``write_at_end`` adds
+    one final restart when the configured horizon is not itself scheduled.
+    """
+
+    schedule: RunSchedule | None = None
+    path: str = "backup"
+    write_at_end: bool = False
+
+    def __post_init__(self) -> None:
+        if self.schedule is not None and not isinstance(self.schedule, RunSchedule):
+            raise TypeError("BackupConfig.schedule must be a RunSchedule or None")
+        if not isinstance(self.path, str) or not self.path:
+            raise ValueError("BackupConfig.path must be a non-empty string")
+        if not isinstance(self.write_at_end, bool):
+            raise TypeError("BackupConfig.write_at_end must be a boolean")
 
 
 @dataclass
@@ -534,6 +591,7 @@ class FVMSetup:
     output: OutputConfig = field(default_factory=OutputConfig)
     acceptance: RunAcceptanceLimits = field(default_factory=RunAcceptanceLimits)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    backup: BackupConfig = field(default_factory=BackupConfig)
     time: TimeConfig = field(default_factory=TimeConfig)
     schemes: DiscretizationConfig = field(default_factory=DiscretizationConfig)
     linear: LinearSolverConfig = field(default_factory=LinearSolverConfig)
@@ -553,6 +611,8 @@ class FVMSetup:
             raise TypeError("cores must be an integer")
         if self.cores < 1:
             raise ValueError("cores must be at least one")
+        if not isinstance(self.time, TimeConfig):
+            raise TypeError("FVMSetup.time must be a TimeConfig instance")
         self.samplers = tuple(self.samplers or ())
 
     def algorithm_params(self) -> dict[str, Any]:
@@ -595,10 +655,25 @@ class FVMSetup:
             raise ValueError("Unknown top-level FVMSetup field(s): " + ", ".join(unknown))
 
         time_data = dict(data.get("time") or {})
+        output_schedule_data = time_data.get("output_schedule")
+        if output_schedule_data is not None:
+            time_data["output_schedule"] = RunSchedule.from_dict(output_schedule_data)
+        adjustment_data = time_data.get("adjustment")
+        if adjustment_data is not None:
+            if not isinstance(adjustment_data, dict):
+                raise TypeError("Serialized TimeConfig.adjustment must be an object or null")
+            time_data["adjustment"] = MaximumCourantTimeStep(**adjustment_data)
         linear_data = dict(data.get("linear") or {})
         pimple_data = dict(data.get("pimple") or {})
         transport_data = dict(data.get("transport") or {})
         logging_data = dict(data.get("logging") or {})
+        logging_schedule_data = logging_data.get("schedule")
+        if logging_schedule_data is not None:
+            logging_data["schedule"] = RunSchedule.from_dict(logging_schedule_data)
+        backup_data = dict(data.get("backup") or {})
+        backup_schedule_data = backup_data.get("schedule")
+        if backup_schedule_data is not None:
+            backup_data["schedule"] = RunSchedule.from_dict(backup_schedule_data)
 
         boundaries = [BoundaryConfig(**boundary) for boundary in data.get("boundaries", [])]
 
@@ -623,6 +698,7 @@ class FVMSetup:
             output=OutputConfig(**data.get("output", {})),
             acceptance=RunAcceptanceLimits(**data.get("acceptance", {})),
             logging=LoggingConfig(**logging_data),
+            backup=BackupConfig(**backup_data),
             time=TimeConfig(**time_data),
             schemes=DiscretizationConfig(**data.get("schemes", {})),
             linear=LinearSolverConfig(**linear_data),

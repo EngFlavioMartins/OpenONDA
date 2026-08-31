@@ -373,8 +373,7 @@ def split_stretched_filaments(
     if max_stretch_factor <= 1.0:
         raise ValueError("max_stretch_factor must be greater than one")
     if max_absolute_vortex_strength is not None and (
-        not np.isfinite(max_absolute_vortex_strength)
-        or max_absolute_vortex_strength <= 0.0
+        not np.isfinite(max_absolute_vortex_strength) or max_absolute_vortex_strength <= 0.0
     ):
         raise ValueError("max_absolute_vortex_strength must be finite and positive")
     if not 0.0 <= offset_fraction <= 0.5:

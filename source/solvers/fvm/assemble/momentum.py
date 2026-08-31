@@ -12,6 +12,7 @@ from ..fields.mixed_velocity_boundary import (
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..solve.linear_interface import normalized_residual, solve_linear_system
 from . import convection, diffusion, matrix_assembly
+from .time_integration import backward_coefficients
 
 
 def compute_dev2_stress_source(velocity_gradient, kinematic_viscosity, mesh_data, geo_data):
@@ -160,30 +161,33 @@ def _add_transient_term(
     velocity_old_component,
     velocity_current_component,
     velocity_older_component=None,
+    previous_time_step_size=None,
     scheme="euler",
 ):
     """Apply the implicit transient ``∂velocity/∂t`` term (only called when
     ``time_step_size`` is not None).
 
-    Schemes (constant Δt):
+    Schemes:
       * ``"euler"`` / ``"backward_euler"`` — BDF1, first order:
         ``(V/Δt)(uⁿ⁺¹ − uⁿ)``.
-      * ``"backward"`` — BDF2, second order:
-        ``(V/Δt)(3/2 uⁿ⁺¹ − 2 uⁿ + 1/2 uⁿ⁻¹)``.  Falls back to BDF1 on the
-        first step (when ``velocity_older_component`` is None), which is the standard
-        self-starting BDF2 procedure.
-
-    BDF2 here assumes a constant time step. Configuration validation rejects
-    adaptive time stepping with BDF2 before assembly.
+      * ``"backward"`` — variable-step BDF2.  Equal consecutive steps reduce
+        to ``(V/Δt)(3/2 uⁿ⁺¹ − 2 uⁿ + 1/2 uⁿ⁻¹)``.  It falls back to BDF1 on
+        the first step, which is the standard self-starting procedure.
     """
     coeff = vol / time_step_size
     if (
         scheme == "backward"
         and velocity_old_component is not None
         and velocity_older_component is not None
+        and previous_time_step_size is not None
     ):
-        A.setdiag(A.diagonal() + 1.5 * coeff)
-        b_vec += coeff * (2.0 * velocity_old_component - 0.5 * velocity_older_component)
+        coefficient_new, coefficient_old, coefficient_older = backward_coefficients(
+            time_step_size, previous_time_step_size
+        )
+        A.setdiag(A.diagonal() + coefficient_new * coeff)
+        b_vec += coeff * (
+            coefficient_old * velocity_old_component - coefficient_older * velocity_older_component
+        )
     else:
         # BDF1 (Euler implicit), also the BDF2 startup step.
         A.setdiag(A.diagonal() + coeff)
@@ -297,6 +301,7 @@ def assemble_momentum_equation(
     time_step_size=None,
     velocity_old=None,
     velocity_older=None,
+    previous_time_step_size=None,
     ddt_scheme="euler",
     source_explicit=None,
     source_implicit=None,
@@ -321,6 +326,7 @@ def assemble_momentum_equation(
         convection_scheme: Convection discretization scheme
         time_step_size: Time step size (optional)
         velocity_old: Previous time step velocity (optional, for transient term)
+        previous_time_step_size: Preceding accepted step size for variable-step BDF2.
         source_explicit: Optional acceleration source Su [m/s²], shape
             ``(n_elements, 3)``. Added to the RHS as ``Su * V`` for each
             component (e.g. body acceleration or MMS forcing).
@@ -464,8 +470,16 @@ def assemble_momentum_equation(
                     ddt_scheme == "backward"
                     and velocity_old is not None
                     and velocity_older is not None
+                    and previous_time_step_size is not None
                 )
-                transient_diagonal = (1.5 if use_bdf2 else 1.0) * vol / time_step_size
+                if use_bdf2:
+                    assert previous_time_step_size is not None
+                    transient_factor = backward_coefficients(
+                        time_step_size, previous_time_step_size
+                    )[0]
+                else:
+                    transient_factor = 1.0
+                transient_diagonal = transient_factor * vol / time_step_size
                 assembled_matrix.setdiag(assembled_matrix.diagonal() + transient_diagonal)
             if source_implicit is not None:
                 assembled_matrix.setdiag(
@@ -504,8 +518,18 @@ def assemble_momentum_equation(
                 if velocity_old is not None
                 else velocity[:n_cells, i_comp]
             )
-            if ddt_scheme == "backward" and velocity_older is not None:
-                b += coefficient * (2.0 * old_component - 0.5 * velocity_older[:n_cells, i_comp])
+            if (
+                ddt_scheme == "backward"
+                and velocity_older is not None
+                and previous_time_step_size is not None
+            ):
+                _, coefficient_old, coefficient_older = backward_coefficients(
+                    time_step_size, previous_time_step_size
+                )
+                b += coefficient * (
+                    coefficient_old * old_component
+                    - coefficient_older * velocity_older[:n_cells, i_comp]
+                )
             else:
                 b += coefficient * old_component
 
@@ -542,6 +566,7 @@ def solve_momentum_predictor(
     time_step_size=None,
     velocity_old=None,
     velocity_older=None,
+    previous_time_step_size=None,
     ddt_scheme="euler",
     source_explicit=None,
     source_implicit=None,
@@ -574,6 +599,7 @@ def solve_momentum_predictor(
         time_step_size=time_step_size,
         velocity_old=velocity_old,
         velocity_older=velocity_older,
+        previous_time_step_size=previous_time_step_size,
         ddt_scheme=ddt_scheme,
         source_explicit=source_explicit,
         source_implicit=source_implicit,
