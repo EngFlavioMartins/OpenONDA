@@ -107,17 +107,17 @@ def _wake_vorticity_comparison(candidate: Path, baseline: Path) -> dict:
 
 
 def _downstream_circulation(case: Path) -> dict:
-    checkpoints = sorted((case / "solution" / "checkpoints").glob("vpm_*.h5"))
-    if not checkpoints:
-        raise FileNotFoundError(f"no VPM checkpoint found below {case}")
-    path = checkpoints[-1]
+    backups = sorted((case / "solution" / "backups").glob("vpm_*.h5"))
+    if not backups:
+        raise FileNotFoundError(f"no VPM backup found below {case}")
+    path = backups[-1]
     with h5py.File(path, "r") as file:
         position = np.asarray(file["particles/position"], dtype=np.float64)
         strength = np.asarray(file["particles/vortex_strength"], dtype=np.float64)
     downstream = position[:, 0] > 1.25
     selected = strength[downstream]
     return {
-        "checkpoint": str(path),
+        "backup": str(path),
         "n_particles": int(downstream.sum()),
         "gamma_l1": float(np.linalg.norm(selected, axis=1).sum(dtype=np.float64)),
         "gamma_net": selected.sum(axis=0, dtype=np.float64).tolist(),

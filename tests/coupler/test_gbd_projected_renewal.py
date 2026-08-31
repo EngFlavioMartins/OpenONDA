@@ -233,31 +233,39 @@ def _make_gbd_vpm(
     capacity: int,
     threshold: float = 1.0e-12,
 ):
-    pytest.importorskip("taichi", reason="VPM requires taichi")
-    from source.solvers.vpm import Backup, VelocityConfig, ViscousConfig, VPMSetup, VPMSolver
+    from source.solvers.vpm import (
+        Backup,
+        Numerics,
+        VelocityConfig,
+        ViscousConfig,
+        VPMCase,
+        VPMSolver,
+    )
 
     return VPMSolver(
-        VPMSetup(
-            time_step_size=time_step_size,
-            compute_device="CPU",
-            precision="f64",
-            max_n_particles=capacity,
-            domain_bounds=(-2.0, 2.0, -2.0, 2.0, -2.0, 2.0),
-            freestream_velocity=(1.0, 0.0, 0.0),
-            velocity=VelocityConfig.direct(),
-            viscous=ViscousConfig.gbd(
-                particle_spacing=h,
-                padding=5.0,
-                threshold=threshold,
-                threshold_mode="absolute",
-                kinematic_viscosity=1.0e-3,
-                max_nodes=capacity,
-                core_radius_ratio=1.25,
-            ),
+        VPMCase(
+            directory=case_dir,
             backup=Backup(interval_steps=0),
-            verbose=False,
-        ),
-        case_dir=case_dir,
+            numerics=Numerics(
+                time_step_size=time_step_size,
+                compute_device="CPU",
+                precision="f64",
+                max_n_particles=capacity,
+                domain_bounds=(-2.0, 2.0, -2.0, 2.0, -2.0, 2.0),
+                freestream_velocity=(1.0, 0.0, 0.0),
+                velocity=VelocityConfig.direct(),
+                viscous=ViscousConfig.gbd(
+                    particle_spacing=h,
+                    padding=5.0,
+                    threshold=threshold,
+                    threshold_mode="absolute",
+                    kinematic_viscosity=1.0e-3,
+                    max_nodes=capacity,
+                    core_radius_ratio=1.25,
+                ),
+                verbose=False,
+            ),
+        )
     )
 
 

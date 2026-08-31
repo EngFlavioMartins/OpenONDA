@@ -7,10 +7,13 @@ Author: Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 License: GPL-3.0-or-later
 """
 
-import os
+from collections.abc import Iterator
+import json
 from pathlib import Path
+from typing import Protocol, TypeAlias
 
 import numpy as np
+from numpy.typing import NDArray
 import taichi as ti
 
 from source.solvers.vpm.particles.container import Particles
@@ -20,7 +23,9 @@ from source.write_precision import DEFAULT_WRITE_PRECISION, validate_write_preci
 from ..boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
 from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
+from ..config.case import RestartState, VPMCase
 from ..config.constants import MAX_N_PARTICLES, MAX_SOURCES
+from ..config.health import HealthSnapshot, accepted_step_health
 from ..config.setup import VPMSetup
 from ..config.stabilization import StabilizationConfig
 from ..config.state import set_flow_model
@@ -28,15 +33,43 @@ from ..coupling import CouplingStepper
 from ..diagnostics.resolution import discretization_health
 from ..io.backup import _BackupIO
 from ..io.logging import Logging, print_openonda_header
+from ..io.physics_events import LoggingPhysicsEventObserver
 from ..io.runtime_profiler import RuntimeProfiler
-from ..io.sampler import SamplerExecutor
+from ..io.sampler import OutputEvent, OutputManager, SamplerExecutor
 from ..io.solver_io import SolverIO
 from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
 from ..runtime.backend import initialize_taichi_backend, reset_taichi_backend
 from ..stabilization import StabilizationManager
-from ..stabilization.context import StabilizationContext
+from ..stabilization.context import (
+    SolverParticleMutations,
+    StabilizationContext,
+    StabilizationMetrics,
+    StabilizationStepState,
+)
 from .evolution import EvolutionStepper
+
+FloatArray: TypeAlias = NDArray[np.float32] | NDArray[np.float64]
+ParticleRecord: TypeAlias = dict[str, np.ndarray | np.generic]
+
+
+class VelocityOverride(Protocol):
+    """Callable that selects the advection velocity at one RK stage."""
+
+    def __call__(self, position: FloatArray, induced_velocity: FloatArray) -> FloatArray:
+        """Return one ``(N, 3)`` replacement velocity field."""
+
+
+class VelocityOverrideBlender(Protocol):
+    """In-place variant of :class:`VelocityOverride` for coupled solvers."""
+
+    def blend_into(
+        self,
+        position: FloatArray,
+        induced_velocity: FloatArray,
+        output: FloatArray,
+    ) -> None:
+        """Write the selected ``(N, 3)`` velocity field to ``output``."""
 
 
 @ti.data_oriented
@@ -45,21 +78,27 @@ class VPMSolver:
 
     The solver owns the particle field, time integration, viscous and turbulence
     models, optional boundary-element coupling, diagnostics, sampling, and restart
-    state. Configuration is supplied through :class:`VPMSetup`.
+    state. Construction is supplied exclusively through :class:`VPMCase`.
     """
 
     # Initialization
 
-    def __init__(
-        self, setup: VPMSetup | None = None, *, case_dir: str | Path | None = None
-    ) -> None:
-        """Initialize the VPM solver. See VPMSetup for all parameters."""
-        self.case_dir = Path("." if case_dir is None else case_dir).resolve()
-        final_setup = self._init_setup(setup)
+    def __init__(self, case: VPMCase) -> None:
+        """Initialize one solver from its required immutable case object."""
+        if not isinstance(case, VPMCase):
+            raise TypeError("VPMSolver requires a VPMCase construction object")
+        self.case = case
+        self.case_dir = Path(case.directory).resolve()
+        self.restart_state = RestartState()
+        self._initial_conditions_built = False
+        self._run_started = False
+        self._run_finished = False
+        final_setup = self._init_setup(case)
         self._init_io_and_backend(final_setup, final_setup.debug_mode)
         self._init_particles_and_physics(final_setup)
         self._init_turbulence_and_adaptation(final_setup)
         self._init_solvers(final_setup)
+        self.output_manager = OutputManager(self, case.samplers)
         Logging.message(Logging.solver_info(self))
 
     @staticmethod
@@ -76,14 +115,15 @@ class VPMSolver:
         """Wait until all queued VPM backend work has completed."""
         ti.sync()
 
-    def _init_setup(self, setup: VPMSetup | None) -> VPMSetup:
+    def _init_setup(self, case: VPMCase) -> VPMSetup:
         """Validate the setup and initialize scalar solver state."""
-        final_setup = setup if setup is not None else VPMSetup.dns_simulation()
+        final_setup = case.numerics.to_runtime_setup(case.backup, case.samplers)
         final_setup._validate_config()
         self.setup = final_setup
+        self.numerics = case.numerics
         self.time_step_size = final_setup.time_step_size
-        self.time = final_setup.time
-        self.step = final_setup.step
+        self.time = self.restart_state.time
+        self.step = self.restart_state.step
         self._is_particle_regeneration_pending = False
         self.time_integration = final_setup.time_integration.upper()
         axisymmetric_axis = final_setup.axisymmetric_no_swirl_axis
@@ -182,6 +222,10 @@ class VPMSolver:
         self.viscous_scheme = final_setup.viscous.scheme
         self._viscous_config = final_setup.viscous
         self.stabilization_config: StabilizationConfig = final_setup.stabilization
+        # These limits belong to the solver's accepted-step lifecycle, not to
+        # corrective stabilization workers.  It is immutable construction
+        # data; the preceding accepted snapshot is runtime state below.
+        self.health_limits = final_setup.health_limits
         self.particle_kernel = final_setup.particle_kernel.upper()
         backup_path = Path(final_setup.backup.directory)
         if not backup_path.is_absolute():
@@ -227,6 +271,7 @@ class VPMSolver:
             max_n_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
             max_evaluation_points=final_setup.max_evaluation_points,
+            event_observer=LoggingPhysicsEventObserver(),
         )
 
         _vel_cfg = getattr(final_setup, "velocity", None)
@@ -308,9 +353,11 @@ class VPMSolver:
             particle_kernel=self.particle_kernel,
             max_n_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
+            event_observer=LoggingPhysicsEventObserver(),
         )
         self._flow_integrals: dict = {}
         self._discretization_health: dict = {}
+        self._accepted_health_snapshot: HealthSnapshot | None = None
         self._body_induced_fn = None
         self._stretch_time_step_size_warned: bool = False
         self._particles_removed_this_step = 0
@@ -341,6 +388,12 @@ class VPMSolver:
             "vlm_max_leading_edge_suction_parameter": [],
             "vlm_n_particles_total": [],
         }
+        stabilization_state = StabilizationStepState(
+            step=self.step,
+            time=self.time,
+            time_step_size=self.time_step_size,
+            vortex_strength_removed=np.zeros(3, dtype=self.np_dtype),
+        )
         self.stabilization = StabilizationManager(
             StabilizationContext(
                 particles=self.particles,
@@ -350,26 +403,9 @@ class VPMSolver:
                 compute_dtype=self.compute_dtype,
                 np_dtype=self.np_dtype,
                 flow_model=self.flow_model,
-                step=lambda: self.step,
-                time=lambda: self.time,
-                time_step_size=lambda: self.time_step_size,
-                replace_vortex_particles=self.replace_vortex_particles,
-                set_particles_properties=self.set_particles_properties,
-                remove_particles_by_bounds=self.remove_particles_by_bounds,
-                particles_removed=lambda: self._particles_removed_this_step,
-                set_particles_removed=lambda value: setattr(
-                    self, "_particles_removed_this_step", value
-                ),
-                vortex_strength_removed=lambda: self._vortex_strength_removed_this_step,
-                set_vortex_strength_removed=lambda value: setattr(
-                    self, "_vortex_strength_removed_this_step", value
-                ),
-                domain_bounds_enforced=lambda: self._domain_bounds_enforced_this_step,
-                set_domain_bounds_enforced=lambda value: setattr(
-                    self, "_domain_bounds_enforced_this_step", bool(value)
-                ),
-                kinetic_energy_rate=lambda: self.kinetic_energy_rate,
-                viscous_kinetic_energy_rate=lambda: self.viscous_kinetic_energy_rate,
+                state=stabilization_state,
+                mutations=SolverParticleMutations(self, stabilization_state),
+                metrics=StabilizationMetrics(),
             )
         )
         active = self.stabilization.active_mechanisms()
@@ -383,7 +419,8 @@ class VPMSolver:
         # Make that diagnostic opt-in; the whole-step timer remains available in
         # normal production runs without serialising every kernel launch.
         self.profiler = RuntimeProfiler(
-            enabled=os.environ.get("VPM_DETAILED_TIMING", "0") == "1",
+            enabled=final_setup.diagnostics.detailed_timing,
+            detailed=final_setup.diagnostics.detailed_timing,
             sync=ti.sync,
         )
         self._domain_bounds_enforced_this_step = False
@@ -493,27 +530,17 @@ class VPMSolver:
         """Export diagnostics history to CSV for offline analysis."""
         self.io.export_diagnostics_csv(self._diagnostics_history, filename)
 
-    @classmethod
-    def from_setup_file(cls, filename: str) -> "VPMSolver":
-        """Create a solver from a JSON configuration file."""
-        setup = VPMSetup.load_from_file(filename)
-        return cls(setup=setup)
-
-    def save_setup(self, filename: str) -> None:
-        """Save the current solver configuration to a JSON file."""
-        self.io.save_setup(filename)
-
     # Basic protocol
 
     def __len__(self) -> int:
         """Return the number of particles in the system."""
         return len(self.particles)
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int) -> ParticleRecord:
         """Access particle data by index."""
         return self.particles[index]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[ParticleRecord]:
         """Iterate over all particles."""
         for i in range(len(self)):
             yield self[i]
@@ -541,27 +568,148 @@ class VPMSolver:
         the particle state at the new time level.
         """
         self.stepper.advance(defer_output=defer_output)
+        if defer_output:
+            return
+        self._refresh_accepted_step_health()
+        if self.output_manager.flow_integrals_due(self.step, self.time):
+            self._refresh_diagnostics_for_output()
+        self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
 
-    def record_diagnostics(self, *, refresh_fields: bool = False) -> None:
-        """Evaluate and log diagnostics for the current particle state.
+    def run(self) -> None:
+        """Execute the complete framework-owned lifecycle for this case.
 
-        Set ``refresh_fields=True`` when velocity, gradients, or LES viscosity are
-        stale for the current state.
+        The lifecycle has one owner: it constructs declarative initial
+        conditions, dispatches initial/accepted/final output events, records an
+        atomic termination manifest, and releases logger/backend resources on
+        both successful and failed runs.  ``advance`` remains available for
+        explicitly interactive or externally coupled control.
         """
-        if refresh_fields:
+        if self._run_started:
+            raise RuntimeError("VPMSolver.run() may be called only once")
+        self._run_started = True
+        status = "failed"
+        failure: BaseException | None = None
+        try:
+            self._build_initial_conditions()
+            if self.case.run.initial_samples:
+                self._refresh_diagnostics_for_output()
+                self.output_manager.dispatch(OutputEvent.INITIAL)
+            for _ in range(self.case.run.steps):
+                self.advance()
+            self._refresh_diagnostics_for_output()
+            self.output_manager.dispatch(OutputEvent.FINAL)
+            if self.case.run.final_backup:
+                self.save_backup()
+            status = "completed"
+        except BaseException as exc:
+            failure = exc
+            self.output_manager.dispatch(OutputEvent.FAILED)
+            raise
+        finally:
+            self._run_finished = status == "completed"
+            self.restart_state.time = self.time
+            self.restart_state.step = self.step
+            self._write_run_manifest(status, failure)
+            self.close()
+
+    def _build_initial_conditions(self) -> None:
+        """Build each declarative initial condition exactly once."""
+        if self._initial_conditions_built:
+            return
+        for initial_condition in self.case.initial_conditions:
+            particles = initial_condition.build()
+            self.add_vortex_particles(
+                position=particles.position,
+                velocity=particles.velocity,
+                vortex_strength=particles.vortex_strength,
+                core_radius=particles.core_radius,
+                particle_volume=particles.particle_volume,
+                kinematic_viscosity=particles.kinematic_viscosity,
+                group_id=particles.group_id,
+                zone_id=particles.zone_id,
+            )
+        self._initial_conditions_built = True
+
+    def _write_run_manifest(self, status: str, failure: BaseException | None) -> None:
+        """Atomically record the terminal lifecycle state for one case."""
+        destination = self.case_dir / "run_manifest.json"
+        temporary = destination.with_suffix(".json.tmp")
+        payload = {
+            "status": status,
+            "step": self.step,
+            "time": self.time,
+            "planned_steps": self.case.run.steps,
+            "error": None if failure is None else f"{type(failure).__name__}: {failure}",
+        }
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.replace(destination)
+
+    def close(self) -> None:
+        """Release case-owned logging and Taichi resources exactly once."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+        restore = getattr(self, "_restore_output_streams", None)
+        if restore is not None:
+            restore()
+        reset_taichi_backend()
+
+    def _refresh_particle_diagnostic_fields(self) -> None:
+        """Refresh particle fields consumed by solver-owned diagnostics."""
+        if self.particles.n_particles_total:
             self.stepper._update_velocity_and_gradients()
             self.stepper._update_les_state()
             self.stabilization.update_residual_viscosity()
+
+    def _refresh_accepted_step_health(self) -> None:
+        """Refresh and validate diagnostics for one accepted physical state."""
+        self._refresh_particle_diagnostic_fields()
+        if self.health_limits.divergence.maximum is not None or (
+            self.health_limits.misalignment.maximum_degrees is not None
+        ):
+            self._update_discretization_health()
+        self._accepted_health_snapshot = accepted_step_health(
+            limits=self.health_limits,
+            step=self.step,
+            time_step_size=self.time_step_size,
+            position=self.particle_position,
+            velocity=self.particle_velocity,
+            velocity_gradient=self.particle_velocity_gradient,
+            vortex_strength=self.particle_vortex_strength,
+            core_radius=self.particle_core_radius,
+            particle_volume=self.particle_volume,
+            resolution=self._discretization_health,
+            previous=self._accepted_health_snapshot,
+        )
+        # The stabilization diagnostic record is persisted by the existing
+        # restart layout. It mirrors this solver-owned measurement only;
+        # stabilization no longer evaluates or limits the CFL number.
+        self.stabilization.lagrangian_cfl = self._accepted_health_snapshot.lagrangian_cfl
+
+    def _refresh_diagnostics_for_output(self) -> None:
+        """Refresh dependencies before framework-owned diagnostics are sampled."""
+        self._refresh_particle_diagnostic_fields()
         self._update_all_flow_integrals()
-        SamplerExecutor.execute(self, mode="manual")
+
+    def record_diagnostics(self) -> None:
+        """Evaluate current diagnostics without exposing field-cache controls."""
+        self._refresh_diagnostics_for_output()
+        self.output_manager.dispatch(OutputEvent.INITIAL)
 
     def execute_scheduled_samplers(self) -> None:
         """Execute due time- or step-scheduled field samplers."""
-        SamplerExecutor.execute(self, mode="scheduled")
+        # Coupled drivers call this after replacing their authoritative part of
+        # the particle cloud, so the accepted health state must be measured
+        # here rather than before that synchronization.
+        self._refresh_accepted_step_health()
+        if self.output_manager.flow_integrals_due(self.step, self.time):
+            self._refresh_diagnostics_for_output()
+        self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
 
     def execute_final_samples(self) -> None:
         """Execute samplers carrying a final-only schedule."""
-        SamplerExecutor.execute(self, mode="final")
+        self.output_manager.dispatch(OutputEvent.FINAL)
 
     def _write_pvd_file(self, output_dir, name_prefix, entries):
         """Delegate to SamplerExecutor."""
@@ -663,6 +811,7 @@ class VPMSolver:
             self.particle_position,
             self.particle_vortex_strength,
             self.particle_core_radius,
+            vorticity=self.particle_vorticity,
         )
 
     def _record_vortex_centroid_history(self) -> None:
@@ -671,6 +820,7 @@ class VPMSolver:
             self._diagnostics_history,
             self.particle_position,
             self.particle_vortex_strength,
+            event_observer=LoggingPhysicsEventObserver(),
         )
 
     def _record_time_history(self) -> None:
@@ -681,7 +831,7 @@ class VPMSolver:
 
     def _record_vlm_diagnostics(self) -> None:
         """Delegate to VLMDiagnostics."""
-        sample_directory = self.setup.samplers.directory
+        sample_directory = self.case.samplers.directory
         VLMDiagnostics.record_vlm_diagnostics(
             self.vlm_solver,
             self.particles,
@@ -720,7 +870,7 @@ class VPMSolver:
             self.time,
             self.step,
             self.case_dir,
-            self.setup.samplers.directory,
+            self.case.samplers.directory,
         )
 
     @property
@@ -1395,7 +1545,6 @@ class VPMSolver:
         return self.time_step_size
 
     @staticmethod
-    @staticmethod
     def _validate_particle_property(
         prop_name: str,
         prop_value,
@@ -1471,7 +1620,9 @@ class VPMSolver:
             )
             self.particles.set_field(field_name, validated)
 
-        self.particles._cache_step = -1
+        # Field writes may change Biot--Savart sources.  Publish one revision
+        # after the validated batch so every derived particle cache is invalid.
+        self.particles.touch_state()
 
         property_names = list(properties)
         Logging.record(
@@ -1491,6 +1642,10 @@ class VPMSolver:
         """Restore numerical state from a path owned by an internal coordinator."""
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
         _BackupIO.load(self, path)
+        # A growth limit compares adjacent accepted states.  A loaded restart
+        # begins a new in-memory history, so its first accepted state becomes
+        # the baseline rather than being compared to a discarded cloud.
+        self._accepted_health_snapshot = None
 
     def load_backup(self, filename: str) -> None:
         """Restore one numerical backup into this configured solver."""
@@ -1515,10 +1670,14 @@ class VPMSolver:
         self.io._write_scheduled_backup()
 
     def _refresh_backup_particle_fields(self) -> None:
-        """Refresh particle fields that are expected to be available in backups."""
+        """Refresh derived fields before writing a numerical restart backup.
+
+        A backup stores velocity and vorticity, so its correctness cannot
+        depend on cloud size.  In particular, do not reintroduce a large-cloud
+        shortcut here: that would serialize stale state and make a restart
+        diverge from the uninterrupted run.
+        """
         N = self.particles.n_particles_total
-        if N > 50_000:
-            return
         if N > 0:
             self.physics.compute_self_induced_velocity(
                 self.particles.position,
@@ -1530,9 +1689,23 @@ class VPMSolver:
             )
         self.physics.compute_vorticities(self.particles)
 
-    def export_state(self, filename: str, **kwargs):
+    def export_state(
+        self,
+        filename: str | Path,
+        *,
+        include_panels: bool = True,
+        include_particles: bool = True,
+        format: str = "vtp",
+        compression: bool = True,
+    ) -> None:
         """Export solver state for visualization and post-processing."""
-        self.io.export_state(filename, **kwargs)
+        self.io.export_state(
+            filename,
+            include_panels=include_panels,
+            include_particles=include_particles,
+            format=format,
+            compression=compression,
+        )
 
     # Particle updates
 
@@ -1551,7 +1724,7 @@ class VPMSolver:
 
         self.particles.set_freestream_velocity(velocity_arr)
 
-    def set_velocity_override(self, fn) -> None:
+    def set_velocity_override(self, fn: VelocityOverride | VelocityOverrideBlender | None) -> None:
         """Set an optional advection-velocity callback evaluated at each RK stage.
 
         The callback receives particle position and Biot–Savart velocity and returns

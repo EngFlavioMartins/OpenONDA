@@ -8,8 +8,6 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-import os
-
 import numpy as np
 import taichi as ti
 
@@ -19,34 +17,10 @@ from ..config.constants import (
     EPSILON,
     MAX_N_PARTICLES,
 )
-from ..io.logging import Logging
+from .events import NullPhysicsEventObserver, PhysicsEventObserver
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
-_DEFAULT_DIRECT_INTEGRAL_LIMIT = 50_000
-
-
-def _direct_integral_limit() -> int:
-    """Return the largest cloud evaluated by the exact unbounded GPU integral.
-
-    The FFT fallback is intended for clouds whose pairwise diagnostic is too
-    expensive.  Its finite audit box cannot reproduce the long-range energy of
-    a non-zero-circulation vortex column, so verification campaigns may raise
-    the crossover after benchmarking their GPU.  The production default stays
-    conservative for slower backends.
-    """
-    raw = os.environ.get(
-        "OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT",
-        str(_DEFAULT_DIRECT_INTEGRAL_LIMIT),
-    )
-    try:
-        limit = int(raw)
-    except ValueError as exc:
-        raise ValueError(
-            f"OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT must be an integer, got {raw!r}"
-        ) from exc
-    if limit < 0:
-        raise ValueError("OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT must be non-negative")
-    return limit
+_DIRECT_INTEGRAL_PARTICLE_LIMIT = 50_000
 
 
 @ti.data_oriented
@@ -69,6 +43,7 @@ class ParticleFieldEvaluation:
         particle_kernel: str = "GAUSSIAN",
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
+        event_observer: PhysicsEventObserver | None = None,
     ):
         """
         Initialize particle field physics diagnostics.
@@ -81,6 +56,7 @@ class ParticleFieldEvaluation:
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.upper()
         self.accumulator_dtype = accumulator_dtype
+        self._event_observer = event_observer or NullPhysicsEventObserver()
 
         # Initialize GPU fields for storing results
         self._initialize_result_fields()
@@ -626,6 +602,7 @@ class ParticleFieldEvaluation:
         diagnostics_history: dict,
         position: np.ndarray,
         vortex_strength: np.ndarray,
+        event_observer: PhysicsEventObserver | None = None,
     ) -> None:
         """Append the vortex-strength-magnitude-weighted particle vortex_centroid.
 
@@ -650,7 +627,7 @@ class ParticleFieldEvaluation:
                     vortex_centroid = np.array([0.0, 0.0, 0.0])
             diagnostics_history["vortex_centroid"].append(tuple(vortex_centroid.tolist()))
         except Exception as exc:
-            Logging.warning(
+            (event_observer or NullPhysicsEventObserver()).warning(
                 f"component=flow_diagnostics quantity=vortex_strength_centroid "
                 f"status=evaluation_failed error={exc!r}"
             )
@@ -712,7 +689,7 @@ class ParticleFieldEvaluation:
         if N == 0:
             # Return zero values for empty particle system
             return self._get_zero_results()
-        if _direct_integral_limit() < N and self.particle_kernel == "GAUSSIAN":
+        if _DIRECT_INTEGRAL_PARTICLE_LIMIT < N and self.particle_kernel == "GAUSSIAN":
             return self._compute_fourier_flow_integrals(particles, time, record_history)
 
         self._resize_fields(N)

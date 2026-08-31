@@ -7,6 +7,8 @@ import inspect
 import pytest
 
 import openonda.vpm as vpm
+from source.solvers.vpm.config.artifacts import Backup, Samplers
+from source.solvers.vpm.config.setup import VPMSetup
 
 
 class _Sample:
@@ -15,32 +17,24 @@ class _Sample:
 
 
 def test_backup_defaults_and_custom_directories():
-    assert vpm.Backup() == vpm.Backup(
-        interval_steps=0,
-        directory="solution",
-        log_directory="solution",
-    )
-    assert (
-        vpm.Backup(
-            interval_steps=25,
-            directory="results/state",
-            log_directory="results/logs",
-        ).interval_steps
-        == 25
-    )
+    assert Backup() == Backup(0, "solution", "solution")
+    configured = Backup(25, "results/state", "results/logs")
+    assert configured.interval_steps == 25
+    assert configured.directory == "results/state"
+    assert configured.log_directory == "results/logs"
 
 
 @pytest.mark.parametrize("interval", [-1, True, 1.5])
 def test_backup_rejects_invalid_intervals(interval):
     error = ValueError if interval == -1 else TypeError
     with pytest.raises(error):
-        vpm.Backup(interval_steps=interval)
+        Backup(interval_steps=interval)
 
 
-def test_samplers_take_samples_positionally_and_own_the_directory():
+def test_samplers_accept_a_tuple_and_own_the_directory():
     first = _Sample()
     second = _Sample()
-    configured = vpm.Samplers(first, second, directory="ring/run_a")
+    configured = Samplers((first, second), "ring/run_a")
 
     assert configured.samples == (first, second)
     assert configured.directory == "ring/run_a"
@@ -49,62 +43,31 @@ def test_samplers_take_samples_positionally_and_own_the_directory():
 @pytest.mark.parametrize("directory", ["", "/absolute", ".", "../escape"])
 def test_sampler_directory_must_stay_below_samples(directory):
     with pytest.raises(ValueError):
-        vpm.Samplers(_Sample(), directory=directory)
+        Samplers(samples=(_Sample(),), directory=directory)
 
 
-def test_setup_accepts_only_the_two_output_constructors():
-    setup = vpm.VPMSetup(
-        backup=vpm.Backup(interval_steps=10),
-        samplers=vpm.Samplers(_Sample()),
+def test_public_case_owns_backup_and_sampler_construction_objects():
+    case = vpm.VPMCase(
+        numerics=vpm.Numerics(),
+        backup=Backup(interval_steps=10),
+        samplers=Samplers(samples=(_Sample(),)),
     )
 
-    assert setup.backup.interval_steps == 10
-    assert len(setup.samplers.samples) == 1
-    assert set(inspect.signature(vpm.VPMSetup).parameters).isdisjoint(
-        {
-            "checkpoint_interval_steps",
-            "checkpoint_directory",
-            "checkpoint_name",
-            "backup_interval_steps",
-            "backup_directory",
-            "backup_name",
-            "logging_interval_steps",
-            "timing_interval_steps",
-            "log_mode",
-            "sample_subdirectory",
-            "final_samplers",
-            "export_flow_integrals",
-            "export_discretization_health",
-            "backup_store_velocity_gradient",
-        }
-    )
+    assert case.backup.interval_steps == 10
+    assert len(case.samplers.samples) == 1
+    assert {"backup", "samplers"} <= set(inspect.signature(vpm.VPMCase).parameters)
 
 
-def test_setup_does_not_translate_old_output_configuration():
+def test_internal_setup_does_not_translate_old_output_configuration():
     with pytest.raises(TypeError):
-        vpm.VPMSetup(backup_interval_steps=10)
+        VPMSetup(backup_interval_steps=10)
     with pytest.raises(TypeError):
-        vpm.VPMSetup(samplers=(_Sample(),))
-    with pytest.raises(ValueError):
-        vpm.VPMSetup.from_dict({"checkpoint_interval_steps": 10})
+        VPMSetup(samplers=(_Sample(),))
 
 
-def test_setup_serializes_only_the_backup_value_object():
-    serialized = vpm.VPMSetup(
-        backup=vpm.Backup(
-            interval_steps=8,
-            directory="state",
-            log_directory="logs",
-        ),
-        samplers=vpm.Samplers(_Sample()),
-    ).to_dict()
-
-    assert serialized["backup"] == {
-        "interval_steps": 8,
-        "directory": "state",
-        "log_directory": "logs",
-    }
-    assert "samplers" not in serialized
+def test_internal_setup_has_no_partial_serialization_hook():
+    assert not hasattr(VPMSetup, "to_dict")
+    assert not hasattr(VPMSetup, "from_dict")
 
 
 def test_solver_has_one_public_backup_save_and_load_pair():
@@ -121,7 +84,6 @@ def test_solver_has_one_public_backup_save_and_load_pair():
             "save_numerical_state",
             "load_numerical_state",
             "write_backup",
-            "continue_from_checkpoint",
             "continue_from_backup",
         }
     )

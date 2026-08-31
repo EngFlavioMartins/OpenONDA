@@ -10,7 +10,7 @@ from ..assemble import momentum
 from ..fields import diagnostics as field_diagnostics
 from ..io import logging
 from . import simple_solver
-from .contracts import OuterCorrectorDiagnostics
+from .diagnostics import OuterCorrectorDiagnostics
 from .linear_interface import solve_linear_system
 
 
@@ -65,13 +65,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()
         self._partitioned_linear_workspaces = {}
-        self._partitioned_workspace_policy = os.environ.get(
+        self._partitioned_workspace_mode = os.environ.get(
             "FVM_PETSC_WORKSPACE_POLICY", "shared"
         ).lower()
-        if self._partitioned_workspace_policy not in {"shared", "separate"}:
+        if self._partitioned_workspace_mode not in {"shared", "separate"}:
             raise ValueError(
                 "FVM_PETSC_WORKSPACE_POLICY must be 'shared' or 'separate', got "
-                f"{self._partitioned_workspace_policy!r}"
+                f"{self._partitioned_workspace_mode!r}"
             )
 
     def _partitioned_workspace(self, equation: str):
@@ -79,7 +79,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         parallel = self.params.get("_parallel_context")
         if parallel is None or not parallel.is_partitioned:
             return None
-        key = equation if self._partitioned_workspace_policy == "separate" else "flow"
+        key = equation if self._partitioned_workspace_mode == "separate" else "flow"
         workspace = self._partitioned_linear_workspaces.get(key)
         if workspace is None:
             from .petsc_partitioned import PartitionedLinearWorkspace
@@ -248,7 +248,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     # explicit separate policy retains equation-specific PETSc
                     # objects so pressure agglomeration can be cached.
                     partitioned_workspace=self._partitioned_workspace("momentum"),
-                    failure_policy=self.params.get("linear_failure_policy", "raise"),
+                    failure_action=self.params.get("linear_failure_action", "raise"),
                     log_sink=logger,
                     matrix_workspace=self._momentum_matrix_workspace,
                     operator_backend=self.params.get("_operator_backend", "numpy"),
@@ -383,7 +383,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         ),
                         backend=self.params.get("_linear_backend", "scipy"),
                         parallel_context=self.params.get("_parallel_context"),
-                        failure_policy=self.params.get("linear_failure_policy", "raise"),
+                        failure_action=self.params.get("linear_failure_action", "raise"),
                         log_sink=logger,
                         nullspace=(
                             "constant"
@@ -549,7 +549,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         # final pressure GAMG hierarchy.  Destroy it before allocating
         # full-mesh diagnostics so those large lifetimes never overlap.  The
         # separate policy deliberately retains both equation workspaces.
-        if self._partitioned_workspace_policy == "shared":
+        if self._partitioned_workspace_mode == "shared":
             flow_workspace = self._partitioned_linear_workspaces.get("flow")
             if flow_workspace is not None:
                 flow_workspace.close()

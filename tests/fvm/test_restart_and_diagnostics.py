@@ -1,4 +1,4 @@
-"""The FVM checkpoint must restore the complete transient state."""
+"""The FVM backup must restore the complete transient state."""
 
 from __future__ import annotations
 
@@ -22,14 +22,14 @@ from source.solvers.fvm import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.fvm.io.checkpoint import decode_state, encode_state
+from source.solvers.fvm.io.backup import decode_state, encode_state
 from source.solvers.fvm.mesh.cartesian import structured_box
 from source.solvers.fvm.sampling.base import write_pvd
 
 
 def _setup() -> FVMSetup:
     return FVMSetup(
-        case_name="restart_contract",
+        case_name="restart_test",
         time=TimeConfig.transient(time_step_size=0.01, duration=0.1, output_interval_steps=100),
         schemes=DiscretizationConfig(convection_scheme="upwind", time_scheme="backward"),
         linear=LinearSolverConfig(linear_solver="spsolve"),
@@ -63,10 +63,10 @@ def test_restart_restores_backward_time_history(tmp_path):
         for _ in range(2):
             interrupted.advance()
 
-    checkpoint = tmp_path / "restart.npz"
-    interrupted.save_state(checkpoint)
+    backup = tmp_path / "restart.npz"
+    interrupted.save_state(backup)
     resumed = _solver(tmp_path / "resumed")
-    resumed.load_state(checkpoint)
+    resumed.load_state(backup)
     with contextlib.redirect_stdout(io.StringIO()):
         resumed.advance()
 
@@ -144,7 +144,7 @@ def test_pvd_index_merges_existing_frames_across_restart(tmp_path):
     ]
 
 
-def test_checkpoint_storage_codec_is_bit_exact_for_history_and_scalars():
+def test_backup_storage_codec_is_bit_exact_for_history_and_scalars():
     velocity = np.linspace(-2.0, 3.0, 4096, dtype=np.float64).reshape(-1, 1)
     flux = np.linspace(-1.0, 1.0, 4096, dtype=np.float64)
     state = {

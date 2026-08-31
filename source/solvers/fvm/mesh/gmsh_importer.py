@@ -413,7 +413,7 @@ class GmshImporter:
                 "format": "gmsh",
                 "api_version": getattr(gmsh, "__version__", "unknown"),
                 "mesh_file_version": float(gmsh.option.getNumber("Mesh.MshFileVersion")),
-                "contract": "gmsh-api-first-order-3d-v1",
+                "schema": "gmsh-api-first-order-3d-v1",
                 "source": self.source_path,
             },
         }

@@ -79,8 +79,8 @@ class CouplerSetup:
     inward from the outer FVM boundary. Zero disables the band. A positive
     value must fit entirely outside ``transfer_region_bounds``."""
     # ---- RUN-LEVEL OPERATIONAL ----
-    checkpoint_interval_steps: int = 1
-    """Coupling steps between automatic checkpoints; non-negative (0 disables checkpoints)."""
+    backup_interval_steps: int = 1
+    """Coupling steps between automatic backups; non-negative (0 disables backups)."""
 
     def __post_init__(self) -> None:
         freestream_velocity = np.asarray(self.freestream_velocity, dtype=np.float64)
@@ -120,8 +120,8 @@ class CouplerSetup:
                     "Each transfer_region_bounds upper bound must exceed its lower bound"
                 )
 
-        if self.checkpoint_interval_steps < 0:
-            raise ValueError("checkpoint_interval_steps must be non-negative")
+        if self.backup_interval_steps < 0:
+            raise ValueError("backup_interval_steps must be non-negative")
         if not np.isfinite(self.fvm_consistency_width) or self.fvm_consistency_width < 0.0:
             raise ValueError("fvm_consistency_width must be finite and non-negative")
         if not np.isfinite(self.eta_blend_width) or self.eta_blend_width < 0.0:
@@ -213,7 +213,7 @@ class CouplerSetup:
         return {
             "coupler": {
                 "freestream_velocity": self.freestream_velocity,
-                "checkpoint_interval_steps": self.checkpoint_interval_steps,
+                "backup_interval_steps": self.backup_interval_steps,
                 "coupling_patch": self.coupling_patch,
                 "boundary_condition_mode": self.boundary_condition_mode,
                 "fvm_consistency_width": self.fvm_consistency_width,

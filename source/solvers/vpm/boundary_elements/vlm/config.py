@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 @dataclass(frozen=True)
 class ForceConfig:
-    """VLM aerodynamic-force evaluation policy."""
+    """VLM aerodynamic-force evaluation settings."""
 
     method: Literal["KUTTA_JOUKOWSKI"] = "KUTTA_JOUKOWSKI"
     kj_smoothing: bool = False
@@ -20,7 +20,7 @@ class ForceConfig:
 
 @dataclass(frozen=True)
 class VLMMeshSetup:
-    """Global panel-distribution policy for all declared surfaces."""
+    """Global panel-distribution settings for all declared surfaces."""
 
     spacing: Literal["uniform", "geometric"] = "uniform"
     ratio: float = 1.0

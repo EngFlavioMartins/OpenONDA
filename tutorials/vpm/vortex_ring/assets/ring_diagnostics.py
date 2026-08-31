@@ -42,6 +42,22 @@ MODE_CSV_COLUMNS = (
 )
 
 
+def vortex_ring_mode_sampler(*, reference_radius: float, schedule) -> RingModeDiagnosticsSampler:
+    """Build this tutorial's fixed-resolution Widnall-mode diagnostic.
+
+    The bin and mode counts are analysis choices for the vortex-ring tutorial,
+    not solver-wide VPM settings.  Keeping them here makes the case setup
+    describe physics and run cadence without embedding post-processing detail.
+    """
+    return RingModeDiagnosticsSampler(
+        max_mode=40,
+        azimuthal_bins=128,
+        reference_radius=reference_radius,
+        transverse_origin=(0.0, 0.0),
+        schedule=schedule,
+    )
+
+
 class RingDiagnosticsSampler:
     """Sample ring motion and vortex strength without writing a particle backup."""
 

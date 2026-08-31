@@ -2,14 +2,14 @@
   "schema_version": 2,
   "release_level": "R3",
   "reference_backend": "numpy-scipy-serial-cpu-float64",
-  "mesh_input_contracts": {
+  "mesh_inputs": {
     "native": {
-      "contract": "openonda-native-mesh-v1",
+      "schema": "openonda-native-mesh-v1",
       "representation": "in-memory Python mesh dictionary",
       "cell_representation": "first-order polyhedron"
     },
     "gmsh": {
-      "contract": "gmsh-api-first-order-3d-v1",
+      "schema": "gmsh-api-first-order-3d-v1",
       "dimension": 3,
       "element_order": 1,
       "cell_type_code": {
@@ -25,7 +25,7 @@
     "static-mesh topology, geometry, and quality validation",
     "serial float64 NumPy/SciPy SIMPLE, PISO, and PIMPLE",
     "structured linear, nonlinear, conservation, force, and acceptance diagnostics",
-    "BDF1/BDF2 serial and partitioned checkpoint restart equivalence",
+    "BDF1/BDF2 serial and partitioned backup restart equivalence",
     "translational cyclic and incompressible freestream boundaries",
     "native/Gmsh first-order importer operator equivalence",
     "three-level tetrahedral, prism, and mixed Poisson verification",

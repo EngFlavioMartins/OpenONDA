@@ -644,7 +644,7 @@ class Logging:
         )
 
     def output_info(self, text: str) -> None:
-        """Emit one visualization/checkpoint output event."""
+        """Emit one visualization/backup output event."""
         self.info(text, flush=True)
 
     def timing(self, name: str, elapsed: float) -> None:

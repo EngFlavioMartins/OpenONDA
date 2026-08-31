@@ -1,4 +1,4 @@
-"""Focused contracts for the compact cube-reference grid study."""
+"""Focused tests for the compact cube-reference grid study."""
 
 from importlib.util import module_from_spec, spec_from_file_location
 import json

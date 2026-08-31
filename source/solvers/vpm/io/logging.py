@@ -617,7 +617,7 @@ class Logging:
         """Return the solution-check, stabilization, and particle-retention rows."""
         rows: list[log_style.Row] = []
         cfg = getattr(system.setup, "stabilization", None)
-        stability_limit = getattr(cfg, "max_lagrangian_cfl", None)
+        stability_limit = system.health_limits.lagrangian_cfl.maximum
         if stability_limit is None:
             rows.append(("solution stability check", "disabled"))
         else:

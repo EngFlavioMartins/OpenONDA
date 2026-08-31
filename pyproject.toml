@@ -235,6 +235,15 @@ python-version = "3.11"
 minversion = "6.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
+markers = [
+    "unit: fast, isolated numerical or API contract",
+    "integration: interaction between real solver subsystems",
+    "qualification: independent analytical, manufactured, or convergence evidence",
+    "tutorial: executable tutorial construction and output-schema contract",
+    "slow: test whose normal runtime is unsuitable for the fast feedback loop",
+    "gpu: test that requires or qualifies a GPU backend",
+    "stochastic: seeded ensemble or random-process qualification",
+]
 
 [tool.coverage.run]
 source = ["source"]

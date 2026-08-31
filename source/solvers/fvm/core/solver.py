@@ -231,9 +231,7 @@ class FVMSolver(CouplerInterfaceMixin):
         """
         self.setup = setup
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
-        self.solution_dir = os.path.abspath(
-            solution_dir or os.path.join(self.case_dir, "solution")
-        )
+        self.solution_dir = os.path.abspath(solution_dir or os.path.join(self.case_dir, "solution"))
         self.samples_dir = os.path.abspath(samples_dir or os.path.join(self.case_dir, "samples"))
         # These dictionaries intentionally contain heterogeneous mesh metadata
         # (arrays, counts, patch dictionaries, and parallel objects).
@@ -280,14 +278,14 @@ class FVMSolver(CouplerInterfaceMixin):
         from types import SimpleNamespace
 
         from ..schemes import (
-            validate_acceptance_policy,
+            validate_acceptance_limits,
             validate_solver_params,
             validate_turbulence,
         )
 
         validate_solver_params(SimpleNamespace(**self.setup.algorithm_params()), self.setup.time)
         validate_turbulence(self.setup.turbulence)
-        validate_acceptance_policy(self.setup.acceptance)
+        validate_acceptance_limits(self.setup.acceptance)
         if self.parallel.is_partitioned and self.setup.turbulence is not None:
             turbulence_name = self.setup.turbulence.model.lower()
             if self.setup.turbulence.dynamic or turbulence_name in {
@@ -299,18 +297,18 @@ class FVMSolver(CouplerInterfaceMixin):
                     "its Germano average must be reduced over owned cells globally."
                 )
         if (
-            self.setup.linear.pressure_nullspace_policy == "petsc"
+            self.setup.linear.pressure_nullspace_method == "petsc"
             and self.setup.execution.linear_backend != "petsc"
         ):
             raise ValueError(
-                "pressure_nullspace_policy='petsc' requires execution.linear_backend='petsc'"
+                "pressure_nullspace_method='petsc' requires execution.linear_backend='petsc'"
             )
         if (
             self.parallel.is_partitioned
-            and self.setup.linear.pressure_nullspace_policy == "reference"
+            and self.setup.linear.pressure_nullspace_method == "reference"
         ):
             raise ValueError(
-                "petsc_partitioned requires pressure_nullspace_policy='auto' or 'petsc'; "
+                "petsc_partitioned requires pressure_nullspace_method='auto' or 'petsc'; "
                 "a rank-local reference row is not a valid global pressure constraint"
             )
         if self.parallel.is_partitioned and self.setup.output.point_interpolation != "none":
@@ -387,7 +385,7 @@ class FVMSolver(CouplerInterfaceMixin):
                     )
                     quality = validate_geometry(global_mesh, global_geo)
                     enforce_quality_thresholds(quality, self.setup.mesh)
-                    from ..io.checkpoint import mesh_hash
+                    from ..io.backup import mesh_hash
 
                     global_hash = mesh_hash(global_mesh)
                 except Exception as error:
@@ -760,7 +758,7 @@ class FVMSolver(CouplerInterfaceMixin):
     def set_initial_state(self, velocity: np.ndarray, kinematic_pressure: np.ndarray) -> None:
         """Set a complete cell-centred initial state before the first step.
 
-        This is intentionally narrower than checkpoint loading: it supports
+        This is intentionally narrower than backup loading: it supports
         deterministic manufactured/replay starts while retaining the solver's
         own boundary reconstruction, flux construction, and time-history
         ownership.
@@ -1040,14 +1038,14 @@ class FVMSolver(CouplerInterfaceMixin):
 
         logging.Timer.start("Acceptance checks")
         self.last_diagnostics = self._build_step_diagnostics(step_time_step_size, residuals)
-        self._enforce_acceptance_policy(self.last_diagnostics)
+        self._enforce_acceptance_limits(self.last_diagnostics)
         logging.Timer.log("Acceptance checks", sink=self.logger)
         return residuals
 
     def _build_step_diagnostics(self, step_time_step_size, residuals):
         """Build the backend-neutral health record for the current solved state."""
         from ..fields import diagnostics
-        from ..solve.contracts import StepDiagnostics
+        from ..solve.diagnostics import StepDiagnostics
 
         n_cells = self.mesh_data["n_cells"]
         n_owned = self.parallel.n_owned if self.parallel.is_partitioned else n_cells
@@ -1148,7 +1146,7 @@ class FVMSolver(CouplerInterfaceMixin):
             state_projection=projection_diagnostics,
         )
 
-    def _enforce_acceptance_policy(self, diagnostics) -> None:
+    def _enforce_acceptance_limits(self, diagnostics) -> None:
         """Reject unhealthy solves using explicit immediate and sustained rules."""
         from dataclasses import replace
 
@@ -1162,7 +1160,7 @@ class FVMSolver(CouplerInterfaceMixin):
         if diagnostics.min_eddy_viscosity is not None and diagnostics.min_eddy_viscosity < 0.0:
             raise FloatingPointError("FVM step contains negative turbulent viscosity")
 
-        policy = self.setup.acceptance
+        limits = self.setup.acceptance
         max_velocity = max(
             float(np.linalg.norm(diagnostics.min_velocity)),
             float(np.linalg.norm(diagnostics.max_velocity)),
@@ -1178,17 +1176,17 @@ class FVMSolver(CouplerInterfaceMixin):
         }
         warnings = []
         for name, value in metrics.items():
-            warning = getattr(policy, f"{name}_warning")
-            abort = getattr(policy, f"{name}_abort")
+            warning = getattr(limits, f"{name}_warning")
+            abort = getattr(limits, f"{name}_abort")
             if warning is not None and value > warning:
                 warnings.append(f"{name}={value:.6g} exceeds warning threshold {warning:.6g}")
             if abort is not None and value > abort:
                 self._n_consecutive_accepted_steps[name] += 1
             else:
                 self._n_consecutive_accepted_steps[name] = 0
-            if self._n_consecutive_accepted_steps[name] >= policy.sustained_steps:
+            if self._n_consecutive_accepted_steps[name] >= limits.sustained_steps:
                 raise RuntimeError(
-                    f"FVM acceptance policy rejected the step: {name}={value:.6g} "
+                    f"FVM acceptance limits rejected the step: {name}={value:.6g} "
                     f"exceeded {abort:.6g} for {self._n_consecutive_accepted_steps[name]} "
                     "consecutive solve(s)"
                 )
@@ -1340,14 +1338,14 @@ class FVMSolver(CouplerInterfaceMixin):
         """Atomically save a versioned restart containing the complete time state."""
         self.flush_output()
         if self.parallel.is_partitioned:
-            from ..io.partitioned import save_partitioned_solver_checkpoint
+            from ..io.partitioned import save_partitioned_solver_backup
 
-            return str(save_partitioned_solver_checkpoint(self, path))
-        from ..io.checkpoint import save_checkpoint
+            return str(save_partitioned_solver_backup(self, path))
+        from ..io.backup import save_backup
 
         saved = None
         if self.parallel.is_root:
-            saved = save_checkpoint(self, path)
+            saved = save_backup(self, path)
         self.parallel.barrier()
         return str(saved if saved is not None else path)
 
@@ -1366,16 +1364,16 @@ class FVMSolver(CouplerInterfaceMixin):
         """Restore a compatible restart, rejecting mismatched meshes or configs."""
         self.flush_output()
         if self.parallel.is_partitioned:
-            from ..io.partitioned import load_partitioned_solver_checkpoint
+            from ..io.partitioned import load_partitioned_solver_backup
 
-            load_partitioned_solver_checkpoint(self, path, allow_config_change=allow_config_change)
+            load_partitioned_solver_backup(self, path, allow_config_change=allow_config_change)
             self.io.rewind_histories(self.time)
             self.parallel.barrier()
             return
-        from ..io.checkpoint import load_checkpoint
+        from ..io.backup import load_backup
 
         self.parallel.barrier()
-        load_checkpoint(self, path, allow_config_change=allow_config_change)
+        load_backup(self, path, allow_config_change=allow_config_change)
         self.io.rewind_histories(self.time)
         self.parallel.barrier()
 

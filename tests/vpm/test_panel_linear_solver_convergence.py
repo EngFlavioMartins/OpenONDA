@@ -1,11 +1,10 @@
-"""Residual-based acceptance contracts for the panel linear solvers."""
+"""Residual-based acceptance tests for the panel linear solvers."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
-
-taichi = pytest.importorskip("taichi", reason="VPM requires taichi")
+import taichi
 
 from source.solvers.vpm.boundary_elements.panels.solver.linear_solvers import (  # noqa: E402
     EqualityConstrainedLeastSquaresFactorization,

@@ -43,7 +43,6 @@ from .influence import (
     compute_forces_kutta_joukowski,
     compute_pressure_bernoulli,
     compute_relative_surface_velocity,
-    compute_right_hand_side,
     compute_surface_velocity_with_sources,
 )
 from .lattice import PanelLattice
@@ -360,7 +359,7 @@ class PanelSolver:
         one :class:`~.lattice.PanelBody` with one uid and one kinematics
         object: separate shells silently merged into that single body could
         not be moved or identified independently, and nested shells would
-        need a cavity-orientation policy that does not exist yet. Add each
+        need a cavity-orientation setting that does not exist yet. Add each
         body from its own STL instead.
         """
         if any(body.uid == uid for body in getattr(self.lattice, "bodies", ())):
@@ -789,14 +788,21 @@ class PanelSolver:
                 n,
             )
         else:
-            compute_right_hand_side(
-                self.lattice.normal,
-                self.lattice.body_velocity,
-                ti_v_inf,
-                wake_velocity,
-                self.right_hand_side,
-                n,
+            # Assemble every Neumann right-hand side through the same f64
+            # arithmetic. Taichi's template specialization otherwise changes
+            # the final rounding depending on the incident-field
+            # representation; an ill-conditioned influence matrix can amplify
+            # that irrelevant difference between the CPU and GPU solves.
+            incident = self._wake_velocity_numpy(wake_velocity, n)
+            body_velocity = self.lattice.body_velocity.to_numpy()[:n]
+            normal = self.lattice.normal.to_numpy()[:n]
+            relative_incident = (
+                np.asarray(freestream_velocity, dtype=np.float64) + incident - body_velocity
             )
+            right_hand_side = -np.einsum("ij,ij->i", relative_incident, normal)
+            right_hand_side_full = np.zeros(self.max_n_panels, dtype=numpy_dtype)
+            right_hand_side_full[:n] = right_hand_side
+            self.right_hand_side.from_numpy(right_hand_side_full)
         if self.collect_timing:
             ti.sync()
             timings["rhs_assembly"] = perf_counter() - stage_started
@@ -1166,17 +1172,32 @@ class PanelSolver:
 
         scalar_dtype = ti.f32 if self.float_dtype == "f32" else ti.f64
         numpy_dtype = np.float32 if self.float_dtype == "f32" else np.float64
+        # Keep a single field representation for the total incident flow.
+        # A Taichi vector argument and an otherwise identical vector field
+        # follow distinct compilation paths and used to produce f64 results
+        # that differed by about one f32 ulp.  The surface solution must be
+        # independent of whether uniform flow came from VPM or freestream.
+        total_incident = self._wake_velocity_numpy(wake_velocity, n) + np.asarray(
+            freestream_velocity, dtype=np.float64
+        )
+        if (
+            not hasattr(self, "_total_incident_velocity")
+            or self._total_incident_velocity.shape[0] != n
+        ):
+            self._total_incident_velocity = ti.Vector.field(
+                3,
+                dtype=self.lattice.ti_dtype,
+                shape=n,
+            )
+        self._total_incident_velocity.from_numpy(total_incident.astype(numpy_dtype))
         compute_surface_velocity_with_sources(
             self.lattice.vertex_position,
             self.lattice.panel_centre,
             self.lattice.normal,
             self.lattice.doublet_strength,
             self.lattice.source_strength,
-            ti.Vector(
-                np.asarray(freestream_velocity, dtype=numpy_dtype).tolist(),
-                dt=scalar_dtype,
-            ),
-            wake_velocity,
+            ti.Vector([0.0, 0.0, 0.0], dt=scalar_dtype),
+            self._total_incident_velocity,
             self.surface_velocity_absolute,
             n,
         )

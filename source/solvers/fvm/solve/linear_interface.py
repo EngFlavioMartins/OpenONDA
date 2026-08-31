@@ -562,14 +562,14 @@ def _solve_pressure(
     maxiter,
     x0,
     amg_reuse_tolerance,
-    failure_policy,
+    failure_action,
     log_sink,
     amg_key,
 ):
     """Solve the pressure Poisson equation.
 
     Runs algebraic-multigrid-preconditioned CG via ``pyamg``. A failure
-    raises unless ``failure_policy='direct_fallback'`` was requested.
+    raises unless ``failure_action='direct_fallback'`` was requested.
 
     Args:
         A:           Sparse matrix.
@@ -597,7 +597,7 @@ def _solve_pressure(
     try:
         import pyamg
     except ImportError as error:
-        if failure_policy == "raise":
+        if failure_action == "raise":
             raise LinearSolveError("AMG pressure solve requires pyamg") from error
         _emit_warning(
             log_sink,
@@ -674,7 +674,7 @@ def _solve_pressure(
             "preconditioner_rebuilt": rebuilt,
         }
     except Exception as error:
-        if failure_policy == "raise":
+        if failure_action == "raise":
             raise LinearSolveError("AMG pressure solve failed") from error
         _emit_warning(
             log_sink,
@@ -752,7 +752,7 @@ def _iterative_solve_with_M(
     tol,
     maxiter,
     x0,
-    failure_policy,
+    failure_action,
     log_sink,
 ):
     """Run an iterative solver (BiCGSTAB or GMRES) with a preconditioner.
@@ -786,7 +786,7 @@ def _iterative_solve_with_M(
                 info,
                 _FALLBACK_WARN_COUNT,
             )
-        if failure_policy == "raise":
+        if failure_action == "raise":
             raise LinearSolveError(
                 f"{method} did not converge after {maxiter} iterations (info={info})"
             )
@@ -812,7 +812,7 @@ def _solve_with_ilu(
     ilu_drop_tolerance,
     ilu_fill_factor,
     ilu_reuse_tolerance,
-    failure_policy,
+    failure_action,
     log_sink,
 ):
     """Solve a linear system with ILU-preconditioned iterative solver.
@@ -865,7 +865,7 @@ def _solve_with_ilu(
             tol,
             maxiter,
             x0,
-            failure_policy,
+            failure_action,
             log_sink,
         )
         solve_seconds = time.perf_counter() - solve_start
@@ -881,7 +881,7 @@ def _solve_with_ilu(
     except Exception as e:
         if isinstance(e, LinearSolveError):
             raise
-        if failure_policy == "raise":
+        if failure_action == "raise":
             raise LinearSolveError(f"{method} ILU setup or solve failed") from e
         _emit_warning(
             log_sink,
@@ -922,7 +922,7 @@ def solve_linear_system(
     partitioned_workspace=None,
     amg_key=None,
     return_info=False,
-    failure_policy="raise",
+    failure_action="raise",
     log_sink=None,
     matrix_values_unchanged=False,
     **kwargs,
@@ -931,12 +931,12 @@ def solve_linear_system(
 
     Cached ILU/AMG setup is controlled by the reuse arguments. A direct solve
     after iterative failure is permitted only with
-    ``failure_policy="direct_fallback"`` and is reported in returned telemetry.
+    ``failure_action="direct_fallback"`` and is reported in returned telemetry.
     """
     method = str(method).lower()
-    failure_policy = str(failure_policy).lower()
-    if failure_policy not in {"raise", "direct_fallback"}:
-        raise ValueError(f"Unknown linear failure policy {failure_policy!r}")
+    failure_action = str(failure_action).lower()
+    if failure_action not in {"raise", "direct_fallback"}:
+        raise ValueError(f"Unknown linear failure action {failure_action!r}")
 
     if str(backend).lower() == "petsc":
         if parallel_context is not None and parallel_context.is_partitioned:
@@ -1038,7 +1038,7 @@ def solve_linear_system(
             maxiter,
             x0,
             amg_reuse_tolerance,
-            failure_policy,
+            failure_action,
             log_sink,
             amg_key,
         )
@@ -1057,7 +1057,7 @@ def solve_linear_system(
             ilu_drop_tolerance,
             ilu_fill_factor,
             ilu_reuse_tolerance,
-            failure_policy,
+            failure_action,
             log_sink,
         )
         return finish(solution, metadata)
@@ -1075,7 +1075,7 @@ def solve_linear_system(
             ilu_drop_tolerance,
             ilu_fill_factor,
             ilu_reuse_tolerance,
-            failure_policy,
+            failure_action,
             log_sink,
         )
         return finish(solution, metadata)
@@ -1095,7 +1095,7 @@ def solve_linear_system(
         )
 
     if info != 0:
-        if failure_policy == "raise":
+        if failure_action == "raise":
             raise LinearSolveError(
                 f"{method} did not converge after {maxiter} iterations (info={info})"
             )

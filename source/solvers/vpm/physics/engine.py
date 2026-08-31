@@ -21,6 +21,7 @@ from .base import PhysicsBase
 from .diffusion.core_spreading import apply_core_spreading
 from .diffusion.grid import _GridDiffusionMixin
 from .diffusion.random_walk import apply_random_walk
+from .events import NullPhysicsEventObserver, PhysicsEventObserver
 
 _DIRECT_STRETCHING_BATCH_SIZE = 4096
 
@@ -41,10 +42,12 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
         max_evaluation_points: int = 200000,
+        event_observer: PhysicsEventObserver | None = None,
     ):
         """Initialize the unified physics engine."""
         # Initialize base classes
         super().__init__(particle_kernel, max_n_particles, accumulator_dtype, max_evaluation_points)
+        self._event_observer = event_observer or NullPhysicsEventObserver()
         self._init_grid_diffusion()
 
         # Optional advection velocity override: fn(pos (N,3), vel_bs (N,3)) -> (N,3).
@@ -559,8 +562,10 @@ class _CoupledAdvectionStretchingHandler:
         # Keep the exact pair kernel unless the moment projection will restore
         # the invariants anyway.  Treecode stretching has no pairwise
         # antisymmetry to preserve and always benefits from the fused traversal.
-        can_share_gradient = no_velocity_hook and matching_evaluator and (
-            parent.velocity_method == "TREECODE" or conserve_moments or conserve_energy
+        can_share_gradient = (
+            no_velocity_hook
+            and matching_evaluator
+            and (parent.velocity_method == "TREECODE" or conserve_moments or conserve_energy)
         )
 
         gradient = None
@@ -754,7 +759,7 @@ class _StretchingHandler:
 
         Direct: the O(N²) pairwise kernel.  Treecode: build the LBVH at
         (pos, strg), evaluate the velocity gradient J = ∇u (O(N log N)), and
-        contract it locally — J·Γ (DIRECT), Jᵀ·Γ (TRANSPOSED) or S·Γ (MIXED).
+        combine it locally — J·Γ (DIRECT), Jᵀ·Γ (TRANSPOSED) or S·Γ (MIXED).
         The two agree up to the Barnes–Hut opening-angle tolerance.
         """
         parent = self._parent

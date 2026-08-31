@@ -7,8 +7,8 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-import json
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .backup import _BackupIO
@@ -72,11 +72,12 @@ class SolverIO:
         interval_steps = self.solver.setup.backup.interval_steps
         return interval_steps > 0 and ts % interval_steps == 0
 
-    def _write_scheduled_backup(self, verbose: bool = True):
-        """
-        Write a complete backup: HDF5 state + VTK visualization + CSV loads.
+    def _write_scheduled_backup(self, verbose: bool = True) -> None:
+        """Write only numerical restart state when its cadence is due.
 
-        This consolidates all backup logic from the solver into a single call.
+        Visualization, panel loads, and VLM result files are scientific output,
+        not restart state. They need explicitly configured samplers with their
+        own schedules rather than inheriting the backup cadence.
         """
         if not self.should_backup():
             return
@@ -87,27 +88,6 @@ class SolverIO:
         # 1. HDF5 backup (for restart)
         backup_path = os.path.join(self.export_dir, self.vpm_prefix)
         _BackupIO.save(self.solver, backup_path, verbose=verbose)
-
-        # Track VPM particle data for XDMF series
-        xdmf_filename = f"{self.vpm_prefix}_{self.step:06d}.xdmf"
-        # Use float64 for consistent time with HDF5
-        time_val = float(self.time)
-        self._xdmf_series_entries.append((time_val, xdmf_filename))
-
-        # 2. VTK Visualization Export
-        # Particles are not exported here: the HDF5 state written above already
-        # carries them, and its XDMF descriptor is what ParaView opens.
-        vtk_base = f"{self.export_dir}/{self.vpm_prefix}_{self.step:06d}"
-        self.export_state(vtk_base, include_particles=False)
-
-        # 3. Panel Solver Aerodynamic Loads (CSV)
-        self._export_panel_loads(time_val)
-
-        # 4. VLM Solver Export (VTK + CSV)
-        self._export_vlm_results(time_val)
-
-        # Note: XDMF temporal series (_series.xdmf) no longer written
-        # Individual per-timestep .xdmf files are sufficient for ParaView
 
     def export_diagnostics_csv(self, diagnostics_history: dict, filename: str) -> None:
         """Export diagnostics history to CSV for offline analysis.
@@ -236,33 +216,43 @@ class SolverIO:
         }
         row.update(solver._discretization_health)
         row.update(solver.stabilization.diagnostics)
+        health = getattr(solver, "_accepted_health_snapshot", None)
+        if health is not None:
+            row.update(
+                {
+                    "lagrangian_cfl": health.lagrangian_cfl,
+                    "maximum_particle_strength": health.maximum_particle_strength,
+                    "maximum_particle_vorticity": health.maximum_vorticity,
+                }
+            )
 
         df = pd.DataFrame([row])
-        if not csv_path.exists():
-            df.to_csv(csv_path, index=False)
-        else:
-            df.to_csv(csv_path, mode="a", header=False, index=False)
+        if csv_path.exists() and csv_path.stat().st_size:
+            previous = pd.read_csv(csv_path)
+            if not previous.empty and float(previous.iloc[-1]["time"]) >= float(row["time"]):
+                raise ValueError(
+                    "flow-integrals CSV event is duplicate or nonmonotonic during resume"
+                )
+            df = pd.concat((previous, df), ignore_index=True)
+        temporary = csv_path.with_name(f".{csv_path.name}.tmp")
+        df.to_csv(temporary, index=False)
+        os.replace(temporary, csv_path)
 
-    def save_setup(self, filename: str) -> None:
-        """Save solver configuration to JSON."""
-        setup_dict = self.solver.setup.to_dict()
-        with open(filename, "w") as f:
-            json.dump(setup_dict, f, indent=4)
-        Logging.info(f"component=configuration status=written path={filename!r}")
-
-    def load_particle_field(self, filename: str, remove_current_particles: bool = False):
+    def load_particle_field(
+        self, filename: str | Path, remove_current_particles: bool = False
+    ) -> None:
         """Load particle field from file."""
-        self.solver.particles.load_particle_field(filename, remove_current_particles)
+        self.solver.particles.load_vortex_particles(str(filename), remove_current_particles)
         Logging.info(f"component=particle_field status=loaded path={filename!r}")
 
     def export_state(
         self,
-        filename: str,
+        filename: str | Path,
         include_panels: bool = True,
         include_particles: bool = True,
         format: str = "vtp",
         compression: bool = True,
-    ):
+    ) -> None:
         """Export solver state for visualization and post-processing."""
         # Export panels
         if (
@@ -302,7 +292,7 @@ class SolverIO:
 
         samples_dir = resolve_samples_dir(
             self.solver.case_dir,
-            self.solver.setup.samplers.directory,
+            self.solver.case.samplers.directory,
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / f"{self.vpm_prefix}_forces.csv"

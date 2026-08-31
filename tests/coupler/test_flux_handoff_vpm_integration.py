@@ -10,8 +10,6 @@ import pytest
 from scipy.integrate import solve_ivp
 from scipy.special import erf
 
-pytest.importorskip("taichi", reason="VPM integration requires taichi")
-
 from source.coupler.flux_handoff import (  # noqa: E402
     FluxReleaseHandoff,
     inject_vpm_release_batch,
@@ -20,12 +18,13 @@ from source.coupler.flux_handoff import (  # noqa: E402
 from source.solvers.vpm import (  # noqa: E402
     AdvectionConfig,
     Backup,
+    Numerics,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
     VelocityConfig,
     ViscousConfig,
-    VPMSetup,
+    VPMCase,
     VPMSolver,
 )
 
@@ -39,27 +38,25 @@ def _make_inviscid_solver(
 ) -> VPMSolver:
     background = tuple(float(component) for component in freestream_velocity)
     return VPMSolver(
-        VPMSetup(
-            time_step_size=time_step_size,
-            advection=AdvectionConfig("RK3"),
-            stretching=StretchingConfig.disabled(),
-            viscous=ViscousConfig.inviscid(particle_spacing=particle_spacing),
-            turbulence=TurbulenceConfig.inviscid(),
-            stabilization=StabilizationConfig.disabled(),
-            velocity=VelocityConfig.direct(),
-            compute_device="CPU",
-            precision="f64",
-            max_n_particles=64,
-            max_evaluation_points=128,
-            freestream_velocity=background,
-            backup=Backup(
-                interval_steps=0,
-                directory=str(case_directory / "solution"),
-                log_directory=str(case_directory / "solution"),
+        VPMCase(
+            directory=case_directory,
+            backup=Backup(),
+            numerics=Numerics(
+                time_step_size=time_step_size,
+                advection=AdvectionConfig("RK3"),
+                stretching=StretchingConfig.disabled(),
+                viscous=ViscousConfig.inviscid(particle_spacing=particle_spacing),
+                turbulence=TurbulenceConfig.inviscid(),
+                stabilization=StabilizationConfig.disabled(),
+                velocity=VelocityConfig.direct(),
+                compute_device="CPU",
+                precision="f64",
+                max_n_particles=64,
+                max_evaluation_points=128,
+                freestream_velocity=background,
+                verbose=False,
             ),
-            verbose=False,
         ),
-        case_dir=case_directory,
     )
 
 
@@ -741,30 +738,28 @@ def test_injected_gaussian_blob_advects_and_diffuses_with_native_core_spreading(
 
     vpm_time_step_size = 0.01
     solver = VPMSolver(
-        VPMSetup(
-            time_step_size=vpm_time_step_size,
-            advection=AdvectionConfig("RK3"),
-            stretching=StretchingConfig.disabled(),
-            viscous=ViscousConfig.cs(
-                kinematic_viscosity=kinematic_viscosity,
-                particle_spacing=h,
+        VPMCase(
+            directory=tmp_path / "diffusive_blob",
+            backup=Backup(),
+            numerics=Numerics(
+                time_step_size=vpm_time_step_size,
+                advection=AdvectionConfig("RK3"),
+                stretching=StretchingConfig.disabled(),
+                viscous=ViscousConfig.cs(
+                    kinematic_viscosity=kinematic_viscosity,
+                    particle_spacing=h,
+                ),
+                turbulence=TurbulenceConfig.dns(),
+                stabilization=StabilizationConfig.disabled(),
+                velocity=VelocityConfig.direct(),
+                compute_device="CPU",
+                precision="f64",
+                max_n_particles=16,
+                max_evaluation_points=16,
+                freestream_velocity=(freestream_speed, 0.0, 0.0),
+                verbose=False,
             ),
-            turbulence=TurbulenceConfig.dns(),
-            stabilization=StabilizationConfig.disabled(),
-            velocity=VelocityConfig.direct(),
-            compute_device="CPU",
-            precision="f64",
-            max_n_particles=16,
-            max_evaluation_points=16,
-            freestream_velocity=(freestream_speed, 0.0, 0.0),
-            backup=Backup(
-                interval_steps=0,
-                directory=str(tmp_path / "diffusive_blob" / "solution"),
-                log_directory=str(tmp_path / "diffusive_blob" / "solution"),
-            ),
-            verbose=False,
         ),
-        case_dir=tmp_path / "diffusive_blob",
     )
     inject_vpm_release_batch(
         solver,
@@ -841,28 +836,26 @@ def test_injected_three_dimensional_cloud_matches_pure_vpm_stretching_reference(
     def make_stretching_solver(case_name: str) -> VPMSolver:
         case_directory = tmp_path / case_name
         return VPMSolver(
-            VPMSetup(
-                time_step_size=0.005,
-                time_integration="COUPLED",
-                advection=AdvectionConfig("RK3"),
-                stretching=StretchingConfig.direct("RK3"),
-                viscous=ViscousConfig.inviscid(particle_spacing=h),
-                turbulence=TurbulenceConfig.inviscid(),
-                stabilization=StabilizationConfig.disabled(),
-                velocity=VelocityConfig.direct(),
-                compute_device="CPU",
-                precision="f64",
-                max_n_particles=16,
-                max_evaluation_points=16,
-                freestream_velocity=(freestream_speed, 0.0, 0.0),
-                backup=Backup(
-                    interval_steps=0,
-                    directory=str(case_directory / "solution"),
-                    log_directory=str(case_directory / "solution"),
+            VPMCase(
+                directory=case_directory,
+                backup=Backup(),
+                numerics=Numerics(
+                    time_step_size=0.005,
+                    time_integration="COUPLED",
+                    advection=AdvectionConfig("RK3"),
+                    stretching=StretchingConfig.direct("RK3"),
+                    viscous=ViscousConfig.inviscid(particle_spacing=h),
+                    turbulence=TurbulenceConfig.inviscid(),
+                    stabilization=StabilizationConfig.disabled(),
+                    velocity=VelocityConfig.direct(),
+                    compute_device="CPU",
+                    precision="f64",
+                    max_n_particles=16,
+                    max_evaluation_points=16,
+                    freestream_velocity=(freestream_speed, 0.0, 0.0),
+                    verbose=False,
                 ),
-                verbose=False,
             ),
-            case_dir=case_directory,
         )
 
     injected_solver = make_stretching_solver("stretching_injected")

@@ -19,17 +19,17 @@ except ImportError:
 
 import numpy as np
 
+from source.coupler.backup import (
+    BACKUP_DIRECTORY,
+    load_coupled_backup,
+    publish_vpm_snapshot,
+    save_coupled_backup,
+)
 from source.coupler.boundary import (
     advance_fvm,
     evaluate_vpm_boundary,
     initialize_vpm_boundary_history,
     update_boundary_history_after_replacement,
-)
-from source.coupler.checkpoint import (
-    CHECKPOINT_DIRECTORY,
-    load_coupled_state,
-    publish_vpm_snapshot,
-    save_coupled_state,
 )
 from source.coupler.config.types import CouplerSetup
 from source.coupler.consistency import FVMConsistencyBand
@@ -487,20 +487,20 @@ class FVMVPMCoupler:
         *,
         restart_allowed_config_differences: Collection[str] = (),
         max_coupling_steps: int | None = None,
-        checkpoint_at_stop: bool = False,
+        backup_at_stop: bool = False,
     ) -> int:
         """Initialize and run a complete or explicitly bounded coupling segment.
 
         ``max_coupling_steps`` is an execution limit, not part of the physical
         solver configuration.  It therefore permits strict, same-configuration
-        checkpoint restarts without changing the configured end time.
+        backup restarts without changing the configured end time.
         """
         if self.vorticity_transfer is None:
             self.initialize()
         if restart_from is not None:
             if start_step:
                 raise ValueError("start_step and restart_from are mutually exclusive")
-            start_step = self.load_state(
+            start_step = self.load_backup(
                 restart_from,
                 allowed_config_differences=restart_allowed_config_differences,
             )
@@ -509,7 +509,7 @@ class FVMVPMCoupler:
         return self.solve(
             start_step=start_step,
             max_coupling_steps=max_coupling_steps,
-            checkpoint_at_stop=checkpoint_at_stop,
+            backup_at_stop=backup_at_stop,
         )
 
     @staticmethod
@@ -550,7 +550,7 @@ class FVMVPMCoupler:
         start_step: int = 0,
         *,
         max_coupling_steps: int | None = None,
-        checkpoint_at_stop: bool = False,
+        backup_at_stop: bool = False,
     ) -> int:
         """Run the FVM--VPM coupling loop and return the final completed step."""
         face_geometry, n_steps = self._prepare_run()
@@ -569,7 +569,7 @@ class FVMVPMCoupler:
                         ("start step", f"{start_step:,}"),
                         ("stop step", f"{stop_step:,}"),
                         ("steps this invocation", f"{stop_step - start_step:,}"),
-                        ("checkpoint at stop", "enabled" if checkpoint_at_stop else "disabled"),
+                        ("backup at stop", "enabled" if backup_at_stop else "disabled"),
                     )
                 )
         if start_step == 0:
@@ -609,14 +609,14 @@ class FVMVPMCoupler:
                 logger=logger,
                 comm=_mpi4py_comm,
             )
-        checkpoint_was_scheduled = (
-            self.setup.checkpoint_interval_steps > 0
+        backup_was_scheduled = (
+            self.setup.backup_interval_steps > 0
             and stop_step > start_step
-            and stop_step % self.setup.checkpoint_interval_steps == 0
+            and stop_step % self.setup.backup_interval_steps == 0
         )
-        if checkpoint_at_stop and stop_step > start_step and not checkpoint_was_scheduled:
-            self.save_state(
-                self.solution_dir / CHECKPOINT_DIRECTORY,
+        if backup_at_stop and stop_step > start_step and not backup_was_scheduled:
+            self.save_backup(
+                self.solution_dir / BACKUP_DIRECTORY,
                 coupling_step=stop_step,
             )
         if self._is_master:
@@ -747,21 +747,21 @@ class FVMVPMCoupler:
             self.fvm_solver.get_velocity_gradient_field_into(self._velocity_gradient_global_buffer)
         return self._velocity_gradient_global_buffer
 
-    def save_state(self, directory, *, coupling_step: int | None = None) -> Path:
-        """Write a complete coupled checkpoint."""
-        checkpoint = save_coupled_state(self, directory, coupling_step=coupling_step)
+    def save_backup(self, directory, *, coupling_step: int | None = None) -> Path:
+        """Write a complete coupled backup."""
+        backup = save_coupled_backup(self, directory, coupling_step=coupling_step)
         if self._is_master:
-            publish_vpm_snapshot(checkpoint, self.solution_dir)
-        return checkpoint
+            publish_vpm_snapshot(backup, self.solution_dir)
+        return backup
 
-    def load_state(
+    def load_backup(
         self,
         directory,
         *,
         allowed_config_differences: Collection[str] = (),
     ) -> int:
         """Restore both solvers and the VPM boundary history."""
-        return load_coupled_state(
+        return load_coupled_backup(
             self,
             directory,
             comm=_mpi4py_comm,

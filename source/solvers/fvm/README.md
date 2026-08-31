@@ -57,7 +57,7 @@ override the relative tolerances for the final momentum and pressure solves.
 Visualization precision is independent of solver precision. `OutputConfig`
 accepts `precision="f16"`, `"f32"`, or `"f64"`; `f16` is half-quantized but
 stored in float32 VTK arrays so ParaView remains compatible. FVM restart
-checkpoints always remain lossless and use compact byte-shuffled/XOR history
+backups always remain lossless and use compact byte-shuffled/XOR history
 encoding internally.
 
 Low-level operators are imported through their defining packages:
@@ -69,7 +69,7 @@ from source.solvers.fvm.solve.equation_solver import solve_scalar_equation
 ```
 
 Scalar solves accept backend-specific options in a `linear_options` mapping.
-The chosen linear method is not silently replaced; `linear_failure_policy`
+The chosen linear method is not silently replaced; `linear_failure_action`
 defaults to `"raise"`.
 
 ## Capability status
@@ -87,7 +87,7 @@ rows, rank-local fields, and VTU/PVTU output when `N > 1`. Visualization is
 written as cell-centred, appended-binary VTK XML with LZ4 compression. Parallel
 pieces include one marked overlap layer by default, so ParaView's
 **Cell Data to Point Data** filter remains smooth across rank boundaries.
-Fields, global diagnostics, forces, and checkpoints are invariant in the
+Fields, global diagnostics, forces, and backups are invariant in the
 collective MPI tests. Cyclic patches remain serial-only. The
 same setup API is used by standalone FVM and coupled FVM–VPM cases; invoking
 `python <case_name>_setup.py` selects the canonical environment and launches any

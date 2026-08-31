@@ -20,7 +20,7 @@ import numpy as np
 CASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CASE_DIR))
 
-import cube_flow_setup as case  # noqa: E402
+import setup as case  # noqa: E402
 import openonda.coupler as coupling  # noqa: E402
 import openonda.fvm as fvm  # noqa: E402
 import openonda.vpm as vpm  # noqa: E402
@@ -268,30 +268,31 @@ def main() -> None:
     manifest = json.loads((arguments.restart_from / "manifest.json").read_text())
     seed_time = float(manifest["time"])
     if arguments.end_time <= seed_time:
-        raise ValueError("end time must exceed the checkpoint time")
+        raise ValueError("end time must exceed the backup time")
 
     case.CASE_DIR = arguments.case_directory.resolve()
     case.CASE_DIR.mkdir(parents=True, exist_ok=True)
     case.FVM_SETUP = replace(
         case.FVM_SETUP, time=replace(case.FVM_SETUP.time, end_time=arguments.end_time)
     )
-    output_directory = str(case.CASE_DIR / "solution")
-    case.VPM_SETUP = replace(
-        case.VPM_SETUP,
-        backup=replace(
-            case.VPM_SETUP.backup,
-            directory=output_directory,
-            log_directory=output_directory,
+    case.VPM_CASE = replace(
+        case.VPM_CASE,
+        output=replace(
+            case.VPM_CASE.output,
+            backup=replace(case.VPM_CASE.output.backup, directory="solution"),
+            logging=replace(case.VPM_CASE.output.logging, directory="solution"),
         ),
+        run=replace(case.VPM_CASE.run, steps=round(arguments.end_time / case.VPM_TIME_STEP_SIZE)),
+        directory=case.CASE_DIR,
     )
     fvm_solver = fvm.create_fvm_solver(case.FVM_SETUP, case_dir=case.CASE_DIR, mesh=case.FVM_MESH)
-    vpm_solver = vpm.create_vpm_solver(case.VPM_SETUP, case_dir=case.CASE_DIR)
+    vpm_solver = vpm.VPMSolver(case.VPM_CASE)
     coupler = coupling.create_coupler(fvm_solver, vpm_solver, case.COUPLER_SETUP)
     coupler.initialize()
     original_load = coupler.fvm_solver.load_state
     coupler.fvm_solver.load_state = lambda path: original_load(path, allow_config_change=True)
     try:
-        start_step = coupler.load_state(arguments.restart_from)
+        start_step = coupler.load_backup(arguments.restart_from)
     finally:
         coupler.fvm_solver.load_state = original_load
     # The FVM field getters are MPI collectives.  Every rank therefore obtains

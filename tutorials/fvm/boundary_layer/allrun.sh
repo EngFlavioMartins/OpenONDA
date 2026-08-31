@@ -8,13 +8,13 @@ cd "$(dirname "$0")"
 echo
 echo "===== CLEAN ====="
 echo
-./allclean.sh --all
+./allclean.sh
 
 echo
 echo "===== SIMULATE ====="
 echo
 mkdir -p solution
-python boundary_layer_setup.py --Re 1e4 --end-time 8 2>&1 | tee solution/boundary_layer.log
+python setup.py 2>&1 | tee solution/boundary_layer.log
 
 echo
 echo "===== FIGURES ====="

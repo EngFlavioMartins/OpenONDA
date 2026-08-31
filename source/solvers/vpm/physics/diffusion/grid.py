@@ -21,7 +21,7 @@ import numpy as np
 import taichi as ti
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
-from ...io.logging import Logging
+from ..events import NullPhysicsEventObserver
 
 _logger = logging.getLogger("vpm")
 
@@ -308,6 +308,10 @@ class _GridDiffusionMixin:
     ensure consistent grid-based viscous diffusion (DVH).
     """
 
+    # Concrete physics engines replace this with their configured observer.
+    # The silent class default also permits focused numerical harnesses.
+    _event_observer = NullPhysicsEventObserver()
+
     # Headroom factor: allocate this much larger than first observed grid
     # so slow vortex-cloud growth never triggers a reallocation.
     _ALLOC_HEADROOM = 1.5
@@ -446,7 +450,9 @@ class _GridDiffusionMixin:
         finite_mask = np.isfinite(pos).all(axis=1)
         if not finite_mask.all():
             n_bad = int((~finite_mask).sum())
-            Logging.warning(f"component=diffusion_grid filtered_nonfinite_positions={n_bad}")
+            self._event_observer.warning(
+                f"component=diffusion_grid filtered_nonfinite_positions={n_bad}"
+            )
             pos = pos[finite_mask]
             if len(pos) == 0:
                 # Everything was NaN — return minimal grid
@@ -465,7 +471,7 @@ class _GridDiffusionMixin:
                 centre = 0.5 * (lo[d] + hi[d])
                 lo[d] = centre - 0.5 * max_extent
                 hi[d] = centre + 0.5 * max_extent
-                Logging.warning(
+                self._event_observer.warning(
                     f"component=diffusion_grid axis={d} requested_extent_m={span:.1f} "
                     f"extent_limit_m={max_extent:.1f} "
                     f"cell_limit={self._max_cells_per_dimension} "
@@ -536,7 +542,7 @@ class _GridDiffusionMixin:
         pool = self._device_pool_bytes()
         if not pool or total_bytes <= pool * self._GRID_POOL_SHARE:
             return
-        Logging.warning(
+        self._event_observer.warning(
             f"component=diffusion_grid shape={nx}x{ny}x{nz} "
             f"memory_mib={total_bytes / (1 << 20):.0f} "
             f"device_pool_pct={100.0 * total_bytes / pool:.0f} "
@@ -583,7 +589,7 @@ class _GridDiffusionMixin:
 
             if self._grid_realloc_count >= self._MAX_GRID_REALLOCS:
                 clamped = (min(nx, alloc[0]), min(ny, alloc[1]), min(nz, alloc[2]))
-                Logging.warning(
+                self._event_observer.warning(
                     f"component=diffusion_grid reallocations={self._grid_realloc_count} "
                     f"limit={self._MAX_GRID_REALLOCS} status=clamped shape={clamped} "
                     f"requested_shape={(nx, ny, nz)}"
@@ -599,7 +605,7 @@ class _GridDiffusionMixin:
                 alloc_nx = int(nx * rh) if nx > alloc[0] else alloc[0]
                 alloc_ny = int(ny * rh) if ny > alloc[1] else alloc[1]
                 alloc_nz = int(nz * rh) if nz > alloc[2] else alloc[2]
-            Logging.warning(
+            self._event_observer.warning(
                 f"component=diffusion_grid reallocation={self._grid_realloc_count} "
                 f"limit={self._MAX_GRID_REALLOCS} old_shape={alloc} "
                 f"new_shape={(alloc_nx, alloc_ny, alloc_nz)} retained_device_fields=true"
@@ -695,7 +701,7 @@ class _GridDiffusionMixin:
         budget = self._grid_prealloc_budget_bytes()
         self._warn_if_grid_crowds_device_pool(total_bytes, nx, ny, nz)
         if total_bytes <= budget and self._grid_a is None:
-            Logging.record(
+            self._event_observer.record(
                 "diffusion grid preallocated",
                 ("shape", f"{nx}x{ny}x{nz}"),
                 ("memory", f"{total_mb:.0f}", "MiB"),
@@ -723,7 +729,7 @@ class _GridDiffusionMixin:
                 )
             allocation = "retained" if self._grid_a is not None else "deferred"
             reason = "existing_allocation" if self._grid_a is not None else "budget_exceeded"
-            Logging.record(
+            self._event_observer.record(
                 f"diffusion grid {allocation}",
                 ("reason", reason.replace("_", " ")),
                 ("shape, max", f"{nx}x{ny}x{nz}"),
@@ -1792,7 +1798,7 @@ class _GridDiffusionMixin:
         max_substep_diffusion_number = max_diffusion_number / n_diffusion_substeps
 
         if n_diffusion_substeps > 1:
-            Logging.record(
+            self._event_observer.record(
                 "gaussian blob diffusion substepping",
                 ("substeps", f"{n_diffusion_substeps:,}"),
                 ("diffusion number, max", f"{max_diffusion_number:.6f}"),
@@ -2005,7 +2011,7 @@ class _GridDiffusionMixin:
         max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
 
         if max_vortex_strength_magnitude < 1e-30:
-            Logging.warning(
+            self._event_observer.warning(
                 "component=GBD status=skipped reason=empty_scattered_grid particles_unchanged=true"
             )
             self._ping = True
@@ -2021,7 +2027,7 @@ class _GridDiffusionMixin:
         )
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
-            Logging.warning(
+            self._event_observer.warning(
                 f"component=GBD status=skipped reason=no_nodes_above_threshold "
                 f"threshold={threshold:.2e} particles_unchanged=true"
             )
@@ -2044,7 +2050,7 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             / vortex_strength_total
         )
-        Logging.record(
+        self._event_observer.record(
             "gaussian blob diffusion regeneration",
             ("threshold", f"{threshold:.3e}"),
             ("nodes retained", f"{len(ix):,}"),
@@ -2066,7 +2072,7 @@ class _GridDiffusionMixin:
                 float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64)) / survivor_abs
             )
             retained_total = retained * threshold_retained
-            Logging.record(
+            self._event_observer.record(
                 "gaussian blob diffusion population cap",
                 ("cap", f"{cap:,}"),
                 ("nodes, before", f"{old_count:,}"),
@@ -2099,7 +2105,7 @@ class _GridDiffusionMixin:
                 labels=group_winner_grid,
             )
             if support_augmented_node_count:
-                Logging.record(
+                self._event_observer.record(
                     "gaussian blob diffusion moment support",
                     ("nodes, threshold/cap result", f"{retained_before_support:,}"),
                     ("nodes, support added", f"{support_augmented_node_count:,}"),
@@ -2137,7 +2143,7 @@ class _GridDiffusionMixin:
             raw_net = raw_retained.sum(axis=0, dtype=np.float64)
             corrected_net = corrected_retained.sum(axis=0, dtype=np.float64)
             net_scale = vortex_strength_total + 1.0e-30
-            Logging.record(
+            self._event_observer.record(
                 "gaussian blob diffusion moment recovery",
                 ("correction strength fraction", f"{correction_l1 / net_scale:.6e}"),
                 (
@@ -2294,7 +2300,7 @@ class _GridDiffusionMixin:
                 np.count_nonzero(np.asarray(effective_viscosity_np) / kinematic_viscosity > q_max)
             )
             if n_clipped > 0:
-                Logging.record(
+                self._event_observer.record(
                     "discrete vortex heat method width cap",
                     ("particles clipped", f"{n_clipped:,}"),
                     ("particles", f"{N:,}"),
@@ -2435,7 +2441,7 @@ class _GridDiffusionMixin:
         max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
 
         if max_vortex_strength_magnitude < 1e-30:
-            Logging.warning(
+            self._event_observer.warning(
                 "component=DVH status=skipped reason=empty_scattered_grid particles_unchanged=true"
             )
             return None
@@ -2450,7 +2456,7 @@ class _GridDiffusionMixin:
         )
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
-            Logging.warning(
+            self._event_observer.warning(
                 f"component=DVH status=skipped reason=no_nodes_above_threshold "
                 f"threshold={threshold:.2e} particles_unchanged=true"
             )
@@ -2472,7 +2478,7 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             / vortex_strength_total
         )
-        Logging.record(
+        self._event_observer.record(
             "discrete vortex heat method regeneration",
             ("threshold", f"{threshold:.3e}"),
             ("nodes retained", f"{len(ix):,}"),
@@ -2493,7 +2499,7 @@ class _GridDiffusionMixin:
             retained = (
                 float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64)) / survivor_abs
             )
-            Logging.record(
+            self._event_observer.record(
                 "discrete vortex heat method population cap",
                 ("cap", f"{cap:,}"),
                 ("nodes, before", f"{old_count:,}"),

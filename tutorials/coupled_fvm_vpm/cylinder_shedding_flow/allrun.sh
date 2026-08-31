@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 rm -rf solution samples figures
 mkdir -p solution samples figures
 
-python -u cylinder_shedding_flow_setup.py
+python -u setup.py
 
 python assets/postprocess.py
 python assets/plot_cylinder.py

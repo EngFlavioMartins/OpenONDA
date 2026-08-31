@@ -7,9 +7,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-pytest.importorskip("taichi", reason="VPM requires taichi")
-
-
 H = 0.2
 DT = 0.01
 NU = 1.0e-3
@@ -58,21 +55,22 @@ def _viscous_config(scheme: str):
 
 
 def _make_solver(case_dir: Path, scheme: str):
-    from source.solvers.vpm import Backup, VelocityConfig, VPMSetup, VPMSolver
+    from source.solvers.vpm import Numerics, VelocityConfig, VPMCase, VPMSolver
 
     return VPMSolver(
-        VPMSetup(
-            time_step_size=DT,
-            compute_device="CPU",
-            precision="f64",
-            max_n_particles=4096,
-            domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
-            velocity=VelocityConfig.direct(),
-            viscous=_viscous_config(scheme),
-            backup=Backup(interval_steps=0),
-            verbose=False,
+        VPMCase(
+            directory=case_dir,
+            numerics=Numerics(
+                time_step_size=DT,
+                compute_device="CPU",
+                precision="f64",
+                max_n_particles=4096,
+                domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
+                velocity=VelocityConfig.direct(),
+                viscous=_viscous_config(scheme),
+                verbose=False,
+            ),
         ),
-        case_dir=case_dir,
     )
 
 
@@ -162,15 +160,8 @@ def test_gbd_and_common_m4_are_stable_across_repeated_physical_lifecycles(
     assert max(counts) < solver.particles.capacity // 4
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "common-M4 currently resets the Gaussian core radius when an advected CS "
-        "particle is remeshed; its accumulated diffusion age is not transferred"
-    ),
-)
 def test_cs_diffusion_then_common_m4_preserves_gaussian_blob_moments(tmp_path: Path) -> None:
-    """Gate CS production use on carrying accumulated age through off-grid renewal."""
+    """M4' carries CS diffusion age and all Gaussian moments through renewal."""
     from source.solvers.vpm.stabilization.filament_refinement import gaussian_particle_moments
 
     solver = _make_solver(tmp_path / "cs_lifecycle", "CS")

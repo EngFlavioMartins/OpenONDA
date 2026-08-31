@@ -12,7 +12,7 @@ from source.solvers.vpm.stabilization.filament_refinement import (
     particle_moments,
     split_stretched_filaments,
 )
-from source.solvers.vpm.stabilization.manager import StabilizationError, StabilizationManager
+from source.solvers.vpm.stabilization.manager import StabilizationManager
 from source.solvers.vpm.stabilization.regularization import _regularization_triggered
 
 
@@ -57,7 +57,7 @@ def test_combined_stabilization_schedule_is_representable():
 
 
 def test_pedrizzetti_relaxation_stops_at_end_step():
-    state = {"step": 625}
+    state = SimpleNamespace(step=625)
     config = StabilizationConfig(
         pedrizzetti_relaxation_factor=0.005,
         pedrizzetti_relaxation_interval_steps=25,
@@ -67,20 +67,20 @@ def test_pedrizzetti_relaxation_stops_at_end_step():
     manager = object.__new__(StabilizationManager)
     manager.config = config
     manager.ctx = SimpleNamespace(
-        step=lambda: state["step"],
+        state=state,
         flow_model="VISCOUS",
         particles=object(),
     )
     manager.operators = SimpleNamespace(
         apply_pedrizzetti_relaxation=lambda *args, **kwargs: (
-            calls.append(state["step"]) or {"pedrizzetti_misalignment_deg": 10.0}
+            calls.append(state.step) or {"pedrizzetti_misalignment_deg": 10.0}
         )
     )
     manager.measure = lambda: object()
     manager.accept = lambda *args, **kwargs: None
 
     manager.apply_relaxation()
-    state["step"] = 650
+    state.step = 650
     manager.apply_relaxation()
 
     assert calls == [625]
@@ -131,8 +131,7 @@ def test_regularization_event_limit_stops_the_schedule(monkeypatch):
     manager = object.__new__(StabilizationManager)
     manager.config = config
     manager.ctx = SimpleNamespace(
-        step=lambda: 10,
-        set_domain_bounds_enforced=lambda value: None,
+        state=SimpleNamespace(step=10, domain_bounds_enforced=False),
     )
     manager.regularization_events = 0
     manager.measure = lambda: object()
@@ -253,7 +252,8 @@ def test_late_absolute_only_requires_an_absolute_threshold():
 
 
 def test_residual_viscosity_feedback_is_bounded_per_update():
-    state = {"step": 550, "energy_rate": 4.0, "viscous_rate": -2.0}
+    state = SimpleNamespace(step=550)
+    metrics = SimpleNamespace(kinetic_energy_rate=4.0, viscous_kinetic_energy_rate=-2.0)
     config = StabilizationConfig(
         stretching_viscosity_coefficient=1.6,
         stretching_viscosity_start_step=550,
@@ -266,9 +266,8 @@ def test_residual_viscosity_feedback_is_bounded_per_update():
     manager = object.__new__(StabilizationManager)
     manager.config = config
     manager.ctx = SimpleNamespace(
-        step=lambda: state["step"],
-        kinetic_energy_rate=lambda: state["energy_rate"],
-        viscous_kinetic_energy_rate=lambda: state["viscous_rate"],
+        state=state,
+        metrics=metrics,
         particles=object(),
     )
     manager.operators = SimpleNamespace(
@@ -279,42 +278,11 @@ def test_residual_viscosity_feedback_is_bounded_per_update():
 
     manager.update_residual_viscosity()
     manager.update_residual_viscosity()
-    state.update(step=555, energy_rate=-1.0)
+    state.step = 555
+    metrics.kinetic_energy_rate = -1.0
     manager.update_residual_viscosity()
 
     assert applied == pytest.approx([2.4, 2.4, 1.92])
-
-
-def test_solution_stability_check_uses_current_lagrangian_cfl_number():
-    config = StabilizationConfig(max_lagrangian_cfl=0.8)
-    manager = object.__new__(StabilizationManager)
-    manager.config = config
-    manager.ctx = SimpleNamespace(
-        step=lambda: 12,
-        time_step_size=lambda: 0.05,
-        particles=object(),
-    )
-    manager.operators = SimpleNamespace(
-        inspect_solution=lambda *args, **kwargs: {
-            "valid": True,
-            "lagrangian_cfl": 0.9,
-        }
-    )
-    manager.lagrangian_cfl = 0.0
-
-    with pytest.raises(StabilizationError, match="Lagrangian CFL number 0.9"):
-        manager.check_solution_stability()
-
-
-def test_solution_stability_check_can_be_disabled():
-    manager = object.__new__(StabilizationManager)
-    manager.config = StabilizationConfig(max_lagrangian_cfl=None)
-    manager.ctx = SimpleNamespace()
-    manager.operators = SimpleNamespace(
-        inspect_solution=lambda *args, **kwargs: pytest.fail("disabled check ran")
-    )
-
-    manager.check_solution_stability()
 
 
 @pytest.mark.parametrize(
@@ -327,7 +295,6 @@ def test_solution_stability_check_can_be_disabled():
         ("regularization_capacity_max_particles", 0),
         ("regularization_capacity_energy_rate_trigger", -1.0),
         ("regularization_max_events", 0),
-        ("max_lagrangian_cfl", 0.0),
     ],
 )
 def test_stabilization_schedule_rejects_invalid_limits(keyword, value):

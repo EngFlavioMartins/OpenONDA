@@ -54,7 +54,7 @@ def _expected_backup_steps(completed_steps: int, interval_steps: int) -> set[int
     }
 
 
-def _run_contract(name: str) -> tuple[dict, set[int], list[str]]:
+def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
     """Load and cross-check the manifest and final canonical backup."""
     failures: list[str] = []
     manifest_path = SOLUTION_DIR / f"run_manifest_{name}.json"
@@ -126,9 +126,9 @@ def validate(pre_plot: bool) -> int:
         "les_transposed": 0.12,
     }
     for name, speed_tol in speed_tolerances.items():
-        manifest, expected_steps, contract_failures = _run_contract(name)
-        failures.extend(contract_failures)
-        if contract_failures:
+        manifest, expected_steps, validation_failures = _run_validation(name)
+        failures.extend(validation_failures)
+        if validation_failures:
             continue
 
         all_files = sorted(glob.glob(str(SOLUTION_DIR / name / "vpm_*.h5")))
@@ -141,7 +141,7 @@ def validate(pre_plot: bool) -> int:
             missing = sorted(expected_steps - set(numbered))
             unexpected = sorted(set(numbered) - expected_steps)
             failures.append(
-                f"{name}: numbered backup history disagrees with the run contract "
+                f"{name}: numbered backup history disagrees with the run metadata "
                 f"(missing={missing}, unexpected={unexpected})"
             )
             continue

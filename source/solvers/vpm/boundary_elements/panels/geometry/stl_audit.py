@@ -130,7 +130,7 @@ def _flag_candidate_self_intersections(
     ``scipy.spatial.cKDTree`` broad phase. This is a proximity heuristic, not
     an exact triangle-triangle intersection test: it is meant to surface
     clearly overlapping/interpenetrating geometry for a human to review, per
-    the "report, do not silently repair" policy, not to certify a mesh free
+    the "report, do not silently repair" approach, not to certify a mesh free
     of self-intersections.
     """
     from scipy.spatial import cKDTree

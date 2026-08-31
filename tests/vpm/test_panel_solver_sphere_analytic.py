@@ -12,8 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
-taichi = pytest.importorskip("taichi", reason="VPM requires taichi")
+import taichi
 
 from source.solvers.vpm.boundary_elements.panels.geometry.stl_io import save_stl  # noqa: E402
 from source.solvers.vpm.boundary_elements.panels.solver.panel_solver import (  # noqa: E402

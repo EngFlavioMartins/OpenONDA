@@ -1,4 +1,4 @@
-"""Conservation contracts for GBD threshold pruning and regeneration."""
+"""Conservation tests for GBD threshold pruning and regeneration."""
 
 from __future__ import annotations
 

@@ -10,7 +10,7 @@ from .filament_refinement import FilamentRefinementConfig
 
 @dataclass(frozen=True)
 class StabilizationConfig:
-    """Optional VPM stabilization and particle-retention policy."""
+    """Optional VPM stabilization and particle-retention settings."""
 
     stretching_viscosity_coefficient: float = 0.0
     stretching_viscosity_start_step: int = 0
@@ -32,8 +32,6 @@ class StabilizationConfig:
     divergence_relaxation: DivergenceRelaxationConfig = field(
         default_factory=DivergenceRelaxationConfig.disabled
     )
-
-    max_lagrangian_cfl: float | None = 1.0
 
     remove_particles_by_bounds: tuple[float, ...] | None = None
 
@@ -116,11 +114,6 @@ class StabilizationConfig:
                 "remove_particles_by_bounds",
                 bounds,
             )
-
-        if self.max_lagrangian_cfl is not None and (
-            not np.isfinite(self.max_lagrangian_cfl) or self.max_lagrangian_cfl <= 0.0
-        ):
-            raise ValueError("max_lagrangian_cfl must be finite and positive or None")
 
         if self.regularization_interval_steps < 0:
             raise ValueError("regularization_interval_steps must be non-negative")

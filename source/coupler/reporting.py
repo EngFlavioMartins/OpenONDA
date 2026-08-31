@@ -11,7 +11,7 @@ import sys
 import numpy as np
 
 from source import log_style
-from source.coupler.checkpoint import CHECKPOINT_DIRECTORY
+from source.coupler.backup import BACKUP_DIRECTORY
 
 _REAL_STDOUT = sys.stdout
 
@@ -142,7 +142,7 @@ def write_run_metadata(
             "density": coupler.density,
             "fvm_time_step_size": coupler.fvm_time_step_size,
             "end_time": coupler.end_time,
-            "checkpoint_interval_steps": coupler.setup.checkpoint_interval_steps,
+            "backup_interval_steps": coupler.setup.backup_interval_steps,
         },
         "fvm_solver": {
             "coupling_patch": coupler.setup.coupling_patch,
@@ -570,12 +570,11 @@ def record_step(
 
     if comm is not None and comm.Get_size() > 1:
         comm.Barrier()
-    checkpoint_due = (
-        coupler.setup.checkpoint_interval_steps > 0
-        and step % coupler.setup.checkpoint_interval_steps == 0
+    backup_due = (
+        coupler.setup.backup_interval_steps > 0 and step % coupler.setup.backup_interval_steps == 0
     )
-    if checkpoint_due:
-        coupler.save_state(coupler.solution_dir / CHECKPOINT_DIRECTORY, coupling_step=step)
+    if backup_due:
+        coupler.save_backup(coupler.solution_dir / BACKUP_DIRECTORY, coupling_step=step)
 
 
 __all__ = [

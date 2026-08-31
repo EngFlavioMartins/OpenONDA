@@ -21,7 +21,7 @@ import numpy as np
 from source.vtk_output import write_vtk_dataset
 from source.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write
 
-from .schedule import SamplingSchedule
+from .schedule import OutputSchedule
 
 try:
     from scipy.spatial import cKDTree
@@ -165,7 +165,7 @@ class SurfaceSampler:
         spacing: float,
         file_name: str | None = None,
         include_derivatives: bool = True,
-        schedule: SamplingSchedule | None = None,
+        schedule: OutputSchedule | None = None,
     ):
         """
         Initialize the surface sampler.
@@ -655,7 +655,7 @@ class LineSampler:
         spacing: float,
         file_name: str | None = None,
         include_derivatives: bool = True,
-        schedule: SamplingSchedule | None = None,
+        schedule: OutputSchedule | None = None,
     ):
         """
         Initialize the line sampler.

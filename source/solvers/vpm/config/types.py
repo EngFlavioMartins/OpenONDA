@@ -5,12 +5,12 @@ as a convenient import surface inside the VPM package; it does not provide
 legacy-name aliases.
 """
 
-import sys
-
 from .advection import AdvectionConfig
+from .case import Numerics, RestartState, RunPlan, VPMCase
+from .diagnostics import DiagnosticsConfig
 from .divergence_relaxation import DivergenceRelaxationConfig
 from .filament_refinement import FilamentRefinementConfig
-from .setup import VPMSetup
+from .health import HealthLimits
 from .stabilization import StabilizationConfig
 from .state import (
     ParticlesState,
@@ -23,18 +23,21 @@ from .turbulence import TurbulenceConfig
 from .velocity import VelocityConfig
 from .viscous import ViscousConfig
 
-sys.tracebacklimit = 0
-
 __all__ = [
     "AdvectionConfig",
     "DivergenceRelaxationConfig",
+    "DiagnosticsConfig",
     "FilamentRefinementConfig",
+    "HealthLimits",
+    "Numerics",
     "ParticlesState",
     "SolverState",
     "StabilizationConfig",
     "StretchingConfig",
     "TurbulenceConfig",
-    "VPMSetup",
+    "RestartState",
+    "RunPlan",
+    "VPMCase",
     "VelocityConfig",
     "ViscousConfig",
     "cached_particle_property",

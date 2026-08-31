@@ -1,7 +1,4 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -e
 
-cd "$(dirname "$0")"
-
-./allclean.sh
-exec python reference_flow_setup.py
+python setup.py

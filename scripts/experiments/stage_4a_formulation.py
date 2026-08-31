@@ -422,7 +422,7 @@ def formulation_checks() -> dict[str, float]:
     }
 
 
-def checkpoint_cases(path: Path, group: str) -> list[dict[str, object]]:
+def backup_cases(path: Path, group: str) -> list[dict[str, object]]:
     with np.load(path, allow_pickle=False) as saved:
         snapshots = np.asarray(saved["snapshots"], dtype=float)
         steps = np.asarray(saved["snapshot_steps"], dtype=int)
@@ -549,8 +549,8 @@ def plot_checks(checks: dict[str, float], output: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agard", type=Path, required=True)
-    parser.add_argument("--stationary-checkpoint", type=Path, required=True)
-    parser.add_argument("--holdout-checkpoint", type=Path, required=True)
+    parser.add_argument("--stationary-backup", type=Path, required=True)
+    parser.add_argument("--holdout-backup", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--figure-dir", type=Path, required=True)
     args = parser.parse_args()
@@ -562,8 +562,8 @@ def main() -> None:
         analyze_case(f"AGARD_delta_{delta:g}", "AGARD development", agard_grid, agard, delta)
         for delta in (0.15, 0.20)
     ]
-    cases.extend(checkpoint_cases(args.stationary_checkpoint, "stationary HIT development"))
-    cases.extend(checkpoint_cases(args.holdout_checkpoint, "transient HIT holdout"))
+    cases.extend(backup_cases(args.stationary_backup, "stationary HIT development"))
+    cases.extend(backup_cases(args.holdout_backup, "transient HIT holdout"))
 
     result = {
         "gate": "A",

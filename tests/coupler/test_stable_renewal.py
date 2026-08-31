@@ -1,4 +1,4 @@
-"""Focused contracts for the recovered long-run stable renewal mechanism."""
+"""Focused tests for the recovered long-run stable renewal mechanism."""
 
 from __future__ import annotations
 

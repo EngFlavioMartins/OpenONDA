@@ -20,3 +20,6 @@ def apply_core_spreading(owner, particles, time_step_size: float):
     owner.update_radius_csm_kernel(
         particles.core_radius, particles.effective_viscosity, time_step_size, N
     )
+    # The kernel mutates a particle field directly; invalidate host snapshots
+    # so subsequent diagnostics and public reads observe the grown cores.
+    particles.touch_state()

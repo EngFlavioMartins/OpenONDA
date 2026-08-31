@@ -1508,7 +1508,7 @@ class VLMSolver:
             if n_keep == 0:
                 particles.n_particles_total = 0
                 particles.sync_device_counter()
-                particles._cache_step = -1
+                particles.touch_state()
                 return n_hits
 
             new_position = particles.position.to_numpy()[:n_particles_total][keep_mask]

@@ -8,8 +8,6 @@ import shutil
 import numpy as np
 import pytest
 
-taichi = pytest.importorskip("taichi", reason="VPM requires taichi")
-
 FVM_TIME_STEP_SIZE = 0.05
 VPM_TIME_STEP_SIZE = 0.15
 H = 0.125
@@ -27,25 +25,25 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         TransportConfig,
     )
     from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
-    from source.solvers.vpm import ViscousConfig, VPMSetup, VPMSolver
+    from source.solvers.vpm import Numerics, ViscousConfig, VPMCase, VPMSolver
 
     # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
     setup = CouplerSetup(
         freestream_velocity=[1.0, 0.0, 0.0],
         eta_blend_width=0.0,
-        checkpoint_interval_steps=2,
+        backup_interval_steps=2,
     )
 
     def make_vpm():
-        config = VPMSetup(
+        numerics = Numerics(
             time_step_size=VPM_TIME_STEP_SIZE,
             compute_device="CPU",
             max_n_particles=50_000,
-            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-            freestream_velocity=[1.0, 0.0, 0.0],
+            domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
+            freestream_velocity=(1.0, 0.0, 0.0),
             viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
         )
-        return VPMSolver(config), config
+        return VPMSolver(VPMCase(numerics=numerics, directory=tmp_path)), numerics
 
     def make_fvm(case_dir="."):
         config = FVMSetup(
@@ -75,18 +73,18 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
 
     # Solver/coupler owners store their *Setup object as ``self.setup``.
     assert fvm.setup is fvm_config
-    assert vpm.setup is vpm_setup
+    assert vpm.numerics is vpm_setup
     assert coupler.setup is setup
     assert not hasattr(coupler, "config")
 
-    first_stop = coupler.run(max_coupling_steps=1, checkpoint_at_stop=True)
+    first_stop = coupler.run(max_coupling_steps=1, backup_at_stop=True)
     assert first_stop == 1
-    first_checkpoint = tmp_path / "solution" / "checkpoints"
-    first_manifest = json.loads((first_checkpoint / "manifest.json").read_text())
+    first_backup = tmp_path / "solution" / "backups"
+    first_manifest = json.loads((first_backup / "manifest.json").read_text())
     assert first_manifest["coupling_step"] == 1
     assert all("000001" in name for name in first_manifest["artifacts"].values())
-    seed_checkpoint = tmp_path / "seed_checkpoint"
-    shutil.copytree(first_checkpoint, seed_checkpoint)
+    seed_backup = tmp_path / "seed_backup"
+    shutil.copytree(first_backup, seed_backup)
     first_metadata = json.loads((tmp_path / "solution" / "run_metadata.json").read_text())
     assert first_metadata["execution"] == {
         "start_coupling_step": 0,
@@ -100,7 +98,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     second_stop = coupler.solve(
         start_step=first_stop,
         max_coupling_steps=1,
-        checkpoint_at_stop=True,
+        backup_at_stop=True,
     )
     assert second_stop == 2
 
@@ -132,11 +130,11 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     # Initial synchronization plus one absolute replacement after each FVM interval.
     assert coupler_log.count("coupler  state replacement") == 3
     assert "fvm substeps per coupling step" in coupler_log
-    checkpoint = sol / "checkpoints"
-    manifest = json.loads((checkpoint / "manifest.json").read_text())
+    backup = sol / "backups"
+    manifest = json.loads((backup / "manifest.json").read_text())
     assert manifest["format_version"] == 11
-    assert manifest["kind"] == "openonda.coupled_checkpoint"
-    assert all((checkpoint / name).is_file() for name in manifest["artifacts"].values())
+    assert manifest["kind"] == "openonda.coupled_backup"
+    assert all((backup / name).is_file() for name in manifest["artifacts"].values())
     assert manifest["artifacts"] == {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
@@ -144,7 +142,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
         "vpm_boundary_condition": "vpm_boundary_condition_000002.npz",
     }
     assert set(manifest["artifact_sha256"]) == set(manifest["artifacts"])
-    assert not list(checkpoint.glob("*_000001*"))
+    assert not list(backup.glob("*_000001*"))
     assert sorted(path.name for path in sol.glob("vpm_*.h5")) == [
         "vpm_000001.h5",
         "vpm_000002.h5",
@@ -162,9 +160,9 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     restored_fvm, _ = make_fvm(restart_case)
     restored = FVMVPMCoupler(restored_fvm, restored_vpm, setup)
     restored_step = restored.run(
-        restart_from=seed_checkpoint,
+        restart_from=seed_backup,
         max_coupling_steps=1,
-        checkpoint_at_stop=True,
+        backup_at_stop=True,
     )
 
     assert restored_step == 2

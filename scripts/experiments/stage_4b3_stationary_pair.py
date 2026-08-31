@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-r"""Gate B.1d: checkpointed stationary reference/LES paired screen.
+r"""Gate B.1d: backed-up stationary reference/LES paired screen.
 
 This research-only driver compares the frozen SGS candidates with the same
 filtered external force and a resolved reference.  It archives restartable raw
@@ -78,7 +78,7 @@ def configuration(args: argparse.Namespace) -> dict[str, Any]:
         "time_step_size": args.time_step_size,
         "end_time": args.end_time,
         "save_interval": args.save_interval,
-        "checkpoint_interval": args.checkpoint_interval,
+        "backup_interval": args.backup_interval,
         "forcing_rms": args.forcing_rms,
         "forcing_correlation_time": args.correlation_time,
         "forcing_seed": args.seed,
@@ -92,16 +92,16 @@ def configuration(args: argparse.Namespace) -> dict[str, Any]:
 def configuration_fingerprint(config: dict[str, Any]) -> str:
     restart_config = dict(config)
     restart_config.pop("end_time")
-    restart_config.pop("checkpoint_interval")
+    restart_config.pop("backup_interval")
     return hashlib.sha256(canonical_json(restart_config).encode()).hexdigest()
 
 
-def checkpoint_paths(directory: Path, step: int) -> tuple[Path, Path, Path]:
-    stem = directory / f"checkpoint_{step:07d}"
+def backup_paths(directory: Path, step: int) -> tuple[Path, Path, Path]:
+    stem = directory / f"backup_{step:07d}"
     return stem.with_suffix(".npz"), stem.with_suffix(".json"), stem.with_suffix(".sha256")
 
 
-def write_checkpoint(
+def write_backup(
     directory: Path,
     step: int,
     time: float,
@@ -113,7 +113,7 @@ def write_checkpoint(
     fine_reference_history: list[dict[str, Any]],
 ) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
-    npz_path, json_path, checksum_path = checkpoint_paths(directory, step)
+    npz_path, json_path, checksum_path = backup_paths(directory, step)
     npz_tmp = npz_path.with_suffix(".npz.tmp")
     json_tmp = json_path.with_suffix(".json.tmp")
     with npz_tmp.open("wb") as stream:
@@ -124,7 +124,7 @@ def write_checkpoint(
             **{f"state_{model}": state for model, state in states.items()},
         )
     metadata = {
-        "schema": "openonda-vpm-les-checkpoint-v1",
+        "schema": "openonda-vpm-les-backup-v1",
         "step": step,
         "time": time,
         "configuration": config,
@@ -144,7 +144,7 @@ def write_checkpoint(
     return npz_path
 
 
-def verify_checkpoint_files(npz_path: Path) -> tuple[Path, Path]:
+def verify_backup_files(npz_path: Path) -> tuple[Path, Path]:
     json_path = npz_path.with_suffix(".json")
     checksum_path = npz_path.with_suffix(".sha256")
     checksums = json.loads(checksum_path.read_text())
@@ -152,11 +152,11 @@ def verify_checkpoint_files(npz_path: Path) -> tuple[Path, Path]:
         actual = sha256(path)
         expected = checksums[path.name]
         if actual != expected:
-            raise ValueError(f"checkpoint checksum mismatch for {path.name}")
+            raise ValueError(f"backup checksum mismatch for {path.name}")
     return json_path, checksum_path
 
 
-def load_checkpoint(
+def load_backup(
     npz_path: Path,
     args: argparse.Namespace,
 ) -> tuple[
@@ -168,11 +168,11 @@ def load_checkpoint(
     dict[str, list[dict[str, Any]]],
     list[dict[str, Any]],
 ]:
-    json_path, _ = verify_checkpoint_files(npz_path)
+    json_path, _ = verify_backup_files(npz_path)
     metadata = json.loads(json_path.read_text())
     config = configuration(args)
     if metadata["configuration_fingerprint"] != configuration_fingerprint(config):
-        raise ValueError("checkpoint configuration fingerprint mismatch")
+        raise ValueError("backup configuration fingerprint mismatch")
     arrays = np.load(npz_path)
     forcing = StreamingOUForcing(
         args.les_n,
@@ -288,7 +288,7 @@ def initialize(
             forcing,
             histories,
             fine_reference_history,
-        ) = load_checkpoint(args.restart, args)
+        ) = load_backup(args.restart, args)
     else:
         step = 0
         forcing = StreamingOUForcing(
@@ -452,7 +452,7 @@ def restart_verification(args: argparse.Namespace, directory: Path) -> dict[str,
             forcing,
         )
         step += 1
-    checkpoint = write_checkpoint(
+    backup = write_backup(
         directory,
         step,
         step * verify_args.time_step_size,
@@ -463,7 +463,7 @@ def restart_verification(args: argparse.Namespace, directory: Path) -> dict[str,
         histories,
         fine_history,
     )
-    verify_args.restart = checkpoint
+    verify_args.restart = backup
     (
         _,
         _,
@@ -512,7 +512,7 @@ def restart_verification(args: argparse.Namespace, directory: Path) -> dict[str,
     )
     return {
         "pass": passed,
-        "checkpoint": str(checkpoint),
+        "backup": str(backup),
         "optimized_rhs_relative_differences": rhs_differences,
         "load_maximum_absolute_differences": load_differences,
         "continued_maximum_absolute_differences": continuation_differences,
@@ -627,7 +627,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("reference_n must equal 2 * les_n")
     archive_verification = restart_verification(args, args.archive_dir / "restart_verification")
     if not archive_verification["pass"]:
-        raise RuntimeError("raw checkpoint/restart verification failed")
+        raise RuntimeError("raw backup/restart verification failed")
     (
         reference_solver,
         les_solver,
@@ -649,7 +649,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError(f"optimized model RHS mismatch: {rhs_differences}")
     total_steps = int(round(args.end_time / args.time_step_size))
     save_every = max(1, int(round(args.save_interval / args.time_step_size)))
-    checkpoint_every = max(1, int(round(args.checkpoint_interval / args.time_step_size)))
+    backup_every = max(1, int(round(args.backup_interval / args.time_step_size)))
     config = configuration(args)
     for step in range(start_step, total_steps + 1):
         time = step * args.time_step_size
@@ -672,8 +672,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 histories,
                 fine_reference_history,
             )
-        if step % checkpoint_every == 0 or step == total_steps:
-            write_checkpoint(
+        if step % backup_every == 0 or step == total_steps:
+            write_backup(
                 args.archive_dir,
                 step,
                 time,
@@ -823,7 +823,7 @@ def main() -> None:
     parser.add_argument("--time-step-size", dest="time_step_size", type=float, default=0.02)
     parser.add_argument("--end-time", type=float, default=60.0)
     parser.add_argument("--save-interval", type=float, default=0.5)
-    parser.add_argument("--checkpoint-interval", type=float, default=5.0)
+    parser.add_argument("--backup-interval", type=float, default=5.0)
     parser.add_argument("--forcing-rms", type=float, default=0.5)
     parser.add_argument("--correlation-time", type=float, default=0.2)
     parser.add_argument("--initial-rms", type=float, default=1.0)

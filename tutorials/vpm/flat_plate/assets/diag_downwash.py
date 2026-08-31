@@ -17,14 +17,16 @@ from generate_surface import create_flat_plate, save_surface
 from openonda.vpm import (
     Backup,
     ForceConfig,
+    Numerics,
     SmoothRampVLM,
+    TurbulenceConfig,
     ViscousConfig,
     VPMSolver,
     VLMLoadingDistribution,
     VLMMeshSetup,
     VLMSurfaceSetup,
     VLMSetup,
-    VPMSetup,
+    VPMCase,
 )
 from theoretical_model import lifting_line_circulation
 
@@ -98,12 +100,16 @@ def build_solver() -> VPMSolver:
         sample_surface_forces=True,
     )
     return VPMSolver(
-        setup=VPMSetup.les_simulation(
-            smagorinsky_coefficient=0.30,
-            time_step_size=TIME_STEP_SIZE,
-            vlm=vlm,
-            viscous=ViscousConfig.cs(kinematic_viscosity=1.0e-2),
-            freestream_velocity=[0.0, 0.0, 0.0],
+        VPMCase(
+            numerics=Numerics(
+                time_step_size=TIME_STEP_SIZE,
+                vlm=vlm,
+                viscous=ViscousConfig.cs(kinematic_viscosity=1.0e-2),
+                freestream_velocity=(0.0, 0.0, 0.0),
+                turbulence=TurbulenceConfig.les_smagorinsky(
+                    smagorinsky_coefficient=0.30,
+                ),
+            ),
             backup=Backup(
                 directory=str(SOLUTION_DIR),
                 log_directory=str(SOLUTION_DIR),

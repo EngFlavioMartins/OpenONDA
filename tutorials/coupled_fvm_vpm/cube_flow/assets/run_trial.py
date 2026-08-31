@@ -11,7 +11,7 @@ import sys
 CASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CASE_DIR))
 
-import cube_flow_setup as case  # noqa: E402
+import setup as case  # noqa: E402
 
 TRANSFER_RESTART_ALLOWLIST = frozenset(
     {
@@ -23,9 +23,9 @@ TRANSFER_RESTART_ALLOWLIST = frozenset(
         "coupler.transfer_amplification_cap",
         "coupler.transfer_discretization_error_limit",
         "coupler.fvm_consistency_width",
-        # Accepted only to resume checkpoints written by the brief two-file
-        # checkpoint-history implementation. It no longer exists in CouplerSetup.
-        "coupler.vpm_checkpoint_retention",
+        # Accepted only to resume backups written by the brief two-file
+        # backup-history implementation. It no longer exists in CouplerSetup.
+        "coupler.vpm_backup_retention",
         "vpm.viscous.gbd_threshold",
         "panel.coupling_scope",
     }
@@ -37,9 +37,7 @@ def main() -> None:
     parser.add_argument(
         "--end-time",
         type=float,
-        help=(
-            "configure the physical horizon; on restart it must match the checkpoint configuration"
-        ),
+        help=("configure the physical horizon; on restart it must match the backup configuration"),
     )
     parser.add_argument(
         "--coupling-steps",
@@ -93,25 +91,32 @@ def main() -> None:
     case.CASE_DIR.mkdir(parents=True, exist_ok=True)
 
     viscous = replace(
-        case.VPM_SETUP.viscous,
+        case.VPM_CASE.numerics.viscous,
         gbd_threshold=(
             case.GBD_VORTICITY_FLOOR * case.VPM_PARTICLE_SPACING**3 * arguments.gbd_threshold_scale
         ),
     )
     case.VPM_PANEL_SOLVER.coupling_scope = arguments.panel_coupling_scope
-    case.VPM_SETUP = replace(
-        case.VPM_SETUP,
-        viscous=viscous,
+    case.VPM_CASE = replace(
+        case.VPM_CASE,
+        numerics=replace(case.VPM_CASE.numerics, viscous=viscous),
         backup=replace(
-            case.VPM_SETUP.backup,
-            directory=str(case.CASE_DIR / "solution"),
-            log_directory=str(case.CASE_DIR / "solution"),
+            case.VPM_CASE.backup,
+            directory="solution",
+            log_directory="solution",
         ),
+        directory=case.CASE_DIR,
     )
 
     if arguments.end_time is not None:
         time = replace(case.FVM_SETUP.time, end_time=arguments.end_time)
         case.FVM_SETUP = replace(case.FVM_SETUP, time=time)
+        case.VPM_CASE = replace(
+            case.VPM_CASE,
+            run=replace(
+                case.VPM_CASE.run, steps=round(arguments.end_time / case.VPM_TIME_STEP_SIZE)
+            ),
+        )
     case.COUPLER_SETUP = replace(
         case.COUPLER_SETUP,
         eta_blend_width=(
@@ -136,7 +141,7 @@ def main() -> None:
             TRANSFER_RESTART_ALLOWLIST if arguments.allow_transfer_config_differences else ()
         ),
         max_coupling_steps=arguments.coupling_steps,
-        checkpoint_at_stop=True,
+        backup_at_stop=True,
     )
 
 

@@ -30,7 +30,7 @@
             ]
           },
           "n_chordwise_panels": 8,
-          "n_spanwise_panels": 20,
+          "n_spanwise_panels": 18,
           "airfoils": {
             "inner": "flat",
             "outer": "flat"

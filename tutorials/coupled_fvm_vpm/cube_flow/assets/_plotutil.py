@@ -124,7 +124,7 @@ def metadata() -> dict:
 
 
 def load_vpm_particles(path: Path) -> dict[str, np.ndarray]:
-    """Load the active particle arrays from one native VPM checkpoint."""
+    """Load the active particle arrays from one native VPM backup."""
     import h5py
 
     with h5py.File(path, "r") as handle:
@@ -167,7 +167,7 @@ def run_constants() -> dict:
     return {
         "freestream_speed": float(np.linalg.norm(freestream_velocity)) or 1.0,
         "freestream_velocity": freestream_velocity,
-        "reference_length": 1.0,  # cube side length (CUBE_SIDE in cube_flow_setup.py)
+        "reference_length": 1.0,  # cube side length (CUBE_SIDE in setup.py)
         "kinematic_viscosity": float(phys["kinematic_viscosity"]),
         "box": box
         or {
@@ -419,7 +419,7 @@ def _validate_metadata_provenance(meta: dict) -> None:
     }
     if provenance not in supported_provenance:
         raise ValueError(
-            "Samples do not belong to a supported cube-flow coupling metadata contract: "
+            "Samples do not belong to a supported cube-flow coupling metadata schema: "
             f"schema={provenance[0]!r}, method={provenance[1]!r}"
         )
 

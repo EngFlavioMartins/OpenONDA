@@ -3,6 +3,8 @@ Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Literal
 
@@ -13,7 +15,7 @@ class StretchingConfig:
     Configuration for vortex stretching schemes.
 
     The formulations may use either direct evaluation or a controlled treecode
-    approximation.  ``StabilizationConfig`` is only a particle-retention policy
+    approximation. ``StabilizationConfig`` is only a particle-retention setting
     and never modifies vortex strength.
 
     Modes:
@@ -126,12 +128,12 @@ class StretchingConfig:
 
     @staticmethod
     def direct(
-        scheme: str = "RK3",
+        scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK3",
         use_treecode: bool = False,
         treecode_theta: float = 0.3,
         conserve_moments: bool = False,
         conserve_energy: bool = False,
-    ):
+    ) -> StretchingConfig:
         """Direct scheme: dalpha/dt = (alpha*grad)u.
 
         Options for `scheme`:
@@ -154,12 +156,12 @@ class StretchingConfig:
 
     @staticmethod
     def transposed(
-        scheme: str = "RK3",
+        scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK3",
         use_treecode: bool = False,
         treecode_theta: float = 0.3,
         conserve_moments: bool = False,
         conserve_energy: bool = False,
-    ):
+    ) -> StretchingConfig:
         """Transposed scheme: dalpha/dt = grad(u)^T alpha; conserves Σalpha.
 
         Options for `scheme`:
@@ -182,12 +184,12 @@ class StretchingConfig:
 
     @staticmethod
     def mixed(
-        scheme: str = "RK3",
+        scheme: Literal["EULER", "RK2", "RK3", "RK4"] = "RK3",
         use_treecode: bool = False,
         treecode_theta: float = 0.3,
         conserve_moments: bool = False,
         conserve_energy: bool = False,
-    ):
+    ) -> StretchingConfig:
         """Mixed/strain scheme: symmetric formulation
 
         Options for `scheme`:
@@ -209,7 +211,7 @@ class StretchingConfig:
         )
 
     @staticmethod
-    def disabled():
+    def disabled() -> StretchingConfig:
         return StretchingConfig(enabled=False)
 
 

@@ -7,13 +7,11 @@ happen inside a step.  :class:`~source.solvers.vpm.core.solver.VPMSolver` is the
 facade that composes subsystems; it delegates its step to the stepper and
 keeps the diagnostics, backups, and I/O bookkeeping around the step.
 
-The stepper holds a back-reference to the solver (``self.solver``) and
-delegates attribute *reads* to it through :meth:`__getattr__`, so the solver
-remains the single owner of solver state.  Attribute writes stay on the
-stepper; the few mutations that must reach solver state (the step clock, the
-one-shot warning flags, and the DVH fire counter) are written to
-``self.solver`` explicitly.  No physics is implemented here: every numerical
-update is performed on the subsystems the stepper calls.  Diffusing and
+The stepper holds a back-reference to the solver (``self.solver``), but exposes
+only the explicit capabilities it consumes.  The solver remains the single
+owner of mutable state, including the accepted step clock.  No physics is
+implemented here: every numerical update is performed on the subsystems the
+stepper calls.  Diffusing and
 advecting kernels live in ``physics``; the stabilization workers live in
 ``stabilization`` and are dispatched here only at their scheduled phases.
 
@@ -23,14 +21,12 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 import numpy as np
 import taichi as ti
 
 from ..io.logging import Logging
-from ..io.sampler import SamplerExecutor
 
 if TYPE_CHECKING:
     from .solver import VPMSolver
@@ -44,9 +40,160 @@ class EvolutionStepper:
 
     def __init__(self, solver: VPMSolver) -> None:
         self.solver = solver
+        self._staged_step: int | None = None
+        self._staged_time: float | None = None
 
-    def __getattr__(self, name: str):
-        return getattr(self.solver, name)
+    # Deliberately explicit: this orchestration boundary must not become a
+    # second, forwarding view of VPMSolver's entire mutable surface.
+    @property
+    def step(self):
+        return self.solver.step if self._staged_step is None else self._staged_step
+
+    @property
+    def time(self):
+        return self.solver.time if self._staged_time is None else self._staged_time
+
+    @property
+    def particles(self):
+        return self.solver.particles
+
+    @property
+    def physics(self):
+        return self.solver.physics
+
+    @property
+    def setup(self):
+        return self.solver.setup
+
+    @property
+    def profiler(self):
+        return self.solver.profiler
+
+    @property
+    def stabilization(self):
+        return self.solver.stabilization
+
+    @property
+    def coupling(self):
+        return self.solver.coupling
+
+    @property
+    def vlm_solver(self):
+        return self.solver.vlm_solver
+
+    @property
+    def panel_solver(self):
+        return self.solver.panel_solver
+
+    @property
+    def time_step_size(self):
+        return self.solver.time_step_size
+
+    @property
+    def np_dtype(self):
+        return self.solver.np_dtype
+
+    @property
+    def flow_model(self):
+        return self.solver.flow_model
+
+    @property
+    def time_integration(self):
+        return self.solver.time_integration
+
+    @property
+    def n_sources(self):
+        return self.solver.n_sources
+
+    @property
+    def stretching_enabled(self):
+        return self.solver.stretching_enabled
+
+    @property
+    def stabilization_config(self):
+        return self.solver.stabilization_config
+
+    @property
+    def advection_scheme(self):
+        return self.solver.advection_scheme
+
+    @property
+    def viscous_scheme(self):
+        return self.solver.viscous_scheme
+
+    @property
+    def _viscous_config(self):
+        return self.solver._viscous_config
+
+    @property
+    def _n_steps_per_dvh_diffusion(self):
+        return self.solver._n_steps_per_dvh_diffusion
+
+    @property
+    def stretching_mode(self):
+        return self.solver.stretching_mode
+
+    @property
+    def stretching_scheme(self):
+        return self.solver.stretching_scheme
+
+    @property
+    def stretching_conserve_energy(self):
+        return self.solver.stretching_conserve_energy
+
+    @property
+    def stretching_conserve_moments(self):
+        return self.solver.stretching_conserve_moments
+
+    @property
+    def stretching_treecode_theta(self):
+        return self.solver.stretching_treecode_theta
+
+    @property
+    def stretching_use_treecode(self):
+        return self.solver.stretching_use_treecode
+
+    @property
+    def turbulence_model(self):
+        return self.solver.turbulence_model
+
+    @property
+    def particle_position(self):
+        return self.solver.particle_position
+
+    @property
+    def particle_velocity_gradient(self):
+        return self.solver.particle_velocity_gradient
+
+    @property
+    def particle_group_id(self):
+        return self.solver.particle_group_id
+
+    @property
+    def particle_zone_id(self):
+        return self.solver.particle_zone_id
+
+    @property
+    def source_position(self):
+        return self.solver.source_position
+
+    @property
+    def source_strength(self):
+        return self.solver.source_strength
+
+    @property
+    def source_core_radius(self):
+        return self.solver.source_core_radius
+
+    @property
+    def axisymmetric_axis(self):
+        return self.solver.axisymmetric_axis
+
+    def replace_vortex_particles(self, **properties):
+        return self.solver.replace_vortex_particles(**properties)
+
+    def update_particle_vortex_strength(self, *args, **kwargs):
+        return self.solver.update_particle_vortex_strength(*args, **kwargs)
 
     def advance(self, *, defer_output: bool = False) -> None:
         """Advance the VPM solution by one time step.
@@ -58,25 +205,19 @@ class EvolutionStepper:
         before scheduled samples and backups are written.
         """
 
-        next_step = self.step + 1
-        next_time = self.time + self.time_step_size
-        samples_due = SamplerExecutor.any_due(self.solver, next_step, next_time)
-        diagnostics_due = SamplerExecutor.flow_integrals_due(
-            self.solver,
-            next_step,
-            next_time,
+        self.stabilization.begin_step(
+            step=self.solver.step,
+            time=self.solver.time,
+            time_step_size=self.time_step_size,
         )
-        backup_due = (
-            self.setup.backup.interval_steps > 0
-            and next_step % self.setup.backup.interval_steps == 0
-        )
-        Logging.set_routine_messages_enabled(next_step == 1 or samples_due or backup_due)
-
-        self.solver._domain_bounds_enforced_this_step = False
         self._apply_pending_particle_regeneration()
         self.stabilization.run_phase("pre_evolution")
 
-        self._advance_time_step()
+        # Stage the new clock for kernels and scheduled workers.  The canonical
+        # solver clock is committed only after all physical phases succeeded.
+        self._staged_step = self.solver.step + 1
+        self._staged_time = round(self.solver.time + self.time_step_size, 12)
+        self.stabilization.stage_clock(step=self._staged_step, time=self._staged_time)
 
         self.particles.step = self.step
         self._debug_validate_particle_geometry("step entry")
@@ -142,6 +283,10 @@ class EvolutionStepper:
 
             with self.profiler.section("LES update"):
                 self._update_les_state()
+                self.stabilization.refresh_metrics(
+                    kinetic_energy_rate=self.solver.kinetic_energy_rate,
+                    viscous_kinetic_energy_rate=self.solver.viscous_kinetic_energy_rate,
+                )
                 self.stabilization.update_residual_viscosity()
 
             # Relax against the same t_n gradient used by the strength update.
@@ -171,42 +316,22 @@ class EvolutionStepper:
                         self._apply_viscous_diffusion(self.time_step_size)
                     self._debug_validate_particle_geometry("viscous diffusion")
 
-            self.stabilization.run_phase("post_update", profiler=self.profiler)
             if self.flow_model != "POTENTIAL":
                 self.stabilization.run_phase("post_evolution", profiler=self.profiler)
 
-            if diagnostics_due:
-                with self.profiler.section("Flow integrals"):
-                    if _defer_stationary_velocity:
-                        # Evaluate deferred velocity on the end-of-step state.
-                        self._update_velocities()
-                    elif (
-                        self.flow_model == "LES"
-                        or self.stabilization_config.stretching_viscosity_coefficient > 0.0
-                    ):
-                        # Keep ν_eff consistent with the end-of-step diagnostics.
-                        self._update_velocity_and_gradients(announce=False)
-                        self._update_les_state()
-                        self.stabilization.update_residual_viscosity()
-                    self._update_all_flow_integrals()
-            elif self.vlm_solver is not None:
+            if self.vlm_solver is not None:
                 with self.profiler.section("VLM diagnostics"):
                     self._record_vlm_diagnostics()
 
             self.stabilization.run_phase("post_step", profiler=self.profiler)
             self._debug_validate_particle_geometry("particle retention")
 
-            if not defer_output:
-                with self.profiler.section("Backup / IO"):
-                    self._write_backup()
-
         # The evolution kernels mutate particle source fields directly on the
         # device.  Publish one new source revision after the complete physical
         # state (including any topology-changing stabilization) is committed so
         # post-step boundary/panel queries cannot reuse the previous tree.
         self.particles.touch_state()
-        if not defer_output:
-            self.solver.execute_scheduled_samplers()
+        self._commit_accepted_step()
         self.profiler.report_step()
         self.solver.wall_time = self.profiler.wall_time
 
@@ -222,7 +347,7 @@ class EvolutionStepper:
 
     def _debug_validate_particle_geometry(self, stage: str) -> None:
         """Validate active particle core_radius and particle_volume when stage tracing is enabled."""
-        if os.environ.get("VPM_VALIDATE_STAGES", "0") != "1":
+        if not self.setup.diagnostics.validate_stages:
             return
         n = self.particles.n_particles_total
         if n == 0:
@@ -248,12 +373,13 @@ class EvolutionStepper:
                 f"volume_bad={n_bad_volumes} first={bad_volume_index}"
             )
 
-    def _advance_time_step(self) -> None:
-        """Advance the step counter and physical time."""
-
-        self.solver.step += 1
-
-        self.solver.time = round(self.solver.time + self.time_step_size, 12)
+    def _commit_accepted_step(self) -> None:
+        """Publish a fully accepted numerical step to the canonical clock."""
+        assert self._staged_step is not None and self._staged_time is not None
+        self.solver.step = self._staged_step
+        self.solver.time = self._staged_time
+        self._staged_step = None
+        self._staged_time = None
 
         Logging.message("")
         Logging.record(
@@ -373,7 +499,7 @@ class EvolutionStepper:
         """Advance the configured vortex-stretching equation once per ``time_step_size``."""
         if self.stretching_enabled:
             # Warn once when the explicit stretching step exceeds the strain-based target.
-            if not self._stretch_time_step_size_warned:
+            if not self.solver._stretch_time_step_size_warned:
                 gradient = self.particle_velocity_gradient
                 strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))
                 max_strain_rate = (
@@ -707,15 +833,18 @@ class EvolutionStepper:
         elif self.viscous_scheme in ("DVH", "GBD"):
             # DVH fires only when its fixed diffusion increment has accumulated.
             diffusion_time_step_size = time_step_size
-            if self.viscous_scheme == "DVH" and self._n_steps_per_dvh_diffusion > 1:
+            if self.viscous_scheme == "DVH" and self.solver._n_steps_per_dvh_diffusion > 1:
                 self.solver._n_steps_since_dvh_diffusion += 1
-                if self.solver._n_steps_since_dvh_diffusion < self._n_steps_per_dvh_diffusion:
+                if (
+                    self.solver._n_steps_since_dvh_diffusion
+                    < self.solver._n_steps_per_dvh_diffusion
+                ):
                     return
                 self.solver._n_steps_since_dvh_diffusion = 0
                 # The heat-kernel width is 4*kinematic_viscosity*dt_d. Passing one macro-step
                 # here after waiting several steps under-diffuses by exactly
                 # _n_steps_per_dvh_diffusion. Apply the full accumulated interval.
-                diffusion_time_step_size = time_step_size * self._n_steps_per_dvh_diffusion
+                diffusion_time_step_size = time_step_size * self.solver._n_steps_per_dvh_diffusion
             new_p = self._apply_grid_diffusion(self._viscous_config, diffusion_time_step_size)
             if new_p is not None:
                 M = len(new_p["position"])
@@ -744,7 +873,7 @@ class EvolutionStepper:
                     # Regeneration occurred on the configured fixed lattice and
                     # already left every new particle inside the same retention
                     # domain.  The post-step O(N) retention scan would be a no-op.
-                    self.solver._domain_bounds_enforced_this_step = bool(np.all(inside))
+                    self.stabilization.ctx.state.domain_bounds_enforced = bool(np.all(inside))
                 self.replace_vortex_particles(
                     position=new_p["position"],
                     velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),

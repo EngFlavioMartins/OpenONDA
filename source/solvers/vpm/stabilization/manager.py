@@ -101,7 +101,6 @@ class StabilizationHealth:
 #                       update the relaxation must inform.
 # - ``post_evolution``  after advection/stretching/diffusion have modified the
 #                       field, while the updated gradients still describe it.
-# - ``post_update``     after every physical update, including potential flow.
 # - ``post_step``       end of the step, after diagnostics/IO.
 PHASES: dict[str, tuple[str, ...]] = {
     "pre_evolution": ("capture_reference_state",),
@@ -111,14 +110,12 @@ PHASES: dict[str, tuple[str, ...]] = {
         "apply_divergence_relaxation",
         "apply_regularization",
     ),
-    "post_update": ("check_solution_stability",),
     "post_step": ("apply_retention",),
 }
 
 # Profiler section labels for the phased workers, kept stable so the runtime
 # timing report reads the same after a worker is re-registered under a phase.
 _PHASE_SECTION_LABELS: dict[str, str] = {
-    "check_solution_stability": "Solution stability",
     "apply_relaxation": "Pedrizzetti relaxation",
     "apply_filament_refinement": "Filament refinement",
     "apply_divergence_relaxation": "Divergence relaxation",
@@ -249,9 +246,7 @@ class StabilizationManager:
             "stabilization_vorticity_growth": self.last_vorticity_growth,
             "max_stabilization_vorticity_growth": self.max_vorticity_growth,
             "lagrangian_cfl": self.lagrangian_cfl,
-            "stretching_viscosity_feedback_coefficient": (
-                self.residual_viscosity_coefficient
-            ),
+            "stretching_viscosity_feedback_coefficient": (self.residual_viscosity_coefficient),
         }
 
     def restore_diagnostics(self, values: dict) -> None:
@@ -296,10 +291,32 @@ class StabilizationManager:
         return tuple(active)
 
     def _due(self, interval_steps: int, start_step: int) -> bool:
-        step = self.ctx.step()
+        step = self.ctx.state.step
         return (
             interval_steps > 0 and step >= start_step and (step - start_step) % interval_steps == 0
         )
+
+    def begin_step(self, *, step: int, time: float, time_step_size: float) -> None:
+        """Reset per-step bookkeeping before the first stabilization phase."""
+        state = self.ctx.state
+        state.step = step
+        state.time = time
+        state.time_step_size = time_step_size
+        state.particles_removed = 0
+        state.vortex_strength_removed = np.zeros(3, dtype=self.ctx.np_dtype)
+        state.domain_bounds_enforced = False
+
+    def stage_clock(self, *, step: int, time: float) -> None:
+        """Make the proposed accepted clock visible to in-step workers."""
+        self.ctx.state.step = step
+        self.ctx.state.time = time
+
+    def refresh_metrics(
+        self, *, kinetic_energy_rate: float, viscous_kinetic_energy_rate: float
+    ) -> None:
+        """Publish diagnostics already computed by the evolution pipeline."""
+        self.ctx.metrics.kinetic_energy_rate = kinetic_energy_rate
+        self.ctx.metrics.viscous_kinetic_energy_rate = viscous_kinetic_energy_rate
 
     # -- lifecycle phases -------------------------------------------------------
 
@@ -328,32 +345,6 @@ class StabilizationManager:
         return PHASES[phase]
 
     # -- mechanisms ------------------------------------------------------------
-
-    def check_solution_stability(self) -> None:
-        """Stop when the particle state or its explicit update is no longer resolved."""
-        limit = self.config.max_lagrangian_cfl
-        if limit is None:
-            return
-        values = self.operators.inspect_solution(
-            self.ctx.particles,
-            time_step_size=self.ctx.time_step_size(),
-            check_stability=True,
-        )
-        if not values["valid"]:
-            raise StabilizationError(
-                f"VPM solution became unstable at step {self.ctx.step()}: position, vortex "
-                "strength, and velocity gradient must be finite; core radius and particle "
-                "volume must be positive"
-            )
-        observed = float(values["lagrangian_cfl"])
-        self.lagrangian_cfl = observed
-        if observed <= limit:
-            return
-        raise StabilizationError(
-            f"VPM solution became unstable at step {self.ctx.step()}: Lagrangian CFL "
-            f"number {observed:.3g} exceeds max_lagrangian_cfl={limit:.3g}. "
-            "Reduce time_step_size."
-        )
 
     def capture_reference_state(self) -> None:
         """Capture the lineage and moment references the workers relax toward."""
@@ -385,7 +376,7 @@ class StabilizationManager:
     def update_residual_viscosity(self) -> None:
         """Add the configured stretching-aware residual viscosity to ``effective_viscosity``."""
         cfg = self.config
-        step = self.ctx.step()
+        step = self.ctx.state.step
         if step < cfg.stretching_viscosity_start_step:
             return
         if (
@@ -396,8 +387,8 @@ class StabilizationManager:
                 cfg.stretching_viscosity_start_step,
             )
         ):
-            energy_rate = float(self.ctx.kinetic_energy_rate())
-            viscous_rate = float(self.ctx.viscous_kinetic_energy_rate())
+            energy_rate = float(self.ctx.metrics.kinetic_energy_rate)
+            viscous_rate = float(self.ctx.metrics.viscous_kinetic_energy_rate)
             if np.isfinite(energy_rate) and np.isfinite(viscous_rate):
                 scale = max(abs(viscous_rate), np.finfo(float).eps)
                 adjustment = np.clip(
@@ -433,7 +424,7 @@ class StabilizationManager:
             or self.ctx.flow_model == "POTENTIAL"
             or (
                 cfg.pedrizzetti_relaxation_end_step is not None
-                and self.ctx.step() >= cfg.pedrizzetti_relaxation_end_step
+                and self.ctx.state.step >= cfg.pedrizzetti_relaxation_end_step
             )
             or not self._due(
                 cfg.pedrizzetti_relaxation_interval_steps, cfg.pedrizzetti_relaxation_start_step
@@ -471,9 +462,7 @@ class StabilizationManager:
                 reference_vortex_strength,
                 angular_core_coefficient=self.ctx.physics._angular_core_coefficient,
             )
-            self.ctx.set_particles_properties(
-                vortex_strength=corrected.astype(self.ctx.np_dtype)
-            )
+            self.ctx.mutations.set_properties(vortex_strength=corrected.astype(self.ctx.np_dtype))
         self.accept(
             "Pedrizzetti relaxation",
             before,
@@ -490,13 +479,13 @@ class StabilizationManager:
         ctx = self.ctx
         cfg = self.config.filament_refinement
         interval_steps = cfg.interval_steps
-        late_stage = cfg.late_start_step is not None and ctx.step() >= cfg.late_start_step
+        late_stage = cfg.late_start_step is not None and ctx.state.step >= cfg.late_start_step
         if late_stage:
             interval_steps = int(cfg.late_interval_steps)
         if (
             not cfg.enabled
-            or (cfg.end_step is not None and ctx.step() >= cfg.end_step)
-            or ctx.step() % interval_steps != 0
+            or (cfg.end_step is not None and ctx.state.step >= cfg.end_step)
+            or ctx.state.step % interval_steps != 0
         ):
             return
 
@@ -537,7 +526,7 @@ class StabilizationManager:
             return
 
         source = result.source_index
-        ctx.replace_vortex_particles(
+        ctx.mutations.replace(
             position=result.position.astype(ctx.np_dtype),
             velocity=particles.velocity_cpu()[source],
             vortex_strength=result.vortex_strength.astype(ctx.np_dtype),
@@ -616,7 +605,7 @@ class StabilizationManager:
         )
 
         uploaded_vortex_strength = result.vortex_strength.astype(ctx.np_dtype)
-        ctx.set_particles_properties(vortex_strength=uploaded_vortex_strength)
+        ctx.mutations.set_properties(vortex_strength=uploaded_vortex_strength)
         self._rescale_lineage_reference(
             vortex_strength, uploaded_vortex_strength.astype(np.float64)
         )
@@ -634,12 +623,9 @@ class StabilizationManager:
         """Redistribute a distorted cloud when its discretization health demands it."""
         cfg = self.config
         if (
-            (
-                cfg.regularization_max_events is not None
-                and self.regularization_events >= cfg.regularization_max_events
-            )
-            or not self._due(cfg.regularization_interval_steps, cfg.regularization_start_step)
-        ):
+            cfg.regularization_max_events is not None
+            and self.regularization_events >= cfg.regularization_max_events
+        ) or not self._due(cfg.regularization_interval_steps, cfg.regularization_start_step):
             return
 
         from .regularization import regularize
@@ -650,7 +636,7 @@ class StabilizationManager:
             return
         # Conservative regularization rebuilds a cloud on its own lattice, so
         # it invalidates any prior grid-regeneration bounds guarantee.
-        self.ctx.set_domain_bounds_enforced(False)
+        self.ctx.state.domain_bounds_enforced = False
         # This worker rebuilds the cloud on its own grid, so total variation and
         # peak vorticity are measured against a different discretization; its
         # energy and enstrophy limits are the physics gate, enforced inside it.
@@ -669,10 +655,10 @@ class StabilizationManager:
             return
         bounds = self.config.remove_particles_by_bounds
         if bounds is not None:
-            if self.ctx.domain_bounds_enforced():
+            if self.ctx.state.domain_bounds_enforced:
                 return
             # Removal compacts the stored vorticity field; no O(N²) rebuild is needed.
-            ctx.remove_particles_by_bounds(bounds, invert_selection=True)
+            ctx.mutations.remove_by_bounds(bounds, invert_selection=True)
 
     # -- lineage bookkeeping ---------------------------------------------------
 

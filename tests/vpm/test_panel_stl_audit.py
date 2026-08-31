@@ -1,4 +1,4 @@
-"""Fail-fast STL mesh-audit and topological-orientation contracts."""
+"""Fail-fast STL mesh-audit and topological-orientation tests."""
 
 from __future__ import annotations
 

@@ -8,13 +8,13 @@ cd "$(dirname "$0")"
 echo
 echo "===== CLEAN ====="
 echo
-./allclean.sh --all
+./allclean.sh
 
 echo
 echo "===== SIMULATE ====="
 echo
 mkdir -p solution
-python airfoil_flow_setup.py --Re 1000 --angle 0 --end-time 25 2>&1 | tee solution/airfoil_flow.log
+python setup.py 2>&1 | tee solution/airfoil_flow.log
 
 echo
 echo "===== FIGURES ====="

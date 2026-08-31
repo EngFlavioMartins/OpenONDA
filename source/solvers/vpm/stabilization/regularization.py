@@ -132,7 +132,8 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     )
     energy_rate_trigger = cfg.regularization_capacity_energy_rate_trigger if at_capacity else None
     energy_growth = (
-        energy_rate_trigger is not None and float(ctx.kinetic_energy_rate()) > energy_rate_trigger
+        energy_rate_trigger is not None
+        and float(ctx.metrics.kinetic_energy_rate) > energy_rate_trigger
     )
     if not _regularization_triggered(
         before_health,
@@ -147,7 +148,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     before_moments = gaussian_particle_moments(position, vortex_strength, core_radius)
     before_integrals = ctx.field_diagnostics.compute_flow_integrals(
         particles,
-        ctx.time(),
+        ctx.state.time,
         record_history=False,
     )
     old_state = {
@@ -161,8 +162,8 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         "zone_id": particles.zone_id_cpu().astype(np.int32),
         "group_id": particles.group_id_cpu().astype(np.int32),
     }
-    removed_before = ctx.particles_removed()
-    vortex_strength_removed_before = ctx.vortex_strength_removed().copy()
+    removed_before = ctx.state.particles_removed
+    vortex_strength_removed_before = ctx.state.vortex_strength_removed.copy()
     mean_kinematic_viscosity = float(kinematic_viscosity.mean())
     projection_only = max_particles is not None and len(position) > max_particles
     if projection_only:
@@ -170,7 +171,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     else:
         proposal = ctx.physics.grid_based_diffusion(
             particles,
-            time_step_size=ctx.time_step_size(),
+            time_step_size=ctx.state.time_step_size,
             particle_spacing=spacing,
             kinematic_viscosity=mean_kinematic_viscosity,
             domain_padding=4.0,
@@ -216,7 +217,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
 
     def upload_and_integrate(vortex_strength: np.ndarray) -> tuple[np.ndarray, dict]:
         uploaded_vortex_strength = np.asarray(vortex_strength, dtype=ctx.np_dtype)
-        ctx.replace_vortex_particles(
+        ctx.mutations.replace(
             position=np.asarray(proposal["position"], dtype=ctx.np_dtype),
             velocity=new_velocity,
             vortex_strength=uploaded_vortex_strength,
@@ -229,15 +230,15 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         )
         integrals = ctx.field_diagnostics.compute_flow_integrals(
             particles,
-            ctx.time(),
+            ctx.state.time,
             record_history=False,
         )
         return uploaded_vortex_strength, integrals
 
     def restore_old_field() -> None:
-        ctx.replace_vortex_particles(**old_state)
-        ctx.set_particles_removed(removed_before)
-        ctx.set_vortex_strength_removed(vortex_strength_removed_before)
+        ctx.mutations.replace(**old_state)
+        ctx.state.particles_removed = removed_before
+        ctx.state.vortex_strength_removed = vortex_strength_removed_before
 
     def evaluate_moment_corrected_candidate():
         candidate_core_radius = np.asarray(proposal["core_radius"], dtype=np.float64)
@@ -517,8 +518,8 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             + ", ".join(f"{name}={value:.3e}" for name, value in errors.items())
         )
 
-    ctx.set_particles_removed(0)
-    ctx.set_vortex_strength_removed(np.zeros(3, dtype=ctx.np_dtype))
+    ctx.state.particles_removed = 0
+    ctx.state.vortex_strength_removed = np.zeros(3, dtype=ctx.np_dtype)
 
     return RegularizationOutcome(
         particles_before=len(position),

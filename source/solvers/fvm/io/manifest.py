@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from .checkpoint import config_hash, mesh_hash
+from .backup import config_hash, mesh_hash
 
 
 def _git_identity(repository: Path) -> tuple[str | None, bool | None]:

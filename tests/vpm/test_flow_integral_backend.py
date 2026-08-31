@@ -2,24 +2,23 @@ import math
 
 import pytest
 
-from source.solvers.vpm.physics.evaluation import ParticleFieldEvaluation, _direct_integral_limit
+from source.solvers.vpm.physics.evaluation import ParticleFieldEvaluation
 
 
-def test_direct_integral_limit_defaults_to_conservative_value(monkeypatch):
-    monkeypatch.delenv("OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT", raising=False)
-    assert _direct_integral_limit() == 50_000
+class _LargeParticleCloud:
+    def __len__(self) -> int:
+        return 50_001
 
 
-def test_direct_integral_limit_accepts_campaign_override(monkeypatch):
-    monkeypatch.setenv("OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT", "200000")
-    assert _direct_integral_limit() == 200_000
+def test_large_gaussian_cloud_uses_the_fourier_integral_backend():
+    evaluator = object.__new__(ParticleFieldEvaluation)
+    evaluator.particle_kernel = "GAUSSIAN"
+    expected = {"backend": "fourier"}
+    evaluator._compute_fourier_flow_integrals = lambda particles, time, record: expected
 
+    result = evaluator.compute_flow_integrals(_LargeParticleCloud(), time=1.0)
 
-@pytest.mark.parametrize("value", ["-1", "not-an-integer"])
-def test_direct_integral_limit_rejects_invalid_override(monkeypatch, value):
-    monkeypatch.setenv("OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT", value)
-    with pytest.raises(ValueError, match="OPENONDA_VPM_DIRECT_INTEGRAL_LIMIT"):
-        _direct_integral_limit()
+    assert result is expected
 
 
 def test_energy_rate_is_defined_only_between_direct_energy_measurements():

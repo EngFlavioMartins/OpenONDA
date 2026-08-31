@@ -1,81 +1,88 @@
-"""Purely geometric toroidal particle distributions."""
+"""Toroidal particle-distribution construction object."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 
 from ..data import ParticleDistribution
 from ._common import validate_spacing
 
+Axis = Literal["x", "y", "z"]
 
-def create_toroidal_distribution(
-    *,
-    ring_radius: float,
-    tube_radius: float,
-    spacing: float,
-    core_radius_ratio: float,
-    centre: Sequence[float] = (0.0, 0.0, 0.0),
-    axis: str = "x",
-) -> ParticleDistribution:
-    """Create a circular toroidal cloud with no attributed flow disturbance."""
-    spacing, core_radius_ratio = validate_spacing(spacing, core_radius_ratio)
-    ring_radius = float(ring_radius)
-    tube_radius = float(tube_radius)
-    if not np.isfinite(ring_radius) or ring_radius <= 0.0:
-        raise ValueError("ring_radius must be finite and positive")
-    if not np.isfinite(tube_radius) or tube_radius <= 0.0:
-        raise ValueError("tube_radius must be finite and positive")
-    if tube_radius >= ring_radius:
-        raise ValueError("tube_radius must be smaller than ring_radius")
-    if axis not in {"x", "y", "z"}:
-        raise ValueError("axis must be 'x', 'y', or 'z'")
-    centre_array = np.asarray(centre, dtype=float)
-    if centre_array.shape != (3,) or not np.all(np.isfinite(centre_array)):
-        raise ValueError("centre must contain three finite coordinates")
 
-    row_spacing = np.sqrt(3.0) * spacing / 2.0
-    max_row = int(np.ceil(tube_radius / row_spacing))
-    max_column = int(np.ceil(tube_radius / spacing)) + max_row
-    cross_section: list[tuple[float, float]] = []
-    cutoff_squared = (tube_radius + 16.0 * np.finfo(float).eps) ** 2
-    for row in range(-max_row, max_row + 1):
-        radial_offset = row * row_spacing
-        for column in range(-max_column, max_column + 1):
-            axial_offset = spacing * (column + 0.5 * row)
-            if axial_offset**2 + radial_offset**2 <= cutoff_squared:
-                cross_section.append((axial_offset, radial_offset))
+@dataclass(frozen=True, slots=True)
+class ToroidalDistribution:
+    """Hexagonal-cross-section particle cloud around a circular centreline.
 
-    offsets = np.asarray(cross_section, dtype=float)
-    outer_circumference = 2.0 * np.pi * (ring_radius + tube_radius)
-    azimuth_count = max(8, int(np.ceil(outer_circumference / spacing)))
-    azimuth_count += (-azimuth_count) % 4
-    azimuth = 2.0 * np.pi * np.arange(azimuth_count) / azimuth_count
-    cosine = np.tile(np.cos(azimuth), len(offsets))
-    sine = np.tile(np.sin(azimuth), len(offsets))
-    axial = np.repeat(offsets[:, 0], azimuth_count)
-    radial = np.repeat(ring_radius + offsets[:, 1], azimuth_count)
+    ``ring_radius`` exceeds positive ``tube_radius``. ``spacing`` is the target
+    transverse particle spacing; returned volume weights are cylindrical-cell
+    quadrature weights in cubic length units.
+    """
 
-    local = np.empty((len(axial), 3), dtype=float)
-    if axis == "x":
-        local[:, 0] = axial
-        local[:, 1] = radial * cosine
-        local[:, 2] = radial * sine
-    elif axis == "y":
-        local[:, 0] = radial * sine
-        local[:, 1] = axial
-        local[:, 2] = radial * cosine
-    else:
-        local[:, 0] = radial * cosine
-        local[:, 1] = radial * sine
-        local[:, 2] = axial
+    ring_radius: float
+    tube_radius: float
+    spacing: float
+    core_radius_ratio: float
+    centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    axis: Axis = "x"
 
-    cell_area = np.sqrt(3.0) * spacing**2 / 2.0
-    particle_volume = cell_area * radial * (2.0 * np.pi / azimuth_count)
-    return ParticleDistribution(
-        position=local + centre_array,
-        core_radius=np.full(len(local), core_radius_ratio * spacing),
-        particle_volume=particle_volume,
-        spacing=spacing,
-    )
+    def build(self) -> ParticleDistribution:
+        """Build immutable toroidal geometry and curved-cell quadrature."""
+        spacing, ratio = validate_spacing(self.spacing, self.core_radius_ratio)
+        if not np.isfinite(self.ring_radius) or self.ring_radius <= 0.0:
+            raise ValueError("ring_radius must be finite and positive")
+        if not np.isfinite(self.tube_radius) or self.tube_radius <= 0.0:
+            raise ValueError("tube_radius must be finite and positive")
+        if self.tube_radius >= self.ring_radius:
+            raise ValueError("tube_radius must be smaller than ring_radius")
+        if self.axis not in {"x", "y", "z"}:
+            raise ValueError("axis must be 'x', 'y', or 'z'")
+        centre = np.asarray(self.centre, dtype=float)
+        if centre.shape != (3,) or not np.all(np.isfinite(centre)):
+            raise ValueError("centre must contain three finite coordinates")
+        row_spacing = np.sqrt(3.0) * spacing / 2.0
+        cross_section: list[tuple[float, float]] = []
+        for row in range(
+            -int(np.ceil(self.tube_radius / row_spacing)),
+            int(np.ceil(self.tube_radius / row_spacing)) + 1,
+        ):
+            radial_offset = row * row_spacing
+            max_column = int(np.ceil(self.tube_radius / spacing)) + abs(row)
+            for column in range(-max_column, max_column + 1):
+                axial_offset = spacing * (column + 0.5 * row)
+                if (
+                    axial_offset**2 + radial_offset**2
+                    <= (self.tube_radius + 16 * np.finfo(float).eps) ** 2
+                ):
+                    cross_section.append((axial_offset, radial_offset))
+        offsets = np.asarray(cross_section, dtype=float)
+        azimuth_count = max(
+            8, int(np.ceil(2.0 * np.pi * (self.ring_radius + self.tube_radius) / spacing))
+        )
+        azimuth_count += (-azimuth_count) % 4
+        azimuth = 2.0 * np.pi * np.arange(azimuth_count) / azimuth_count
+        cosine, sine = (
+            np.tile(np.cos(azimuth), len(offsets)),
+            np.tile(np.sin(azimuth), len(offsets)),
+        )
+        axial, radial = (
+            np.repeat(offsets[:, 0], azimuth_count),
+            np.repeat(self.ring_radius + offsets[:, 1], azimuth_count),
+        )
+        local = np.empty((len(axial), 3), dtype=float)
+        if self.axis == "x":
+            local[:, 0], local[:, 1], local[:, 2] = axial, radial * cosine, radial * sine
+        elif self.axis == "y":
+            local[:, 0], local[:, 1], local[:, 2] = radial * sine, axial, radial * cosine
+        else:
+            local[:, 0], local[:, 1], local[:, 2] = radial * cosine, radial * sine, axial
+        weights = np.sqrt(3.0) * spacing**2 / 2.0 * radial * (2.0 * np.pi / azimuth_count)
+        return ParticleDistribution(
+            position=local + centre,
+            core_radius=np.full(len(local), ratio * spacing),
+            particle_volume=weights,
+            spacing=spacing,
+        )

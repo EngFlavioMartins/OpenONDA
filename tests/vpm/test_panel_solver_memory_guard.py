@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import pytest
-
-taichi = pytest.importorskip("taichi", reason="VPM requires taichi")
+import taichi
 
 from source.solvers.vpm.boundary_elements.panels.solver.panel_solver import (
     PanelSolver,  # noqa: E402

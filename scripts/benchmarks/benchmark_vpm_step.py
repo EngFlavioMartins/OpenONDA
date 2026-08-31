@@ -34,20 +34,29 @@ def _rss_mb() -> float:
 
 
 def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = False):
-    from source.solvers.vpm import VPMSolver
-    from source.solvers.vpm.config.types import StretchingConfig, VelocityConfig, VPMSetup
-    from source.solvers.vpm.config.output import Backup
-
-    setup = VPMSetup.dns_simulation(
-        compute_device=backend,
-        velocity=VelocityConfig.treecode(theta=0.5),
-        stretching=StretchingConfig.transposed(
-            scheme="RK3", use_treecode=stretch_treecode, treecode_theta=0.5
-        ),
-        max_n_particles=max(2 * n, 4096),
-        backup=Backup(directory=tmpdir, log_directory=tmpdir),
+    from source.solvers.vpm import (
+        Backup,
+        Numerics,
+        StretchingConfig,
+        VelocityConfig,
+        VPMCase,
+        VPMSolver,
     )
-    solver = VPMSolver(setup=setup)
+
+    solver = VPMSolver(
+        VPMCase(
+            directory=tmpdir,
+            backup=Backup(0, tmpdir, tmpdir),
+            numerics=Numerics(
+                compute_device=backend,
+                velocity=VelocityConfig.treecode(theta=0.5),
+                stretching=StretchingConfig.transposed(
+                    scheme="RK3", use_treecode=stretch_treecode, treecode_theta=0.5
+                ),
+                max_n_particles=max(2 * n, 4096),
+            ),
+        )
+    )
 
     rng = np.random.default_rng(20260807)
     h = n ** (-1.0 / 3.0)

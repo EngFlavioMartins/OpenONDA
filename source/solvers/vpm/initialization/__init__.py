@@ -1,35 +1,41 @@
 """Particle distributions and canonical VPM flow initializers."""
 
-from .data import ParticleDistribution, VortexParticleDistribution
+from .data import ParticleDistribution, VortexParticleSet
 from .distributions import (
-    create_cylindrical_distribution,
-    create_noisy_rectangular_distribution,
-    create_rectangular_distribution,
-    create_toroidal_distribution,
-    create_triangular_prism_distribution,
+    CylindricalDistribution,
+    NoisyRectangularDistribution,
+    RectangularDistribution,
+    ToroidalDistribution,
+    TriangularPrismDistribution,
 )
 from .disturbances import FilamentDisturbance, WidnallDisturbance
 from .flows import (
-    initialize_isotropic_turbulence,
-    initialize_taylor_green_vortex,
-    initialize_vortex_doublet,
-    initialize_vortex_filament,
-    initialize_vortex_ring,
+    InitialCondition,
+    InitialVelocity,
+    IsotropicTurbulence,
+    ParticleCoreCompensation,
+    TaylorGreenVortex,
+    VortexDoublet,
+    VortexFilament,
+    VortexRing,
 )
 
 __all__ = [
     "FilamentDisturbance",
     "ParticleDistribution",
-    "VortexParticleDistribution",
+    "VortexParticleSet",
     "WidnallDisturbance",
-    "create_cylindrical_distribution",
-    "create_noisy_rectangular_distribution",
-    "create_rectangular_distribution",
-    "create_toroidal_distribution",
-    "create_triangular_prism_distribution",
-    "initialize_isotropic_turbulence",
-    "initialize_taylor_green_vortex",
-    "initialize_vortex_doublet",
-    "initialize_vortex_filament",
-    "initialize_vortex_ring",
+    "CylindricalDistribution",
+    "NoisyRectangularDistribution",
+    "RectangularDistribution",
+    "ToroidalDistribution",
+    "TriangularPrismDistribution",
+    "InitialVelocity",
+    "InitialCondition",
+    "IsotropicTurbulence",
+    "ParticleCoreCompensation",
+    "TaylorGreenVortex",
+    "VortexDoublet",
+    "VortexFilament",
+    "VortexRing",
 ]

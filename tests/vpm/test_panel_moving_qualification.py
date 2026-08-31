@@ -6,9 +6,7 @@ import itertools
 
 import numpy as np
 import pytest
-
-taichi = pytest.importorskip("taichi", reason="VPM requires taichi")
-
+import taichi
 from test_panel_solver_sphere_analytic import _icosphere_triangles  # noqa: E402
 
 from source.solvers.vpm.boundary_elements.panels.coupling.kinematics import (  # noqa: E402

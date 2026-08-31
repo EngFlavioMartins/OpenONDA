@@ -222,12 +222,12 @@ class LinearSolverConfig:
         ]
         | None
     ) = None
-    pressure_nullspace_policy: Literal[
+    pressure_nullspace_method: Literal[
         "auto",
         "reference",
         "petsc",
     ] = "auto"
-    linear_failure_policy: Literal[
+    linear_failure_action: Literal[
         "raise",
         "direct_fallback",
     ] = "raise"
@@ -486,7 +486,7 @@ class OutputConfig:
 
 
 @dataclass
-class RunAcceptancePolicy:
+class RunAcceptanceLimits:
     """Warning and abort thresholds for structured step diagnostics."""
 
     sustained_steps: int = 1
@@ -532,7 +532,7 @@ class FVMSetup:
     mesh: MeshQualityConfig = field(default_factory=MeshQualityConfig)
     execution: ComputeConfig = field(default_factory=ComputeConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    acceptance: RunAcceptancePolicy = field(default_factory=RunAcceptancePolicy)
+    acceptance: RunAcceptanceLimits = field(default_factory=RunAcceptanceLimits)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     time: TimeConfig = field(default_factory=TimeConfig)
     schemes: DiscretizationConfig = field(default_factory=DiscretizationConfig)
@@ -621,7 +621,7 @@ class FVMSetup:
             mesh=MeshQualityConfig(**data.get("mesh", {})),
             execution=ComputeConfig(**data.get("execution", {})),
             output=OutputConfig(**data.get("output", {})),
-            acceptance=RunAcceptancePolicy(**data.get("acceptance", {})),
+            acceptance=RunAcceptanceLimits(**data.get("acceptance", {})),
             logging=LoggingConfig(**logging_data),
             time=TimeConfig(**time_data),
             schemes=DiscretizationConfig(**data.get("schemes", {})),

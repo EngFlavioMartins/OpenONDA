@@ -71,8 +71,8 @@ REYNOLDS_NUMBER = 530.0
 CORE_RADIUS = 0.125  # paper's radius of maximum azimuthal velocity
 GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX
 SEPARATION = 1.0
-COLUMN_LENGTH = 40.0 * CORE_RADIUS  # mirrors lamb_oseen_setup.py::COLUMN_LENGTH
-FIELD_SPACING = 0.16 * CORE_RADIUS  # mirrors lamb_oseen_setup.py::FIELD_SPACING
+COLUMN_LENGTH = 40.0 * CORE_RADIUS  # mirrors setup.py::COLUMN_LENGTH
+FIELD_SPACING = 0.16 * CORE_RADIUS  # mirrors setup.py::FIELD_SPACING
 TOTAL_TIME = 30.0  # fallback reference time [s] when no run data is available
 
 VTS_STEP_RE = re.compile(r"_(\d+)\.vts$")
@@ -388,9 +388,7 @@ def _vorticity_peak_centres(
 
     if physics == "merging":
         peaks = _merging_peak_pair(field, candidates, previous_centres)
-        return [
-            _high_vorticity_region_centre(x, y, signed, peak) for peak in peaks
-        ], peaks
+        return [_high_vorticity_region_centre(x, y, signed, peak) for peak in peaks], peaks
 
     centre = _high_vorticity_region_centre(x, y, signed, candidates[0])
     centres = [centre] if np.isfinite(centre).all() else [np.array([np.nan, np.nan])]
@@ -603,9 +601,7 @@ def _diagnostics_row(
     force_merged: bool = False,
 ) -> list:
     raw_centres, peaks = _vorticity_peak_centres(field, physics, previous_centres)
-    centres = _match_centres_to_previous(
-        raw_centres, previous_centres
-    )
+    centres = _match_centres_to_previous(raw_centres, previous_centres)
     contrast = contrast_se = contrast_snr = float("nan")
     pair_resolved = True
     peak_coalesced = False
@@ -776,9 +772,7 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
                 )
                 and "mean_core_radius_standard_error" in columns
             ):
-                print(
-                    f"  [field] {case_name}: preserving ensemble/jackknife diagnostics"
-                )
+                print(f"  [field] {case_name}: preserving ensemble/jackknife diagnostics")
                 continue
         timeline = pvd_time_map(samples_dir, physics, scheme)
         rows = []
@@ -882,9 +876,7 @@ def save_fig(fig, path: Path, dpi: int) -> None:
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     outputs = (
-        (out.with_suffix(".png"), out.with_suffix(".pdf"))
-        if out.suffix == ".both"
-        else (out,)
+        (out.with_suffix(".png"), out.with_suffix(".pdf")) if out.suffix == ".both" else (out,)
     )
     for output in outputs:
         fig.savefig(output, dpi=dpi, bbox_inches=None)
@@ -929,9 +921,7 @@ SEPARATION_DIMENSIONAL_REFERENCE = REF_DIR / "b_over_b0_time.csv"
 # t=33.60 s in figure 4 and tau=nu*t/b0^2=0.04744 in figure 5(b).
 REFERENCE_FINAL_TIME_SECONDS = 33.60
 REFERENCE_FINAL_VISCOUS_TIME = 0.04744
-REFERENCE_VISCOUS_TIME_PER_SECOND = (
-    REFERENCE_FINAL_VISCOUS_TIME / REFERENCE_FINAL_TIME_SECONDS
-)
+REFERENCE_VISCOUS_TIME_PER_SECOND = REFERENCE_FINAL_VISCOUS_TIME / REFERENCE_FINAL_TIME_SECONDS
 
 
 def lamb_oseen_profile(
@@ -946,8 +936,10 @@ def lamb_oseen_profile(
     vorticity = circulation / (np.pi * core_squared) * np.exp(-(radius**2) / core_squared)
     velocity = np.zeros_like(radius)
     nonzero = np.abs(radius) > 1.0e-12
-    velocity[nonzero] = circulation / (2.0 * np.pi * radius[nonzero]) * (
-        1.0 - np.exp(-(radius[nonzero] ** 2) / core_squared)
+    velocity[nonzero] = (
+        circulation
+        / (2.0 * np.pi * radius[nonzero])
+        * (1.0 - np.exp(-(radius[nonzero] ** 2) / core_squared))
     )
     return velocity, vorticity, gaussian_core
 
@@ -963,9 +955,10 @@ def lamb_oseen_gradient(
     gradient = np.zeros_like(radius)
     nonzero = np.abs(radius) > 1.0e-12
     exponential = np.exp(-(radius[nonzero] ** 2) / core_squared)
-    gradient[nonzero] = circulation / (2.0 * np.pi) * (
-        2.0 * exponential / core_squared
-        - (1.0 - exponential) / radius[nonzero] ** 2
+    gradient[nonzero] = (
+        circulation
+        / (2.0 * np.pi)
+        * (2.0 * exponential / core_squared - (1.0 - exponential) / radius[nonzero] ** 2)
     )
     gradient[~nonzero] = circulation / (2.0 * np.pi * core_squared)
     return gradient
@@ -1009,9 +1002,9 @@ def load_profile(
     vorticity = field["vorticity_z"][:, row]
     if not include_uncertainty:
         return x, velocity, vorticity, timeline[selected_step]
-    velocity_se = field.get(
-        "velocity_standard_error_y", np.full_like(field["velocity_y"], np.nan)
-    )[:, row]
+    velocity_se = field.get("velocity_standard_error_y", np.full_like(field["velocity_y"], np.nan))[
+        :, row
+    ]
     vorticity_se = field.get(
         "vorticity_standard_error_z", np.full_like(field["vorticity_z"], np.nan)
     )[:, row]
@@ -1092,7 +1085,7 @@ def viscous_filament_velocity(
         separation**2 + lower**2
     )
     diffusion_time = vortex_age + time
-    core_factor = 1.0 - np.exp(-separation**2 / (4.0 * kinematic_viscosity * diffusion_time))
+    core_factor = 1.0 - np.exp(-(separation**2) / (4.0 * kinematic_viscosity * diffusion_time))
     return circulation * endpoint_factor * core_factor / (4.0 * np.pi * separation)
 
 
@@ -1110,8 +1103,13 @@ def theoretical_dipole_trajectory(
     if np.any(time < 0.0):
         raise ValueError("time must be non-negative")
     endpoint_speed = viscous_filament_velocity(
-        np.zeros(1), circulation, separation, kinematic_viscosity,
-        vortex_age, column_length, sample_plane_fraction,
+        np.zeros(1),
+        circulation,
+        separation,
+        kinematic_viscosity,
+        vortex_age,
+        column_length,
+        sample_plane_fraction,
     )[0]
     inverse_diffusion_time = separation**2 / (4.0 * kinematic_viscosity)
 
@@ -1120,7 +1118,8 @@ def theoretical_dipole_trajectory(
         return value * np.exp(argument) + inverse_diffusion_time * expi(argument)
 
     return endpoint_speed * (
-        time - antiderivative(time + vortex_age)
+        time
+        - antiderivative(time + vortex_age)
         + antiderivative(np.asarray(vortex_age, dtype=float))
     )
 
@@ -1172,11 +1171,13 @@ def extract_merging_timeseries(
     output = {
         "tau": tau,
         "theta_deg": angle_degrees,
-        "a_c2_over_b02": data["mean_core_radius"].to_numpy(float) ** 2
-        / vortex_separation**2,
+        "a_c2_over_b02": data["mean_core_radius"].to_numpy(float) ** 2 / vortex_separation**2,
         "b_over_b0": data["vortex_separation"].to_numpy(float) / vortex_separation,
-        "is_pair_unresolved": data["is_pair_unresolved"].astype(str).str.lower()
-        .isin(("true", "1")).to_numpy(bool),
+        "is_pair_unresolved": data["is_pair_unresolved"]
+        .astype(str)
+        .str.lower()
+        .isin(("true", "1"))
+        .to_numpy(bool),
         "orientation_anisotropy": data.get(
             "orientation_anisotropy", pd.Series(np.full(len(data), np.nan), index=data.index)
         ).to_numpy(float),
@@ -1197,7 +1198,8 @@ def extract_merging_timeseries(
             column = f"{base}_ci_{bound}"
             output[f"{key}_ci_{bound}"] = (
                 transform(data[column].to_numpy(float))
-                if column in data else np.full(len(data), np.nan)
+                if column in data
+                else np.full(len(data), np.nan)
             )
     if scheme == "rwm":
         # A nonlinear feature is not reportable merely because its point
@@ -1215,16 +1217,11 @@ def extract_merging_timeseries(
             & (output["a_c2_over_b02_ci_lower"] >= 0.0)
             & (core_half_width <= 0.5 * np.maximum(output["a_c2_over_b02"], 1.0e-12))
         )
-        separation_half_width = 0.5 * (
-            output["b_over_b0_ci_upper"] - output["b_over_b0_ci_lower"]
-        )
-        separation_reliable = (
-            output["is_pair_unresolved"]
-            | (
-                np.isfinite(separation_half_width)
-                & (output["b_over_b0_ci_lower"] >= 0.0)
-                & (separation_half_width <= 0.5 * np.maximum(output["b_over_b0"], 1.0e-12))
-            )
+        separation_half_width = 0.5 * (output["b_over_b0_ci_upper"] - output["b_over_b0_ci_lower"])
+        separation_reliable = output["is_pair_unresolved"] | (
+            np.isfinite(separation_half_width)
+            & (output["b_over_b0_ci_lower"] >= 0.0)
+            & (separation_half_width <= 0.5 * np.maximum(output["b_over_b0"], 1.0e-12))
         )
         for key in ("theta_deg", "theta_ci_lower", "theta_ci_upper"):
             output[key] = np.where(theta_reliable, output[key], np.nan)
@@ -1249,9 +1246,7 @@ def load_merging_references(core_radius: float, vortex_separation: float) -> dic
     if SEPARATION_DIMENSIONAL_REFERENCE.is_file():
         values = np.loadtxt(SEPARATION_DIMENSIONAL_REFERENCE, delimiter=",")
         paper_viscous_time = values[:, 0] * REFERENCE_VISCOUS_TIME_PER_SECOND
-        output["separation"] = np.column_stack(
-            (paper_viscous_time / scale, values[:, 1])
-        )
+        output["separation"] = np.column_stack((paper_viscous_time / scale, values[:, 1]))
     return output
 
 
@@ -1263,10 +1258,7 @@ def _direct_energy_rate_mask(data_frame: pd.DataFrame) -> np.ndarray:
     if "n_particles_total" in data_frame:
         # Historical files predate the explicit provenance column. The default
         # crossover used for these tutorial runs was 50,000 particles.
-        return (
-            data_frame["n_particles_total"].to_numpy(float)
-            <= DIRECT_ENERGY_PARTICLE_LIMIT
-        )
+        return data_frame["n_particles_total"].to_numpy(float) <= DIRECT_ENERGY_PARTICLE_LIMIT
     return np.ones(len(data_frame), dtype=bool)
 
 
@@ -1294,10 +1286,7 @@ def read_flow_integrals(csv_path: Path) -> dict | None:
             if column in data_frame:
                 data[column] = data_frame[column].to_numpy(float)
     nonzero = np.flatnonzero(
-        (
-            np.isfinite(data["kinetic_energy_rate"])
-            & (data["kinetic_energy_rate"] != 0.0)
-        )
+        (np.isfinite(data["kinetic_energy_rate"]) & (data["kinetic_energy_rate"] != 0.0))
         | (
             np.isfinite(data["viscous_kinetic_energy_rate"])
             & (data["viscous_kinetic_energy_rate"] != 0.0)
@@ -1388,14 +1377,20 @@ def surface_plot_tiles(
         steps = sorted(
             timeline,
             key=lambda step: (
-                abs(timeline[step] - comparison_time) if comparison_time is not None else -timeline[step],
+                abs(timeline[step] - comparison_time)
+                if comparison_time is not None
+                else -timeline[step],
                 timeline[step] > comparison_time if comparison_time is not None else False,
             ),
         )
         path = next(
-            (samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{step:06d}.vts"
-             for step in steps
-             if (samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{step:06d}.vts").is_file()),
+            (
+                samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{step:06d}.vts"
+                for step in steps
+                if (
+                    samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{step:06d}.vts"
+                ).is_file()
+            ),
             None,
         )
         if path is None:
@@ -1417,7 +1412,10 @@ def surface_plot_tiles(
         tiled = {}
         for name, values in (("velocity", velocity), ("vorticity", vorticity)):
             tiled[name] = _tile_field(
-                values, quadrant, column, row,
+                values,
+                quadrant,
+                column,
+                row,
                 *_boundary_edges(values, row, column, tx, ty),
             )
         selected_time = timeline[int(path.stem[-6:])]
@@ -1432,10 +1430,8 @@ def surface_plot_tiles(
     return tiles, comparison_time
 
 
-
-
 sys.path.insert(0, str(CASE_DIR))
-from lamb_oseen_setup import (
+from setup import (
     ADVECTION_SCHEME,
     COLUMN_LENGTH,
     CORE_RADIUS,
@@ -1449,7 +1445,6 @@ from lamb_oseen_setup import (
     TREECODE_MULTIPOLE_ORDER,
     TREECODE_THETA,
 )
-
 
 
 MEMBER_RE = re.compile(r"member_(\d+)$")
@@ -1622,7 +1617,9 @@ def _deposit_circulation_cic(
     return deposited / (dx * dy), capture_fraction
 
 
-def _biot_savart_velocity(vorticity: np.ndarray, dx: float, dy: float) -> tuple[np.ndarray, np.ndarray]:
+def _biot_savart_velocity(
+    vorticity: np.ndarray, dx: float, dy: float
+) -> tuple[np.ndarray, np.ndarray]:
     """Free-space 2-D Biot--Savart convolution of a gridded vorticity field."""
     nx, ny = vorticity.shape
     offset_x = np.arange(-(nx - 1), nx, dtype=float) * dx
@@ -2049,7 +2046,9 @@ def aggregate_case(
             "minimum_absolute_circulation_capture_fraction": minimum_capture,
         }
     )
-    (output_dir / "run_metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "run_metadata.json").write_text(
+        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+    )
     return metadata
 
 
@@ -2064,7 +2063,9 @@ def aggregate_rwm_ensemble(
             solution_root,
             samples_root,
             physics,
-            expected_members.get(physics) if isinstance(expected_members, dict) else expected_members,
+            expected_members.get(physics)
+            if isinstance(expected_members, dict)
+            else expected_members,
         )
         for physics in PHYSICS_CASES
     }
@@ -2110,9 +2111,7 @@ def merging_normalization_audit(
     """Audit the paper-to-simulation mapping and requested merger horizon."""
     failures: list[str] = []
     reference = load_merging_references(CORE_RADIUS, SEPARATION)
-    reference_horizons = {
-        name: float(values[:, 0].max()) for name, values in reference.items()
-    }
+    reference_horizons = {name: float(values[:, 0].max()) for name, values in reference.items()}
     for name, horizon in reference_horizons.items():
         if not 2.9 <= horizon <= 3.2:
             failures.append(f"merging reference {name}: normalized horizon {horizon:.6g} is not 3")
@@ -2143,13 +2142,12 @@ def merging_normalization_audit(
             continue
         final_normalized_time = float(np.nanmax(normalized_time))
         if final_normalized_time < MERGING_NORMALIZED_END_TIME:
-            failures.append(
-                f"merging_{scheme}: normalized horizon {final_normalized_time:.6g} < 3"
-            )
+            failures.append(f"merging_{scheme}: normalized horizon {final_normalized_time:.6g} < 3")
         first_at_or_after = np.flatnonzero(normalized_time >= MERGING_NORMALIZED_END_TIME)
         endpoint = (
             float(normalized_time[first_at_or_after[0]])
-            if first_at_or_after.size else final_normalized_time
+            if first_at_or_after.size
+            else final_normalized_time
         )
         coalesced = fields.get("is_peak_coalesced")
         if coalesced is not None:
@@ -2166,9 +2164,7 @@ def merging_normalization_audit(
             "available_normalized_horizon": final_normalized_time,
             "first_sample_at_or_after_3": endpoint,
         }
-        timeseries = extract_merging_timeseries(
-            Path(samples_dir), scheme, viscosity, b0, a_c0
-        )
+        timeseries = extract_merging_timeseries(Path(samples_dir), scheme, viscosity, b0, a_c0)
         agreement = {}
         if timeseries is not None:
             unresolved = np.asarray(timeseries["is_pair_unresolved"], dtype=bool)
@@ -2181,19 +2177,13 @@ def merging_normalization_audit(
             finite_theta = np.flatnonzero(np.isfinite(timeseries["theta_deg"]))
             run_report[scheme]["feature_transition"] = {
                 "first_statistically_unresolved_pair_time": (
-                    float(timeseries["tau"][first_unresolved[0]])
-                    if first_unresolved.size
-                    else None
+                    float(timeseries["tau"][first_unresolved[0]]) if first_unresolved.size else None
                 ),
                 "first_zero_peak_separation_time": (
-                    float(timeseries["tau"][first_zero[0]])
-                    if first_zero.size
-                    else None
+                    float(timeseries["tau"][first_zero[0]]) if first_zero.size else None
                 ),
                 "last_reportable_theta_time": (
-                    float(timeseries["tau"][finite_theta[-1]])
-                    if finite_theta.size
-                    else None
+                    float(timeseries["tau"][finite_theta[-1]]) if finite_theta.size else None
                 ),
                 "theta_definition": (
                     "axis joining the two vorticity centres before coalescence; "
@@ -2229,8 +2219,10 @@ def merging_normalization_audit(
                     "rmse_over_reference_range": normalized_rmse,
                     "mean_bias": float(np.mean(residual)),
                     "assessment": (
-                        "good" if normalized_rmse <= 0.10
-                        else "moderate" if normalized_rmse <= 0.25
+                        "good"
+                        if normalized_rmse <= 0.10
+                        else "moderate"
+                        if normalized_rmse <= 0.25
                         else "poor"
                     ),
                 }
@@ -2245,9 +2237,7 @@ def merging_normalization_audit(
             "figure_4_final_time_seconds": REFERENCE_FINAL_TIME_SECONDS,
             "figure_5_final_viscous_time": REFERENCE_FINAL_VISCOUS_TIME,
             "viscous_time_per_second": REFERENCE_VISCOUS_TIME_PER_SECOND,
-            "basis": (
-                "common final acquisition of the same Re=530 experiment and timescale"
-            ),
+            "basis": ("common final acquisition of the same Re=530 experiment and timescale"),
         },
         "runs": run_report,
     }
@@ -2259,10 +2249,7 @@ def single_vortex_error_audit(
     schemes: tuple[str, ...] = SCHEMES,
 ) -> dict:
     """Profile and core-growth errors against the exact Lamb--Oseen solution."""
-    timelines = {
-        scheme: pvd_time_map(samples_dir, "vortex", scheme)
-        for scheme in schemes
-    }
+    timelines = {scheme: pvd_time_map(samples_dir, "vortex", scheme) for scheme in schemes}
     latest = min(max(values.values()) for values in timelines.values() if values)
     runtime = resolve_runtime_physics(samples_dir, 1.0, 1.0 / 530.0, 1.0, 0.125 / 1.12)
     output: dict[str, dict] = {}
@@ -2301,8 +2288,7 @@ def single_vortex_error_audit(
         time = fields["time"].to_numpy(float)
         measured_core = fields["mean_core_radius"].to_numpy(float)
         exact_core = BETA_RMAX * np.sqrt(
-            GAUSSIAN_CORE_RADIUS**2
-            + 4.0 * runtime["kinematic_viscosity"] * time
+            GAUSSIAN_CORE_RADIUS**2 + 4.0 * runtime["kinematic_viscosity"] * time
         )
         relative_core_error = (measured_core - exact_core) / exact_core
         finite = np.isfinite(relative_core_error)
@@ -2314,12 +2300,8 @@ def single_vortex_error_audit(
             "relative_l2_vorticity": errors[1],
             "relative_l2_velocity_gradient": errors[2],
             "core_radius_comparable_samples": int(finite.sum()),
-            "core_radius_relative_rmse": float(
-                np.sqrt(np.mean(relative_core_error[finite] ** 2))
-            ),
-            "core_radius_relative_mean_bias": float(
-                np.mean(relative_core_error[finite])
-            ),
+            "core_radius_relative_rmse": float(np.sqrt(np.mean(relative_core_error[finite] ** 2))),
+            "core_radius_relative_mean_bias": float(np.mean(relative_core_error[finite])),
             "core_radius_relative_maximum_absolute_error": float(
                 np.max(np.abs(relative_core_error[finite]))
             ),
@@ -2369,8 +2351,7 @@ def dipole_error_audit(
         *(float(frame["time"].max()) for frame in frames.values()),
     )
     exact_core_end = BETA_RMAX * np.sqrt(
-        GAUSSIAN_CORE_RADIUS**2
-        + 4.0 * runtime["kinematic_viscosity"] * common_end
+        GAUSSIAN_CORE_RADIUS**2 + 4.0 * runtime["kinematic_viscosity"] * common_end
     )
     reference_end = theoretical_dipole_trajectory(
         np.asarray([common_end]),
@@ -2386,10 +2367,7 @@ def dipole_error_audit(
         trajectory = frame["vortex_centre_0_x"].to_numpy(float)
         core_radius = frame["mean_core_radius"].to_numpy(float)
         separation = frame["vortex_separation"].to_numpy(float)
-        comparable = (
-            (time <= common_end + 1.0e-12)
-            & np.isfinite(trajectory)
-        )
+        comparable = (time <= common_end + 1.0e-12) & np.isfinite(trajectory)
         reference = theoretical_dipole_trajectory(
             time[comparable],
             runtime["circulation"],
@@ -2400,8 +2378,7 @@ def dipole_error_audit(
         )
         reference_range = float(np.ptp(reference))
         trajectory_nrmse = float(
-            np.sqrt(np.mean((trajectory[comparable] - reference) ** 2))
-            / reference_range
+            np.sqrt(np.mean((trajectory[comparable] - reference) ** 2)) / reference_range
         )
         end_trajectory = float(np.interp(common_end, time, trajectory))
         end_core = float(np.interp(common_end, time, core_radius))
@@ -2409,17 +2386,11 @@ def dipole_error_audit(
         runs[scheme] = {
             "comparable_samples": int(comparable.sum()),
             "trajectory_rmse_over_reference_range": trajectory_nrmse,
-            "end_trajectory_over_a_c0": end_trajectory
-            / runtime["velocity_peak_radius0"],
-            "end_trajectory_relative_error": (end_trajectory - reference_end)
-            / reference_end,
-            "end_separation_over_b0": end_separation
-            / runtime["vortex_separation"],
-            "end_core_radius_over_a_c0": end_core
-            / runtime["velocity_peak_radius0"],
-            "end_core_radius_relative_to_isolated_exact": (
-                end_core - exact_core_end
-            )
+            "end_trajectory_over_a_c0": end_trajectory / runtime["velocity_peak_radius0"],
+            "end_trajectory_relative_error": (end_trajectory - reference_end) / reference_end,
+            "end_separation_over_b0": end_separation / runtime["vortex_separation"],
+            "end_core_radius_over_a_c0": end_core / runtime["velocity_peak_radius0"],
+            "end_core_radius_relative_to_isolated_exact": (end_core - exact_core_end)
             / exact_core_end,
         }
     return {
@@ -2463,16 +2434,14 @@ def energy_balance_audit(
                     else None
                 ),
                 "direct_comparable_end_time": (
-                    float(frame.loc[comparable, "time"].max())
-                    if comparable.any()
-                    else None
+                    float(frame.loc[comparable, "time"].max()) if comparable.any() else None
                 ),
             }
     return {
         "finite_difference_definition": (
             "backward difference of consecutive direct unbounded kinetic-energy integrals"
         ),
-        "dynamic_fourier_box_policy": (
+        "dynamic_fourier_box_mode": (
             "instantaneous energy and -nu*Omega remain reportable; dE/dt is undefined"
         ),
         "legacy_backend_inference_particle_limit": DIRECT_ENERGY_PARTICLE_LIMIT,
@@ -2522,9 +2491,7 @@ def runtime_audit(solution_dir: Path = SOLUTION_DIR) -> dict:
         member_records = [
             record
             for path in sorted(
-                (solution_dir / "rwm_ensemble" / name).glob(
-                    f"member_*/vpm_{name}.log"
-                )
+                (solution_dir / "rwm_ensemble" / name).glob(f"member_*/vpm_{name}.log")
             )
             if (record := _solver_log_record(path)) is not None
         ]
@@ -2544,10 +2511,7 @@ def runtime_audit(solution_dir: Path = SOLUTION_DIR) -> dict:
                 "host": member_records[0]["host"],
                 "platform": member_records[0]["platform"],
             }
-    environments = {
-        (record.get("backend"), record.get("host"))
-        for record in runs.values()
-    }
+    environments = {(record.get("backend"), record.get("host")) for record in runs.values()}
     return {
         "definition": (
             "last cumulative solver-step time recorded in each solver log; "
@@ -2583,8 +2547,7 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
             final_time = float(metadata.get("final_time", np.nan))
             if final_time < EXPECTED_END_TIME - EXPECTED_DT:
                 failures.append(
-                    f"{name}: final time {final_time:.9g} does not cover "
-                    f"{EXPECTED_END_TIME:.9g}"
+                    f"{name}: final time {final_time:.9g} does not cover {EXPECTED_END_TIME:.9g}"
                 )
 
             integrals = _read_csv(folder / "flow_integrals.csv", failures)
@@ -2596,9 +2559,7 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                 positive_cadence = np.diff(integral_time)
                 positive_cadence = positive_cadence[positive_cadence > 0.0]
                 cadence = (
-                    float(np.median(positive_cadence))
-                    if positive_cadence.size
-                    else EXPECTED_DT
+                    float(np.median(positive_cadence)) if positive_cadence.size else EXPECTED_DT
                 )
                 if integrals["time"].iloc[-1] < EXPECTED_END_TIME - cadence - EXPECTED_DT:
                     failures.append(f"{name}: flow-integral history is incomplete")
@@ -2617,7 +2578,9 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                     if column == "kinetic_energy_rate":
                         tested_values = tested_values[_direct_energy_rate_mask(integrals)]
                     if np.any(tested_values > 1.0e-7):
-                        failures.append(f"{name}: significantly positive modeled energy rate in {column}")
+                        failures.append(
+                            f"{name}: significantly positive modeled energy rate in {column}"
+                        )
 
             fields = _read_csv(folder / "field_diagnostics.csv", failures, allow_nonfinite=True)
             if fields is not None:
@@ -2633,9 +2596,7 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                     field_cadence = np.diff(field_time)
                     field_cadence = field_cadence[field_cadence > 0.0]
                     allowed_gap = (
-                        float(np.median(field_cadence))
-                        if field_cadence.size
-                        else EXPECTED_DT
+                        float(np.median(field_cadence)) if field_cadence.size else EXPECTED_DT
                     )
                     if fields["time"].iloc[-1] < EXPECTED_END_TIME - allowed_gap - EXPECTED_DT:
                         failures.append(f"{name}: field diagnostics are incomplete")
@@ -2666,7 +2627,9 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                             )
                     capture = convergence.get("minimum_absolute_circulation_capture_fraction")
                     if capture is None or float(capture.min()) < 0.995:
-                        failures.append(f"{name}: column projection loses more than 0.5% circulation")
+                        failures.append(
+                            f"{name}: column projection loses more than 0.5% circulation"
+                        )
                 if fields is not None:
                     uncertainty_columns = {
                         "core_radius_0_standard_error",
@@ -2678,7 +2641,9 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                             f"{sorted(uncertainty_columns - set(fields.columns))}"
                         )
                     if name == "merging_rwm" and "is_pair_unresolved" in fields:
-                        unresolved = fields["is_pair_unresolved"].astype(str).str.lower().isin(("true", "1"))
+                        unresolved = (
+                            fields["is_pair_unresolved"].astype(str).str.lower().isin(("true", "1"))
+                        )
                         if not unresolved.any():
                             failures.append(f"{name}: statistically resolved pair never merges")
                         elif np.any(np.diff(unresolved.to_numpy(int)) < 0):
@@ -2789,7 +2754,11 @@ def _quality_warnings(
     requested_end = float(metadata.get("end_time", np.nan))
     final_time = float(metadata.get("final_time", np.nan))
     tolerance = observed_time_step if observed_time_step is not None else EXPECTED_DT
-    if np.isfinite(requested_end) and np.isfinite(final_time) and final_time > requested_end + tolerance:
+    if (
+        np.isfinite(requested_end)
+        and np.isfinite(final_time)
+        and final_time > requested_end + tolerance
+    ):
         warnings.append(
             "Archival run exceeds the requested end time; all comparisons are truncated "
             "to the declared common physical-time window."
@@ -2859,7 +2828,7 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
     timing = runtime_audit(SOLUTION_DIR)
     return {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "policy": (
+        "plotting_notes": (
             "Figures plot every scientifically reportable sample; undefined rates from "
             "changing Fourier audit boxes are retained in raw archives but not plotted."
         ),
@@ -2871,9 +2840,7 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
         "energy_rate_audit": energy,
         "runtime_audit": timing,
         "figures": sorted(
-            path.name
-            for path in figures_dir.iterdir()
-            if path.suffix.lower() in {".png", ".pdf"}
+            path.name for path in figures_dir.iterdir() if path.suffix.lower() in {".png", ".pdf"}
         ),
     }
 

@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
-taichi = pytest.importorskip("taichi", reason="VPM requires taichi")
-
+import taichi
 from test_panel_solver_sphere_analytic import _icosphere_triangles  # noqa: E402
 
 from source.solvers.vpm.boundary_elements.panels.coupling.kinematics import (  # noqa: E402
@@ -16,7 +14,7 @@ from source.solvers.vpm.boundary_elements.panels.geometry.stl_io import save_stl
 from source.solvers.vpm.boundary_elements.panels.solver.panel_solver import (  # noqa: E402
     PanelSolver,
 )
-from source.solvers.vpm.config import PanelBodySetup, VPMSetup  # noqa: E402
+from source.solvers.vpm.config import Numerics, PanelBodySetup, VPMCase  # noqa: E402
 
 
 def _ensure_taichi_cpu() -> None:
@@ -113,10 +111,10 @@ def test_mutual_influence_changes_two_body_solution(tmp_path):
     )
 
 
-def test_declarative_bodies_reject_duplicate_uids_and_round_trip():
+def test_declarative_bodies_reject_duplicate_uids_without_partial_serialization():
     body = PanelBodySetup(stl="body.stl", uid="body", translation=(1, 2, 3))
-    setup = VPMSetup(bodies=(body,))
-    restored = VPMSetup.from_dict(setup.to_dict())
-    assert restored.bodies == (body,)
+    case = VPMCase(numerics=Numerics(bodies=(body,)))
+    assert case.numerics.bodies == (body,)
+    assert not hasattr(VPMCase, "to_dict")
     with pytest.raises(ValueError, match="Duplicate panel body uid"):
-        VPMSetup(bodies=(body, body))
+        Numerics(bodies=(body, body))

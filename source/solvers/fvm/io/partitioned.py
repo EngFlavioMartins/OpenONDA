@@ -1,4 +1,4 @@
-"""Conflict-free partitioned checkpoint output and reconstruction."""
+"""Conflict-free partitioned backup output and reconstruction."""
 
 from __future__ import annotations
 
@@ -14,20 +14,20 @@ import numpy as np
 from source.write_precision import cast_for_write
 
 from ..config.types import OutputConfig
-from .checkpoint import decode_state, encode_state
+from .backup import decode_state, encode_state
 from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter, atomic_write_text
 
-PARTITIONED_CHECKPOINT_VERSION = 6
+PARTITIONED_BACKUP_VERSION = 6
 
 
-def _resolve_checkpoint_file(target: Path, name: str) -> Path:
+def _resolve_backup_file(target: Path, name: str) -> Path:
     """Resolve one manifest file without allowing path traversal."""
     if not isinstance(name, str) or not name:
-        raise ValueError("Partitioned checkpoint file names must be non-empty strings")
+        raise ValueError("Partitioned backup file names must be non-empty strings")
     relative = Path(name)
     if relative.is_absolute() or ".." in relative.parts or len(relative.parts) != 1:
-        raise ValueError(f"Unsafe partitioned checkpoint file path: {name!r}")
+        raise ValueError(f"Unsafe partitioned backup file path: {name!r}")
     return target / relative
 
 
@@ -61,10 +61,10 @@ def _error_payload(error: Exception, *, rank: int) -> dict[str, object]:
     }
 
 
-def _raise_collective_checkpoint_error(payload: dict[str, object]) -> None:
+def _raise_collective_backup_error(payload: dict[str, object]) -> None:
     code = payload.get("errno")
     message = (
-        f"partitioned checkpoint failed on rank {payload['rank']} "
+        f"partitioned backup failed on rank {payload['rank']} "
         f"({payload['type']}): {payload['message']}"
     )
     if isinstance(code, int):
@@ -72,9 +72,9 @@ def _raise_collective_checkpoint_error(payload: dict[str, object]) -> None:
     raise RuntimeError(message)
 
 
-def save_partitioned_solver_checkpoint(solver, directory) -> Path:
-    """Publish a complete checkpoint without invalidating the prior generation."""
-    from .checkpoint import config_hash
+def save_partitioned_solver_backup(solver, directory) -> Path:
+    """Publish a complete backup without invalidating the prior generation."""
+    from .backup import config_hash
 
     target = Path(directory)
     preparation_error = None
@@ -85,7 +85,7 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
             preparation_error = _error_payload(error, rank=solver.parallel.rank)
     preparation_error = solver.parallel.bcast(preparation_error, root=0)
     if preparation_error is not None:
-        _raise_collective_checkpoint_error(preparation_error)
+        _raise_collective_backup_error(preparation_error)
     partition = solver.parallel.partition
     arrays = {
         "global_cell_id": partition.local_global_ids,
@@ -152,12 +152,12 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
     errors = solver.parallel.comm.allgather(local_error)
     failure = next((error for error in errors if error is not None), None)
     if failure is not None:
-        _raise_collective_checkpoint_error(failure)
+        _raise_collective_backup_error(failure)
 
     manifest_error = None
     if solver.parallel.is_root:
         manifest = {
-            "format_version": PARTITIONED_CHECKPOINT_VERSION,
+            "format_version": PARTITIONED_BACKUP_VERSION,
             "generation": generation,
             "config_hash": config_hash(solver.setup),
             "mesh_hash": solver.mesh_data["global_mesh_hash"],
@@ -178,15 +178,13 @@ def save_partitioned_solver_checkpoint(solver, directory) -> Path:
             manifest_error = _error_payload(error, rank=partition.rank)
     manifest_error = solver.parallel.bcast(manifest_error, root=0)
     if manifest_error is not None:
-        _raise_collective_checkpoint_error(manifest_error)
+        _raise_collective_backup_error(manifest_error)
     return target
 
 
-def load_partitioned_solver_checkpoint(
-    solver, directory, *, allow_config_change: bool = False
-) -> None:
-    """Restore a complete checkpoint for the same mesh and communicator size."""
-    from .checkpoint import config_hash
+def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bool = False) -> None:
+    """Restore a complete backup for the same mesh and communicator size."""
+    from .backup import config_hash
 
     target = Path(directory)
     manifest = None
@@ -203,32 +201,32 @@ def load_partitioned_solver_checkpoint(
         "files",
     }
     if not isinstance(manifest, dict) or set(manifest) != expected_manifest_keys:
-        raise ValueError("Partitioned checkpoint manifest has invalid fields")
+        raise ValueError("Partitioned backup manifest has invalid fields")
     version = manifest.get("format_version")
-    if version != PARTITIONED_CHECKPOINT_VERSION:
-        raise ValueError("Unsupported partitioned FVM checkpoint version")
+    if version != PARTITIONED_BACKUP_VERSION:
+        raise ValueError("Unsupported partitioned FVM backup version")
     if manifest.get("n_ranks") != solver.parallel.size:
-        raise ValueError("Partitioned checkpoint communicator size does not match")
+        raise ValueError("Partitioned backup communicator size does not match")
     if manifest.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
-        raise ValueError("Partitioned checkpoint mesh hash does not match")
+        raise ValueError("Partitioned backup mesh hash does not match")
     if not allow_config_change and manifest.get("config_hash") != config_hash(solver.setup):
         raise ValueError(
-            "Partitioned checkpoint configuration hash does not match "
+            "Partitioned backup configuration hash does not match "
             f"(allow_config_change={allow_config_change})"
         )
 
     files = manifest.get("files")
     if not isinstance(files, list) or len(files) != solver.parallel.size:
-        raise ValueError("Partitioned checkpoint file manifest is incomplete")
+        raise ValueError("Partitioned backup file manifest is incomplete")
     generation = manifest.get("generation")
     expected_files = [
         f"rank-{file_rank:05d}-{generation}.npz" for file_rank in range(solver.parallel.size)
     ]
     if not isinstance(generation, str) or not generation or files != expected_files:
-        raise ValueError("Partitioned checkpoint contains mixed or invalid generations")
+        raise ValueError("Partitioned backup contains mixed or invalid generations")
 
     rank = solver.parallel.rank
-    rank_file = _resolve_checkpoint_file(target, files[rank])
+    rank_file = _resolve_backup_file(target, files[rank])
     with np.load(rank_file, allow_pickle=False) as archive:
         state = decode_state({name: np.array(archive[name], copy=True) for name in archive.files})
     required_state = {
@@ -256,14 +254,14 @@ def load_partitioned_solver_checkpoint(
     missing = sorted(required_state - set(state))
     if missing or unexpected:
         raise ValueError(
-            f"Invalid partitioned checkpoint fields; missing={missing}, unexpected={unexpected}"
+            f"Invalid partitioned backup fields; missing={missing}, unexpected={unexpected}"
         )
 
     partition = solver.parallel.partition
     if not np.array_equal(state.pop("global_cell_id"), partition.local_global_ids):
-        raise ValueError("Partitioned checkpoint cell IDs do not match")
+        raise ValueError("Partitioned backup cell IDs do not match")
     if not np.array_equal(state.pop("global_face_id"), solver.mesh_data["global_face_id"]):
-        raise ValueError("Partitioned checkpoint face IDs do not match")
+        raise ValueError("Partitioned backup face IDs do not match")
     for name in (
         "velocity",
         "kinematic_pressure",
@@ -275,7 +273,7 @@ def load_partitioned_solver_checkpoint(
     ):
         destination = np.asarray(getattr(solver, name))
         if state[name].shape != destination.shape or not np.all(np.isfinite(state[name])):
-            raise ValueError(f"Partitioned checkpoint field {name} is incompatible")
+            raise ValueError(f"Partitioned backup field {name} is incompatible")
         destination[:] = state[name]
     eddy_viscosity = state["eddy_viscosity"]
     if eddy_viscosity.size and (
@@ -283,7 +281,7 @@ def load_partitioned_solver_checkpoint(
         or not np.all(np.isfinite(eddy_viscosity))
         or np.any(eddy_viscosity < 0.0)
     ):
-        raise ValueError("Partitioned checkpoint turbulent viscosity is incompatible")
+        raise ValueError("Partitioned backup turbulent viscosity is incompatible")
     solver.eddy_viscosity = None if not eddy_viscosity.size else eddy_viscosity
     solver.time = float(state["time"])
     solver.time_step_size = float(state["time_step_size"])
@@ -294,7 +292,7 @@ def load_partitioned_solver_checkpoint(
     solver._n_committed_time_steps = int(state["n_committed_time_steps"])
     acceptance_names = sorted(solver._n_consecutive_accepted_steps)
     if state["n_consecutive_accepted_steps"].shape != (len(acceptance_names),):
-        raise ValueError("Partitioned checkpoint acceptance state is incompatible")
+        raise ValueError("Partitioned backup acceptance state is incompatible")
     solver._n_consecutive_accepted_steps.update(
         zip(acceptance_names, map(int, state["n_consecutive_accepted_steps"]), strict=True)
     )
@@ -303,7 +301,7 @@ def load_partitioned_solver_checkpoint(
     solver.parallel.barrier()
 
 
-def write_partition_checkpoint(directory, partition, fields: dict[str, np.ndarray], comm) -> None:
+def write_partition_backup(directory, partition, fields: dict[str, np.ndarray], comm) -> None:
     """Write one owned-cell archive per rank and a root manifest."""
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
@@ -328,7 +326,7 @@ def write_partition_checkpoint(directory, partition, fields: dict[str, np.ndarra
     comm.Barrier()
 
 
-def reconstruct_partition_checkpoint(directory) -> dict[str, np.ndarray]:
+def reconstruct_partition_backup(directory) -> dict[str, np.ndarray]:
     """Reconstruct globally ordered fields for visualization or comparison."""
     target = Path(directory)
     manifest = json.loads((target / "manifest.json").read_text())

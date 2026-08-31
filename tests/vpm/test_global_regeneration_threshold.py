@@ -1,4 +1,4 @@
-"""Global particle-regeneration threshold contracts."""
+"""Global particle-regeneration threshold tests."""
 
 import numpy as np
 import pytest

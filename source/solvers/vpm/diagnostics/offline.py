@@ -257,7 +257,7 @@ class OfflineFlowDiagnostics:
             n_particles_total=n,
         )
 
-    # Precision policy: f32 is the default throughout OpenONDA. Precision should
+    # Precision choice: f32 is the default throughout OpenONDA. Precision should
     # be selected at the Solver class constructor and propagated consistently.
     # Ensure no other code uses f64 as default.
     def compute_all(self, verbose: bool = True) -> None:

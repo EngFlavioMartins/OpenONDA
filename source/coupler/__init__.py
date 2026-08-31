@@ -8,7 +8,7 @@ absolute common-lattice FVM/VPM circulation blend while the outer wake is
 retained.
 
 The public driver follows the physical coupling sequence. Boundary sampling,
-vorticity transfer, checkpointing, and reporting live in focused modules
+vorticity transfer, backuping, and reporting live in focused modules
 beside it.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team

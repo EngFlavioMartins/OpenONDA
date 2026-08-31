@@ -5,9 +5,8 @@ it calls the coupled solver's advance method with the current VPM state and
 appends any wake particles the solver sheds.  The solver implementations live
 in ``boundary_elements``; the coupling stepper never re-implements them.
 
-The stepper holds a back-reference to the solver and routes attribute reads
-through it (``__getattr__``), matching the delegation pattern of
-:class:`~source.solvers.vpm.core.evolution.EvolutionStepper`.
+The stepper holds a back-reference to the solver but names each capability it
+uses.  It is intentionally not a forwarding facade for the full solver API.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
@@ -29,25 +28,24 @@ class CouplingStepper:
     def __init__(self, solver: VPMSolver) -> None:
         self.solver = solver
 
-    def __getattr__(self, name: str):
-        return getattr(self.solver, name)
-
     def advance_panel(self):
         """Advance panel–VPM coupling and append any shed particles."""
-        if getattr(self.panel_solver, "coupling_scope", "full") == "vpm_boundary_condition":
+        solver = self.solver
+        panel_solver = solver.panel_solver
+        if getattr(panel_solver, "coupling_scope", "full") == "vpm_boundary_condition":
             return
-        new_particles = self.panel_solver.advance(
-            particles=self.particles,
-            physics=self.physics,
-            freestream_velocity=self.freestream_velocity,
-            time_step_size=self.time_step_size,
-            time=self.time,
-            step=self.step,
+        new_particles = panel_solver.advance(
+            particles=solver.particles,
+            physics=solver.physics,
+            freestream_velocity=solver.freestream_velocity,
+            time_step_size=solver.time_step_size,
+            time=solver.stepper.time,
+            step=solver.stepper.step,
         )
         if new_particles is not None:
             n = len(new_particles["vertex_position"])
             if n > 0:
-                visc_cfg = getattr(self.setup, "viscous", None)
+                visc_cfg = getattr(solver.setup, "viscous", None)
                 if visc_cfg is None or visc_cfg.scheme == "NONE":
                     shed_kinematic_viscosity = 0.0
                 else:
@@ -60,14 +58,14 @@ class CouplingStepper:
                             "is applied"
                         )
                     shed_kinematic_viscosity = float(configured_kinematic_viscosity)
-                kinematic_viscosity = np.full(n, shed_kinematic_viscosity, dtype=self.np_dtype)
+                kinematic_viscosity = np.full(n, shed_kinematic_viscosity, dtype=solver.np_dtype)
 
-                position = new_particles["vertex_position"].astype(self.np_dtype)
-                vortex_strength = new_particles["vortex_strength"].astype(self.np_dtype)
-                core_radius = new_particles["core_radius"].astype(self.np_dtype)
-                particle_volume = new_particles["particle_volume"].astype(self.np_dtype)
+                position = new_particles["vertex_position"].astype(solver.np_dtype)
+                vortex_strength = new_particles["vortex_strength"].astype(solver.np_dtype)
+                core_radius = new_particles["core_radius"].astype(solver.np_dtype)
+                particle_volume = new_particles["particle_volume"].astype(solver.np_dtype)
 
-                self.add_vortex_particles(
+                solver.add_vortex_particles(
                     position=position,
                     velocity=np.zeros((n, 3), dtype=self.np_dtype),
                     vortex_strength=vortex_strength,
@@ -78,17 +76,18 @@ class CouplingStepper:
 
     def advance_vlm(self, time_step_size: float) -> None:
         """Advance VLM–VPM coupling and append shed wake particles."""
-        if self.vlm_solver is None:
+        solver = self.solver
+        if solver.vlm_solver is None:
             return
 
-        wake_particles = self.vlm_solver.advance_coupled(
-            particles=self.particles,
-            physics=self.physics,
-            config=self.setup,
+        wake_particles = solver.vlm_solver.advance_coupled(
+            particles=solver.particles,
+            physics=solver.physics,
+            config=solver.setup,
             time_step_size=time_step_size,
-            step=self.step,
-            time=self.time,
+            step=solver.stepper.step,
+            time=solver.stepper.time,
         )
 
         if wake_particles is not None:
-            self.add_vortex_particles(**wake_particles)
+            solver.add_vortex_particles(**wake_particles)

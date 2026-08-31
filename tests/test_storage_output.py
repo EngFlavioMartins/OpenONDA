@@ -1,4 +1,4 @@
-"""Regression contracts for compact, ParaView-readable VTK and sampler output."""
+"""Regression tests for compact, ParaView-readable VTK and sampler output."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import sys
 from types import SimpleNamespace
 
 import numpy as np
-import pytest
 
 from source.solvers.vpm.io.sampling import LineSampler, SurfaceSampler
 from source.solvers.vpm.io.sampling.field_samplers import SAMPLER_BASE_CSV_COLUMNS
@@ -75,7 +74,8 @@ def test_write_precision_preserves_integers_and_makes_paraview_safe_float16():
 
 
 def test_surface_sampler_writes_compact_paraview_readable_vts(tmp_path):
-    pv = pytest.importorskip("pyvista")
+    import pyvista as pv
+
     sampler = SurfaceSampler(
         point=[0.0, 0.0, 0.0],
         normal=[0.0, 0.0, 1.0],
@@ -111,7 +111,8 @@ def test_surface_sampler_writes_compact_paraview_readable_vts(tmp_path):
 
 
 def test_fvm_export_writes_compact_paraview_readable_vtu(tmp_path):
-    pv = pytest.importorskip("pyvista")
+    import pyvista as pv
+
     from source.solvers.fvm.config.types import OutputConfig
     from source.solvers.fvm.io.vtk_exporter import VTKExporter
     from source.solvers.fvm.mesh.cartesian import structured_box

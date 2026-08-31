@@ -49,7 +49,7 @@ def _particle_times() -> list[tuple[float, Path]]:
 
     snapshots = []
     solution = ROOT / "solution"
-    paths = (*solution.glob("vpm_*.h5"), *(solution / "checkpoints").glob("vpm_*.h5"))
+    paths = (*solution.glob("vpm_*.h5"), *(solution / "backups").glob("vpm_*.h5"))
     for path in sorted(paths):
         with h5py.File(path, "r") as handle:
             attrs = handle["solver"].attrs
@@ -60,7 +60,7 @@ def _particle_times() -> list[tuple[float, Path]]:
 def particles_at(time: float) -> dict:
     snapshots = _particle_times()
     if not snapshots:
-        raise FileNotFoundError("no VPM snapshots in solution/ or solution/checkpoints/")
+        raise FileNotFoundError("no VPM snapshots in solution/ or solution/backups/")
     snapshot_time, path = min(snapshots, key=lambda item: abs(item[0] - time))
     if abs(snapshot_time - time) > MATCH_TOL:
         raise ValueError(f"no VPM snapshot at t={time:.6g}")

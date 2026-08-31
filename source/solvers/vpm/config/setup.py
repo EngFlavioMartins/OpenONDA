@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
-import json
-import sys
-from typing import Any, Literal
+from dataclasses import dataclass, field
+from typing import Literal
 
 from source.write_precision import (
     DEFAULT_WRITE_PRECISION,
@@ -15,23 +13,20 @@ from source.write_precision import (
 
 from ..boundary_elements.vlm.config import VLMSetup
 from .advection import AdvectionConfig
+from .artifacts import Backup, Samplers
 from .constants import (
     DEFAULT_CUTOFF_RADIUS_FACTOR,
     DEFAULT_TIME_STEP,
     MAX_N_PARTICLES,
-    SMAGORINSKY_CONSTANT,
     TREECODE_SUPPORTED_KERNELS,
 )
-from .divergence_relaxation import DivergenceRelaxationConfig
-from .filament_refinement import FilamentRefinementConfig
-from .output import Backup, Samplers
+from .diagnostics import DiagnosticsConfig
+from .health import HealthLimits
 from .stabilization import StabilizationConfig
 from .stretching import StretchingConfig
 from .turbulence import TurbulenceConfig
 from .velocity import VelocityConfig
 from .viscous import ViscousConfig
-
-sys.tracebacklimit = 0
 
 
 @dataclass(frozen=True)
@@ -41,7 +36,7 @@ class PanelBodySetup:
     stl: str
     uid: str
     group_id: int = 0
-    kinematics: Any | None = None
+    kinematics: object | None = None
     translation: tuple[float, float, float] | None = None
     rotation_degrees: tuple[float, float, float] | None = None
     rotation_centre: tuple[float, float, float] | None = None
@@ -108,6 +103,8 @@ class VPMSetup:
     random_seed: int = 42
     device_memory_fraction: float = 0.5
     debug_mode: bool = False
+    diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
+    health_limits: HealthLimits = field(default_factory=HealthLimits)
 
     # Output
     backup: Backup = field(default_factory=Backup)
@@ -120,7 +117,7 @@ class VPMSetup:
     velocity: VelocityConfig | None = None
 
     # Optional coupled solvers and sampling
-    panel_solver: Any | None = None
+    panel_solver: object | None = None
     bodies: tuple[PanelBodySetup, ...] = ()
 
     domain_bounds: tuple[float, ...] | None = None
@@ -132,6 +129,10 @@ class VPMSetup:
             raise TypeError("backup must be a Backup instance")
         if not isinstance(self.samplers, Samplers):
             raise TypeError("samplers must be a Samplers instance")
+        if not isinstance(self.diagnostics, DiagnosticsConfig):
+            raise TypeError("diagnostics must be a DiagnosticsConfig instance")
+        if not isinstance(self.health_limits, HealthLimits):
+            raise TypeError("health_limits must be a HealthLimits instance")
         if len(self.freestream_velocity) != 3:
             raise ValueError("freestream_velocity must contain three components")
         object.__setattr__(
@@ -298,214 +299,6 @@ class VPMSetup:
             raise ValueError(
                 "filament-refinement max_n_particles cannot exceed VPMSetup.max_n_particles"
             )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Return the serializable setup using canonical field names."""
-        if self.vlm is not None:
-            raise ValueError(
-                "VPMSetup.to_dict() cannot serialize an attached VLMSetup: VLM "
-                "surfaces and kinematics are live Python objects, so a serialized "
-                "copy would silently discard the coupling configuration. Construct "
-                "the coupled solver programmatically instead of round-tripping it "
-                "through a file."
-            )
-
-        def as_serializable(value: Any) -> Any:
-            if hasattr(value, "__dataclass_fields__"):
-                return {
-                    item.name: as_serializable(getattr(value, item.name)) for item in fields(value)
-                }
-            if isinstance(value, tuple):
-                return [as_serializable(item) for item in value]
-            return value
-
-        return {
-            "time_step_size": self.time_step_size,
-            "time": self.time,
-            "step": self.step,
-            "time_integration": self.time_integration,
-            "axisymmetric_no_swirl_axis": (self.axisymmetric_no_swirl_axis),
-            "advection": as_serializable(self.advection),
-            "stretching": as_serializable(self.stretching),
-            "viscous": as_serializable(self.viscous),
-            "turbulence": as_serializable(self.turbulence),
-            "stabilization": as_serializable(self.stabilization),
-            "vlm": None,
-            "particle_kernel": self.particle_kernel,
-            "max_n_particles": self.max_n_particles,
-            "max_evaluation_points": self.max_evaluation_points,
-            "compute_device": self.compute_device,
-            "backup": as_serializable(self.backup),
-            "cutoff_radius_factor": self.cutoff_radius_factor,
-            "precision": self.precision,
-            "write_precision": self.write_precision,
-            "random_seed": self.random_seed,
-            "device_memory_fraction": self.device_memory_fraction,
-            "debug_mode": self.debug_mode,
-            "freestream_velocity": list(self.freestream_velocity),
-            "verbose": self.verbose,
-            "velocity": (as_serializable(self.velocity) if self.velocity is not None else None),
-            "bodies": [as_serializable(body) for body in self.bodies],
-            "domain_bounds": (list(self.domain_bounds) if self.domain_bounds is not None else None),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> VPMSetup:
-        """Reconstruct a setup from the canonical serialized schema."""
-        values = dict(data)
-        known = {item.name for item in fields(cls)}
-        unknown = sorted(set(values) - known)
-        if unknown:
-            raise ValueError("Unknown VPMSetup field(s): " + ", ".join(unknown))
-
-        if isinstance(values.get("viscous"), dict):
-            values["viscous"] = ViscousConfig(**values["viscous"])
-        if isinstance(values.get("turbulence"), dict):
-            turbulence = dict(values["turbulence"])
-            turbulence.pop("flow_model", None)
-            values["turbulence"] = TurbulenceConfig(**turbulence)
-        for name, config_type in {
-            "advection": AdvectionConfig,
-            "stretching": StretchingConfig,
-            "velocity": VelocityConfig,
-        }.items():
-            if isinstance(values.get(name), dict):
-                values[name] = config_type(**values[name])
-        if isinstance(values.get("stabilization"), dict):
-            values["stabilization"] = cls._stabilization_from_dict(values)
-        if isinstance(values.get("backup"), dict):
-            values["backup"] = Backup(**values["backup"])
-        if "bodies" in values:
-            body_values = values["bodies"]
-            if body_values is None:
-                values["bodies"] = ()
-            else:
-                values["bodies"] = tuple(
-                    item if isinstance(item, PanelBodySetup) else PanelBodySetup(**item)
-                    for item in body_values
-                )
-        return cls(**values)
-
-    @staticmethod
-    def _stabilization_from_dict(values: dict[str, Any]) -> StabilizationConfig:
-        """Rebuild stabilization from the canonical nested schema."""
-        section = values.pop("stabilization", None)
-        if section is None:
-            return StabilizationConfig.disabled()
-        if isinstance(section, StabilizationConfig):
-            return section
-        if not isinstance(section, dict):
-            raise TypeError("stabilization must be a mapping")
-        section = dict(section)
-        for name, config_type in {
-            "filament_refinement": FilamentRefinementConfig,
-            "divergence_relaxation": DivergenceRelaxationConfig,
-        }.items():
-            entry = section.get(name)
-            if isinstance(entry, dict):
-                section[name] = config_type(**entry)
-            elif entry is not None and not isinstance(entry, config_type):
-                raise TypeError(f"{name} must be a mapping")
-        known = {item.name for item in fields(StabilizationConfig)}
-        unknown = sorted(set(section) - known)
-        if unknown:
-            raise ValueError("Unknown StabilizationConfig field(s): " + ", ".join(unknown))
-        return StabilizationConfig(**section)
-
-    @staticmethod
-    def viscous_flow_simulation(
-        time_step_size: float = 0.01,
-        freestream_velocity: tuple[float, float, float] = (
-            0.0,
-            0.0,
-            0.0,
-        ),
-        viscous: ViscousConfig | None = None,
-        **kwargs: Any,
-    ) -> VPMSetup:
-        """Return a standard viscous-flow setup."""
-        if viscous is None:
-            viscous = ViscousConfig.cs()
-
-        stretching = kwargs.pop(
-            "stretching",
-            StretchingConfig.disabled(),
-        )
-        return VPMSetup(
-            time_step_size=time_step_size,
-            stretching=stretching,
-            viscous=viscous,
-            freestream_velocity=freestream_velocity,
-            **kwargs,
-        )
-
-    @staticmethod
-    def dns_simulation(
-        time_step_size: float = 0.01,
-        **kwargs: Any,
-    ) -> VPMSetup:
-        """Return a DNS setup."""
-        stretching = kwargs.pop(
-            "stretching",
-            StretchingConfig.transposed(),
-        )
-        viscous = kwargs.pop(
-            "viscous",
-            ViscousConfig.cs(),
-        )
-        turbulence = kwargs.pop(
-            "turbulence",
-            TurbulenceConfig.dns(),
-        )
-        return VPMSetup(
-            time_step_size=time_step_size,
-            stretching=stretching,
-            viscous=viscous,
-            turbulence=turbulence,
-            **kwargs,
-        )
-
-    @staticmethod
-    def les_simulation(
-        time_step_size: float = 0.01,
-        smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
-        subgrid_dissipation_coefficient: float = 1.048,
-        **kwargs: Any,
-    ) -> VPMSetup:
-        """Return an equilibrium Smagorinsky LES setup."""
-        stretching = kwargs.pop(
-            "stretching",
-            StretchingConfig.transposed(),
-        )
-        viscous = kwargs.pop(
-            "viscous",
-            ViscousConfig.cs(),
-        )
-        turbulence = kwargs.pop(
-            "turbulence",
-            TurbulenceConfig.les_smagorinsky(
-                smagorinsky_coefficient=smagorinsky_coefficient,
-                subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
-            ),
-        )
-        return VPMSetup(
-            time_step_size=time_step_size,
-            stretching=stretching,
-            viscous=viscous,
-            turbulence=turbulence,
-            **kwargs,
-        )
-
-    def save_to_file(self, filename: str) -> None:
-        """Write the setup to JSON using canonical field names."""
-        with open(filename, "w", encoding="utf-8") as stream:
-            json.dump(self.to_dict(), stream, indent=2)
-
-    @classmethod
-    def load_from_file(cls, filename: str) -> VPMSetup:
-        """Load a setup from canonical JSON."""
-        with open(filename, encoding="utf-8") as stream:
-            return cls.from_dict(json.load(stream))
 
     def __str__(self) -> str:
         """Return a concise engineering summary of the setup."""

@@ -14,7 +14,7 @@ from .config import (
     MeshQualityConfig,
     OutputConfig,
     PimpleControl,
-    RunAcceptancePolicy,
+    RunAcceptanceLimits,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
@@ -35,7 +35,7 @@ from .sampling.forces import (
     YPlusSampler,
 )
 from .solve import equation_solver
-from .solve.contracts import StepDiagnostics
+from .solve.diagnostics import StepDiagnostics
 from .solve.linear_interface import LinearSolveResult
 
 __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
@@ -61,7 +61,7 @@ __all__ = [
     "MeshQualityConfig",
     "OutputConfig",
     "PimpleControl",
-    "RunAcceptancePolicy",
+    "RunAcceptanceLimits",
     "StepDiagnostics",
     "SurfaceSampler",
     "TimeConfig",

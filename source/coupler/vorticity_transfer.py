@@ -18,6 +18,7 @@ from source.coupler.lattice_transfer import (
     blend_fvm_vpm_circulation_in_renewal_belt,
     build_renewal_lattice,
     first_vorticity_moment,
+    scatter_vortex_strength_to_renewal_lattice,
     state_blend_weight,
 )
 from source.coupler.renewal_projection import (
@@ -960,6 +961,49 @@ def replace_particles_from_lattice_blend(
         # below is the production gate.
         compute_divergence_diagnostic=False,
     )
+
+    birth_core_radius = ratio * spacing
+    lattice_core_radius = np.full(len(state.position), birth_core_radius, dtype=np.float64)
+    if getattr(vpm, "viscous_scheme", None) == "CS" and np.any(state.vpm_source_mask):
+        # Core spreading stores physical diffusion age in sigma^2.  Remapping
+        # circulation without remapping that age would spuriously reset
+        # sigma^2 to its birth value.  Scatter age-weighted circulation through
+        # the same complete M4' operator and recover its local scalar age by
+        # projection onto the mapped VPM circulation.  M4' reproduces quadratic
+        # position moments, so carrying this term also preserves the Gaussian
+        # blob angular impulse during a pure representation change.
+        source = state.vpm_source_mask
+        source_strength = existing_strength[source]
+        source_age_squared = np.maximum(
+            existing_core_radius[source] ** 2 - birth_core_radius**2,
+            0.0,
+        )
+        age_weighted_field = scatter_vortex_strength_to_renewal_lattice(
+            existing_position[source],
+            source_age_squared[:, None] * source_strength,
+            renewal_lattice,
+            position_dtype=np.dtype(vpm.np_dtype),
+        ).reshape(-1, 3)
+        mapped_vpm_strength = state.vpm_vortex_strength
+        strength_squared = np.einsum("ij,ij->i", mapped_vpm_strength, mapped_vpm_strength)
+        source_weight = np.linalg.norm(source_strength, axis=1)
+        weight_sum = float(source_weight.sum(dtype=np.float64))
+        fallback_age_squared = (
+            float(np.dot(source_weight, source_age_squared) / weight_sum)
+            if weight_sum > np.finfo(np.float64).tiny
+            else float(np.mean(source_age_squared))
+        )
+        mapped_age_squared = np.full(len(state.position), fallback_age_squared, dtype=np.float64)
+        has_vpm_strength = strength_squared > np.finfo(np.float64).tiny
+        mapped_age_squared[has_vpm_strength] = (
+            np.einsum(
+                "ij,ij->i",
+                age_weighted_field[has_vpm_strength],
+                mapped_vpm_strength[has_vpm_strength],
+            )
+            / strength_squared[has_vpm_strength]
+        )
+        lattice_core_radius = np.sqrt(birth_core_radius**2 + np.maximum(mapped_age_squared, 0.0))
     if target_solid_mask is not None:
         target_solid = np.asarray(target_solid_mask, dtype=bool).reshape(-1)
     else:
@@ -977,6 +1021,7 @@ def replace_particles_from_lattice_blend(
     nonzero = strength_magnitude > 0.0
     target_position = state.position[nonzero]
     target_strength = mapped_strength[nonzero]
+    target_core_radius = lattice_core_radius[nonzero]
 
     health: dict[str, float] | None = None
     if compute_divergence_diagnostic:
@@ -988,7 +1033,7 @@ def replace_particles_from_lattice_blend(
         health_strength = np.vstack((target_strength, existing_strength[retained]))
         health_radius = np.concatenate(
             (
-                np.full(len(target_position), ratio * spacing, dtype=np.float64),
+                target_core_radius,
                 existing_core_radius[retained],
             )
         )
@@ -1115,7 +1160,7 @@ def replace_particles_from_lattice_blend(
                 position=np.ascontiguousarray(target_position[inject], dtype=dtype),
                 velocity=np.zeros((n_injected, 3), dtype=dtype),
                 vortex_strength=np.ascontiguousarray(target_strength[inject], dtype=dtype),
-                core_radius=np.full(n_injected, ratio * spacing, dtype=dtype),
+                core_radius=np.ascontiguousarray(target_core_radius[inject], dtype=dtype),
                 particle_volume=np.full(n_injected, spacing**3, dtype=dtype),
                 kinematic_viscosity=np.full(n_injected, viscosity, dtype=dtype),
                 eddy_viscosity=np.zeros(n_injected, dtype=dtype),

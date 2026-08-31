@@ -14,7 +14,7 @@ echo
 echo "===== SIMULATE ====="
 echo
 mkdir -p solution
-python -u naca4412_setup.py 2>&1 | tee solution/naca4412.log
+python -u setup.py 2>&1 | tee solution/naca4412.log
 
 echo
 echo "===== VALIDATE ====="

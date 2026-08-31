@@ -6,10 +6,6 @@ and no linear solve.  They are the cheapest entries in the stabilization
 hierarchy; the moment-constrained mechanisms (filament refinement, Winckelmans
 projection, conservative regularization) live beside them in this package.
 
-``inspect_solution``
-    Reduces the Lagrangian CFL number and rejects invalid particle state without
-    transferring particle arrays to the CPU.
-
 ``apply_stretching_viscosity``
     Adds a stretching-aware residual viscosity to ``effective_viscosity``, so the energy it
     removes leaves through the configured viscous operator and is auditable as
@@ -53,89 +49,6 @@ class StabilizationOperators:
         self._pedrizzetti_strength_before = ti.field(dtype=compute_dtype, shape=())
         self._pedrizzetti_strength_after = ti.field(dtype=compute_dtype, shape=())
         self._pedrizzetti_relaxed_count = ti.field(dtype=ti.i32, shape=())
-        self._lagrangian_cfl = ti.field(dtype=compute_dtype, shape=())
-        self._invalid_solution_state = ti.field(dtype=ti.i32, shape=())
-
-    @ti.kernel
-    def _inspect_solution_kernel(
-        self,
-        position: ti.template(),
-        vortex_strength: ti.template(),
-        velocity_gradient: ti.template(),
-        core_radius: ti.template(),
-        particle_volume: ti.template(),
-        time_step_size: ti.f32,
-        check_stability: ti.i32,
-        count: ti.i32,
-    ):
-        for i in range(count):
-            invalid = 0
-            for component in ti.static(range(3)):
-                if (
-                    ti.math.isnan(position[i][component])
-                    or ti.math.isinf(position[i][component])
-                    or ti.math.isnan(vortex_strength[i][component])
-                    or ti.math.isinf(vortex_strength[i][component])
-                ):
-                    invalid = 1
-            if (
-                ti.math.isnan(core_radius[i])
-                or ti.math.isinf(core_radius[i])
-                or core_radius[i] <= 0.0
-                or ti.math.isnan(particle_volume[i])
-                or ti.math.isinf(particle_volume[i])
-                or particle_volume[i] <= 0.0
-            ):
-                invalid = 1
-
-            if check_stability == 1:
-                for row, column in ti.static(ti.ndrange(3, 3)):
-                    if ti.math.isnan(velocity_gradient[i][row, column]) or ti.math.isinf(
-                        velocity_gradient[i][row, column]
-                    ):
-                        invalid = 1
-                gradient = velocity_gradient[i]
-                for column in ti.static(range(3)):
-                    column_sum = ti.cast(0.0, self.accumulator_dtype)
-                    for row in ti.static(range(3)):
-                        strain = 0.5 * (gradient[row, column] + gradient[column, row])
-                        column_sum += ti.abs(strain)
-                    lagrangian_cfl = time_step_size * column_sum
-                    if ti.math.isnan(lagrangian_cfl) or ti.math.isinf(lagrangian_cfl):
-                        invalid = 1
-                    else:
-                        ti.atomic_max(self._lagrangian_cfl[None], lagrangian_cfl)
-
-            if invalid == 1:
-                ti.atomic_max(self._invalid_solution_state[None], 1)
-
-    def inspect_solution(
-        self,
-        particles,
-        *,
-        time_step_size: float = 0.0,
-        check_stability: bool = False,
-    ) -> dict[str, float | bool]:
-        """Reduce the Lagrangian CFL number and check the particle state."""
-        self._invalid_solution_state.fill(0)
-        self._lagrangian_cfl.fill(0.0)
-        count = len(particles)
-        if count > 0:
-            self._inspect_solution_kernel(
-                particles.position,
-                particles.vortex_strength,
-                particles.velocity_gradient,
-                particles.core_radius,
-                particles.particle_volume,
-                float(time_step_size),
-                int(check_stability),
-                count,
-            )
-            ti.sync()
-        return {
-            "valid": not bool(self._invalid_solution_state[None]),
-            "lagrangian_cfl": float(self._lagrangian_cfl[None]),
-        }
 
     @ti.kernel
     def _apply_stretching_viscosity_kernel(

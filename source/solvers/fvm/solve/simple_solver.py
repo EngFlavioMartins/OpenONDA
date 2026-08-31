@@ -14,7 +14,7 @@ from ..fields.mixed_velocity_boundary import (
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
-from .contracts import OuterCorrectorDiagnostics
+from .diagnostics import OuterCorrectorDiagnostics
 from .linear_interface import normalized_residual, solve_linear_system
 
 
@@ -62,17 +62,17 @@ class PressureCorrectionWorkspace:
 
 def _resolve_pressure_constraint(params) -> str:
     """Select the configured all-Neumann pressure treatment for this backend."""
-    policy = str(params.get("pressure_nullspace_policy", "auto")).lower()
+    method = str(params.get("pressure_nullspace_method", "auto")).lower()
     backend = str(params.get("_linear_backend", "scipy")).lower()
-    if policy == "auto":
+    if method == "auto":
         return "nullspace" if backend == "petsc" else "reference"
-    if policy == "petsc":
+    if method == "petsc":
         if backend != "petsc":
             raise ValueError("The PETSc pressure null space requires backend='petsc'")
         return "nullspace"
-    if policy == "reference":
+    if method == "reference":
         return "reference"
-    raise ValueError(f"Unknown pressure null-space policy {policy!r}")
+    raise ValueError(f"Unknown pressure null-space method {method!r}")
 
 
 def _pressure_requires_constraint(boundaries, velocity_star, mesh_data, geo_data) -> bool:
@@ -2008,7 +2008,7 @@ class SIMPLESolver:
             source_implicit=source_implicit,
             linear_backend=self.params.get("_linear_backend", "scipy"),
             parallel_context=self.params.get("_parallel_context"),
-            failure_policy=self.params.get("linear_failure_policy", "raise"),
+            failure_action=self.params.get("linear_failure_action", "raise"),
             log_sink=self.params.get("_logger"),
             momentum_tolerance=self.params.get("momentum_tolerance", 1e-4),
             maxiter=self.params.get("momentum_max_iterations", 1000),
@@ -2051,7 +2051,7 @@ class SIMPLESolver:
             maxiter=self.params.get("pressure_max_iterations", 500),
             backend=self.params.get("_linear_backend", "scipy"),
             parallel_context=self.params.get("_parallel_context"),
-            failure_policy=self.params.get("linear_failure_policy", "raise"),
+            failure_action=self.params.get("linear_failure_action", "raise"),
             log_sink=self.params.get("_logger"),
             nullspace=(
                 "constant"

@@ -3,8 +3,8 @@
   "status": "FAIL",
   "qualification": "one-turnover spectral screen; not VPM or journal validation",
   "configuration": {
-    "checkpoint": "artifacts/vpm_les/stage_4b3_seed20260817/checkpoint_0003000.npz",
-    "checkpoint_time": 60.0,
+    "backup": "artifacts/vpm_les/stage_4b3_seed20260817/backup_0003000.npz",
+    "backup_time": 60.0,
     "reference_n": 64,
     "les_n": 32,
     "kinematic_viscosity": 0.02,

@@ -22,7 +22,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from collections.abc import Callable
 from contextlib import nullcontext
-import os
 import time
 
 from .logging import Logging
@@ -103,8 +102,15 @@ class RuntimeProfiler:
     no GPU state and never transfers particle data.
     """
 
-    def __init__(self, *, enabled: bool = True, sync: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        enabled: bool = True,
+        detailed: bool = False,
+        sync: Callable[[], None] | None = None,
+    ) -> None:
         self.enabled = enabled
+        self.detailed = detailed
         self._sync = sync
         # name -> cumulative seconds / call count / most-recent (this-step) seconds
         self._cumulative: dict[str, float] = {}
@@ -160,10 +166,9 @@ class RuntimeProfiler:
         """Print the just-completed step's time and optional detailed breakdown.
 
         Reuses :meth:`Logging.step_timing` so the per-step console style is
-        unchanged.  The breakdown is shown only when ``VPM_DETAILED_TIMING=1``
-        is set.
+        unchanged. The optional breakdown is controlled by ``detailed``.
         """
-        detailed = self._last if os.environ.get("VPM_DETAILED_TIMING", "0") == "1" else None
+        detailed = self._last if self.detailed else None
         Logging.step_timing(self.step_time, self.wall_time, detailed)
 
     def format_report(self) -> list[str]:

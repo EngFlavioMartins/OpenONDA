@@ -1,7 +1,7 @@
 """Measure one passive FVM--VPM downstream handoff interval.
 
 This is a diagnostic runner, not a transfer mode.  It restores an atomic
-coupled checkpoint, marks the last in-box FVM-derived particle plane with an
+coupled backup, marks the last in-box FVM-derived particle plane with an
 otherwise-unused ``group_id``, advances exactly one coupled interval, and
 writes the strength budgets surrounding the next absolute replacement.  The
 marker is metadata: neither the velocity, vortex strength, positions, nor
@@ -27,7 +27,7 @@ import numpy as np
 CASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CASE_DIR))
 
-import cube_flow_setup as case  # noqa: E402
+import setup as case  # noqa: E402
 import openonda.coupler as coupling  # noqa: E402
 import openonda.fvm as fvm  # noqa: E402
 import openonda.vpm as vpm  # noqa: E402
@@ -170,28 +170,33 @@ def main() -> None:
     case.CASE_DIR = arguments.case_directory.resolve()
     case.CASE_DIR.mkdir(parents=True, exist_ok=True)
     case.FVM_SETUP = replace(case.FVM_SETUP, time=replace(case.FVM_SETUP.time, end_time=end_time))
-    case.VPM_SETUP = replace(
-        case.VPM_SETUP,
-        viscous=replace(
-            case.VPM_SETUP.viscous,
-            gbd_threshold=(
-                case.GBD_VORTICITY_FLOOR
-                * case.VPM_PARTICLE_SPACING**3
-                * arguments.gbd_threshold_scale
+    case.VPM_CASE = replace(
+        case.VPM_CASE,
+        numerics=replace(
+            case.VPM_CASE.numerics,
+            viscous=replace(
+                case.VPM_CASE.numerics.viscous,
+                gbd_threshold=(
+                    case.GBD_VORTICITY_FLOOR
+                    * case.VPM_PARTICLE_SPACING**3
+                    * arguments.gbd_threshold_scale
+                ),
             ),
         ),
-        backup=replace(
-            case.VPM_SETUP.backup,
-            directory=str(case.CASE_DIR / "solution"),
-            log_directory=str(case.CASE_DIR / "solution"),
+        output=replace(
+            case.VPM_CASE.output,
+            backup=replace(case.VPM_CASE.output.backup, directory="solution"),
+            logging=replace(case.VPM_CASE.output.logging, directory="solution"),
         ),
+        run=replace(case.VPM_CASE.run, steps=round(end_time / case.VPM_TIME_STEP_SIZE)),
+        directory=case.CASE_DIR,
     )
 
     fvm_solver = fvm.create_fvm_solver(case.FVM_SETUP, case_dir=case.CASE_DIR, mesh=case.FVM_MESH)
-    vpm_solver = vpm.create_vpm_solver(case.VPM_SETUP, case_dir=case.CASE_DIR)
+    vpm_solver = vpm.VPMSolver(case.VPM_CASE)
     coupler = coupling.create_coupler(fvm_solver, vpm_solver, case.COUPLER_SETUP)
     coupler.initialize()
-    # The FVM checkpoint deliberately keeps a strict configuration digest.  A
+    # The FVM backup deliberately keeps a strict configuration digest.  A
     # one-step diagnostic necessarily changes only ``end_time``; allow that
     # single restart-time difference while the coupler-level configuration,
     # mesh, numerical methods, and VPM settings retain their exact seed values.
@@ -202,7 +207,7 @@ def main() -> None:
 
     coupler.fvm_solver.load_state = load_fvm_for_one_step
     try:
-        start_step = coupler.load_state(arguments.restart_from.resolve())
+        start_step = coupler.load_backup(arguments.restart_from.resolve())
     finally:
         coupler.fvm_solver.load_state = load_fvm_state
 

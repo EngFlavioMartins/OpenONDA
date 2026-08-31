@@ -6,6 +6,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from ._shared import ParticleCoreCompensation
+
 
 def vector3(value: Sequence[float], name: str) -> np.ndarray:
     result = np.asarray(value, dtype=float)
@@ -36,18 +38,15 @@ def represented_core_radius_squared(
     physical_core_radius: float,
     particle_core_radius: np.ndarray,
     *,
-    compensate_particle_core: bool,
-    kernel_diffusivity: float,
+    compensation: ParticleCoreCompensation | None,
 ) -> float:
     physical_core_radius = float(physical_core_radius)
     if not np.isfinite(physical_core_radius) or physical_core_radius <= 0.0:
         raise ValueError("vortex_core_radius must be finite and positive")
-    if not np.isfinite(kernel_diffusivity) or kernel_diffusivity <= 0.0:
-        raise ValueError("kernel_diffusivity must be finite and positive")
     represented = physical_core_radius**2
-    if compensate_particle_core:
+    if compensation is not None:
         mean_particle_core_radius = float(np.mean(particle_core_radius))
-        represented -= 4.0 * mean_particle_core_radius**2 / kernel_diffusivity
+        represented -= 4.0 * mean_particle_core_radius**2 / compensation.kernel_diffusivity
     if represented <= 0.0:
         raise ValueError("particle core radius must be smaller than the physical vortex core")
     return represented

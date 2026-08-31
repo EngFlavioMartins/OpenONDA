@@ -17,6 +17,8 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
+from check_public_api import scan_public_api
+
 LEGACY_IDENTIFIERS = frozenset(
     {
         "U",
@@ -193,7 +195,7 @@ LEGACY_QUOTED = re.compile(
 LEGACY_API_TEXT = re.compile(
     r"(?:\bself\.face_flux\b|\b_current_time_step_size\b|\bU_target\b|\bu_target\b|"
     r"\bget_boundary_face_normals\b|\bbound_velocity\b|\brotation_deg\b|"
-    r"\bvalue_p_field\b|\bglobal_n_cells\b|\bBACKUP_[A-Z_]+\b|"
+    r"\bvalue_p_field\b|\bglobal_n_cells\b|"
     r"\bsource[./]schemas\b|\b(?:LambOseenVPM|VortexRingVPM|"
     r"DoubletFlowVPM|TaylorGreenVortexVPM|IsotropicTurbulenceVPM|"
     r"ComputeOfflineDiagnostics|LinearSolveInfo)\b)"
@@ -352,10 +354,13 @@ NEGATIVE_ASSERTION_FILES = frozenset(
     {
         "docs/rename_project.md",
         "scripts/check_nomenclature.py",
-        "tests/test_public_api_has_no_legacy_aliases.py",
+        "scripts/check_public_api.py",
     }
 )
 EXTERNAL_AMERICAN_API_NAMES = frozenset({"CenterOfRotation", "getCenterOfMass", "cell_centers"})
+FORBIDDEN_NAME_WORDS = frozenset(
+    {"policy", "policies", "contract", "contracts", "checkpoint", "checkpoints"}
+)
 TEXT_SUFFIXES = frozenset(
     {
         ".py",
@@ -452,6 +457,12 @@ def _python_identifiers(tree: ast.AST):
             yield node.name, node.lineno
 
 
+def _name_words(name: str) -> tuple[str, ...]:
+    """Split snake/camel names without confusing ``contraction`` with a banned word."""
+    snake_case = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+    return tuple(part for part in re.split(r"[^a-z0-9]+", snake_case) if part)
+
+
 def scan_python_apis(root: Path) -> list[str]:
     """Reject compact public parameters and American geometry identifiers."""
     findings: list[str] = []
@@ -465,6 +476,10 @@ def scan_python_apis(root: Path) -> list[str]:
             continue
 
         for identifier, line_number in _python_identifiers(tree):
+            if FORBIDDEN_NAME_WORDS.intersection(_name_words(identifier)):
+                findings.append(
+                    f"{relative}:{line_number}:identifier uses banned naming word {identifier!r}"
+                )
             if identifier in FORBIDDEN_EXACT_PYTHON_NAMES:
                 findings.append(
                     f"{relative}:{line_number}:removed Python nomenclature {identifier!r}"
@@ -505,10 +520,17 @@ def scan_paths(root: Path) -> list[str]:
     for path in root.rglob("*"):
         if ".git" in path.parts or "__pycache__" in path.parts or path.name.startswith("."):
             continue
+        if _is_generated(path, root):
+            continue
         relative = path.relative_to(root).as_posix()
         relative_parts = path.relative_to(root).parts
         for component in relative_parts:
-            if component in LEGACY_PATH_COMPONENTS or "centerline" in component.lower():
+            component_words = _name_words(Path(component).stem)
+            if (
+                component in LEGACY_PATH_COMPONENTS
+                or "centerline" in component.lower()
+                or FORBIDDEN_NAME_WORDS.intersection(component_words)
+            ):
                 findings.append(f"path:{relative}:noncanonical path component {component!r}")
             is_timestamp = bool(re.fullmatch(r"\d{8}T\d{6}Z(_[0-9a-f]{7,40})?", component))
             is_documentation_name = component in {
@@ -641,6 +663,7 @@ def main() -> int:
     findings = scan_text(args.root, include_generated=args.generated)
     findings.extend(scan_csv_headers(args.root, include_generated=args.generated))
     findings.extend(scan_python_apis(args.root))
+    findings.extend(scan_public_api(args.root))
     findings.extend(scan_xml_field_names(args.root, include_generated=args.generated))
     # Paths are part of the naming contract, so they are always scanned. The
     # retained flag is a no-op for command-line compatibility.

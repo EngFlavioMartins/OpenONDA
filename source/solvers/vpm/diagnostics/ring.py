@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..io.sampling.schedule import SamplingSchedule
+from ..io.sampling.schedule import OutputSchedule
 
 RING_DIAGNOSTIC_COLUMNS = (
     "time",
@@ -41,7 +41,7 @@ class RingDiagnosticsSampler:
     def __init__(
         self,
         *,
-        schedule: SamplingSchedule | None = None,
+        schedule: OutputSchedule | None = None,
         file_name: str = "ring_diagnostics",
     ) -> None:
         if not file_name:
@@ -55,7 +55,7 @@ class RingDiagnosticsSampler:
         path: Path,
         *,
         time: float,
-        step: int | None,
+        step: int | None = None,
     ) -> None:
         position = np.asarray(solver.particle_position, dtype=np.float64)
         vortex_strength = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
@@ -71,6 +71,41 @@ class RingDiagnosticsSampler:
                 selected = particle_group_id == group_id
                 row = self._sample_group(position[selected], vortex_strength[selected])
                 writer.writerow([time, step, int(group_id), *row])
+
+    def write(self, context) -> None:
+        """Write one atomic, monotonic ring-diagnostics event."""
+        path = context.output_directory / f"{self.file_name}.csv"
+        existing: list[list[str]] = []
+        if path.exists() and path.stat().st_size:
+            with path.open(newline="", encoding="utf-8") as stream:
+                reader = csv.reader(stream)
+                next(reader, None)
+                existing = [row for row in reader if row]
+            if existing and float(existing[-1][0]) >= context.time:
+                raise ValueError(
+                    "ring-diagnostics CSV event is duplicate or nonmonotonic during resume"
+                )
+        position = np.asarray(context.solver.particle_position, dtype=np.float64)
+        vortex_strength = np.asarray(context.solver.particle_vortex_strength, dtype=np.float64)
+        particle_group_id = np.asarray(context.solver.particle_group_id, dtype=np.int32)
+        rows: list[list[object]] = []
+        for group_id in np.unique(particle_group_id):
+            selected = particle_group_id == group_id
+            rows.append(
+                [
+                    context.time,
+                    context.step,
+                    int(group_id),
+                    *self._sample_group(position[selected], vortex_strength[selected]),
+                ]
+            )
+        temporary = path.with_name(f".{path.name}.tmp")
+        with temporary.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(RING_DIAGNOSTIC_COLUMNS)
+            writer.writerows(existing)
+            writer.writerows(rows)
+        temporary.replace(path)
 
     @staticmethod
     def _sample_group(

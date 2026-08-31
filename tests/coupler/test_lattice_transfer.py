@@ -1,4 +1,4 @@
-"""Numerical contracts for conservative FVM-cell to VPM-lattice transfer."""
+"""Numerical tests for conservative FVM-cell to VPM-lattice transfer."""
 
 from __future__ import annotations
 
@@ -58,7 +58,6 @@ def test_gaussian_vorticity_reference_matches_analytic_particle_sum():
 
 
 def test_coupler_m4_prime_matches_the_grid_diffusion_kernel():
-    pytest.importorskip("taichi", reason="grid diffusion requires taichi")
     from source.solvers.vpm.physics.diffusion.grid import _m4_prime_1d
 
     rng = np.random.default_rng(116)
@@ -606,10 +605,9 @@ def test_solid_and_zero_vorticity_donors_are_handled_without_nan_or_gamma_leakag
 
 def test_actual_f32_stored_state_conservation(tmp_path, monkeypatch):
     """The authoritative budget is downloaded from the f32 VPM state."""
-    pytest.importorskip("taichi", reason="VPM requires taichi")
     monkeypatch.chdir(tmp_path)
     from source.coupler.vorticity_transfer import replace_particles_from_lattice_blend
-    from source.solvers.vpm import ViscousConfig, VPMSetup, VPMSolver
+    from source.solvers.vpm import Numerics, ViscousConfig, VPMCase, VPMSolver
 
     h = 0.03
     position = np.array([[0.5 * h, -0.5 * h, 0.25 * h]])
@@ -623,16 +621,19 @@ def test_actual_f32_stored_state_conservation(tmp_path, monkeypatch):
         spacing=h,
     )
     solver = VPMSolver(
-        VPMSetup(
-            time_step_size=0.01,
-            compute_device="CPU",
-            precision="f32",
-            max_n_particles=128,
-            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-            viscous=ViscousConfig.cs(
-                kinematic_viscosity=1.0e-3,
-                particle_spacing=h,
-                core_radius_ratio=1.0,
+        VPMCase(
+            directory=tmp_path,
+            numerics=Numerics(
+                time_step_size=0.01,
+                compute_device="CPU",
+                precision="f32",
+                max_n_particles=128,
+                domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+                viscous=ViscousConfig.cs(
+                    kinematic_viscosity=1.0e-3,
+                    particle_spacing=h,
+                    core_radius_ratio=1.0,
+                ),
             ),
         )
     )
@@ -666,24 +667,26 @@ def test_actual_f32_stored_state_conservation(tmp_path, monkeypatch):
 
 def test_m4_lattice_particles_are_preserved_by_cs_core_spreading(tmp_path, monkeypatch):
     """CS diffuses a coupled lattice blend by core growth without pruning it."""
-    pytest.importorskip("taichi", reason="VPM requires taichi")
     monkeypatch.chdir(tmp_path)
     from source.coupler.vorticity_transfer import replace_particles_from_lattice_blend
-    from source.solvers.vpm import ViscousConfig, VPMSetup, VPMSolver
+    from source.solvers.vpm import Numerics, ViscousConfig, VPMCase, VPMSolver
 
     h = 0.125
     kinematic_viscosity = 0.01
     time_step_size = 0.02
     solver = VPMSolver(
-        VPMSetup(
-            time_step_size=time_step_size,
-            compute_device="CPU",
-            max_n_particles=256,
-            domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
-            viscous=ViscousConfig.cs(
-                kinematic_viscosity=kinematic_viscosity,
-                particle_spacing=h,
-                core_radius_ratio=1.0,
+        VPMCase(
+            directory=tmp_path,
+            numerics=Numerics(
+                time_step_size=time_step_size,
+                compute_device="CPU",
+                max_n_particles=256,
+                domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
+                viscous=ViscousConfig.cs(
+                    kinematic_viscosity=kinematic_viscosity,
+                    particle_spacing=h,
+                    core_radius_ratio=1.0,
+                ),
             ),
         )
     )

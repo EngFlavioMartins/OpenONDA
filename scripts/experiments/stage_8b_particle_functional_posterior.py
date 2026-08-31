@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-turnover posterior screen of particle-filter functional closures.
 
-The run branches from the qualified stationary 64^3 reference checkpoint at
+The run branches from the qualified stationary 64^3 reference backup at
 t=60.  A 32^3 LES is initialized from the same reference after applying the
 actual Gaussian-particle plus M4' filter at core_radius/particle_spacing=2.5.  Three models are
 compared: no SGS, the continuous analogue of current OpenONDA Smagorinsky+GBD,
@@ -283,9 +283,9 @@ def mean(records: list[dict[str, Any]], key: str) -> float:
 
 
 def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
-    metadata_path = args.checkpoint.with_suffix(".json")
+    metadata_path = args.backup.with_suffix(".json")
     metadata = json.loads(metadata_path.read_text())
-    arrays = np.load(args.checkpoint)
+    arrays = np.load(args.backup)
     reference_vorticity = arrays["reference_vorticity"].copy()
     reference_solver = VorticitySolver(args.reference_n, args.kinematic_viscosity)
     les_solver = VorticitySolver(args.les_n, args.kinematic_viscosity)
@@ -456,8 +456,8 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, np.ndarray]
         "status": "PASS" if all(checks.values()) else "FAIL",
         "qualification": "one-turnover spectral screen; not VPM or journal validation",
         "configuration": {
-            "checkpoint": str(args.checkpoint.relative_to(ROOT)),
-            "checkpoint_time": metadata["time"],
+            "backup": str(args.backup.relative_to(ROOT)),
+            "backup_time": metadata["time"],
             "reference_n": args.reference_n,
             "les_n": args.les_n,
             "kinematic_viscosity": args.kinematic_viscosity,
@@ -513,7 +513,7 @@ def plot(result: dict[str, Any], figure_dir: Path) -> None:
         if key == "high_k_energy_fraction":
             axis.axhline(0.01, color=GOLD, linestyle=":", label="1% limit")
         axis.set_title(title)
-        axis.set_xlabel("time after stationary checkpoint")
+        axis.set_xlabel("time after stationary backup")
         if ylabel:
             axis.set_ylabel(ylabel)
         axis.grid(color=GRID, linewidth=0.7)
@@ -603,7 +603,7 @@ def plot(result: dict[str, Any], figure_dir: Path) -> None:
             label=f"{LABELS[model]}: budget",
         )
     axis.axhline(0.0, color="#20252a", linewidth=0.8)
-    axis.set_xlabel("time after stationary checkpoint")
+    axis.set_xlabel("time after stationary backup")
     axis.set_ylabel("change in resolved kinetic total_kinetic_energy")
     axis.set_title("Measured total_kinetic_energy change against the theoretical budget")
     axis.grid(color=GRID, linewidth=0.7)
@@ -615,9 +615,9 @@ def plot(result: dict[str, Any], figure_dir: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--checkpoint",
+        "--backup",
         type=Path,
-        default=ROOT / "artifacts/vpm_les/stage_4b3_seed20260817/checkpoint_0003000.npz",
+        default=ROOT / "artifacts/vpm_les/stage_4b3_seed20260817/backup_0003000.npz",
     )
     parser.add_argument("--reference-n", type=int, default=64)
     parser.add_argument("--les-n", type=int, default=32)

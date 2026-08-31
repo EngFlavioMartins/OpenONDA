@@ -128,7 +128,7 @@ def _is_likely_integrated_gpu() -> bool:
 # traversal stacks, RK scratch fields, target fields, and a fixed GBD/DVH grid
 # coexist.  The former 768 MiB pool could therefore be exhausted silently by a
 # nominal 500k-particle coupled run even when the Vulkan heap still had several
-# GiB available.  Keep a fixed (rather than heap-fraction) policy for unified
+# GiB available. Keep a fixed (rather than heap-fraction) allocation for unified
 # memory, but reserve enough for the complete solver.  The runtime still caps
 # this at 50% of the driver's current budget below.
 _INTEGRATED_GPU_POOL_BYTES: int = 1536 * (1 << 20)  # 1.5 GiB
@@ -337,11 +337,11 @@ def reset_taichi_backend() -> None:
 
     Typical usage in a script that runs several cases back-to-back::
 
-        from source.solvers.vpm import VPMSolver, VPMSetup
+        from openonda.vpm import VPMSolver
 
         for case in cases:
             VPMSolver.reset_gpu()          # free all GPU memory from previous run
-            solver = VPMSolver(setup=case)
+            solver = VPMSolver(case)
             for _ in range(n_steps):
                 solver.advance()
 

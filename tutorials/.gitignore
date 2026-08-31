@@ -1,0 +1,8 @@
+**/solution/
+**/samples/
+**/figures/
+**/__pycache__/
+**/*.log
+**/assets/*.msh
+**/assets/*.vtk
+**/assets/surfaces/

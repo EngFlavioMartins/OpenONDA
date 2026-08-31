@@ -21,14 +21,14 @@ import sys
 os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/openonda_qpsi_matplotlib")
 os.environ.setdefault("XDG_CACHE_HOME", "/private/tmp/openonda_qpsi_cache")
 
-import matplotlib.pyplot as plt
 import h5py
+import matplotlib.pyplot as plt
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from source.solvers.vpm import Backup, VPMSetup, VPMSolver  # noqa: E402
+from source.solvers.vpm import Numerics, OutputPlan, RestartBackup, VPMCase, VPMSolver  # noqa: E402
 
 RING_RADIUS = 1.0
 RING_CIRCULATION = 1.0
@@ -61,17 +61,15 @@ def solver_from_backup(path: Path) -> VPMSolver:
         particle_count = int(archive["solver"].attrs["n_particles_total"])
         time_step_size = float(archive["solver"].attrs["time_step_size"])
     solver = VPMSolver(
-        VPMSetup(
-            time_step_size=time_step_size,
-            max_n_particles=max(1, particle_count),
-            backup=Backup(
-                interval_steps=0,
-                directory=str(path.parent),
-                log_directory=str(path.parent),
+        VPMCase(
+            directory=path.parent,
+            output=OutputPlan(backup=RestartBackup(interval_steps=0, directory=str(path.parent))),
+            numerics=Numerics(
+                time_step_size=time_step_size,
+                max_n_particles=max(1, particle_count),
+                verbose=False,
             ),
-            verbose=False,
-        ),
-        case_dir=path.parent,
+        )
     )
     solver.load_backup(str(path))
     return solver

@@ -56,7 +56,7 @@ LIMITS = {
 }
 
 
-def checkpoint_time(path: Path) -> float:
+def backup_time(path: Path) -> float:
     with h5py.File(path, "r") as handle:
         attributes = handle["solver"].attrs
         return float(attributes["time"])
@@ -66,7 +66,7 @@ def trajectory_files(run_directory: Path, label: str) -> list[Path]:
     candidates = list(run_directory.glob(f"vpm_{label}*.h5"))
     by_time: dict[float, Path] = {}
     for path in candidates:
-        time = checkpoint_time(path)
+        time = backup_time(path)
         current = by_time.get(time)
         if current is None or path.stem.endswith("_final"):
             by_time[time] = path

@@ -55,16 +55,16 @@ def validate_solver_params(solver, time=None) -> None:
         errors.append(
             f"  algorithm={algorithm!r} is not recognised; valid: ['PIMPLE', 'PISO', 'SIMPLE']"
         )
-    failure_policy = str(getattr(solver, "linear_failure_policy", "raise")).lower()
-    if failure_policy not in {"raise", "direct_fallback"}:
+    failure_action = str(getattr(solver, "linear_failure_action", "raise")).lower()
+    if failure_action not in {"raise", "direct_fallback"}:
         errors.append(
-            f"  linear_failure_policy must be 'raise' or 'direct_fallback'; got {failure_policy!r}"
+            f"  linear_failure_action must be 'raise' or 'direct_fallback'; got {failure_action!r}"
         )
-    nullspace_policy = str(getattr(solver, "pressure_nullspace_policy", "auto")).lower()
-    if nullspace_policy not in {"auto", "reference", "petsc"}:
+    nullspace_method = str(getattr(solver, "pressure_nullspace_method", "auto")).lower()
+    if nullspace_method not in {"auto", "reference", "petsc"}:
         errors.append(
-            "  pressure_nullspace_policy must be 'auto', 'reference', or 'petsc'; "
-            f"got {nullspace_policy!r}"
+            "  pressure_nullspace_method must be 'auto', 'reference', or 'petsc'; "
+            f"got {nullspace_method!r}"
         )
     _check(
         getattr(solver, "convection_scheme", "deferred"),
@@ -187,10 +187,10 @@ def validate_turbulence(config) -> None:
             )
 
 
-def validate_acceptance_policy(policy) -> None:
+def validate_acceptance_limits(limits) -> None:
     """Validate warning/abort threshold ordering and sustained window."""
     errors = []
-    if not isinstance(policy.sustained_steps, int) or policy.sustained_steps < 1:
+    if not isinstance(limits.sustained_steps, int) or limits.sustained_steps < 1:
         errors.append("  sustained_steps must be an integer >= 1")
     for metric in (
         "max_continuity_error",
@@ -198,15 +198,15 @@ def validate_acceptance_policy(policy) -> None:
         "max_courant_number",
         "max_velocity_magnitude",
     ):
-        warning = getattr(policy, f"{metric}_warning")
-        abort = getattr(policy, f"{metric}_abort")
+        warning = getattr(limits, f"{metric}_warning")
+        abort = getattr(limits, f"{metric}_abort")
         for label, value in (("warning", warning), ("abort", abort)):
             if value is not None and (not np.isfinite(value) or float(value) <= 0.0):
                 errors.append(f"  {metric}_{label} must be finite and > 0 when set")
         if warning is not None and abort is not None and float(warning) > float(abort):
             errors.append(f"  {metric}_warning cannot exceed {metric}_abort")
     if errors:
-        raise ValueError("Invalid FVM run acceptance policy:\n" + "\n".join(errors))
+        raise ValueError("Invalid FVM run acceptance limits:\n" + "\n".join(errors))
 
 
 def validate_boundary_conditions(boundaries) -> None:

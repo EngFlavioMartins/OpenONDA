@@ -1,15 +1,19 @@
-"""Canonical flow attribution for particle distributions."""
+"""Inspectable analytical-flow construction objects."""
 
-from .doublet import initialize_vortex_doublet
-from .isotropic_turbulence import initialize_isotropic_turbulence
-from .taylor_green import initialize_taylor_green_vortex
-from .vortex_filament import initialize_vortex_filament
-from .vortex_ring import initialize_vortex_ring
+from ._shared import InitialCondition, InitialVelocity, ParticleCoreCompensation
+from .doublet import VortexDoublet
+from .isotropic_turbulence import IsotropicTurbulence
+from .taylor_green import TaylorGreenVortex
+from .vortex_filament import VortexFilament
+from .vortex_ring import VortexRing
 
 __all__ = [
-    "initialize_isotropic_turbulence",
-    "initialize_taylor_green_vortex",
-    "initialize_vortex_doublet",
-    "initialize_vortex_filament",
-    "initialize_vortex_ring",
+    "InitialVelocity",
+    "InitialCondition",
+    "IsotropicTurbulence",
+    "ParticleCoreCompensation",
+    "TaylorGreenVortex",
+    "VortexDoublet",
+    "VortexFilament",
+    "VortexRing",
 ]

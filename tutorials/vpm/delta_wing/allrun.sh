@@ -8,13 +8,13 @@ cd "$(dirname "$0")"
 echo
 echo "===== CLEAN ====="
 echo
-./allclean.sh --all
+./allclean.sh
 
 echo
 echo "===== SIMULATE ====="
 echo
 mkdir -p solution
-python delta_wing_setup.py 2>&1 | tee solution/delta_wing.log
+python setup.py 2>&1 | tee solution/delta_wing.log
 
 echo
 echo "===== FIGURES ====="

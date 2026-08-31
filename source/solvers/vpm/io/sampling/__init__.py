@@ -13,12 +13,15 @@ from .field_samplers import (
     resolve_samples_dir,
     sampler_csv_columns,
 )
-from .schedule import SamplingSchedule
+from .schedule import EverySteps, EveryTime, FinalOnly, OutputSchedule
 
 __all__ = [
     "SAMPLER_CSV_COLUMNS",
     "LineSampler",
-    "SamplingSchedule",
+    "EverySteps",
+    "EveryTime",
+    "FinalOnly",
+    "OutputSchedule",
     "SurfaceSampler",
     "resolve_samples_dir",
     "sampler_csv_columns",

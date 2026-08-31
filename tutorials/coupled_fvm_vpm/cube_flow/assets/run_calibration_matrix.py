@@ -57,7 +57,7 @@ def _launch(command: list[str], log_path: Path) -> tuple[subprocess.Popen[str], 
     return process, stream
 
 
-def _checkpoint_step(path: Path) -> int | None:
+def _backup_step(path: Path) -> int | None:
     manifest = path / "manifest.json"
     if not manifest.is_file():
         return None
@@ -69,15 +69,15 @@ def _checkpoint_step(path: Path) -> int | None:
 
 def _capture_seed(baseline: Path, seed: Path) -> bool:
     # Once captured, the seed is deliberately independent from the live
-    # baseline checkpoint, whose manifest subsequently advances to t=2.5 s.
+    # baseline backup, whose manifest subsequently advances to t=2.5 s.
     if seed.exists():
-        return _checkpoint_step(seed) == SEED_STEP
-    checkpoint = baseline / "solution" / "checkpoints"
-    if _checkpoint_step(checkpoint) != SEED_STEP:
+        return _backup_step(seed) == SEED_STEP
+    backup = baseline / "solution" / "backups"
+    if _backup_step(backup) != SEED_STEP:
         return False
     temporary = seed.with_name(f".{seed.name}.tmp")
     shutil.rmtree(temporary, ignore_errors=True)
-    shutil.copytree(checkpoint, temporary)
+    shutil.copytree(backup, temporary)
     temporary.replace(seed)
     return True
 
@@ -272,7 +272,7 @@ def main() -> None:
     if arguments.resume:
         if not _is_complete(baseline) or not _capture_seed(baseline, seed):
             raise RuntimeError(
-                "resume requires a completed B0 baseline and a valid exact t=2 checkpoint seed"
+                "resume requires a completed B0 baseline and a valid exact t=2 backup seed"
             )
         print("resuming from completed B0 baseline and t=2 seed", flush=True)
     else:
@@ -285,15 +285,15 @@ def main() -> None:
             _capture_seed(baseline, seed)
             now = time.monotonic()
             if now - last_report >= 60.0:
-                step = _checkpoint_step(baseline / "solution" / "checkpoints")
-                print(f"baseline running; latest checkpoint step={step}", flush=True)
+                step = _backup_step(baseline / "solution" / "backups")
+                print(f"baseline running; latest backup step={step}", flush=True)
                 last_report = now
             time.sleep(10.0)
         baseline_log.close()
         if baseline_process.returncode:
             raise RuntimeError(f"baseline failed with status {baseline_process.returncode}")
         if not _capture_seed(baseline, seed):
-            raise RuntimeError("baseline finished without capturing the t=2 checkpoint")
+            raise RuntimeError("baseline finished without capturing the t=2 backup")
 
     # Keep all solver runs sequential. Concurrent CPU/GPU work would make the
     # baseline timing incomparable with the restart variants.

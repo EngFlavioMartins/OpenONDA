@@ -37,7 +37,7 @@ def _worker(
     coupler_setup = coupling.CouplerSetup(
         freestream_velocity=freestream,
         eta_blend_width=0.0,
-        checkpoint_interval_steps=1,
+        backup_interval_steps=1,
     )
     line = fvm.LineSampler(
         start=[-0.25, 0.0, 0.0],
@@ -76,22 +76,22 @@ def _worker(
         return solver
 
     def make_vpm():
-        setup = vpm.VPMSetup(
-            time_step_size=vpm_time_step_size,
-            compute_device=compute_device,
-            max_n_particles=50_000,
-            domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
-            freestream_velocity=vpm_freestream,
-            viscous=vpm.ViscousConfig.cs(
-                kinematic_viscosity=0.01,
-                particle_spacing=spacing,
+        case = vpm.VPMCase(
+            numerics=vpm.Numerics(
+                time_step_size=vpm_time_step_size,
+                compute_device=compute_device,
+                max_n_particles=50_000,
+                domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
+                freestream_velocity=vpm_freestream,
+                viscous=vpm.ViscousConfig.cs(
+                    kinematic_viscosity=0.01,
+                    particle_spacing=spacing,
+                ),
             ),
-            backup=vpm.Backup(
-                directory=str(case_dir / "solution"),
-                log_directory=str(case_dir / "solution"),
-            ),
+            backup=vpm.Backup(0, str(case_dir / "solution"), str(case_dir / "solution")),
+            directory=case_dir,
         )
-        return vpm.create_vpm_solver(setup, case_dir=case_dir)
+        return vpm.VPMSolver(case)
 
     fvm_solver = make_fvm()
     vpm_solver = make_vpm()
@@ -115,37 +115,37 @@ def _worker(
         solution / "fvm.log",
         solution / "coupler.log",
         samples / "centreline.csv",
-        solution / "checkpoints" / "manifest.json",
+        solution / "backups" / "manifest.json",
     )
     missing = [str(path.relative_to(case_dir)) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(f"missing tutorial outputs: {', '.join(missing)}")
 
-    checkpoint = solution / "checkpoints"
-    manifest = json.loads((checkpoint / "manifest.json").read_text(encoding="utf-8"))
+    backup = solution / "backups"
+    manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
     expected_artifacts = {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
         "vpm_xdmf": "vpm_000002.xdmf",
         "vpm_boundary_condition": "vpm_boundary_condition_000002.npz",
     }
-    if manifest.get("kind") != "openonda.coupled_checkpoint":
-        raise RuntimeError(f"unexpected checkpoint kind: {manifest.get('kind')!r}")
+    if manifest.get("kind") != "openonda.coupled_backup":
+        raise RuntimeError(f"unexpected backup kind: {manifest.get('kind')!r}")
     if manifest.get("artifacts") != expected_artifacts:
-        raise RuntimeError(f"unexpected checkpoint filenames: {manifest.get('artifacts')!r}")
+        raise RuntimeError(f"unexpected backup filenames: {manifest.get('artifacts')!r}")
     if set(manifest.get("artifact_sha256", {})) != set(expected_artifacts):
-        raise RuntimeError("checkpoint manifest has incomplete artifact hashes")
-    if not all((checkpoint / name).is_file() for name in expected_artifacts.values()):
-        raise RuntimeError("checkpoint manifest references a missing artifact")
-    if list(checkpoint.glob("*_000001*")):
-        raise RuntimeError("latest-only checkpoint retention left a stale generation")
+        raise RuntimeError("backup manifest has incomplete artifact hashes")
+    if not all((backup / name).is_file() for name in expected_artifacts.values()):
+        raise RuntimeError("backup manifest references a missing artifact")
+    if list(backup.glob("*_000001*")):
+        raise RuntimeError("latest-only backup retention left a stale generation")
 
     expected_u = fvm_solver.velocity.copy()
     expected_p = fvm_solver.kinematic_pressure.copy()
     expected_flux = fvm_solver.volumetric_face_flux.copy()
     restored = coupling.create_coupler(make_fvm(), make_vpm(), coupler_setup)
     restored.initialize()
-    restored_step = restored.load_state(checkpoint)
+    restored_step = restored.load_backup(backup)
     if restored_step != 2:
         raise RuntimeError(f"restart restored coupled step {restored_step}, expected 2")
     assert restored.fvm_solver is not None

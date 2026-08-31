@@ -1,25 +1,31 @@
 """Backup/restart I/O for VPM simulations.
 
 Backups use the same canonical names as the live VPM state. Readers reject
-every backup format other than the current canonical contract.
+every backup format other than the current canonical layout.
 """
 
 from __future__ import annotations
 
 import glob
+import hashlib
+import json
 import os
 from pathlib import Path
 import tempfile
-from typing import Any
+from typing import Any, NoReturn
 
 import h5py
 import numpy as np
 
-from source.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write, storage_dtype
+from source.write_precision import DEFAULT_WRITE_PRECISION
 
+from ..config.fingerprint import numerical_configuration
 from .logging import Logging
 
-_BACKUP_FORMAT_VERSION = "9.0"
+# Restart data is numerical backup data, not visualization output. Bump the
+# version whenever its layout changes so an older (possibly lossy) file is
+# never accepted accidentally.
+_BACKUP_FORMAT_VERSION = "10.0"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",
@@ -89,6 +95,64 @@ def _read_dataset(
     return group[canonical_name][:]
 
 
+def _restart_dtype(solver: Any) -> np.dtype:
+    """Return the floating-point dtype used by the numerical solver."""
+    dtype = np.dtype(getattr(solver, "np_dtype", np.float32))
+    if not np.issubdtype(dtype, np.floating):
+        raise TypeError(f"Solver compute dtype must be floating-point, got {dtype}")
+    return dtype
+
+
+def _cast_for_restart(values: Any, dtype: np.dtype) -> np.ndarray:
+    """Copy restart values at compute precision without visualization rounding."""
+    array = np.asarray(values)
+    if np.issubdtype(array.dtype, np.floating):
+        return np.ascontiguousarray(array, dtype=dtype)
+    return np.ascontiguousarray(array)
+
+
+def _attribute_text(value: Any) -> str:
+    """Normalise HDF5 string attributes for precise validation messages."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _numerical_configuration(solver: Any) -> dict[str, Any]:
+    """Return the resolved configuration that determines VPM evolution."""
+    return numerical_configuration(solver.setup)
+
+
+def _canonical_configuration(configuration: dict[str, Any]) -> str:
+    """Serialize a numerical configuration deterministically for a restart."""
+    return json.dumps(configuration, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _configuration_mismatches(
+    expected: Any,
+    found: Any,
+    path: str = "",
+) -> list[str]:
+    """Return exact dotted configuration paths that differ."""
+    if isinstance(expected, dict) and isinstance(found, dict):
+        paths: list[str] = []
+        for key in sorted(set(expected) | set(found)):
+            child_path = f"{path}.{key}" if path else key
+            if key not in expected or key not in found:
+                paths.append(child_path)
+            else:
+                paths.extend(_configuration_mismatches(expected[key], found[key], child_path))
+        return paths
+    if isinstance(expected, list) and isinstance(found, list):
+        if len(expected) != len(found):
+            return [path]
+        paths = []
+        for index, (expected_item, found_item) in enumerate(zip(expected, found, strict=True)):
+            paths.extend(_configuration_mismatches(expected_item, found_item, f"{path}[{index}]"))
+        return paths
+    return [] if expected == found else [path]
+
+
 class _BackupIO:
     """Read and write VPM restart backups."""
 
@@ -99,8 +163,11 @@ class _BackupIO:
     ) -> None:
         """Replace ``solver`` state from an HDF5 backup."""
         path = str(hdf5_file)
-        if not _BackupIO._validate_hdf5_structure(path):
-            raise ValueError(f"Invalid VPM backup: {path}")
+        _BackupIO._validate_hdf5_structure(
+            path,
+            expected_float_dtype=_restart_dtype(solver),
+            expected_configuration=_numerical_configuration(solver),
+        )
 
         stabilization = _stabilization(solver)
         reference_vortex_strength = getattr(
@@ -184,7 +251,7 @@ class _BackupIO:
         particles_group: h5py.Group,
         solver,
         n_particles_total: int,
-        write_precision: str,
+        restart_dtype: np.dtype,
     ) -> None:
         stabilization = _stabilization(solver)
         reference_vortex_strength = getattr(
@@ -205,12 +272,12 @@ class _BackupIO:
         ):
             particles_group.create_dataset(
                 "filament_reference_vortex_strength",
-                data=cast_for_write(reference_vortex_strength, write_precision),
+                data=_cast_for_restart(reference_vortex_strength, restart_dtype),
                 **_COMPRESSION,
             )
             particles_group.create_dataset(
                 "filament_reference_length",
-                data=cast_for_write(reference_lengths, write_precision),
+                data=_cast_for_restart(reference_lengths, restart_dtype),
                 **_COMPRESSION,
             )
 
@@ -232,7 +299,7 @@ class _BackupIO:
             )
             particles_group.create_dataset(
                 "total_enstrophy",
-                data=cast_for_write(total_enstrophy, write_precision),
+                data=_cast_for_restart(total_enstrophy, restart_dtype),
                 **_COMPRESSION,
             )
 
@@ -244,13 +311,19 @@ class _BackupIO:
     ) -> None:
         """Write canonical solver and particle state."""
         write_precision = getattr(solver, "write_precision", DEFAULT_WRITE_PRECISION)
+        restart_dtype = _restart_dtype(solver)
         with h5py.File(hdf5_file, "w") as file:
             solver_group = file.create_group("solver")
             solver_group.attrs["backup_format_version"] = _BACKUP_FORMAT_VERSION
             solver_group.attrs["write_precision"] = write_precision
+            configuration = _canonical_configuration(_numerical_configuration(solver))
+            solver_group.attrs["numerical_configuration"] = configuration
+            solver_group.attrs["numerical_configuration_sha256"] = hashlib.sha256(
+                configuration.encode("utf-8")
+            ).hexdigest()
             solver_group.attrs["freestream_velocity"] = np.asarray(
                 solver.freestream_velocity,
-                dtype=np.float64,
+                dtype=restart_dtype,
             )
             solver_group.attrs["time"] = time
             solver_group.attrs["step"] = int(solver.step)
@@ -281,7 +354,7 @@ class _BackupIO:
             if reference_moments is not None:
                 reference_array = np.asarray(
                     reference_moments,
-                    dtype=np.float64,
+                    dtype=restart_dtype,
                 )
                 if reference_array.shape != (3, 3):
                     raise ValueError(
@@ -309,9 +382,9 @@ class _BackupIO:
             ):
                 particles_group.create_dataset(
                     name,
-                    data=cast_for_write(
+                    data=_cast_for_restart(
                         getattr(solver.particles, f"{name}_cpu")(),
-                        write_precision,
+                        restart_dtype,
                     ),
                     **_COMPRESSION,
                 )
@@ -320,7 +393,7 @@ class _BackupIO:
                 particles_group,
                 solver,
                 n_particles_total,
-                write_precision,
+                restart_dtype,
             )
 
     @staticmethod
@@ -333,8 +406,7 @@ class _BackupIO:
         """Write an XDMF descriptor using canonical field names."""
         n_particles_total = int(solver.particles.n_particles_total)
         hdf5_basename = os.path.basename(f"{backup_base}.h5")
-        write_precision = getattr(solver, "write_precision", DEFAULT_WRITE_PRECISION)
-        float_precision = storage_dtype(write_precision).itemsize
+        float_precision = _restart_dtype(solver).itemsize
         optional_parts = [
             f"""
       <Attribute Name="zone_id" AttributeType="Scalar" Center="Node">
@@ -566,6 +638,15 @@ class _BackupIO:
             solver_group = file["solver"]
             particles_group = file["particles"]
 
+            # Freestream is part of the advection state.  Restore it before any
+            # velocity-derived fields are refreshed below, including for an
+            # otherwise empty cloud.
+            solver.set_freestream_velocity(
+                np.asarray(
+                    _read_attribute(solver_group, "freestream_velocity"),
+                    dtype=_restart_dtype(solver),
+                )
+            )
             solver.time = float(_read_attribute(solver_group, "time"))
             solver.step = int(_read_attribute(solver_group, "step"))
             solver.time_step_size = float(
@@ -696,17 +777,32 @@ class _BackupIO:
     @staticmethod
     def _validate_hdf5_structure(
         hdf5_file: str | Path,
-    ) -> bool:
-        """Return whether a backup has the minimum restart structure."""
+        *,
+        expected_float_dtype: np.dtype | None = None,
+        expected_configuration: dict[str, Any] | None = None,
+    ) -> None:
+        """Validate a restart file before it is allowed to mutate a solver.
+
+        This is deliberately strict: a numerical restart must not silently
+        coerce precision, truncate identifiers, or proceed with non-physical
+        particle geometry.
+        """
+        path = str(hdf5_file)
+
+        def invalid(reason: str) -> NoReturn:
+            raise ValueError(f"Invalid VPM backup {path}: {reason}")
+
         try:
             with h5py.File(hdf5_file, "r") as file:
                 if set(file.keys()) != {"solver", "particles"}:
-                    return False
+                    invalid("top-level groups must be exactly {'solver', 'particles'}")
 
                 solver_group = file["solver"]
                 required_solver_attributes = {
                     "backup_format_version",
                     "write_precision",
+                    "numerical_configuration",
+                    "numerical_configuration_sha256",
                     "freestream_velocity",
                     "time",
                     "step",
@@ -717,20 +813,110 @@ class _BackupIO:
                 }
                 solver_attribute_names = set(solver_group.attrs.keys())
                 if not required_solver_attributes <= solver_attribute_names:
-                    return False
+                    missing = sorted(required_solver_attributes - solver_attribute_names)
+                    invalid(f"missing solver attributes: {', '.join(missing)}")
                 if not solver_attribute_names <= (
                     required_solver_attributes | set(_STABILIZATION_DIAGNOSTIC_NAMES)
                 ):
-                    return False
+                    unknown = sorted(
+                        solver_attribute_names
+                        - required_solver_attributes
+                        - set(_STABILIZATION_DIAGNOSTIC_NAMES)
+                    )
+                    invalid(f"unknown solver attributes: {', '.join(unknown)}")
                 if set(solver_group.keys()) - {"divergence_relaxation_reference_moments"}:
-                    return False
-                format_version = str(solver_group.attrs.get("backup_format_version", ""))
+                    invalid("contains unknown solver datasets")
+                format_version = _attribute_text(
+                    solver_group.attrs.get("backup_format_version", "")
+                )
                 if format_version != _BACKUP_FORMAT_VERSION:
-                    return False
+                    invalid(
+                        "unsupported backup format version "
+                        f"{format_version!r}; expected {_BACKUP_FORMAT_VERSION!r}"
+                    )
+
+                configuration_text = _attribute_text(
+                    _read_attribute(solver_group, "numerical_configuration")
+                )
+                configuration_hash = _attribute_text(
+                    _read_attribute(solver_group, "numerical_configuration_sha256")
+                )
+                computed_hash = hashlib.sha256(configuration_text.encode("utf-8")).hexdigest()
+                if configuration_hash != computed_hash:
+                    invalid(
+                        "numerical configuration fingerprint does not match its stored configuration"
+                    )
+                try:
+                    stored_configuration = json.loads(configuration_text)
+                except json.JSONDecodeError as exc:
+                    invalid(f"numerical configuration is not valid JSON ({exc.msg})")
+                if not isinstance(stored_configuration, dict):
+                    invalid("numerical configuration must be a JSON object")
+                if expected_configuration is not None:
+                    mismatches = _configuration_mismatches(
+                        expected_configuration,
+                        stored_configuration,
+                    )
+                    if mismatches:
+                        invalid("numerical configuration mismatch at " + ", ".join(mismatches))
+
+                freestream_velocity = np.asarray(
+                    _read_attribute(solver_group, "freestream_velocity")
+                )
+                if (
+                    freestream_velocity.shape != (3,)
+                    or not np.issubdtype(freestream_velocity.dtype, np.floating)
+                    or not np.isfinite(freestream_velocity).all()
+                ):
+                    invalid(
+                        "freestream_velocity must be a finite floating-point vector of shape (3,)"
+                    )
+                if (
+                    expected_float_dtype is not None
+                    and np.dtype(freestream_velocity.dtype) != expected_float_dtype
+                ):
+                    invalid(
+                        "freestream_velocity has dtype "
+                        f"{freestream_velocity.dtype}; expected solver compute dtype "
+                        f"{expected_float_dtype}"
+                    )
+
+                for name in ("time", "time_step_size"):
+                    value = _read_attribute(solver_group, name)
+                    if not np.isscalar(value) or not np.isfinite(value):
+                        invalid(f"solver attribute {name!r} must be finite")
+                if float(_read_attribute(solver_group, "time_step_size")) <= 0.0:
+                    invalid("solver attribute 'time_step_size' must be positive")
+                for name in (
+                    "step",
+                    "n_steps_since_dvh_diffusion",
+                    "n_particles_total",
+                ):
+                    value = _read_attribute(solver_group, name)
+                    if not isinstance(value, (int, np.integer)) or int(value) < 0:
+                        invalid(f"solver attribute {name!r} must be a non-negative integer")
+                pending = _read_attribute(solver_group, "is_particle_regeneration_pending")
+                if not isinstance(pending, (bool, int, np.integer)) or int(pending) not in (0, 1):
+                    invalid("solver attribute 'is_particle_regeneration_pending' must be 0 or 1")
+
+                if "divergence_relaxation_reference_moments" in solver_group:
+                    moments = solver_group["divergence_relaxation_reference_moments"]
+                    if moments.shape != (3, 3) or not np.issubdtype(moments.dtype, np.floating):
+                        invalid(
+                            "divergence-relaxation reference moments must be a floating (3, 3) array"
+                        )
+                    if (
+                        expected_float_dtype is not None
+                        and np.dtype(moments.dtype) != expected_float_dtype
+                    ):
+                        invalid(
+                            "divergence-relaxation reference moments have dtype "
+                            f"{moments.dtype}; expected solver compute dtype {expected_float_dtype}"
+                        )
+                    if not np.isfinite(moments[:]).all():
+                        invalid("divergence-relaxation reference moments must be finite")
 
                 n_particles_total = _read_particle_count(solver_group)
-                if n_particles_total < 0:
-                    return False
                 particles_group = file["particles"]
 
                 required = {
@@ -746,8 +932,6 @@ class _BackupIO:
                     "effective_viscosity",
                     "zone_id",
                 }
-                if n_particles_total == 0:
-                    return set(particles_group) == required
                 optional = {
                     "filament_reference_vortex_strength",
                     "filament_reference_length",
@@ -755,15 +939,17 @@ class _BackupIO:
                 }
                 particle_field_names = set(particles_group.keys())
                 if not required <= particle_field_names:
-                    return False
+                    missing = sorted(required - particle_field_names)
+                    invalid(f"missing particle fields: {', '.join(missing)}")
                 if not particle_field_names <= required | optional:
-                    return False
+                    unknown = sorted(particle_field_names - required - optional)
+                    invalid(f"unknown particle fields: {', '.join(unknown)}")
                 filament_fields = {
                     "filament_reference_vortex_strength",
                     "filament_reference_length",
                 }
                 if len(particle_field_names & filament_fields) == 1:
-                    return False
+                    invalid("filament-lineage fields must be stored together")
                 vector_fields = (
                     "position",
                     "velocity",
@@ -782,11 +968,55 @@ class _BackupIO:
                 if any(
                     particles_group[name].shape != (n_particles_total, 3) for name in vector_fields
                 ):
-                    return False
+                    invalid("vector particle fields must have shape (n_particles_total, 3)")
                 if any(
                     particles_group[name].shape != (n_particles_total,) for name in scalar_fields
                 ):
-                    return False
-                return True
-        except (OSError, KeyError, ValueError):
-            return False
+                    invalid("scalar particle fields must have shape (n_particles_total,)")
+
+                if filament_fields <= particle_field_names:
+                    if particles_group["filament_reference_vortex_strength"].shape != (
+                        n_particles_total,
+                    ):
+                        invalid(
+                            "filament_reference_vortex_strength must have shape (n_particles_total,)"
+                        )
+                    if particles_group["filament_reference_length"].shape != (n_particles_total,):
+                        invalid("filament_reference_length must have shape (n_particles_total,)")
+
+                floating_fields = vector_fields + (
+                    "core_radius",
+                    "particle_volume",
+                    "kinematic_viscosity",
+                    "eddy_viscosity",
+                    "effective_viscosity",
+                )
+                if filament_fields <= particle_field_names:
+                    floating_fields += tuple(sorted(filament_fields))
+                if "total_enstrophy" in particle_field_names:
+                    floating_fields += ("total_enstrophy",)
+                for name in floating_fields:
+                    dataset = particles_group[name]
+                    if not np.issubdtype(dataset.dtype, np.floating):
+                        invalid(f"particle field {name!r} must use a floating-point dtype")
+                    if (
+                        expected_float_dtype is not None
+                        and np.dtype(dataset.dtype) != expected_float_dtype
+                    ):
+                        invalid(
+                            f"particle field {name!r} has dtype {dataset.dtype}; "
+                            f"expected solver compute dtype {expected_float_dtype}"
+                        )
+                    if not np.isfinite(dataset[:]).all():
+                        invalid(f"particle field {name!r} contains non-finite values")
+
+                for name in ("group_id", "zone_id"):
+                    if not np.issubdtype(particles_group[name].dtype, np.integer):
+                        invalid(f"particle field {name!r} must use an integral dtype")
+
+                if np.any(particles_group["core_radius"][:] <= 0.0):
+                    invalid("particle field 'core_radius' must be strictly positive")
+                if np.any(particles_group["particle_volume"][:] <= 0.0):
+                    invalid("particle field 'particle_volume' must be strictly positive")
+        except OSError as exc:
+            invalid(f"cannot read HDF5 file ({exc})")
