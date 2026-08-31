@@ -161,7 +161,7 @@ class VortexParticleDistribution:
         return values
 
 
-def attributed_distribution(
+def _attributed_distribution(
     distribution: ParticleDistribution,
     *,
     velocity: np.ndarray,

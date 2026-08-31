@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..data import ParticleDistribution, VortexParticleDistribution, attributed_distribution
+from ..data import ParticleDistribution, VortexParticleDistribution, _attributed_distribution
 from ._common import validate_viscosity
 
 
@@ -62,7 +62,7 @@ def initialize_isotropic_turbulence(
     scale = intensity / rms
     velocity *= scale
     vorticity *= scale
-    return attributed_distribution(
+    return _attributed_distribution(
         distribution,
         velocity=velocity,
         vortex_strength=vorticity * distribution.particle_volume[:, None],

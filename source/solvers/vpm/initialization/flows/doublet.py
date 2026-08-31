@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from ..data import ParticleDistribution, VortexParticleDistribution, attributed_distribution
+from ..data import ParticleDistribution, VortexParticleDistribution, _attributed_distribution
 from ._common import unit_vector, validate_viscosity, vector3
 
 
@@ -32,7 +32,7 @@ def initialize_vortex_doublet(
     vorticity = (-strength / (4.0 * np.pi * safe_distance))[:, None] * (
         distance_squared[:, None] * direction_array - 3.0 * relative * projection[:, None]
     )
-    return attributed_distribution(
+    return _attributed_distribution(
         distribution,
         velocity=np.zeros_like(distribution.position),
         vortex_strength=vorticity * distribution.particle_volume[:, None],

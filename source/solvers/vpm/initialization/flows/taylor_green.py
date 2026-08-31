@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..data import ParticleDistribution, VortexParticleDistribution, attributed_distribution
+from ..data import ParticleDistribution, VortexParticleDistribution, _attributed_distribution
 from ._common import validate_viscosity
 
 
@@ -33,7 +33,7 @@ def initialize_taylor_green_vortex(
     vorticity[:, 0] = -decay * wave_number * np.cos(x) * np.sin(y) * np.sin(z)
     vorticity[:, 1] = -decay * wave_number * np.sin(x) * np.cos(y) * np.sin(z)
     vorticity[:, 2] = 2.0 * decay * wave_number * np.sin(x) * np.sin(y) * np.cos(z)
-    return attributed_distribution(
+    return _attributed_distribution(
         distribution,
         velocity=velocity,
         vortex_strength=vorticity * distribution.particle_volume[:, None],

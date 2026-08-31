@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from ..data import ParticleDistribution, VortexParticleDistribution, attributed_distribution
+from ..data import ParticleDistribution, VortexParticleDistribution, _attributed_distribution
 from ..disturbances import FilamentDisturbance
 from ._common import (
     represented_core_radius_squared,
@@ -70,7 +70,7 @@ def initialize_vortex_filament(
         * np.exp(-radial_distance_squared / represented_core_squared)
     )
     vortex_strength = vorticity_magnitude[:, None] * tangent * distribution.particle_volume[:, None]
-    return attributed_distribution(
+    return _attributed_distribution(
         distribution,
         velocity=np.zeros_like(distribution.position),
         vortex_strength=vortex_strength,

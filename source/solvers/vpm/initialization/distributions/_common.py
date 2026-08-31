@@ -37,11 +37,3 @@ def centred_coordinates(lower: float, upper: float, spacing: float) -> np.ndarra
     occupied_width = (count - 1) * spacing
     start = 0.5 * (lower + upper - occupied_width)
     return start + spacing * np.arange(count, dtype=float)
-
-
-def axis_vector(axis: str) -> np.ndarray:
-    if axis not in {"x", "y", "z"}:
-        raise ValueError("axis must be 'x', 'y', or 'z'")
-    result = np.zeros(3)
-    result[{"x": 0, "y": 1, "z": 2}[axis]] = 1.0
-    return result

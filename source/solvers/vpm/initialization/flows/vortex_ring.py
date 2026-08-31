@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from ..data import ParticleDistribution, VortexParticleDistribution, attributed_distribution
+from ..data import ParticleDistribution, VortexParticleDistribution, _attributed_distribution
 from ..disturbances import WidnallDisturbance
 from ._common import (
     represented_core_radius_squared,
@@ -94,7 +94,7 @@ def initialize_vortex_ring(
     if abs(represented_circulation) <= np.finfo(float).tiny:
         raise ValueError("particle distribution represents zero vortex-ring circulation")
     vortex_strength *= circulation / represented_circulation
-    return attributed_distribution(
+    return _attributed_distribution(
         distribution,
         velocity=np.zeros_like(distribution.position),
         vortex_strength=vortex_strength,
