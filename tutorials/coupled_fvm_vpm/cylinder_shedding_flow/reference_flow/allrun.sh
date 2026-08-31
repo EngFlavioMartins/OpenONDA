@@ -1,39 +1,16 @@
 #!/usr/bin/env bash
-# Run the fully meshed FVM reference for the cylinder-shedding experiment.
-#
-# Usage:
-#   ./allrun.sh
-#   OPENONDA_SMOKE=1 ./allrun.sh
+# Run the four cylinder grid-study resolutions.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-case_dir="${OPENONDA_REFERENCE_CASE_DIR:-$PWD}"
-if [ -z "${OPENONDA_RESTART_FROM:-}" ]; then
-    if [ "$case_dir" = "$PWD" ]; then
-        ./allclean.sh
-    else
-        mkdir -p "$case_dir"
-    fi
-    tee_flag=()
-else
-    echo "Restarting from $OPENONDA_RESTART_FROM; retaining existing solution and samples."
-    tee_flag=(-a)
-fi
-mkdir -p "$case_dir/solution"
 
-cores="${OPENONDA_FVM_CORES:-6}"
-solver=(python -u reference_flow_setup.py)
-if [ "$cores" -gt 1 ]; then
-    solver=(mpiexec --bind-to none -n "$cores" python -u reference_flow_setup.py)
-fi
+rm -rf solution samples figures
+mkdir -p solution samples figures
 
-echo
-echo "===== SIMULATE (CUT-CELL FVM REFERENCE) ====="
-echo
-echo "Output: $case_dir/solution and $case_dir/samples"
-"${solver[@]}" 2>&1 | tee "${tee_flag[@]}" "$case_dir/solution/reference_flow.stdout.log"
+python -u reference_flow_setup.py --dx 0.08333333333333333 --case-name very_coarse
+python -u reference_flow_setup.py --dx 0.041666666666666664 --case-name coarse
+python -u reference_flow_setup.py --dx 0.027777777777777776 --case-name medium
+python -u reference_flow_setup.py --dx 0.020833333333333332 --case-name fine
 
-echo
-echo "===== DONE ====="
-echo
-echo "Reference simulation completed. Run ../allvalidate.sh for the full independence gate."
+python assets/postprocess.py
+python assets/plot_grid_study.py

@@ -27,16 +27,6 @@ class TurbulenceConfig:
     subgrid_dissipation_coefficient: float = 1.048
     """SGS dissipation coefficient ``C_e``."""
 
-    vortex_stretching_sfs_coefficient: float = 0.0
-    """Constant coefficient of the anisotropic vortex-stretching SFS model.
-
-    A value of zero disables the model. Positive values apply the
-    no-backscatter correction at each coupled vortex-stretching stage.
-    """
-
-    vortex_stretching_sfs_cutoff: float = 4.0
-    """Gaussian support radius of the SFS interaction, in source core radii."""
-
     flow_model: str = field(default="DNS", init=False)
     """Solver flow-model category derived from ``model``."""
 
@@ -54,17 +44,6 @@ class TurbulenceConfig:
             or self.subgrid_dissipation_coefficient <= 0.0
         ):
             raise ValueError("subgrid_dissipation_coefficient must be finite and positive")
-        if (
-            not math.isfinite(self.vortex_stretching_sfs_coefficient)
-            or self.vortex_stretching_sfs_coefficient < 0.0
-        ):
-            raise ValueError("vortex_stretching_sfs_coefficient must be finite and non-negative")
-        if (
-            not math.isfinite(self.vortex_stretching_sfs_cutoff)
-            or self.vortex_stretching_sfs_cutoff <= 0.0
-        ):
-            raise ValueError("vortex_stretching_sfs_cutoff must be finite and positive")
-
         flow_model = {
             "DNS": "DNS",
             "LES_SMAGORINSKY": "LES",
@@ -90,16 +69,12 @@ class TurbulenceConfig:
     def les_smagorinsky(
         smagorinsky_coefficient: float = constants_module.SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
-        vortex_stretching_sfs_coefficient: float = 0.0,
-        vortex_stretching_sfs_cutoff: float = 4.0,
     ) -> TurbulenceConfig:
         """Return the equilibrium Smagorinsky LES configuration."""
         return TurbulenceConfig(
             model="LES_SMAGORINSKY",
             smagorinsky_coefficient=smagorinsky_coefficient,
             subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
-            vortex_stretching_sfs_coefficient=vortex_stretching_sfs_coefficient,
-            vortex_stretching_sfs_cutoff=vortex_stretching_sfs_cutoff,
         )
 
     @staticmethod

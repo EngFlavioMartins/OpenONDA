@@ -43,7 +43,6 @@ class CouplingStepper:
             time_step_size=self.time_step_size,
             time=self.time,
             step=self.step,
-            logging_interval_steps=self.logging_interval_steps,
         )
         if new_particles is not None:
             n = len(new_particles["vertex_position"])

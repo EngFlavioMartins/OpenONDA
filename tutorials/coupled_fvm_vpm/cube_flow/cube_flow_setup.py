@@ -342,8 +342,6 @@ VPM_PANEL_SOLVER = vpm.PanelSolver(
 VPM_SETUP = vpm.VPMSetup(
     time_step_size=VPM_TIME_STEP_SIZE,
     time_integration="COUPLED",
-    coupled_max_strain_increment=None,
-    coupled_max_advection_fraction=None,
     freestream_velocity=list(FREESTREAM_VELOCITY),
     viscous=make_vpm_viscous_config(VPM_VISCOUS_SCHEME),
     stretching=vpm.StretchingConfig.transposed(scheme=VPM_SCHEME),
@@ -360,16 +358,14 @@ VPM_SETUP = vpm.VPMSetup(
     max_n_particles=PARTICLE_LIMIT,
     max_evaluation_points=PARTICLE_LIMIT,
     domain_bounds=list(VPM_DOMAIN),
-    log_mode="file",
-    logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
-    timing_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
     write_precision="f32",
-    checkpoint_store_velocity_gradient=False,
     # Coupled runs use the atomic FVM+VPM checkpoint owned by COUPLER_SETUP.
-    checkpoint_interval_steps=0,
-    checkpoint_directory=str(CASE_DIR / "solution"),
-    export_flow_integrals=False,
-    samplers=VPM_SAMPLERS,
+    backup=vpm.Backup(
+        interval_steps=0,
+        directory=str(CASE_DIR / "solution"),
+        log_directory=str(CASE_DIR / "solution"),
+    ),
+    samplers=vpm.Samplers(*VPM_SAMPLERS),
     panel_solver=VPM_PANEL_SOLVER,
     bodies=(vpm.PanelBodySetup(stl=BODY_STL, uid="body", reference_area=CUBE_SIDE**2),),
 )

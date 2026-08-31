@@ -545,13 +545,10 @@ class Logging:
     @staticmethod
     def _format_monitoring_io(system) -> list:
         """Return the monitoring and output rows."""
-        name = (system.checkpoint_name or "").strip()
-        prefix = f"vpm_{name}" if name else "vpm"
         return [
-            ("snapshot interval", f"{system.checkpoint_interval_steps:,}", "steps"),
-            ("snapshot prefix", prefix),
-            ("logging interval", f"{system.setup.logging_interval_steps:,}", "steps"),
-            ("timing report interval", f"{system.timing_interval_steps:,}", "steps"),
+            ("backup interval", f"{system.setup.backup.interval_steps:,}", "steps"),
+            ("backup directory", system._backup_path),
+            ("log directory", system._log_path),
         ]
 
     @staticmethod
@@ -617,9 +614,15 @@ class Logging:
 
     @staticmethod
     def _format_stabilization_config(system) -> list:
-        """Return the residual-viscosity and particle-retention rows."""
+        """Return the solution-check, stabilization, and particle-retention rows."""
         rows: list[log_style.Row] = []
         cfg = getattr(system.setup, "stabilization", None)
+        stability_limit = getattr(cfg, "max_lagrangian_cfl", None)
+        if stability_limit is None:
+            rows.append(("solution stability check", "disabled"))
+        else:
+            rows.append(("solution stability check", "enabled"))
+            rows.append(("  maximum Lagrangian CFL", f"{stability_limit:.3f}"))
         coefficient = getattr(cfg, "stretching_viscosity_coefficient", 0.0)
         if coefficient > 0.0:
             rows.append(("stretching viscosity", "enabled"))
@@ -738,7 +741,6 @@ class Logging:
         else:
             rows.append(("  model", "potential, no turbulence"))
 
-        name = (system.checkpoint_name or "").strip()
         rows.extend(
             (
                 ("state:", ""),
@@ -747,8 +749,8 @@ class Logging:
                 ("  wall time", f"{system.wall_time:.2e}", "s"),
                 ("  vortex strength", f"{system.vortex_strength_magnitude_sum:.2e}", "m^3/s"),
                 ("output:", ""),
-                ("  snapshot interval", f"{system.checkpoint_interval_steps:,}", "steps"),
-                ("  snapshot prefix", f"vpm_{name}" if name else "vpm"),
+                ("  backup interval", f"{system.setup.backup.interval_steps:,}", "steps"),
+                ("  backup prefix", "vpm"),
             )
         )
         return log_style.section("vpm solver  initialization summary", rows)
@@ -925,9 +927,7 @@ class Logging:
         and its log file is closed. This prevents sequential solver construction
         from leaking one file descriptor per solver.
 
-        Naming policy:
-          - checkpoint_name empty/None  -> vpm.log
-          - checkpoint_name provided    -> vpm_<checkpoint_name>.log
+        The canonical log filename is always ``vpm.log``.
         """
         import atexit
         import sys
@@ -942,21 +942,11 @@ class Logging:
         if _ACTIVE_OUTPUT_REDIRECTION is not None:
             _ACTIVE_OUTPUT_REDIRECTION.restore()
 
-        log_mode = getattr(getattr(solver, "setup", None), "log_mode", "tee")
         solver._stdout_original = sys.stdout  # type: ignore[attr-defined]
         solver._stderr_original = sys.stderr  # type: ignore[attr-defined]
 
-        if log_mode == "console":
-            solver.log_file_path = None  # type: ignore[attr-defined]
-            solver._log_file_handle = None  # type: ignore[attr-defined]
-            solver._restore_output_streams = lambda: None  # type: ignore[attr-defined]
-            return
-        if log_mode not in {"file", "tee"}:
-            raise ValueError(f"Unknown log_mode {log_mode!r}")
-
-        checkpoint_name = (getattr(solver, "checkpoint_name", "") or "").strip()
-        log_basename = f"vpm_{checkpoint_name}.log" if checkpoint_name else "vpm.log"
-        log_directory = getattr(solver, "checkpoint_directory", None) or "solution"
+        log_basename = "vpm.log"
+        log_directory = solver._log_path
         os.makedirs(log_directory, exist_ok=True)
 
         solver.log_file_path = os.path.join(log_directory, log_basename)  # type: ignore[attr-defined]
@@ -968,12 +958,8 @@ class Logging:
         )
         solver._log_file_handle = file_handle  # type: ignore[attr-defined]
 
-        if log_mode == "tee":
-            stdout_redirected = _TeeLogStream(file_handle, solver._stdout_original)
-            stderr_redirected = _TeeLogStream(file_handle, solver._stderr_original)
-        else:
-            stdout_redirected = _LineBufferedLogStream(file_handle)
-            stderr_redirected = stdout_redirected
+        stdout_redirected = _TeeLogStream(file_handle, solver._stdout_original)
+        stderr_redirected = _TeeLogStream(file_handle, solver._stderr_original)
 
         sys.stdout = stdout_redirected  # type: ignore[assignment]
         sys.stderr = stderr_redirected  # type: ignore[assignment]

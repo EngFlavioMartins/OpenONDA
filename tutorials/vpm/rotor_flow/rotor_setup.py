@@ -2,7 +2,7 @@
 """Rotor in forward flight with a fully-coupled VLM--VPM wake (LES).
 
 A three-bladed rotor flies at a tip-speed ratio of 7.0. The wake is resolved
-with vortex particles convected by a coupled (implicit) advection integrator;
+with vortex particles whose position and strength use common Runge--Kutta stages;
 the blade loading and the downstream wake planes are sampled for the
 ``allplot.sh`` figures.
 
@@ -32,9 +32,6 @@ AIR_DENSITY = 1.225
 N_RADIAL_STATIONS = 23
 ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS
 
-COUPLED_MAX_STRAIN_INCREMENT = 0.08
-COUPLED_MAX_ADVECTION_FRACTION = 0.25
-COUPLED_MAX_SUBSTEPS = 128
 TREECODE_THETA = 0.20
 TIME_STEP_SIZE = 0.006
 N_STEPS = 2400
@@ -43,7 +40,7 @@ RAMP_ROTATIONS = 1.0
 GUARD_INTERVAL_STEPS = 20
 MAX_PARTICLE_STRENGTH = 10.0
 SAMPLE_INTERVAL_TIME = 0.12  # write a snapshot every this many seconds
-CHECKPOINT_INTERVAL_TIME = 0.03  # about 26 animation frames per rotor revolution
+BACKUP_INTERVAL_TIME = 0.03  # about 26 animation frames per rotor revolution
 ROTATION_PERIOD = 2.0 * np.pi / ANGULAR_VELOCITY
 PLANE_SAMPLING_ROTATIONS = 6.0
 PLANE_SAMPLING_START_TIME = max(
@@ -70,7 +67,7 @@ def cadence_steps(period: float, time_step_size: float) -> int:
 
 def build_solver_config(
     sample_interval_time: float,
-    checkpoint_interval_time: float,
+    backup_interval_time: float,
     *,
     vlm_setup: vpm.VLMSetup | None = None,
     samplers: tuple[vpm.SurfaceSampler, ...] | list[vpm.SurfaceSampler] = (),
@@ -83,9 +80,6 @@ def build_solver_config(
         time_step_size=time_step_size,
         compute_device="AUTO",
         time_integration="COUPLED",
-        coupled_max_strain_increment=COUPLED_MAX_STRAIN_INCREMENT,
-        coupled_max_advection_fraction=COUPLED_MAX_ADVECTION_FRACTION,
-        coupled_max_substeps=COUPLED_MAX_SUBSTEPS,
         advection=vpm.AdvectionConfig(scheme="RK2"),
         vlm=vlm_setup,
         freestream_velocity=[FREESTREAM_SPEED, 0.0, 0.0],
@@ -117,15 +111,21 @@ def build_solver_config(
             traversal_block_dim=128,
         ),
         particle_kernel="WINCKELMANS",
-        samplers=list(samplers),
-        checkpoint_name=CASE_NAME,
-        checkpoint_directory=str(SOLUTION_DIR),
-        sample_subdirectory=CASE_NAME,
+        backup=vpm.Backup(
+            interval_steps=cadence_steps(backup_interval_time, time_step_size),
+            directory=str(SOLUTION_DIR),
+            log_directory=str(SOLUTION_DIR),
+        ),
+        samplers=vpm.Samplers(
+            vpm.FlowIntegralsSampler(
+                schedule=vpm.SamplingSchedule(
+                    every_n_steps=cadence_steps(sample_interval_time, time_step_size)
+                )
+            ),
+            *samplers,
+            directory=CASE_NAME,
+        ),
         write_precision="f32",
-        checkpoint_store_velocity_gradient=False,
-        checkpoint_interval_steps=cadence_steps(checkpoint_interval_time, time_step_size),
-        logging_interval_steps=cadence_steps(sample_interval_time, time_step_size),
-        export_flow_integrals=True,
     )
 
 
@@ -174,15 +174,14 @@ def write_manifest(
         "case": "rotor_flow",
         "time_step_size": time_step_size,
         "n_steps": n_steps,
-        "sampling_interval_time": cfg.logging_interval_steps * time_step_size,
-        "checkpoint_interval_time": cfg.checkpoint_interval_steps * time_step_size,
+        "sampling_interval_time": (
+            cfg.samplers.samples[0].schedule.every_n_steps * time_step_size
+        ),
+        "backup_interval_time": cfg.backup.interval_steps * time_step_size,
         "treecode_theta": cfg.velocity.theta,
         "kernel": cfg.particle_kernel,
         "kinematic_viscosity": cfg.viscous.kinematic_viscosity,
         "wake_particle_spacing": cfg.viscous.particle_spacing,
-        "coupled_max_strain_increment": cfg.coupled_max_strain_increment,
-        "coupled_max_advection_fraction": cfg.coupled_max_advection_fraction,
-        "coupled_max_substeps": cfg.coupled_max_substeps,
         "retention_bounds": cfg.stabilization.remove_particles_by_bounds,
         # Record both the requested and resolved numerical controls so that a
         # plot/backup can be traced to the exact LES/backend configuration.
@@ -190,7 +189,6 @@ def write_manifest(
         "compute_device": solver.compute_device,
         "precision": solver.precision,
         "write_precision": solver.write_precision,
-        "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
     }
     with (output_dir / "run_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
@@ -200,7 +198,7 @@ def main() -> int:
     from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
 
     sample_interval_time = SAMPLE_INTERVAL_TIME
-    checkpoint_interval_time = CHECKPOINT_INTERVAL_TIME
+    backup_interval_time = BACKUP_INTERVAL_TIME
     n_steps = N_STEPS
     time_step_size = TIME_STEP_SIZE
     smagorinsky_coefficient = DEFAULT_SMAGORINSKY_COEFFICIENT
@@ -283,7 +281,7 @@ def main() -> int:
 
     solver_config = build_solver_config(
         sample_interval_time,
-        checkpoint_interval_time,
+        backup_interval_time,
         vlm_setup=vlm_setup,
         samplers=plane_samplers,
         time_step_size=time_step_size,
@@ -305,7 +303,7 @@ def main() -> int:
             if (step + 1) % GUARD_INTERVAL_STEPS == 0:
                 enforce_wake_admissibility(solver, MAX_PARTICLE_STRENGTH)
     except RuntimeError:
-        solver.save_state(str(SOLUTION_DIR / "rejected_state"))
+        solver.save_backup()
         raise
     print("\n===== DONE =====")
     print("Simulation completed successfully. Run ./allplot.sh to make the figures.")

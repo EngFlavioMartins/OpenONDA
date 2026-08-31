@@ -78,9 +78,9 @@ class ParticleContainerWrapper:
 
 class OfflineFlowDiagnostics:
     """
-    Offline flow diagnostics processor for VPM checkpoint files.
+    Offline flow diagnostics processor for VPM backup files.
 
-    Reads particle data from HDF5 checkpoint files referenced by a temporal XDMF file
+    Reads particle data from HDF5 backup files referenced by a temporal XDMF file
     and computes all integral flow quantities using GPU-accelerated Taichi kernels.
 
     Attributes:
@@ -166,7 +166,7 @@ class OfflineFlowDiagnostics:
 
     def _load_particle_data(self, h5_path: Path) -> dict[str, Any]:
         """
-        Load particle data from a single HDF5 checkpoint file.
+        Load particle data from a single HDF5 backup file.
 
         Args:
             h5_path: Path to HDF5 file.
@@ -396,44 +396,43 @@ class OfflineFlowDiagnostics:
 
 
 def compute_offline_diagnostics(
-    checkpoint_pattern: str | None = None,
+    backup_pattern: str | None = None,
     xdmf_path: str | Path | None = None,
     output_path: str | Path | None = None,
     verbose: bool = True,
 ) -> Path:
     """
-    Compute and save offline flow diagnostics from VPM checkpoint files.
+    Compute and save offline flow diagnostics from VPM backup files.
 
-    This function can accept either a glob pattern for checkpoint files or a
-    pre-existing temporal XDMF file. If checkpoint_pattern is provided, it will
+    This function can accept either a glob pattern for backup files or a
+    pre-existing temporal XDMF file. If backup_pattern is provided, it will
     automatically create the temporal XDMF file.
 
     Args:
-        checkpoint_pattern: Glob pattern for checkpoint files (e.g., 'solution/case/case_*').
+        backup_pattern: Glob pattern for backup files (e.g., 'solution/case/case_*').
                         If provided, a temporal XDMF is generated automatically.
-        xdmf_path: Path to existing temporal XDMF file. Ignored if checkpoint_pattern is set.
+        xdmf_path: Path to existing temporal XDMF file. Ignored if backup_pattern is set.
         output_path: Output file path. Defaults to 'diagnostics.log' in the
-                     same directory as the checkpoint files.
+                     same directory as the backup files.
         verbose: If True, print progress to console.
 
     Returns:
         Path to the created output file.
 
     Example:
-        >>> # From checkpoint pattern (recommended)
+        >>> # From backup pattern (recommended)
         >>> compute_offline_diagnostics('solution/lamb_oseen/lamb_oseen_*')
 
         >>> # From existing XDMF file
         >>> compute_offline_diagnostics(xdmf_path='solution/vpm_temporal.xdmf')
     """
-    # Import CheckpointManager internally to minimize user-facing imports
-    from ..io import CheckpointManager
+    from ..io.backup import _BackupIO
 
     # Resolve XDMF path
-    if checkpoint_pattern is not None:
-        xdmf_path = CheckpointManager.create_temporal_xdmf(checkpoint_pattern=checkpoint_pattern)
+    if backup_pattern is not None:
+        xdmf_path = _BackupIO.create_temporal_xdmf(backup_pattern=backup_pattern)
     elif xdmf_path is None:
-        raise ValueError("Either checkpoint_pattern or xdmf_path must be provided")
+        raise ValueError("Either backup_pattern or xdmf_path must be provided")
 
     diagnostics = OfflineFlowDiagnostics(xdmf_path)
     diagnostics.compute_all(verbose=verbose)

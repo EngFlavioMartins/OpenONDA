@@ -8,26 +8,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-format="${1:-png}"
-case "$format" in
-    png|pdf) ;;
-    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
-esac
+python_bin="${OPENONDA_PYTHON:-python}"
 
-mkdir -p figures
-
-echo
-echo "===== FIGURES ($format) ====="
-echo
-
-plot() {
-    python "$@" --format "$format"
-}
-
-plot assets/plot_vortex_ring_motion.py
-plot assets/plot_vortex_ring_energy.py
-plot assets/plot_vortex_ring_circulation.py
-
-echo
-echo "===== DONE ====="
-echo "Figures saved to: figures/"
+# Post-processing: validation and the three figures in both required formats
+"$python_bin" assets/postprocess.py --pre-plot
+"$python_bin" assets/plot_vortex_ring_motion.p
+"$python_bin" assets/plot_vortex_ring_energy.py
+"$python_bin" assets/plot_vortex_ring_circulation.py
+"$python_bin" assets/plot_vortex_ring_motion.py 
+"$python_bin" assets/plot_vortex_ring_energy.py
+"$python_bin" assets/plot_vortex_ring_circulation.py
+"$python_bin" assets/postprocess.py

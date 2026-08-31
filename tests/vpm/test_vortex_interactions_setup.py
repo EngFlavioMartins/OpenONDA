@@ -1,4 +1,4 @@
-"""Configuration contracts for the vortex-interactions tutorial."""
+"""Checks for the vortex-interactions tutorial configuration."""
 
 import importlib.util
 from pathlib import Path
@@ -30,6 +30,29 @@ def test_all_cases_use_transposed_coupled_rk2(interactions_setup, tmp_path):
         assert setup.advection.scheme == "RK2"
         assert setup.stretching.scheme == "RK2"
         assert setup.stretching.mode == "TRANSPOSED"
+        assert setup.stabilization.max_lagrangian_cfl == pytest.approx(
+            interactions_setup.MAX_LAGRANGIAN_CFL
+        )
+
+
+def test_runner_leaves_instability_detection_to_the_solver():
+    source = SETUP_PATH.read_text(encoding="utf-8")
+
+    assert "run_manifest" not in source
+    assert "termination_reason" not in source
+    assert "current_peak" not in source
+    assert "vortex_strength_cpu" not in source
+
+
+def test_ring_uses_the_vpm_initialization_workflow():
+    source = SETUP_PATH.read_text(encoding="utf-8")
+
+    assert "vpm.create_rectangular_distribution" in source
+    assert "vpm.initialize_vortex_ring" in source
+    assert "solver.remove_weak_particles" in source
+    assert "create_toroidal_distribution" not in source
+    assert "np.arctan2(position" not in source
+    assert "represented_circulation =" not in source
 
 
 def test_stabilization_cases_use_the_requested_absolute_criteria(interactions_setup, tmp_path):
@@ -64,45 +87,27 @@ def test_core_spreading_reaches_the_remesh_threshold_after_450_steps(
     assert np.sqrt(sigma_squared) == pytest.approx(interactions_setup.REMESH_CORE_RADIUS_TRIGGER)
 
 
-def test_lbm_disturbance_is_one_mode_with_the_requested_amplitude(
-    interactions_setup,
+def test_widnall_disturbance_changes_vorticity_not_particle_geometry(
+    interactions_setup, monkeypatch
 ):
-    position = interactions_setup._single_mode_ring(-0.5)[0]
-    represented_core = np.sqrt(
-        interactions_setup.CORE_RADIUS**2 - interactions_setup.PARTICLE_CORE_RADIUS**2
-    )
-    tube_radius = represented_core * np.sqrt(-np.log(interactions_setup.TOROIDAL_TAIL_FRACTION))
-    azimuth_count = max(
-        8,
-        int(
-            np.ceil(
-                2.0
-                * np.pi
-                * (interactions_setup.RING_RADIUS + tube_radius)
-                / interactions_setup.PARTICLE_SPACING
-            )
-        ),
-    )
-    azimuth_count += (-azimuth_count) % 4
-    radius = np.hypot(position[:, 1], position[:, 2]).reshape(-1, azimuth_count).mean(axis=0)
-    spectrum = 2.0 * np.abs(np.fft.rfft(radius - radius.mean())) / azimuth_count
+    particles = interactions_setup._create_ring(-0.5)
+    position = particles.position
+    points_per_axis = [len(np.unique(position[:, axis])) for axis in range(3)]
+    assert len(position) == np.prod(points_per_axis)
 
-    assert len(position) == 8772
-    assert np.argmax(spectrum[1:]) + 1 == interactions_setup.DISTURBANCE_MODE
-    assert spectrum[interactions_setup.DISTURBANCE_MODE] == pytest.approx(
-        interactions_setup.DISTURBANCE_AMPLITUDE
-    )
+    monkeypatch.setattr(interactions_setup, "DISTURBANCE_AMPLITUDE", 0.0)
+    alternate = interactions_setup._create_ring(-0.5)
+
+    np.testing.assert_array_equal(alternate.position, position)
+    np.testing.assert_array_equal(alternate.particle_volume, particles.particle_volume)
+    np.testing.assert_array_equal(alternate.core_radius, particles.core_radius)
+    assert not np.allclose(alternate.vortex_strength, particles.vortex_strength)
 
 
-def test_sfs_is_added_only_to_the_sfs_case(interactions_setup, tmp_path):
-    baseline = interactions_setup.solver_setup("leapfrog_les", tmp_path / "baseline")
-    sfs = interactions_setup.solver_setup("leapfrog_les_sfs", tmp_path / "sfs")
-
-    assert baseline.turbulence.vortex_stretching_sfs_coefficient == 0.0
-    assert sfs.turbulence.smagorinsky_coefficient == pytest.approx(
-        interactions_setup.SMAGORINSKY_COEFFICIENT
-    )
-    assert sfs.turbulence.vortex_stretching_sfs_coefficient == pytest.approx(
-        interactions_setup.VORTEX_STRETCHING_SFS_COEFFICIENT
-    )
-    assert sfs.stretching == baseline.stretching
+def test_all_cases_use_the_calibrated_smagorinsky_model(interactions_setup, tmp_path):
+    for case_name in interactions_setup.CASES:
+        turbulence = interactions_setup.solver_setup(case_name, tmp_path / case_name).turbulence
+        assert turbulence.model == "LES_SMAGORINSKY"
+        assert turbulence.smagorinsky_coefficient == pytest.approx(
+            interactions_setup.SMAGORINSKY_COEFFICIENT
+        )

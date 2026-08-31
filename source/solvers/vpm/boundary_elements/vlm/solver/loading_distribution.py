@@ -41,7 +41,7 @@ class VLMLoadingDistribution:
         step: int,
         time: float,
         case_dir: str,
-        sample_subdirectory: str | None = None,
+        sample_directory: str | None = None,
     ) -> None:
         """Iterate surfaces flagged sample_surface_forces and export distributions.
 
@@ -73,7 +73,7 @@ class VLMLoadingDistribution:
                     time,
                     step,
                     case_dir,
-                    sample_subdirectory,
+                    sample_directory,
                 )
             except Exception as exc:
                 print(
@@ -482,12 +482,12 @@ class VLMLoadingDistribution:
         time: float,
         step: int,
         case_dir: str,
-        sample_subdirectory: str | None = None,
+        sample_directory: str | None = None,
     ) -> None:
         """Append one time-step's distributions to the per-surface CSVs."""
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(case_dir, sample_subdirectory)
+        samples_dir = resolve_samples_dir(case_dir, sample_directory)
         samples_dir.mkdir(parents=True, exist_ok=True)
 
         safe_name = surface_name.replace("/", "_").replace(" ", "_")

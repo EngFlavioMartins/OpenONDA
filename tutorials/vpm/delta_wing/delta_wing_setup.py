@@ -45,7 +45,7 @@ END_TIME = 8.8
 TIME_STEP_SIZE = 0.0025
 N_STEPS = round(END_TIME / TIME_STEP_SIZE)
 SAMPLE_INTERVAL_TIME = 0.08  # write a snapshot every this many seconds
-CHECKPOINT_INTERVAL_TIME = 0.04  # 25 animation frames per heave cycle
+BACKUP_INTERVAL_TIME = 0.04  # 25 animation frames per heave cycle
 
 
 def cadence_steps(period: float) -> int:
@@ -79,7 +79,7 @@ def run() -> None:
     smagorinsky_coefficient = 0.0
     n_steps = N_STEPS
     sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
-    checkpoint_interval_steps = cadence_steps(CHECKPOINT_INTERVAL_TIME)
+    backup_steps = cadence_steps(BACKUP_INTERVAL_TIME)
     surface_file = TUTORIAL_DIR / "delta_wing_surface.json"
     save_surface(
         create_delta_wing(
@@ -128,6 +128,7 @@ def run() -> None:
             spacing=0.04,
             file_name=f"wake_{distance}span",
             include_derivatives=False,
+            schedule=vpm.SamplingSchedule(every_n_steps=sample_steps),
         )
         for distance in (1, 5, 10)
     )
@@ -158,14 +159,19 @@ def run() -> None:
                     1.5,
                 ]
             ),
-            logging_interval_steps=sample_steps,
-            checkpoint_interval_steps=checkpoint_interval_steps,
-            checkpoint_name=CASE_NAME,
-            checkpoint_directory=str(SOLUTION_DIR),
-            sample_subdirectory=CASE_NAME,
+            backup=vpm.Backup(
+                interval_steps=backup_steps,
+                directory=str(SOLUTION_DIR),
+                log_directory=str(SOLUTION_DIR),
+            ),
+            samplers=vpm.Samplers(
+                vpm.FlowIntegralsSampler(
+                    schedule=vpm.SamplingSchedule(every_n_steps=sample_steps)
+                ),
+                *samplers,
+                directory=CASE_NAME,
+            ),
             write_precision="f32",
-            checkpoint_store_velocity_gradient=False,
-            samplers=samplers,
         ),
         case_dir=TUTORIAL_DIR,
     )
@@ -186,10 +192,9 @@ def run() -> None:
         "smagorinsky_coefficient": smagorinsky_coefficient,
         "precision": solver.precision,
         "write_precision": solver.write_precision,
-        "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
         "panel_resolution": {"chordwise": 8, "spanwise": 18},
         "sample_interval_time": SAMPLE_INTERVAL_TIME,
-        "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,
+        "backup_interval_time": BACKUP_INTERVAL_TIME,
         "status": "running",
         "completed": False,
     }

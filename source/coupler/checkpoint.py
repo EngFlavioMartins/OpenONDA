@@ -23,18 +23,8 @@ _VPM_OPERATIONAL_CONFIG_FIELDS = frozenset(
     {
         "time",
         "step",
-        "logging_interval_steps",
-        "timing_interval_steps",
-        "checkpoint_interval_steps",
-        "checkpoint_name",
-        "checkpoint_directory",
-        "sample_subdirectory",
-        "export_flow_integrals",
-        "export_discretization_health",
-        "log_mode",
-        "clean",
+        "backup",
         "write_precision",
-        "checkpoint_store_velocity_gradient",
         "debug_mode",
         "verbose",
     }
@@ -191,7 +181,7 @@ def save_coupled_state(coupler, directory, *, coupling_step: int | None = None) 
     if coupler.vpm_solver is None:
         raise RuntimeError("Initialize the coupler before saving a checkpoint")
 
-    coupler.vpm_solver.save_numerical_state(str(target / f"vpm_{suffix}"))
+    coupler.vpm_solver._save_backup_to(str(target / f"vpm_{suffix}"))
     boundary_artifact = f"vpm_boundary_condition_{suffix}.npz"
     boundary_temporary = target / f".{boundary_artifact}.tmp"
     boundary_state = {
@@ -490,7 +480,7 @@ def load_coupled_state(
 
     if coupler._is_master:
         assert coupler.vpm_solver is not None
-        coupler.vpm_solver.load_numerical_state(str(target / artifacts["vpm"]))
+        coupler.vpm_solver._load_backup_from(str(target / artifacts["vpm"]))
         with np.load(target / artifacts["vpm_boundary_condition"], allow_pickle=False) as boundary:
             expected_boundary_keys = {
                 "boundary_schema_version",

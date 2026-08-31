@@ -278,6 +278,7 @@ class Logging:
         self,
         case_dir: str | Path,
         *,
+        solution_dir: str | Path | None = None,
         config: Any | None = None,
         enabled: bool = True,
         filename: str | None = None,
@@ -308,9 +309,13 @@ class Logging:
         self._console_stream = _CONSOLE_STDOUT
 
         if self.enabled:
-            solution_dir = Path(case_dir).resolve() / "solution"
-            solution_dir.mkdir(parents=True, exist_ok=True)
-            self.log_file_path = solution_dir / filename
+            output_directory = (
+                Path(solution_dir).resolve()
+                if solution_dir is not None
+                else Path(case_dir).resolve() / "solution"
+            )
+            output_directory.mkdir(parents=True, exist_ok=True)
+            self.log_file_path = output_directory / filename
             self._file = self.log_file_path.open("w", buffering=1, encoding="utf-8")
 
     @property
@@ -601,7 +606,7 @@ class Logging:
             log_style.section(
                 "fvm solver  monitoring and output",
                 [
-                    ("solution directory", str(Path(solver.case_dir) / "solution")),
+                    ("solution directory", str(solver.solution_dir)),
                     ("log file", str(log_file_path or "disabled")),
                     ("log mode", str(getattr(sink, "mode", "simple"))),
                     ("log interval", f"{getattr(sink, 'interval_steps', 1)}", "steps"),

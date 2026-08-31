@@ -216,6 +216,8 @@ class FVMSolver(CouplerInterfaceMixin):
         self,
         setup: FVMSetup,
         case_dir: str | None = None,
+        solution_dir: str | None = None,
+        samples_dir: str | None = None,
         mesh_data: dict[str, Any] | None = None,
     ):
         """Initializes the FVM solver instance.
@@ -223,10 +225,16 @@ class FVMSolver(CouplerInterfaceMixin):
         Args:
             setup: FVMSetup object containing all simulation and time parameters.
             case_dir: Root directory for the case. Defaults to current working directory.
+            solution_dir: Optional solver-output directory. Defaults to ``case_dir/solution``.
+            samples_dir: Optional sampler-output directory. Defaults to ``case_dir/samples``.
             mesh_data: Solver-native mesh dictionary. Required on the root rank.
         """
         self.setup = setup
         self.case_dir = os.path.abspath(case_dir or os.getcwd())
+        self.solution_dir = os.path.abspath(
+            solution_dir or os.path.join(self.case_dir, "solution")
+        )
+        self.samples_dir = os.path.abspath(samples_dir or os.path.join(self.case_dir, "samples"))
         # These dictionaries intentionally contain heterogeneous mesh metadata
         # (arrays, counts, patch dictionaries, and parallel objects).
         self.mesh_data: Any
@@ -235,6 +243,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.parallel = ParallelContext.create(self.setup.execution)
         self.logger = logging.Logging(
             self.case_dir,
+            solution_dir=self.solution_dir,
             config=self.setup.logging,
             enabled=self.parallel.is_root,
         )
@@ -244,6 +253,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.case_dir,
             self.parallel,
             self.logger,
+            solution_dir=self.solution_dir,
             solver=self,
         )
         self.logger.profiler = self.profiler
@@ -1345,7 +1355,7 @@ class FVMSolver(CouplerInterfaceMixin):
         """Write source, dependency, backend, mesh, and configuration identity."""
         from ..io.manifest import write_manifest
 
-        destination = path or os.path.join(self.case_dir, "solution", "run_manifest.json")
+        destination = path or os.path.join(self.solution_dir, "run_manifest.json")
         written = None
         if self.parallel.is_root:
             written = write_manifest(self, destination)
@@ -1384,7 +1394,7 @@ class FVMSolver(CouplerInterfaceMixin):
         """
         if not self.parallel.is_root and not self.parallel.is_partitioned:
             return
-        sol_dir = os.path.join(self.case_dir, "solution")
+        sol_dir = self.solution_dir
         if filename is None:
             os.makedirs(sol_dir, exist_ok=True)
             # Use case_name and sequential numbering: case_name_000000.vtu

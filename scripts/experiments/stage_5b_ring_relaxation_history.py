@@ -30,9 +30,8 @@ from scripts.experiments.stage_5b_ring_quasi_steady import (  # noqa: E402
     RELAXED_EMPIRICAL_SPEED,
     sample_solver,
     serializable_metrics,
+    solver_from_backup,
 )
-from source.solvers.vpm import VPMSolver  # noqa: E402
-from source.solvers.vpm.io import CheckpointManager  # noqa: E402
 
 INK = "#20252a"
 BLUE = "#286f9b"
@@ -196,10 +195,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
     energy_residuals = cumulative_energy_residuals(run_directory, times)
     projection_ratios = projection_correction_history(run_directory, times)
 
-    final_base = run_directory / f"vpm_{label}_final"
-    solver = VPMSolver.continue_from_checkpoint(str(final_base))
-    if solver is None:
-        raise RuntimeError(f"could not restore {final_base}")
+    solver = solver_from_backup(paths[-1])
 
     rows: list[dict] = []
     for path, state, moment, speed, energy_residual, projection_ratio in zip(
@@ -211,7 +207,7 @@ def analyze(run_directory: Path, label: str, grid_size: int) -> tuple[list[dict]
         projection_ratios,
         strict=True,
     ):
-        CheckpointManager.load_numerical_state(solver, path)
+        solver.load_backup(str(path))
         sample = sample_solver(
             solver,
             grid_size,

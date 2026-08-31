@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
 import json
-from pathlib import Path
-import re
 import sys
 from typing import Any, Literal
 
@@ -18,7 +16,6 @@ from source.write_precision import (
 from ..boundary_elements.vlm.config import VLMSetup
 from .advection import AdvectionConfig
 from .constants import (
-    DEFAULT_CHECKPOINT_NAME,
     DEFAULT_CUTOFF_RADIUS_FACTOR,
     DEFAULT_TIME_STEP,
     MAX_N_PARTICLES,
@@ -27,6 +24,7 @@ from .constants import (
 )
 from .divergence_relaxation import DivergenceRelaxationConfig
 from .filament_refinement import FilamentRefinementConfig
+from .output import Backup, Samplers
 from .stabilization import StabilizationConfig
 from .stretching import StretchingConfig
 from .turbulence import TurbulenceConfig
@@ -77,9 +75,6 @@ class VPMSetup:
 
     # Evolution
     time_integration: Literal["FRACTIONAL", "COUPLED"] = "FRACTIONAL"
-    coupled_max_strain_increment: float | None = 0.08
-    coupled_max_advection_fraction: float | None = 0.25
-    coupled_max_substeps: int = 128
     axisymmetric_no_swirl_axis: Literal["x", "y", "z"] | None = None
 
     advection: AdvectionConfig = field(default_factory=AdvectionConfig)
@@ -110,23 +105,13 @@ class VPMSetup:
 
     precision: Literal["f32", "f64"] = "f32"
     write_precision: WritePrecision = DEFAULT_WRITE_PRECISION
-    checkpoint_store_velocity_gradient: bool = True
     random_seed: int = 42
     device_memory_fraction: float = 0.5
     debug_mode: bool = False
 
-    # Monitoring and output
-    logging_interval_steps: int = 0
-    timing_interval_steps: int = 0
-    checkpoint_interval_steps: int = 0
-    checkpoint_name: str = DEFAULT_CHECKPOINT_NAME
-    checkpoint_directory: str = "solution"
-    sample_subdirectory: str | None = None
-    clean: bool = False
-
-    export_flow_integrals: bool = True
-    export_discretization_health: bool = True
-    log_mode: Literal["file", "tee", "console"] = "tee"
+    # Output
+    backup: Backup = field(default_factory=Backup)
+    samplers: Samplers = field(default_factory=Samplers)
 
     # Flow and numerical controls
     cutoff_radius_factor: float = DEFAULT_CUTOFF_RADIUS_FACTOR
@@ -136,8 +121,6 @@ class VPMSetup:
 
     # Optional coupled solvers and sampling
     panel_solver: Any | None = None
-    samplers: tuple[Any, ...] | None = None
-    final_samplers: tuple[Any, ...] | None = None
     bodies: tuple[PanelBodySetup, ...] = ()
 
     domain_bounds: tuple[float, ...] | None = None
@@ -145,8 +128,10 @@ class VPMSetup:
 
     def __post_init__(self) -> None:
         validate_write_precision(self.write_precision)
-        if not isinstance(self.checkpoint_store_velocity_gradient, bool):
-            raise TypeError("checkpoint_store_velocity_gradient must be a boolean")
+        if not isinstance(self.backup, Backup):
+            raise TypeError("backup must be a Backup instance")
+        if not isinstance(self.samplers, Samplers):
+            raise TypeError("samplers must be a Samplers instance")
         if len(self.freestream_velocity) != 3:
             raise ValueError("freestream_velocity must contain three components")
         object.__setattr__(
@@ -154,15 +139,6 @@ class VPMSetup:
             "freestream_velocity",
             tuple(float(value) for value in self.freestream_velocity),
         )
-
-        if self.samplers is not None:
-            object.__setattr__(self, "samplers", tuple(self.samplers))
-        if self.final_samplers is not None:
-            object.__setattr__(
-                self,
-                "final_samplers",
-                tuple(self.final_samplers),
-            )
 
         object.__setattr__(self, "bodies", tuple(self.bodies))
         body_uids = [body.uid for body in self.bodies]
@@ -177,37 +153,6 @@ class VPMSetup:
                 self,
                 "domain_bounds",
                 tuple(float(value) for value in self.domain_bounds),
-            )
-
-        checkpoint_name = self.checkpoint_name.strip()
-        if checkpoint_name and (
-            re.fullmatch(
-                r"[A-Za-z0-9][A-Za-z0-9_-]*",
-                checkpoint_name,
-            )
-            is None
-            or checkpoint_name.startswith(("vpm_", "vlm_"))
-        ):
-            raise ValueError(
-                "checkpoint_name must be a filename-safe infix without "
-                "a path, extension, or solver prefix"
-            )
-        object.__setattr__(self, "checkpoint_name", checkpoint_name)
-
-        if self.sample_subdirectory is not None:
-            sample_path = Path(self.sample_subdirectory)
-            if (
-                not self.sample_subdirectory
-                or sample_path.is_absolute()
-                or any(part in {".", ".."} for part in sample_path.parts)
-            ):
-                raise ValueError(
-                    "sample_subdirectory must be a non-empty relative path below samples/"
-                )
-            object.__setattr__(
-                self,
-                "sample_subdirectory",
-                str(sample_path),
             )
 
         if self.velocity is None:
@@ -258,12 +203,6 @@ class VPMSetup:
         elif self.stretching.conserve_moments or self.stretching.conserve_energy:
             raise ValueError("stretching invariant projection requires COUPLED time integration")
 
-        if self.turbulence.vortex_stretching_sfs_coefficient > 0.0:
-            if integration != "COUPLED":
-                raise ValueError("vortex-stretching SFS requires COUPLED time integration")
-            if self.particle_kernel.upper() != "GAUSSIAN":
-                raise ValueError("vortex-stretching SFS currently requires GAUSSIAN particles")
-
         if self.axisymmetric_no_swirl_axis is not None:
             axis = self.axisymmetric_no_swirl_axis.lower()
             object.__setattr__(
@@ -286,33 +225,10 @@ class VPMSetup:
                     "with refinement or divergence relaxation"
                 )
 
-        if (
-            self.coupled_max_strain_increment is not None
-            and self.coupled_max_strain_increment <= 0.0
-        ):
-            raise ValueError("coupled_max_strain_increment must be positive")
-        if (
-            self.coupled_max_advection_fraction is not None
-            and self.coupled_max_advection_fraction <= 0.0
-        ):
-            raise ValueError("coupled_max_advection_fraction must be positive")
-        if self.coupled_max_substeps < 1:
-            raise ValueError("coupled_max_substeps must be at least one")
-
-        for name in (
-            "logging_interval_steps",
-            "timing_interval_steps",
-            "checkpoint_interval_steps",
-        ):
-            if getattr(self, name) < 0:
-                raise ValueError(f"{name} must be non-negative")
         if self.max_n_particles < 1:
             raise ValueError("max_n_particles must be at least one")
         if self.max_evaluation_points < 1:
             raise ValueError("max_evaluation_points must be at least one")
-
-        if self.log_mode not in {"file", "tee", "console"}:
-            raise ValueError("log_mode must be 'file', 'tee', or 'console'")
 
         valid_devices = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
         if self.compute_device.upper() not in valid_devices:
@@ -408,9 +324,6 @@ class VPMSetup:
             "time": self.time,
             "step": self.step,
             "time_integration": self.time_integration,
-            "coupled_max_strain_increment": (self.coupled_max_strain_increment),
-            "coupled_max_advection_fraction": (self.coupled_max_advection_fraction),
-            "coupled_max_substeps": self.coupled_max_substeps,
             "axisymmetric_no_swirl_axis": (self.axisymmetric_no_swirl_axis),
             "advection": as_serializable(self.advection),
             "stretching": as_serializable(self.stretching),
@@ -422,20 +335,10 @@ class VPMSetup:
             "max_n_particles": self.max_n_particles,
             "max_evaluation_points": self.max_evaluation_points,
             "compute_device": self.compute_device,
-            "logging_interval_steps": self.logging_interval_steps,
-            "timing_interval_steps": self.timing_interval_steps,
-            "checkpoint_interval_steps": (self.checkpoint_interval_steps),
-            "checkpoint_name": self.checkpoint_name,
-            "checkpoint_directory": self.checkpoint_directory,
-            "sample_subdirectory": self.sample_subdirectory,
-            "export_flow_integrals": self.export_flow_integrals,
-            "export_discretization_health": (self.export_discretization_health),
-            "log_mode": self.log_mode,
-            "clean": self.clean,
+            "backup": as_serializable(self.backup),
             "cutoff_radius_factor": self.cutoff_radius_factor,
             "precision": self.precision,
             "write_precision": self.write_precision,
-            "checkpoint_store_velocity_gradient": self.checkpoint_store_velocity_gradient,
             "random_seed": self.random_seed,
             "device_memory_fraction": self.device_memory_fraction,
             "debug_mode": self.debug_mode,
@@ -470,6 +373,8 @@ class VPMSetup:
                 values[name] = config_type(**values[name])
         if isinstance(values.get("stabilization"), dict):
             values["stabilization"] = cls._stabilization_from_dict(values)
+        if isinstance(values.get("backup"), dict):
+            values["backup"] = Backup(**values["backup"])
         if "bodies" in values:
             body_values = values["bodies"]
             if body_values is None:
@@ -613,8 +518,7 @@ class VPMSetup:
             f"  Diffusion: {self.viscous.scheme}",
             f"  Compute device: {self.compute_device}",
             f"  Particle kernel: {self.particle_kernel}",
-            (f"  Logging interval: {self.logging_interval_steps} steps"),
-            f"  Checkpoint interval: {self.checkpoint_interval_steps} steps",
+            f"  Backup interval: {self.backup.interval_steps} steps",
             f"  Freestream velocity: {self.freestream_velocity} m/s",
         ]
         return "\n".join(lines)

@@ -5,7 +5,7 @@ gradient preparation, advection, stretching, coupled inviscid integration,
 viscous diffusion, operator splitting, and the stabilization phases that
 happen inside a step.  :class:`~source.solvers.vpm.core.solver.VPMSolver` is the
 facade that composes subsystems; it delegates its step to the stepper and
-keeps the diagnostics, checkpointing, and IO bookkeeping around the step.
+keeps the diagnostics, backups, and I/O bookkeeping around the step.
 
 The stepper holds a back-reference to the solver (``self.solver``) and
 delegates attribute *reads* to it through :meth:`__getattr__`, so the solver
@@ -30,6 +30,7 @@ import numpy as np
 import taichi as ti
 
 from ..io.logging import Logging
+from ..io.sampler import SamplerExecutor
 
 if TYPE_CHECKING:
     from .solver import VPMSolver
@@ -54,20 +55,22 @@ class EvolutionStepper:
         stretching. Viscous diffusion is then applied by operator splitting. Core
         spreading uses symmetric Strang splitting in the coupled integrator.
         ``defer_output`` lets an external coupler synchronize the particle state
-        before scheduled samples and checkpoints are written.
+        before scheduled samples and backups are written.
         """
 
         next_step = self.step + 1
-        diagnostics_due = (
-            self.logging_interval_steps > 0 and next_step % self.logging_interval_steps == 0
+        next_time = self.time + self.time_step_size
+        samples_due = SamplerExecutor.any_due(self.solver, next_step, next_time)
+        diagnostics_due = SamplerExecutor.flow_integrals_due(
+            self.solver,
+            next_step,
+            next_time,
         )
-        timing_due = self.timing_interval_steps > 0 and next_step % self.timing_interval_steps == 0
-        checkpoint_due = (
-            self.checkpoint_interval_steps > 0 and next_step % self.checkpoint_interval_steps == 0
+        backup_due = (
+            self.setup.backup.interval_steps > 0
+            and next_step % self.setup.backup.interval_steps == 0
         )
-        Logging.set_routine_messages_enabled(
-            next_step == 1 or diagnostics_due or timing_due or checkpoint_due
-        )
+        Logging.set_routine_messages_enabled(next_step == 1 or samples_due or backup_due)
 
         self.solver._domain_bounds_enforced_this_step = False
         self._apply_pending_particle_regeneration()
@@ -157,7 +160,7 @@ class EvolutionStepper:
 
                 if coupled_update:
                     with self.profiler.section("Coupled advection + stretching"):
-                        self._apply_coupled_update_with_subcycling(
+                        self._apply_coupled_update(
                             self.time_step_size, precomputed_velocity_k1=_fuse_vel_grad
                         )
                 else:
@@ -168,6 +171,8 @@ class EvolutionStepper:
                         self._apply_viscous_diffusion(self.time_step_size)
                     self._debug_validate_particle_geometry("viscous diffusion")
 
+            self.stabilization.run_phase("post_update", profiler=self.profiler)
+            if self.flow_model != "POTENTIAL":
                 self.stabilization.run_phase("post_evolution", profiler=self.profiler)
 
             if diagnostics_due:
@@ -192,8 +197,8 @@ class EvolutionStepper:
             self._debug_validate_particle_geometry("particle retention")
 
             if not defer_output:
-                with self.profiler.section("Checkpoint / IO"):
-                    self._write_checkpoint()
+                with self.profiler.section("Backup / IO"):
+                    self._write_backup()
 
         # The evolution kernels mutate particle source fields directly on the
         # device.  Publish one new source revision after the complete physical
@@ -204,13 +209,6 @@ class EvolutionStepper:
             self.solver.execute_scheduled_samplers()
         self.profiler.report_step()
         self.solver.wall_time = self.profiler.wall_time
-
-        if self.timing_interval_steps > 0 and self.step % self.timing_interval_steps == 0:
-            self.profiler.set_particle_count(self.particles.n_particles_total)
-            self.profiler.report()
-
-        if self.logging_interval_steps > 0 and self.step % self.logging_interval_steps == 0:
-            self.log_diagnostics()
 
     def _apply_pending_particle_regeneration(self) -> None:
         """Regenerate externally modified GBD particles without advancing time."""
@@ -467,92 +465,29 @@ class EvolutionStepper:
             treecode_theta=self.stretching_treecode_theta,
             conserve_moments=self.stretching_conserve_moments,
             conserve_energy=self.stretching_conserve_energy,
-            vortex_stretching_sfs_coefficient=(self.vortex_stretching_sfs_coefficient),
-            vortex_stretching_sfs_cutoff=self.vortex_stretching_sfs_cutoff,
             axisymmetric_axis=self.axisymmetric_axis,
             precomputed_velocity_k1=precomputed_velocity_k1,
         )
         ti.sync()
 
-    def _coupled_stable_time_step_size(self, remaining_time_step_size: float) -> float:
-        """Return a strain- and displacement-limited coupled substep."""
-        grad = self.particle_velocity_gradient
-        stable_time_step_size = float(remaining_time_step_size)
-        if len(grad) and self.coupled_max_strain_increment is not None:
-            strain = 0.5 * (grad + np.swapaxes(grad, 1, 2))
-            max_strain = float(np.max(np.abs(np.linalg.eigvalsh(strain))))
-            if np.isfinite(max_strain) and max_strain > 0.0:
-                stable_time_step_size = min(
-                    stable_time_step_size,
-                    self.coupled_max_strain_increment / max_strain,
-                )
-
-        spacing = getattr(self._viscous_config, "particle_spacing", None)
-        if (
-            self.coupled_max_advection_fraction is not None
-            and spacing is not None
-            and spacing > 0.0
-        ):
-            velocity = self.particle_velocity
-            max_speed = float(np.linalg.norm(velocity, axis=1).max()) if len(velocity) else 0.0
-            if np.isfinite(max_speed) and max_speed > 0.0:
-                stable_time_step_size = min(
-                    stable_time_step_size,
-                    self.coupled_max_advection_fraction * float(spacing) / max_speed,
-                )
-        return max(stable_time_step_size, np.finfo(float).eps)
-
-    def _apply_coupled_update_with_subcycling(
+    def _apply_coupled_update(
         self, time_step_size: float, *, precomputed_velocity_k1: bool
     ) -> None:
-        """Advance one macro step without clipping an inadmissible RK increment."""
+        """Advance position and strength together, with symmetric core spreading."""
         self.physics.rate_projection_max_correction_ratio = 0.0
-        remaining = float(time_step_size)
-        substeps = 0
         reuse_velocity = bool(precomputed_velocity_k1)
-        tolerance = 32.0 * np.finfo(float).eps * max(1.0, abs(time_step_size))
+        if self.viscous_scheme == "CS":
+            self._apply_core_spreading_diffusion(0.5 * time_step_size)
+            reuse_velocity = False
 
-        while remaining > tolerance:
-            substep_size = min(remaining, self._coupled_stable_time_step_size(remaining))
-            substeps += 1
-            if substeps > self.coupled_max_substeps:
-                raise RuntimeError(
-                    "Coupled VPM step exceeded coupled_max_substeps. "
-                    "The particle field is no longer temporally admissible at the "
-                    "requested macro time_step_size; reduce time_step_size or refine the "
-                    "particle spacing."
-                )
+        target_moments = self._current_kernel_moments()
+        self._apply_coupled_advection_stretching(
+            time_step_size, precomputed_velocity_k1=reuse_velocity
+        )
+        self._restore_coupled_step_moments(target_moments)
 
-            if self.viscous_scheme == "CS":
-                # Symmetric core-spreading split around the coupled inviscid update.
-                self._apply_core_spreading_diffusion(0.5 * substep_size)
-                reuse_velocity = False
-
-            target_moments = self._current_kernel_moments()
-            self._apply_coupled_advection_stretching(
-                substep_size, precomputed_velocity_k1=reuse_velocity
-            )
-            self._restore_coupled_step_moments(target_moments)
-
-            if self.viscous_scheme == "CS":
-                self._apply_core_spreading_diffusion(0.5 * substep_size)
-
-            remaining -= substep_size
-            if remaining <= tolerance:
-                break
-
-            # Refresh stability bounds and, for LES, eddy viscosity before the next substep.
-            self._update_velocity_and_gradients()
-            self._update_les_state()
-            self.stabilization.update_residual_viscosity()
-            reuse_velocity = self.viscous_scheme == "NONE"
-
-        if substeps > 1:
-            Logging.record(
-                "time integration",
-                ("substeps", f"{substeps:,}"),
-                ("time step", f"{time_step_size:.3e}", "s"),
-            )
+        if self.viscous_scheme == "CS":
+            self._apply_core_spreading_diffusion(0.5 * time_step_size)
 
         if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
             self._apply_viscous_diffusion(time_step_size)

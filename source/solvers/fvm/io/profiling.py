@@ -146,6 +146,7 @@ class PerformanceProfiler:
         parallel: Any,
         logger: Any,
         *,
+        solution_dir: str | Path | None = None,
         enabled: bool | None = None,
         solver: Any | None = None,
     ) -> None:
@@ -154,7 +155,12 @@ class PerformanceProfiler:
         self.enabled = bool(enabled)
         self.parallel = parallel
         self.logger = logger
-        self.output_path = Path(case_dir).resolve() / "solution" / "performance.jsonl"
+        output_directory = (
+            Path(solution_dir).resolve()
+            if solution_dir is not None
+            else Path(case_dir).resolve() / "solution"
+        )
+        self.output_path = output_directory / "performance.jsonl"
         self._active = False
         self._metadata: dict[str, float | int] = {}
         self._phase_seconds: dict[str, float] = {}

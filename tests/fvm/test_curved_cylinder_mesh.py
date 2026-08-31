@@ -12,8 +12,8 @@ from source.solvers.fvm.mesh.adaptive_cartesian import (
 )
 from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
 from source.solvers.fvm.mesh.validation import validate_geometry, validate_topology
-from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.seed_perturbation import (
-    build_cylinder_initial_state,
+from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow.reference_flow_setup import (
+    grid_mesh,
 )
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -124,34 +124,29 @@ def test_cylinder_boundary_layer_supports_independent_spanwise_extrusion():
     assert quality["max_skewness"] < 0.5
 
 
-def test_cylinder_initial_state_and_seed_vanish_at_the_wall():
-    angle = np.linspace(0.0, 2.0 * np.pi, 32, endpoint=False)
-    radius = 0.5 + 1.0e-8
-    wall_points = np.column_stack(
-        [radius * np.cos(angle), radius * np.sin(angle), np.zeros_like(angle)]
-    )
-    x, y = np.meshgrid(np.linspace(-1.0, 2.0, 49), np.linspace(-1.0, 1.0, 33))
-    wake_points = np.column_stack([x.ravel(), y.ravel(), np.zeros(x.size)])
-    wake_points = wake_points[np.linalg.norm(wake_points[:, :2], axis=1) > 0.5]
-    points = np.vstack([wall_points, wake_points])
-    velocity, pressure = build_cylinder_initial_state(
-        points,
-        freestream_velocity=(1.0, 0.0, 0.0),
-        diameter=1.0,
-        seed_amplitude=0.05,
-    )
-    assert np.max(np.linalg.norm(velocity[: wall_points.shape[0]], axis=1)) < 1.0e-5
-    assert np.all(np.isfinite(pressure))
+def test_cylinder_grid_study_uses_the_exact_1_2_4_12_sizes():
+    dx = 1.0 / 24.0
+    mesher = grid_mesh(dx)
+    leaves, _limits, _interface = mesher._study_leaves()
+
+    np.testing.assert_allclose(mesher.surface_cell_size, dx)
+    np.testing.assert_allclose(mesher.far_field_cell_size, 12.0 * dx)
+    assert set(np.unique(leaves[:, 2])) == {1, 2, 4, 12}
 
 
-def test_cylinder_tutorial_uses_stl_wall_patch_and_field_backups():
+def test_cylinder_tutorial_uses_stl_wall_patch_and_sparse_field_backups():
     reference = (CASE_DIR / "reference_flow" / "reference_flow_setup.py").read_text()
     assert CYLINDER_STL.is_file()
-    assert "surface_file=" in (CASE_DIR / "benchmark_config.py").read_text()
+    assert "ExplicitCylinderGridMesher(" in reference
+    assert "wall_cell_size=dx" in reference
+    assert "near_body_half_width=2.0" in reference
+    assert "wake_half_width=4.0" in reference
+    assert "FORCE_INTERVAL_TIME = 0.02" in reference
+    assert "FIELD_INTERVAL_TIME = 2.5" in reference
     assert 'BoundaryConfig.wall("cylinder")' in reference
     assert "ForceSampler(" in reference
-    assert "spacing=cfg.SPANWISE_CELL_SIZE" in reference
-    assert "cfg.field_output_interval()" in reference
+    assert "solution_dir=solution_dir" in reference
+    assert "samples_dir=samples_dir" in reference
     assert "ImmersedBody" not in reference
     assert "IBMForceSampler" not in reference
     assert "set_immersed_bodies" not in reference
@@ -160,34 +155,48 @@ def test_cylinder_tutorial_uses_stl_wall_patch_and_field_backups():
     assert 'BoundaryConfig.wall("cylinder")' in coupled
     assert 'BoundaryConfig.slip("zmin")' in coupled
     assert 'BoundaryConfig.slip("zmax")' in coupled
-    assert "spacing=cfg.SPANWISE_CELL_SIZE" in coupled
-    assert "cfg.field_output_interval()" in coupled
     assert "checkpoint_at_stop=True" in coupled
     assert "ImmersedBody" not in coupled
     assert "IBMForceSampler" not in coupled
 
 
-def test_cylinder_tutorial_matches_cube_flow_output_layout():
-    reference = (CASE_DIR / "reference_flow" / "reference_flow_setup.py").read_text()
-    coupled = (CASE_DIR / "cylinder_shedding_flow_setup.py").read_text()
-    reference_run = (CASE_DIR / "reference_flow" / "allrun.sh").read_text()
+def test_cylinder_tutorial_has_the_minimal_user_interface():
+    reference_dir = CASE_DIR / "reference_flow"
+    reference_run = (reference_dir / "allrun.sh").read_text()
     coupled_run = (CASE_DIR / "allrun.sh").read_text()
 
-    assert "OPENONDA_REFERENCE_CASE_DIR" in reference
-    assert "else SOURCE_DIR" in reference
-    assert "CASE_DIR = SOURCE_DIR" in coupled
-    assert "OPENONDA_RUN_DIR" not in reference
-    assert "OPENONDA_RUN_DIR" not in coupled
-    assert '"$case_dir/solution/reference_flow.stdout.log"' in reference_run
-    assert "solution/cylinder_shedding_flow.stdout.log" in coupled_run
+    assert "mpirun" not in reference_run
+    assert "mpiexec" not in reference_run
+    assert "NUMBER_OF_CORES = 6" in (
+        reference_dir / "reference_flow_setup.py"
+    ).read_text()
+    assert "reference_flow_setup.py --dx 0.08333333333333333 --case-name very_coarse" in reference_run
+    assert "reference_flow_setup.py --dx 0.041666666666666664 --case-name coarse" in reference_run
+    assert "reference_flow_setup.py --dx 0.027777777777777776 --case-name medium" in reference_run
+    assert "reference_flow_setup.py --dx 0.020833333333333332 --case-name fine" in reference_run
+    assert "allplot.sh" not in reference_run
+    assert reference_run.count("python assets/plot_") == 1
+    assert "python -u cylinder_shedding_flow_setup.py" in coupled_run
 
-    source_files = (
-        CASE_DIR / "README.md",
-        CASE_DIR / "allrun.sh",
-        CASE_DIR / "allvalidate.sh",
-        CASE_DIR / "cylinder_shedding_flow_setup.py",
-        CASE_DIR / "reference_flow" / "allrun.sh",
-        CASE_DIR / "reference_flow" / "reference_flow_setup.py",
-    )
-    assert all("solutions/" not in path.read_text() for path in source_files)
-    assert all("runs/" not in path.read_text() for path in source_files)
+    root_files = {path.name for path in CASE_DIR.iterdir() if path.is_file()}
+    reference_files = {path.name for path in reference_dir.iterdir() if path.is_file()}
+    assert root_files == {
+        "allrun.sh",
+        "allclean.sh",
+        "allplot.sh",
+        "cylinder_shedding_flow_setup.py",
+    }
+    assert reference_files == {
+        "allrun.sh",
+        "allclean.sh",
+        "allplot.sh",
+        "reference_flow_setup.py",
+    }
+    assert {path.name for path in (CASE_DIR / "assets").iterdir() if path.is_file()} == {
+        "cylinder_long.stl",
+        "plot_cylinder.py",
+        "postprocess.py",
+    }
+    assert {
+        path.name for path in (reference_dir / "assets").iterdir() if path.is_file()
+    } == {"plot_grid_study.py", "postprocess.py"}

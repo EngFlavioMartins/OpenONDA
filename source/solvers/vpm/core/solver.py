@@ -26,7 +26,7 @@ from ..config.stabilization import StabilizationConfig
 from ..config.state import set_flow_model
 from ..coupling import CouplingStepper
 from ..diagnostics.resolution import discretization_health
-from ..io.checkpoint import CheckpointManager
+from ..io.backup import _BackupIO
 from ..io.logging import Logging, print_openonda_header
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import SamplerExecutor
@@ -86,9 +86,6 @@ class VPMSolver:
         self.step = final_setup.step
         self._is_particle_regeneration_pending = False
         self.time_integration = final_setup.time_integration.upper()
-        self.coupled_max_strain_increment = final_setup.coupled_max_strain_increment
-        self.coupled_max_advection_fraction = final_setup.coupled_max_advection_fraction
-        self.coupled_max_substeps = final_setup.coupled_max_substeps
         axisymmetric_axis = final_setup.axisymmetric_no_swirl_axis
         self.axisymmetric_axis = (
             -1 if axisymmetric_axis is None else {"x": 0, "y": 1, "z": 2}[axisymmetric_axis]
@@ -180,33 +177,22 @@ class VPMSolver:
             final_setup.stretching, "conserve_moments", False
         )
         self.stretching_conserve_energy = getattr(final_setup.stretching, "conserve_energy", False)
-        self.vortex_stretching_sfs_coefficient = float(
-            final_setup.turbulence.vortex_stretching_sfs_coefficient
-        )
-        self.vortex_stretching_sfs_cutoff = float(
-            final_setup.turbulence.vortex_stretching_sfs_cutoff
-        )
         self.compute_device = final_setup.compute_device.upper()
         self.flow_model = final_setup.turbulence.flow_model.upper()
         self.viscous_scheme = final_setup.viscous.scheme
         self._viscous_config = final_setup.viscous
         self.stabilization_config: StabilizationConfig = final_setup.stabilization
         self.particle_kernel = final_setup.particle_kernel.upper()
-        self.checkpoint_interval_steps = final_setup.checkpoint_interval_steps
-        self.logging_interval_steps = final_setup.logging_interval_steps
-        self.timing_interval_steps = final_setup.timing_interval_steps
-        self.checkpoint_name = final_setup.checkpoint_name
-        configured_checkpoint_directory = Path(final_setup.checkpoint_directory)
-        if not configured_checkpoint_directory.is_absolute():
-            configured_checkpoint_directory = self.case_dir / configured_checkpoint_directory
-        self.checkpoint_directory = str(configured_checkpoint_directory.resolve())
-        if getattr(final_setup, "clean", False):
-            import shutil as _shutil
-
-            _checkpoint_path = Path(self.checkpoint_directory)
-            if _checkpoint_path.exists():
-                _shutil.rmtree(_checkpoint_path)
-        Path(self.checkpoint_directory).mkdir(parents=True, exist_ok=True)
+        backup_path = Path(final_setup.backup.directory)
+        if not backup_path.is_absolute():
+            backup_path = self.case_dir / backup_path
+        self._backup_path = backup_path.resolve()
+        log_path = Path(final_setup.backup.log_directory)
+        if not log_path.is_absolute():
+            log_path = self.case_dir / log_path
+        self._log_path = log_path.resolve()
+        self._backup_path.mkdir(parents=True, exist_ok=True)
+        self._log_path.mkdir(parents=True, exist_ok=True)
         return final_setup
 
     def _init_io_and_backend(self, final_setup: VPMSetup, debug_mode: bool) -> None:
@@ -218,9 +204,6 @@ class VPMSolver:
             raise ValueError(f"precision must be 'f32' or 'f64', got '{self.precision}'")
         self.write_precision = validate_write_precision(
             getattr(final_setup, "write_precision", DEFAULT_WRITE_PRECISION)
-        )
-        self.checkpoint_store_velocity_gradient = bool(
-            getattr(final_setup, "checkpoint_store_velocity_gradient", True)
         )
         self.compute_device = initialize_taichi_backend(
             self.compute_device,
@@ -316,10 +299,6 @@ class VPMSolver:
                 particle_kernel=self.particle_kernel,
                 smagorinsky_coefficient=final_setup.turbulence.smagorinsky_coefficient,
                 subgrid_dissipation_coefficient=final_setup.turbulence.subgrid_dissipation_coefficient,
-                vortex_stretching_sfs_coefficient=(
-                    final_setup.turbulence.vortex_stretching_sfs_coefficient
-                ),
-                vortex_stretching_sfs_cutoff=(final_setup.turbulence.vortex_stretching_sfs_cutoff),
                 accumulator_dtype=self.accumulator_dtype,
             )
         self.stretching_enabled = final_setup.stretching.enabled
@@ -574,56 +553,15 @@ class VPMSolver:
             self.stepper._update_les_state()
             self.stabilization.update_residual_viscosity()
         self._update_all_flow_integrals()
-        self.log_diagnostics()
-
-    def log_diagnostics(self) -> None:
-        """Log the most recently evaluated flow diagnostics and run samplers."""
-
-        Logging.flow_diagnostics(self)
-
-        if getattr(self.setup, "export_flow_integrals", True):
-            self._export_flow_integrals_csv()
-
-        if self.turbulence_model is not None:
-            Logging.les_diagnostics(self)
-
-        self._execute_samplers()
-
-    def _export_flow_integrals_csv(self) -> None:
-        """Append one row of flow integrals to ``<case_dir>/samples/flow_integrals.csv``.
-
-        Thin wrapper that delegates the CSV export to the ``SolverIO`` manager
-        (which owns all exports).
-        """
-        self.io.export_flow_integrals_csv(self)
-
-    def _execute_samplers(self) -> None:
-        """Execute samplers without an explicit schedule at logging cadence."""
-        SamplerExecutor.execute(self)
+        SamplerExecutor.execute(self, mode="manual")
 
     def execute_scheduled_samplers(self) -> None:
         """Execute due time- or step-scheduled field samplers."""
-        SamplerExecutor.execute(self, scheduled_only=True)
+        SamplerExecutor.execute(self, mode="scheduled")
 
-    def execute_final_samplers(self) -> None:
-        """Execute the final-only samplers declared by the immutable setup."""
-        SamplerExecutor.execute(self, self.setup.final_samplers, scheduled_only=None)
-
-    def _prepare_sampler_context(self, sampler_entry, samples_dir):
-        """Delegate to SamplerExecutor."""
-        return SamplerExecutor._prepare_context(sampler_entry, samples_dir)
-
-    def _save_sampler_output(self, sampler, name_prefix, solution_dir, seq_num):
-        """Delegate to SamplerExecutor."""
-        SamplerExecutor._save_output(
-            sampler,
-            self,
-            name_prefix,
-            solution_dir,
-            seq_num,
-            self.time,
-            self.step,
-        )
+    def execute_final_samples(self) -> None:
+        """Execute samplers carrying a final-only schedule."""
+        SamplerExecutor.execute(self, mode="final")
 
     def _write_pvd_file(self, output_dir, name_prefix, entries):
         """Delegate to SamplerExecutor."""
@@ -714,11 +652,10 @@ class VPMSolver:
         self._record_vortex_centroid_history()
         self._record_time_history()
         self._record_vlm_diagnostics()
+        self._flow_integrals_step = self.step
 
     def _update_discretization_health(self) -> None:
         """Refresh particle-resolution and field-quality diagnostics."""
-        if not getattr(self.setup, "export_discretization_health", True):
-            return
         if self.particles.n_particles_total == 0:
             self._discretization_health = {}
             return
@@ -744,7 +681,7 @@ class VPMSolver:
 
     def _record_vlm_diagnostics(self) -> None:
         """Delegate to VLMDiagnostics."""
-        sample_subdirectory = getattr(self.setup, "sample_subdirectory", None)
+        sample_directory = self.setup.samplers.directory
         VLMDiagnostics.record_vlm_diagnostics(
             self.vlm_solver,
             self.particles,
@@ -753,7 +690,7 @@ class VPMSolver:
             self.step,
             self.time,
             self.case_dir,
-            sample_subdirectory,
+            sample_directory,
         )
         VLMLoadingDistribution.record_loading_distributions(
             self.vlm_solver,
@@ -761,7 +698,7 @@ class VPMSolver:
             self.step,
             self.time,
             self.case_dir,
-            sample_subdirectory,
+            sample_directory,
         )
 
     def _export_vlm_forces_to_csv(
@@ -783,7 +720,7 @@ class VPMSolver:
             self.time,
             self.step,
             self.case_dir,
-            getattr(self.setup, "sample_subdirectory", None),
+            self.setup.samplers.directory,
         )
 
     @property
@@ -1545,52 +1482,40 @@ class VPMSolver:
 
     # State and restart
 
-    def save_state(self, filename: str = "solution/solver_state") -> None:
-        """Save a restartable numerical state and its configuration."""
+    def _save_backup_to(self, filename: str) -> None:
+        """Write numerical state to a path owned by an internal coordinator."""
+        self._refresh_backup_particle_fields()
+        _BackupIO.save(self, filename, append_step=False, verbose=False)
 
-        if checkpoint_dir := os.path.dirname(filename):
-            os.makedirs(checkpoint_dir, exist_ok=True)
+    def _load_backup_from(self, filename: str) -> None:
+        """Restore numerical state from a path owned by an internal coordinator."""
+        path = filename if filename.endswith(".h5") else f"{filename}.h5"
+        _BackupIO.load(self, path)
 
-        self._refresh_checkpoint_particle_fields()
-        CheckpointManager.write_checkpoint(self, filename, append_step=False, verbose=False)
+    def load_backup(self, filename: str) -> None:
+        """Restore one numerical backup into this configured solver."""
+        self._load_backup_from(filename)
 
-        config_file = f"{filename}.config.json"
-        CheckpointManager.write_configuration(self, config_file)
-
-        Logging.record(
-            "checkpoint saved",
-            ("base", str(filename)),
-            ("data", f"{filename}.h5"),
-            ("visualization", f"{filename}.xdmf"),
-            ("configuration", str(config_file)),
+    def save_backup(self) -> None:
+        """Write one canonical backup to the configured backup directory."""
+        self._refresh_backup_particle_fields()
+        _BackupIO.save(
+            self,
+            str(self._backup_path / "vpm"),
+            verbose=True,
         )
 
-    def save_numerical_state(self, filename: str) -> None:
-        """Save numerical state for a caller that already owns configuration."""
-        self._refresh_checkpoint_particle_fields()
-        CheckpointManager.write_checkpoint(self, filename, append_step=False, verbose=False)
-
-    def load_numerical_state(self, filename: str) -> None:
-        """Restore numerical state into this configured VPM solver."""
-        path = filename if filename.endswith(".h5") else f"{filename}.h5"
-        CheckpointManager.load_numerical_state(self, path)
-
-    def write_checkpoint(self, checkpoint_name: str = "checkpoint") -> None:
-        """Write the solver state to a specified checkpoint file."""
-        self._refresh_checkpoint_particle_fields()
-        CheckpointManager.write_checkpoint(self, checkpoint_name, verbose=True)
-
-    def _write_checkpoint(self) -> None:
-        """Write a scheduled solver checkpoint when one is due."""
-        if not self.io.should_checkpoint():
+    def _write_backup(self) -> None:
+        """Write a scheduled solver backup when one is due."""
+        if not self.io.should_backup():
             return
 
-        self._refresh_checkpoint_particle_fields()
+        self._refresh_backup_particle_fields()
 
-        self.io.write_checkpoint()
+        self.io._write_scheduled_backup()
 
-    def _refresh_checkpoint_particle_fields(self) -> None:
-        """Refresh particle fields that are expected to be available in checkpoints."""
+    def _refresh_backup_particle_fields(self) -> None:
+        """Refresh particle fields that are expected to be available in backups."""
         N = self.particles.n_particles_total
         if N > 50_000:
             return
@@ -1604,45 +1529,6 @@ class VPMSolver:
                 N,
             )
         self.physics.compute_vorticities(self.particles)
-        if self.checkpoint_store_velocity_gradient and self.flow_model != "POTENTIAL":
-            self.stepper._update_velocity_gradients()
-
-    @staticmethod
-    def continue_from_checkpoint(checkpoint_name: str | None = None) -> "VPMSolver | None":
-        """Restore a solver from an HDF5 checkpoint and its saved configuration."""
-        if not CheckpointManager.validate_checkpoint(checkpoint_name):
-            raise ValueError(f"Checkpoint validation failed for: {checkpoint_name}")
-
-        Logging.record("checkpoint loading", ("base", str(checkpoint_name)))
-
-        try:
-            hdf5_file = f"{checkpoint_name}.h5"
-            config_file = f"{checkpoint_name}.config.json"
-
-            if not os.path.exists(hdf5_file):
-                raise FileNotFoundError(f"Numerical data file not found: {hdf5_file}")
-            if not os.path.exists(config_file):
-                raise FileNotFoundError(f"Configuration file not found: {config_file}")
-
-            setup = CheckpointManager.load_configuration(config_file)
-            restored_solver = VPMSolver(setup=setup)
-            CheckpointManager._load_numerical_data(restored_solver, hdf5_file)
-        except Exception as e:
-            raise RuntimeError(f"Restore failed: {e}") from e
-
-        restored_solver.field_diagnostics.reset_energy_history()
-
-        restored_solver._update_all_flow_integrals()
-
-        Logging.record(
-            "checkpoint loaded",
-            ("time", f"{restored_solver.time:.6e}", "s"),
-            ("step", f"{restored_solver.step:,}"),
-            ("particles", f"{restored_solver.particles.n_particles_total:,}"),
-            ("backend", str(restored_solver.setup.compute_device)),
-        )
-
-        return restored_solver
 
     def export_state(self, filename: str, **kwargs):
         """Export solver state for visualization and post-processing."""

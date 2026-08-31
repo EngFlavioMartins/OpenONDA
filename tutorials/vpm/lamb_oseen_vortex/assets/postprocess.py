@@ -118,8 +118,8 @@ def unwrap_pair_orientation(angle_radians: np.ndarray) -> np.ndarray:
 def read_run_metadata(samples_dir: Path, prefix: str = "vortex") -> dict:
     """Load the physical constants stored with the sampled results.
 
-    Plotting must not depend on a dense particle checkpoint: those files are sparse
-    restart checkpoints, while ``samples/<case>/run_metadata.json`` is written
+    Plotting must not depend on a dense particle backup: those files are sparse
+    restart backups, while ``samples/<case>/run_metadata.json`` is written
     alongside the data used by each figure.
     """
     for scheme in SCHEMES:
@@ -169,7 +169,7 @@ def resolve_runtime_physics(
 def pvd_time_map(samples_dir: Path, prefix: str, scheme: str) -> dict[int, float]:
     """Read the surface-sample PVD to get a step → physical-time mapping.
 
-    This keeps sampled fields tied to physical time without reading checkpoints.
+    This keeps sampled fields tied to physical time without reading backups.
     """
     import xml.etree.ElementTree as ET
 
@@ -1478,7 +1478,7 @@ class Member:
     solution_dir: Path
     samples_dir: Path
     metadata: dict
-    checkpoints: dict[int, Path]
+    backups: dict[int, Path]
 
 
 @dataclass
@@ -1488,7 +1488,7 @@ class DiagnosticState:
     coalesced: bool = False
 
 
-def _checkpoint_map(folder: Path) -> dict[int, Path]:
+def _backup_map(folder: Path) -> dict[int, Path]:
     result = {}
     for path in sorted(folder.glob("*.h5")):
         match = STEP_RE.search(path.name)
@@ -1519,9 +1519,9 @@ def discover_members(
             raise ValueError(f"unreadable RWM member metadata {metadata_path}: {error}") from error
         if metadata.get("status") != "complete" or metadata.get("completed") is not True:
             raise ValueError(f"RWM member {case_name}/{solution_dir.name} is not complete")
-        checkpoints = _checkpoint_map(solution_dir)
-        if not checkpoints:
-            raise ValueError(f"RWM member {case_name}/{solution_dir.name} has no checkpoints")
+        backups = _backup_map(solution_dir)
+        if not backups:
+            raise ValueError(f"RWM member {case_name}/{solution_dir.name} has no backups")
         members.append(
             Member(
                 index=index,
@@ -1529,7 +1529,7 @@ def discover_members(
                 solution_dir=solution_dir,
                 samples_dir=member_samples,
                 metadata=metadata,
-                checkpoints=checkpoints,
+                backups=backups,
             )
         )
 
@@ -1546,10 +1546,10 @@ def discover_members(
     seeds = [member.seed for member in members]
     if len(set(seeds)) != len(seeds):
         raise ValueError(f"{case_name}: random seeds are not unique")
-    reference_steps = set(members[0].checkpoints)
+    reference_steps = set(members[0].backups)
     for member in members[1:]:
-        if set(member.checkpoints) != reference_steps:
-            raise ValueError(f"{case_name}: checkpoint steps differ between ensemble members")
+        if set(member.backups) != reference_steps:
+            raise ValueError(f"{case_name}: backup steps differ between ensemble members")
     return members
 
 
@@ -1640,8 +1640,8 @@ def _biot_savart_velocity(vorticity: np.ndarray, dx: float, dy: float) -> tuple[
     return velocity_x, velocity_y
 
 
-def project_checkpoint(path: Path, template: dict, column_length: float) -> tuple[dict, dict]:
-    """Return the column-projected 2-D field represented by one checkpoint."""
+def project_backup(path: Path, template: dict, column_length: float) -> tuple[dict, dict]:
+    """Return the column-projected 2-D field represented by one backup."""
     with h5py.File(path, "r") as handle:
         position = np.asarray(handle["particles/position"], dtype=np.float64)
         strength = np.asarray(handle["particles/vortex_strength"], dtype=np.float64)
@@ -1948,12 +1948,12 @@ def aggregate_case(
     stochastic_distinctness_checked = False
     minimum_capture = 1.0
 
-    steps = sorted(members[0].checkpoints)
+    steps = sorted(members[0].backups)
     for step in steps:
         member_fields = []
         projection_qa = []
         for member in members:
-            field, qa = project_checkpoint(member.checkpoints[step], template, column_length)
+            field, qa = project_backup(member.backups[step], template, column_length)
             member_fields.append(field)
             projection_qa.append(qa)
         times = np.asarray([field["time"] for field in member_fields])
@@ -2001,7 +2001,7 @@ def aggregate_case(
         )
 
     if not stochastic_distinctness_checked:
-        raise ValueError(f"{case_name}: no nonzero checkpoint available to verify member independence")
+        raise ValueError(f"{case_name}: no nonzero backup available to verify member independence")
     _write_pvd(output_dir / f"{case_name}_zq.pvd", pvd_entries)
     pd.DataFrame(feature_records).to_csv(output_dir / "field_diagnostics.csv", index=False)
     pd.DataFrame(convergence_records).to_csv(output_dir / "rwm_convergence.csv", index=False)
@@ -2017,7 +2017,7 @@ def aggregate_case(
             "case": physics,
             "scheme": "rwm",
             "statistical_estimator": "fixed_time_seed_ensemble_mean_of_column_projected_fields",
-            "raw_output_estimator": "particle_checkpoints_for_column_projection",
+            "raw_output_estimator": "particle_backups_for_column_projection",
             "ensemble_size": n_members,
             "ensemble_member_indices": [member.index for member in members],
             "random_seeds": [member.seed for member in members],
@@ -2025,7 +2025,7 @@ def aggregate_case(
             "confidence_multiplier": multiplier,
             "column_projection": (
                 "omega_bar_z(x,y)=L^-1 integral omega_z(x,y,z) dz, reconstructed from "
-                "Gaussian particle checkpoints; velocity from free-space 2-D Biot-Savart"
+                "Gaussian particle backups; velocity from free-space 2-D Biot-Savart"
             ),
             "feature_definitions": {
                 "vortex_centre": "centre_of_connected_area_inside_80_percent_peak_vorticity_contour",
@@ -2911,7 +2911,7 @@ def main() -> int:
     parser.add_argument(
         "--aggregate-rwm",
         action="store_true",
-        help="build canonical mean fields and uncertainty from raw RWM ensemble checkpoints",
+        help="build canonical mean fields and uncertainty from raw RWM ensemble backups",
     )
     parser.add_argument(
         "--expected-rwm-members",

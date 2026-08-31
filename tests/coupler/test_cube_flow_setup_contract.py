@@ -111,9 +111,10 @@ def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
         setup.FVM_SETUP.time.output_interval_steps == setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
     )
     assert setup.FVM_SETUP.time.output_interval_time is None
-    assert setup.VPM_SETUP.checkpoint_interval_steps == 0
+    assert setup.VPM_SETUP.backup.interval_steps == 0
     assert setup.VPM_SETUP.write_precision == "f32"
-    assert not setup.VPM_SETUP.checkpoint_store_velocity_gradient
+    assert setup.VPM_SETUP.backup.directory == str(setup.CASE_DIR / "solution")
+    assert setup.VPM_SETUP.backup.log_directory == str(setup.CASE_DIR / "solution")
     assert (
         setup.COUPLER_SETUP.checkpoint_interval_steps
         == setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS

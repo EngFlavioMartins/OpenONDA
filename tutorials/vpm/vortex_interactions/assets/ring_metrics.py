@@ -26,7 +26,6 @@ INTENDED_CASE_ORDER = {
         (
             "leapfrog_les",
             "leapfrog_les_splitting",
-            "leapfrog_les_sfs",
             "leapfrog_les_splitting_remeshing",
         )
     )
@@ -138,11 +137,6 @@ def case_style(name: str) -> dict:
             "color": theme.COLORS["VPMpurple"],
             "marker": "D",
         },
-        "les_sfs": {
-            "label": "LES + SFS",
-            "color": theme.COLORS["AccentGreen"],
-            "marker": "^",
-        },
         "les_splitting_remeshing": {
             "label": "LES + splitting + remeshing",
             "color": theme.COLORS["TUDdark"],
@@ -201,8 +195,8 @@ def _trim_to_last_monotone_segment(df: pd.DataFrame, time_column: str) -> pd.Dat
     return df
 
 
-def _merge_checkpoint_restarts(df: pd.DataFrame, case_dir: str | Path) -> pd.DataFrame:
-    """Merge identical checkpoint continuations while keeping their latest samples."""
+def _merge_backup_restarts(df: pd.DataFrame, case_dir: str | Path) -> pd.DataFrame:
+    """Merge identical backup continuations while keeping their latest samples."""
     manifest_path = Path(case_dir) / "run_manifest.json"
     if "step" not in df.columns or not manifest_path.is_file():
         return df
@@ -228,7 +222,7 @@ def read_integrals(case_dir) -> pd.DataFrame | None:
     if diagnostics.empty:
         return None
     diagnostics = diagnostics.reset_index(drop=True)
-    diagnostics = _merge_checkpoint_restarts(diagnostics, case_dir)
+    diagnostics = _merge_backup_restarts(diagnostics, case_dir)
     return _trim_to_last_monotone_segment(diagnostics, "time")
 
 
@@ -254,7 +248,7 @@ def read_ring_diagnostics(case_dir) -> pd.DataFrame | None:
     if diagnostics.empty or not set(required).issubset(diagnostics.columns):
         return None
     diagnostics = diagnostics.dropna(subset=required)
-    diagnostics = _merge_checkpoint_restarts(diagnostics, case_dir)
+    diagnostics = _merge_backup_restarts(diagnostics, case_dir)
     diagnostics = _trim_to_last_monotone_segment(diagnostics, "time")
     return (
         diagnostics.sort_values(["step", "group_id"], kind="stable")

@@ -43,8 +43,6 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
             max_n_particles=50_000,
             domain_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0],
             freestream_velocity=[1.0, 0.0, 0.0],
-            logging_interval_steps=20,
-            timing_interval_steps=20,
             viscous=ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=H),
         )
         return VPMSolver(config), config

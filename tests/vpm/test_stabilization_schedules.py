@@ -12,7 +12,7 @@ from source.solvers.vpm.stabilization.filament_refinement import (
     particle_moments,
     split_stretched_filaments,
 )
-from source.solvers.vpm.stabilization.manager import StabilizationManager
+from source.solvers.vpm.stabilization.manager import StabilizationError, StabilizationManager
 from source.solvers.vpm.stabilization.regularization import _regularization_triggered
 
 
@@ -285,6 +285,38 @@ def test_residual_viscosity_feedback_is_bounded_per_update():
     assert applied == pytest.approx([2.4, 2.4, 1.92])
 
 
+def test_solution_stability_check_uses_current_lagrangian_cfl_number():
+    config = StabilizationConfig(max_lagrangian_cfl=0.8)
+    manager = object.__new__(StabilizationManager)
+    manager.config = config
+    manager.ctx = SimpleNamespace(
+        step=lambda: 12,
+        time_step_size=lambda: 0.05,
+        particles=object(),
+    )
+    manager.operators = SimpleNamespace(
+        inspect_solution=lambda *args, **kwargs: {
+            "valid": True,
+            "lagrangian_cfl": 0.9,
+        }
+    )
+    manager.lagrangian_cfl = 0.0
+
+    with pytest.raises(StabilizationError, match="Lagrangian CFL number 0.9"):
+        manager.check_solution_stability()
+
+
+def test_solution_stability_check_can_be_disabled():
+    manager = object.__new__(StabilizationManager)
+    manager.config = StabilizationConfig(max_lagrangian_cfl=None)
+    manager.ctx = SimpleNamespace()
+    manager.operators = SimpleNamespace(
+        inspect_solution=lambda *args, **kwargs: pytest.fail("disabled check ran")
+    )
+
+    manager.check_solution_stability()
+
+
 @pytest.mark.parametrize(
     ("keyword", "value"),
     [
@@ -295,6 +327,7 @@ def test_residual_viscosity_feedback_is_bounded_per_update():
         ("regularization_capacity_max_particles", 0),
         ("regularization_capacity_energy_rate_trigger", -1.0),
         ("regularization_max_events", 0),
+        ("max_lagrangian_cfl", 0.0),
     ],
 )
 def test_stabilization_schedule_rejects_invalid_limits(keyword, value):

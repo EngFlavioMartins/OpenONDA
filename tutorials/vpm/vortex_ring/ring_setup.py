@@ -40,7 +40,7 @@ PARTICLE_SPACING = 0.035  # in-plane particle spacing [m]
 TIME_STEP_SIZE = 0.02  # Δt [s]
 N_STEPS = 3000  # total number of time steps
 SAMPLE_INTERVAL_TIME = 0.1  # write a sample every this many seconds
-CHECKPOINT_INTERVAL_TIME = 0.5  # keep an animation frame every this many seconds
+BACKUP_INTERVAL_TIME = 0.5  # keep an animation frame every this many seconds
 WIDNALL_MODES = 24  # number of azimuthal bending modes
 DEFAULT_WIDNALL_AMPLITUDE = 0.05  # broadband centreline perturbation amplitude
 TOROIDAL_TAIL_FRACTION = 0.05  # toroidal particle distribution tail fraction
@@ -80,31 +80,33 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
     particle_core_radius = 2.0 * PARTICLE_SPACING
     represented_core_sq = CORE_RADIUS**2 - particle_core_radius**2
     tube_radius = np.sqrt(represented_core_sq) * np.sqrt(-np.log(TOROIDAL_TAIL_FRACTION))
-    position, particle_volume, core_radius = vpm.ParticleDistributor.toroidal_distribution(
-        RING_RADIUS,
-        tube_radius,
-        PARTICLE_SPACING,
-        widnall_amplitude=DEFAULT_WIDNALL_AMPLITUDE,
-        seed=42,
-        n_widnall_modes=WIDNALL_MODES,
+    distribution = vpm.create_toroidal_distribution(
+        ring_radius=RING_RADIUS,
+        tube_radius=tube_radius,
+        spacing=PARTICLE_SPACING,
+        core_radius_ratio=particle_core_radius / PARTICLE_SPACING,
     )
-    core_radius.fill(particle_core_radius)
 
     # -- Initial vortex velocity and strength ---------------------------------
-    velocity, particle_kinematic_viscosity, vortex_strength = vpm.vortex_ring_vpm(
+    particles = vpm.initialize_vortex_ring(
+        distribution,
         kinematic_viscosity=KINEMATIC_VISCOSITY,
-        ring_centre=[0, 0, 0],
-        ring_radius=RING_RADIUS,
-        tube_circulation=RING_STRENGTH,
-        ring_core_radius=CORE_RADIUS,
-        mean_core_radius=float(core_radius.mean()),
-        position=position,
-        particle_volume=particle_volume,
-        widnall_amplitude=DEFAULT_WIDNALL_AMPLITUDE,
-        n_widnall_modes=WIDNALL_MODES,
-        is_anti_diffusion_enabled=True,
-        is_circulation_normalization_enabled=True,
+        centre=(0.0, 0.0, 0.0),
+        radius=RING_RADIUS,
+        circulation=RING_STRENGTH,
+        vortex_core_radius=CORE_RADIUS,
+        disturbance=vpm.WidnallDisturbance.broadband(
+            amplitude=DEFAULT_WIDNALL_AMPLITUDE,
+            number_of_modes=WIDNALL_MODES,
+        ),
+        compensate_particle_core=True,
     )
+    position = particles.position
+    particle_volume = particles.particle_volume
+    core_radius = particles.core_radius
+    velocity = particles.velocity
+    particle_kinematic_viscosity = particles.kinematic_viscosity
+    vortex_strength = particles.vortex_strength
 
     # -- Ring mode diagnostics (seed quality check) ---------------------------
     mode_sampler = RingModeDiagnosticsSampler(
@@ -112,6 +114,9 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
         azimuthal_bins=128,
         reference_radius=RING_RADIUS,
         transverse_origin=(0.0, 0.0),
+        schedule=vpm.SamplingSchedule(
+            every_n_steps=cadence_steps(SAMPLE_INTERVAL_TIME, TIME_STEP_SIZE)
+        ),
     )
     initial_modes = np.asarray(mode_sampler._sample_group(position, vortex_strength), dtype=float)
     seeded_modes = np.arange(1, WIDNALL_MODES + 1)
@@ -183,14 +188,26 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
                 traversal_block_dim=128,
             ),
             viscous=vpm.ViscousConfig.cs(),
-            logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME, TIME_STEP_SIZE),
-            checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME, TIME_STEP_SIZE),
-            checkpoint_name=variant,
-            checkpoint_directory=str(output_directory / variant),
-            sample_subdirectory=variant,
-            samplers=(RingDiagnosticsSampler(), mode_sampler),
+            backup=vpm.Backup(
+                interval_steps=cadence_steps(BACKUP_INTERVAL_TIME, TIME_STEP_SIZE),
+                directory=str(output_directory / variant),
+                log_directory=str(output_directory / variant),
+            ),
+            samplers=vpm.Samplers(
+                vpm.FlowIntegralsSampler(
+                    schedule=vpm.SamplingSchedule(
+                        every_n_steps=cadence_steps(SAMPLE_INTERVAL_TIME, TIME_STEP_SIZE)
+                    )
+                ),
+                RingDiagnosticsSampler(
+                    schedule=vpm.SamplingSchedule(
+                        every_n_steps=cadence_steps(SAMPLE_INTERVAL_TIME, TIME_STEP_SIZE)
+                    )
+                ),
+                mode_sampler,
+                directory=variant,
+            ),
             write_precision="f32",
-            checkpoint_store_velocity_gradient=False,
             max_n_particles=MAX_N_PARTICLES,
         ),
         case_dir=output_directory.parent,
@@ -221,7 +238,8 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
         "particle_core_radius": particle_core_radius,
         "particle_count": len(position),
         "sample_interval_time": SAMPLE_INTERVAL_TIME,
-        "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,
+        "backup_interval_time": BACKUP_INTERVAL_TIME,
+        "backup": {"interval_steps": solver.setup.backup.interval_steps},
         "widnall_modes": WIDNALL_MODES,
         "widnall_rms_amplitude": DEFAULT_WIDNALL_AMPLITUDE,
         "treecode_theta": TREECODE_THETA,
@@ -237,7 +255,7 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
 
     # -- Time integration -----------------------------------------------------
     solver.record_diagnostics(refresh_fields=True)
-    solver.save_state(str(output_directory / variant / f"vpm_{variant}"))
+    solver.save_backup()
     initial_strength = np.abs(solver.particles.vortex_strength_cpu()).max()
     termination_reason = None
     for _ in range(N_STEPS):
@@ -260,7 +278,7 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
             )
             break
 
-    solver.save_state(str(output_directory / variant / f"vpm_{variant}_final"))
+    solver.save_backup()
     manifest.update(
         status="resolution_lost" if termination_reason else "completed",
         completed_steps=solver.step,

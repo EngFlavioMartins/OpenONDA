@@ -28,8 +28,8 @@ def test_column_projection_recovers_one_gaussian_blob_and_circulation(tmp_path):
     template = {"x": x, "y": y}
     sigma = 0.10
     column_length = 5.0
-    checkpoint = tmp_path / "vpm_vortex_rwm_000000.h5"
-    with h5py.File(checkpoint, "w") as handle:
+    backup = tmp_path / "vpm_vortex_rwm_000000.h5"
+    with h5py.File(backup, "w") as handle:
         particles = handle.create_group("particles")
         particles.create_dataset("position", data=np.array([[0.0, 0.0, 0.0]]))
         particles.create_dataset(
@@ -40,7 +40,7 @@ def test_column_projection_recovers_one_gaussian_blob_and_circulation(tmp_path):
         solver.attrs["step"] = 0
         solver.attrs["time"] = 0.0
 
-    field, quality = statistics.project_checkpoint(checkpoint, template, column_length)
+    field, quality = statistics.project_backup(backup, template, column_length)
     exact_vorticity = np.exp(-(x * x + y * y) / sigma**2) / (np.pi * sigma**2)
     relative_error = np.linalg.norm(field["vorticity_z"] - exact_vorticity) / np.linalg.norm(
         exact_vorticity

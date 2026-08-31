@@ -206,10 +206,6 @@ class PhysicsBase:
         self.dstr_dt_temp3 = ti.Vector.field(
             3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
         )
-        self.sfs_rate_temp = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-
         # Mark initial size
         self._temp_field_size = self.max_n_particles
 
@@ -225,7 +221,6 @@ class PhysicsBase:
             self.dstr_dt_temp[i] = ti.Vector([0.0, 0.0, 0.0])
             self.dstr_dt_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
             self.dstr_dt_temp3[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.sfs_rate_temp[i] = ti.Vector([0.0, 0.0, 0.0])
 
     def _zero_temp_fields(self, N: int | None = None):
         """Zero the temporaries over the active range only.

@@ -102,8 +102,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         conserve_energy: bool = False,
         axisymmetric_axis: int = -1,
         precomputed_velocity_k1: bool = False,
-        vortex_stretching_sfs_coefficient: float = 0.0,
-        vortex_stretching_sfs_cutoff: float = 4.0,
     ):
         """Advance particle position and vortex strength at common RK stages.
 
@@ -121,8 +119,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             treecode_theta,
             conserve_moments,
             conserve_energy,
-            vortex_stretching_sfs_coefficient,
-            vortex_stretching_sfs_cutoff,
             axisymmetric_axis,
             precomputed_velocity_k1,
         )
@@ -408,8 +404,6 @@ class _CoupledAdvectionStretchingHandler:
         treecode_theta: float,
         conserve_moments: bool,
         conserve_energy: bool,
-        vortex_stretching_sfs_coefficient: float,
-        vortex_stretching_sfs_cutoff: float,
         axisymmetric_axis: int,
         precomputed_velocity_k1: bool,
     ) -> None:
@@ -442,8 +436,6 @@ class _CoupledAdvectionStretchingHandler:
             precomputed=precomputed_velocity_k1,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            vortex_stretching_sfs_coefficient=vortex_stretching_sfs_coefficient,
-            vortex_stretching_sfs_cutoff=vortex_stretching_sfs_cutoff,
             axisymmetric_axis=axisymmetric_axis,
         )
 
@@ -468,8 +460,6 @@ class _CoupledAdvectionStretchingHandler:
             precomputed=False,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            vortex_stretching_sfs_coefficient=vortex_stretching_sfs_coefficient,
-            vortex_stretching_sfs_cutoff=vortex_stretching_sfs_cutoff,
             axisymmetric_axis=axisymmetric_axis,
         )
 
@@ -522,8 +512,6 @@ class _CoupledAdvectionStretchingHandler:
             precomputed=False,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            vortex_stretching_sfs_coefficient=vortex_stretching_sfs_coefficient,
-            vortex_stretching_sfs_cutoff=vortex_stretching_sfs_cutoff,
             axisymmetric_axis=axisymmetric_axis,
         )
 
@@ -558,8 +546,6 @@ class _CoupledAdvectionStretchingHandler:
         precomputed: bool,
         conserve_moments: bool,
         conserve_energy: bool,
-        vortex_stretching_sfs_coefficient: float,
-        vortex_stretching_sfs_cutoff: float,
         axisymmetric_axis: int,
     ) -> None:
         """Evaluate velocity and stretching from one common particle state."""
@@ -567,23 +553,17 @@ class _CoupledAdvectionStretchingHandler:
         tree_stretching = parent._stretching._use_treecode
         matching_evaluator = tree_stretching == (parent.velocity_method == "TREECODE")
         no_velocity_hook = parent.velocity_override is None and parent.body_velocity is None
-        needs_sfs_gradient = vortex_stretching_sfs_coefficient > 0.0
         # The direct pairwise TRANSPOSED kernel is antisymmetric to roundoff;
         # contracting the separately accumulated (currently f32) gradient is
         # mathematically equivalent but loses that algebraic cancellation.
         # Keep the exact pair kernel unless the moment projection will restore
         # the invariants anyway.  Treecode stretching has no pairwise
         # antisymmetry to preserve and always benefits from the fused traversal.
-        can_share_gradient = no_velocity_hook and (
-            needs_sfs_gradient
-            or (
-                matching_evaluator
-                and (parent.velocity_method == "TREECODE" or conserve_moments or conserve_energy)
-            )
+        can_share_gradient = no_velocity_hook and matching_evaluator and (
+            parent.velocity_method == "TREECODE" or conserve_moments or conserve_energy
         )
 
         gradient = None
-        sfs_tree = None
         if precomputed and can_share_gradient:
             gradient = particles.velocity_gradient
         elif can_share_gradient:
@@ -600,7 +580,6 @@ class _CoupledAdvectionStretchingHandler:
                 tree.compute_velocity_and_gradient_gpu(background_np)
                 parent._copy_vec3(tree.velocity, velocity_out, N)
                 gradient = tree.velocity_gradient
-                sfs_tree = tree
             else:
                 parent.compute_velocity_and_gradient_kernel(
                     position,
@@ -640,30 +619,6 @@ class _CoupledAdvectionStretchingHandler:
                 mode_int,
                 N,
             )
-        if needs_sfs_gradient:
-            if gradient is None:
-                raise RuntimeError("vortex-stretching SFS requires the particle velocity gradient")
-            if sfs_tree is not None:
-                sfs_tree.apply_vortex_stretching_sfs(
-                    vortex_strength_rate_out,
-                    parent.sfs_rate_temp,
-                    vortex_stretching_sfs_coefficient,
-                    vortex_stretching_sfs_cutoff,
-                    mode_int,
-                )
-            else:
-                parent.vortex_stretching_sfs_rate_kernel(
-                    position,
-                    vortex_strength,
-                    core_radius,
-                    gradient,
-                    vortex_strength_rate_out,
-                    parent.sfs_rate_temp,
-                    vortex_stretching_sfs_coefficient,
-                    vortex_stretching_sfs_cutoff,
-                    mode_int,
-                    N,
-                )
         if axisymmetric_axis >= 0:
             parent.average_axisymmetric_no_swirl_rhs(
                 position,

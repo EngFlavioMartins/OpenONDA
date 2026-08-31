@@ -43,7 +43,7 @@ TIME_STEP_SIZE = 0.291 / 9.0  # Δt [s]
 TOTAL_TIME = 103.0 * 0.291  # total simulation time [s]
 SAMPLE_INTERVAL_TIME = 2.0 * 0.291  # time between field samples [s]
 MERGING_SAMPLE_INTERVAL_STEPS = 6  # resolve the rapid final collapse of the two vorticity peaks
-CHECKPOINT_INTERVAL_TIME = 10.0 * 0.291  # time between snapshots [s]
+BACKUP_INTERVAL_TIME = 10.0 * 0.291  # time between snapshots [s]
 TREECODE_THETA = 0.30  # treecode accuracy parameter (higher = faster, less accurate)
 TREECODE_MULTIPOLE_ORDER = 3  # treecode multipole expansion order
 ADVECTION_SCHEME = "RK2"  # Runge-Kutta 2nd-order particle advection
@@ -110,31 +110,6 @@ def normalize_retained_circulation(
     return retained, raw_per_length, scale
 
 
-def column_distribution(
-    bounds: list[float],
-    spacing: float,
-    particle_core_radius: float,
-    column_spacing: float = COLUMN_SPACING,
-):
-    """Extrude a triangular in-plane lattice through the finite vortex column."""
-    plane_bounds = [*bounds[:4], 0.0, 0.0]
-    plane_positions, areas, _ = vpm.ParticleDistributor.hexagonal_distribution(
-        plane_bounds,
-        spacing,
-    )
-
-    length = bounds[5] - bounds[4]
-    number_of_layers = max(3, 2 * round(length / (2 * column_spacing)) + 1)
-    layer_spacing = length / number_of_layers
-    z_positions = bounds[4] + layer_spacing * (np.arange(number_of_layers) + 0.5)
-
-    position = np.repeat(plane_positions, number_of_layers, axis=0)
-    position[:, 2] = np.tile(z_positions, len(plane_positions))
-    particle_volume = np.repeat(areas * layer_spacing, number_of_layers)
-    core_radius = np.full(len(position), particle_core_radius)
-    return position, particle_volume, core_radius
-
-
 def run_case(
     physics: str,
     scheme: str,
@@ -159,13 +134,13 @@ def run_case(
     # ---- Time stepping ----
     viscous = viscous_config(scheme, kinematic_viscosity, spacing)
     sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
-    checkpoint_interval_steps = round(CHECKPOINT_INTERVAL_TIME / TIME_STEP_SIZE)
+    backup_steps = round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE)
     field_interval_steps = MERGING_SAMPLE_INTERVAL_STEPS if physics == "merging" else sample_steps
     if is_rwm_ensemble:
         # The projected two-dimensional estimator is reconstructed from these
-        # compact particle checkpoints.  Online sampling of a single z-plane
+        # compact particle backups.  Online sampling of a single z-plane
         # would store a noisy realization and is intentionally disabled.
-        checkpoint_interval_steps = field_interval_steps
+        backup_steps = field_interval_steps
 
     # ---- Initial vortex geometry ----
     y_positions = (0.0,) if physics == "vortex" else (SEPARATION / 2, -SEPARATION / 2)
@@ -219,8 +194,15 @@ def run_case(
         column_half_length,
     ]
     # ---- Particle distribution and field sampler ----
-    position, particle_volume, core_radius = column_distribution(
-        initial_bounds, spacing, particle_core_radius, column_spacing
+    distribution = vpm.create_triangular_prism_distribution(
+        bounds=(
+            (initial_bounds[0], initial_bounds[1]),
+            (initial_bounds[2], initial_bounds[3]),
+            (initial_bounds[4], initial_bounds[5]),
+        ),
+        spacing=spacing,
+        axial_spacing=column_spacing,
+        core_radius_ratio=particle_core_radius / spacing,
     )
 
     case_dir = TUTORIAL_DIR.resolve()
@@ -229,7 +211,6 @@ def run_case(
     sample_plane_fraction = 0.25  # sample at z = L/4
     if is_rwm_ensemble:
         scheduled_samplers = []
-        final_samplers = []
     else:
         field_sampler = vpm.SurfaceSampler(
             point=[0, 0, sample_plane_fraction * COLUMN_LENGTH],
@@ -238,22 +219,17 @@ def run_case(
             spacing=field_spacing,
             file_name=f"{case_name}_zq",
             include_derivatives=False,
-            schedule=(
-                vpm.SamplingSchedule(every_n_steps=MERGING_SAMPLE_INTERVAL_STEPS)
-                if physics == "merging"
-                else None
-            ),
+            schedule=vpm.SamplingSchedule(every_n_steps=field_interval_steps),
         )
         scheduled_samplers = [field_sampler]
-        final_samplers = [field_sampler]
 
     member_name = f"member_{ensemble_member:03d}" if is_rwm_ensemble else None
-    sample_subdirectory = (
+    sample_directory = (
         str(Path("rwm_ensemble") / case_name / member_name)
         if member_name is not None
         else case_name
     )
-    checkpoint_directory = (
+    solution_directory = (
         solution_dir / "rwm_ensemble" / case_name / member_name
         if member_name is not None
         else solution_dir / case_name
@@ -269,15 +245,19 @@ def run_case(
                 multipole_order=TREECODE_MULTIPOLE_ORDER,
                 sort_particle_targets=True,
             ),
-            logging_interval_steps=field_interval_steps if is_rwm_ensemble else sample_steps,
-            checkpoint_interval_steps=checkpoint_interval_steps,
-            checkpoint_name=case_name,
-            checkpoint_directory=str(checkpoint_directory),
-            sample_subdirectory=sample_subdirectory,
-            samplers=scheduled_samplers,
-            final_samplers=final_samplers,
+            backup=vpm.Backup(
+                interval_steps=backup_steps,
+                directory=str(solution_directory),
+                log_directory=str(solution_directory),
+            ),
+            samplers=vpm.Samplers(
+                vpm.FlowIntegralsSampler(
+                    schedule=vpm.SamplingSchedule(every_n_steps=field_interval_steps)
+                ),
+                *scheduled_samplers,
+                directory=sample_directory,
+            ),
             write_precision="f32",
-            checkpoint_store_velocity_gradient=False,
             domain_bounds=domain_bounds,
             compute_device=compute_device,
             random_seed=random_seed,
@@ -290,7 +270,7 @@ def run_case(
     n_steps = round(TOTAL_TIME / solver.time_step_size)
 
     # ---- Metadata and vortex particle seeding ----
-    samples_dir = case_dir / "samples" / sample_subdirectory
+    samples_dir = case_dir / "samples" / sample_directory
     samples_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
         "status": "running",
@@ -305,13 +285,11 @@ def run_case(
         "column_half_length": column_half_length,
         "end_time": TOTAL_TIME,
         "time_step_size": solver.time_step_size,
-        "field_sample_interval_steps": (
-            field_interval_steps
-        ),
+        "field_sample_interval_steps": (field_interval_steps),
         "random_seed": random_seed,
         "ensemble_member": ensemble_member,
         "raw_output_estimator": (
-            "particle_checkpoint_for_column_projection"
+            "particle_backup_for_column_projection"
             if is_rwm_ensemble
             else "instantaneous_surface_field"
         ),
@@ -319,41 +297,34 @@ def run_case(
     metadata_path = samples_dir / "run_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-    # vortex_age maps the initial Gaussian to the Lamb-Oseen profile at t=0:
-    # the analytic solution at age t_v has core radius² = a₀² + 4ν·t_v,
-    # so t_v = a₀²/(4ν) gives the correct initial condition.
-    vortex_age = GAUSSIAN_CORE_RADIUS**2 / (4.0 * kinematic_viscosity)
     for group_id, (circulation, y_position) in enumerate(
         zip(circulations, y_positions, strict=True)
     ):
-        velocity, _, particle_vortex_strength = vpm.lamb_oseen_vpm(
+        particles = vpm.initialize_vortex_filament(
+            distribution,
             kinematic_viscosity=kinematic_viscosity,
-            mean_core_radius=float(core_radius.mean()),
-            position=position,
-            particle_volume=particle_volume,
-            vortex_centre_position=np.array([0.0, y_position, 0.0]),
+            centre=(0.0, y_position, 0.0),
+            direction=(0.0, 0.0, 1.0),
             circulation=circulation,
-            vortex_age=vortex_age,
-            is_anti_diffusion_enabled=True,
+            vortex_core_radius=GAUSSIAN_CORE_RADIUS,
+            compensate_particle_core=True,
         )
-        vortex_strength_magnitude = np.linalg.norm(particle_vortex_strength, axis=1)
+        vortex_strength_magnitude = np.linalg.norm(particles.vortex_strength, axis=1)
         keep = (
             vortex_strength_magnitude >= INITIAL_STRENGTH_CUTOFF * vortex_strength_magnitude.max()
         )
         retained_vortex_strength, _, _ = normalize_retained_circulation(
-            particle_vortex_strength,
+            particles.vortex_strength,
             keep,
             circulation,
             COLUMN_LENGTH,
         )
+        retained = particles.select(keep)
+        solver_arguments = retained.solver_kwargs()
+        solver_arguments["vortex_strength"] = retained_vortex_strength
         group_id = np.full(np.count_nonzero(keep), group_id, dtype=np.int32)
         solver.add_vortex_particles(
-            position=position[keep],
-            velocity=velocity[keep],
-            vortex_strength=retained_vortex_strength,
-            core_radius=core_radius[keep],
-            particle_volume=particle_volume[keep],
-            kinematic_viscosity=np.full(int(np.count_nonzero(keep)), kinematic_viscosity),
+            **solver_arguments,
             group_id=group_id,
         )
 
@@ -361,7 +332,6 @@ def run_case(
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     # ---- Time integration ----
-    checkpoint_base = checkpoint_directory / f"vpm_{case_name}"
     try:
         if is_rwm_ensemble:
             if str(solver.compute_device).upper() == "METAL":
@@ -369,23 +339,23 @@ def run_case(
                     "Seeded RWM ensembles are not supported on METAL because Taichi "
                     "1.7 does not accept random_seed for that backend; use CPU, CUDA, or VULKAN."
                 )
-            solver.write_checkpoint(str(checkpoint_base))
+            solver.save_backup()
         else:
-            solver.execute_final_samplers()
+            solver.record_diagnostics(refresh_fields=True)
         for _ in range(n_steps):
             solver.advance()
         if is_rwm_ensemble:
-            if solver.step % checkpoint_interval_steps != 0:
-                solver.write_checkpoint(str(checkpoint_base))
+            if solver.step % backup_steps != 0:
+                solver.save_backup()
             if solver.step % field_interval_steps != 0:
-                # The final checkpoint refreshes the particle velocity field;
+                # The final backup refreshes the particle velocity field;
                 # record the matching final-time integral state as well.
                 solver.record_diagnostics(refresh_fields=False)
         else:
             if solver.step % sample_steps != 0:
                 solver.record_diagnostics(refresh_fields=False)
             if physics == "merging" and solver.step % MERGING_SAMPLE_INTERVAL_STEPS != 0:
-                solver.execute_final_samplers()
+                solver.record_diagnostics(refresh_fields=False)
     except BaseException:
         metadata["status"] = "failed"
         metadata["completed"] = False

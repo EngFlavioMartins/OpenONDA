@@ -11,7 +11,7 @@ import json
 import os
 from typing import TYPE_CHECKING
 
-from .checkpoint import CheckpointManager
+from .backup import _BackupIO
 from .logging import Logging
 from .sampling import resolve_samples_dir
 
@@ -37,30 +37,18 @@ class SolverIO:
         """
         self.solver = solver
 
-        # solver.checkpoint_directory is already resolved against case_dir
-        # (see VPMSolver.__init__); solver.setup.checkpoint_directory is the
-        # raw, possibly-relative user value and must not be used directly,
-        # or checkpoints land under the caller's cwd instead of the case dir.
-        self.export_dir = self.solver.checkpoint_directory or "solution"
+        self.export_dir = self.solver._backup_path
 
         self._vlm_pvd_entries = []  # Track VLM time-series entries
         self._xdmf_series_entries = []  # Track VPM particle time-series entries
 
     @property
-    def checkpoint_interval_steps(self) -> int:
-        return self.solver.checkpoint_interval_steps
-
-    @property
-    def checkpoint_name(self) -> str:
-        return (self.solver.checkpoint_name or "").strip()
-
-    @property
     def vpm_prefix(self) -> str:
-        return f"vpm_{self.checkpoint_name}" if self.checkpoint_name else "vpm"
+        return "vpm"
 
     @property
     def vlm_prefix(self) -> str:
-        return f"vlm_{self.checkpoint_name}" if self.checkpoint_name else "vlm"
+        return "vlm"
 
     @property
     def step(self) -> int:
@@ -70,34 +58,35 @@ class SolverIO:
     def time(self) -> float:
         return self.solver.time
 
-    def should_checkpoint(self, step: int | None = None) -> bool:
+    def should_backup(self, step: int | None = None) -> bool:
         """
-        Check if a checkpoint should be written at the given timestep.
+        Check if a backup should be written at the given timestep.
 
         Args:
             step: Step index to check (default: current solver step)
 
         Returns:
-            True if a checkpoint should be written
+            True if a backup should be written
         """
         ts = step if step is not None else self.step
-        return self.checkpoint_interval_steps > 0 and ts % self.checkpoint_interval_steps == 0
+        interval_steps = self.solver.setup.backup.interval_steps
+        return interval_steps > 0 and ts % interval_steps == 0
 
-    def write_checkpoint(self, verbose: bool = True):
+    def _write_scheduled_backup(self, verbose: bool = True):
         """
-        Write a complete checkpoint: HDF5 state + VTK visualization + CSV loads.
+        Write a complete backup: HDF5 state + VTK visualization + CSV loads.
 
-        This consolidates all checkpoint logic from the solver into a single call.
+        This consolidates all backup logic from the solver into a single call.
         """
-        if not self.should_checkpoint():
+        if not self.should_backup():
             return
 
         # Ensure export directory exists
         os.makedirs(self.export_dir, exist_ok=True)
 
-        # 1. HDF5 checkpoint (for restart)
-        checkpoint_path = os.path.join(self.export_dir, self.vpm_prefix)
-        CheckpointManager.write_checkpoint(self.solver, checkpoint_path, verbose=verbose)
+        # 1. HDF5 backup (for restart)
+        backup_path = os.path.join(self.export_dir, self.vpm_prefix)
+        _BackupIO.save(self.solver, backup_path, verbose=verbose)
 
         # Track VPM particle data for XDMF series
         xdmf_filename = f"{self.vpm_prefix}_{self.step:06d}.xdmf"
@@ -183,7 +172,7 @@ class SolverIO:
                 )
         Logging.info(f"component=diagnostics_export status=written path={filename!r}")
 
-    def export_flow_integrals_csv(self, solver: "VPMSolver") -> None:
+    def export_flow_integrals_csv(self, solver: "VPMSolver", csv_path) -> None:
         """Append one row of flow integrals to ``<case_dir>/samples/flow_integrals.csv``.
 
         Args:
@@ -193,12 +182,7 @@ class SolverIO:
         import numpy as np
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(
-            solver.case_dir,
-            getattr(solver.setup, "sample_subdirectory", None),
-        )
-        samples_dir.mkdir(parents=True, exist_ok=True)
-        csv_path = samples_dir / "flow_integrals.csv"
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
 
         linear_impulse = solver._flow_integrals.get("linear_impulse", np.zeros(3))
         angular_impulse = solver._flow_integrals.get("angular_impulse", np.zeros(3))
@@ -207,14 +191,6 @@ class SolverIO:
         particle_core_radius = solver.particle_core_radius
         eddy_viscosity = solver.particles.eddy_viscosity_cpu()
         effective_viscosity = solver.particles.effective_viscosity_cpu()
-        n_particles = solver.particles.n_particles_total
-        if solver.vortex_stretching_sfs_coefficient > 0.0:
-            sfs_rate = solver.physics.sfs_rate_temp.to_numpy()[:n_particles]
-        else:
-            sfs_rate = np.zeros_like(particle_vortex_strength)
-        sfs_rate_magnitude = np.linalg.norm(sfs_rate, axis=1)
-        active_sfs = sfs_rate_magnitude > 0.0
-
         row = {
             "time": solver.time,
             "step": solver.step,
@@ -257,13 +233,6 @@ class SolverIO:
             "invariant_projection_correction_ratio": float(
                 solver.physics.rate_projection_max_correction_ratio
             ),
-            "vortex_stretching_sfs_strength_transfer": float(
-                np.sum(particle_vortex_strength * sfs_rate)
-            ),
-            "vortex_stretching_sfs_active_fraction": float(active_sfs.mean())
-            if len(active_sfs)
-            else 0.0,
-            "max_vortex_stretching_sfs_rate": float(sfs_rate_magnitude.max(initial=0.0)),
         }
         row.update(solver._discretization_health)
         row.update(solver.stabilization.diagnostics)
@@ -333,7 +302,7 @@ class SolverIO:
 
         samples_dir = resolve_samples_dir(
             self.solver.case_dir,
-            getattr(self.solver.setup, "sample_subdirectory", None),
+            self.solver.setup.samplers.directory,
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / f"{self.vpm_prefix}_forces.csv"

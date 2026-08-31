@@ -170,7 +170,7 @@ def main() -> int:
     files = sorted(SOLUTION_DIR.glob("vpm_rotor_*.h5"), key=_step)
     if not files or _step(files[-1]) != expected_step:
         failures.append(
-            f"last rotor checkpoint is {_step(files[-1]) if files else 'missing'}, "
+            f"last rotor backup is {_step(files[-1]) if files else 'missing'}, "
             f"expected {expected_step}"
         )
     if files:

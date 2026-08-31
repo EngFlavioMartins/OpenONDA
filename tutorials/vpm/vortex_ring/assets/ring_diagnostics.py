@@ -43,9 +43,12 @@ MODE_CSV_COLUMNS = (
 
 
 class RingDiagnosticsSampler:
-    """Sample ring motion and vortex strength without writing a particle checkpoint."""
+    """Sample ring motion and vortex strength without writing a particle backup."""
 
     file_name = "ring_diagnostics"
+
+    def __init__(self, *, schedule=None) -> None:
+        self.schedule = schedule
 
     def save_csv(
         self,
@@ -141,6 +144,7 @@ class RingModeDiagnosticsSampler:
         azimuthal_bins: int = 128,
         reference_radius: float = 1.0,
         transverse_origin: tuple[float, float] | None = None,
+        schedule=None,
     ) -> None:
         if max_mode < 1:
             raise ValueError("max_mode must be positive")
@@ -148,6 +152,7 @@ class RingModeDiagnosticsSampler:
             raise ValueError("azimuthal_bins must exceed twice max_mode")
         if reference_radius <= 0.0:
             raise ValueError("reference_radius must be positive")
+        self.schedule = schedule
         self.max_mode = max_mode
         self.azimuthal_bins = azimuthal_bins
         self.reference_radius = reference_radius

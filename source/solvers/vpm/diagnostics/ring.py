@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from ..io.sampling.schedule import SamplingSchedule
+
 RING_DIAGNOSTIC_COLUMNS = (
     "time",
     "step",
@@ -32,13 +34,20 @@ RING_DIAGNOSTIC_COLUMNS = (
 class RingDiagnosticsSampler:
     """Write one compact diagnostic row per particle group and sample time.
 
-    The sampler is executed through :class:`SamplerExecutor`, so its cadence is
-    the solver's ``logging_interval_steps`` and its output lives below the
-    solver-managed ``samples/`` directory. Particle groups are interpreted as
-    individual rings.
+    Particle groups are interpreted as individual rings. The sampler owns its
+    schedule and canonical output name.
     """
 
-    file_name = "ring_diagnostics"
+    def __init__(
+        self,
+        *,
+        schedule: SamplingSchedule | None = None,
+        file_name: str = "ring_diagnostics",
+    ) -> None:
+        if not file_name:
+            raise ValueError("RingDiagnosticsSampler file_name must not be empty")
+        self.schedule = schedule
+        self.file_name = file_name
 
     def save_csv(
         self,

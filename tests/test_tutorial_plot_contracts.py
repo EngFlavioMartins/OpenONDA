@@ -7,7 +7,6 @@ from pathlib import Path
 import re
 import sys
 
-import numpy as np
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -23,25 +22,14 @@ def _load_module(path: Path, name: str):
     return module
 
 
-def test_coupled_line_loader_sorts_along_the_varying_coordinate(tmp_path):
-    plot_util = _load_module(
-        TUTORIALS / "coupled_fvm_vpm/cylinder_shedding_flow/assets/_plotutil.py",
-        "cylinder_shedding_plot_util",
-    )
-    plot_util.SOURCES["fvm"]["dir"] = tmp_path
-    (tmp_path / "fvm_spanwise_line.csv").write_text(
-        "time,step,position_x,position_y,position_z,velocity_y\n"
-        "1.0,1,1.5,0.0,1.0,10.0\n"
-        "1.0,1,1.5,0.0,-1.0,-10.0\n"
-        "1.0,1,1.5,0.0,0.0,0.0\n",
-        encoding="utf-8",
-    )
+def test_coupled_cylinder_plot_reads_canonical_force_coefficients():
+    source = (
+        TUTORIALS / "coupled_fvm_vpm/cylinder_shedding_flow/assets/plot_cylinder.py"
+    ).read_text(encoding="utf-8")
 
-    frame = plot_util.load_line("fvm", "spanwise_line", 1.0)
-
-    assert frame is not None
-    np.testing.assert_array_equal(frame["position_z"], [-1.0, 0.0, 1.0])
-    np.testing.assert_array_equal(frame["velocity_y"], [-10.0, 0.0, 10.0])
+    assert 'row["drag_coefficient"]' in source
+    assert 'row["lift_coefficient"]' in source
+    assert "forces_history.csv" in source
 
 
 def test_cube_plot_metadata_accepts_legacy_and_current_coupling_contracts():
@@ -75,12 +63,12 @@ def test_cube_plot_metadata_accepts_legacy_and_current_coupling_contracts():
 def test_plotters_use_canonical_export_fields_and_valid_math_commands():
     taylor_green = (TUTORIALS / "fvm/taylor_green/assets/plot_decay.py").read_text()
     cylinder = (
-        TUTORIALS / "coupled_fvm_vpm/cylinder_shedding_flow/assets/plot_von_karman.py"
+        TUTORIALS / "coupled_fvm_vpm/cylinder_shedding_flow/assets/plot_cylinder.py"
     ).read_text()
     assert 'data["analytic_total_kinetic_energy"]' in taylor_green
     assert 'data["analytic_energy"]' not in taylor_green
-    assert 'frame["position_z"]' in cylinder
-    assert 'table["z"]' not in cylinder
+    assert 'row["drag_coefficient"]' in cylinder
+    assert 'row["lift_coefficient"]' in cylinder
 
     invalid_math_command = re.compile(
         r"\\(?:angular_frequency|angular_velocity|nondimensional_time|mathbs)\b"
@@ -160,43 +148,52 @@ def test_vpm_tutorials_keep_their_compact_sampling_budgets():
 
     assert "FIELD_SPACING = 0.16 * CORE_RADIUS" in lamb_oseen
     assert "MERGING_SAMPLE_INTERVAL_STEPS = 6" in lamb_oseen
-    assert "vpm.SamplingSchedule(every_n_steps=MERGING_SAMPLE_INTERVAL_STEPS)" in lamb_oseen
+    assert 'field_interval_steps = MERGING_SAMPLE_INTERVAL_STEPS if physics == "merging"' in lamb_oseen
+    assert "every_n_steps=field_interval_steps" in lamb_oseen
     assert 'field_padding = 0.0 if physics == "vortex" else 3.0 * final_core_radius' in lamb_oseen
     assert "bounds=field_bounds" in lamb_oseen
-    assert "checkpoint_store_velocity_gradient=False" in lamb_oseen
+    assert "vpm.Backup(" in lamb_oseen
     assert "n_steps = round(TOTAL_TIME / solver.time_step_size)" in lamb_oseen
     assert "if solver.step % sample_steps != 0:" in lamb_oseen
     assert "SAMPLE_INTERVAL_TIME = 0.1" in vortex_ring
-    assert "CHECKPOINT_INTERVAL_TIME = 0.5" in vortex_ring
-    assert "checkpoint_store_velocity_gradient=False" in vortex_ring
+    assert "BACKUP_INTERVAL_TIME = 0.5" in vortex_ring
+    assert "vpm.Backup(" in vortex_ring
 
 
-def test_vortex_ring_checkpoint_contract_follows_each_run_horizon():
+def test_vortex_ring_backup_contract_follows_each_run_horizon():
     postprocess = _load_module(
         TUTORIALS / "vpm/vortex_ring/assets/postprocess.py",
         "vortex_ring_postprocess_contract",
     )
 
-    assert postprocess._expected_checkpoint_steps(45, 25) == {25}
-    assert postprocess._expected_checkpoint_steps(1629, 25) == set(range(25, 1626, 25))
-    assert postprocess._expected_checkpoint_steps(3000, 25) == set(range(25, 3001, 25))
+    assert postprocess._expected_backup_steps(45, 25) == {0, 25, 45}
+    assert postprocess._expected_backup_steps(1629, 25) == {
+        0,
+        1629,
+        *range(25, 1626, 25),
+    }
+    assert postprocess._expected_backup_steps(3000, 25) == {
+        0,
+        *range(25, 3001, 25),
+    }
 
     with pytest.raises(ValueError, match="positive"):
-        postprocess._expected_checkpoint_steps(3000, 0)
+        postprocess._expected_backup_steps(3000, 0)
 
 
-def test_vpm_tutorials_request_compact_restartable_checkpoints():
+def test_vpm_tutorials_use_the_single_backup_constructor():
     setup_files = (
         "vpm/delta_wing/delta_wing_setup.py",
         "vpm/flat_plate/setup_plate.py",
         "vpm/lamb_oseen_vortex/lamb_oseen_setup.py",
         "vpm/quadcopter/quadcopter_setup.py",
         "vpm/rotor_flow/rotor_setup.py",
-        "vpm/vortex_interactions/rings_setup.py",
+        "vpm/vortex_interactions/interactions_setup.py",
         "vpm/vortex_ring/ring_setup.py",
     )
 
     for relative_path in setup_files:
         source = (TUTORIALS / relative_path).read_text(encoding="utf-8")
         assert 'write_precision="f32"' in source
-        assert "checkpoint_store_velocity_gradient=False" in source
+        assert "vpm.Backup(" in source
+        assert "checkpoint" not in source.lower()

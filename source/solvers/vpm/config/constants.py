@@ -130,8 +130,6 @@ SMAGORINSKY_CONSTANT = 0.20
 # Default logging frequency (every N time steps)
 DEFAULT_LOGGING_TIME_INTERVAL = 1
 
-# Default checkpoint name infix (empty -> use short default prefixes, e.g. vpm_*)
-DEFAULT_CHECKPOINT_NAME = ""
 
 # Maximum filename length
 MAX_FILENAME_LENGTH = 255

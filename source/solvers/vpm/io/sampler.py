@@ -24,47 +24,79 @@ from .sampling import resolve_samples_dir, sampler_csv_columns
 
 
 class SamplerExecutor:
-    """Orchestrates field-sampler execution for one solver log step.
+    """Orchestrates the sampler objects declared by ``VPMSetup.samplers``.
 
     All methods are static — no per-instance state is held here.  The
     solver passes itself in and this class reads what it needs (particles,
-    config, time counters, checkpoint directory) without tight coupling.
+    config, time counters, backup directory) without tight coupling.
     """
 
     @staticmethod
-    def execute(solver, sampler_entries=None, *, scheduled_only: bool | None = False) -> None:
-        """Execute all configured samplers and persist their output.
-
-        Reads ``solver.setup.samplers`` (list of sampler or
-        ``(sampler, name_prefix)`` tuples) and, for each one, determines
-        the target directory / file name, calls the appropriate ``save_*``
-        method on the sampler, and keeps the PVD time-series index up to
-        date.
-
-        Sampling is skipped when the particle field is empty or numerically
-        insignificant (< 2 particles or max |vortex_strength| < 1e-8) to avoid crashes
-        inside pressure-gradient or SVD routines.
-        """
-        sampler_entries = solver.setup.samplers if sampler_entries is None else sampler_entries
-        if sampler_entries is None:
-            return
-
-        selected_entries = []
-        for sampler_entry in sampler_entries:
-            sampler = sampler_entry[0] if isinstance(sampler_entry, tuple) else sampler_entry
+    def selected(solver, mode: str) -> tuple:
+        """Return the samples selected for ``scheduled``, ``manual``, or ``final`` execution."""
+        selected = []
+        for sampler in solver.setup.samplers.samples:
             schedule = getattr(sampler, "schedule", None)
-            if scheduled_only is True:
-                if schedule is None or not schedule.is_due(
-                    solver.step,
-                    solver.time,
-                    solver.time_step_size,
+            final_only = schedule is not None and schedule.at_end
+            if mode == "scheduled":
+                if (
+                    schedule is None
+                    or final_only
+                    or not schedule.is_due(
+                        solver.step,
+                        solver.time,
+                        solver.time_step_size,
+                    )
                 ):
                     continue
-            elif scheduled_only is False and schedule is not None:
-                continue
-            selected_entries.append(sampler_entry)
-        if not selected_entries:
+            elif mode == "manual":
+                if final_only:
+                    continue
+            elif mode == "final":
+                if not final_only:
+                    continue
+            else:
+                raise ValueError(f"Unknown sampler execution mode {mode!r}")
+            selected.append(sampler)
+        return tuple(selected)
+
+    @staticmethod
+    def any_due(solver, step: int, time: float) -> bool:
+        """Return whether any configured sample is due on an accepted state."""
+        for sampler in solver.setup.samplers.samples:
+            schedule = getattr(sampler, "schedule", None)
+            if (
+                schedule is not None
+                and not schedule.at_end
+                and schedule.is_due(step, time, solver.time_step_size)
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def flow_integrals_due(solver, step: int, time: float) -> bool:
+        """Return whether a due sampler consumes the integral diagnostics."""
+        for sampler in solver.setup.samplers.samples:
+            schedule = getattr(sampler, "schedule", None)
+            if (
+                getattr(sampler, "requires_flow_integrals", False)
+                and schedule is not None
+                and not schedule.at_end
+                and schedule.is_due(step, time, solver.time_step_size)
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def execute(solver, *, mode: str) -> None:
+        """Execute one canonical selection of configured sampler objects."""
+        selected_samples = SamplerExecutor.selected(solver, mode)
+        if not selected_samples:
             return
+
+        if any(getattr(sample, "requires_flow_integrals", False) for sample in selected_samples):
+            if getattr(solver, "_flow_integrals_step", None) != solver.step:
+                solver._update_all_flow_integrals()
 
         n_particles_total = solver.particles.n_particles_total
         if n_particles_total < 2:
@@ -79,14 +111,15 @@ class SamplerExecutor:
 
         samples_dir = resolve_samples_dir(
             solver.case_dir,
-            getattr(solver.setup, "sample_subdirectory", None),
+            solver.setup.samplers.directory,
         )
         samples_dir.mkdir(parents=True, exist_ok=True)
 
-        for sampler_entry in selected_entries:
-            sampler, name_prefix, solution_dir = SamplerExecutor._prepare_context(
-                sampler_entry, samples_dir
-            )
+        for sampler in selected_samples:
+            name_prefix = getattr(sampler, "file_name", None)
+            if not name_prefix:
+                name_prefix = sampler.__class__.__name__.lower().removesuffix("sampler")
+            solution_dir = samples_dir
             if not hasattr(sampler, "_call_count"):
                 sampler._call_count = 0
                 sampler._pvd_entries = SamplerExecutor._read_pvd(solution_dir, name_prefix)
@@ -104,23 +137,6 @@ class SamplerExecutor:
             )
 
     # ---- Helpers ----
-
-    @staticmethod
-    def _prepare_context(sampler_entry, samples_dir: Path):
-        """Unpack a sampler entry and resolve *name_prefix*.
-
-        The destination directory is always ``samples_dir`` — sampler output
-        location is not configurable per-call.
-        """
-        if isinstance(sampler_entry, tuple):
-            sampler, name_prefix = sampler_entry
-        else:
-            sampler = sampler_entry
-            name_prefix = getattr(sampler, "file_name", None)
-            if name_prefix is None:
-                name_prefix = sampler.__class__.__name__.lower().replace("sampler", "")
-
-        return sampler, name_prefix, samples_dir
 
     @staticmethod
     def _save_output(

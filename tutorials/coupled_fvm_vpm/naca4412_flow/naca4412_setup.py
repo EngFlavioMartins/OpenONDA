@@ -205,12 +205,13 @@ VPM_SETUP = vpm.VPMSetup(
     max_n_particles=MAX_N_PARTICLES,
     max_evaluation_points=MAX_N_PARTICLES,
     domain_bounds=list(VPM_DOMAIN),
-    log_mode="file",
-    logging_interval_steps=VPM_LOGGING_INTERVAL_STEPS,
     # Coupled restart state is written atomically by COUPLER_SETUP.
-    checkpoint_interval_steps=0,
-    checkpoint_directory=str(CASE_DIR / "solution"),
-    samplers=VPM_SAMPLERS,
+    backup=vpm.Backup(
+        interval_steps=0,
+        directory=str(CASE_DIR / "solution"),
+        log_directory=str(CASE_DIR / "solution"),
+    ),
+    samplers=vpm.Samplers(*VPM_SAMPLERS),
 )
 
 COUPLER_SETUP = coupling.CouplerSetup(

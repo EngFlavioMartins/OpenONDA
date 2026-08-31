@@ -55,10 +55,18 @@ class _InactiveVPMSolver:
 
 
 def _runtime_setup(setup: VPMSetup, case_dir: Path) -> VPMSetup:
-    checkpoint_directory = Path(setup.checkpoint_directory)
-    if not checkpoint_directory.is_absolute():
-        checkpoint_directory = case_dir / checkpoint_directory
-    return replace(setup, checkpoint_directory=str(checkpoint_directory.resolve()))
+    def resolved(path: str) -> str:
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = case_dir / candidate
+        return str(candidate.resolve())
+
+    backup = replace(
+        setup.backup,
+        directory=resolved(setup.backup.directory),
+        log_directory=resolved(setup.backup.log_directory),
+    )
+    return replace(setup, backup=backup)
 
 
 def create_vpm_solver(setup: VPMSetup, *, case_dir: str | Path | None = None):

@@ -9,8 +9,9 @@ post-processing (:class:`~source.solvers.fvm.sampling.postprocess.PostProcess`),
 so a schedule's decision must be reproducible from ``step`` / ``time``
 alone — never from a mutable call counter.
 
-All sampler output lands in ``<case_root>/samples/`` (see :func:`samples_dir`);
-the path is deliberately not a per-sampler option.
+Live sampler output lands in ``solver.samples_dir``, which defaults to
+``<case_root>/samples/``. The directory belongs to the solver rather than to
+individual samplers, so a named study case can route every sample coherently.
 
 Examples
 --------
@@ -50,7 +51,7 @@ SAMPLER_CSV_COLUMNS = [
 
 
 def samples_dir(case_dir: str) -> str:
-    """Return the one canonical sampler output directory for a case root."""
+    """Return the default sampler output directory for offline post-processing."""
     return os.path.join(case_dir, "samples")
 
 

@@ -58,7 +58,7 @@ def _viscous_config(scheme: str):
 
 
 def _make_solver(case_dir: Path, scheme: str):
-    from source.solvers.vpm import VelocityConfig, VPMSetup, VPMSolver
+    from source.solvers.vpm import Backup, VelocityConfig, VPMSetup, VPMSolver
 
     return VPMSolver(
         VPMSetup(
@@ -69,10 +69,7 @@ def _make_solver(case_dir: Path, scheme: str):
             domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
             velocity=VelocityConfig.direct(),
             viscous=_viscous_config(scheme),
-            logging_interval_steps=0,
-            checkpoint_interval_steps=0,
-            timing_interval_steps=0,
-            log_mode="console",
+            backup=Backup(interval_steps=0),
             verbose=False,
         ),
         case_dir=case_dir,

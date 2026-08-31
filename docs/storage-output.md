@@ -13,19 +13,32 @@ For FVM visualization, configure `fvm.OutputConfig(precision="f16" | "f32" |
 VTK XML. FVM restart checkpoints are always lossless; their storage layout is
 an implementation detail and not a visualization format.
 
-For VPM, configure `vpm.VPMSetup(write_precision="f16" | "f32" | "f64",
-checkpoint_store_velocity_gradient=True | False)`. VPM checkpoints are HDF5
-with gzip level 4 and byte shuffling, plus an XDMF descriptor. They preserve
-the particle fields consumed by tutorial post-processing and ParaView:
-position, velocity, vorticity, vortex strength, core radius, volume,
-viscosities, group ID, and zone ID.
+VPM backups and logging have one configuration object:
 
-`checkpoint_store_velocity_gradient=True` is the default and retains the
-gradient for restart continuity and ParaView. Setting it to `False` omits that
-large derived field; a non-potential VPM restore recomputes the gradient.
-Strain rate and vector magnitudes are derived fields and are not stored.
-ParaView can calculate magnitudes directly, and tutorial plotters compute
-needed magnitudes from the retained vectors.
+```python
+backup=vpm.Backup(
+    interval_steps=25,
+    directory="solution",
+    log_directory="solution",
+)
+```
+
+Both directories default to `solution`; specify either only when it differs.
+Backups use the fixed names `vpm_STEP.h5` and `vpm_STEP.xdmf`, gzip level 4,
+and byte shuffling. The schema preserves position, velocity, vorticity, vortex
+strength, core radius, volume, viscosities, group ID, and zone ID. Velocity
+gradient, strain rate, and vector magnitudes are derived fields and are never
+stored. A non-potential restore recomputes the gradient.
+
+Sampling likewise has one configuration object. Sampler objects are passed
+positionally and the optional directory is placed inside the constructor:
+
+```python
+samplers=vpm.Samplers(
+    vpm.FlowIntegralsSampler(schedule=vpm.SamplingSchedule(every_n_steps=10)),
+    directory="run_a",
+)
+```
 
 ## Sampling budgets
 
@@ -37,7 +50,6 @@ vortices; the larger solver domain is unchanged.  This removes only far-field
 samples whose vorticity is below the useful diagnostic range.
 
 The vortex-ring tutorial keeps its 0.1-second scalar-diagnostic cadence and
-0.5-second particle-checkpoint cadence.  The former supplies the local speed
+0.5-second particle-backup cadence. The former supplies the local speed
 fit used by its plots, and the latter gives 120 ParaView frames over the run.
-Those checkpoints omit velocity gradients because the tutorial consumes only
-the canonical particle fields and can recompute the gradient on restart.
+Those backups use the fixed schema above.

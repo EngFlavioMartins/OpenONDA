@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import h5py
 
 sys.path.insert(0, str(Path(__file__).parent))
 from ring_metrics import (
@@ -40,43 +41,47 @@ VARIANTS = ("dns_direct", "dns_transposed", "dns_mixed", "les_transposed")
 ALLOWED_RUN_STATUSES = {"completed", "resolution_lost"}
 
 
-def _expected_checkpoint_steps(completed_steps: int, checkpoint_interval_steps: int) -> set[int]:
-    """Return every periodic checkpoint due before an orderly stop."""
+def _expected_backup_steps(completed_steps: int, interval_steps: int) -> set[int]:
+    """Return initial, periodic, and final backups retained by a run."""
     if completed_steps < 0:
         raise ValueError("completed_steps must be non-negative")
-    if checkpoint_interval_steps <= 0:
-        raise ValueError("checkpoint_interval_steps must be positive")
-    return set(range(checkpoint_interval_steps, completed_steps + 1, checkpoint_interval_steps))
+    if interval_steps <= 0:
+        raise ValueError("interval_steps must be positive")
+    return {
+        0,
+        completed_steps,
+        *range(interval_steps, completed_steps + 1, interval_steps),
+    }
 
 
 def _run_contract(name: str) -> tuple[dict, set[int], list[str]]:
-    """Load and cross-check the manifest and final checkpoint configuration."""
+    """Load and cross-check the manifest and final canonical backup."""
     failures: list[str] = []
     manifest_path = SOLUTION_DIR / f"run_manifest_{name}.json"
-    configuration_path = SOLUTION_DIR / name / f"vpm_{name}_final.config.json"
     manifest = _metadata(manifest_path)
-    configuration = _metadata(configuration_path)
     if not manifest:
         return {}, set(), [f"{name}: missing or unreadable {manifest_path.name}"]
-    if not configuration:
-        return manifest, set(), [f"{name}: missing or unreadable {configuration_path.name}"]
 
     try:
         requested_steps = int(manifest["requested_steps"])
         completed_steps = int(manifest["completed_steps"])
         completed_time = float(manifest["completed_time"])
-        solver_setup = configuration["solver_setup"]
-        checkpoint_metadata = configuration["checkpoint_metadata"]
-        checkpoint_interval_steps = int(solver_setup["checkpoint_interval_steps"])
-        final_step = int(checkpoint_metadata["step"])
-        final_time = float(checkpoint_metadata["time"])
+        interval_steps = int(manifest["backup"]["interval_steps"])
     except (KeyError, TypeError, ValueError) as error:
         return manifest, set(), [f"{name}: invalid run metadata ({error})"]
 
+    final_path = SOLUTION_DIR / name / f"vpm_{completed_steps:06d}.h5"
     try:
-        expected_steps = _expected_checkpoint_steps(completed_steps, checkpoint_interval_steps)
+        with h5py.File(final_path, "r") as archive:
+            final_step = int(archive["solver"].attrs["step"])
+            final_time = float(archive["solver"].attrs["time"])
+    except (OSError, KeyError, TypeError, ValueError) as error:
+        return manifest, set(), [f"{name}: invalid final backup ({error})"]
+
+    try:
+        expected_steps = _expected_backup_steps(completed_steps, interval_steps)
     except ValueError as error:
-        return manifest, set(), [f"{name}: invalid checkpoint cadence ({error})"]
+        return manifest, set(), [f"{name}: invalid backup cadence ({error})"]
 
     status = manifest.get("status")
     if status not in ALLOWED_RUN_STATUSES:
@@ -99,16 +104,14 @@ def _run_contract(name: str) -> tuple[dict, set[int], list[str]]:
 
     if manifest.get("variant") != name:
         failures.append(f"{name}: manifest variant is {manifest.get('variant')!r}")
-    if solver_setup.get("checkpoint_name") != name:
-        failures.append(f"{name}: final configuration checkpoint_name is inconsistent")
     if final_step != completed_steps:
         failures.append(
-            f"{name}: final checkpoint step {final_step}; manifest reports {completed_steps}"
+            f"{name}: final backup step {final_step}; manifest reports {completed_steps}"
         )
     time_tolerance = max(1.0e-12, abs(completed_time) * 1.0e-10)
     if abs(final_time - completed_time) > time_tolerance:
         failures.append(
-            f"{name}: final checkpoint time {final_time}; manifest reports {completed_time}"
+            f"{name}: final backup time {final_time}; manifest reports {completed_time}"
         )
     return manifest, expected_steps, failures
 
@@ -128,17 +131,17 @@ def validate(pre_plot: bool) -> int:
         if contract_failures:
             continue
 
-        all_files = sorted(glob.glob(str(SOLUTION_DIR / name / f"vpm_{name}_*.h5")))
+        all_files = sorted(glob.glob(str(SOLUTION_DIR / name / "vpm_*.h5")))
         numbered = {
             int(match.group(1)): path
             for path in all_files
-            if (match := re.search(rf"vpm_{name}_(\d{{6}})\.h5$", path))
+            if (match := re.search(r"vpm_(\d{6})\.h5$", path))
         }
         if set(numbered) != expected_steps:
             missing = sorted(expected_steps - set(numbered))
             unexpected = sorted(set(numbered) - expected_steps)
             failures.append(
-                f"{name}: numbered checkpoint history disagrees with the run contract "
+                f"{name}: numbered backup history disagrees with the run contract "
                 f"(missing={missing}, unexpected={unexpected})"
             )
             continue
@@ -176,7 +179,7 @@ def validate(pre_plot: bool) -> int:
         else:
             print(
                 f"{name}: status={status} at step {completed_steps}; "
-                "fewer than two periodic checkpoints before the documented stop"
+                "fewer than two periodic backups before the documented stop"
             )
 
         samples = SAMPLES_DIR / name
@@ -192,7 +195,7 @@ def validate(pre_plot: bool) -> int:
                 continue
             if data.empty or not np.isfinite(data.select_dtypes(include=[np.number])).all().all():
                 failures.append(f"{name}: empty or non-finite {csv_name}")
-        final = SOLUTION_DIR / name / f"vpm_{name}_final.h5"
+        final = SOLUTION_DIR / name / f"vpm_{completed_steps:06d}.h5"
         if not final.is_file():
             failures.append(f"{name}: missing final restart state")
 

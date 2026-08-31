@@ -22,13 +22,13 @@ os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/openonda_qpsi_matplotlib")
 os.environ.setdefault("XDG_CACHE_HOME", "/private/tmp/openonda_qpsi_cache")
 
 import matplotlib.pyplot as plt
+import h5py
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from source.solvers.vpm import VPMSolver  # noqa: E402
-from source.solvers.vpm.io import CheckpointManager  # noqa: E402
+from source.solvers.vpm import Backup, VPMSetup, VPMSolver  # noqa: E402
 
 RING_RADIUS = 1.0
 RING_CIRCULATION = 1.0
@@ -44,9 +44,7 @@ QUANTILE_BINS = 32
 RUN_DIRECTORY = ROOT / (
     "tutorials/vpm/vortex_ring/solution/relaxed_reference_tail002_cs_h012_dt002_tstar02"
 )
-CHECKPOINT_PREFIX = "vpm_relaxed_reference_tail002_cs_h012_dt002_tstar02"
-FINAL_CHECKPOINT = RUN_DIRECTORY / f"{CHECKPOINT_PREFIX}_final"
-INITIAL_H5 = RUN_DIRECTORY / f"{CHECKPOINT_PREFIX}_000000.h5"
+BACKUP_FILES = sorted(RUN_DIRECTORY.glob("vpm_*.h5"))
 
 INK = "#20252a"
 BLUE = "#286f9b"
@@ -55,6 +53,28 @@ GREEN = "#35845d"
 RED = "#b84a4a"
 GREY = "#8a99a8"
 GRID = "#d8dde2"
+
+
+def solver_from_backup(path: Path) -> VPMSolver:
+    """Create a diagnostic solver and restore one canonical VPM backup."""
+    with h5py.File(path, "r") as archive:
+        particle_count = int(archive["solver"].attrs["n_particles_total"])
+        time_step_size = float(archive["solver"].attrs["time_step_size"])
+    solver = VPMSolver(
+        VPMSetup(
+            time_step_size=time_step_size,
+            max_n_particles=max(1, particle_count),
+            backup=Backup(
+                interval_steps=0,
+                directory=str(path.parent),
+                log_directory=str(path.parent),
+            ),
+            verbose=False,
+        ),
+        case_dir=path.parent,
+    )
+    solver.load_backup(str(path))
+    return solver
 
 
 def cumulative_streamfunction(
@@ -441,10 +461,12 @@ def plot_results(
 
 
 def main() -> None:
+    if not BACKUP_FILES:
+        raise FileNotFoundError(f"no canonical VPM backups in {RUN_DIRECTORY}")
+    initial_backup = BACKUP_FILES[0]
+    final_backup = BACKUP_FILES[-1]
     controls = manufactured_controls(GRID_SIZES[-1])
-    solver = VPMSolver.continue_from_checkpoint(str(FINAL_CHECKPOINT))
-    if solver is None:
-        raise RuntimeError(f"could not restore {FINAL_CHECKPOINT}")
+    solver = solver_from_backup(final_backup)
 
     final_samples: dict[int, dict[str, object]] = {}
     for size in GRID_SIZES:
@@ -455,7 +477,7 @@ def main() -> None:
             translation_speed=MEASURED_SPEED,
         )
 
-    CheckpointManager.load_numerical_state(solver, INITIAL_H5)
+    solver.load_backup(str(initial_backup))
     initial = sample_solver(
         solver,
         GRID_SIZES[-1],
@@ -472,8 +494,8 @@ def main() -> None:
             "vorticity_radius_ratio=omega_phi/r=F(streamfunction) in the translating frame."
         ),
         "raw_states": {
-            "initial": str(INITIAL_H5.relative_to(ROOT)),
-            "final": f"{FINAL_CHECKPOINT.relative_to(ROOT)}.h5",
+            "initial": str(initial_backup.relative_to(ROOT)),
+            "final": str(final_backup.relative_to(ROOT)),
         },
         "translation_speed": {
             "measured_over_tstar_0_to_0p2": MEASURED_SPEED,

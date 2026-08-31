@@ -92,6 +92,8 @@ def create_fvm_solver(
     setup: FVMSetup,
     *,
     case_dir: str | Path | None = None,
+    solution_dir: str | Path | None = None,
+    samples_dir: str | Path | None = None,
     mesh: MeshSource | None = None,
 ):
     """Construct an FVM solver from an ``FVMSetup``."""
@@ -116,6 +118,10 @@ def create_fvm_solver(
     return FVMSolver(
         runtime_setup,
         case_dir=(str(Path(case_dir).resolve()) if case_dir is not None else None),
+        solution_dir=(
+            str(Path(solution_dir).resolve()) if solution_dir is not None else None
+        ),
+        samples_dir=(str(Path(samples_dir).resolve()) if samples_dir is not None else None),
         mesh_data=_materialize_mesh(
             mesh,
             is_root=materialize_mesh_here,

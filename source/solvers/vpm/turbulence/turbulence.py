@@ -18,17 +18,10 @@ class ParticlesLES:
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
-        vortex_stretching_sfs_coefficient: float = 0.0,
-        vortex_stretching_sfs_cutoff: float = 4.0,
     ) -> None:
         self.model_name = model_name.upper()
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.upper()
-        self.vortex_stretching_sfs_coefficient = float(
-            vortex_stretching_sfs_coefficient
-        )
-        self.vortex_stretching_sfs_cutoff = float(vortex_stretching_sfs_cutoff)
-
         if self.model_name not in {"SMAGORINSKY", "LES_SMAGORINSKY"}:
             raise ValueError(f"Unknown LES model: {model_name!r}")
 
@@ -50,16 +43,7 @@ class ParticlesLES:
 
     def report_rows(self) -> list:
         """Return the active turbulence model's configuration as log detail rows."""
-        rows = self.model.report_rows()
-        if self.vortex_stretching_sfs_coefficient > 0.0:
-            rows.extend(
-                [
-                    ("vortex-stretching SFS, c_d", f"{self.vortex_stretching_sfs_coefficient:.4f}"),
-                    ("SFS support", f"{self.vortex_stretching_sfs_cutoff:.2f} sigma"),
-                    ("SFS backscatter", "clipped"),
-                ]
-            )
-        return rows
+        return self.model.report_rows()
 
     @classmethod
     def rebuild(
@@ -78,12 +62,6 @@ class ParticlesLES:
             ),
             subgrid_dissipation_coefficient=getattr(
                 turbulence_config, "subgrid_dissipation_coefficient", 1.048
-            ),
-            vortex_stretching_sfs_coefficient=getattr(
-                turbulence_config, "vortex_stretching_sfs_coefficient", 0.0
-            ),
-            vortex_stretching_sfs_cutoff=getattr(
-                turbulence_config, "vortex_stretching_sfs_cutoff", 4.0
             ),
             accumulator_dtype=accumulator_dtype,
         )

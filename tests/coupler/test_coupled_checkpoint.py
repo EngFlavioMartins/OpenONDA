@@ -98,7 +98,11 @@ class _VPM:
                     "gbd_threshold": gbd_threshold,
                 },
                 "precision": "f32",
-                "checkpoint_directory": checkpoint_directory,
+                "backup": {
+                    "interval_steps": 0,
+                    "directory": checkpoint_directory,
+                    "log_directory": checkpoint_directory,
+                },
             }
         )
         self.panel_solver = _Panel(panel_scope)
@@ -110,11 +114,11 @@ class _VPM:
         self.last_include_temporal: bool | None = None
         self.last_velocity_previous: np.ndarray | None = None
 
-    def save_numerical_state(self, filename: str) -> None:
+    def _save_backup_to(self, filename: str) -> None:
         Path(f"{filename}.h5").write_bytes(b"fake-vpm-state")
         Path(f"{filename}.xdmf").write_text("<Xdmf/>", encoding="utf-8")
 
-    def load_numerical_state(self, filename: str) -> None:
+    def _load_backup_from(self, filename: str) -> None:
         assert Path(filename).is_file()
 
     def refresh_boundary_element_solution(self) -> None:

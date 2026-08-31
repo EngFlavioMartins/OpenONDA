@@ -86,7 +86,10 @@ def _worker(
                 kinematic_viscosity=0.01,
                 particle_spacing=spacing,
             ),
-            checkpoint_directory=str(case_dir / "solution"),
+            backup=vpm.Backup(
+                directory=str(case_dir / "solution"),
+                log_directory=str(case_dir / "solution"),
+            ),
         )
         return vpm.create_vpm_solver(setup, case_dir=case_dir)
 

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Run the coupled cylinder-shedding case.
-
+# Run the coupled FVM--VPM cylinder-shedding case.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-./allclean.sh
-mkdir -p solution
 
-python -u cylinder_setup.py 2>&1 | tee solution/cylinder_shedding_flow.stdout.log
+rm -rf solution samples figures
+mkdir -p solution samples figures
+
+python -u cylinder_shedding_flow_setup.py
+
+python assets/postprocess.py
+python assets/plot_cylinder.py

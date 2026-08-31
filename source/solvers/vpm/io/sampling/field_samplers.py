@@ -127,10 +127,10 @@ def _extract_stl_config_from_solver(solver) -> tuple[list[str], Path | None]:
     return list(dict.fromkeys(body_stls)), case_dir
 
 
-def resolve_samples_dir(case_directory, sample_subdirectory: str | None = None) -> Path:
+def resolve_samples_dir(case_directory, sample_directory: str | None = None) -> Path:
     """Return the mandatory ``<case>/samples`` directory."""
     samples_dir = Path(case_directory).resolve() / "samples"
-    return samples_dir / sample_subdirectory if sample_subdirectory else samples_dir
+    return samples_dir / sample_directory if sample_directory else samples_dir
 
 
 class SurfaceSampler:

@@ -49,7 +49,7 @@ FINAL_TRAVEL = 24.0
 SMAGORINSKY_COEFFICIENT = 0.30
 PARTICLE_CORE_FACTOR = 2.5
 SAMPLE_INTERVAL_TIME = 0.0625  # write a snapshot every this many seconds
-CHECKPOINT_INTERVAL_TIME = 0.05  # one animation frame per half-chord of travel
+BACKUP_INTERVAL_TIME = 0.05  # one animation frame per half-chord of travel
 
 
 def cadence_steps(period: float) -> int:
@@ -119,6 +119,7 @@ def crossflow_samplers(name: str) -> tuple[vpm.SurfaceSampler, ...]:
             spacing=max(FREESTREAM_SPEED * TIME_STEP_SIZE, 0.05),
             file_name=f"{name}_crossflow_x{position:g}",
             include_derivatives=False,
+            schedule=vpm.SamplingSchedule.final(),
         )
         for position in (5.0, 15.0, 25.0)
     )
@@ -172,7 +173,7 @@ def run_case(
         sample_surface_forces=True,
         logging_interval_steps=sample_steps,
     )
-    final_samplers = crossflow_samplers(name) if sample_planes else ()
+    final_samples = crossflow_samplers(name) if sample_planes else ()
     samples_dir = TUTORIAL_DIR / "samples" / name
     samples_dir.mkdir(parents=True, exist_ok=True)
 
@@ -199,15 +200,20 @@ def run_case(
                 sort_particle_targets=True,
                 traversal_block_dim=128,
             ),
-            logging_interval_steps=sample_steps,
-            checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME),
-            checkpoint_name=name,
-            checkpoint_directory="solution",
-            sample_subdirectory=name,
+            backup=vpm.Backup(
+                interval_steps=cadence_steps(BACKUP_INTERVAL_TIME),
+                directory="solution",
+                log_directory="solution",
+            ),
+            samplers=vpm.Samplers(
+                vpm.FlowIntegralsSampler(
+                    schedule=vpm.SamplingSchedule(every_n_steps=sample_steps)
+                ),
+                *final_samples,
+                directory=name,
+            ),
             write_precision="f32",
-            checkpoint_store_velocity_gradient=False,
             max_n_particles=120_000,
-            final_samplers=final_samplers,
         ),
         case_dir=TUTORIAL_DIR,
     )
@@ -225,14 +231,13 @@ def run_case(
                 "compute_device": solver.compute_device,
                 "precision": solver.precision,
                 "write_precision": solver.write_precision,
-                "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
                 "panel_resolution": {
                     "chordwise": CHORDWISE_PANELS,
                     "spanwise": SPANWISE_PANELS,
                 },
                 "treecode_theta": 0.35,
                 "sample_interval_time": SAMPLE_INTERVAL_TIME,
-                "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,
+                "backup_interval_time": BACKUP_INTERVAL_TIME,
             },
             indent=2,
         )
@@ -242,8 +247,8 @@ def run_case(
 
     for _ in range(n_steps):
         solver.advance()
-    if final_samplers:
-        solver.execute_final_samplers()
+    if final_samples:
+        solver.execute_final_samples()
 
     forces_path = samples_dir / "vlm_forces.csv"
     if forces_path.exists():

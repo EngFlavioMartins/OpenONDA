@@ -41,10 +41,11 @@ per VPM step. All force, line, and surface samplers use the single
 `cube_flow_setup.py`; FVM and VPM backups are written every `0.5 s`. The
 fully meshed reference uses the same `0.010 s` FVM time step and `0.050 s`
 sampling interval. FVM visualization and the atomic coupled restart checkpoint
-are written every `0.5 s`; the native VPM checkpoint writer is disabled because
-it would capture the pre-replacement state. Coupled VPM checkpoints use `f32`
-storage and omit the derived velocity-gradient tensor; a restart recomputes that
-field. The latest synchronized state is the restart point. Every scheduled,
+are written every `0.5 s`; scheduled standalone VPM backups are disabled because
+they would capture the pre-replacement state. The VPM artifact inside a coupled
+checkpoint uses the fixed `f32` backup schema and omits the derived
+velocity-gradient tensor; a restart recomputes that field. The latest synchronized
+state is the restart point. Every scheduled,
 post-renewal VPM particle snapshot is published directly as
 `solution/vpm_STEP.{h5,xdmf}`; open the XDMF file in ParaView. Matching the
 transient time discretization is required for the reference comparison. The

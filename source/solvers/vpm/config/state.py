@@ -62,24 +62,6 @@ class SolverState(BaseModel):
     particle_kernel: str = Field(
         default="GAUSSIAN",
     )
-    checkpoint_name: str = Field(
-        default="",
-    )
-    checkpoint_directory: str = Field(
-        default="solution",
-    )
-    logging_interval_steps: int = Field(
-        default=0,
-        ge=0,
-    )
-    timing_interval_steps: int = Field(
-        default=0,
-        ge=0,
-    )
-    checkpoint_interval_steps: int = Field(
-        default=0,
-        ge=0,
-    )
     wall_time: float | None = Field(
         default=0.0,
         ge=0.0,
@@ -121,11 +103,6 @@ class SolverState(BaseModel):
             stretching_enabled=solver.stretching_enabled,
             stretching_mode=solver.stretching_mode,
             particle_kernel=solver.particle_kernel,
-            checkpoint_name=solver.checkpoint_name,
-            checkpoint_directory=solver.checkpoint_directory,
-            logging_interval_steps=solver.logging_interval_steps,
-            timing_interval_steps=solver.timing_interval_steps,
-            checkpoint_interval_steps=solver.checkpoint_interval_steps,
             wall_time=solver.wall_time,
             cache_step=getattr(solver, "_cache_step", 0),
         )

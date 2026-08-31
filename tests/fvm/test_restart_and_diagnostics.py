@@ -105,6 +105,32 @@ def test_run_manifest_serializes_sampler_configuration(tmp_path):
     assert sampler["n_points"] == 3
 
 
+def test_solver_owns_named_solution_and_sample_directories(tmp_path):
+    setup = _setup()
+    setup.samplers = (
+        LineSampler(start=[0, 0, 0], end=[1, 0, 0], n_points=3, file_name="centreline"),
+    )
+    solution = tmp_path / "solution" / "coarse"
+    samples = tmp_path / "samples" / "coarse"
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = FVMSolver(
+            setup,
+            str(tmp_path),
+            solution_dir=str(solution),
+            samples_dir=str(samples),
+            mesh_data=structured_box(2, 2, 2),
+        )
+        solver.advance()
+    solver.write_run_manifest()
+    solver.close()
+
+    assert Path(solver.solution_dir) == solution
+    assert Path(solver.samples_dir) == samples
+    assert (solution / "fvm.log").is_file()
+    assert (solution / "run_manifest.json").is_file()
+    assert (samples / "centreline.csv").is_file()
+
+
 def test_pvd_index_merges_existing_frames_across_restart(tmp_path):
     write_pvd(tmp_path, "slice", [(0.5, "slice_000050.vts"), (1.0, "slice_000100.vts")])
     write_pvd(tmp_path, "slice", [(1.5, "slice_000150.vts")])

@@ -33,7 +33,7 @@ vorticity estimator is therefore the column projection
 = \frac{1}{L}\int \omega^{(m)}_z(x,y,z,t)\,\mathrm{d}z.
 \]
 
-The integral is evaluated directly from the Gaussian particle checkpoints.
+The integral is evaluated directly from the Gaussian particle backups.
 The corresponding in-plane velocity is recovered with the free-space 2-D
 Biot-Savart operator. This uses all particles in the homogeneous direction and
 does not privilege one noisy \(z\)-plane.
@@ -150,7 +150,7 @@ for DVH and GBD, whose regenerated grids can exceed the direct-integral limit.
 
 ## Reproducibility and files
 
-Raw, independently seeded member checkpoints and flow integrals are retained
+Raw, independently seeded member backups and flow integrals are retained
 under `solution/rwm_ensemble/` and `samples/rwm_ensemble/`. Canonical ensemble
 means are written under `samples/{vortex,dipole,merging}_rwm/`, alongside:
 

@@ -275,7 +275,15 @@ def main() -> None:
     case.FVM_SETUP = replace(
         case.FVM_SETUP, time=replace(case.FVM_SETUP.time, end_time=arguments.end_time)
     )
-    case.VPM_SETUP = replace(case.VPM_SETUP, checkpoint_directory=str(case.CASE_DIR / "solution"))
+    output_directory = str(case.CASE_DIR / "solution")
+    case.VPM_SETUP = replace(
+        case.VPM_SETUP,
+        backup=replace(
+            case.VPM_SETUP.backup,
+            directory=output_directory,
+            log_directory=output_directory,
+        ),
+    )
     fvm_solver = fvm.create_fvm_solver(case.FVM_SETUP, case_dir=case.CASE_DIR, mesh=case.FVM_MESH)
     vpm_solver = vpm.create_vpm_solver(case.VPM_SETUP, case_dir=case.CASE_DIR)
     coupler = coupling.create_coupler(fvm_solver, vpm_solver, case.COUPLER_SETUP)

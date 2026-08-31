@@ -101,6 +101,7 @@ class StabilizationHealth:
 #                       update the relaxation must inform.
 # - ``post_evolution``  after advection/stretching/diffusion have modified the
 #                       field, while the updated gradients still describe it.
+# - ``post_update``     after every physical update, including potential flow.
 # - ``post_step``       end of the step, after diagnostics/IO.
 PHASES: dict[str, tuple[str, ...]] = {
     "pre_evolution": ("capture_reference_state",),
@@ -110,12 +111,14 @@ PHASES: dict[str, tuple[str, ...]] = {
         "apply_divergence_relaxation",
         "apply_regularization",
     ),
+    "post_update": ("check_solution_stability",),
     "post_step": ("apply_retention",),
 }
 
 # Profiler section labels for the phased workers, kept stable so the runtime
 # timing report reads the same after a worker is re-registered under a phase.
 _PHASE_SECTION_LABELS: dict[str, str] = {
+    "check_solution_stability": "Solution stability",
     "apply_relaxation": "Pedrizzetti relaxation",
     "apply_filament_refinement": "Filament refinement",
     "apply_divergence_relaxation": "Divergence relaxation",
@@ -151,10 +154,11 @@ class StabilizationManager:
         self.last_strength_growth = 0.0
         self.last_vorticity_growth = 0.0
         self.max_vorticity_growth = 0.0
+        self.lagrangian_cfl = 0.0
         self.residual_viscosity_coefficient = self.config.stretching_viscosity_coefficient
         self._last_residual_feedback_step = -1
         # Lineage and reference state the workers need across events.  It is
-        # part of the restart state, so the checkpoint reads and writes it.
+        # part of the restart state, so the backup reads and writes it.
         self.reference_vortex_strength: np.ndarray | None = None
         self.reference_lengths: np.ndarray | None = None
         self.reference_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
@@ -244,13 +248,14 @@ class StabilizationManager:
             "stabilization_vortex_strength_growth": self.last_strength_growth,
             "stabilization_vorticity_growth": self.last_vorticity_growth,
             "max_stabilization_vorticity_growth": self.max_vorticity_growth,
+            "lagrangian_cfl": self.lagrangian_cfl,
             "stretching_viscosity_feedback_coefficient": (
                 self.residual_viscosity_coefficient
             ),
         }
 
     def restore_diagnostics(self, values: dict) -> None:
-        """Reload the master's record from a checkpoint."""
+        """Reload the master's record from a backup."""
         self.events = int(values.get("n_stabilization_events", self.events))
         self.regularization_events = int(
             values.get("n_regularization_events", self.regularization_events)
@@ -267,6 +272,7 @@ class StabilizationManager:
             ("stabilization_vortex_strength_growth", "last_strength_growth"),
             ("stabilization_vorticity_growth", "last_vorticity_growth"),
             ("max_stabilization_vorticity_growth", "max_vorticity_growth"),
+            ("lagrangian_cfl", "lagrangian_cfl"),
         ):
             if key in values:
                 setattr(self, attribute, float(values[key]))
@@ -322,6 +328,32 @@ class StabilizationManager:
         return PHASES[phase]
 
     # -- mechanisms ------------------------------------------------------------
+
+    def check_solution_stability(self) -> None:
+        """Stop when the particle state or its explicit update is no longer resolved."""
+        limit = self.config.max_lagrangian_cfl
+        if limit is None:
+            return
+        values = self.operators.inspect_solution(
+            self.ctx.particles,
+            time_step_size=self.ctx.time_step_size(),
+            check_stability=True,
+        )
+        if not values["valid"]:
+            raise StabilizationError(
+                f"VPM solution became unstable at step {self.ctx.step()}: position, vortex "
+                "strength, and velocity gradient must be finite; core radius and particle "
+                "volume must be positive"
+            )
+        observed = float(values["lagrangian_cfl"])
+        self.lagrangian_cfl = observed
+        if observed <= limit:
+            return
+        raise StabilizationError(
+            f"VPM solution became unstable at step {self.ctx.step()}: Lagrangian CFL "
+            f"number {observed:.3g} exceeds max_lagrangian_cfl={limit:.3g}. "
+            "Reduce time_step_size."
+        )
 
     def capture_reference_state(self) -> None:
         """Capture the lineage and moment references the workers relax toward."""

@@ -62,3 +62,31 @@ def test_core_spreading_skips_subprecision_moment_correction():
     assert updates == []
     assert solver.core_spreading_correction_relative == 0.0
     assert np.all(particles.core_radius > 0.1)
+
+
+def test_coupled_update_keeps_symmetric_core_spreading_without_subcycling():
+    calls = []
+    target_moments = object()
+    solver = SimpleNamespace(
+        physics=SimpleNamespace(rate_projection_max_correction_ratio=np.nan),
+        viscous_scheme="CS",
+    )
+    stepper = EvolutionStepper(solver)
+    stepper._apply_core_spreading_diffusion = lambda time_step_size: calls.append(
+        ("diffusion", time_step_size)
+    )
+    stepper._current_kernel_moments = lambda: target_moments
+    stepper._apply_coupled_advection_stretching = lambda time_step_size, **kwargs: calls.append(
+        ("coupled", time_step_size, kwargs["precomputed_velocity_k1"])
+    )
+    stepper._restore_coupled_step_moments = lambda moments: calls.append(("restore", moments))
+
+    stepper._apply_coupled_update(0.2, precomputed_velocity_k1=True)
+
+    assert calls == [
+        ("diffusion", 0.1),
+        ("coupled", 0.2, False),
+        ("restore", target_moments),
+        ("diffusion", 0.1),
+    ]
+    assert solver.physics.rate_projection_max_correction_ratio == 0.0

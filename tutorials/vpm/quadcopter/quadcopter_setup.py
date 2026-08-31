@@ -42,7 +42,7 @@ STEPS_PER_REVOLUTION = round(360.0 / DEGREES_PER_STEP)
 NUMBER_OF_REVOLUTIONS = 6
 N_STEPS = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION
 SAMPLE_INTERVAL_TIME = 0.0375  # write a snapshot every this many seconds
-CHECKPOINT_INTERVAL_TIME = 0.0125  # 24 animation frames per rotor revolution
+BACKUP_INTERVAL_TIME = 0.0125  # 24 animation frames per rotor revolution
 
 WAKE_PLANES = (("sampled_zplane", -0.35), ("sampled_zplane_deep", -0.70))
 
@@ -126,24 +126,30 @@ def run() -> None:
             stabilization=vpm.StabilizationConfig(
                 remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
             ),
-            logging_interval_steps=sample_steps,
-            checkpoint_interval_steps=cadence_steps(CHECKPOINT_INTERVAL_TIME),
-            checkpoint_name=CASE_NAME,
-            checkpoint_directory=str(SOLUTION_DIR),
-            sample_subdirectory=CASE_NAME,
-            write_precision="f32",
-            checkpoint_store_velocity_gradient=False,
-            samplers=tuple(
-                vpm.SurfaceSampler(
-                    point=[0.0, 0.0, height],
-                    normal=[0.0, 0.0, 1.0],
-                    bounds=[-0.4, 0.4, -0.4, 0.4],
-                    spacing=0.0075,
-                    file_name=plane_name,
-                    include_derivatives=False,
-                )
-                for plane_name, height in WAKE_PLANES
+            backup=vpm.Backup(
+                interval_steps=cadence_steps(BACKUP_INTERVAL_TIME),
+                directory=str(SOLUTION_DIR),
+                log_directory=str(SOLUTION_DIR),
             ),
+            samplers=vpm.Samplers(
+                vpm.FlowIntegralsSampler(
+                    schedule=vpm.SamplingSchedule(every_n_steps=sample_steps)
+                ),
+                *(
+                    vpm.SurfaceSampler(
+                        point=[0.0, 0.0, height],
+                        normal=[0.0, 0.0, 1.0],
+                        bounds=[-0.4, 0.4, -0.4, 0.4],
+                        spacing=0.0075,
+                        file_name=plane_name,
+                        include_derivatives=False,
+                        schedule=vpm.SamplingSchedule(every_n_steps=sample_steps),
+                    )
+                    for plane_name, height in WAKE_PLANES
+                ),
+                directory=CASE_NAME,
+            ),
+            write_precision="f32",
         ),
         case_dir=TUTORIAL_DIR,
     )
@@ -160,14 +166,13 @@ def run() -> None:
                 "compute_device": solver.compute_device,
                 "precision": solver.precision,
                 "write_precision": solver.write_precision,
-                "checkpoint_store_velocity_gradient": solver.checkpoint_store_velocity_gradient,
                 "turbulence_model": "DNS",
                 "smagorinsky_coefficient": 0.0,
                 "treecode_theta": 0.35,
                 "number_of_rotors": len(rotors),
                 "number_of_blades_per_rotor": NUMBER_OF_BLADES,
                 "sample_interval_time": SAMPLE_INTERVAL_TIME,
-                "checkpoint_interval_time": CHECKPOINT_INTERVAL_TIME,
+                "backup_interval_time": BACKUP_INTERVAL_TIME,
             },
             indent=2,
         )

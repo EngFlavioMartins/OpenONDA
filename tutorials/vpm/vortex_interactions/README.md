@@ -1,10 +1,9 @@
 # Vortex-ring interactions
 
-This tutorial compares four LES treatments of two equal, coaxial vortex rings
+This tutorial compares three LES treatments of two equal, coaxial vortex rings
 undergoing leapfrogging. Every calculation uses the same initial particle
 field, molecular diffusion, LES closure, time integration, and velocity
-evaluation. The comparison changes only particle splitting, vortex-stretching
-SFS, and remeshing.
+evaluation. The comparison changes only particle splitting and remeshing.
 
 ## Reference setup
 
@@ -41,27 +40,23 @@ modes 1--24 are not used.
 
 ## Common numerical method
 
-All four cases use:
+All three cases use:
 
 - coupled RK2 for both particle advection and vortex-strength evolution;
 - transposed vortex stretching;
 - Gaussian particles and Core Spreading molecular diffusion;
 - Smagorinsky LES with `Cs = 0.20`;
 - a Barnes--Hut treecode with opening angle `0.30`;
+- a solver stability-number limit of `1.0`;
 - `Delta t = 20 h^2/Gamma0` and 1200 requested steps.
-
-The `LES + SFS` case enables the constant no-backscatter vortex-stretching
-SFS term with `Cd = 0.001`. The correction is evaluated at every stage of the
-same classical transposed RK2 stretching update used by the other cases.
 
 ## Armed cases
 
-| Case directory | Splitting | SFS | Remeshing |
-|---|---:|---:|---:|
-| `leapfrog_les` | no | no | no |
-| `leapfrog_les_splitting` | yes | no | no |
-| `leapfrog_les_sfs` | no | yes | no |
-| `leapfrog_les_splitting_remeshing` | yes | no | yes |
+| Case directory | Splitting | Remeshing |
+|---|---:|---:|
+| `leapfrog_les` | no | no |
+| `leapfrog_les_splitting` | yes | no |
+| `leapfrog_les_splitting_remeshing` | yes | yes |
 
 Particle splitting uses an absolute reference to the original cloud. A
 particle is split when
@@ -102,9 +97,9 @@ remeshing triggers; the core-radius criterion is the sole trigger.
 
 It removes the previous generated `solution/`, `samples/`, and `figures/`
 trees, then calls `interactions_setup.py` once for each case. Particle
-checkpoints and manifests are written only to `solution/<case>/`; sampled
-diagnostics are written only to `samples/<case>/`. No `runs/` hierarchy is
-created.
+backups are written only to `solution/<case>/`; sampled diagnostics are
+written only to `samples/<case>/`. No `runs/` hierarchy is created. Numerical
+instability stops the run in the solver and is reported in that case's log.
 
 To run one setup directly:
 

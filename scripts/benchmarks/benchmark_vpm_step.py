@@ -36,6 +36,7 @@ def _rss_mb() -> float:
 def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = False):
     from source.solvers.vpm import VPMSolver
     from source.solvers.vpm.config.types import StretchingConfig, VelocityConfig, VPMSetup
+    from source.solvers.vpm.config.output import Backup
 
     setup = VPMSetup.dns_simulation(
         compute_device=backend,
@@ -44,11 +45,7 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
             scheme="RK3", use_treecode=stretch_treecode, treecode_theta=0.5
         ),
         max_n_particles=max(2 * n, 4096),
-        logging_interval_steps=0,
-        checkpoint_interval_steps=0,
-        timing_interval_steps=0,
-        log_mode="console",
-        checkpoint_directory=tmpdir,
+        backup=Backup(directory=tmpdir, log_directory=tmpdir),
     )
     solver = VPMSolver(setup=setup)
 

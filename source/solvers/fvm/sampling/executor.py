@@ -43,7 +43,7 @@ class FVMSamplerExecutor:
         if not (parallel.is_root or parallel.is_partitioned):
             return
 
-        samples_dir = base.samples_dir(solver.case_dir)
+        samples_dir = solver.samples_dir
         if parallel.is_root:
             os.makedirs(samples_dir, exist_ok=True)
 

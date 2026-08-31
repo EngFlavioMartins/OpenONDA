@@ -234,7 +234,7 @@ def _make_gbd_vpm(
     threshold: float = 1.0e-12,
 ):
     pytest.importorskip("taichi", reason="VPM requires taichi")
-    from source.solvers.vpm import VelocityConfig, ViscousConfig, VPMSetup, VPMSolver
+    from source.solvers.vpm import Backup, VelocityConfig, ViscousConfig, VPMSetup, VPMSolver
 
     return VPMSolver(
         VPMSetup(
@@ -254,10 +254,7 @@ def _make_gbd_vpm(
                 max_nodes=capacity,
                 core_radius_ratio=1.25,
             ),
-            logging_interval_steps=0,
-            checkpoint_interval_steps=0,
-            timing_interval_steps=0,
-            log_mode="console",
+            backup=Backup(interval_steps=0),
             verbose=False,
         ),
         case_dir=case_dir,

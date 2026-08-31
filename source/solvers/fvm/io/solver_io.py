@@ -28,6 +28,8 @@ class SolverIO:
         """
         self.solver = solver
         self.case_dir = solver.case_dir
+        self.solution_dir = solver.solution_dir
+        self.samples_dir = solver.samples_dir
         self._diagnostics_write_disabled = False
 
     def write_step_diagnostics(self) -> None:
@@ -38,8 +40,7 @@ class SolverIO:
         record = getattr(self.solver, "last_diagnostics", None)
         if record is None or self._diagnostics_write_disabled:
             return
-        output_dir = os.path.join(self.case_dir, "solution")
-        path = os.path.join(output_dir, "diagnostics.jsonl")
+        path = os.path.join(self.solution_dir, "diagnostics.jsonl")
         line = json.dumps(asdict(record), sort_keys=True, allow_nan=False) + "\n"
         try:
             append_line_recoverably(path, line)
@@ -56,8 +57,8 @@ class SolverIO:
         if parallel is not None and not parallel.is_root:
             return
 
-        samples = Path(self.case_dir) / "samples"
-        solution = Path(self.case_dir) / "solution"
+        samples = Path(self.samples_dir)
+        solution = Path(self.solution_dir)
 
         # Every sampler CSV is rewound by its "time" column.
         if samples.is_dir():

@@ -57,7 +57,7 @@ class VLMDiagnostics:
         step: int,
         time: float,
         case_dir: str,
-        sample_subdirectory: str | None = None,
+        sample_directory: str | None = None,
     ) -> None:
         """Record VLM force and vector-strength scalars and, when due, flush to CSV.
 
@@ -76,7 +76,7 @@ class VLMDiagnostics:
         time:
             Current simulation time [s].
         case_dir:
-            Solver checkpoint/output root directory (CSV is written under
+            Solver backup/output root directory (CSV is written under
             ``<case_dir>/samples/vlm_forces.csv``).
         """
         if vlm_solver is None or not hasattr(vlm_solver, "_last_forces"):
@@ -125,7 +125,7 @@ class VLMDiagnostics:
                     time,
                     step,
                     case_dir,
-                    sample_subdirectory,
+                    sample_directory,
                 )
         except Exception as exc:
             print(f"(Warning) Failed to record VLM diagnostics: {exc}")
@@ -143,7 +143,7 @@ class VLMDiagnostics:
         time: float,
         step: int,
         case_dir: str,
-        sample_subdirectory: str | None = None,
+        sample_directory: str | None = None,
     ) -> None:
         """Append one row to ``<case_dir>/samples/vlm_forces.csv``.
 
@@ -168,7 +168,7 @@ class VLMDiagnostics:
         """
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(case_dir, sample_subdirectory)
+        samples_dir = resolve_samples_dir(case_dir, sample_directory)
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 

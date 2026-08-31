@@ -22,12 +22,3 @@ echo "===== dns_mixed ====="                            # mixed direct/transpose
 echo "===== les_transposed ====="                       # subgrid closure for under-resolved turbulence
 "$python_bin" -u ring_setup.py --variant les_transposed
 
-# Post-processing: validation and the three figures in both required formats
-"$python_bin" assets/postprocess.py --pre-plot
-"$python_bin" assets/plot_vortex_ring_motion.py --format png
-"$python_bin" assets/plot_vortex_ring_energy.py --format png
-"$python_bin" assets/plot_vortex_ring_circulation.py --format png
-"$python_bin" assets/plot_vortex_ring_motion.py --format pdf
-"$python_bin" assets/plot_vortex_ring_energy.py --format pdf
-"$python_bin" assets/plot_vortex_ring_circulation.py --format pdf
-"$python_bin" assets/postprocess.py

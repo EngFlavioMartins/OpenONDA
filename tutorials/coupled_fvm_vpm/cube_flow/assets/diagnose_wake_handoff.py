@@ -180,7 +180,11 @@ def main() -> None:
                 * arguments.gbd_threshold_scale
             ),
         ),
-        checkpoint_directory=str(case.CASE_DIR / "solution"),
+        backup=replace(
+            case.VPM_SETUP.backup,
+            directory=str(case.CASE_DIR / "solution"),
+            log_directory=str(case.CASE_DIR / "solution"),
+        ),
     )
 
     fvm_solver = fvm.create_fvm_solver(case.FVM_SETUP, case_dir=case.CASE_DIR, mesh=case.FVM_MESH)

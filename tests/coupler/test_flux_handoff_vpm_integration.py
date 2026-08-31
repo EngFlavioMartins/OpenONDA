@@ -19,6 +19,7 @@ from source.coupler.flux_handoff import (  # noqa: E402
 )
 from source.solvers.vpm import (  # noqa: E402
     AdvectionConfig,
+    Backup,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -51,11 +52,12 @@ def _make_inviscid_solver(
             max_n_particles=64,
             max_evaluation_points=128,
             freestream_velocity=background,
-            checkpoint_directory=str(case_directory / "solution"),
-            log_mode="console",
+            backup=Backup(
+                interval_steps=0,
+                directory=str(case_directory / "solution"),
+                log_directory=str(case_directory / "solution"),
+            ),
             verbose=False,
-            export_flow_integrals=False,
-            export_discretization_health=False,
         ),
         case_dir=case_directory,
     )
@@ -755,11 +757,12 @@ def test_injected_gaussian_blob_advects_and_diffuses_with_native_core_spreading(
             max_n_particles=16,
             max_evaluation_points=16,
             freestream_velocity=(freestream_speed, 0.0, 0.0),
-            checkpoint_directory=str(tmp_path / "diffusive_blob" / "solution"),
-            log_mode="console",
+            backup=Backup(
+                interval_steps=0,
+                directory=str(tmp_path / "diffusive_blob" / "solution"),
+                log_directory=str(tmp_path / "diffusive_blob" / "solution"),
+            ),
             verbose=False,
-            export_flow_integrals=False,
-            export_discretization_health=False,
         ),
         case_dir=tmp_path / "diffusive_blob",
     )
@@ -852,11 +855,12 @@ def test_injected_three_dimensional_cloud_matches_pure_vpm_stretching_reference(
                 max_n_particles=16,
                 max_evaluation_points=16,
                 freestream_velocity=(freestream_speed, 0.0, 0.0),
-                checkpoint_directory=str(case_directory / "solution"),
-                log_mode="console",
+                backup=Backup(
+                    interval_steps=0,
+                    directory=str(case_directory / "solution"),
+                    log_directory=str(case_directory / "solution"),
+                ),
                 verbose=False,
-                export_flow_integrals=False,
-                export_discretization_health=False,
             ),
             case_dir=case_directory,
         )

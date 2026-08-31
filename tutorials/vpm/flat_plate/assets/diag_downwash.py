@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Evaluate wake-induced downwash at the final flat-plate span stations.
 
-The diagnostic uses the latest ``exp_moving_aoa05`` restart checkpoint and
+The diagnostic uses the latest ``exp_moving_aoa05`` restart backup and
 writes ``samples/exp_moving_aoa05/exp_moving_aoa05_downwash.csv``.
 """
 
@@ -15,7 +15,7 @@ import pandas as pd
 
 from generate_surface import create_flat_plate, save_surface
 from openonda.vpm import (
-    CheckpointManager,
+    Backup,
     ForceConfig,
     SmoothRampVLM,
     ViscousConfig,
@@ -43,14 +43,14 @@ CHORDWISE_PANELS = 8
 SPANWISE_PANELS = 14
 
 
-def latest_checkpoint() -> Path:
-    """Return the newest restart checkpoint for the diagnostic case."""
+def latest_backup() -> Path:
+    """Return the newest restart backup for the diagnostic case."""
     files = sorted(
         SOLUTION_DIR.glob(f"vpm_{CASE_NAME}_*.h5"),
         key=lambda path: int(path.stem.rsplit("_", 1)[-1]),
     )
     if not files:
-        raise FileNotFoundError(f"No restart checkpoint found for {CASE_NAME}")
+        raise FileNotFoundError(f"No restart backup found for {CASE_NAME}")
     return files[-1]
 
 
@@ -104,14 +104,17 @@ def build_solver() -> VPMSolver:
             vlm=vlm,
             viscous=ViscousConfig.cs(kinematic_viscosity=1.0e-2),
             freestream_velocity=[0.0, 0.0, 0.0],
-            checkpoint_directory=str(SOLUTION_DIR),
+            backup=Backup(
+                directory=str(SOLUTION_DIR),
+                log_directory=str(SOLUTION_DIR),
+            ),
         )
     )
 
 
-def spanwise_downwash(solver: VPMSolver, checkpoint: Path) -> pd.DataFrame:
+def spanwise_downwash(solver: VPMSolver, backup: Path) -> pd.DataFrame:
     """Evaluate VPM velocity at each VLM collocation point."""
-    CheckpointManager.load_numerical_state(solver, checkpoint)
+    solver.load_backup(str(backup))
 
     vlm = solver.vlm_solver
     if vlm is None:
@@ -177,9 +180,9 @@ def add_lifting_line_reference(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    checkpoint = latest_checkpoint()
+    backup = latest_backup()
     solver = build_solver()
-    result = add_lifting_line_reference(spanwise_downwash(solver, checkpoint))
+    result = add_lifting_line_reference(spanwise_downwash(solver, backup))
     output = TUTORIAL_DIR / "samples" / CASE_NAME / f"{CASE_NAME}_downwash.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(output, index=False)

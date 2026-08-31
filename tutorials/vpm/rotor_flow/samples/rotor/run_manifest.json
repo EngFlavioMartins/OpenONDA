@@ -8,9 +8,6 @@
   "kernel": "WINCKELMANS",
   "kinematic_viscosity": 1.5e-05,
   "wake_particle_spacing": 0.22727272727272727,
-  "coupled_max_strain_increment": 0.08,
-  "coupled_max_advection_fraction": 0.25,
-  "coupled_max_substeps": 128,
   "retention_bounds": [
     -12.0,
     120.0,

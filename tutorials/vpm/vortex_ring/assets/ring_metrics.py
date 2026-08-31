@@ -113,13 +113,13 @@ def save_fig(
 # -- H5 helpers ----------------------------------------------------------------
 
 
-def _checkpoint_vortex_strength(handle: h5py.File) -> np.ndarray:
+def _backup_vortex_strength(handle: h5py.File) -> np.ndarray:
     """Read canonical particle vortex strength."""
     return handle["particles/vortex_strength"][:]
 
 
-def _checkpoint_time(handle: h5py.File) -> float:
-    """Read canonical checkpoint time."""
+def _backup_time(handle: h5py.File) -> float:
+    """Read canonical backup time."""
     return float(handle["solver"].attrs["time"])
 
 
@@ -138,7 +138,7 @@ def _sample_step_column(data: pd.DataFrame) -> str:
 
 
 def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
-    """Return (nondimensional_time, strength_norm) from H5 checkpoints.
+    """Return (nondimensional_time, strength_norm) from H5 backups.
 
     Computes Σ|alpha_i| at each snapshot and normalises by the initial value.
     For a vortex ring this is a length-integrated strength measure, not the
@@ -149,8 +149,8 @@ def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndar
     for path in sorted(h5_files):
         try:
             with h5py.File(path, "r") as f:
-                vortex_strength = _checkpoint_vortex_strength(f)
-                t = _checkpoint_time(f)
+                vortex_strength = _backup_vortex_strength(f)
+                t = _backup_time(f)
                 vortex_strength_magnitude_sum = float(
                     np.sum(np.linalg.norm(vortex_strength, axis=1))
                 )
@@ -243,8 +243,8 @@ def _ring_props_from_h5(path) -> dict | None:
         with h5py.File(path, "r") as f:
             position = f["particles/position"][:]
             gid = f["particles/group_id"][:]
-            vortex_strength = _checkpoint_vortex_strength(f)
-            t = _checkpoint_time(f)
+            vortex_strength = _backup_vortex_strength(f)
+            t = _backup_time(f)
     except Exception as e:
         print(f"Error reading {path}: {e}")
         return None
@@ -293,7 +293,7 @@ def _ring_props_from_h5(path) -> dict | None:
 
 
 def load_ring_data(h5_files: list) -> dict:
-    """Read all H5 checkpoints; stop at blow-up. Returns {ring_id: [dict, ...]}."""
+    """Read all H5 backups; stop at blow-up. Returns {ring_id: [dict, ...]}."""
     data: dict = {}
     for path in h5_files:
         res = _ring_props_from_h5(path)

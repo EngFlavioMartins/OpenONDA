@@ -102,7 +102,11 @@ def main() -> None:
     case.VPM_SETUP = replace(
         case.VPM_SETUP,
         viscous=viscous,
-        checkpoint_directory=str(case.CASE_DIR / "solution"),
+        backup=replace(
+            case.VPM_SETUP.backup,
+            directory=str(case.CASE_DIR / "solution"),
+            log_directory=str(case.CASE_DIR / "solution"),
+        ),
     )
 
     if arguments.end_time is not None:

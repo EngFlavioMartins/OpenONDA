@@ -15,9 +15,11 @@ from .boundary_elements.vlm.config import (
 )
 from .config import (
     AdvectionConfig,
+    Backup,
     DivergenceRelaxationConfig,
     FilamentRefinementConfig,
     PanelBodySetup,
+    Samplers,
     StabilizationConfig,
     StretchingConfig,
     TurbulenceConfig,
@@ -26,11 +28,25 @@ from .config import (
     VPMSetup,
 )
 from .core.solver import VPMSolver
-from .diagnostics import RingDiagnosticsSampler
+from .diagnostics import FlowIntegralsSampler, RingDiagnosticsSampler
 from .factory import create_vpm_solver
-from .io.checkpoint import CheckpointManager
+from .initialization import (
+    FilamentDisturbance,
+    ParticleDistribution,
+    VortexParticleDistribution,
+    WidnallDisturbance,
+    create_cylindrical_distribution,
+    create_noisy_rectangular_distribution,
+    create_rectangular_distribution,
+    create_toroidal_distribution,
+    create_triangular_prism_distribution,
+    initialize_isotropic_turbulence,
+    initialize_taylor_green_vortex,
+    initialize_vortex_doublet,
+    initialize_vortex_filament,
+    initialize_vortex_ring,
+)
 from .io.sampling import SamplingSchedule
-from .particles.distribution import ParticleDistributor
 from .stabilization import (
     DivergenceRelaxationError,
     FilamentRefinementError,
@@ -40,17 +56,20 @@ from .stabilization import (
 
 __all__ = [
     "AdvectionConfig",
-    "CheckpointManager",
+    "Backup",
     "DivergenceRelaxationConfig",
     "DivergenceRelaxationError",
     "FilamentRefinementConfig",
     "FilamentRefinementError",
+    "FilamentDisturbance",
     "ForceConfig",
+    "FlowIntegralsSampler",
     "BodyPose",
     "PanelSolver",
     "PanelBodySetup",
-    "ParticleDistributor",
+    "ParticleDistribution",
     "RingDiagnosticsSampler",
+    "Samplers",
     "SamplingSchedule",
     "StabilizationConfig",
     "StabilizationError",
@@ -64,7 +83,19 @@ __all__ = [
     "VPMSolver",
     "VelocityConfig",
     "ViscousConfig",
+    "VortexParticleDistribution",
+    "WidnallDisturbance",
+    "create_cylindrical_distribution",
+    "create_noisy_rectangular_distribution",
+    "create_rectangular_distribution",
+    "create_toroidal_distribution",
+    "create_triangular_prism_distribution",
     "create_vpm_solver",
+    "initialize_isotropic_turbulence",
+    "initialize_taylor_green_vortex",
+    "initialize_vortex_doublet",
+    "initialize_vortex_filament",
+    "initialize_vortex_ring",
     "vlm",
 ]
 
