@@ -175,17 +175,13 @@ def stabilization(case_name: str) -> vpm.StabilizationConfig:
 
 def solver_setup(case_name: str, output_directory: Path) -> vpm.VPMSetup:
     """Build one of the four explicitly supported comparison setups."""
-    _, has_sfs, _ = CASES[case_name]
     return vpm.VPMSetup(
         time_step_size=TIME_STEP_SIZE,
         time_integration="COUPLED",
         coupled_max_strain_increment=0.15,
         coupled_max_advection_fraction=0.5,
         advection=vpm.AdvectionConfig(scheme="RK2"),
-        stretching=vpm.StretchingConfig.transposed(
-            scheme="RK2",
-            reformulated=has_sfs,
-        ),
+        stretching=vpm.StretchingConfig.transposed(scheme="RK2"),
         viscous=vpm.ViscousConfig.cs(
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             particle_spacing=PARTICLE_SPACING,
@@ -258,7 +254,6 @@ def run_case(case_name: str) -> None:
         "time_integration": "COUPLED",
         "advection_scheme": "RK2",
         "stretching_scheme": "RK2",
-        "stretching_formulation": "REFORMULATED" if has_sfs else "CLASSIC",
         "stretching_discretization": "TRANSPOSED",
         "viscous_scheme": "CS",
         "smagorinsky_coefficient": SMAGORINSKY_COEFFICIENT,

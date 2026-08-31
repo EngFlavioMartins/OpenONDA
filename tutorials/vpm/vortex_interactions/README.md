@@ -51,9 +51,8 @@ All four cases use:
 - `Delta t = 20 h^2/Gamma0` and 1200 requested steps.
 
 The `LES + SFS` case enables the constant no-backscatter vortex-stretching
-SFS term with `Cd = 0.001`. This operator requires the reformulated local VPM
-stretching relation; its spatial stretching discretization and time scheme
-remain transposed RK2.
+SFS term with `Cd = 0.001`. The correction is evaluated at every stage of the
+same classical transposed RK2 stretching update used by the other cases.
 
 ## Armed cases
 

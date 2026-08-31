@@ -819,34 +819,6 @@ def _make_gradient_contraction_kernel():
     return gradient_contraction_rate_kernel
 
 
-def _make_reformulated_stretching_kernel():
-    """Couple vortex-strength and core-size evolution under stretching."""
-
-    @ti.kernel
-    def reformulated_stretching_rate_kernel(
-        vortex_strength: ti.template(),
-        core_radius: ti.template(),
-        vortex_strength_rate: ti.template(),
-        core_radius_rate: ti.template(),
-        n_particles_total: ti.i32,
-    ):  # type: ignore
-        for i in range(n_particles_total):
-            strength = vortex_strength[i]
-            strength_norm_sq = strength.dot(strength)
-            core_radius_rate[i] = 0.0
-            if strength_norm_sq > EPSILON * EPSILON:
-                inverse_strength_norm = ti.rsqrt(strength_norm_sq)
-                direction = strength * inverse_strength_norm
-                axial_rate = vortex_strength_rate[i].dot(direction)
-                # Reformulated VPM coefficients f=0 and g=1/5.
-                vortex_strength_rate[i] -= 0.6 * axial_rate * direction
-                core_radius_rate[i] = (
-                    -0.2 * core_radius[i] * axial_rate * inverse_strength_norm
-                )
-
-    return reformulated_stretching_rate_kernel
-
-
 def _make_vortex_stretching_sfs_kernel(zeta_):
     """Model unresolved vortex stretching from velocity-gradient differences."""
 
@@ -919,7 +891,6 @@ def _create_stretching_kernels(kernel_functions):
         "compute_stretching_rate_kernel": _make_stretching_rate_kernel(q_, zeta_),
         "compute_stretching_rate_batch_kernel": _make_stretching_rate_batch_kernel(q_, zeta_),
         "gradient_contraction_rate_kernel": _make_gradient_contraction_kernel(),
-        "reformulated_stretching_rate_kernel": _make_reformulated_stretching_kernel(),
         "vortex_stretching_sfs_rate_kernel": _make_vortex_stretching_sfs_kernel(zeta_),
     }
 

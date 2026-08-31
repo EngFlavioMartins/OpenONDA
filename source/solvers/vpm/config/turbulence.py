@@ -30,8 +30,8 @@ class TurbulenceConfig:
     vortex_stretching_sfs_coefficient: float = 0.0
     """Constant coefficient of the anisotropic vortex-stretching SFS model.
 
-    A value of zero disables the model.  Positive values apply the
-    no-backscatter model within the reformulated VPM equations.
+    A value of zero disables the model. Positive values apply the
+    no-backscatter correction at each coupled vortex-stretching stage.
     """
 
     vortex_stretching_sfs_cutoff: float = 4.0
@@ -58,9 +58,7 @@ class TurbulenceConfig:
             not math.isfinite(self.vortex_stretching_sfs_coefficient)
             or self.vortex_stretching_sfs_coefficient < 0.0
         ):
-            raise ValueError(
-                "vortex_stretching_sfs_coefficient must be finite and non-negative"
-            )
+            raise ValueError("vortex_stretching_sfs_coefficient must be finite and non-negative")
         if (
             not math.isfinite(self.vortex_stretching_sfs_cutoff)
             or self.vortex_stretching_sfs_cutoff <= 0.0

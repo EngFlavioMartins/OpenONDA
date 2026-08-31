@@ -467,10 +467,7 @@ class EvolutionStepper:
             treecode_theta=self.stretching_treecode_theta,
             conserve_moments=self.stretching_conserve_moments,
             conserve_energy=self.stretching_conserve_energy,
-            reformulated=self.stretching_reformulated,
-            vortex_stretching_sfs_coefficient=(
-                self.vortex_stretching_sfs_coefficient
-            ),
+            vortex_stretching_sfs_coefficient=(self.vortex_stretching_sfs_coefficient),
             vortex_stretching_sfs_cutoff=self.vortex_stretching_sfs_cutoff,
             axisymmetric_axis=self.axisymmetric_axis,
             precomputed_velocity_k1=precomputed_velocity_k1,

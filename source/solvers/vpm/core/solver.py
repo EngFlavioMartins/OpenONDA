@@ -180,7 +180,6 @@ class VPMSolver:
             final_setup.stretching, "conserve_moments", False
         )
         self.stretching_conserve_energy = getattr(final_setup.stretching, "conserve_energy", False)
-        self.stretching_reformulated = getattr(final_setup.stretching, "reformulated", False)
         self.vortex_stretching_sfs_coefficient = float(
             final_setup.turbulence.vortex_stretching_sfs_coefficient
         )
@@ -320,9 +319,7 @@ class VPMSolver:
                 vortex_stretching_sfs_coefficient=(
                     final_setup.turbulence.vortex_stretching_sfs_coefficient
                 ),
-                vortex_stretching_sfs_cutoff=(
-                    final_setup.turbulence.vortex_stretching_sfs_cutoff
-                ),
+                vortex_stretching_sfs_cutoff=(final_setup.turbulence.vortex_stretching_sfs_cutoff),
                 accumulator_dtype=self.accumulator_dtype,
             )
         self.stretching_enabled = final_setup.stretching.enabled

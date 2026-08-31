@@ -161,11 +161,6 @@ Only the TRANSPOSED form conserves total particle vortex strength Σα exactly �
   → `config/types.py:StabilizationConfig.pedrizzetti_relaxation`,
   `stabilization/manager.py:StabilizationManager.apply_relaxation`
 
-- **[Alvarez2022]** Alvarez, E. J. & Ning, A. (2022). **[local]**
-  `docs/literature/alvarez2022.pdf`, Sec. II.F.
-  Reformulated VPM; adopts Pedrizzetti's relaxation as the divergence
-  treatment that makes a meshless LES stable in practice.
-
 ## Local literature not yet linked from source
 
 `docs/literature/` also holds Constant2016, Cooper2009, Meunier2005,

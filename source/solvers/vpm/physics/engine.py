@@ -100,7 +100,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         treecode_theta: float = 0.3,
         conserve_moments: bool = False,
         conserve_energy: bool = False,
-        reformulated: bool = False,
         axisymmetric_axis: int = -1,
         precomputed_velocity_k1: bool = False,
         vortex_stretching_sfs_coefficient: float = 0.0,
@@ -122,7 +121,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             treecode_theta,
             conserve_moments,
             conserve_energy,
-            reformulated,
             vortex_stretching_sfs_coefficient,
             vortex_stretching_sfs_cutoff,
             axisymmetric_axis,
@@ -410,7 +408,6 @@ class _CoupledAdvectionStretchingHandler:
         treecode_theta: float,
         conserve_moments: bool,
         conserve_energy: bool,
-        reformulated: bool,
         vortex_stretching_sfs_coefficient: float,
         vortex_stretching_sfs_cutoff: float,
         axisymmetric_axis: int,
@@ -440,13 +437,11 @@ class _CoupledAdvectionStretchingHandler:
             particles.core_radius,
             particles.velocity,
             parent.dstr_dt_temp,
-            parent.drad_dt_temp,
             mode_int,
             N,
             precomputed=precomputed_velocity_k1,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            reformulated=reformulated,
             vortex_stretching_sfs_coefficient=vortex_stretching_sfs_coefficient,
             vortex_stretching_sfs_cutoff=vortex_stretching_sfs_cutoff,
             axisymmetric_axis=axisymmetric_axis,
@@ -459,27 +454,20 @@ class _CoupledAdvectionStretchingHandler:
         parent.step_euler_forward_kernel(
             particles.vortex_strength, parent.dstr_dt_temp, parent.str_temp, time_step_size, N
         )
-        if reformulated:
-            parent.step_euler_forward_kernel(
-                particles.core_radius, parent.drad_dt_temp, parent.rad_temp, time_step_size, N
-            )
-
         # k2 = f(y1).  A tree topology cannot merely be refitted here because
         # Coupled stages change both position and vortex strength.
         self._stage_rhs(
             particles,
             parent.pos_temp,
             parent.str_temp,
-            parent.rad_temp if reformulated else particles.core_radius,
+            particles.core_radius,
             parent.vel_temp,
             parent.dstr_dt_temp2,
-            parent.drad_dt_temp2,
             mode_int,
             N,
             precomputed=False,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            reformulated=reformulated,
             vortex_stretching_sfs_coefficient=vortex_stretching_sfs_coefficient,
             vortex_stretching_sfs_cutoff=vortex_stretching_sfs_cutoff,
             axisymmetric_axis=axisymmetric_axis,
@@ -496,14 +484,6 @@ class _CoupledAdvectionStretchingHandler:
                 time_step_size,
                 N,
             )
-            if reformulated:
-                parent.step_rk2_combine_kernel(
-                    particles.core_radius,
-                    parent.drad_dt_temp,
-                    parent.drad_dt_temp2,
-                    time_step_size,
-                    N,
-                )
             return
 
         # SSP-RK3 stage y2 = y_n + dt/4*(k1+k2)
@@ -529,34 +509,19 @@ class _CoupledAdvectionStretchingHandler:
         parent.step_euler_forward_kernel(
             particles.vortex_strength, parent.str_temp2, parent.str_temp2, 1.0, N
         )
-        if reformulated:
-            parent.linear_combination_kernel(
-                parent.rad_temp2,
-                parent.drad_dt_temp,
-                parent.drad_dt_temp2,
-                0.25 * time_step_size,
-                0.25 * time_step_size,
-                N,
-            )
-            parent.step_euler_forward_kernel(
-                particles.core_radius, parent.rad_temp2, parent.rad_temp2, 1.0, N
-            )
-
         # k3 = f(y2)
         self._stage_rhs(
             particles,
             parent.pos_temp2,
             parent.str_temp2,
-            parent.rad_temp2 if reformulated else particles.core_radius,
+            particles.core_radius,
             parent.vel_temp2,
             parent.dstr_dt_temp3,
-            parent.drad_dt_temp3,
             mode_int,
             N,
             precomputed=False,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            reformulated=reformulated,
             vortex_stretching_sfs_coefficient=vortex_stretching_sfs_coefficient,
             vortex_stretching_sfs_cutoff=vortex_stretching_sfs_cutoff,
             axisymmetric_axis=axisymmetric_axis,
@@ -578,15 +543,6 @@ class _CoupledAdvectionStretchingHandler:
             time_step_size,
             N,
         )
-        if reformulated:
-            parent.step_rk3_ssp_combine_kernel(
-                particles.core_radius,
-                parent.drad_dt_temp,
-                parent.drad_dt_temp2,
-                parent.drad_dt_temp3,
-                time_step_size,
-                N,
-            )
 
     def _stage_rhs(
         self,
@@ -596,14 +552,12 @@ class _CoupledAdvectionStretchingHandler:
         core_radius,
         velocity_out,
         vortex_strength_rate_out,
-        core_radius_rate_out,
         mode_int: int,
         N: int,
         *,
         precomputed: bool,
         conserve_moments: bool,
         conserve_energy: bool,
-        reformulated: bool,
         vortex_stretching_sfs_coefficient: float,
         vortex_stretching_sfs_cutoff: float,
         axisymmetric_axis: int,
@@ -686,19 +640,9 @@ class _CoupledAdvectionStretchingHandler:
                 mode_int,
                 N,
             )
-        if reformulated:
-            parent.reformulated_stretching_rate_kernel(
-                vortex_strength,
-                core_radius,
-                vortex_strength_rate_out,
-                core_radius_rate_out,
-                N,
-            )
         if needs_sfs_gradient:
             if gradient is None:
-                raise RuntimeError(
-                    "vortex-stretching SFS requires the particle velocity gradient"
-                )
+                raise RuntimeError("vortex-stretching SFS requires the particle velocity gradient")
             if sfs_tree is not None:
                 sfs_tree.apply_vortex_stretching_sfs(
                     vortex_strength_rate_out,
@@ -734,7 +678,6 @@ class _CoupledAdvectionStretchingHandler:
                 position,
                 vortex_strength,
                 core_radius,
-                core_radius_rate_out,
                 velocity_out,
                 vortex_strength_rate_out,
                 N,

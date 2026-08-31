@@ -257,18 +257,12 @@ class VPMSetup:
                 )
         elif self.stretching.conserve_moments or self.stretching.conserve_energy:
             raise ValueError("stretching invariant projection requires COUPLED time integration")
-        elif self.stretching.reformulated:
-            raise ValueError("reformulated stretching requires COUPLED time integration")
 
         if self.turbulence.vortex_stretching_sfs_coefficient > 0.0:
-            if not self.stretching.reformulated:
-                raise ValueError(
-                    "vortex-stretching SFS requires reformulated VPM stretching"
-                )
+            if integration != "COUPLED":
+                raise ValueError("vortex-stretching SFS requires COUPLED time integration")
             if self.particle_kernel.upper() != "GAUSSIAN":
-                raise ValueError(
-                    "vortex-stretching SFS currently requires GAUSSIAN particles"
-                )
+                raise ValueError("vortex-stretching SFS currently requires GAUSSIAN particles")
 
         if self.axisymmetric_no_swirl_axis is not None:
             axis = self.axisymmetric_no_swirl_axis.lower()

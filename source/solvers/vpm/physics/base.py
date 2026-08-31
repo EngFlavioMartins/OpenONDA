@@ -210,13 +210,6 @@ class PhysicsBase:
             3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
         )
 
-        # Core-size state and rates for reformulated VPM.
-        self.rad_temp = ti.field(dtype=self.accumulator_dtype, shape=(self.max_n_particles,))
-        self.rad_temp2 = ti.field(dtype=self.accumulator_dtype, shape=(self.max_n_particles,))
-        self.drad_dt_temp = ti.field(dtype=self.accumulator_dtype, shape=(self.max_n_particles,))
-        self.drad_dt_temp2 = ti.field(dtype=self.accumulator_dtype, shape=(self.max_n_particles,))
-        self.drad_dt_temp3 = ti.field(dtype=self.accumulator_dtype, shape=(self.max_n_particles,))
-
         # Mark initial size
         self._temp_field_size = self.max_n_particles
 
@@ -233,11 +226,6 @@ class PhysicsBase:
             self.dstr_dt_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
             self.dstr_dt_temp3[i] = ti.Vector([0.0, 0.0, 0.0])
             self.sfs_rate_temp[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.rad_temp[i] = 0.0
-            self.rad_temp2[i] = 0.0
-            self.drad_dt_temp[i] = 0.0
-            self.drad_dt_temp2[i] = 0.0
-            self.drad_dt_temp3[i] = 0.0
 
     def _zero_temp_fields(self, N: int | None = None):
         """Zero the temporaries over the active range only.
@@ -275,7 +263,6 @@ class PhysicsBase:
         position: ti.template(),
         vortex_strength: ti.template(),
         core_radius: ti.template(),
-        core_radius_rate: ti.template(),
         velocity: ti.template(),
         vortex_strength_rate: ti.template(),
         count: ti.i32,
@@ -295,7 +282,6 @@ class PhysicsBase:
             rows[5, 0], rows[5, 1] = -0.5 * x[1], 0.5 * x[0]
 
             particle_core_radius = core_radius[i]
-            particle_core_radius_rate = core_radius_rate[i]
             core_term = (
                 ti.cast(self._angular_core_coefficient, self.accumulator_dtype)
                 * particle_core_radius**2
@@ -311,13 +297,7 @@ class PhysicsBase:
                 u.cross(x.cross(particle_vortex_strength))
                 + x.cross(u.cross(particle_vortex_strength))
                 + x.cross(x.cross(rate))
-            ) / 3.0 - core_term * rate - (
-                2.0
-                * ti.cast(self._angular_core_coefficient, self.accumulator_dtype)
-                * particle_core_radius
-                * particle_core_radius_rate
-                * particle_vortex_strength
-            )
+            ) / 3.0 - core_term * rate
             for component in ti.static(range(3)):
                 ti.atomic_add(self._rate_constraint_defect[component], rate[component])
                 ti.atomic_add(self._rate_constraint_defect[3 + component], impulse_rate[component])
@@ -440,7 +420,6 @@ class PhysicsBase:
         position,
         vortex_strength,
         core_radius,
-        core_radius_rate,
         velocity,
         vortex_strength_rate,
         count: int,
@@ -455,8 +434,8 @@ class PhysicsBase:
         ``dI/dt = 0.5 sum(u_i cross vortex_strength_i + x_i cross
         d(vortex_strength_i)/dt)``.
 
-        Angular impulse uses the same finite-core correction as the flow
-        diagnostics, including the changing core size in reformulated VPM.
+        Angular impulse uses the same fixed-core correction as the flow
+        diagnostics.
         The nine moment constraints, and optionally the exact
         discrete-energy-rate constraint, are solved simultaneously for the
         minimum Euclidean-norm strength-rate correction.  No particle ordering,
@@ -471,7 +450,6 @@ class PhysicsBase:
             position,
             vortex_strength,
             core_radius,
-            core_radius_rate,
             velocity,
             vortex_strength_rate,
             count,

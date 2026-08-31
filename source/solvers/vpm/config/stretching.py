@@ -104,15 +104,6 @@ class StretchingConfig:
     option requires ``COUPLED`` time integration.
     """
 
-    reformulated: bool = False
-    """Advance particle core size consistently with inviscid stretching.
-
-    Reformulated VPM restores local vortex-tube mass and angular-momentum
-    conservation by evolving ``vortex_strength`` and ``core_radius`` at the
-    same Runge--Kutta stages.  The classic fixed-core formulation remains the
-    default for backward compatibility.
-    """
-
     def __post_init__(self) -> None:
         mode = self.mode.upper()
         scheme = self.scheme.upper()
@@ -128,10 +119,6 @@ class StretchingConfig:
             raise ValueError(f"treecode_theta must be in (0, 2), got {self.treecode_theta!r}")
         if self.conserve_energy and not self.conserve_moments:
             raise ValueError("conserve_energy requires conserve_moments")
-        if self.reformulated and self.conserve_energy:
-            raise ValueError(
-                "reformulated stretching does not yet support energy-rate projection"
-            )
         if mode != self.mode:
             object.__setattr__(self, "mode", mode)
         if scheme != self.scheme:
@@ -144,7 +131,6 @@ class StretchingConfig:
         treecode_theta: float = 0.3,
         conserve_moments: bool = False,
         conserve_energy: bool = False,
-        reformulated: bool = False,
     ):
         """Direct scheme: dalpha/dt = (alpha*grad)u.
 
@@ -164,7 +150,6 @@ class StretchingConfig:
             treecode_theta=treecode_theta,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            reformulated=reformulated,
         )
 
     @staticmethod
@@ -174,7 +159,6 @@ class StretchingConfig:
         treecode_theta: float = 0.3,
         conserve_moments: bool = False,
         conserve_energy: bool = False,
-        reformulated: bool = False,
     ):
         """Transposed scheme: dalpha/dt = grad(u)^T alpha; conserves Σalpha.
 
@@ -194,7 +178,6 @@ class StretchingConfig:
             treecode_theta=treecode_theta,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            reformulated=reformulated,
         )
 
     @staticmethod
@@ -204,7 +187,6 @@ class StretchingConfig:
         treecode_theta: float = 0.3,
         conserve_moments: bool = False,
         conserve_energy: bool = False,
-        reformulated: bool = False,
     ):
         """Mixed/strain scheme: symmetric formulation
 
@@ -224,7 +206,6 @@ class StretchingConfig:
             treecode_theta=treecode_theta,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
-            reformulated=reformulated,
         )
 
     @staticmethod

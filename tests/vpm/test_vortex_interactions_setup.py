@@ -99,11 +99,10 @@ def test_sfs_is_added_only_to_the_sfs_case(interactions_setup, tmp_path):
     sfs = interactions_setup.solver_setup("leapfrog_les_sfs", tmp_path / "sfs")
 
     assert baseline.turbulence.vortex_stretching_sfs_coefficient == 0.0
-    assert not baseline.stretching.reformulated
     assert sfs.turbulence.smagorinsky_coefficient == pytest.approx(
         interactions_setup.SMAGORINSKY_COEFFICIENT
     )
     assert sfs.turbulence.vortex_stretching_sfs_coefficient == pytest.approx(
         interactions_setup.VORTEX_STRETCHING_SFS_COEFFICIENT
     )
-    assert sfs.stretching.reformulated
+    assert sfs.stretching == baseline.stretching
