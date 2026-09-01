@@ -10,7 +10,6 @@ from .boundary_elements.vlm.config import (
     VLMSurfaceSetup,
 )
 from .config import (
-    AdvectionConfig,
     Backup,
     DiagnosticsConfig,
     DivergenceLimit,
@@ -29,9 +28,7 @@ from .config import (
     RunPlan,
     Samplers,
     StabilizationConfig,
-    StretchingConfig,
     TurbulenceConfig,
-    VelocityConfig,
     ViscousConfig,
     VPMCase,
 )
@@ -57,6 +54,10 @@ from .initialization import (
     WidnallDisturbance,
 )
 from .io.sampling import EverySteps, EveryTime, FinalOnly
+from .numerics.rk_tableaux import RK2, RK4, SSPRK3
+from .physics.induction.direct import DirectInduction
+from .physics.induction.fmm import FMMInduction
+from .physics.induction.treecode import TreecodeInduction
 from .stabilization import (
     DivergenceRelaxationError,
     FilamentRefinementError,
@@ -65,7 +66,8 @@ from .stabilization import (
 )
 
 __all__ = [
-    "AdvectionConfig",
+    "DirectInduction",
+    "FMMInduction",
     "DivergenceRelaxationConfig",
     "DivergenceRelaxationError",
     "Backup",
@@ -101,7 +103,9 @@ __all__ = [
     "StabilizationConfig",
     "StabilizationError",
     "StabilizationManager",
-    "StretchingConfig",
+    "RK2",
+    "RK4",
+    "SSPRK3",
     "TurbulenceConfig",
     "VLMMeshSetup",
     "VLMSetup",
@@ -109,7 +113,7 @@ __all__ = [
     "RunPlan",
     "VPMCase",
     "VPMSolver",
-    "VelocityConfig",
+    "TreecodeInduction",
     "ViscousConfig",
     "VortexParticleSet",
     "WidnallDisturbance",

@@ -18,6 +18,7 @@ from source.solvers.vpm import (
     FinalOnly,
     FiniteStateCheck,
     FlowIntegralsSampler,
+    FMMInduction,
     ForceConfig,
     GrowthLimit,
     HealthLimits,
@@ -39,8 +40,8 @@ from source.solvers.vpm import (
     StabilizationConfig,
     TaylorGreenVortex,
     ToroidalDistribution,
-    TriangularPrismDistribution,
     TreecodeInduction,
+    TriangularPrismDistribution,
     TurbulenceConfig,
     ViscousConfig,
     VLMMeshSetup,
@@ -66,6 +67,7 @@ from source.solvers.vpm.io.sampling import LineSampler, SurfaceSampler
 
 __all__ = [
     "DirectInduction",
+    "FMMInduction",
     "Backup",
     "DivergenceRelaxationConfig",
     "DivergenceRelaxationError",
