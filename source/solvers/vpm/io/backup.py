@@ -736,7 +736,7 @@ class _BackupIO:
 
             solver.particles.set_field("vorticity", vorticity)
             if solver.flow_model != "POTENTIAL":
-                solver.stepper._update_velocity_gradients(announce=False)
+                solver.stepper._update_velocity_and_gradients(announce=False)
             if auxiliary["effective_viscosity"] is not None:
                 solver.particles.set_field(
                     "effective_viscosity",

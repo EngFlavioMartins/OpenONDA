@@ -218,7 +218,7 @@ def test_backup_refresh_does_not_compute_velocity_gradients(tmp_path, monkeypatc
     calls = []
     monkeypatch.setattr(
         solver.stepper,
-        "_update_velocity_gradients",
+        "_update_velocity_and_gradients",
         lambda: calls.append("gradient"),
     )
 
@@ -418,7 +418,7 @@ def test_backup_storage_handles_more_than_fifty_thousand_particles(tmp_path, mon
         induction=TreecodeInduction(theta=0.5),
         viscous=ViscousConfig.inviscid(particle_spacing=0.2),
     )
-    monkeypatch.setattr(reader.stepper, "_update_velocity_gradients", lambda **_kwargs: None)
+    monkeypatch.setattr(reader.stepper, "_update_velocity_and_gradients", lambda **_kwargs: None)
     reader.load_backup(str(tmp_path / "writer" / "solution" / "vpm_000000"))
 
     assert reader.particles.n_particles_total == count

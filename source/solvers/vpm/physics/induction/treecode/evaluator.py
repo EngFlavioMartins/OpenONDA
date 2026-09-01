@@ -47,6 +47,13 @@ class TreecodeInduction:
     def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
         """Bind this construction object to one physics workspace."""
         self.physics = physics
+        physics.configure_velocity(
+            "TREECODE",
+            self.theta,
+            multipole_order=self.multipole_order,
+            sort_particle_targets=self.sort_particle_targets,
+            traversal_block_dim=self.traversal_block_dim,
+        )
         if kernel is not None:
             self.kernel = kernel
         if self.max_n_particles == 1:

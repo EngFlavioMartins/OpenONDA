@@ -45,6 +45,7 @@ class FMMInduction:
 
     def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
         self.physics = physics
+        physics.configure_velocity("DIRECT")
         if kernel is not None:
             self.kernel = kernel
         if self.max_n_particles == 1:

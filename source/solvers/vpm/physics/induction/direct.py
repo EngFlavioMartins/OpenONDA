@@ -35,6 +35,7 @@ class DirectInduction:
     def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
         """Bind this immutable construction object to one physics workspace."""
         self.physics = physics
+        physics.configure_velocity("DIRECT")
         if kernel is not None:
             self.kernel = kernel
         capacity = physics.max_n_particles if self.max_n_particles == 1 else self.max_n_particles

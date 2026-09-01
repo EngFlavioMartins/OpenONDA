@@ -27,6 +27,7 @@ import numpy as np
 import taichi as ti
 
 from ..io.logging import Logging
+from ..physics.induction.base import StageRates, StageState
 
 if TYPE_CHECKING:
     from .solver import VPMSolver
@@ -209,7 +210,7 @@ class EvolutionStepper:
             )
             if _gradients_required:
                 with self.profiler.section("Velocity gradients"):
-                    self._update_velocity_gradients()
+                    self._update_velocity_and_gradients()
 
             with self.profiler.section("LES update"):
                 self._update_les_state()
@@ -295,26 +296,27 @@ class EvolutionStepper:
         self._staged_step = None
         self._staged_time = None
 
-    def _update_velocity_gradients(self, announce: bool = False) -> None:
-        """Evaluate particle velocity gradients with the configured direct or tree method."""
-        del announce  # retained for compatibility; static method details are logged at time zero
-        use_treecode = self.physics.velocity_method == "TREECODE"
-        theta = self.physics.velocity_theta
-
-        if use_treecode:
-            self.physics.compute_velocity_gradients_hierarchical(self.particles, theta=theta)
-        else:
-            self.physics.compute_velocity_gradients(self.particles)
-
     def _update_velocity_and_gradients(self, announce: bool = False) -> None:
-        """Evaluate particle velocity and ``∇u`` in one direct pass or tree traversal."""
-        del announce  # retained for compatibility; static method details are logged at time zero
-        use_treecode = self.physics.velocity_method == "TREECODE"
-        theta = self.physics.velocity_theta
-        if use_treecode:
-            self.physics.compute_velocity_and_gradient_hierarchical(self.particles, theta=theta)
-        else:
-            self.physics.compute_velocity_and_gradient(self.particles)
+        """Refresh derived particle velocity and gradient through the stage contract."""
+        del announce
+        count = len(self.particles)
+        if count == 0:
+            return
+        self.solver.stage_rhs.evaluate(
+            StageState(
+                position=self.particles.position,
+                vortex_strength=self.particles.vortex_strength,
+                core_radius=self.particles.core_radius,
+                count=count,
+                time=self.solver.time,
+            ),
+            self.solver.time,
+            StageRates(
+                velocity=self.particles.velocity,
+                vortex_strength_rate=self.physics.dstr_dt_temp,
+                velocity_gradient=self.particles.velocity_gradient,
+            ),
+        )
 
     def _update_les_state(self, time_step_size: float | None = None) -> None:
         """Update LES viscosity from the current strain-rate field."""

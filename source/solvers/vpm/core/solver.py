@@ -281,15 +281,6 @@ class VPMSolver:
             event_observer=LoggingPhysicsEventObserver(),
         )
 
-        _vel_method = getattr(final_setup.induction, "method", "DIRECT").upper()
-        _vel_theta = getattr(final_setup.induction, "theta", 0.5)
-        self.physics.configure_velocity(
-            _vel_method if _vel_method in {"DIRECT", "TREECODE"} else "DIRECT",
-            _vel_theta,
-            multipole_order=getattr(final_setup.induction, "multipole_order", 1),
-            sort_particle_targets=getattr(final_setup.induction, "sort_particle_targets", False),
-            traversal_block_dim=getattr(final_setup.induction, "traversal_block_dim", 128),
-        )
         if hasattr(self.induction, "bind"):
             self.induction.bind(
                 self.physics,
