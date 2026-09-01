@@ -1,0 +1,20 @@
+{
+  "checkpoint": "leapfrog",
+  "configuration": "production_numerics_unforced",
+  "displacement_max": 0.07705371430613252,
+  "dt": 0.007798592211502873,
+  "forcing": "isolated_self_induced",
+  "horizon": 0.015597184423005747,
+  "kernel": "GAUSSIAN",
+  "median_step_wall_s": 33.9624100185174,
+  "particles": 14080,
+  "scheme": "RK3",
+  "status": "completed",
+  "steps": 2,
+  "strength_growth_max": 0.17573752972458423,
+  "strength_growth_median": 0.00016923322014317232,
+  "strength_growth_p95": 0.05754087003965967,
+  "stretching_evaluator": "exact_pairwise",
+  "total_strength_drift_abs": 2.7699761097328188e-08,
+  "total_strength_drift_normalized": 7.194419776907601e-10
+}

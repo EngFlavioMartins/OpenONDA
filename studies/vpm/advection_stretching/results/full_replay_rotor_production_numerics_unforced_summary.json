@@ -1,0 +1,20 @@
+{
+  "checkpoint": "rotor",
+  "configuration": "production_numerics_unforced",
+  "displacement_max": 0.18184955376433967,
+  "dt": 0.006,
+  "forcing": "freestream_only_no_vlm_replay",
+  "horizon": 0.012,
+  "kernel": "WINCKELMANS",
+  "median_step_wall_s": 155.35113219849882,
+  "particles": 70200,
+  "scheme": "RK2",
+  "status": "completed",
+  "steps": 2,
+  "strength_growth_max": 0.11656681980704442,
+  "strength_growth_median": 0.000644145180509148,
+  "strength_growth_p95": 0.016566614497093225,
+  "stretching_evaluator": "tree_gradient",
+  "total_strength_drift_abs": 0.01755876598024224,
+  "total_strength_drift_normalized": 3.7462717775636242e-06
+}

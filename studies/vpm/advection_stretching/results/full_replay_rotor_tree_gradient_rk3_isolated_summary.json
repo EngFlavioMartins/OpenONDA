@@ -1,0 +1,20 @@
+{
+  "checkpoint": "rotor",
+  "configuration": "tree_gradient_rk3_isolated",
+  "displacement_max": 0.09949121766278782,
+  "dt": 0.006,
+  "forcing": "isolated_self_induced",
+  "horizon": 0.012,
+  "kernel": "WINCKELMANS",
+  "median_step_wall_s": 154.11593672001618,
+  "particles": 70200,
+  "scheme": "RK3",
+  "status": "completed",
+  "steps": 2,
+  "strength_growth_max": 0.11680551281348772,
+  "strength_growth_median": 0.0006436448206699197,
+  "strength_growth_p95": 0.016568708051760188,
+  "stretching_evaluator": "tree_gradient",
+  "total_strength_drift_abs": 0.019498263004048947,
+  "total_strength_drift_normalized": 4.160075513608147e-06
+}

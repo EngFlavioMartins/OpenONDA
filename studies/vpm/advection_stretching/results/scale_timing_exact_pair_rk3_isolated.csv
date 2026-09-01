@@ -1,0 +1,5 @@
+particles,configuration,status,complete_step_wall_s,precision,device_request,source_checkpoint,includes,forcing,predicted_70200_step_wall_s_quadratic
+4000,exact_pair_rk3_isolated,measured,3.007162410998717,f32,VULKAN,rotor_000520_uniform_index_subset,"velocity,all_RK_stages,stretching,viscosity_or_inviscid,LES_if_production,stabilization_if_production",none,
+14000,exact_pair_rk3_isolated,measured,22.991454160015564,f32,VULKAN,rotor_000520_uniform_index_subset,"velocity,all_RK_stages,stretching,viscosity_or_inviscid,LES_if_production,stabilization_if_production",none,
+35000,exact_pair_rk3_isolated,measured,113.22837345104199,f32,VULKAN,rotor_000520_uniform_index_subset,"velocity,all_RK_stages,stretching,viscosity_or_inviscid,LES_if_production,stabilization_if_production",none,455.50526816463105
+70200,exact_pair_rk3_isolated,skipped_by_measured_feasibility_gate,,,,,,,455.50526816463105
