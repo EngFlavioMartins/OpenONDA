@@ -1,0 +1,16 @@
+particles,backend,operation,median_s,std_s,repeats,precision,theta,pairwise_stretching_sweeps,gradient_evaluations,tree_builds,tree_traversals,synchronisations,kernel_launches_minimum,fused_evaluations,relative_l2,direct_net_rate_norm,tree_net_rate_norm
+256,direct,transposed_strength_rate,0.0009541714971419424,0.0013420117417312302,10,f32,,True,False,False,False,1,1,,,,
+256,direct,velocity_and_gradient,0.0005198089929763228,0.0007598327436894959,10,f32,,,,False,False,1,1,1,,,
+256,tree,transposed_strength_rate,0.0305238580040168,0.006025406700373144,10,f32,0.2,False,True,True,True,1,1,,,,
+256,tree,velocity_and_gradient,0.052684001479065046,0.019325117486121837,10,f32,0.2,,,True,True,1,1,1,,,
+256,tree_vs_direct,transposed_strength_rate_accuracy,,,,f32,0.2,,,,,,,,0.024414408927463056,3.970243693603648e-08,0.004685403168860536
+1024,direct,transposed_strength_rate,0.003862033976474777,0.0022221003951836803,10,f32,,True,False,False,False,1,1,,,,
+1024,direct,velocity_and_gradient,0.0016534379974473268,0.0013931713728902696,10,f32,,,,False,False,1,1,1,,,
+1024,tree,transposed_strength_rate,0.04364316049031913,0.0069253418993162185,10,f32,0.2,False,True,True,True,1,1,,,,
+1024,tree,velocity_and_gradient,0.04916526295710355,0.005645180708054505,10,f32,0.2,,,True,True,1,1,1,,,
+1024,tree_vs_direct,transposed_strength_rate_accuracy,,,,f32,0.2,,,,,,,,0.03375196480763569,2.2076368778845888e-07,0.015629991014077364
+4096,direct,transposed_strength_rate,0.011716948967659846,0.004558341302966946,10,f32,,True,False,False,False,1,1,,,,
+4096,direct,velocity_and_gradient,0.010499411990167573,0.0032846457385266627,10,f32,,,,False,False,1,1,1,,,
+4096,tree,transposed_strength_rate,0.08980806500767358,0.015219971900872546,10,f32,0.2,False,True,True,True,1,1,,,,
+4096,tree,velocity_and_gradient,0.08591377147240564,0.019778401582704396,10,f32,0.2,,,True,True,1,1,1,,,
+4096,tree_vs_direct,transposed_strength_rate_accuracy,,,,f32,0.2,,,,,,,,0.052163901430514525,1.8920242226277626e-06,0.10572621818252315

@@ -1,0 +1,10 @@
+implementation,mode,basis,rate_x,rate_y,rate_z
+analytic_gradient_contraction,DIRECT,0,0.0,0.0,0.0
+analytic_gradient_contraction,DIRECT,1,2.0,0.0,0.0
+analytic_gradient_contraction,DIRECT,2,0.0,0.0,0.0
+analytic_gradient_contraction,TRANSPOSED,0,0.0,2.0,0.0
+analytic_gradient_contraction,TRANSPOSED,1,0.0,0.0,0.0
+analytic_gradient_contraction,TRANSPOSED,2,0.0,0.0,0.0
+analytic_gradient_contraction,MIXED,0,0.0,1.0,0.0
+analytic_gradient_contraction,MIXED,1,1.0,0.0,0.0
+analytic_gradient_contraction,MIXED,2,0.0,0.0,0.0

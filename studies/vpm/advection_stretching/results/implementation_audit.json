@@ -1,0 +1,54 @@
+{
+  "fractional_execution": "EvolutionController applies full advection first, then full stretching; advection stages use Gamma_n and stretching stages fix x_{n+1}.",
+  "coupled_execution": "PhysicsEngine _CoupledAdvectionStretchingHandler evaluates u and dGamma/dt from common (x_i,Gamma_i) RK2/RK3 states.",
+  "existing_schemes": {
+    "advection": [
+      "EULER",
+      "RK2",
+      "RK3",
+      "RK4"
+    ],
+    "stretching": [
+      "EULER",
+      "RK2",
+      "RK3",
+      "RK4"
+    ],
+    "coupled": [
+      "RK2",
+      "RK3"
+    ]
+  },
+  "contractions": {
+    "DIRECT": "J Gamma",
+    "TRANSPOSED": "J^T Gamma",
+    "MIXED": "0.5(J+J^T) Gamma"
+  },
+  "direct_pairwise": "Separate exact per-target source summation; transposed form retains algebraic pair cancellation.",
+  "tree_gradient": "LBVH accumulated J followed by local contraction; coupled stages rebuild because both x and Gamma change; fractional strength-only later stages may refit strengths.",
+  "fused_path": "Beginning-of-step fused u+J is computed when requested; coupled can reuse u(k1), while pairwise stretching does not consume the stored J.",
+  "potential_unused_work": "In direct pairwise stretching configurations, a precomputed gradient used for diagnostics/stability is not the stretching operator and cannot replace the exact pair sweep without changing roundoff/conservation.",
+  "pair_vs_accumulated_f64": [
+    {
+      "mode": "DIRECT",
+      "relative_l2": 4.952178051521614e-16,
+      "max_abs": 7.771561172376096e-16
+    },
+    {
+      "mode": "TRANSPOSED",
+      "relative_l2": 3.248093752817421e-16,
+      "max_abs": 9.992007221626409e-16
+    },
+    {
+      "mode": "MIXED",
+      "relative_l2": 3.780020194924682e-16,
+      "max_abs": 5.551115123125783e-16
+    }
+  ],
+  "source_files": [
+    "source/solvers/vpm/core/evolution.py",
+    "source/solvers/vpm/physics/engine.py",
+    "source/solvers/vpm/numerics/kernels_common.py",
+    "source/solvers/vpm/acceleration/treecode_gpu.py"
+  ]
+}
