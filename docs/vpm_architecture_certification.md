@@ -9,7 +9,7 @@ historical study work.
 
 Starting commit: `60fdb79b31c9a4a488972f579ba4815797bc02e8`
 
-Final implementation commit: the commit containing this report
+Final implementation commit: `8d5283f0` (`cleanup(vpm): finalize the coupled induction architecture`)
 
 ## Architecture result
 
@@ -59,7 +59,7 @@ c5f52b13 refactor(vpm): remove legacy integration configuration
 a12e66d9 refactor(vpm): route derived fields through the stage contract
 bf456e19 fix(vpm): preserve configured precision in coupled RK steps
 80230501 fix(vpm): complete declarative configuration migration
-<final> cleanup(vpm): finalize the coupled induction architecture
+8d5283f0 cleanup(vpm): finalize the coupled induction architecture
 ```
 
 ## Files added and removed
