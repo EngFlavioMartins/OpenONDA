@@ -8,6 +8,86 @@ from ..physics.induction.base import StageRates, StageState
 from .rk_tableaux import SSPRK3, RKTableau
 
 
+def _make_construct_stage_kernel(scalar_dtype):
+    """Create the stage-construction kernel at the particle precision."""
+
+    @ti.kernel
+    def construct(
+        position: ti.template(),
+        vortex_strength: ti.template(),
+        stage_position: ti.template(),
+        stage_vortex_strength: ti.template(),
+        velocity_0: ti.template(),
+        velocity_1: ti.template(),
+        velocity_2: ti.template(),
+        velocity_3: ti.template(),
+        strength_rate_0: ti.template(),
+        strength_rate_1: ti.template(),
+        strength_rate_2: ti.template(),
+        strength_rate_3: ti.template(),
+        time_step_size: scalar_dtype,
+        a0: scalar_dtype,
+        a1: scalar_dtype,
+        a2: scalar_dtype,
+        a3: scalar_dtype,
+        count: ti.i32,
+    ):
+        for i in range(count):
+            stage_position[i] = position[i] + time_step_size * (
+                a0 * velocity_0[i]
+                + a1 * velocity_1[i]
+                + a2 * velocity_2[i]
+                + a3 * velocity_3[i]
+            )
+            stage_vortex_strength[i] = vortex_strength[i] + time_step_size * (
+                a0 * strength_rate_0[i]
+                + a1 * strength_rate_1[i]
+                + a2 * strength_rate_2[i]
+                + a3 * strength_rate_3[i]
+            )
+
+    return construct
+
+
+def _make_combine_kernel(scalar_dtype):
+    """Create the final RK combination kernel at the particle precision."""
+
+    @ti.kernel
+    def combine(
+        position: ti.template(),
+        vortex_strength: ti.template(),
+        velocity_0: ti.template(),
+        velocity_1: ti.template(),
+        velocity_2: ti.template(),
+        velocity_3: ti.template(),
+        strength_rate_0: ti.template(),
+        strength_rate_1: ti.template(),
+        strength_rate_2: ti.template(),
+        strength_rate_3: ti.template(),
+        time_step_size: scalar_dtype,
+        b0: scalar_dtype,
+        b1: scalar_dtype,
+        b2: scalar_dtype,
+        b3: scalar_dtype,
+        count: ti.i32,
+    ):
+        for i in range(count):
+            position[i] += time_step_size * (
+                b0 * velocity_0[i]
+                + b1 * velocity_1[i]
+                + b2 * velocity_2[i]
+                + b3 * velocity_3[i]
+            )
+            vortex_strength[i] += time_step_size * (
+                b0 * strength_rate_0[i]
+                + b1 * strength_rate_1[i]
+                + b2 * strength_rate_2[i]
+                + b3 * strength_rate_3[i]
+            )
+
+    return combine
+
+
 class CoupledStageRHS(Protocol):
     """Evaluate both rates for one supplied temporary stage state."""
 
@@ -52,81 +132,14 @@ class RungeKutta:
             ti.Vector.field(3, dtype=dtype, shape=(self.max_n_particles,))
             for _ in range(4)
         ]
+        scalar_dtype = ti.f64 if dtype == ti.f64 else ti.f32
+        self._construct_stage_kernel = _make_construct_stage_kernel(scalar_dtype)
+        self._combine_kernel = _make_combine_kernel(scalar_dtype)
 
     @property
     def name(self) -> str:
         """Name of the active tableau for configuration reporting."""
         return self.tableau.name
-
-    @ti.kernel
-    def _construct_stage_kernel(
-        self,
-        position: ti.template(),
-        vortex_strength: ti.template(),
-        stage_position: ti.template(),
-        stage_vortex_strength: ti.template(),
-        velocity_0: ti.template(),
-        velocity_1: ti.template(),
-        velocity_2: ti.template(),
-        velocity_3: ti.template(),
-        strength_rate_0: ti.template(),
-        strength_rate_1: ti.template(),
-        strength_rate_2: ti.template(),
-        strength_rate_3: ti.template(),
-        time_step_size: ti.f32,
-        a0: ti.f32,
-        a1: ti.f32,
-        a2: ti.f32,
-        a3: ti.f32,
-        count: ti.i32,
-    ):
-        for i in range(count):
-            stage_position[i] = position[i] + time_step_size * (
-                a0 * velocity_0[i]
-                + a1 * velocity_1[i]
-                + a2 * velocity_2[i]
-                + a3 * velocity_3[i]
-            )
-            stage_vortex_strength[i] = vortex_strength[i] + time_step_size * (
-                a0 * strength_rate_0[i]
-                + a1 * strength_rate_1[i]
-                + a2 * strength_rate_2[i]
-                + a3 * strength_rate_3[i]
-            )
-
-    @ti.kernel
-    def _combine_kernel(
-        self,
-        position: ti.template(),
-        vortex_strength: ti.template(),
-        velocity_0: ti.template(),
-        velocity_1: ti.template(),
-        velocity_2: ti.template(),
-        velocity_3: ti.template(),
-        strength_rate_0: ti.template(),
-        strength_rate_1: ti.template(),
-        strength_rate_2: ti.template(),
-        strength_rate_3: ti.template(),
-        time_step_size: ti.f32,
-        b0: ti.f32,
-        b1: ti.f32,
-        b2: ti.f32,
-        b3: ti.f32,
-        count: ti.i32,
-    ):
-        for i in range(count):
-            position[i] += time_step_size * (
-                b0 * velocity_0[i]
-                + b1 * velocity_1[i]
-                + b2 * velocity_2[i]
-                + b3 * velocity_3[i]
-            )
-            vortex_strength[i] += time_step_size * (
-                b0 * strength_rate_0[i]
-                + b1 * strength_rate_1[i]
-                + b2 * strength_rate_2[i]
-                + b3 * strength_rate_3[i]
-            )
 
     def advance(
         self,

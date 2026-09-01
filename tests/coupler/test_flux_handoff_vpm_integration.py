@@ -531,7 +531,15 @@ def test_closed_vortex_ring_preserves_moments_fields_topology_and_self_advection
         rtol=0.0,
         atol=4.0e-9,
     )
-    np.testing.assert_array_equal(solver.particle_vortex_strength, initial_strength)
+    # The coupled transposed pairwise operator preserves the symmetric ring
+    # strength to machine roundoff; the formerly disabled stretching path
+    # produced exact bitwise equality here.
+    np.testing.assert_allclose(
+        solver.particle_vortex_strength,
+        initial_strength,
+        rtol=0.0,
+        atol=1.0e-18,
+    )
     final_position = solver.particle_position
     final_centroid = np.average(
         final_position,
