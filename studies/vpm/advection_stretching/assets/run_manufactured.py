@@ -45,16 +45,16 @@ def audit():
     write_csv(setup.RESULTS/'stage_ledger.csv',ledger)
     write_csv(setup.RESULTS/'tensor_orientation.csv',orientation)
     audit_payload={
-      'fractional_execution':'EvolutionController applies full advection first, then full stretching; advection stages use Gamma_n and stretching stages fix x_{n+1}.',
-      'coupled_execution':'RungeKutta evaluates u and dGamma/dt from common (x_i,Gamma_i) RK2/RK3 states.',
-      'existing_schemes':{'advection':['EULER','RK2','RK3','RK4'],'stretching':['EULER','RK2','RK3','RK4'],'coupled':['RK2','RK3']},
+      'stage_execution':'RungeKutta evaluates u and dGamma/dt from common (x_i,Gamma_i) stage states and calls StageRHS once per tableau stage.',
+      'induction_methods':['DirectInduction','TreecodeInduction','FMMInduction'],
+      'integrators':['RK2','SSPRK3','RK4'],
       'contractions':{'DIRECT':'J Gamma','TRANSPOSED':'J^T Gamma','MIXED':'0.5(J+J^T) Gamma'},
       'direct_pairwise':'Separate exact per-target source summation; transposed form retains algebraic pair cancellation.',
-      'tree_gradient':'LBVH accumulated J followed by local contraction; coupled stages rebuild because both x and Gamma change; fractional strength-only later stages may refit strengths.',
-      'fused_path':'Beginning-of-step fused u+J is computed when requested; coupled can reuse u(k1), while pairwise stretching does not consume the stored J.',
-      'potential_unused_work':'In direct pairwise stretching configurations, a precomputed gradient used for diagnostics/stability is not the stretching operator and cannot replace the exact pair sweep without changing roundoff/conservation.',
+      'tree_gradient':'The LBVH stage evaluator supplies the auxiliary gradient when requested; every coupled stage rebuilds from its complete temporary state.',
+      'fmm_path':'FMM uses shared-kernel near interactions and singular Biot-Savart multipole velocity for well-separated cells; the canonical pairwise transpose remains exact until a mutual rate traversal is qualified.',
+      'potential_unused_work':'The auxiliary gradient is not the canonical strength operator and is never substituted for the conservative pair sweep.',
       'pair_vs_accumulated_f64':equivalence,
-      'source_files':['source/solvers/vpm/core/evolution.py','source/solvers/vpm/physics/engine.py','source/solvers/vpm/numerics/kernels_common.py','source/solvers/vpm/acceleration/treecode_gpu.py']}
+      'source_files':['source/solvers/vpm/core/evolution.py','source/solvers/vpm/physics/engine.py','source/solvers/vpm/numerics/kernels_common.py','source/solvers/vpm/physics/induction/treecode/lbvh.py','source/solvers/vpm/physics/induction/fmm/evaluator.py']}
     (setup.RESULTS/'implementation_audit.json').write_text(json.dumps(audit_payload,indent=2)+'\n')
     if max(r['relative_l2'] for r in equivalence)>5e-13: raise AssertionError(equivalence)
 

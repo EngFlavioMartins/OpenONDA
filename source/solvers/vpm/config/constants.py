@@ -98,7 +98,7 @@ DEFAULT_PARTICLE_VOLUME = 1e-3
 # so the closed form loses all significance for small r (relative error
 # ~1.5 eps / r^2 in f32: 5.6e-2 at r = 1e-2, 7e+4 at r = 1e-4, sign flips).
 # Below GAUSSIAN_Q_SERIES_CROSSOVER both the direct kernel
-# (kernels/gaussian.py) and the treecode's copy (acceleration/treecode_gpu.py)
+# (kernels/gaussian.py) and the treecode's LBVH copy (physics/induction/treecode/lbvh.py)
 # must use the series
 #     q(r) = C r^3 [1 - (3/5) r^2 + (3/14) r^4] / (4 pi) + O(r^9),  C = 4/(3 sqrt(pi)).
 # Measured f32 accuracy: series <= 4e-6 for r <= 0.2; closed form ~2e-5 at
@@ -107,7 +107,7 @@ FOUR_OVER_THREE_SQRT_PI = 0.7522527780636751
 GAUSSIAN_Q_SERIES_CROSSOVER = 0.2
 
 # Regularization kernels the LBVH treecode can evaluate.  The treecode carries
-# its own Taichi implementation of q/zeta (see acceleration/treecode_gpu.py), so
+# its own Taichi implementation of q/zeta (see physics/induction/treecode/lbvh.py), so
 # it supports a strict subset of the kernels available to the direct O(N²) path.
 # Single source of truth: Numerics validation and TaichiTreecode.set_kernel_type
 # both read this, so the two cannot drift apart.

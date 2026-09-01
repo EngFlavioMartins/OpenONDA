@@ -1,6 +1,6 @@
 """
-Taichi GPU-Accelerated Barnes-Hut Treecode for VPM.
-====================================================
+Taichi GPU-Accelerated Barnes-Hut LBVH for VPM.
+================================================
 Fully parallel LBVH (Linear Bounding Volume Hierarchy) construction and
 binary-tree traversal using Taichi for GPU acceleration.
 
@@ -35,7 +35,7 @@ import numpy as np
 import taichi as ti
 import taichi.algorithms  # noqa: F401  (ti.algorithms.parallel_sort)
 
-from ..config.constants import (
+from ....config.constants import (
     FOUR_OVER_THREE_SQRT_PI,
     GAUSSIAN_Q_SERIES_CROSSOVER,
     TREECODE_SUPPORTED_KERNELS,
@@ -1887,21 +1887,3 @@ class TaichiTreecode:
             f"  Build time: {self.build_time * 1000:.2f} ms\n"
             f"  Eval time: {self.eval_time * 1000:.2f} ms{grad_info}"
         )
-
-
-# =========================================================
-# Convenience function
-# =========================================================
-
-
-def compute_velocities_treecode_gpu(
-    position: np.ndarray,
-    vortex_strength: np.ndarray,
-    core_radius: np.ndarray,
-    theta: float = 0.5,
-    freestream_velocity: np.ndarray | None = None,
-) -> np.ndarray:
-    N = len(position)
-    tree = TaichiTreecode(max_n_particles=N, max_nodes=2 * N, theta=theta)
-    tree.build(position, vortex_strength, core_radius)
-    return tree.compute_velocities(freestream_velocity)

@@ -6,8 +6,8 @@ Contains shared functionality for all physics modules:
 - Temporary field management
 - Kernel initialization
 
-This module eliminates code duplication between the advection, diffusion,
-and stretching handlers (in engine.py) by providing a common base class.
+This module owns the shared device fields and low-level kernels used by the
+induction methods, diffusion operators, target queries, and diagnostics.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: January 2026
@@ -48,9 +48,8 @@ class PhysicsBase:
     - Kernel initialization and binding
     - Field evaluation methods (velocity, vorticity, gradients)
 
-    The concrete PhysicsEngine delegates to internal handlers for advection,
-    diffusion, and stretching; the unified self-induced velocity operator
-    (compute_self_induced_velocity / configure_velocity) lives here so every handler shares it.
+    The concrete PhysicsEngine provides shared fields and physical operators;
+    coupled inviscid rates are selected through the induction contract.
     """
 
     def __init__(
@@ -107,9 +106,9 @@ class PhysicsBase:
         self.treecode_sort_particle_targets = False
         self.treecode_traversal_block_dim = 128
 
-        # Reuse the stage-1 LBVH topology across the later RK advection stages
-        # (refit vs full rebuild).  On by default; a safe escape hatch / bench
-        # toggle — setting it False reverts to a full tree build at every stage.
+        # Reuse the stage-1 LBVH topology across later coupled stages when the
+        # low-level evaluator can safely refit it. A full rebuild remains the
+        # fallback whenever the supplied stage state changes incompatibly.
         self.reuse_tree_topology = True
 
         # Cached filtered particle fields for zone-aware BC computation
@@ -174,7 +173,7 @@ class PhysicsBase:
         - Intermediate velocity/vorticity storage
         - Strength rate computations
         """
-        # Position/velocity temporaries for advection
+        # Position/velocity temporaries for coupled stages and field queries
         self.pos_temp = ti.Vector.field(
             3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
         )
@@ -188,7 +187,7 @@ class PhysicsBase:
             3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
         )
 
-        # Strength temporaries for stretching/diffusion
+        # Strength temporaries for diffusion and auxiliary operators
         self.str_temp = ti.Vector.field(
             3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
         )
@@ -768,7 +767,7 @@ class PhysicsBase:
         Returns:
             TaichiTreecode: Cached or newly created treecode instance
         """
-        from ..acceleration.treecode_gpu import TaichiTreecode
+        from .induction.treecode.lbvh import TaichiTreecode
 
         # Create new treecode only if we need more capacity
         if self._treecode is None or required_size > self._treecode_max_particles:
@@ -895,9 +894,9 @@ class PhysicsBase:
 
         Writes the result into the ``velocity`` Taichi vec3 field. Honors the method
         set by :meth:`configure_velocity` — this is the ONLY place that decides
-        between direct summation and the treecode.  Every advection integrator
-        (Euler, RK2/3/4) routes through here, so the configured velocity method
-        is applied consistently at every stage.
+        between direct summation and the treecode for legacy field-query and
+        backup helpers. Coupled RK stages use the selected induction object
+        directly, so backend selection is not repeated in the integrator.
 
         In vortex advection all particles move together, so at each RK stage the
         sources and evaluation points are the same displaced set; the treecode is
@@ -921,8 +920,8 @@ class PhysicsBase:
         if self.velocity_method == "TREECODE":
             tree = self._get_or_create_treecode(n_particles_total, self.velocity_theta)
             # Reuse the stage-1 topology when asked; otherwise (or on any
-            # mismatch) do a full build.  VortexStrengths/core_radius are advection-
-            # invariant, so a refit needs only the displaced position.
+            # mismatch) do a full build. A refit is valid only when the supplied
+            # source state is compatible with the cached topology.
             if reuse_tree and self.reuse_tree_topology:
                 try:
                     tree.refit(position, n_particles_total)

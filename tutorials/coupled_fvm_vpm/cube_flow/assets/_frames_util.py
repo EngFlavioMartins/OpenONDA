@@ -49,7 +49,7 @@ if _HAVE_NUMBA:
 
 
 def vpm_velocity(particles, pts):
-    from source.solvers.vpm.acceleration.treecode_gpu import TaichiTreecode
+    from source.solvers.vpm.physics.induction.treecode.lbvh import TaichiTreecode
 
     targets = np.asarray(pts, np.float32)
     position = np.asarray(particles["position"], np.float32)

@@ -112,7 +112,7 @@ def run(arch_str, sizes, theta, repeats):
     }[arch_str]
     chosen = initialize_taichi_backend(preferred_backend=backend, debug_mode=False, precision="f32")
     print(f"[backend] requested={backend} → using {chosen}")
-    from source.solvers.vpm.acceleration.treecode_gpu import TaichiTreecode
+    from source.solvers.vpm.physics.induction.treecode.lbvh import TaichiTreecode
 
     sizes = sorted(sizes)
     direct = DirectEvaluator(max(sizes) + 8)

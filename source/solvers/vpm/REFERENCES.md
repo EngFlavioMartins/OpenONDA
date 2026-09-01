@@ -33,7 +33,7 @@ PDFs available under `docs/literature/` are marked **[local]**.
   The erf approximation used by the Gaussian q and g. **Max absolute error
   1.39e-7** — adequate for f32, and the binding accuracy limit if the solver is
   ever run in f64.
-  → `kernels/gaussian.py:err_func`, `acceleration/treecode_gpu.py:_erf_approx`
+  → `kernels/gaussian.py:err_func`, `physics/induction/treecode/lbvh.py:_erf_approx`
 
 Verified in-repo (see `tests/vpm/test_kernels_math.py` and
 `tests/vpm/test_audit_2026_08_regressions.py`): both production kernels
@@ -49,7 +49,7 @@ angular-impulse correction assumes.
 - **[Karras2012]** Karras, T. (2012). Maximizing parallelism in the construction
   of BVHs, octrees, and k-d trees. *High-Performance Graphics.*
   Morton-code LBVH built entirely on device.
-  → `acceleration/treecode_gpu.py`
+  → `physics/induction/treecode/lbvh.py`
 
 - **[GR1987]** Greengard, L. & Rokhlin, V. (1987). A fast algorithm for particle
   simulations. *J. Comput. Phys.* 73(2), 325–348.

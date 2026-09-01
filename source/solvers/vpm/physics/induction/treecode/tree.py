@@ -1,8 +1,8 @@
-"""Private treecode workspace façade.
+"""Private treecode workspace façade for the induction package.
 
-The mature LBVH implementation remains the traversal engine.  This façade
-gives the induction package a stable ownership point while the low-level
-Morton and traversal kernels remain in the acceleration backend.
+The LBVH implementation and its Morton/traversal kernels live beside the
+treecode evaluator; this façade provides a small ownership point for callers
+that need an explicit hierarchy build.
 """
 
 from __future__ import annotations

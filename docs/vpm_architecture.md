@@ -1,8 +1,8 @@
 # VPM architecture
 
-This document records the VPM information-flow contract as it exists in the
-solver.  It is deliberately about ownership and time levels, rather than the
-implementation details of individual Taichi kernels.
+The VPM runtime advances one inviscid particle state,
+`(position, vortex_strength)`, with one coupled explicit Runge--Kutta engine.
+Diffusion remains operator-split around that inviscid update.
 
 ## Construction
 
@@ -16,96 +16,104 @@ Numerics + initial-condition builders + Backup + Samplers + RunPlan
                      VPMSolver
 ```
 
-`Numerics` defines physics, numerical methods, device and precision.  It does
-not contain a clock, particle arrays, or an output destination.  `VPMSetup` is
-the private adapter used by the established numerical engine; new user code
-should construct a `VPMCase`, not modify a solver after construction.
+`Numerics` is the sole numerical configuration carrier. It selects the RK
+tableau, induction method, particle kernel, physical models, device, precision,
+capacity, and diagnostic controls. Runtime clocks, particle arrays, and output
+destinations are not duplicated in a second numerical setup object.
+
+## Induction and stage information path
+
+```text
+VPMSolver.advance()
+  └─ EvolutionStepper.advance(dt)
+      ├─ optional viscous half-step
+      ├─ RungeKutta.advance(..., StageRHS)
+      │   └─ each RK stage:
+      │       StageState(x_stage, Gamma_stage, core_radius, count, time)
+      │         └─ StageRHS.evaluate(...)
+      │             ├─ selected InductionMethod.evaluate_stage(...)
+      │             └─ external stage contributions
+      ├─ optional viscous half-step
+      └─ accept step and publish source revision
+```
+
+`DirectInduction`, `TreecodeInduction`, and `FMMInduction` implement the same
+stage contract. Each receives the complete temporary state and writes velocity,
+vortex-strength rate, and an optional auxiliary velocity gradient into
+preallocated fields. The RK engine knows none of the backend names or
+coefficients beyond its selected tableau.
+
+The documented strength equation is the conservative pairwise transposed
+operator with symmetric target/source core regularization. The auxiliary
+velocity gradient is a separate diagnostic output; it is not substituted for
+the strength rate when unequal core radii make the two discrete operators
+different. See [the operator specification](vpm_induction_operator.md).
 
 ## Ownership
 
-| Quantity | Canonical owner | Writers | Principal readers | Freshness / invalidation |
-| --- | --- | --- | --- | --- |
-| Immutable numerical choices | `VPMCase.numerics` | case construction only | solver, physics, stabilization | immutable |
-| Restart and log destinations | `VPMCase.backup` | case construction only | backup and logging runtime | immutable |
-| Scientific sampler declarations and schedules | `VPMCase.samplers` | case construction only | output manager | immutable |
-| Particle primary state: position, vortex strength, core radius, volume, molecular viscosity, IDs | `Particles` | initialization, advection, stretching, diffusion, coupling, stabilization | physics, coupling, diagnostics, samplers | `Particles.touch_state()` advances `state_revision` after source changes |
-| Particle derived fields: velocity, velocity gradient, strain rate, vorticity, eddy/effective viscosity | `Particles` | field evaluation and turbulence/stabilization operators | physics, diagnostics, samplers | valid only after the explicitly requested evaluator has run for the required state |
-| Spatial acceleration hierarchy | `PhysicsEngine` / treecode | physics evaluation | target velocity/gradient evaluation | keyed to `Particles.state_revision` and particle count |
-| Scalar clock and step | `VPMSolver` | accepted evolution commit; restart load | coupling, schedules, I/O, diagnostics | committed only after all physical phases succeed |
-| Stabilization lineage and event diagnostics | `StabilizationManager` | stabilization workers; backup load | stabilization, backup | reset/rebuilt with particle topology; serialized in a restart |
-| Diagnostic histories | `VPMSolver` | diagnostics recorder | export/reporting | observers only; never source state |
+| Quantity | Canonical owner | Writers | Freshness / invalidation |
+| --- | --- | --- | --- |
+| Numerical choices | `VPMCase.numerics` | case construction | immutable |
+| Position and vortex strength | `Particles` | RK evolution, diffusion, coupling, stabilization, restart | source revision after mutation |
+| Core radius and particle geometry | `Particles` | initialization, diffusion, remeshing, coupling, restart | source revision after mutation |
+| Velocity, gradient, strain, vorticity | `Particles` | explicit field evaluators | valid only after requested evaluation |
+| RK stage fields | `RungeKutta` | one active tableau stage | reused next step |
+| Stage rate composition | `StageRHS` | selected induction and external providers | evaluated from supplied stage state |
+| Hierarchical workspace | selected induction backend | tree/FMM evaluator | rebuilt or refit for the supplied source state |
+| Accepted clock | `VPMSolver` | successful step commit and restart load | staged until the physical step succeeds |
+| Output and backup cadence | `OutputManager` | schedule owner | observers consume accepted state |
 
-`Particles` owns the only mutable particle-resolved representation.  Public
-container operations (`add`, `replace`, masked source updates and removal)
-maintain the active count and call `touch_state()`.  Raw device kernels are an
-internal exception: the evolution transaction publishes one source revision
-after all such physical updates have completed.
+No observer advances physics or repairs source fields. A failed physical phase
+does not publish its staged clock; the solver is terminal-invalid and must be
+restarted from the last accepted backup.
 
-## One accepted time step
+## One accepted step
 
-The algorithm is orchestrated by `EvolutionStepper.advance()` in this order:
+1. Apply pending regeneration and pre-evolution stabilization.
+2. Update optional VLM/panel coupling.
+3. Evaluate the coupled RK stages through `StageRHS`.
+4. Apply viscous diffusion at the configured split points.
+5. Apply post-evolution and retention stabilization.
+6. Publish the particle source revision.
+7. Commit the clock and dispatch accepted-state diagnostics, samples, and
+   backups.
 
-1. Apply any pending regeneration and pre-evolution stabilization.
-2. Advance VLM/panel coupling when enabled.
-3. Evaluate velocity and, when required, velocity gradient at the stage state.
-4. Update LES/residual-viscosity fields.
-5. Advance advection and stretching (jointly for coupled RK); apply viscous
-   splitting/diffusion.
-6. Run post-update, post-evolution, and retention stabilization phases.
-7. Publish a new particle source revision and atomically commit the clock,
-   then run observers/output at the completed particle state.
+The same RK tableau is used for both position and vortex strength. RK2, SSPRK3,
+and RK4 are available through the generic `RungeKutta` engine. There is no
+fractional integration switch and no separate advection or stretching
+integrator.
 
-For fractional integration, stretching uses the gradient prepared before the
-strength update.  Coupled RK evaluates stage fields inside the physics engine;
-its public contract is that positions and vortex strengths are advanced at the
-same RK stages.  Core spreading is split symmetrically around this coupled
-update.
+## Public API
 
-## Freshness and observer rules
+Typical construction is:
 
-Velocity and gradient are derived fields, not alternate particle state.  A
-caller that requires current fields must ask the orchestration layer for an
-explicit field evaluation before it observes them.  Sampling, logging,
-diagnostics and export may read particle fields and diagnostic histories, but
-must not advance physics, repair particle data, or change the source revision.
+```python
+from openonda import vpm
 
-The treecode cache is source-state based, not step based: two source mutations
-within one step must result in distinct `state_revision` values before a target
-query may reuse an acceleration structure.  CPU snapshots must not be treated
-as mutable particle state.
+case = vpm.VPMCase(
+    numerics=vpm.Numerics(
+        time_step_size=0.01,
+        integrator=vpm.SSPRK3(),
+        induction=vpm.DirectInduction(),
+        particle_kernel="GAUSSIAN",
+        viscous=vpm.ViscousConfig.inviscid(),
+    ),
+    run=vpm.RunPlan(steps=10),
+)
+solver = vpm.VPMSolver(case)
+solver.run()
+```
 
-## Stabilization and coupling
+The old advection, stretching, velocity, and private VPM setup configuration
+objects are not public compatibility paths.
 
-`StabilizationManager` owns phase scheduling and its lineage data.  Its workers
-receive a typed `StabilizationStepState`, the latest immutable metric values,
-and a `ParticleMutationPort`; they never receive solver getters/setters or an
-unbounded solver reference.  They may change particle fields only through that
-canonical mutation port.
-`CouplingStepper` is likewise a modifier only when it injects/removes/deflects
-particles.  VLM and panel diagnostics are observers after their coupled update.
+## Qualification status
 
-## Backup and restart
-
-A backup is a numerical checkpoint, not visualization output.  It stores the
-clock, particle-resolved fields and IDs, freestream state, diffusion and
-stabilization history, plus a fingerprint of the numerical configuration.
-Loading validates the file and configuration before it mutates a solver.  A
-restart is required to reproduce an uninterrupted continuation to the expected
-floating-point tolerance; write precision used for visualization is not allowed
-to reduce restart precision.
-
-## Migration guardrails
-
-During the transition from `VPMSetup` to `VPMCase`, do not add new mirrors of
-numerical configuration or particle fields on `VPMSolver`.  New dependencies
-should be explicit (`self.solver.particles`, `self.solver.physics`, and so on),
-not acquired through broad forwarding.  Both evolution and coupling steppers
-therefore list their consumed capabilities explicitly.  CPU particle snapshots
-are revision-keyed, and physics modules communicate optional events through a
-dependency-neutral observer interface; logging presentation is injected from
-the orchestration/I/O side.
-
-An unsuccessful physical phase never publishes the staged time or step.  Its
-partially executed device work is intentionally not presented as an accepted
-state; recovery is the caller's responsibility, just as it is for a failed
-kernel launch.
+Permanent regression coverage is listed in
+[VPM induction-method qualification](vpm_induction_qualification.md). Direct
+and treecode stage paths are qualified against independent references; the FMM
+hierarchy, kernel contract, and tolerance trend are covered by focused tests.
+The current FMM velocity far field uses first-order singular Biot--Savart
+multipoles, while its canonical strength rate and auxiliary gradient remain
+exact pairwise evaluations. FMM is therefore retained as an explicit opt-in
+method rather than silently promoted to the default.

@@ -59,26 +59,142 @@ def envelope():
 
 def performance():
     import taichi as ti
-    from openonda.vpm import Backup,DirectInduction,Numerics,StabilizationConfig,TreecodeInduction,TurbulenceConfig,ViscousConfig,VPMCase,VPMSolver
-    rows=[]; rates={}
-    def make(n,backend):
-      rng=np.random.default_rng(setup.SEED+n); position=rng.uniform(-1,1,(n,3)).astype('f4'); strength=(.02*rng.normal(size=(n,3))).astype('f4'); strength-=strength.mean(0); radius=np.full(n,.18,'f4'); volume=np.full(n,.12**3,'f4')
-      case=VPMCase(directory=setup.RESULTS/'performance_work'/f'{backend}_{n}',backup=Backup(),numerics=Numerics(compute_device='VULKAN',precision='f32',induction=DirectInduction() if backend=='direct' else TreecodeInduction(theta=.2),viscous=ViscousConfig.inviscid(particle_spacing=.12),turbulence=TurbulenceConfig.inviscid(),stabilization=StabilizationConfig.disabled(),max_n_particles=n+16,max_evaluation_points=n+16,verbose=False))
-      with contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()): solver=VPMSolver(case)
-      solver.add_vortex_particles(position=position,velocity=np.zeros_like(position),vortex_strength=strength,core_radius=radius,particle_volume=volume,kinematic_viscosity=np.zeros(n,'f4')); return solver
+    from openonda.vpm import (
+        Backup,
+        DirectInduction,
+        Numerics,
+        StabilizationConfig,
+        TreecodeInduction,
+        TurbulenceConfig,
+        ViscousConfig,
+        VPMCase,
+        VPMSolver,
+    )
+
+    rows = []
+    rates = {}
+
+    def make(n, backend):
+        rng = np.random.default_rng(setup.SEED + n)
+        position = rng.uniform(-1, 1, (n, 3)).astype("f4")
+        strength = (0.02 * rng.normal(size=(n, 3))).astype("f4")
+        strength -= strength.mean(0)
+        radius = np.full(n, 0.18, "f4")
+        volume = np.full(n, 0.12**3, "f4")
+        induction = DirectInduction() if backend == "direct" else TreecodeInduction(theta=0.2)
+        case = VPMCase(
+            directory=setup.RESULTS / "performance_work" / f"{backend}_{n}",
+            backup=Backup(),
+            numerics=Numerics(
+                compute_device="VULKAN",
+                precision="f32",
+                induction=induction,
+                viscous=ViscousConfig.inviscid(particle_spacing=0.12),
+                turbulence=TurbulenceConfig.inviscid(),
+                stabilization=StabilizationConfig.disabled(),
+                max_n_particles=n + 16,
+                max_evaluation_points=n + 16,
+                verbose=False,
+            ),
+        )
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            solver = VPMSolver(case)
+        solver.add_vortex_particles(
+            position=position,
+            velocity=np.zeros_like(position),
+            vortex_strength=strength,
+            core_radius=radius,
+            particle_volume=volume,
+            kinematic_viscosity=np.zeros(n, "f4"),
+        )
+        return solver
+
     def timed(op):
-      op(); ti.sync(); vals=[]
-      for _ in range(10): start=time.perf_counter(); op(); ti.sync(); vals.append(time.perf_counter()-start)
-      return np.median(vals),np.std(vals)
-    for n in (256,1024,4096):
-      for backend in ('direct','tree'):
-       solver=make(n,backend); p=solver.particles; physics=solver.physics; physics._resize_temp_fields(n); physics._stretching._use_treecode=backend=='tree'; physics._stretching._treecode_theta=.2
-       def rate(): physics._stretching._rate(p.position,p.vortex_strength,p.core_radius,physics.dstr_dt_temp,1,n)
-       med,std=timed(rate); rate(); ti.sync(); rates[n,backend]=physics.dstr_dt_temp.to_numpy()[:n].astype(float)
-       rows.append(dict(particles=n,backend=backend,operation='transposed_strength_rate',median_s=med,std_s=std,repeats=10,precision='f32',theta=.2 if backend=='tree' else '',pairwise_stretching_sweeps=backend=='direct',gradient_evaluations=backend=='tree',tree_builds=backend=='tree',tree_traversals=backend=='tree',synchronisations=1,kernel_launches_minimum=1))
-       def fused(): physics.compute_velocity_and_gradient_hierarchical(p,theta=.2) if backend=='tree' else physics.compute_velocity_and_gradient(p)
-       med,std=timed(fused); rows.append(dict(particles=n,backend=backend,operation='velocity_and_gradient',median_s=med,std_s=std,repeats=10,precision='f32',theta=.2 if backend=='tree' else '',fused_evaluations=1,tree_builds=backend=='tree',tree_traversals=backend=='tree',synchronisations=1,kernel_launches_minimum=1)); solver.close()
-      direct=rates[n,'direct']; tree=rates[n,'tree']; rows.append(dict(particles=n,backend='tree_vs_direct',operation='transposed_strength_rate_accuracy',relative_l2=np.linalg.norm(tree-direct)/max(np.linalg.norm(direct),1e-30),direct_net_rate_norm=np.linalg.norm(direct.sum(0)),tree_net_rate_norm=np.linalg.norm(tree.sum(0)),precision='f32',theta=.2))
-    write_csv(setup.RESULTS/'performance.csv',rows); print(f'wrote {len(rows)} performance records')
+        op()
+        ti.sync()
+        values = []
+        for _ in range(10):
+            start = time.perf_counter()
+            op()
+            ti.sync()
+            values.append(time.perf_counter() - start)
+        return np.median(values), np.std(values)
+
+    for n in (256, 1024, 4096):
+        for backend in ("direct", "tree"):
+            solver = make(n, backend)
+            particles = solver.particles
+            physics = solver.physics
+            velocity_out = physics.vel_temp
+            rate_out = physics.dstr_dt_temp
+            gradient_out = particles.velocity_gradient
+
+            def stage(with_gradient=False):
+                solver.induction.evaluate_stage(
+                    position=particles.position,
+                    vortex_strength=particles.vortex_strength,
+                    core_radius=particles.core_radius,
+                    count=n,
+                    velocity_out=velocity_out,
+                    vortex_strength_rate_out=rate_out,
+                    velocity_gradient_out=gradient_out if with_gradient else None,
+                )
+
+            med, std = timed(stage)
+            stage()
+            ti.sync()
+            rates[n, backend] = rate_out.to_numpy()[:n].astype(float)
+            rows.append(
+                dict(
+                    particles=n,
+                    backend=backend,
+                    operation="induction_stage_rates",
+                    median_s=med,
+                    std_s=std,
+                    repeats=10,
+                    precision="f32",
+                    theta=0.2 if backend == "tree" else "",
+                    pairwise_strength_rate=backend == "direct",
+                    hierarchy_builds=backend == "tree",
+                    hierarchy_traversals=backend == "tree",
+                    synchronisations=1,
+                )
+            )
+
+            med, std = timed(lambda: stage(with_gradient=True))
+            rows.append(
+                dict(
+                    particles=n,
+                    backend=backend,
+                    operation="induction_stage_rates_and_gradient",
+                    median_s=med,
+                    std_s=std,
+                    repeats=10,
+                    precision="f32",
+                    theta=0.2 if backend == "tree" else "",
+                    gradient_output=True,
+                    hierarchy_builds=backend == "tree",
+                    hierarchy_traversals=backend == "tree",
+                    synchronisations=1,
+                )
+            )
+            solver.close()
+
+        direct = rates[n, "direct"]
+        tree = rates[n, "tree"]
+        rows.append(
+            dict(
+                particles=n,
+                backend="tree_vs_direct",
+                operation="transposed_strength_rate_accuracy",
+                relative_l2=np.linalg.norm(tree - direct) / max(np.linalg.norm(direct), 1e-30),
+                direct_net_rate_norm=np.linalg.norm(direct.sum(0)),
+                tree_net_rate_norm=np.linalg.norm(tree.sum(0)),
+                precision="f32",
+                theta=0.2,
+            )
+        )
+    write_csv(setup.RESULTS / "performance.csv", rows)
+    print(f"wrote {len(rows)} performance records")
 
 if __name__=='__main__': envelope(); performance()
