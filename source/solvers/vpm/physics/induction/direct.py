@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import taichi as ti
 
+from ...kernels.base import RadialVortexKernel, make_vortex_kernel
+
 
 @ti.data_oriented
 class DirectInduction:
@@ -16,16 +18,25 @@ class DirectInduction:
     intentionally private to this migration adapter.
     """
 
-    def __init__(self, physics=None, max_n_particles: int | None = None) -> None:
+    def __init__(
+        self,
+        physics=None,
+        max_n_particles: int | None = None,
+        kernel: RadialVortexKernel | None = None,
+    ) -> None:
+        self.method = "DIRECT"
+        self.kernel = make_vortex_kernel("GAUSSIAN") if kernel is None else kernel
         self.physics = None
         self.max_n_particles = int(max_n_particles or 1)
         self._strain_rate = None
         if physics is not None:
             self.bind(physics)
 
-    def bind(self, physics):
+    def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
         """Bind this immutable construction object to one physics workspace."""
         self.physics = physics
+        if kernel is not None:
+            self.kernel = kernel
         capacity = physics.max_n_particles if self.max_n_particles == 1 else self.max_n_particles
         if capacity < 1:
             raise ValueError("max_n_particles must be positive")

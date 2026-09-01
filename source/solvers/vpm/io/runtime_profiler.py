@@ -131,7 +131,7 @@ class RuntimeProfiler:
         """Time a named section. Returns a no-op context when disabled.
 
         >>> with profiler.section("velocity"):
-                ...     solver._update_velocities()
+                ...     solver.stage_rhs.evaluate(...)
         """
         if not self.enabled:
             return _NULLCTX

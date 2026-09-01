@@ -133,7 +133,7 @@ class ParticleFieldEvaluation:
         if required_size > self.max_n_particles:
             raise ValueError(
                 f"Diagnostics require {required_size} particles, but max_n_particles="
-                f"{self.max_n_particles}. Increase VPMSetup.max_n_particles before "
+                f"{self.max_n_particles}. Increase Numerics.max_n_particles before "
                 "constructing the solver."
             )
 

@@ -102,16 +102,8 @@ class EvolutionStepper:
         return self.solver.n_sources
 
     @property
-    def stretching_enabled(self):
-        return self.solver.stretching_enabled
-
-    @property
     def stabilization_config(self):
         return self.solver.stabilization_config
-
-    @property
-    def advection_scheme(self):
-        return self.solver.advection_scheme
 
     @property
     def viscous_scheme(self):
@@ -124,30 +116,6 @@ class EvolutionStepper:
     @property
     def _n_steps_per_dvh_diffusion(self):
         return self.solver._n_steps_per_dvh_diffusion
-
-    @property
-    def stretching_mode(self):
-        return self.solver.stretching_mode
-
-    @property
-    def stretching_scheme(self):
-        return self.solver.stretching_scheme
-
-    @property
-    def stretching_conserve_energy(self):
-        return self.solver.stretching_conserve_energy
-
-    @property
-    def stretching_conserve_moments(self):
-        return self.solver.stretching_conserve_moments
-
-    @property
-    def stretching_treecode_theta(self):
-        return self.solver.stretching_treecode_theta
-
-    @property
-    def stretching_use_treecode(self):
-        return self.solver.stretching_use_treecode
 
     @property
     def turbulence_model(self):
@@ -231,51 +199,17 @@ class EvolutionStepper:
                 with self.profiler.section("Panel coupling"):
                     self.coupling.advance_panel()
 
-            _adv = self.advection_scheme.upper()
             _gradients_required = (
-                self.stretching_enabled
-                or self.flow_model == "LES"
+                self.flow_model == "LES"
                 or self.stabilization_config.stretching_viscosity_coefficient > 0.0
                 or (
                     self.stabilization_config.pedrizzetti_relaxation_enabled
                     and self.flow_model != "POTENTIAL"
                 )
             )
-            _defer_stationary_velocity = (
-                _adv == "NONE"
-                and not _gradients_required
-                and self.vlm_solver is None
-                and self.panel_solver is None
-                and self.n_sources == 0
-                and getattr(self.physics, "velocity_override", None) is None
-            )
-            panel_affects_particle_velocity = (
-                self.panel_solver is not None
-                and getattr(self.panel_solver, "coupling_scope", "full") == "full"
-            )
-            _fuse_vel_grad = (
-                self.flow_model != "POTENTIAL"
-                and _adv != "NONE"
-                and _gradients_required
-                and self.n_sources == 0
-                and not panel_affects_particle_velocity
-                and getattr(self.physics, "velocity_override", None) is None
-            )
-            if _fuse_vel_grad:
-                with self.profiler.section("Velocity + gradients"):
-                    self._update_velocity_and_gradients()
-            else:
-                if not _defer_stationary_velocity and (
-                    _adv == "NONE"
-                    or not _gradients_required
-                    or self.n_sources > 0
-                    or panel_affects_particle_velocity
-                    ):
-                    with self.profiler.section("velocity"):
-                        self._update_velocities()
-                if _gradients_required:
-                    with self.profiler.section("Velocity gradients"):
-                        self._update_velocity_gradients()
+            if _gradients_required:
+                with self.profiler.section("Velocity gradients"):
+                    self._update_velocity_gradients()
 
             with self.profiler.section("LES update"):
                 self._update_les_state()
@@ -293,10 +227,6 @@ class EvolutionStepper:
             with self.profiler.section("Coupled particle evolution"):
                 self._apply_coupled_update(
                     self.time_step_size,
-                    precomputed_velocity_k1=False,
-                    strength_enabled=(
-                        self.flow_model != "POTENTIAL" and self.stretching_enabled
-                    ),
                 )
             self._debug_validate_particle_geometry("coupled evolution")
 
@@ -365,36 +295,6 @@ class EvolutionStepper:
         self._staged_step = None
         self._staged_time = None
 
-    def _update_velocities(self) -> None:
-        """Evaluate self-induced particle velocity and optional body/source contributions."""
-        self.physics.compute_self_induced_velocity(
-            self.particles.position,
-            self.particles.vortex_strength,
-            self.particles.core_radius,
-            self.particles.velocity,
-            self.particles.velocity_background,
-            self.particles.n_particles_total,
-        )
-
-        if (
-            self.panel_solver is not None
-            and getattr(self.panel_solver, "coupling_scope", "full") == "full"
-        ):
-            # The panel solver reads velocity written by an asynchronous Taichi kernel.
-            ti.sync()
-            self.panel_solver.compute_induced_velocity_direct(self.particles)
-
-        if self.n_sources > 0:
-            self.physics.kernels["compute_target_source_velocity_kernel"](
-                self.particles.position,
-                self.source_position,
-                self.source_strength,
-                self.source_core_radius,
-                self.particles.velocity,
-                self.particles.n_particles_total,
-                self.n_sources,
-            )
-
     def _update_velocity_gradients(self, announce: bool = False) -> None:
         """Evaluate particle velocity gradients with the configured direct or tree method."""
         del announce  # retained for compatibility; static method details are logged at time zero
@@ -435,49 +335,6 @@ class EvolutionStepper:
                     self.particles.zone_id,
                     len(self.particles),
                 )
-
-    def _update_strength(self, time_step_size: float | None = None, announce: bool = False) -> None:
-        """Advance vortex stretching, then viscous diffusion, over ``time_step_size``."""
-        del announce  # retained for compatibility; static formulation is logged at time zero
-        if self.flow_model == "POTENTIAL":
-            return
-
-        time_step_size = self.time_step_size if time_step_size is None else time_step_size
-        self._apply_stretching(time_step_size)
-        self._apply_viscous_diffusion(time_step_size)
-
-    def _effective_stretching_mode(self) -> str:
-        """Return the user-selected stretching formulation."""
-        return self.stretching_mode
-
-    def _apply_stretching(self, time_step_size: float) -> None:
-        """Advance the configured vortex-stretching equation once per ``time_step_size``."""
-        if self.stretching_enabled:
-            # Warn once when the explicit stretching step exceeds the strain-based target.
-            if not self.solver._stretch_time_step_size_warned:
-                gradient = self.particle_velocity_gradient
-                strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))
-                max_strain_rate = (
-                    float(np.max(np.abs(np.linalg.eigvalsh(strain)))) if len(strain) else 0.0
-                )
-                if max_strain_rate > 0.0:
-                    recommended_time_step_size = 0.2 / max_strain_rate
-                    if time_step_size > recommended_time_step_size:
-                        Logging.stretching_time_step_size_warning(
-                            time_step_size,
-                            recommended_time_step_size,
-                            max_strain_rate,
-                        )
-                        self.solver._stretch_time_step_size_warned = True
-            self.physics.vortex_stretching(
-                self.particles,
-                time_step_size=time_step_size,
-                scheme=self.stretching_scheme,
-                mode=self.stretching_mode,
-                use_treecode=self.stretching_use_treecode,
-                treecode_theta=self.stretching_treecode_theta,
-            )
-            ti.sync()
 
     def _validate_axisymmetric_orbits(self) -> None:
         """Reject malformed orbit IDs before applying rotational stage averages."""
@@ -532,51 +389,29 @@ class EvolutionStepper:
 
         self.solver._axisymmetric_orbits_validated = True
 
-    def _apply_coupled_advection_stretching(
-        self,
-        time_step_size: float,
-        *,
-        precomputed_velocity_k1: bool = False,
-        strength_enabled: bool = True,
-    ) -> None:
-        """Advance position and vortex_strength at the same Runge--Kutta stages."""
+    def _advance_particles(self, time_step_size: float) -> None:
+        """Advance position and vortex strength at common Runge--Kutta stages."""
         self._validate_axisymmetric_orbits()
-        self.physics.update_positions_and_strengths(
-            self.particles,
+        self.solver.integrator.advance(
+            position=self.particles.position,
+            vortex_strength=self.particles.vortex_strength,
+            core_radius=self.particles.core_radius,
+            count=len(self.particles),
+            time=self.solver.time,
             time_step_size=time_step_size,
-            scheme=self.stretching_scheme,
-            mode=self.stretching_mode,
-            use_treecode=self.stretching_use_treecode,
-            treecode_theta=self.stretching_treecode_theta,
-            conserve_moments=self.stretching_conserve_moments,
-            conserve_energy=self.stretching_conserve_energy,
-            axisymmetric_axis=self.axisymmetric_axis,
-            precomputed_velocity_k1=precomputed_velocity_k1,
-            strength_enabled=strength_enabled,
+            right_hand_side=self.solver.stage_rhs,
         )
         ti.sync()
 
     def _apply_coupled_update(
-        self,
-        time_step_size: float,
-        *,
-        precomputed_velocity_k1: bool,
-        strength_enabled: bool = True,
+        self, time_step_size: float,
     ) -> None:
         """Advance position and strength together, with symmetric core spreading."""
         self.physics.rate_projection_max_correction_ratio = 0.0
-        reuse_velocity = bool(precomputed_velocity_k1)
         if self.viscous_scheme == "CS":
             self._apply_core_spreading_diffusion(0.5 * time_step_size)
-            reuse_velocity = False
 
-        target_moments = self._current_kernel_moments()
-        self._apply_coupled_advection_stretching(
-            time_step_size,
-            precomputed_velocity_k1=reuse_velocity,
-            strength_enabled=strength_enabled,
-        )
-        self._restore_coupled_step_moments(target_moments)
+        self._advance_particles(time_step_size)
 
         if self.viscous_scheme == "CS":
             self._apply_core_spreading_diffusion(0.5 * time_step_size)
@@ -584,198 +419,13 @@ class EvolutionStepper:
         if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
             self._apply_viscous_diffusion(time_step_size)
 
-    def _current_kernel_moments(self):
-        """Return vortex_strength and both impulses for the active blob kernel."""
-        if not self.stretching_conserve_moments or len(self.particles) == 0:
-            return None
-        from ..stabilization.filament_refinement import particle_moments
-
-        return particle_moments(
-            self.particles.position_cpu(use_cache=False).astype(np.float64),
-            self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64),
-            self.particles.core_radius_cpu(use_cache=False).astype(np.float64),
-            angular_core_coefficient=self.physics._angular_core_coefficient,
-        )
-
-    def _restore_coupled_step_moments(self, target_moments) -> None:
-        """Correct finite-RK drift in the conserved coupled-step moments."""
-        if target_moments is None or len(self.particles) == 0:
-            return
-        from ..stabilization.divergence_relaxation import (
-            _MomentNullspace,
-            invariant_rows,
-        )
-        from ..stabilization.filament_refinement import particle_moments
-
-        position = self.particles.position_cpu(use_cache=False).astype(np.float64)
-        vortex_strength = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
-        core_radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
-        particle_volume = self.particles.particle_volume_cpu(use_cache=False).astype(np.float64)
-        core_coefficient = self.physics._angular_core_coefficient
-        current = particle_moments(
-            position,
-            vortex_strength,
-            core_radius,
-            angular_core_coefficient=core_coefficient,
-        )
-        moment_change = np.concatenate(
-            (
-                target_moments[0] - current[0],
-                target_moments[2] - current[2],
-                target_moments[3] - current[3],
-            )
-        )
-        nullspace = _MomentNullspace(
-            invariant_rows(
-                position,
-                core_radius,
-                angular_core_coefficient=core_coefficient,
-            ),
-            particle_volume,
-        )
-        correction = nullspace.correction_for_moment_change(moment_change)
-        correction_relative = float(
-            np.linalg.norm(correction) / max(np.linalg.norm(vortex_strength), np.finfo(float).tiny)
-        )
-        self.update_particle_vortex_strength(
-            np.ones(len(vortex_strength), dtype=bool),
-            correction.astype(self.np_dtype),
-        )
-        self.physics.rate_projection_max_correction_ratio = max(
-            self.physics.rate_projection_max_correction_ratio,
-            correction_relative,
-        )
-
-        uploaded = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
-        restored = particle_moments(
-            position,
-            uploaded,
-            core_radius,
-            angular_core_coefficient=core_coefficient,
-        )
-        scale = max(target_moments[1], np.finfo(float).tiny)
-        impulse_scale = max(
-            0.5 * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum()),
-            np.finfo(float).tiny,
-        )
-        angular_terms = (
-            np.cross(position, np.cross(position, vortex_strength)) / 3.0
-            - core_coefficient * core_radius[:, None] ** 2 * vortex_strength
-        )
-        angular_scale = max(
-            float(np.linalg.norm(angular_terms, axis=1).sum()),
-            np.finfo(float).tiny,
-        )
-        errors = (
-            float(np.linalg.norm(restored[0] - target_moments[0])) / scale,
-            float(np.linalg.norm(restored[2] - target_moments[2])) / impulse_scale,
-            float(np.linalg.norm(restored[3] - target_moments[3])) / angular_scale,
-        )
-        if max(errors) > 4096.0 * np.finfo(self.np_dtype).eps:
-            raise RuntimeError(
-                "coupled-step moment projection exceeded its roundoff allowance: "
-                f"vortex_strength={errors[0]:.3e}, linear_impulse={errors[1]:.3e}, "
-                f"angular_impulse={errors[2]:.3e}"
-            )
 
     def _apply_core_spreading_diffusion(self, time_step_size: float) -> None:
-        """Advance Gaussian core spreading and optionally restore configured moments."""
+        """Advance the split Gaussian core-spreading operator."""
         if time_step_size <= 0.0 or len(self.particles) == 0:
             return
-        if not self.stretching_conserve_moments:
-            self.physics.core_spreading_diffusion(self.particles, time_step_size)
-            return
-
-        from ..stabilization.divergence_relaxation import (
-            _MomentNullspace,
-            invariant_rows,
-        )
-        from ..stabilization.filament_refinement import particle_moments
-
-        position = self.particles.position_cpu(use_cache=False).astype(np.float64)
-        vortex_strength = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
-        core_radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
-        particle_volume = self.particles.particle_volume_cpu(use_cache=False).astype(np.float64)
-        core_coefficient = self.physics._angular_core_coefficient
-        before = particle_moments(
-            position,
-            vortex_strength,
-            core_radius,
-            angular_core_coefficient=core_coefficient,
-        )
-
         self.physics.core_spreading_diffusion(self.particles, time_step_size)
-        new_core_radius = self.particles.core_radius_cpu(use_cache=False).astype(np.float64)
-        uncorrected = particle_moments(
-            position,
-            vortex_strength,
-            new_core_radius,
-            angular_core_coefficient=core_coefficient,
-        )
-        impulse_scale = max(
-            0.5 * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum()),
-            np.finfo(float).tiny,
-        )
-        angular_terms = (
-            np.cross(position, np.cross(position, vortex_strength)) / 3.0
-            - core_coefficient * core_radius[:, None] ** 2 * vortex_strength
-        )
-        angular_scale = max(
-            float(np.linalg.norm(angular_terms, axis=1).sum()),
-            np.finfo(float).tiny,
-        )
-        roundoff_limit = 4096.0 * np.finfo(self.np_dtype).eps
-        uncorrected_errors = (
-            float(np.linalg.norm(uncorrected[0] - before[0]))
-            / max(before[1], np.finfo(float).tiny),
-            float(np.linalg.norm(uncorrected[2] - before[2])) / impulse_scale,
-            float(np.linalg.norm(uncorrected[3] - before[3])) / angular_scale,
-        )
-        if max(uncorrected_errors) <= roundoff_limit:
-            # Closed vortex fields acquire only a sub-precision angular defect
-            # from core spreading. Avoid solving an increasingly ill-conditioned
-            # moment system when there is no resolvable correction to make.
-            self.solver.core_spreading_correction_relative = 0.0
-            return
-
-        moment_change = np.concatenate(
-            (before[0] - uncorrected[0], before[2] - uncorrected[2], before[3] - uncorrected[3])
-        )
-        nullspace = _MomentNullspace(
-            invariant_rows(
-                position,
-                new_core_radius,
-                angular_core_coefficient=core_coefficient,
-            ),
-            particle_volume,
-        )
-        correction = nullspace.correction_for_moment_change(moment_change)
-        self.solver.core_spreading_correction_relative = float(
-            np.linalg.norm(correction) / max(np.linalg.norm(vortex_strength), np.finfo(float).tiny)
-        )
-        self.update_particle_vortex_strength(
-            np.ones(len(vortex_strength), dtype=bool),
-            correction.astype(self.np_dtype),
-        )
-
-        uploaded = self.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
-        after = particle_moments(
-            position,
-            uploaded,
-            new_core_radius,
-            angular_core_coefficient=core_coefficient,
-        )
-        errors = {
-            "vortex_strength": float(np.linalg.norm(after[0] - before[0]))
-            / max(before[1], np.finfo(float).tiny),
-            "linear_impulse": float(np.linalg.norm(after[2] - before[2])) / impulse_scale,
-            "angular_impulse": float(np.linalg.norm(after[3] - before[3])) / angular_scale,
-        }
-        if max(errors.values()) > roundoff_limit:
-            raise RuntimeError(
-                "core-spreading moment projection exceeded its roundoff allowance: "
-                + ", ".join(f"{name}={value:.3e}" for name, value in errors.items())
-            )
+        self.solver.core_spreading_correction_relative = 0.0
 
     def _apply_viscous_diffusion(self, time_step_size: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""
@@ -898,20 +548,3 @@ class EvolutionStepper:
                 effective_viscosity=effective_viscosity,
                 max_nodes=getattr(vc, "gbd_max_nodes", None),
             )
-
-    def _update_positions(
-        self, time_step_size: float | None = None, precomputed_k1: bool = False
-    ) -> None:
-        """Advect particles with the configured time integrator.
-
-        A precomputed first-stage velocity may be reused when velocity and gradients
-        were evaluated together at the beginning of the step.
-        """
-        if self.advection_scheme == "NONE":
-            return
-        self.physics.update_positions(
-            self.particles,
-            self.time_step_size if time_step_size is None else time_step_size,
-            scheme=self.advection_scheme,
-            precomputed_k1=precomputed_k1,
-        )

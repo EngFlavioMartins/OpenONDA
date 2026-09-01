@@ -53,6 +53,11 @@ class RungeKutta:
             for _ in range(4)
         ]
 
+    @property
+    def name(self) -> str:
+        """Name of the active tableau for configuration reporting."""
+        return self.tableau.name
+
     @ti.kernel
     def _construct_stage_kernel(
         self,

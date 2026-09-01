@@ -9,10 +9,13 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from . import gaussian, high_order_gaussian, super_gaussian, winckelmans
+from .base import RadialVortexKernel, make_vortex_kernel
 
 __all__ = [
     "gaussian",
     "high_order_gaussian",
     "winckelmans",
     "super_gaussian",
+    "RadialVortexKernel",
+    "make_vortex_kernel",
 ]

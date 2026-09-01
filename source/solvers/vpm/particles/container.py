@@ -200,7 +200,7 @@ class Particles:
             return
         raise ValueError(
             f"Particle insertion requires capacity {needed}, but max_n_particles="
-            f"{self._max_particles}. Increase VPMSetup.max_n_particles before "
+            f"{self._max_particles}. Increase Numerics.max_n_particles before "
             "constructing the solver; runtime Taichi field resizing is disabled "
             "because replaced fields retain device memory."
         )

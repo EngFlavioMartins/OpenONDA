@@ -36,8 +36,11 @@ from ..io.physics_events import LoggingPhysicsEventObserver
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import OutputEvent, OutputManager
 from ..io.solver_io import SolverIO
+from ..kernels.base import make_vortex_kernel
+from ..numerics.runge_kutta import RungeKutta
 from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
+from ..physics.stage_rhs import ParticleExternalStageContribution, StageRHS
 from ..runtime.backend import initialize_taichi_backend, reset_taichi_backend
 from ..stabilization import StabilizationManager
 from ..stabilization.context import (
@@ -215,18 +218,8 @@ class VPMSolver:
                 f"Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s)."
             )
 
-        self.integrator = final_setup.integrator
+        self.integrator_tableau = final_setup.integrator
         self.induction = final_setup.induction
-        self.advection_scheme = final_setup.integrator.name
-        self.stretching_scheme = {
-            "SSPRK3": "RK3",
-            "RK2": "RK2",
-            "RK4": "RK4",
-        }.get(final_setup.integrator.name, final_setup.integrator.name)
-        self.stretching_use_treecode = False
-        self.stretching_treecode_theta = getattr(final_setup.induction, "theta", 0.3)
-        self.stretching_conserve_moments = False
-        self.stretching_conserve_energy = False
         self.compute_device = final_setup.compute_device.upper()
         self.flow_model = final_setup.turbulence.flow_model.upper()
         self.viscous_scheme = final_setup.viscous.scheme
@@ -288,17 +281,30 @@ class VPMSolver:
             event_observer=LoggingPhysicsEventObserver(),
         )
 
-        _vel_method = "TREECODE" if final_setup.induction.__class__.__name__ == "TreecodeInduction" else "DIRECT"
+        _vel_method = getattr(final_setup.induction, "method", "DIRECT").upper()
         _vel_theta = getattr(final_setup.induction, "theta", 0.5)
         self.physics.configure_velocity(
-            _vel_method,
+            _vel_method if _vel_method in {"DIRECT", "TREECODE"} else "DIRECT",
             _vel_theta,
             multipole_order=getattr(final_setup.induction, "multipole_order", 1),
             sort_particle_targets=getattr(final_setup.induction, "sort_particle_targets", False),
             traversal_block_dim=getattr(final_setup.induction, "traversal_block_dim", 128),
         )
         if hasattr(self.induction, "bind"):
-            self.induction.bind(self.physics)
+            self.induction.bind(
+                self.physics,
+                kernel=make_vortex_kernel(self.particle_kernel),
+            )
+        self.integrator = RungeKutta(
+            tableau=self.integrator_tableau,
+            max_n_particles=max_p,
+            dtype=self.accumulator_dtype,
+        )
+        self.stage_rhs = StageRHS(
+            self.induction,
+            providers=(ParticleExternalStageContribution(self.particles, self.physics),),
+            strength_enabled=self.flow_model != "POTENTIAL",
+        )
 
         _visc_cfg = getattr(final_setup, "viscous", None)
         if _visc_cfg is not None and hasattr(self.physics, "core_radius_ratio"):
@@ -361,9 +367,6 @@ class VPMSolver:
                 subgrid_dissipation_coefficient=final_setup.turbulence.subgrid_dissipation_coefficient,
                 accumulator_dtype=self.accumulator_dtype,
             )
-        self.stretching_enabled = True
-        self.stretching_mode = "TRANSPOSED"
-
         self.field_diagnostics = ParticleFieldEvaluation(
             particle_kernel=self.particle_kernel,
             max_n_particles=max_p,

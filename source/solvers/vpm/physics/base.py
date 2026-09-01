@@ -100,7 +100,7 @@ class PhysicsBase:
         # Velocity-evaluation method — the single source of truth for how the
         # self-induced velocity is computed (see compute_self_induced_velocity()).  Set once by
         # the solver via configure_velocity(); defaults to direct O(N²) summation.
-        # DIRECT: exact O(N²); use VelocityConfig.treecode(theta=0.5) for N ≳ 5 000 (~5% error)
+        # DIRECT: exact O(N²); select TreecodeInduction for large clouds.
         self.velocity_method = "DIRECT"  # "DIRECT" | "TREECODE"
         self.velocity_theta = 0.3  # Barnes-Hut opening angle (treecode only)
         self.treecode_multipole_order = 1
@@ -239,7 +239,7 @@ class PhysicsBase:
             return
         raise ValueError(
             f"Particle operation requires {N} slots, but max_n_particles="
-            f"{self._temp_field_size}. Increase VPMSetup.max_n_particles before "
+            f"{self._temp_field_size}. Increase Numerics.max_n_particles before "
             "constructing the solver."
         )
 
@@ -616,7 +616,7 @@ class PhysicsBase:
             return
         raise ValueError(
             f"Target query requires {N} points but max_evaluation_points="
-            f"{self._target_field_size}. Increase VPMSetup.max_evaluation_points "
+            f"{self._target_field_size}. Increase Numerics.max_evaluation_points "
             "before constructing the solver; runtime Taichi field growth is "
             "disabled because replaced fields retain device memory."
         )
@@ -745,7 +745,7 @@ class PhysicsBase:
 
         raise ValueError(
             f"Filtered evaluation requires {N} particles, but max_n_particles="
-            f"{self._filtered_field_size}. Increase VPMSetup.max_n_particles "
+            f"{self._filtered_field_size}. Increase Numerics.max_n_particles "
             "before constructing the solver."
         )
 

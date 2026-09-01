@@ -1,18 +1,20 @@
-"""Treecode induction adapter used during the VPM migration."""
+"""Barnes--Hut induction evaluator behind the common VPM stage contract."""
 
 from __future__ import annotations
 
 import taichi as ti
 
+from ....kernels.base import RadialVortexKernel, make_vortex_kernel
+
 
 @ti.data_oriented
 class TreecodeInduction:
-    """Adapt the existing LBVH treecode to the common stage contract.
+    """Evaluate stage velocity hierarchically and the canonical rate exactly.
 
-    This migration adapter deliberately keeps the treecode implementation
-    private.  Its hierarchy is rebuilt from the supplied stage position and
-    strength fields, so a strength-changing RK stage cannot reuse stale
-    moments.
+    The LBVH workspace is rebuilt from every supplied stage state.  This keeps
+    geometry and strength moments synchronized when an RK stage changes either
+    position or vortex strength.  The direct pairwise rate is retained as the
+    reference operator until a mutual tree traversal for that rate is added.
     """
 
     def __init__(
@@ -23,7 +25,10 @@ class TreecodeInduction:
         sort_particle_targets: bool = False,
         traversal_block_dim: int = 128,
         max_n_particles: int | None = None,
+        kernel: RadialVortexKernel | None = None,
     ) -> None:
+        self.method = "TREECODE"
+        self.kernel = make_vortex_kernel("GAUSSIAN") if kernel is None else kernel
         if not 0.0 < float(theta) < 2.0:
             raise ValueError("treecode theta must be in (0, 2)")
         self.physics = None
@@ -39,9 +44,11 @@ class TreecodeInduction:
         if physics is not None:
             self.bind(physics)
 
-    def bind(self, physics):
+    def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
         """Bind this construction object to one physics workspace."""
         self.physics = physics
+        if kernel is not None:
+            self.kernel = kernel
         if self.max_n_particles == 1:
             self.max_n_particles = physics.max_n_particles
         return self
@@ -61,7 +68,7 @@ class TreecodeInduction:
         """Evaluate one complete stage from the supplied source fields."""
         del stage_time
         if self.physics is None:
-            raise RuntimeError("TreecodeInduction must be bound to a PhysicsEngine before evaluation")
+            raise RuntimeError("TreecodeInduction must be bound before evaluation")
         count = int(count)
         if count < 0 or count > self.max_n_particles:
             raise ValueError(f"stage count {count} exceeds treecode capacity")
@@ -71,18 +78,33 @@ class TreecodeInduction:
         tree = self.physics._get_or_create_treecode(count, self.theta)
         tree.build(position, vortex_strength, core_radius, count)
         self.physics._target_tree_key = None
+        self.physics.configure_velocity(
+            "TREECODE",
+            self.theta,
+            multipole_order=self.multipole_order,
+            sort_particle_targets=self.sort_particle_targets,
+            traversal_block_dim=self.traversal_block_dim,
+        )
         tree.compute_velocities_gpu(background_field=self.physics._zero_velocity)
         self.physics._copy_vec3(tree.velocity, velocity_out, count)
-        tree.compute_velocity_gradients_gpu()
-        self.physics.gradient_contraction_rate_kernel(
-            tree.velocity_gradient,
-            vortex_strength,
-            vortex_strength_rate_out,
-            1,
-            count,
-        )
         if velocity_gradient_out is not None:
+            tree.compute_velocity_gradients_gpu()
             self.physics._copy_mat3(tree.velocity_gradient, velocity_gradient_out, count)
+
+        # The canonical strength equation is the conservative pairwise
+        # transpose, not a source-radius gradient contraction.
+        for start in range(0, count, 4096):
+            target_count = min(4096, count - start)
+            self.physics.compute_stretching_rate_batch_kernel(
+                position,
+                vortex_strength,
+                core_radius,
+                vortex_strength_rate_out,
+                1,
+                start,
+                target_count,
+                count,
+            )
 
 
 __all__ = ["TreecodeInduction"]
