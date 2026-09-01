@@ -8,17 +8,25 @@ import io
 import numpy as np
 from scipy.special import erf
 
-from openonda.vpm import Backup, Numerics, VelocityConfig, ViscousConfig, VPMCase, VPMSolver
+from openonda.vpm import (
+    Backup,
+    DirectInduction,
+    Numerics,
+    TreecodeInduction,
+    ViscousConfig,
+    VPMCase,
+    VPMSolver,
+)
 
 
-def _solver(tmp_path, name: str, velocity: VelocityConfig, *, precision: str = "f32"):
+def _solver(tmp_path, name: str, induction, *, precision: str = "f32"):
     case = VPMCase(
         directory=tmp_path / name,
         backup=Backup(0),
         numerics=Numerics(
             compute_device="CPU",
             precision=precision,
-            velocity=velocity,
+            induction=induction,
             viscous=ViscousConfig.inviscid(particle_spacing=0.15),
             max_n_particles=1_024,
             max_evaluation_points=1_024,
@@ -93,7 +101,7 @@ def test_gaussian_biot_savart_velocity_and_gradient_match_the_closed_form(
     error about 1.5e-7), so 2e-7 is the derived implementation error budget.
     No time integration or spatial discretization is involved.
     """
-    solver = _solver(tmp_path, "analytic", VelocityConfig.direct(), precision="f64")
+    solver = _solver(tmp_path, "analytic", DirectInduction(), precision="f64")
     source_position = np.array([[0.1, -0.2, 0.05]])
     vortex_strength = np.array([[0.7, -0.3, 0.4]])
     core_radius = np.array([0.27])
@@ -154,7 +162,7 @@ def test_treecode_converges_to_direct_summation_as_the_opening_angle_closes(
     core_radius = np.full(len(position), 0.15)
     targets = rng.uniform(-1.1, 1.1, size=(64, 3)) + np.array([0.013, 0.027, 0.041])
 
-    direct = _solver(tmp_path, "direct", VelocityConfig.direct())
+    direct = _solver(tmp_path, "direct", DirectInduction())
     _add_cloud(direct, position, vortex_strength, core_radius)
     reference = direct.compute_velocity_at_points(targets)
 
@@ -164,7 +172,7 @@ def test_treecode_converges_to_direct_summation_as_the_opening_angle_closes(
         tree = _solver(
             tmp_path,
             f"tree_theta_tenths_{theta_tenths}",
-            VelocityConfig.treecode(theta=theta, multipole_order=2),
+            TreecodeInduction(theta=theta, multipole_order=2),
         )
         _add_cloud(tree, position, vortex_strength, core_radius)
         approximation = tree.compute_velocity_at_points(targets)

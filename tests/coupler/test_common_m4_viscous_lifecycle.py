@@ -55,7 +55,7 @@ def _viscous_config(scheme: str):
 
 
 def _make_solver(case_dir: Path, scheme: str):
-    from source.solvers.vpm import Numerics, VelocityConfig, VPMCase, VPMSolver
+    from source.solvers.vpm import DirectInduction, Numerics, VPMCase, VPMSolver
 
     return VPMSolver(
         VPMCase(
@@ -66,7 +66,7 @@ def _make_solver(case_dir: Path, scheme: str):
                 precision="f64",
                 max_n_particles=4096,
                 domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
-                velocity=VelocityConfig.direct(),
+                induction=DirectInduction(),
                 viscous=_viscous_config(scheme),
                 verbose=False,
             ),

@@ -257,7 +257,7 @@ class TaichiTreecode:
         """Select the regularization kernel evaluated during traversal.
 
         Only the kernels in ``TREECODE_SUPPORTED_KERNELS`` have a Taichi
-        implementation here; ``VPMSetup`` validation rejects the other
+        implementation here; ``Numerics`` validation rejects the other
         combinations up front, so reaching this error means the treecode was
         constructed outside the normal configuration path.
         """

@@ -46,10 +46,8 @@ def test_case_keeps_transposed_rk3_without_an_uncalibrated_macro_step_cfl_gate()
     setup = _load_setup()
     case = setup.build_case("leapfrog_les")
 
-    assert case.numerics.time_integration == "COUPLED"
-    assert case.numerics.advection.scheme == "RK3"
-    assert case.numerics.stretching.scheme == "RK3"
-    assert case.numerics.stretching.mode == "TRANSPOSED"
+    assert case.numerics.integrator.name == "SSPRK3"
+    assert case.numerics.induction.method == "TREECODE"
     assert case.numerics.health_limits.lagrangian_cfl.maximum is None
 
 

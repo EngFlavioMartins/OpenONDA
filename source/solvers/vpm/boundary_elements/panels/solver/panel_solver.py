@@ -137,7 +137,7 @@ class PanelSolver:
       ``physics.body_velocity_field`` hook
       (:meth:`accumulate_induced_velocity_on_field`) installed by
       :class:`~source.solvers.vpm.core.solver.VPMSolver` and applied in
-      ``PhysicsEngine._AdvectionHandler._vel`` on top of the self-induced
+      ``StageRHS`` on top of the self-induced
       Biot-Savart velocity, entirely on device. Because that solve happens at the
       top of the step, an external coupler that replaces the particle cloud
       at fixed physical time must re-solve against the replaced state (see

@@ -36,9 +36,9 @@ def _rss_mb() -> float:
 def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = False):
     from source.solvers.vpm import (
         Backup,
+        DirectInduction,
         Numerics,
-        StretchingConfig,
-        VelocityConfig,
+        TreecodeInduction,
         VPMCase,
         VPMSolver,
     )
@@ -49,9 +49,10 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
             backup=Backup(0, tmpdir, tmpdir),
             numerics=Numerics(
                 compute_device=backend,
-                velocity=VelocityConfig.treecode(theta=0.5),
-                stretching=StretchingConfig.transposed(
-                    scheme="RK3", use_treecode=stretch_treecode, treecode_theta=0.5
+                induction=(
+                    TreecodeInduction(theta=0.5)
+                    if stretch_treecode
+                    else DirectInduction()
                 ),
                 max_n_particles=max(2 * n, 4096),
             ),

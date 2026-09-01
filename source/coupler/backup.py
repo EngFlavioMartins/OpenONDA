@@ -16,8 +16,8 @@ import warnings
 import numpy as np
 
 from source.solvers.fvm.io.backup import decode_state, encode_state
+from source.solvers.vpm.config.case import Numerics
 from source.solvers.vpm.config.fingerprint import numerical_configuration
-from source.solvers.vpm.config.setup import VPMSetup
 
 BACKUP_DIRECTORY = "backups"
 BACKUP_FORMAT_VERSION = 11
@@ -39,7 +39,7 @@ def config_digest(config: _MappingConfig) -> str:
     return config_mapping_digest(config.to_dict())
 
 
-def _vpm_numerical_config(vpm_setup: VPMSetup) -> dict:
+def _vpm_numerical_config(vpm_setup: Numerics) -> dict:
     """Return only VPM settings that can affect the continued solution."""
     return numerical_configuration(vpm_setup)
 

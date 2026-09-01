@@ -47,7 +47,7 @@ class _VtkSampler:
 def _solver(tmp_path, samplers: Samplers):
     return SimpleNamespace(
         case_dir=tmp_path,
-        setup=SimpleNamespace(backup=Backup(), samplers=samplers),
+        case=SimpleNamespace(backup=Backup(), samplers=samplers),
         step=1,
         time=0.1,
         time_step_size=0.1,
@@ -102,7 +102,7 @@ def test_resume_rejects_nonmonotonic_csv_event(tmp_path):
 
 def test_output_manager_is_the_only_backup_cadence_owner(tmp_path):
     solver = _solver(tmp_path, Samplers())
-    solver.setup.backup = Backup(interval_steps=2)
+    solver.case.backup = Backup(interval_steps=2)
     solver._write_backup = lambda: setattr(solver, "backups", solver.backups + 1)
     manager = OutputManager(solver)
 

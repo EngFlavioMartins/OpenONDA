@@ -535,8 +535,6 @@ class Logging:
     def _format_viscous_model(system) -> list:
         """Return the viscous-diffusion-model rows."""
         rows: list[log_style.Row] = [("scheme", system.viscous_scheme)]
-        if system.viscous_scheme == "CS" and getattr(system, "stretching_conserve_moments", False):
-            rows.append(("core moment projection", "vortex strength + both impulses"))
 
         # Configured time step and stability/accuracy limit — always shown when
         # particle_spacing + kinematic_viscosity are set on the config.

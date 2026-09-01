@@ -59,11 +59,11 @@ def envelope():
 
 def performance():
     import taichi as ti
-    from openonda.vpm import Backup,Numerics,StabilizationConfig,StretchingConfig,TurbulenceConfig,VelocityConfig,ViscousConfig,VPMCase,VPMSolver
+    from openonda.vpm import Backup,DirectInduction,Numerics,StabilizationConfig,TreecodeInduction,TurbulenceConfig,ViscousConfig,VPMCase,VPMSolver
     rows=[]; rates={}
     def make(n,backend):
       rng=np.random.default_rng(setup.SEED+n); position=rng.uniform(-1,1,(n,3)).astype('f4'); strength=(.02*rng.normal(size=(n,3))).astype('f4'); strength-=strength.mean(0); radius=np.full(n,.18,'f4'); volume=np.full(n,.12**3,'f4')
-      case=VPMCase(directory=setup.RESULTS/'performance_work'/f'{backend}_{n}',backup=Backup(),numerics=Numerics(compute_device='VULKAN',precision='f32',velocity=VelocityConfig.direct() if backend=='direct' else VelocityConfig.treecode(theta=.2),stretching=StretchingConfig.transposed(use_treecode=backend=='tree',treecode_theta=.2),viscous=ViscousConfig.inviscid(particle_spacing=.12),turbulence=TurbulenceConfig.inviscid(),stabilization=StabilizationConfig.disabled(),max_n_particles=n+16,max_evaluation_points=n+16,verbose=False))
+      case=VPMCase(directory=setup.RESULTS/'performance_work'/f'{backend}_{n}',backup=Backup(),numerics=Numerics(compute_device='VULKAN',precision='f32',induction=DirectInduction() if backend=='direct' else TreecodeInduction(theta=.2),viscous=ViscousConfig.inviscid(particle_spacing=.12),turbulence=TurbulenceConfig.inviscid(),stabilization=StabilizationConfig.disabled(),max_n_particles=n+16,max_evaluation_points=n+16,verbose=False))
       with contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()): solver=VPMSolver(case)
       solver.add_vortex_particles(position=position,velocity=np.zeros_like(position),vortex_strength=strength,core_radius=radius,particle_volume=volume,kinematic_viscosity=np.zeros(n,'f4')); return solver
     def timed(op):

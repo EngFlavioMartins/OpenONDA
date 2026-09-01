@@ -23,17 +23,19 @@ import setup
 
 from assets.core import contract, target_fields
 from openonda.vpm import (
-    AdvectionConfig,
+    RK2,
+    RK4,
+    SSPRK3,
     Backup,
+    DirectInduction,
     HealthLimits,
     LagrangianCFLLimit,
     Numerics,
     RunPlan,
     Samplers,
     StabilizationConfig,
-    StretchingConfig,
+    TreecodeInduction,
     TurbulenceConfig,
-    VelocityConfig,
     ViscousConfig,
     VPMCase,
     VPMSolver,
@@ -131,13 +133,14 @@ def build_solver(name: str, configuration: str, maximum: int) -> VPMSolver:
         if production and spec["bounds"] is not None
         else StabilizationConfig.disabled()
     )
+    integrator = {"RK2": RK2, "RK3": SSPRK3, "RK4": RK4}[scheme]()
+    induction = TreecodeInduction(
+        theta=float(spec["theta"]), sort_particle_targets=True, traversal_block_dim=128
+    ) if tree else DirectInduction()
     numerics = Numerics(
         time_step_size=float(spec["dt"]),
-        time_integration="COUPLED",
-        advection=AdvectionConfig(scheme=scheme),
-        stretching=StretchingConfig.transposed(
-            scheme=scheme, use_treecode=tree, treecode_theta=float(spec["theta"])
-        ),
+        integrator=integrator,
+        induction=induction,
         viscous=(
             ViscousConfig.cs(
                 kinematic_viscosity=float(spec["nu"]), particle_spacing=float(spec["spacing"])
@@ -153,9 +156,6 @@ def build_solver(name: str, configuration: str, maximum: int) -> VPMSolver:
         stabilization=stabilization,
         health_limits=HealthLimits(lagrangian_cfl=LagrangianCFLLimit(maximum=None)),
         particle_kernel=str(spec["kernel"]),
-        velocity=VelocityConfig.treecode(
-            theta=float(spec["theta"]), sort_particle_targets=True, traversal_block_dim=128
-        ),
         freestream_velocity=tuple(spec["freestream"] if production else (0.0, 0.0, 0.0)),
         max_n_particles=maximum,
         max_evaluation_points=maximum,
@@ -236,20 +236,19 @@ def replay_one(
     selected = diagnostic_indices(initial_g)
     solver = build_solver(name, configuration, n + 32)
     upload(solver, data)
-    handler = solver.physics._coupled
-    original_rhs = handler._stage_rhs
+    original_rhs = solver.stage_rhs.evaluate
     stage_rows: list[dict] = []
     stage_number = 0
     active_step = 0
 
-    def traced_rhs(*args, **kwargs):
+    def traced_rhs(stage_state, stage_time, stage_rates):
         nonlocal stage_number
-        original_rhs(*args, **kwargs)
+        original_rhs(stage_state, stage_time, stage_rates)
         ti.sync()
-        position = args[1].to_numpy()[:n].astype(np.float64)
-        gamma = args[2].to_numpy()[:n].astype(np.float64)
-        sigma = args[3].to_numpy()[:n].astype(np.float64)
-        rate = args[5].to_numpy()[:n].astype(np.float64)
+        position = stage_state.position.to_numpy()[:n].astype(np.float64)
+        gamma = stage_state.vortex_strength.to_numpy()[:n].astype(np.float64)
+        sigma = stage_state.core_radius.to_numpy()[:n].astype(np.float64)
+        rate = stage_rates.vortex_strength_rate.to_numpy()[:n].astype(np.float64)
         exact_j = exact_target_gradient(
             position[selected], position, gamma, sigma, str(spec["kernel"])
         )
@@ -260,7 +259,7 @@ def replay_one(
             "checkpoint": name,
             "configuration": configuration,
             "step": active_step,
-            "stage": stage_number % (2 if solver.advection_scheme == "RK2" else 3) + 1,
+            "stage": stage_number % solver.integrator.tableau.stages + 1,
             "particles": n,
             "gradient_reference": "independent_f64_source_blob_gradient_on_64_targets",
             "exact_gradient_norm_max": float(np.linalg.norm(exact_j, axis=(1, 2)).max()),
@@ -269,31 +268,15 @@ def replay_one(
             "net_strength_rate_norm": float(np.linalg.norm(rate.sum(axis=0))),
             **percentile_fields(float(spec["dt"]) * rate_ratio, "chi_gamma"),
         }
-        if solver.stretching_use_treecode:
-            actual_j = solver.physics._treecode.velocity_gradient.to_numpy()[:n].astype(np.float64)[
-                selected
-            ]
-            row["actual_gradient_evaluator"] = "production_tree_gradient"
-            row["gradient_relative_l2_on_targets"] = float(
-                np.linalg.norm(actual_j - exact_j) / max(np.linalg.norm(exact_j), 1e-30)
-            )
-            exact_rate = contract(exact_j, gamma[selected], "TRANSPOSED")
-            actual_rate = contract(actual_j, gamma[selected], "TRANSPOSED")
-            row["rate_relative_l2_on_targets"] = float(
-                np.linalg.norm(actual_rate - exact_rate) / max(np.linalg.norm(exact_rate), 1e-30)
-            )
-        else:
-            row["actual_gradient_evaluator"] = (
-                "none_pairwise_rate_uses_target_source_mean_core_radius"
-            )
-            exact_rate = contract(exact_j, gamma[selected], "TRANSPOSED")
-            row["rate_relative_l2_on_targets"] = float(
-                np.linalg.norm(rate[selected] - exact_rate) / max(np.linalg.norm(exact_rate), 1e-30)
-            )
+        row["actual_gradient_evaluator"] = "induction_auxiliary_not_requested"
+        exact_rate = contract(exact_j, gamma[selected], "TRANSPOSED")
+        row["rate_relative_l2_on_targets"] = float(
+            np.linalg.norm(rate[selected] - exact_rate) / max(np.linalg.norm(exact_rate), 1e-30)
+        )
         stage_rows.append(row)
         stage_number += 1
 
-    handler._stage_rhs = traced_rhs
+    solver.stage_rhs.evaluate = traced_rhs
     wall_times = []
     try:
         for step in range(1, steps + 1):
@@ -347,9 +330,7 @@ def replay_one(
         "scheme": spec["production_scheme"]
         if configuration == "production_numerics_unforced"
         else "RK3",
-        "stretching_evaluator": "tree_gradient"
-        if solver.stretching_use_treecode
-        else "exact_pairwise",
+        "stretching_evaluator": "canonical_pairwise_rate",
         "forcing": "freestream_only_no_vlm_replay"
         if name == "rotor" and configuration == "production_numerics_unforced"
         else "isolated_self_induced",

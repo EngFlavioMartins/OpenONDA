@@ -19,6 +19,23 @@ if TYPE_CHECKING:
 
 def _canonical_value(value: Any) -> Any:
     """Convert numerical value objects to JSON-compatible deterministic values."""
+    if hasattr(value, "evaluate_stage"):
+        result = {"type": f"{type(value).__module__}.{type(value).__qualname__}"}
+        if hasattr(value, "method"):
+            result["method"] = str(value.method)
+        for name in (
+            "theta",
+            "tolerance",
+            "multipole_order",
+            "sort_particle_targets",
+            "traversal_block_dim",
+        ):
+            if hasattr(value, name):
+                result[name] = _canonical_value(getattr(value, name))
+        kernel = getattr(value, "kernel", None)
+        if kernel is not None and hasattr(kernel, "name"):
+            result["kernel"] = str(kernel.name)
+        return result
     if is_dataclass(value):
         return {item.name: _canonical_value(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, dict):

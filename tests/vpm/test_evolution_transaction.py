@@ -59,14 +59,9 @@ def test_failed_physical_phase_does_not_commit_solver_clock(capsys):
         stabilization=_Stabilization(),
         vlm_solver=None,
         panel_solver=None,
-        setup=SimpleNamespace(
-            advection=SimpleNamespace(scheme="RK3"),
-            diagnostics=SimpleNamespace(validate_stages=False),
-        ),
+        setup=SimpleNamespace(diagnostics=SimpleNamespace(validate_stages=False)),
         physics=SimpleNamespace(velocity_override=None),
-        stretching_enabled=False,
         flow_model="POTENTIAL",
-        time_integration="FRACTIONAL",
         n_sources=0,
         stabilization_config=SimpleNamespace(
             stretching_viscosity_coefficient=0.0,
@@ -78,7 +73,6 @@ def test_failed_physical_phase_does_not_commit_solver_clock(capsys):
         _is_particle_regeneration_pending=False,
     )
     stepper = EvolutionStepper(solver)
-    stepper._update_velocities = lambda: None
     stepper._update_les_state = lambda: None
     stepper._apply_coupled_update = lambda *_args, **_kwargs: (_ for _ in ()).throw(
         RuntimeError("boom")

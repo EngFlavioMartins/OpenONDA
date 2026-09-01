@@ -109,7 +109,7 @@ GAUSSIAN_Q_SERIES_CROSSOVER = 0.2
 # Regularization kernels the LBVH treecode can evaluate.  The treecode carries
 # its own Taichi implementation of q/zeta (see acceleration/treecode_gpu.py), so
 # it supports a strict subset of the kernels available to the direct O(N²) path.
-# Single source of truth: VPMSetup validation and TaichiTreecode.set_kernel_type
+# Single source of truth: Numerics validation and TaichiTreecode.set_kernel_type
 # both read this, so the two cannot drift apart.
 TREECODE_SUPPORTED_KERNELS = ("GAUSSIAN", "WINCKELMANS")
 

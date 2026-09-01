@@ -46,7 +46,7 @@ def audit():
     write_csv(setup.RESULTS/'tensor_orientation.csv',orientation)
     audit_payload={
       'fractional_execution':'EvolutionController applies full advection first, then full stretching; advection stages use Gamma_n and stretching stages fix x_{n+1}.',
-      'coupled_execution':'PhysicsEngine _CoupledAdvectionStretchingHandler evaluates u and dGamma/dt from common (x_i,Gamma_i) RK2/RK3 states.',
+      'coupled_execution':'RungeKutta evaluates u and dGamma/dt from common (x_i,Gamma_i) RK2/RK3 states.',
       'existing_schemes':{'advection':['EULER','RK2','RK3','RK4'],'stretching':['EULER','RK2','RK3','RK4'],'coupled':['RK2','RK3']},
       'contractions':{'DIRECT':'J Gamma','TRANSPOSED':'J^T Gamma','MIXED':'0.5(J+J^T) Gamma'},
       'direct_pairwise':'Separate exact per-target source summation; transposed form retains algebraic pair cancellation.',

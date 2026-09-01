@@ -8,7 +8,6 @@ import pytest
 
 import openonda.vpm as vpm
 from source.solvers.vpm.config.artifacts import Backup, Samplers
-from source.solvers.vpm.config.setup import VPMSetup
 
 
 class _Sample:
@@ -58,16 +57,13 @@ def test_public_case_owns_backup_and_sampler_construction_objects():
     assert {"backup", "samplers"} <= set(inspect.signature(vpm.VPMCase).parameters)
 
 
-def test_internal_setup_does_not_translate_old_output_configuration():
-    with pytest.raises(TypeError):
-        VPMSetup(backup_interval_steps=10)
-    with pytest.raises(TypeError):
-        VPMSetup(samplers=(_Sample(),))
+def test_internal_setup_type_is_not_public():
+    assert not hasattr(vpm, "VPMSetup")
 
 
-def test_internal_setup_has_no_partial_serialization_hook():
-    assert not hasattr(VPMSetup, "to_dict")
-    assert not hasattr(VPMSetup, "from_dict")
+def test_numerics_has_no_legacy_serialization_hook():
+    assert not hasattr(vpm.Numerics, "to_dict")
+    assert not hasattr(vpm.Numerics, "from_dict")
 
 
 def test_solver_has_one_public_backup_save_and_load_pair():

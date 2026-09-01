@@ -235,8 +235,8 @@ def _make_gbd_vpm(
 ):
     from source.solvers.vpm import (
         Backup,
+        DirectInduction,
         Numerics,
-        VelocityConfig,
         ViscousConfig,
         VPMCase,
         VPMSolver,
@@ -253,7 +253,7 @@ def _make_gbd_vpm(
                 max_n_particles=capacity,
                 domain_bounds=(-2.0, 2.0, -2.0, 2.0, -2.0, 2.0),
                 freestream_velocity=(1.0, 0.0, 0.0),
-                velocity=VelocityConfig.direct(),
+                induction=DirectInduction(),
                 viscous=ViscousConfig.gbd(
                     particle_spacing=h,
                     padding=5.0,

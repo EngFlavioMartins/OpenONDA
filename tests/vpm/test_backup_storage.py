@@ -13,10 +13,13 @@ import numpy as np
 import pytest
 
 from source.solvers.vpm import (
-    AdvectionConfig,
+    RK2,
+    RK4,
+    SSPRK3,
     Backup,
+    DirectInduction,
     Numerics,
-    VelocityConfig,
+    TreecodeInduction,
     ViscousConfig,
     VPMCase,
     VPMSolver,
@@ -37,9 +40,9 @@ def _case(
     *,
     time_step_size: float = 0.01,
     max_n_particles: int = 64,
-    advection: AdvectionConfig | None = None,
+    integrator=None,
     viscous: ViscousConfig | None = None,
-    velocity: VelocityConfig | None = None,
+    induction=None,
     random_seed: int = 42,
 ) -> VPMCase:
     return VPMCase(
@@ -52,13 +55,13 @@ def _case(
             domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
             write_precision="f16",
             verbose=False,
-            advection=AdvectionConfig() if advection is None else advection,
+            integrator=SSPRK3() if integrator is None else integrator,
             viscous=(
                 ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.2)
                 if viscous is None
                 else viscous
             ),
-            velocity=velocity,
+            induction=DirectInduction() if induction is None else induction,
             random_seed=random_seed,
         ),
     )
@@ -90,9 +93,9 @@ def _write_rwm_process_result(case_directory: str, output_file: str) -> None:
     """Run one seeded RWM trajectory in a fresh spawned Python process."""
     solver = _solver(
         Path(case_directory),
-        advection=AdvectionConfig("NONE"),
+        integrator=SSPRK3(),
         viscous=ViscousConfig.rwm(kinematic_viscosity=0.01, particle_spacing=0.2),
-        velocity=VelocityConfig.direct(),
+        induction=DirectInduction(),
         random_seed=42,
     )
     _add_counter_rotating_pair(solver)
@@ -274,15 +277,15 @@ def _assert_split_run_matches(tmp_path, options: dict[str, object]) -> None:
     )
 
 
-@pytest.mark.parametrize("advection_scheme", ["EULER", "RK2", "RK3", "RK4"])
-def test_split_run_matches_each_deterministic_advection_scheme(tmp_path, advection_scheme):
+@pytest.mark.parametrize("integrator", [RK2(), SSPRK3(), RK4()], ids=["rk2", "ssprk3", "rk4"])
+def test_split_run_matches_each_deterministic_integrator(tmp_path, integrator):
     """Same-backend backups preserve each deterministic advection trajectory."""
     _assert_split_run_matches(
         tmp_path,
         {
-            "advection": AdvectionConfig(advection_scheme),
+            "integrator": integrator,
             "viscous": ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.2),
-            "velocity": VelocityConfig.direct(),
+            "induction": DirectInduction(),
         },
     )
 
@@ -315,9 +318,9 @@ def test_split_run_matches_each_deterministic_viscous_scheme(tmp_path, viscous):
     _assert_split_run_matches(
         tmp_path,
         {
-            "advection": AdvectionConfig("NONE"),
+            "integrator": SSPRK3(),
             "viscous": viscous,
-            "velocity": VelocityConfig.direct(),
+            "induction": DirectInduction(),
         },
     )
 
@@ -386,7 +389,7 @@ def test_backup_storage_handles_more_than_fifty_thousand_particles(tmp_path, mon
     writer = _solver(
         tmp_path / "writer",
         max_n_particles=count,
-        velocity=VelocityConfig.treecode(theta=0.5),
+        induction=TreecodeInduction(theta=0.5),
         viscous=ViscousConfig.inviscid(particle_spacing=0.2),
     )
     index = np.arange(count, dtype=np.float32)
@@ -412,7 +415,7 @@ def test_backup_storage_handles_more_than_fifty_thousand_particles(tmp_path, mon
     reader = _solver(
         tmp_path / "reader",
         max_n_particles=count,
-        velocity=VelocityConfig.treecode(theta=0.5),
+        induction=TreecodeInduction(theta=0.5),
         viscous=ViscousConfig.inviscid(particle_spacing=0.2),
     )
     monkeypatch.setattr(reader.stepper, "_update_velocity_gradients", lambda **_kwargs: None)
