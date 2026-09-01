@@ -78,6 +78,11 @@ velocity configuration modules and the obsolete `source/solvers/vpm/acceleration
 package. Its active LBVH implementation now lives at
 `physics/induction/treecode/lbvh.py`.
 
+The source-only diff from the starting commit is `+1,391/-3,019` lines
+excluding the FMM directory (net `-1,628`), and `+1,812/-3,019` including FMM
+(net `-1,207`). The larger repository diff also includes permanent tests,
+qualification records, documentation, and public/tutorial API migrations.
+
 ## Qualification evidence
 
 The focused induction qualification passes:
