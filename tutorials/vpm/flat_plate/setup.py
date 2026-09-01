@@ -179,13 +179,13 @@ def run_case(
             smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT,
             time_step_size=TIME_STEP_SIZE,
             compute_device="AUTO",
-            advection=vpm.AdvectionConfig(scheme="RK3"),
+            integrator=vpm.SSPRK3(),
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
             freestream_velocity=freestream_velocity,
-            velocity=vpm.VelocityConfig.treecode(
+            induction=vpm.TreecodeInduction(
                 theta=0.35,
                 sort_particle_targets=True,
                 traversal_block_dim=128,

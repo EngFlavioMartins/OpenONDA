@@ -142,7 +142,7 @@ def run() -> None:
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            velocity=vpm.VelocityConfig.treecode(
+            induction=vpm.TreecodeInduction(
                 theta=treecode_theta,
                 sort_particle_targets=True,
                 traversal_block_dim=128,

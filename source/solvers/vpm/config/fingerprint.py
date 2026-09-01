@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 if TYPE_CHECKING:
-    from .setup import VPMSetup
+    from .case import Numerics
 
 
 def _canonical_value(value: Any) -> Any:
@@ -30,7 +30,7 @@ def _canonical_value(value: Any) -> Any:
     return value
 
 
-def numerical_configuration(setup: VPMSetup) -> dict[str, Any]:
+def numerical_configuration(setup: Numerics) -> dict[str, Any]:
     """Return the resolved settings that determine VPM particle evolution.
 
     The mapping is internal restart evidence only. It intentionally
@@ -38,7 +38,6 @@ def numerical_configuration(setup: VPMSetup) -> dict[str, Any]:
     it to recreate a solver configuration.
     """
     return {
-        "advection": _canonical_value(setup.advection),
         "axisymmetric_no_swirl_axis": setup.axisymmetric_no_swirl_axis,
         "compute_device": setup.compute_device,
         "cutoff_radius_factor": setup.cutoff_radius_factor,
@@ -49,10 +48,9 @@ def numerical_configuration(setup: VPMSetup) -> dict[str, Any]:
         "precision": setup.precision,
         "random_seed": setup.random_seed,
         "stabilization": _canonical_value(setup.stabilization),
-        "stretching": _canonical_value(setup.stretching),
-        "time_integration": setup.time_integration,
+        "integrator": _canonical_value(setup.integrator),
+        "induction": _canonical_value(setup.induction),
         "time_step_size": setup.time_step_size,
         "turbulence": _canonical_value(setup.turbulence),
-        "velocity": _canonical_value(setup.velocity),
         "viscous": _canonical_value(setup.viscous),
     }

@@ -342,16 +342,14 @@ VPM_PANEL_SOLVER = vpm.PanelSolver(
 VPM_CASE = vpm.VPMCase(
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
-        time_integration="COUPLED",
         freestream_velocity=list(FREESTREAM_VELOCITY),
         viscous=make_vpm_viscous_config(VPM_VISCOUS_SCHEME),
-        stretching=vpm.StretchingConfig.transposed(scheme=VPM_SCHEME),
-        advection=vpm.AdvectionConfig(scheme=VPM_SCHEME),
+        integrator=vpm.RK2() if VPM_SCHEME == "RK2" else vpm.SSPRK3(),
         turbulence=vpm.TurbulenceConfig.equilibrium_smagorinsky(
             subgrid_kinetic_energy_coefficient=SMAGORINSKY_CK,
             subgrid_dissipation_coefficient=SMAGORINSKY_CE,
         ),
-        velocity=vpm.VelocityConfig.treecode(theta=0.3, multipole_order=2),
+        induction=vpm.TreecodeInduction(theta=0.3),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         particle_kernel="GAUSSIAN",
         precision="f32",

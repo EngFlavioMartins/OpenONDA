@@ -190,10 +190,9 @@ VPM_CASE = vpm.VPMCase(
         viscous=vpm.ViscousConfig.cs(
             kinematic_viscosity=KINEMATIC_VISCOSITY, particle_spacing=SPACING
         ),
-        stretching=vpm.StretchingConfig.transposed(scheme="RK2"),
-        advection=vpm.AdvectionConfig(scheme="RK2"),
+        integrator=vpm.RK2(),
         turbulence=vpm.TurbulenceConfig.les_smagorinsky(smagorinsky_coefficient=0.17),
-        velocity=vpm.VelocityConfig.treecode(theta=0.3, multipole_order=2),
+        induction=vpm.TreecodeInduction(theta=0.3),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         particle_kernel="GAUSSIAN",
         precision="f32",

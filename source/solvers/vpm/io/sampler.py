@@ -14,7 +14,6 @@ import xml.etree.ElementTree as ET
 import numpy as np
 
 from ..config.artifacts import Samplers
-from ..config.setup import VPMSetup
 from .logging import Logging
 from .sampling import OutputSchedule, resolve_samples_dir, sampler_csv_columns
 
@@ -22,7 +21,7 @@ from .sampling import OutputSchedule, resolve_samples_dir, sampler_csv_columns
 class SamplerRuntimeSolver(Protocol):
     """Solver state required by framework-owned sampler dispatch."""
 
-    setup: VPMSetup
+    case: object
     case_dir: Path
     step: int
     time: float
@@ -93,7 +92,7 @@ class OutputManager:
 
     def __init__(self, solver: SamplerRuntimeSolver, samplers: Samplers | None = None) -> None:
         self.solver = solver
-        self.samplers = solver.setup.samplers if samplers is None else samplers
+        self.samplers = solver.case.samplers if samplers is None else samplers
         self._runtime = _SamplerRuntime()
 
     def dispatch(self, event: OutputEvent) -> None:
@@ -115,7 +114,7 @@ class OutputManager:
             self._execute_one(sampler, event)
 
     def _backup_due(self) -> bool:
-        interval = self.solver.setup.backup.interval_steps
+        interval = self.solver.case.backup.interval_steps
         return interval > 0 and self.solver.step > 0 and self.solver.step % interval == 0
 
     def any_due(self, step: int, time: float) -> bool:

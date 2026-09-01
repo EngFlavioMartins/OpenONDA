@@ -34,10 +34,9 @@ GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX  # a₀ — Gaussian 1/e vorticit
 COLUMN_LENGTH = 40.0 * CORE_RADIUS  # finite vortex column length along z [m]
 
 # ---- Numerical setup shared by every viscous scheme ----------------------
-SPACING = 0.47 * CORE_RADIUS  # in-plane particle spacing (controls resolution)
-COLUMN_SPACING = 0.45 * CORE_RADIUS  # axial layer spacing along the vortex column
+SPACING = 0.45 * CORE_RADIUS  # particle spacing in every direction (controls resolution)
 PARTICLE_RADIUS = 1.50 * SPACING  # vortex particle core radius (1.5× spacing)
-FIELD_SPACING = 0.16 * CORE_RADIUS  # sampling field resolution for surface output
+FIELD_SPACING = 0.15 * CORE_RADIUS  # sampling field resolution for surface output
 TIME_STEP_SIZE = 0.291 / 9.0  # Δt [s]
 TOTAL_TIME = 103.0 * 0.291  # total simulation time [s]
 SAMPLE_INTERVAL_TIME = 2.0 * 0.291  # time between field samples [s]
@@ -111,7 +110,6 @@ def run_case(
     is_rwm_ensemble = scheme == "rwm" and ensemble_member is not None
     # ---- Derived physical quantities ----
     spacing = SPACING
-    column_spacing = COLUMN_SPACING
     particle_core_radius = 1.5 * spacing
     field_spacing = FIELD_SPACING
     circulation = abs(circulations[0])
@@ -185,7 +183,6 @@ def run_case(
             (initial_bounds[4], initial_bounds[5]),
         ),
         spacing=spacing,
-        axial_spacing=column_spacing,
         core_radius_ratio=particle_core_radius / spacing,
     )
 
@@ -237,8 +234,8 @@ def run_case(
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             viscous=viscous,
-            advection=vpm.AdvectionConfig(scheme=ADVECTION_SCHEME),
-            velocity=vpm.VelocityConfig.treecode(
+            integrator=vpm.RK4() if ADVECTION_SCHEME == "RK4" else vpm.SSPRK3(),
+            induction=vpm.TreecodeInduction(
                 theta=TREECODE_THETA,
                 multipole_order=TREECODE_MULTIPOLE_ORDER,
                 sort_particle_targets=True,

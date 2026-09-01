@@ -240,6 +240,8 @@ class Logging:
     """
 
     _routine_messages_enabled = True
+    _active_step: int | None = None
+    _last_block_section: str | None = None
 
     @staticmethod
     def set_routine_messages_enabled(enabled: bool) -> None:
@@ -265,110 +267,156 @@ class Logging:
 
     @staticmethod
     def info(text: str, *, flush: bool = False) -> None:
-        """Emit an informational VPM message."""
-        print(log_style.header("vpm", text, stamped=True), flush=flush)
+        """Emit an informational event in the current solver block."""
+        Logging._block_rows("EVENTS", [(text, "")], flush=flush)
 
     @staticmethod
     def warning(text: str, *, flush: bool = False) -> None:
-        """Emit a VPM warning."""
-        print(log_style.header("vpm", f"warning  {text}", stamped=True), flush=flush)
+        """Emit a VPM warning even when routine output is suppressed."""
+        Logging._block_rows("WARNINGS", [(text, "")], flush=flush, force=True)
+
+    @staticmethod
+    def time_step(step: int, flow_time: float, wall_time: float) -> None:
+        """Open a time-step block before its numerical work begins."""
+        Logging.set_routine_messages_enabled(True)
+        Logging._active_step = int(step)
+        Logging._last_block_section = None
+        Logging.message(log_style.step_header(step, flow_time, wall_time), flush=True)
+
+    @staticmethod
+    def _block_rows(
+        title: str,
+        rows: list[log_style.Row],
+        *,
+        flush: bool = False,
+        force: bool = False,
+    ) -> None:
+        """Append rows to a block, showing an uppercase section title once."""
+        if not force and not Logging._routine_messages_enabled:
+            return
+        normalized_title = title.upper()
+        show_title = Logging._last_block_section != normalized_title
+        print(
+            log_style.block_section(normalized_title, rows, show_title=show_title),
+            flush=flush,
+        )
+        Logging._last_block_section = normalized_title
+
+    @staticmethod
+    def section(title: str, *rows: log_style.Row, flush: bool = False) -> None:
+        """Append one explicitly named section to the current solver block."""
+        Logging._block_rows(title, list(rows), flush=flush)
+
+    @staticmethod
+    def _event_rows(topic: str, rows: tuple[log_style.Row, ...]) -> list[log_style.Row]:
+        nested: list[log_style.Row] = [(topic, "")]
+        for row in rows:
+            label = f"  {row[0]}"
+            if len(row) > 2:
+                nested.append((label, row[1], row[2]))
+            else:
+                nested.append((label, row[1]))
+        return nested
 
     @staticmethod
     def record(topic: str, *rows: log_style.Row, flush: bool = False) -> None:
-        """Emit one routine VPM record: a topic header over indented detail rows."""
-        Logging.message(log_style.record("vpm", topic, *rows, stamped=True), flush=flush)
+        """Emit one time-dependent event without repeating static model details."""
+        Logging._block_rows("EVENTS", Logging._event_rows(topic, rows), flush=flush)
 
     @staticmethod
     def warning_record(topic: str, *rows: log_style.Row, flush: bool = True) -> None:
         """Emit a VPM warning record that survives routine-message suppression."""
-        print(
-            log_style.record("vpm", f"warning  {topic}", *rows, stamped=True),
+        Logging._block_rows(
+            "WARNINGS",
+            Logging._event_rows(topic, rows),
             flush=flush,
+            force=True,
         )
 
     @staticmethod
     def flow_diagnostics(system):
-        """
-        Log flow diagnostics to console in a structured, section-based layout.
-
-        Args:
-            system: Solver instance with cached flow quantities
-        """
-        step = getattr(system, "step", None)
-        current_time = getattr(system, "time", None)
-        topic = "flow diagnostics"
-        if step is not None and current_time is not None:
-            topic = f"flow diagnostics, step {int(step):,}, t = {current_time:.3e} s"
-
+        """Append scheduled physical quantities to the current time-step block."""
         n_particles_total = getattr(getattr(system, "particles", None), "n_particles_total", None)
         rows: list[log_style.Row] = [
-            ("integral quantities:", ""),
+            ("Particle system", ""),
             (
-                "  particles",
+                "  Number of particles",
                 f"{int(n_particles_total):,}" if n_particles_total is not None else "n/a",
             ),
+            ("Vortex strength", ""),
             (
-                "  vortex strength, sum of magnitudes",
+                "  Sum of particle magnitudes",
                 f"{system.vortex_strength_magnitude_sum:.3e}",
                 "m^3/s",
             ),
-        ]
-        for axis, value in zip("xyz", system.net_vortex_strength, strict=False):
-            rows.append((f"  vortex strength, net {axis}", f"{value:.3e}", "m^3/s"))
-        # Linear and angular impulse are conserved invariants, so a small drift
-        # is a genuine diagnostic that .3e would round away.
-        for axis, value in zip("xyz", system.total_linear_impulse, strict=False):
-            rows.append((f"  linear impulse, {axis}", f"{value:.6e}", "m^4/s"))
-        for axis, value in zip("xyz", system.total_angular_impulse, strict=False):
-            rows.append((f"  angular impulse, {axis}", f"{value:.6e}", "m^5/s"))
-        rows.extend(
             (
-                ("  enstrophy", f"{system.total_enstrophy:.3e}", "m^3/s^2"),
-                ("  helicity", f"{system.total_helicity:.3e}", "m^2/s^2"),
-                ("energy budget:", ""),
-                ("  kinetic energy", f"{system.total_kinetic_energy:.3e}", "J"),
-                (
-                    "  modeled dissipation",
-                    f"{system.viscous_kinetic_energy_rate:.3e}",
-                    "J/s",
-                ),
-                ("  kinetic energy rate", f"{system.kinetic_energy_rate:.3e}", "J/s"),
-            )
+                "  Net vector",
+                "[" + ", ".join(f"{value:.3e}" for value in system.net_vortex_strength) + "]",
+                "m^3/s",
+            ),
+            ("Impulse", ""),
+            (
+                "  Linear vector",
+                "[" + ", ".join(f"{value:.6e}" for value in system.total_linear_impulse) + "]",
+                "m^4/s",
+            ),
+            (
+                "  Angular vector",
+                "[" + ", ".join(f"{value:.6e}" for value in system.total_angular_impulse) + "]",
+                "m^5/s",
+            ),
+            ("Energy", ""),
+            ("  Kinetic energy", f"{system.total_kinetic_energy:.3e}", "J"),
+            (
+                "  Viscous contribution to dE/dt",
+                f"{system.viscous_kinetic_energy_rate:.3e}",
+                "J/s",
+            ),
+            ("  Total dE/dt", f"{system.kinetic_energy_rate:.3e}", "J/s"),
+            ("Other integral quantities", ""),
+            ("  Enstrophy", f"{system.total_enstrophy:.3e}", "m^3/s^2"),
+            ("  Helicity", f"{system.total_helicity:.3e}", "m^2/s^2"),
+        ]
+
+        section_title = (
+            "INITIAL FLOW QUANTITIES" if int(getattr(system, "step", 0)) == 0 else "FLOW QUANTITIES"
         )
+        Logging.section(section_title, *rows, flush=True)
 
         try:
             vortex_centroid = getattr(system, "vortex_centroid", None)
             geometry: list[log_style.Row] = []
             if vortex_centroid is not None:
-                for axis, value in zip("xyz", vortex_centroid, strict=False):
-                    geometry.append((f"  vortex centroid, {axis}", f"{value:.3e}", "m"))
-            for group, centroid in system.vortex_centroids_by_group.items():
-                for axis, value in zip("xyz", centroid, strict=False):
-                    geometry.append((f"  group {group} centroid, {axis}", f"{value:.3e}", "m"))
-            if geometry:
-                rows.append(("vortex geometry:", ""))
-                rows.extend(geometry)
-        except Exception:
-            pass
-
-        try:
-            history = getattr(system, "_diagnostics_history", None)
-            if history is not None and len(history.get("observed_time_step_size", [])) > 0:
-                observed = np.array(history["observed_time_step_size"])
-                nonzero = observed[observed > 0]
-                if nonzero.size > 0:
-                    rows.extend(
+                geometry.extend(
+                    (
+                        ("All particles", ""),
                         (
-                            ("time step:", ""),
-                            ("  observed, mean", f"{nonzero.mean():.3e}", "s"),
-                            ("  observed, median", f"{np.median(nonzero):.3e}", "s"),
-                            ("  configured", f"{system.time_step_size:.3e}", "s"),
-                        )
+                            "  Centroid",
+                            "[" + ", ".join(f"{value:.3e}" for value in vortex_centroid) + "]",
+                            "m",
+                        ),
                     )
+                )
+            for group, centroid in system.vortex_centroids_by_group.items():
+                geometry.extend(
+                    (
+                        (f"Particle group {group}", ""),
+                        (
+                            "  Centroid",
+                            "[" + ", ".join(f"{value:.3e}" for value in centroid) + "]",
+                            "m",
+                        ),
+                    )
+                )
+            if geometry:
+                title = (
+                    "INITIAL VORTEX POSITION"
+                    if int(getattr(system, "step", 0)) == 0
+                    else "VORTEX POSITION"
+                )
+                Logging.section(title, *geometry, flush=True)
         except Exception:
             pass
-
-        print(log_style.record("vpm", topic, *rows, stamped=True), flush=True)
 
         # Log VLM forces if VLM solver is present
         if hasattr(system, "vlm_solver") and system.vlm_solver is not None:
@@ -379,20 +427,11 @@ class Logging:
         """Return the solver-configuration rows."""
         rows: list[log_style.Row] = [
             ("flow model", getattr(system, "flow_model_description", system.flow_model)),
-            ("time integration:", ""),
-            ("  advection", system.advection_scheme),
-            ("  stretching", system.stretching_scheme),
+            ("integrator", getattr(getattr(system, "integrator", None), "name", "unknown")),
         ]
-        if getattr(system, "stretching_conserve_moments", False):
-            projection = "vortex strength + impulses"
-            if getattr(system, "stretching_conserve_energy", False):
-                projection += " + energy"
-            rows.append(("  invariant projection", projection))
-        vel_cfg = getattr(getattr(system, "setup", None), "velocity", None)
-        if vel_cfg is not None and vel_cfg.method == "TREECODE":
-            rows.append(("  velocity", f"treecode, Barnes-Hut, theta {vel_cfg.theta:g}"))
-        else:
-            rows.append(("  velocity", "direct, O(N^2)"))
+        induction = getattr(system, "induction", None)
+        induction_name = induction.__class__.__name__ if induction is not None else "unknown"
+        rows.append(("induction", induction_name.removesuffix("Induction")))
         axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             rows.append(("  symmetry", f"axisymmetric no-swirl about {axis}"))
@@ -400,19 +439,18 @@ class Logging:
             (
                 ("compute device", system.compute_device),
                 ("time step", f"{system.time_step_size:.3e}", "s"),
-                ("current step", f"{system.step:,}"),
-                ("simulation time", f"{system.time:.3e}", "s"),
-                ("wall time", f"{system.wall_time:.2f}", "s"),
             )
         )
         return rows
 
     @staticmethod
     def _format_particle_system(system) -> list:
-        """Return the particle-system rows."""
-        if hasattr(system, "particles") and system.particles is not None:
-            return system.particles.report_rows()
-        return [("status", "not initialized")]
+        """Return static particle-storage configuration rows."""
+        setup = getattr(system, "setup", None)
+        return [
+            ("particles, maximum", f"{int(getattr(setup, 'max_n_particles', 0)):,}"),
+            ("precision", str(getattr(system, "precision", "unknown"))),
+        ]
 
     @staticmethod
     def _format_physics_model(system) -> list:
@@ -546,7 +584,7 @@ class Logging:
     def _format_monitoring_io(system) -> list:
         """Return the monitoring and output rows."""
         return [
-            ("backup interval", f"{system.setup.backup.interval_steps:,}", "steps"),
+            ("backup interval", f"{system.case.backup.interval_steps:,}", "steps"),
             ("backup directory", system._backup_path),
             ("log directory", system._log_path),
         ]
@@ -676,37 +714,29 @@ class Logging:
 
     @staticmethod
     def solver_info(system) -> str:
-        """Return the comprehensive VPM solver report, one section per submodel."""
-        sections = (
-            ("vpm solver  configuration", Logging._format_solver_config(system)),
-            ("vpm solver  particle system", Logging._format_particle_system(system)),
-            ("vpm solver  physics model", Logging._format_physics_model(system)),
-            ("vpm solver  stabilization", Logging._format_stabilization_config(system)),
-            ("vpm solver  viscous diffusion", Logging._format_viscous_model(system)),
-            ("vpm solver  turbulence", Logging._format_turbulence_model(system)),
-            ("vpm solver  monitoring and output", Logging._format_monitoring_io(system)),
-            ("vpm solver  vlm", Logging._format_vlm_solver(system)),
-            ("vpm solver  panels", Logging._format_panel_solver(system)),
-        )
-        lines = [log_style.banner("vpm solver")]
-        lines.extend(log_style.section(title, rows) for title, rows in sections)
-        lines.append("")
-        return "\n".join(lines)
+        """Return the comprehensive configuration report printed once at time zero."""
+        sections: list[tuple[str, list[log_style.Row]]] = [
+            ("RUN", Logging._format_solver_config(system)),
+            ("PARTICLE SYSTEM", Logging._format_particle_system(system)),
+            ("PHYSICS MODEL", Logging._format_physics_model(system)),
+            ("STABILIZATION", Logging._format_stabilization_config(system)),
+            ("VISCOUS DIFFUSION", Logging._format_viscous_model(system)),
+            ("TURBULENCE MODEL", Logging._format_turbulence_model(system)),
+            ("OUTPUT AND MONITORING", Logging._format_monitoring_io(system)),
+        ]
+        if getattr(system, "vlm_solver", None) is not None:
+            sections.append(("VORTEX-LATTICE METHOD", Logging._format_vlm_solver(system)))
+        if getattr(system, "panel_solver", None) is not None:
+            sections.append(("PANEL METHOD", Logging._format_panel_solver(system)))
+        return log_style.block_report("VPM SOLVER CONFIGURATION", sections)
 
     @staticmethod
     def solver_summary(system) -> str:
         """Return the shorter VPM initialization summary."""
         rows: list[log_style.Row] = [
             ("flow model", getattr(system, "flow_model_description", system.flow_model)),
-            ("time integration:", ""),
-            ("  advection", system.advection_scheme),
-            ("  stretching", system.stretching_scheme),
+            ("integrator", getattr(getattr(system, "integrator", None), "name", "unknown")),
         ]
-        if getattr(system, "stretching_conserve_moments", False):
-            projection = "vortex strength + impulses"
-            if getattr(system, "stretching_conserve_energy", False):
-                projection += " + energy"
-            rows.append(("  invariant projection", projection))
         axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
         if axis is not None:
             rows.append(("  symmetry", f"axisymmetric no-swirl about {axis}"))
@@ -749,7 +779,7 @@ class Logging:
                 ("  wall time", f"{system.wall_time:.2e}", "s"),
                 ("  vortex strength", f"{system.vortex_strength_magnitude_sum:.2e}", "m^3/s"),
                 ("output:", ""),
-                ("  backup interval", f"{system.setup.backup.interval_steps:,}", "steps"),
+            ("  backup interval", f"{system.case.backup.interval_steps:,}", "steps"),
                 ("  backup prefix", "vpm"),
             )
         )
@@ -769,16 +799,23 @@ class Logging:
 
         les = system.turbulence_model
         try:
-            Logging.record(
-                "les diagnostics, classical smagorinsky",
-                ("eddy viscosity, min", f"{les.min_eddy_viscosity:.4e}", "m^2/s"),
-                ("eddy viscosity, max", f"{les.max_eddy_viscosity:.4e}", "m^2/s"),
-                ("viscosity ratio, min", f"{les.min_eddy_viscosity_ratio:.4e}"),
-                ("viscosity ratio, max", f"{les.max_eddy_viscosity_ratio:.4e}"),
+            title = (
+                "INITIAL TURBULENCE QUANTITIES"
+                if int(getattr(system, "step", 0)) == 0
+                else "TURBULENCE QUANTITIES"
+            )
+            Logging.section(
+                title,
+                ("Eddy viscosity", ""),
+                ("  Minimum", f"{les.min_eddy_viscosity:.4e}", "m^2/s"),
+                ("  Maximum", f"{les.max_eddy_viscosity:.4e}", "m^2/s"),
+                ("Eddy-to-molecular viscosity ratio", ""),
+                ("  Minimum", f"{les.min_eddy_viscosity_ratio:.4e}"),
+                ("  Maximum", f"{les.max_eddy_viscosity_ratio:.4e}"),
                 flush=True,
             )
         except Exception as error:
-            Logging.warning(f"les diagnostics failed, {error}", flush=True)
+            Logging.warning(f"LES diagnostics failed: {error}", flush=True)
 
     @staticmethod
     def vlm_forces(system):
@@ -796,11 +833,11 @@ class Logging:
                 return
 
             forces = vlm._last_forces
-            Logging.record(
-                f"vlm forces, step {int(system.step):,}",
-                ("lift coefficient", f"{forces['lift_coefficient']:.3e}"),
-                ("drag coefficient", f"{forces['drag_coefficient']:.3e}"),
-                ("particles, active", f"{system.particles.n_particles_total:,}"),
+            Logging.section(
+                "VORTEX-LATTICE LOADS",
+                ("Lift coefficient", f"{forces['lift_coefficient']:.3e}"),
+                ("Drag coefficient", f"{forces['drag_coefficient']:.3e}"),
+                ("Active particles", f"{system.particles.n_particles_total:,}"),
                 flush=True,
             )
 
@@ -837,17 +874,14 @@ class Logging:
             total_elapsed: Cumulative simulation time [s]
             detailed_timing: Optional dictionary with per-operation durations
         """
-        rows: list[log_style.Row] = [
-            ("step", f"{step_elapsed:.3e}", "s"),
-            ("cumulative", f"{total_elapsed:.3e}", "s"),
-        ]
-        if detailed_timing and len(detailed_timing) > 0:
-            rows.append(("phases:", ""))
-            for operation, duration in detailed_timing.items():
-                fraction = duration / step_elapsed if step_elapsed > 0 else 0.0
-                rows.append((f"  {operation}", f"{duration:.6f}", "s"))
-                rows.append((f"  {operation}, share", f"{100.0 * fraction:.1f}", "%"))
-        Logging.record("timing", *rows, flush=True)
+        if not detailed_timing:
+            return
+        rows: list[log_style.Row] = []
+        for operation, duration in detailed_timing.items():
+            fraction = duration / step_elapsed if step_elapsed > 0 else 0.0
+            rows.append((operation, f"{duration:.6f}", "s"))
+            rows.append(("  Share of step", f"{100.0 * fraction:.1f}", "%"))
+        Logging.section("DETAILED WALL-CLOCK TIMING", *rows, flush=True)
 
     @staticmethod
     def stretching_time_step_size_warning(
@@ -938,6 +972,8 @@ class Logging:
         # diagnostics for a newly constructed solver must never inherit that
         # step's suppression state.
         Logging.set_routine_messages_enabled(True)
+        Logging._active_step = None
+        Logging._last_block_section = None
 
         if _ACTIVE_OUTPUT_REDIRECTION is not None:
             _ACTIVE_OUTPUT_REDIRECTION.restore()

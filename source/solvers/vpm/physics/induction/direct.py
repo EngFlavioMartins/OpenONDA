@@ -16,15 +16,24 @@ class DirectInduction:
     intentionally private to this migration adapter.
     """
 
-    def __init__(self, physics, max_n_particles: int | None = None) -> None:
+    def __init__(self, physics=None, max_n_particles: int | None = None) -> None:
+        self.physics = None
+        self.max_n_particles = int(max_n_particles or 1)
+        self._strain_rate = None
+        if physics is not None:
+            self.bind(physics)
+
+    def bind(self, physics):
+        """Bind this immutable construction object to one physics workspace."""
         self.physics = physics
-        capacity = physics.max_n_particles if max_n_particles is None else int(max_n_particles)
+        capacity = physics.max_n_particles if self.max_n_particles == 1 else self.max_n_particles
         if capacity < 1:
             raise ValueError("max_n_particles must be positive")
         self.max_n_particles = capacity
         self._strain_rate = ti.Matrix.field(
             3, 3, dtype=physics.accumulator_dtype, shape=(capacity,)
         )
+        return self
 
     def evaluate_stage(
         self,
@@ -40,6 +49,8 @@ class DirectInduction:
     ) -> None:
         """Evaluate one supplied stage without reading accepted particle state."""
         del stage_time
+        if self.physics is None:
+            raise RuntimeError("DirectInduction must be bound to a PhysicsEngine before evaluation")
         count = int(count)
         if count < 0 or count > self.max_n_particles:
             raise ValueError(f"stage count {count} exceeds induction capacity {self.max_n_particles}")

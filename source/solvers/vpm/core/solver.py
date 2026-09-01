@@ -23,10 +23,9 @@ from source.write_precision import DEFAULT_WRITE_PRECISION, validate_write_preci
 from ..boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
 from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
-from ..config.case import RestartState, VPMCase
+from ..config.case import Numerics, RestartState, VPMCase
 from ..config.constants import MAX_N_PARTICLES, MAX_SOURCES
 from ..config.health import HealthSnapshot, accepted_step_health
-from ..config.setup import VPMSetup
 from ..config.stabilization import StabilizationConfig
 from ..config.state import set_flow_model
 from ..coupling import CouplingStepper
@@ -94,13 +93,20 @@ class VPMSolver:
         self._run_started = False
         self._run_finished = False
         self._evolution_failure: BaseException | None = None
+        self._configuration_logged = False
         final_setup = self._init_setup(case)
         self._init_io_and_backend(final_setup, final_setup.debug_mode)
         self._init_particles_and_physics(final_setup)
         self._init_turbulence_and_adaptation(final_setup)
         self._init_solvers(final_setup)
         self.output_manager = OutputManager(self, case.samplers)
-        Logging.message(Logging.solver_info(self))
+        Logging.set_routine_messages_enabled(True)
+        Logging.message(Logging.solver_info(self), flush=True)
+        self._configuration_logged = True
+        # Declarative or externally supplied initial particles are populated
+        # after construction.  Keep those setup mutations out of the runtime
+        # event stream; the first requested diagnostics describe their state.
+        Logging.set_routine_messages_enabled(False)
 
     @staticmethod
     def reset_gpu() -> None:
@@ -116,16 +122,16 @@ class VPMSolver:
         """Wait until all queued VPM backend work has completed."""
         ti.sync()
 
-    def _init_setup(self, case: VPMCase) -> VPMSetup:
+    def _init_setup(self, case: VPMCase) -> Numerics:
         """Validate the setup and initialize scalar solver state."""
-        final_setup = case.numerics._to_runtime_setup(case.backup, case.samplers)
+        final_setup = case.numerics
         self.setup = final_setup
         self.numerics = case.numerics
+        self.backup = case.backup
         self.time_step_size = final_setup.time_step_size
         self.time = self.restart_state.time
         self.step = self.restart_state.step
         self._is_particle_regeneration_pending = False
-        self.time_integration = final_setup.time_integration.upper()
         axisymmetric_axis = final_setup.axisymmetric_no_swirl_axis
         self.axisymmetric_axis = (
             -1 if axisymmetric_axis is None else {"x": 0, "y": 1, "z": 2}[axisymmetric_axis]
@@ -209,14 +215,18 @@ class VPMSolver:
                 f"Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s)."
             )
 
-        self.advection_scheme = final_setup.advection.scheme
-        self.stretching_scheme = final_setup.stretching.scheme
-        self.stretching_use_treecode = getattr(final_setup.stretching, "use_treecode", False)
-        self.stretching_treecode_theta = getattr(final_setup.stretching, "treecode_theta", 0.3)
-        self.stretching_conserve_moments = getattr(
-            final_setup.stretching, "conserve_moments", False
-        )
-        self.stretching_conserve_energy = getattr(final_setup.stretching, "conserve_energy", False)
+        self.integrator = final_setup.integrator
+        self.induction = final_setup.induction
+        self.advection_scheme = final_setup.integrator.name
+        self.stretching_scheme = {
+            "SSPRK3": "RK3",
+            "RK2": "RK2",
+            "RK4": "RK4",
+        }.get(final_setup.integrator.name, final_setup.integrator.name)
+        self.stretching_use_treecode = False
+        self.stretching_treecode_theta = getattr(final_setup.induction, "theta", 0.3)
+        self.stretching_conserve_moments = False
+        self.stretching_conserve_energy = False
         self.compute_device = final_setup.compute_device.upper()
         self.flow_model = final_setup.turbulence.flow_model.upper()
         self.viscous_scheme = final_setup.viscous.scheme
@@ -227,11 +237,11 @@ class VPMSolver:
         # data; the preceding accepted snapshot is runtime state below.
         self.health_limits = final_setup.health_limits
         self.particle_kernel = final_setup.particle_kernel.upper()
-        backup_path = Path(final_setup.backup.directory)
+        backup_path = Path(case.backup.directory)
         if not backup_path.is_absolute():
             backup_path = self.case_dir / backup_path
         self._backup_path = backup_path.resolve()
-        log_path = Path(final_setup.backup.log_directory)
+        log_path = Path(case.backup.log_directory)
         if not log_path.is_absolute():
             log_path = self.case_dir / log_path
         self._log_path = log_path.resolve()
@@ -239,7 +249,7 @@ class VPMSolver:
         self._log_path.mkdir(parents=True, exist_ok=True)
         return final_setup
 
-    def _init_io_and_backend(self, final_setup: VPMSetup, debug_mode: bool) -> None:
+    def _init_io_and_backend(self, final_setup: Numerics, debug_mode: bool) -> None:
         """Set up output redirection, IO, precision, splitter/remesher, Taichi backend."""
         Logging.setup_output_redirection(self)
         self.io = SolverIO(self)
@@ -257,12 +267,16 @@ class VPMSolver:
             random_seed=final_setup.random_seed,
         )
         print_openonda_header(self.precision)
+        # Initialization can call the same particle/model helpers used at run
+        # time.  Suppress their routine event records until the complete,
+        # authoritative configuration is printed once after initial conditions.
+        Logging.set_routine_messages_enabled(False)
         set_flow_model(self, flow_model=self.flow_model)
         self.compute_dtype = ti.f64 if self.precision == "f64" else ti.f32
         self.accumulator_dtype = self.compute_dtype
         self.np_dtype = np.float64 if self.precision == "f64" else np.float32
 
-    def _init_particles_and_physics(self, final_setup: VPMSetup) -> None:
+    def _init_particles_and_physics(self, final_setup: Numerics) -> None:
         """Create particle container, physics engine, source fields, background velocity."""
         max_p = getattr(final_setup, "max_n_particles", MAX_N_PARTICLES)
         self.particles = Particles(max_n_particles=max_p, float_dtype=self.precision)
@@ -274,16 +288,17 @@ class VPMSolver:
             event_observer=LoggingPhysicsEventObserver(),
         )
 
-        _vel_cfg = getattr(final_setup, "velocity", None)
-        _vel_method = "TREECODE" if (_vel_cfg and _vel_cfg.method == "TREECODE") else "DIRECT"
-        _vel_theta = _vel_cfg.theta if _vel_cfg else 0.5
+        _vel_method = "TREECODE" if final_setup.induction.__class__.__name__ == "TreecodeInduction" else "DIRECT"
+        _vel_theta = getattr(final_setup.induction, "theta", 0.5)
         self.physics.configure_velocity(
             _vel_method,
             _vel_theta,
-            multipole_order=getattr(_vel_cfg, "multipole_order", 1),
-            sort_particle_targets=getattr(_vel_cfg, "sort_particle_targets", False),
-            traversal_block_dim=getattr(_vel_cfg, "traversal_block_dim", 128),
+            multipole_order=getattr(final_setup.induction, "multipole_order", 1),
+            sort_particle_targets=getattr(final_setup.induction, "sort_particle_targets", False),
+            traversal_block_dim=getattr(final_setup.induction, "traversal_block_dim", 128),
         )
+        if hasattr(self.induction, "bind"):
+            self.induction.bind(self.physics)
 
         _visc_cfg = getattr(final_setup, "viscous", None)
         if _visc_cfg is not None and hasattr(self.physics, "core_radius_ratio"):
@@ -333,7 +348,7 @@ class VPMSolver:
         if hasattr(self.setup, "freestream_velocity"):
             self.particles.set_freestream_velocity(np.array(self.setup.freestream_velocity))
 
-    def _init_turbulence_and_adaptation(self, final_setup: VPMSetup) -> None:
+    def _init_turbulence_and_adaptation(self, final_setup: Numerics) -> None:
         """Initialize LES turbulence, stretching settings, and diagnostics."""
         max_p = getattr(final_setup, "max_n_particles", MAX_N_PARTICLES)
         self.turbulence_model = None
@@ -346,8 +361,8 @@ class VPMSolver:
                 subgrid_dissipation_coefficient=final_setup.turbulence.subgrid_dissipation_coefficient,
                 accumulator_dtype=self.accumulator_dtype,
             )
-        self.stretching_enabled = final_setup.stretching.enabled
-        self.stretching_mode = final_setup.stretching.mode
+        self.stretching_enabled = True
+        self.stretching_mode = "TRANSPOSED"
 
         self.field_diagnostics = ParticleFieldEvaluation(
             particle_kernel=self.particle_kernel,
@@ -365,7 +380,7 @@ class VPMSolver:
         # Size of the last core-spreading moment projection, relative to |vortex_strength|.
         self.core_spreading_correction_relative = 0.0
 
-    def _init_solvers(self, final_setup: VPMSetup) -> None:
+    def _init_solvers(self, final_setup: Numerics) -> None:
         """Initialize the stabilization master and the optional sub-solvers."""
 
         # Time histories consumed by export_diagnostics_csv and the VLM report.
@@ -572,6 +587,7 @@ class VPMSolver:
                 "VPMSolver is terminally invalid after a failed physical step; "
                 "construct a new solver and load the last accepted backup"
             ) from self._evolution_failure
+        self._log_configuration_once()
         try:
             self.stepper.advance(defer_output=defer_output)
         except BaseException as exc:
@@ -603,6 +619,7 @@ class VPMSolver:
         failure: BaseException | None = None
         try:
             self._build_initial_conditions()
+            self._log_configuration_once()
             if self.case.run.initial_samples:
                 self._refresh_diagnostics_for_output()
                 self.output_manager.dispatch(OutputEvent.INITIAL)
@@ -707,11 +724,13 @@ class VPMSolver:
 
     def record_diagnostics(self) -> None:
         """Evaluate current diagnostics without exposing field-cache controls."""
+        self._log_configuration_once()
         self._refresh_diagnostics_for_output()
         self.output_manager.dispatch(OutputEvent.INITIAL)
 
     def execute_scheduled_samplers(self) -> None:
         """Execute due time- or step-scheduled field samplers."""
+        self._log_configuration_once()
         # Coupled drivers call this after replacing their authoritative part of
         # the particle cloud, so the accepted health state must be measured
         # here rather than before that synchronization.
@@ -1378,8 +1397,22 @@ class VPMSolver:
     # Diagnostics
     def info(self) -> None:
         """Print a summary of the solver configuration and current state."""
-        info_str = Logging.solver_info(self)
-        Logging.message(info_str)
+        Logging.set_routine_messages_enabled(True)
+        Logging.message(Logging.solver_info(self), flush=True)
+        self._configuration_logged = True
+
+    def _log_configuration_once(self) -> None:
+        """Ensure the complete static time-zero configuration is visible once."""
+        if getattr(self, "_configuration_logged", False):
+            Logging.set_routine_messages_enabled(True)
+            return
+        # Lightweight unit doubles created without a VPMCase have no reportable
+        # configuration and should retain the numerical facade contract.
+        if not hasattr(self, "case") or not hasattr(self, "setup"):
+            return
+        Logging.set_routine_messages_enabled(True)
+        Logging.message(Logging.solver_info(self), flush=True)
+        self._configuration_logged = True
 
     # Particle management
     def remove_particles(

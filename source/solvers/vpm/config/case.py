@@ -17,16 +17,16 @@ from typing import TYPE_CHECKING, Literal
 from source.write_precision import DEFAULT_WRITE_PRECISION, WritePrecision
 
 from ..boundary_elements.vlm.config import VLMSetup
-from .advection import AdvectionConfig
+from ..numerics.rk_tableaux import SSPRK3, RKTableau
+from ..physics.induction.base import InductionMethod
+from ..physics.induction.direct import DirectInduction
 from .artifacts import Backup, Samplers
 from .constants import DEFAULT_CUTOFF_RADIUS_FACTOR, DEFAULT_TIME_STEP, MAX_N_PARTICLES
 from .diagnostics import DiagnosticsConfig
 from .health import HealthLimits
-from .setup import PanelBodySetup, VPMSetup
+from .setup import PanelBodySetup
 from .stabilization import StabilizationConfig
-from .stretching import StretchingConfig
 from .turbulence import TurbulenceConfig
-from .velocity import VelocityConfig
 from .viscous import ViscousConfig
 
 if TYPE_CHECKING:
@@ -38,22 +38,16 @@ class Numerics:
     """Immutable numerical and physical controls for a VPM case.
 
     Runtime clock values and output destinations are intentionally absent.
-    ``_to_runtime_setup`` is private framework plumbing that adapts this typed
-    public object to the still-internal numerical engine configuration.
-
     ``time_step_size`` is the accepted-step duration in seconds and must be
     positive.  ``precision`` selects the particle compute dtype (``"f32"`` or
-    ``"f64"``); f64 cannot currently use treecode velocity evaluation.
-    ``particle_kernel`` and ``velocity`` must be compatible, while coupled
-    RK2/RK3 integration requires matching advection and stretching schemes.
-    Invalid combinations raise :class:`ValueError` during construction.
+    ``"f64"``).  ``integrator`` advances position and vortex strength together,
+    while ``induction`` supplies the stage-rate evaluator.
     """
 
     time_step_size: float = DEFAULT_TIME_STEP
-    time_integration: Literal["FRACTIONAL", "COUPLED"] = "FRACTIONAL"
+    integrator: RKTableau = field(default_factory=SSPRK3)
+    induction: InductionMethod = field(default_factory=DirectInduction)
     axisymmetric_no_swirl_axis: Literal["x", "y", "z"] | None = None
-    advection: AdvectionConfig = field(default_factory=AdvectionConfig)
-    stretching: StretchingConfig = field(default_factory=StretchingConfig.transposed)
     viscous: ViscousConfig = field(default_factory=ViscousConfig.cs)
     turbulence: TurbulenceConfig = field(default_factory=TurbulenceConfig.dns)
     stabilization: StabilizationConfig = field(default_factory=StabilizationConfig.disabled)
@@ -74,54 +68,55 @@ class Numerics:
     cutoff_radius_factor: float = DEFAULT_CUTOFF_RADIUS_FACTOR
     freestream_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
     verbose: bool = True
-    velocity: VelocityConfig | None = None
     panel_solver: object | None = None
     bodies: tuple[PanelBodySetup, ...] = ()
     domain_bounds: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
-        # The mature validator remains the single source of numerical truth
-        # while the compute engine is being separated from its legacy setup
-        # carrier.  No runtime or output state is retained by Numerics.
-        self._to_runtime_setup()
-
-    def _to_runtime_setup(
-        self, backup: Backup | None = None, samplers: Samplers | None = None
-    ) -> VPMSetup:
-        """Build the private engine configuration for this immutable case."""
-        backup = Backup() if backup is None else backup
-        samplers = Samplers() if samplers is None else samplers
-        return VPMSetup(
-            time_step_size=self.time_step_size,
-            time_integration=self.time_integration,
-            axisymmetric_no_swirl_axis=self.axisymmetric_no_swirl_axis,
-            advection=self.advection,
-            stretching=self.stretching,
-            viscous=self.viscous,
-            turbulence=self.turbulence,
-            stabilization=self.stabilization,
-            vlm=self.vlm,
-            particle_kernel=self.particle_kernel,
-            max_n_particles=self.max_n_particles,
-            max_evaluation_points=self.max_evaluation_points,
-            compute_device=self.compute_device,
-            precision=self.precision,
-            write_precision=self.write_precision,
-            random_seed=self.random_seed,
-            device_memory_fraction=self.device_memory_fraction,
-            debug_mode=self.debug_mode,
-            diagnostics=self.diagnostics,
-            health_limits=self.health_limits,
-            backup=backup,
-            samplers=samplers,
-            cutoff_radius_factor=self.cutoff_radius_factor,
-            freestream_velocity=self.freestream_velocity,
-            verbose=self.verbose,
-            velocity=self.velocity,
-            panel_solver=self.panel_solver,
-            bodies=self.bodies,
-            domain_bounds=self.domain_bounds,
+        if not isinstance(self.integrator, RKTableau):
+            raise TypeError("integrator must be an RKTableau instance")
+        if not hasattr(self.induction, "evaluate_stage"):
+            raise TypeError("induction must implement evaluate_stage")
+        if self.time_step_size <= 0.0:
+            raise ValueError("time_step_size must be positive")
+        if self.max_n_particles < 1:
+            raise ValueError("max_n_particles must be at least one")
+        if self.max_evaluation_points < 1:
+            raise ValueError("max_evaluation_points must be at least one")
+        valid_devices = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
+        if self.compute_device.upper() not in valid_devices:
+            raise ValueError(f"compute_device must be one of {sorted(valid_devices)}")
+        if self.precision not in {"f32", "f64"}:
+            raise ValueError("precision must be 'f32' or 'f64'")
+        kernel = self.particle_kernel.upper()
+        valid_kernels = {
+            "GAUSSIAN",
+            "HIGH_ORDER_GAUSSIAN",
+            "SUPER_GAUSSIAN",
+            "WINCKELMANS",
+        }
+        if kernel not in valid_kernels:
+            raise ValueError(f"particle_kernel must be one of {sorted(valid_kernels)}")
+        object.__setattr__(self, "particle_kernel", kernel)
+        object.__setattr__(self, "compute_device", self.compute_device.upper())
+        object.__setattr__(self, "precision", self.precision.lower())
+        if len(self.freestream_velocity) != 3:
+            raise ValueError("freestream_velocity must contain three components")
+        object.__setattr__(
+            self,
+            "freestream_velocity",
+            tuple(float(value) for value in self.freestream_velocity),
         )
+        if self.axisymmetric_no_swirl_axis is not None:
+            axis = self.axisymmetric_no_swirl_axis.lower()
+            if axis not in {"x", "y", "z"}:
+                raise ValueError("axisymmetric_no_swirl_axis must be x, y, z, or None")
+            object.__setattr__(self, "axisymmetric_no_swirl_axis", axis)
+        object.__setattr__(self, "bodies", tuple(self.bodies))
+        if self.domain_bounds is not None:
+            if len(self.domain_bounds) != 6:
+                raise ValueError("domain_bounds must contain (xmin, xmax, ymin, ymax, zmin, zmax)")
+            object.__setattr__(self, "domain_bounds", tuple(float(v) for v in self.domain_bounds))
 
 
 @dataclass(frozen=True, slots=True)

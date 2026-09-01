@@ -78,17 +78,11 @@ def build_case(
         numerics=vpm.Numerics(
             time_step_size=time_step_size,
             compute_device="AUTO",
-            time_integration="COUPLED",
-            advection=vpm.AdvectionConfig(scheme="RK2"),
+            integrator=vpm.RK2(),
             vlm=vlm_setup,
             freestream_velocity=[FREESTREAM_SPEED, 0.0, 0.0],
             turbulence=vpm.TurbulenceConfig.les_smagorinsky(
                 smagorinsky_coefficient=smagorinsky_coefficient
-            ),
-            stretching=vpm.StretchingConfig.transposed(
-                scheme="RK2",
-                use_treecode=True,
-                treecode_theta=TREECODE_THETA,
             ),
             stabilization=vpm.StabilizationConfig.bounded_domain(
                 bounds=[
@@ -104,7 +98,7 @@ def build_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=wake_spacing,
             ),
-            velocity=vpm.VelocityConfig.treecode(
+            induction=vpm.TreecodeInduction(
                 theta=TREECODE_THETA,
                 sort_particle_targets=True,
                 traversal_block_dim=128,

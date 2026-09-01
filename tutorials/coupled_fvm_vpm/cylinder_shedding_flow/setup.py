@@ -43,9 +43,12 @@ LINE_INTERVAL_TIME = 0.1
 SLICE_INTERVAL_TIME = 0.5
 FIELD_INTERVAL_TIME = 2.5
 
+# Medium adaptive FVM mesh. D/32 is the next exact dyadic level below the
+# former D/16 coarse mesh; the wall-normal resolution follows the same
+# resolved O-grid policy as the standalone reference-flow grid study.
 FVM_BACKGROUND_CELL_SIZE = 0.5
-FVM_SURFACE_CELL_SIZE = 1.0 / 16.0
-FVM_FIRST_WALL_CELL_HEIGHT = 1.0 / 128.0
+FVM_SURFACE_CELL_SIZE = 1.0 / 32.0
+FVM_FIRST_WALL_CELL_HEIGHT = FVM_SURFACE_CELL_SIZE / 32.0
 FVM_SPANWISE_CELL_SIZE = 0.5
 VPM_PARTICLE_SPACING = 1.0 / 16.0
 SAMPLE_SPACING = 1.0 / 16.0
@@ -68,8 +71,10 @@ FVM_MESH = fvm.AdaptiveCartesianMesher(
     boundary_layer=fvm.BoundaryLayerSpec(
         first_cell_height=FVM_FIRST_WALL_CELL_HEIGHT,
         layers=8,
-        growth_ratio=1.12,
-        transition_layers=10,
+        growth_ratio=1.22,
+        # This is a minimum. AdaptiveCartesianMesher adds enough rings to
+        # guarantee that no square-to-cylinder transition step exceeds h.
+        transition_layers=12,
         interface_half_width=0.75,
         spanwise_cell_size=FVM_SPANWISE_CELL_SIZE,
     ),
@@ -231,7 +236,6 @@ VPM_PANEL_SOLVER = vpm.PanelSolver(
 VPM_CASE = vpm.VPMCase(
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
-        time_integration="COUPLED",
         freestream_velocity=FREESTREAM_VELOCITY,
         viscous=vpm.ViscousConfig.gbd(
             particle_spacing=VPM_PARTICLE_SPACING,
@@ -242,10 +246,9 @@ VPM_CASE = vpm.VPMCase(
             max_nodes=VPM_PARTICLE_LIMIT,
             core_radius_ratio=1.0,
         ),
-        stretching=vpm.StretchingConfig.transposed(scheme="RK2"),
-        advection=vpm.AdvectionConfig(scheme="RK2"),
+        integrator=vpm.RK2(),
         turbulence=vpm.TurbulenceConfig.inviscid(),
-        velocity=vpm.VelocityConfig.treecode(theta=0.3, multipole_order=2),
+        induction=vpm.TreecodeInduction(theta=0.3),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         particle_kernel="GAUSSIAN",
         precision="f32",

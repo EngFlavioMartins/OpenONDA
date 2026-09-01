@@ -57,15 +57,6 @@ def cadence_steps(period: float, time_step_size: float = TIME_STEP_SIZE) -> int:
     return max(1, round(period / time_step_size))
 
 
-def stretching_setup(name: str) -> vpm.StretchingConfig:
-    """Build the selected vortex-stretching formulation."""
-    return {
-        "direct": vpm.StretchingConfig.direct,
-        "transposed": vpm.StretchingConfig.transposed,
-        "mixed": vpm.StretchingConfig.mixed,
-    }[name](scheme="RK3")
-
-
 def run_case(variant: str, compute_device: str = "AUTO") -> None:
     """Run a single vortex-ring variant and write solution/samples."""
     mode, stretching = variant.lower().split("_", maxsplit=1)
@@ -129,8 +120,7 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             compute_device=compute_device,
-            time_integration="FRACTIONAL",
-            advection=vpm.AdvectionConfig(scheme="RK3"),
+            integrator=vpm.SSPRK3(),
             turbulence=(
                 vpm.TurbulenceConfig.dns()
                 if mode == "dns"
@@ -138,9 +128,8 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
                     smagorinsky_coefficient=smagorinsky_coefficient
                 )
             ),
-            stretching=stretching_setup(stretching),
             stabilization=stabilization,
-            velocity=vpm.VelocityConfig.treecode(
+            induction=vpm.TreecodeInduction(
                 theta=TREECODE_THETA,
                 sort_particle_targets=True,
                 traversal_block_dim=128,

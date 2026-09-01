@@ -59,7 +59,7 @@ from .vtk_export import panel_mesh_to_vtp
 logger = logging.getLogger("vpm")
 
 if TYPE_CHECKING:
-    from source.solvers.vpm.config.setup import VPMSetup
+    from source.solvers.vpm.config.case import Numerics
     from source.solvers.vpm.particles.container import Particles
     from source.solvers.vpm.physics.engine import PhysicsEngine
 
@@ -1425,7 +1425,7 @@ class PanelSolver:
         self,
         particles: "Particles | None" = None,
         physics: "PhysicsEngine | None" = None,
-        config: "VPMSetup | None" = None,
+        config: "Numerics | None" = None,
         freestream_velocity: np.ndarray | None = None,
         wake_velocity: object | None = None,
         time_step_size: float | None = None,

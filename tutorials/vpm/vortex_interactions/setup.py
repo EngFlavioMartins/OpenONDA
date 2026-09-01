@@ -144,9 +144,7 @@ def build_case(case_name: str) -> vpm.VPMCase:
     return vpm.VPMCase(
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            time_integration="COUPLED",
-            advection=vpm.AdvectionConfig(scheme="RK3"),
-            stretching=vpm.StretchingConfig.transposed(scheme="RK3"),
+            integrator=vpm.SSPRK3(),
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=PARTICLE_SPACING,
@@ -158,7 +156,7 @@ def build_case(case_name: str) -> vpm.VPMCase:
             health_limits=vpm.HealthLimits(
                 lagrangian_cfl=vpm.LagrangianCFLLimit(maximum=MAX_LAGRANGIAN_CFL)
             ),
-            velocity=vpm.VelocityConfig.treecode(
+            induction=vpm.TreecodeInduction(
                 theta=TREECODE_THETA,
                 sort_particle_targets=True,
                 traversal_block_dim=128,

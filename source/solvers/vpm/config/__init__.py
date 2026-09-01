@@ -4,7 +4,6 @@ Importing this package does not initialize Taichi. Backend initialization occurs
 only when a VPM or VLM solver is constructed.
 """
 
-from .advection import AdvectionConfig
 from .artifacts import Backup, Samplers
 from .case import Numerics, RestartState, RunPlan, VPMCase
 from .diagnostics import DiagnosticsConfig
@@ -22,13 +21,10 @@ from .health import (
 )
 from .setup import PanelBodySetup
 from .stabilization import StabilizationConfig
-from .stretching import StretchingConfig
 from .turbulence import TurbulenceConfig
-from .velocity import VelocityConfig
 from .viscous import ViscousConfig
 
 __all__ = [
-    "AdvectionConfig",
     "Backup",
     "DivergenceRelaxationConfig",
     "DiagnosticsConfig",
@@ -47,9 +43,7 @@ __all__ = [
     "RunPlan",
     "Samplers",
     "StabilizationConfig",
-    "StretchingConfig",
     "TurbulenceConfig",
     "VPMCase",
-    "VelocityConfig",
     "ViscousConfig",
 ]

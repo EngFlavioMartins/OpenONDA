@@ -110,11 +110,10 @@ def run() -> None:
             time_step_size=TIME_STEP_SIZE,
             compute_device="AUTO",
             vlm=vlm_setup,
-            stretching=vpm.StretchingConfig.disabled(),
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            velocity=vpm.VelocityConfig.treecode(
+            induction=vpm.TreecodeInduction(
                 theta=0.35,
                 sort_particle_targets=True,
                 traversal_block_dim=128,

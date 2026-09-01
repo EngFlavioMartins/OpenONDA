@@ -98,10 +98,6 @@ class EvolutionStepper:
         return self.solver.flow_model
 
     @property
-    def time_integration(self):
-        return self.solver.time_integration
-
-    @property
     def n_sources(self):
         return self.solver.n_sources
 
@@ -235,11 +231,10 @@ class EvolutionStepper:
                 with self.profiler.section("Panel coupling"):
                     self.coupling.advance_panel()
 
-            _adv = (self.setup.advection.scheme if self.setup.advection else "RK3").upper()
+            _adv = self.advection_scheme.upper()
             _gradients_required = (
                 self.stretching_enabled
                 or self.flow_model == "LES"
-                or self.time_integration == "COUPLED"
                 or self.stabilization_config.stretching_viscosity_coefficient > 0.0
                 or (
                     self.stabilization_config.pedrizzetti_relaxation_enabled
@@ -403,8 +398,8 @@ class EvolutionStepper:
     def _update_velocity_gradients(self, announce: bool = False) -> None:
         """Evaluate particle velocity gradients with the configured direct or tree method."""
         del announce  # retained for compatibility; static method details are logged at time zero
-        use_treecode = bool(self.setup.velocity and self.setup.velocity.method == "TREECODE")
-        theta = self.setup.velocity.theta if self.setup.velocity else 0.5
+        use_treecode = self.physics.velocity_method == "TREECODE"
+        theta = self.physics.velocity_theta
 
         if use_treecode:
             self.physics.compute_velocity_gradients_hierarchical(self.particles, theta=theta)
@@ -414,8 +409,8 @@ class EvolutionStepper:
     def _update_velocity_and_gradients(self, announce: bool = False) -> None:
         """Evaluate particle velocity and ``∇u`` in one direct pass or tree traversal."""
         del announce  # retained for compatibility; static method details are logged at time zero
-        use_treecode = bool(self.setup.velocity and self.setup.velocity.method == "TREECODE")
-        theta = self.setup.velocity.theta if self.setup.velocity else 0.5
+        use_treecode = self.physics.velocity_method == "TREECODE"
+        theta = self.physics.velocity_theta
         if use_treecode:
             self.physics.compute_velocity_and_gradient_hierarchical(self.particles, theta=theta)
         else:
