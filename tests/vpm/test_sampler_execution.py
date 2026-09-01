@@ -30,6 +30,10 @@ def _solver(tmp_path, samples: tuple[object, ...]):
     samplers = Samplers(samples=samples)
     return SimpleNamespace(
         case_dir=tmp_path,
+        case=SimpleNamespace(
+            samplers=samplers,
+            backup=SimpleNamespace(interval_steps=0),
+        ),
         setup=SimpleNamespace(samplers=samplers),
         step=4,
         time=0.2,

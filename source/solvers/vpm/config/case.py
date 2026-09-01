@@ -113,6 +113,10 @@ class Numerics:
                 raise ValueError("axisymmetric_no_swirl_axis must be x, y, z, or None")
             object.__setattr__(self, "axisymmetric_no_swirl_axis", axis)
         object.__setattr__(self, "bodies", tuple(self.bodies))
+        body_uids = [body.uid for body in self.bodies]
+        if len(body_uids) != len(set(body_uids)):
+            duplicates = sorted({uid for uid in body_uids if body_uids.count(uid) > 1})
+            raise ValueError("Duplicate panel body uid(s): " + ", ".join(duplicates))
         if self.domain_bounds is not None:
             if len(self.domain_bounds) != 6:
                 raise ValueError("domain_bounds must contain (xmin, xmax, ymin, ymax, zmin, zmax)")
