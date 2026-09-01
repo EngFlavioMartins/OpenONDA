@@ -17,11 +17,14 @@ import numpy as np
 import taichi as ti
 
 from ..config.constants import MAX_N_PARTICLES
+from ..numerics.rk_tableaux import RK2, RK4, SSPRK3
+from ..numerics.runge_kutta import RungeKutta
 from .base import PhysicsBase
 from .diffusion.core_spreading import apply_core_spreading
 from .diffusion.grid import _GridDiffusionMixin
 from .diffusion.random_walk import apply_random_walk
 from .events import NullPhysicsEventObserver, PhysicsEventObserver
+from .induction.base import StageRates, StageState
 
 _DIRECT_STRETCHING_BATCH_SIZE = 4096
 
@@ -65,6 +68,10 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         self._diffusion = _DiffusionHandler(self)
         self._stretching = _StretchingHandler(self)
         self._coupled = _CoupledAdvectionStretchingHandler(self)
+        self._coupled_integrator = RungeKutta(
+            max_n_particles=max_n_particles,
+            dtype=accumulator_dtype,
+        )
 
     def report_rows(self) -> list:
         """Return the physics-model configuration as log detail rows."""
@@ -105,6 +112,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         conserve_energy: bool = False,
         axisymmetric_axis: int = -1,
         precomputed_velocity_k1: bool = False,
+        strength_enabled: bool = True,
     ):
         """Advance particle position and vortex strength at common RK stages.
 
@@ -124,6 +132,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             conserve_energy,
             axisymmetric_axis,
             precomputed_velocity_k1,
+            strength_enabled,
         )
 
     # DIFFUSION INTERFACE
@@ -421,13 +430,15 @@ class _CoupledAdvectionStretchingHandler:
         conserve_energy: bool,
         axisymmetric_axis: int,
         precomputed_velocity_k1: bool,
+        strength_enabled: bool = True,
     ) -> None:
         N = len(particles)
         scheme = scheme.upper()
         if N == 0 or time_step_size == 0.0:
             return
-        if scheme not in {"RK2", "RK3"}:
-            raise ValueError("Coupled advection/stretching supports RK2 and RK3.")
+        tableaux = {"RK2": RK2, "RK3": SSPRK3, "RK4": RK4}
+        if scheme not in tableaux:
+            raise ValueError("Coupled advection/stretching supports RK2, RK3, or RK4.")
 
         parent = self._parent
         parent._resize_temp_fields(N)
@@ -437,115 +448,34 @@ class _CoupledAdvectionStretchingHandler:
         )
         parent._stretching._treecode_theta = float(treecode_theta)
         mode_int = self._mode_int(mode)
-
-        # k1 = f(x_n, vortex_strength_n)
-        self._stage_rhs(
+        del precomputed_velocity_k1
+        parent._coupled_integrator.tableau = tableaux[scheme]()
+        right_hand_side = _LegacyCoupledStageRHS(
+            self,
             particles,
-            particles.position,
-            particles.vortex_strength,
-            particles.core_radius,
-            particles.velocity,
-            parent.dstr_dt_temp,
-            mode_int,
-            N,
-            precomputed=precomputed_velocity_k1,
+            mode_int=mode_int,
             conserve_moments=conserve_moments,
             conserve_energy=conserve_energy,
             axisymmetric_axis=axisymmetric_axis,
+            strength_enabled=strength_enabled,
         )
-
-        # y1 = y_n + dt*k1
-        parent.step_euler_forward_kernel(
-            particles.position, particles.velocity, parent.pos_temp, time_step_size, N
+        parent._coupled_integrator.advance(
+            position=particles.position,
+            vortex_strength=particles.vortex_strength,
+            core_radius=particles.core_radius,
+            count=N,
+            time=0.0,
+            time_step_size=time_step_size,
+            right_hand_side=right_hand_side,
         )
-        parent.step_euler_forward_kernel(
-            particles.vortex_strength, parent.dstr_dt_temp, parent.str_temp, time_step_size, N
-        )
-        # k2 = f(y1).  A tree topology cannot merely be refitted here because
-        # Coupled stages change both position and vortex strength.
-        self._stage_rhs(
-            particles,
-            parent.pos_temp,
-            parent.str_temp,
-            particles.core_radius,
-            parent.vel_temp,
-            parent.dstr_dt_temp2,
-            mode_int,
-            N,
-            precomputed=False,
-            conserve_moments=conserve_moments,
-            conserve_energy=conserve_energy,
-            axisymmetric_axis=axisymmetric_axis,
-        )
-
-        if scheme == "RK2":
-            parent.step_rk2_combine_kernel(
-                particles.position, particles.velocity, parent.vel_temp, time_step_size, N
-            )
-            parent.step_rk2_combine_kernel(
-                particles.vortex_strength,
-                parent.dstr_dt_temp,
-                parent.dstr_dt_temp2,
-                time_step_size,
-                N,
-            )
-            return
-
-        # SSP-RK3 stage y2 = y_n + dt/4*(k1+k2)
-        parent.linear_combination_kernel(
-            parent.pos_temp2,
+        # Keep the last stage velocity available to legacy diagnostics until
+        # the accepted-state refresh is moved behind StageRHS.
+        parent._copy_vec3(
+            parent._coupled_integrator.stage_velocity[parent._coupled_integrator.tableau.stages - 1],
             particles.velocity,
-            parent.vel_temp,
-            0.25 * time_step_size,
-            0.25 * time_step_size,
             N,
-        )
-        parent.step_euler_forward_kernel(
-            particles.position, parent.pos_temp2, parent.pos_temp2, 1.0, N
-        )
-        parent.linear_combination_kernel(
-            parent.str_temp2,
-            parent.dstr_dt_temp,
-            parent.dstr_dt_temp2,
-            0.25 * time_step_size,
-            0.25 * time_step_size,
-            N,
-        )
-        parent.step_euler_forward_kernel(
-            particles.vortex_strength, parent.str_temp2, parent.str_temp2, 1.0, N
-        )
-        # k3 = f(y2)
-        self._stage_rhs(
-            particles,
-            parent.pos_temp2,
-            parent.str_temp2,
-            particles.core_radius,
-            parent.vel_temp2,
-            parent.dstr_dt_temp3,
-            mode_int,
-            N,
-            precomputed=False,
-            conserve_moments=conserve_moments,
-            conserve_energy=conserve_energy,
-            axisymmetric_axis=axisymmetric_axis,
         )
 
-        parent.step_rk3_ssp_combine_kernel(
-            particles.position,
-            particles.velocity,
-            parent.vel_temp,
-            parent.vel_temp2,
-            time_step_size,
-            N,
-        )
-        parent.step_rk3_ssp_combine_kernel(
-            particles.vortex_strength,
-            parent.dstr_dt_temp,
-            parent.dstr_dt_temp2,
-            parent.dstr_dt_temp3,
-            time_step_size,
-            N,
-        )
 
     def _stage_rhs(
         self,
@@ -666,6 +596,50 @@ class _CoupledAdvectionStretchingHandler:
                 particles.zone_id,
                 axisymmetric_axis,
                 N,
+            )
+
+
+class _LegacyCoupledStageRHS:
+    """Bridge the existing physics evaluator into the generic RK engine."""
+
+    def __init__(
+        self,
+        handler: _CoupledAdvectionStretchingHandler,
+        particles,
+        *,
+        mode_int: int,
+        conserve_moments: bool,
+        conserve_energy: bool,
+        axisymmetric_axis: int,
+        strength_enabled: bool,
+    ) -> None:
+        self.handler = handler
+        self.particles = particles
+        self.mode_int = mode_int
+        self.conserve_moments = conserve_moments
+        self.conserve_energy = conserve_energy
+        self.axisymmetric_axis = axisymmetric_axis
+        self.strength_enabled = strength_enabled
+
+    def evaluate(self, stage_state: StageState, stage_time: float, stage_rates: StageRates) -> None:
+        del stage_time
+        self.handler._stage_rhs(
+            self.particles,
+            stage_state.position,
+            stage_state.vortex_strength,
+            stage_state.core_radius,
+            stage_rates.velocity,
+            stage_rates.vortex_strength_rate,
+            self.mode_int,
+            stage_state.count,
+            precomputed=False,
+            conserve_moments=self.conserve_moments,
+            conserve_energy=self.conserve_energy,
+            axisymmetric_axis=self.axisymmetric_axis,
+        )
+        if not self.strength_enabled:
+            self.handler._parent._zero_vec3_field(
+                stage_rates.vortex_strength_rate, stage_state.count
             )
 
 

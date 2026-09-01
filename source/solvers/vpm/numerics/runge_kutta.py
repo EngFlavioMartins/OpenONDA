@@ -142,6 +142,9 @@ class RungeKutta:
         if count == 0 or time_step_size == 0.0:
             return
 
+        def padded(values: tuple[float, ...]) -> tuple[float, float, float, float]:
+            return tuple(values) + (0.0,) * (4 - len(values))
+
         zero_field = self.stage_velocity[0]
         for stage in range(self.tableau.stages):
             coefficients = self.tableau.a[stage]
@@ -181,7 +184,7 @@ class RungeKutta:
                     self.stage_strength_rate[2],
                     self.stage_strength_rate[3],
                     float(time_step_size),
-                    *(float(coefficients[index]) for index in range(4)),
+                    *padded(coefficients),
                     count,
                 )
 
@@ -212,7 +215,7 @@ class RungeKutta:
             self.stage_strength_rate[2],
             self.stage_strength_rate[3],
             float(time_step_size),
-            *(float(coefficients[index]) for index in range(4)),
+            *padded(coefficients),
             count,
         )
 

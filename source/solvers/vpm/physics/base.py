@@ -870,6 +870,12 @@ class PhysicsBase:
             dst[i] = src[i]
 
     @ti.kernel
+    def _zero_vec3_field(self, field: ti.template(), N: ti.i32):
+        """Zero the first N entries of a vector field."""
+        for i in range(N):
+            field[i] = ti.Vector([0.0, 0.0, 0.0])
+
+    @ti.kernel
     def _copy_mat3(self, src: ti.template(), dst: ti.template(), N: ti.i32):
         """Copy the first N entries of one 3×3 matrix field into another."""
         for i in range(N):

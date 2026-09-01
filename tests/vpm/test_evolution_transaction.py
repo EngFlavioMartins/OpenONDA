@@ -49,7 +49,7 @@ class _Stabilization:
         return None
 
 
-def test_failed_physical_phase_does_not_commit_solver_clock():
+def test_failed_physical_phase_does_not_commit_solver_clock(capsys):
     solver = SimpleNamespace(
         step=4,
         time=0.4,
@@ -80,12 +80,17 @@ def test_failed_physical_phase_does_not_commit_solver_clock():
     stepper = EvolutionStepper(solver)
     stepper._update_velocities = lambda: None
     stepper._update_les_state = lambda: None
-    stepper._update_positions = lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
+    stepper._apply_coupled_update = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("boom")
+    )
 
     with pytest.raises(RuntimeError, match="boom"):
         stepper.advance()
 
     assert (solver.step, solver.time) == (4, 0.4)
+    header = capsys.readouterr().out
+    assert "VPM TIME STEP 5" in header
+    assert "FLOW TIME 5.000000e-01 s" in header
 
 
 def test_failed_physical_phase_makes_solver_terminally_invalid():
