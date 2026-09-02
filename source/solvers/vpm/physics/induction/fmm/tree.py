@@ -53,9 +53,9 @@ class FMMTree:
 
     def build(self, position, vortex_strength, core_radius, count: int) -> None:
         """Construct leaves and retain only stage-owned source metadata."""
-        self.position = np.asarray(position.to_numpy()[:count], dtype=np.float64).copy()
-        self.vortex_strength = np.asarray(vortex_strength.to_numpy()[:count], dtype=np.float64).copy()
-        self.core_radius = np.asarray(core_radius.to_numpy()[:count], dtype=np.float64).copy()
+        self.position = _stage_prefix(position, count, dtype=np.float64)
+        self.vortex_strength = _stage_prefix(vortex_strength, count, dtype=np.float64)
+        self.core_radius = _stage_prefix(core_radius, count, dtype=np.float64)
         if count == 0:
             self.cells = ()
             self.nodes = ()
@@ -67,9 +67,7 @@ class FMMTree:
         half_width = max(0.5 * span, np.finfo(float).eps)
         centre = 0.5 * (lo + hi)
         nodes: list[FMMNode] = []
-        self.root = self._build_node(
-            nodes, np.arange(count, dtype=np.int64), centre, half_width, 0
-        )
+        self.root = self._build_node(nodes, np.arange(count, dtype=np.int64), centre, half_width, 0)
         self.nodes = tuple(nodes)
         self.cells = tuple(
             FMMCell(
@@ -98,9 +96,9 @@ class FMMTree:
             )
             return node_index
         half = 0.5 * half_width
-        octants = (
-            (self.position[indices] >= centre).astype(np.int64) * np.array([1, 2, 4])
-        ).sum(axis=1)
+        octants = ((self.position[indices] >= centre).astype(np.int64) * np.array([1, 2, 4])).sum(
+            axis=1
+        )
         children: list[int] = []
         for octant in range(8):
             selected = indices[octants == octant]
@@ -125,6 +123,12 @@ class FMMTree:
             tuple(children),
         )
         return node_index
+
+
+def _stage_prefix(values, count: int, *, dtype) -> np.ndarray:
+    """Copy only the active stage prefix from a field or NumPy array."""
+    raw = values.to_numpy() if hasattr(values, "to_numpy") else values
+    return np.asarray(raw[:count], dtype=dtype).copy()
 
 
 __all__ = ["FMMCell", "FMMNode", "FMMTree"]

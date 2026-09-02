@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Self
+
 import numpy as np
 import taichi as ti
 
@@ -31,10 +33,16 @@ class FMMInduction:
     supported_kernels = frozenset(
         {"GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"}
     )
+    supports_gradient = True
+    supports_variable_core_radius = True
+    supports_f64 = True
+    # This reference implementation stages the active prefix through
+    # reusable host buffers. It is not a device-resident production backend.
+    device_resident = False
 
     def __init__(
         self,
-        physics=None,
+        physics: object | None = None,
         *,
         tolerance: float = 1.0e-4,
         kernel: RadialVortexKernel | None = None,
@@ -56,7 +64,7 @@ class FMMInduction:
         if physics is not None:
             self.bind(physics)
 
-    def build(self):
+    def build(self) -> Self:
         """Return a fresh unbound runtime evaluator for an immutable case."""
         return type(self)(
             tolerance=self.tolerance,
@@ -65,10 +73,9 @@ class FMMInduction:
             leaf_capacity=self.leaf_capacity,
         )
 
-    def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
+    def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind this runtime evaluator to the shared particle precision context."""
         self.physics = physics
-        physics.configure_velocity("DIRECT")
         if kernel is not None:
             self.kernel = kernel
         if self.max_n_particles == 1:
@@ -78,13 +85,13 @@ class FMMInduction:
     def evaluate_stage(
         self,
         *,
-        position,
-        vortex_strength,
-        core_radius,
+        position: object,
+        vortex_strength: object,
+        core_radius: object,
         count: int,
-        velocity_out,
-        vortex_strength_rate_out,
-        velocity_gradient_out=None,
+        velocity_out: object,
+        vortex_strength_rate_out: object,
+        velocity_gradient_out: object | None = None,
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
@@ -98,7 +105,14 @@ class FMMInduction:
         if count == 0:
             return
 
-        self.tree.build(position, vortex_strength, core_radius, count)
+        # Use the shared bounded transfer helpers when the stage is backed by
+        # Taichi fields.  ``Field.to_numpy()`` would download the complete
+        # capacity (which can be much larger than the active cloud) on every
+        # RK stage and is the main avoidable memory spike of this host backend.
+        position_np = self.physics._download_vector_field(position, count)
+        strength_np = self.physics._download_vector_field(vortex_strength, count)
+        radius_np = self.physics._download_scalar_field(core_radius, count)
+        self.tree.build(position_np, strength_np, radius_np, count)
         self.diagnostics.hierarchy_builds += 1
         self.diagnostics.host_particle_transfers += 1
         multipoles = self._upward_pass()
@@ -232,20 +246,24 @@ class FMMInduction:
             near_gradient += source_gradient
             self.diagnostics.p2p_interactions += len(target_indices) * len(source_indices)
 
-        far_velocity, far_gradient = _l2p_batch(
-            far_local, target_position - target.centre
-        )
+        far_velocity, far_gradient = _l2p_batch(far_local, target_position - target.centre)
         velocity[target_indices] += far_velocity + near_velocity
         gradient[target_indices] += far_gradient + near_gradient
         self.diagnostics.l2p_evaluations += len(target_indices)
 
     def _write_vector(self, output, values: np.ndarray) -> None:
+        if hasattr(self.physics, "_upload_vector_array"):
+            self.physics._upload_vector_array(values, output, len(values))
+            return
         dtype = getattr(self.physics, "np_dtype", np.float32)
         padded = np.zeros((self.max_n_particles, 3), dtype=dtype)
         padded[: len(values)] = values
         output.from_numpy(padded)
 
     def _write_gradient(self, output, values: np.ndarray) -> None:
+        if hasattr(self.physics, "_upload_matrix_array"):
+            self.physics._upload_matrix_array(values, output, len(values))
+            return
         dtype = getattr(self.physics, "np_dtype", np.float32)
         padded = np.zeros((self.max_n_particles, 3, 3), dtype=dtype)
         padded[: len(values)] = values

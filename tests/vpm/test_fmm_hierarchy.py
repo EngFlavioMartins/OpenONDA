@@ -94,11 +94,8 @@ def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path
         particle_volume=np.full(64, 0.008, dtype=np.float32),
         kinematic_viscosity=np.zeros(64, dtype=np.float32),
     )
-    direct = DirectInduction(solver.physics, max_n_particles=64)
     velocity_fmm = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
     rate_fmm = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
-    velocity_direct = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
-    rate_direct = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
     solver.induction.evaluate_stage(
         position=solver.particles.position,
         vortex_strength=solver.particles.vortex_strength,
@@ -107,21 +104,47 @@ def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path
         velocity_out=velocity_fmm,
         vortex_strength_rate_out=rate_fmm,
     )
+    stage_position = solver.particles.position.to_numpy()[:64]
+    stage_strength = solver.particles.vortex_strength.to_numpy()[:64]
+    stage_radius = solver.particles.core_radius.to_numpy()[:64]
+    kernel = make_vortex_kernel("GAUSSIAN")
+    displacement = stage_position[:, None, :] - stage_position[None, :, :]
+    expected_velocity = kernel.velocity_pair(
+        displacement,
+        stage_strength[None, :, :],
+        stage_radius[:, None],
+        stage_radius[None, :],
+    )
+    expected_velocity[np.arange(64), np.arange(64)] = 0.0
+    expected_velocity = expected_velocity.sum(axis=1)
+    expected_rate = kernel.transposed_rate_pair(
+        displacement,
+        stage_strength[:, None, :],
+        stage_strength[None, :, :],
+        stage_radius[:, None],
+        stage_radius[None, :],
+    )
+    expected_rate[np.arange(64), np.arange(64)] = 0.0
+    expected_rate = expected_rate.sum(axis=1)
+    direct = DirectInduction(solver.physics, max_n_particles=64)
+    direct_rate = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
+    direct_velocity = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
     direct.evaluate_stage(
         position=solver.particles.position,
         vortex_strength=solver.particles.vortex_strength,
         core_radius=solver.particles.core_radius,
         count=64,
-        velocity_out=velocity_direct,
-        vortex_strength_rate_out=rate_direct,
+        velocity_out=direct_velocity,
+        vortex_strength_rate_out=direct_rate,
     )
-
-    reference = velocity_direct.to_numpy()
-    error = np.linalg.norm(velocity_fmm.to_numpy() - reference) / np.linalg.norm(reference)
+    np.testing.assert_allclose(direct_rate.to_numpy()[:64], expected_rate, rtol=3.0e-5, atol=2.0e-7)
+    error = np.linalg.norm(velocity_fmm.to_numpy()[:64] - expected_velocity) / np.linalg.norm(
+        expected_velocity
+    )
     assert solver.induction.diagnostics.m2l_interactions > 0
     assert error < 2.0e-2
-    rate_error = np.linalg.norm(rate_fmm.to_numpy() - rate_direct.to_numpy()) / np.linalg.norm(
-        rate_direct.to_numpy()
+    rate_error = np.linalg.norm(rate_fmm.to_numpy()[:64] - expected_rate) / np.linalg.norm(
+        expected_rate
     )
     assert rate_error < 5.0e-2
     assert solver.induction.diagnostics.hierarchical_strength_rates == 1

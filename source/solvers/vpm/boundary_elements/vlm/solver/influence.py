@@ -219,6 +219,31 @@ def compute_induced_velocities(
         velocity[i] = external_velocity[i] + vel_induced
 
 
+@ti.kernel
+def add_induced_velocity_at_targets(
+    target_position: ti.template(),
+    target_velocity: ti.template(),
+    vortex_point_position: ti.template(),
+    circulation: ti.template(),
+    n_targets: ti.i32,
+    n_panels: ti.i32,
+):
+    """Accumulate the solved VLM field at arbitrary temporary VPM targets."""
+    for i in range(n_targets):
+        induced = ti.Vector([0.0, 0.0, 0.0])
+        for j in range(n_panels):
+            induced += vortex_ring_velocity(
+                target_position[i],
+                vortex_point_position[j, ti.i32(0)],
+                vortex_point_position[j, ti.i32(1)],
+                vortex_point_position[j, ti.i32(2)],
+                vortex_point_position[j, ti.i32(3)],
+                circulation[j],
+                VLM_EPSILON,
+            )
+        target_velocity[i] += induced
+
+
 @ti.func
 def _bound_panel_pair_velocity(
     i: int,

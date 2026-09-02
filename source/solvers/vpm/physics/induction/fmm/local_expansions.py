@@ -19,9 +19,10 @@ def l2l(parent: dict[str, np.ndarray], displacement: np.ndarray) -> dict[str, np
     result = dict(parent)
     if "value" in parent and "gradient" in parent:
         offset = np.asarray(displacement, dtype=np.float64)
-        result["value"] = np.asarray(parent["value"], dtype=np.float64) + np.asarray(
-            parent["gradient"], dtype=np.float64
-        ) @ offset
+        result["value"] = (
+            np.asarray(parent["value"], dtype=np.float64)
+            + np.asarray(parent["gradient"], dtype=np.float64) @ offset
+        )
     result["displacement"] = np.asarray(
         parent.get("displacement", np.zeros(3, dtype=np.float64))
     ) + np.asarray(displacement)

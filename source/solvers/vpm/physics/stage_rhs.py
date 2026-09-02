@@ -9,12 +9,93 @@ from .induction.base import InductionMethod, StageRates, StageState
 
 
 class ExternalStageContribution(Protocol):
-    """Add explicitly modelled external rates at one RK stage."""
+    """Add explicitly modelled external rates at one RK stage.
+
+    A provider may add velocity only, velocity plus a gradient, or a direct
+    vortex-strength rate. It must use the supplied :class:`StageState`; the
+    accepted particle fields are not part of this protocol.
+    """
 
     def add_stage_rates(
         self, stage_state: StageState, stage_time: float, stage_rates: StageRates
     ) -> None:
         """Accumulate external velocity/rate contributions into stage outputs."""
+
+
+class CallableStageContribution:
+    """Adapt an explicit external stage callback to the provider protocol.
+
+    The callback is called as::
+
+        evaluate(stage_time, stage_position, stage_vortex_strength,
+                 velocity_out, strength_rate_out, gradient_out)
+
+    where all arrays are limited to the active stage particle count and the
+    three output arrays are writable. The callback may leave unused outputs at
+    zero. Its contributions are accumulated into the supplied ``StageRates``.
+    Set ``include_external_stretching=True`` when the callback's returned
+    gradient represents an external velocity field whose transposed gradient
+    contraction must also contribute to the vortex-strength rate.
+    """
+
+    def __init__(
+        self, evaluate, *, include_external_stretching: bool = False, physics=None
+    ) -> None:
+        self.evaluate = evaluate
+        self.include_external_stretching = bool(include_external_stretching)
+        self.physics = physics
+
+    def add_stage_rates(
+        self, stage_state: StageState, stage_time: float, stage_rates: StageRates
+    ) -> None:
+        count = int(stage_state.count)
+        position = _stage_array(stage_state.position, count, self.physics)
+        vortex_strength = _stage_array(stage_state.vortex_strength, count, self.physics)
+        velocity = np.zeros((count, 3), dtype=np.float64)
+        strength_rate = np.zeros((count, 3), dtype=np.float64)
+        # Keep the callback contract stable: every output is writable even when
+        # the caller did not request a diagnostic gradient destination.
+        gradient = np.zeros((count, 3, 3), dtype=np.float64)
+        self.evaluate(
+            float(stage_time),
+            position,
+            vortex_strength,
+            velocity,
+            strength_rate,
+            gradient,
+        )
+        if self.include_external_stretching:
+            strength_rate += np.einsum("nji,nj->ni", gradient, vortex_strength)
+        _accumulate_stage_array(stage_rates.velocity, velocity, count, self.physics)
+        _accumulate_stage_array(
+            stage_rates.vortex_strength_rate, strength_rate, count, self.physics
+        )
+        if stage_rates.velocity_gradient is not None:
+            _accumulate_stage_array(stage_rates.velocity_gradient, gradient, count, self.physics)
+
+
+class VLMStageContribution:
+    """Add the latest solved VLM bound-vortex field at RK stage positions.
+
+    VLM circulation and geometry are solved once by the accepted-step coupling
+    phase. The particle target positions are still the exact temporary RK
+    positions, so the external velocity is stage-state consistent while the
+    boundary solve itself remains an explicitly lagged accepted-step field.
+    VLM does not provide an external strength rate through this provider.
+    """
+
+    def __init__(self, vlm_solver) -> None:
+        self.vlm_solver = vlm_solver
+
+    def add_stage_rates(
+        self, stage_state: StageState, stage_time: float, stage_rates: StageRates
+    ) -> None:
+        self.vlm_solver.add_stage_velocity(
+            stage_state.position,
+            stage_rates.velocity,
+            stage_state.count,
+            stage_time,
+        )
 
 
 class StageRHS:
@@ -37,6 +118,15 @@ class StageRHS:
         self.induction = induction
         self.providers = tuple(providers)
         self.strength_enabled = bool(strength_enabled)
+
+    def add_provider(self, provider: ExternalStageContribution, *, prepend: bool = False) -> None:
+        """Attach one runtime provider while preserving projection ordering.
+
+        Providers are normally appended. A provider that contributes a field
+        which must be projected by a later symmetry provider can be prepended;
+        this keeps the projection as the final stage operation.
+        """
+        self.providers = (provider, *self.providers) if prepend else (*self.providers, provider)
 
     def evaluate(self, stage_state: StageState, stage_time: float, stage_rates: StageRates) -> None:
         """Evaluate self-induced and external rates for one common stage state."""
@@ -61,6 +151,39 @@ class StageRHS:
 def _zero_stage_field(field: ti.template(), count: ti.i32):
     for i in range(count):
         field[i] = ti.Vector([0.0, 0.0, 0.0])
+
+
+def _stage_array(field, count: int, physics=None) -> np.ndarray:
+    """Return a bounded NumPy view/copy for host-side external providers."""
+    if physics is not None and hasattr(field, "to_numpy") and hasattr(
+        physics, "_download_vector_field"
+    ):
+        return physics._download_vector_field(field, count).astype(np.float64, copy=False)
+    values = field.to_numpy() if hasattr(field, "to_numpy") else np.asarray(field)
+    return np.asarray(values[:count]).copy()
+
+
+def _accumulate_stage_array(field, values: np.ndarray, count: int, physics=None) -> None:
+    """Accumulate a host provider result into NumPy or Taichi output storage."""
+    if physics is not None and hasattr(field, "to_numpy") and hasattr(
+        physics, "_download_vector_field"
+    ):
+        if values.ndim == 2 and values.shape[1] == 3:
+            stored = physics._download_vector_field(field, count)
+            stored += values.astype(stored.dtype, copy=False)
+            physics._upload_vector_array(stored, field, count)
+            return
+        if values.ndim == 3 and hasattr(physics, "_download_matrix_field"):
+            stored = physics._download_matrix_field(field, count)
+            stored += values.astype(stored.dtype, copy=False)
+            physics._upload_matrix_array(stored, field, count)
+            return
+    if hasattr(field, "to_numpy") and hasattr(field, "from_numpy"):
+        stored = field.to_numpy()
+        stored[:count] += values.astype(stored.dtype, copy=False)
+        field.from_numpy(stored)
+    else:
+        field[:count] += values
 
 
 @ti.data_oriented
@@ -116,8 +239,12 @@ class ParticleExternalStageContribution:
         override = getattr(self.physics, "velocity_override", None)
         if body is None and override is None:
             return
-        position = stage_state.position.to_numpy()[:count]
-        velocity = stage_rates.velocity.to_numpy()[:count]
+        if hasattr(self.physics, "_download_vector_field"):
+            position = self.physics._download_vector_field(stage_state.position, count)
+            velocity = self.physics._download_vector_field(stage_rates.velocity, count)
+        else:
+            position = stage_state.position.to_numpy()[:count]
+            velocity = stage_rates.velocity.to_numpy()[:count]
         if body is not None:
             velocity += np.asarray(
                 _call_stage_velocity_callback(body, position, stage_time), dtype=velocity.dtype
@@ -130,9 +257,12 @@ class ParticleExternalStageContribution:
                     _call_stage_velocity_callback(override, position, stage_time, velocity),
                     dtype=velocity.dtype,
                 )
-        uploaded = np.zeros((self.physics.max_n_particles, 3), dtype=velocity.dtype)
-        uploaded[:count] = velocity
-        stage_rates.velocity.from_numpy(uploaded)
+        if hasattr(self.physics, "_upload_vector_array"):
+            self.physics._upload_vector_array(velocity, stage_rates.velocity, count)
+        else:
+            uploaded = np.zeros((self.physics.max_n_particles, 3), dtype=velocity.dtype)
+            uploaded[:count] = velocity
+            stage_rates.velocity.from_numpy(uploaded)
 
 
 @ti.data_oriented
@@ -202,7 +332,9 @@ def _call_stage_velocity_field(callback, stage_state, velocity, count):
 
 __all__ = [
     "AxisymmetricNoSwirlStageProjection",
+    "CallableStageContribution",
     "ExternalStageContribution",
     "ParticleExternalStageContribution",
     "StageRHS",
+    "VLMStageContribution",
 ]

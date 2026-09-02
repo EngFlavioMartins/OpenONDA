@@ -407,7 +407,8 @@ class EvolutionStepper:
         ti.sync()
 
     def _apply_coupled_update(
-        self, time_step_size: float,
+        self,
+        time_step_size: float,
     ) -> None:
         """Advance position and strength together, with symmetric core spreading."""
         self.physics.rate_projection_max_correction_ratio = 0.0
@@ -421,7 +422,6 @@ class EvolutionStepper:
 
         if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
             self._apply_viscous_diffusion(time_step_size)
-
 
     def _apply_core_spreading_diffusion(self, time_step_size: float) -> None:
         """Advance the split Gaussian core-spreading operator."""

@@ -638,6 +638,16 @@ class PhysicsBase:
             dst[start_idx + i] = src[i]
 
     @ti.kernel
+    def _copy_ndarray_to_mat3_field(
+        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        """Copy n mat3 entries from a fixed-size NumPy buffer to a Taichi field."""
+        for i in range(n):
+            for j in ti.static(range(3)):
+                for k in ti.static(range(3)):
+                    dst[start_idx + i][j, k] = src[i, j, k]
+
+    @ti.kernel
     def _extract_vec3_field_prefix(
         self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
     ):  # type: ignore
@@ -655,6 +665,14 @@ class PhysicsBase:
             for j in ti.static(range(3)):
                 for k in ti.static(range(3)):
                     dst[i, j, k] = src[start_idx + i][j, k]
+
+    @ti.kernel
+    def _extract_scalar_field_prefix(
+        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+    ):  # type: ignore
+        """Copy n scalar entries from a Taichi field to a fixed-size NumPy buffer."""
+        for i in range(n):
+            dst[i] = src[start_idx + i]
 
     def _host_transfer_buffer(self, family: str, field, direction: str) -> np.ndarray:
         """Return a fixed staging array unique to a field and direction."""
@@ -702,6 +720,20 @@ class PhysicsBase:
             self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
             ti.sync()
 
+    def _upload_matrix_array(self, src: np.ndarray, dst, n: int | None = None):
+        """Upload a mat3 array through fixed-size ndarray chunks."""
+        arr = np.ascontiguousarray(src, dtype=self.np_dtype)
+        if arr.ndim != 3 or arr.shape[1:] != (3, 3):
+            raise ValueError(f"Expected matrix array with shape (N, 3, 3), got {arr.shape}")
+        count = arr.shape[0] if n is None else n
+        buf = self._host_transfer_buffer("matrix", dst, "upload")
+        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
+            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
+            n_chunk = hi - lo
+            buf[:n_chunk] = arr[lo:hi]
+            self._copy_ndarray_to_mat3_field(buf, dst, lo, n_chunk)
+            ti.sync()
+
     def _download_vector_field(self, src, n: int) -> np.ndarray:
         """Download the active vec3 prefix without exposing variable ndarray shapes."""
         if n == 0:
@@ -724,6 +756,19 @@ class PhysicsBase:
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
             self._extract_mat3_field_prefix(src, buf, lo, count)
+            ti.sync()
+            out[lo : lo + count] = buf[:count]
+        return out
+
+    def _download_scalar_field(self, src, n: int) -> np.ndarray:
+        """Download the active scalar prefix without transferring capacity padding."""
+        if n == 0:
+            return np.empty((0,), dtype=self.np_dtype)
+        out = np.empty((n,), dtype=self.np_dtype)
+        buf = self._host_transfer_buffer("scalar", src, "download")
+        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
+            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
+            self._extract_scalar_field_prefix(src, buf, lo, count)
             ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
@@ -1522,6 +1567,41 @@ class PhysicsBase:
             background = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
         velocity, gradient = tree.compute_target_velocity_and_gradients(target_position, background)
         return velocity, gradient.reshape(M, 9)
+
+    def compute_target_velocity_gradient_consistent(
+        self, particles, target_position: np.ndarray
+    ) -> np.ndarray:
+        """Evaluate a target Jacobian with the configured particle backend."""
+        if self.velocity_method == "TREECODE":
+            return self.compute_target_velocity_gradient_hierarchical(
+                particles, target_position, theta=self.velocity_theta
+            )
+        return self.compute_target_velocity_gradient(particles, target_position)
+
+    def compute_target_velocity_and_gradients_consistent(
+        self,
+        particles,
+        target_position: np.ndarray,
+        *,
+        include_freestream: bool = True,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluate target velocity/Jacobian through one configured backend path."""
+        if self.velocity_method == "TREECODE":
+            return self.compute_target_velocity_and_gradients_hierarchical(
+                particles,
+                target_position,
+                theta=self.velocity_theta,
+                include_freestream=include_freestream,
+            )
+        return (
+            self.compute_target_velocity(
+                particles,
+                target_position,
+                include_freestream=include_freestream,
+                zone_mask=None,
+            ),
+            self.compute_target_velocity_gradient(particles, target_position),
+        )
 
     def compute_velocity_gradients_hierarchical(self, particles, theta: float = 0.5):
         """

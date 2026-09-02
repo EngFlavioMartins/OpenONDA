@@ -52,7 +52,9 @@ class RadialVortexKernel:
         core = self.pair_radius(target_core, source_core)
         safe_radius = np.where(radius > 0.0, radius, 1.0)
         rho = np.divide(radius, core, out=np.zeros_like(radius), where=core > 0.0)
-        scale = np.divide(self.q(rho), safe_radius**3, out=np.zeros_like(radius), where=radius > 0.0)
+        scale = np.divide(
+            self.q(rho), safe_radius**3, out=np.zeros_like(radius), where=radius > 0.0
+        )
         return scale[..., None] * np.cross(source_strength, displacement)
 
     def gradient_pair(self, displacement, source_strength, target_core, source_core):
@@ -81,10 +83,17 @@ class RadialVortexKernel:
         cross_matrix[..., 2, 1] = source_strength[..., 0]
         cross_matrix *= scale[..., None, None]
         cross = np.cross(source_strength, displacement)
-        cross_matrix += derivative[..., None, None] * cross[..., :, None] * displacement[..., None, :] / safe_radius[..., None, None]
+        cross_matrix += (
+            derivative[..., None, None]
+            * cross[..., :, None]
+            * displacement[..., None, :]
+            / safe_radius[..., None, None]
+        )
         return np.where((radius > 0.0)[..., None, None], cross_matrix, 0.0)
 
-    def transposed_rate_pair(self, displacement, target_strength, source_strength, target_core, source_core):
+    def transposed_rate_pair(
+        self, displacement, target_strength, source_strength, target_core, source_core
+    ):
         """Evaluate the canonical conservative transposed pair contribution."""
         displacement = np.asarray(displacement, dtype=np.float64)
         target_strength = np.asarray(target_strength, dtype=np.float64)
@@ -95,7 +104,9 @@ class RadialVortexKernel:
         rho = np.divide(radius, core, out=np.zeros_like(radius), where=core > 0.0)
         q_value = self.q(rho)
         zeta_value = self.zeta(rho)
-        coefficient_a = np.divide(q_value, safe_radius**3, out=np.zeros_like(radius), where=radius > 0.0)
+        coefficient_a = np.divide(
+            q_value, safe_radius**3, out=np.zeros_like(radius), where=radius > 0.0
+        )
         coefficient_b = np.divide(
             3.0 * q_value - zeta_value * rho**3,
             core**5 * np.where(rho > 0.0, rho**5, 1.0),
@@ -138,7 +149,13 @@ def _gaussian_q(rho):
     result = (_erf(rho) - 2.0 / math.sqrt(math.pi) * rho * np.exp(-rho * rho)) / (4.0 * math.pi)
     small = rho < 0.2
     d2 = rho * rho
-    series = (4.0 / (3.0 * math.sqrt(math.pi))) * rho * d2 * (1.0 - 0.6 * d2 + 3.0 / 14.0 * d2 * d2) / (4.0 * math.pi)
+    series = (
+        (4.0 / (3.0 * math.sqrt(math.pi)))
+        * rho
+        * d2
+        * (1.0 - 0.6 * d2 + 3.0 / 14.0 * d2 * d2)
+        / (4.0 * math.pi)
+    )
     return np.where(small, series, result)
 
 
@@ -162,7 +179,9 @@ def _winckelmans_zeta(rho):
 
 def _high_order_q(rho):
     rho = np.asarray(rho, dtype=np.float64)
-    return (_erf(rho) + 2.0 / math.sqrt(math.pi) * rho * (rho * rho - 1.0) * np.exp(-rho * rho)) / (4.0 * math.pi)
+    return (_erf(rho) + 2.0 / math.sqrt(math.pi) * rho * (rho * rho - 1.0) * np.exp(-rho * rho)) / (
+        4.0 * math.pi
+    )
 
 
 def _high_order_zeta(rho):
@@ -172,12 +191,20 @@ def _high_order_zeta(rho):
 
 def _super_gaussian_q(rho):
     rho = np.asarray(rho, dtype=np.float64)
-    return (_erf(rho / math.sqrt(2.0)) - math.sqrt(2.0 / math.pi) * rho * (1.0 - rho * rho / 2.0) * np.exp(-rho * rho / 2.0)) / (4.0 * math.pi)
+    return (
+        _erf(rho / math.sqrt(2.0))
+        - math.sqrt(2.0 / math.pi) * rho * (1.0 - rho * rho / 2.0) * np.exp(-rho * rho / 2.0)
+    ) / (4.0 * math.pi)
 
 
 def _super_gaussian_zeta(rho):
     rho = np.asarray(rho, dtype=np.float64)
-    return math.sqrt(2.0 / math.pi) * (2.5 - rho * rho / 2.0) * np.exp(-rho * rho / 2.0) / (4.0 * math.pi)
+    return (
+        math.sqrt(2.0 / math.pi)
+        * (2.5 - rho * rho / 2.0)
+        * np.exp(-rho * rho / 2.0)
+        / (4.0 * math.pi)
+    )
 
 
 def make_vortex_kernel(name: str) -> RadialVortexKernel:
@@ -193,7 +220,9 @@ def make_vortex_kernel(name: str) -> RadialVortexKernel:
         q_function, zeta_function, angular_constant = factories[key]
     except KeyError as exc:
         raise ValueError(f"unsupported vortex kernel {name!r}") from exc
-    return RadialVortexKernel(key, q_function, zeta_function, angular_impulse_constant=angular_constant)
+    return RadialVortexKernel(
+        key, q_function, zeta_function, angular_impulse_constant=angular_constant
+    )
 
 
 __all__ = ["RadialVortexKernel", "make_vortex_kernel"]

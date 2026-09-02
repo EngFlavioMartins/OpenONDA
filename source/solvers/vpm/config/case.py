@@ -75,8 +75,10 @@ class Numerics:
     def __post_init__(self) -> None:
         if not isinstance(self.integrator, RKTableau):
             raise TypeError("integrator must be an RKTableau instance")
-        if not hasattr(self.induction, "evaluate_stage"):
+        if not callable(getattr(self.induction, "evaluate_stage", None)):
             raise TypeError("induction must implement evaluate_stage")
+        if not callable(getattr(self.induction, "build", None)):
+            raise TypeError("induction must implement build() for solver-local runtime state")
         if self.time_step_size <= 0.0:
             raise ValueError("time_step_size must be positive")
         if self.max_n_particles < 1:
@@ -106,6 +108,8 @@ class Numerics:
             )
         object.__setattr__(self, "compute_device", self.compute_device.upper())
         object.__setattr__(self, "precision", self.precision.lower())
+        if self.precision == "f64" and not getattr(self.induction, "supports_f64", True):
+            raise ValueError(f"{type(self.induction).__name__} does not support precision='f64'")
         if len(self.freestream_velocity) != 3:
             raise ValueError("freestream_velocity must contain three components")
         object.__setattr__(

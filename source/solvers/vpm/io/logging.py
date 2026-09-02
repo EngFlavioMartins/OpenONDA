@@ -777,7 +777,7 @@ class Logging:
                 ("  wall time", f"{system.wall_time:.2e}", "s"),
                 ("  vortex strength", f"{system.vortex_strength_magnitude_sum:.2e}", "m^3/s"),
                 ("output:", ""),
-            ("  backup interval", f"{system.case.backup.interval_steps:,}", "steps"),
+                ("  backup interval", f"{system.case.backup.interval_steps:,}", "steps"),
                 ("  backup prefix", "vpm"),
             )
         )

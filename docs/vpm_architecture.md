@@ -112,7 +112,9 @@ objects are not public compatibility paths.
 Permanent regression coverage is listed in
 [VPM induction-method qualification](vpm_induction_qualification.md). Direct
 and treecode stage paths are qualified against independent references; the FMM
-hierarchy, kernel contract, and tolerance trend are covered by focused tests.
+stage is checked against a direct NumPy evaluation of the shared kernel
+contract, and its hierarchy, kernel matrix, and tolerance trend are covered by
+focused tests.
 The FMM path executes a deterministic octree with P2M, M2M, M2L, L2L, L2P and
 near-field P2P phases. Its far field retains second-order singular
 Biot--Savart source moments and derives the strength rate from the resulting

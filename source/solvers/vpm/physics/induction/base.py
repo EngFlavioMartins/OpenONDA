@@ -8,7 +8,7 @@ the output fields.  Implementations must read only that supplied state.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +34,15 @@ class StageRates:
 
 class InductionMethod(Protocol):
     """Evaluate self-induced particle rates for one supplied RK stage."""
+
+    supported_kernels: ClassVar[frozenset[str]]
+    supports_gradient: ClassVar[bool]
+    supports_variable_core_radius: ClassVar[bool]
+    supports_f64: ClassVar[bool]
+    device_resident: ClassVar[bool]
+
+    def build(self) -> InductionMethod:
+        """Create an unbound runtime evaluator for one solver instance."""
 
     def evaluate_stage(
         self,

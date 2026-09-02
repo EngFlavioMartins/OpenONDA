@@ -21,9 +21,10 @@ def test_public_solver_requires_one_case_construction_object() -> None:
     assert not hasattr(vpm, "create_vpm_solver")
     assert "time" not in inspect.signature(vpm.Numerics).parameters
     assert "step" not in inspect.signature(vpm.Numerics).parameters
-    assert "treecode_theta" not in inspect.signature(
-        vpm.VPMSolver.compute_pressure_gradient_at_points
-    ).parameters
+    assert (
+        "treecode_theta"
+        not in inspect.signature(vpm.VPMSolver.compute_pressure_gradient_at_points).parameters
+    )
 
 
 def test_induction_configuration_builds_independent_runtime_evaluators() -> None:
@@ -44,6 +45,11 @@ def test_numerics_rejects_an_unsupported_treecode_kernel() -> None:
             induction=vpm.TreecodeInduction(),
             particle_kernel="SUPER_GAUSSIAN",
         )
+
+
+def test_numerics_rejects_treecode_double_precision_before_solver_allocation() -> None:
+    with pytest.raises(ValueError, match="does not support precision='f64'"):
+        vpm.Numerics(induction=vpm.TreecodeInduction(), precision="f64", verbose=False)
 
 
 def test_public_namespace_hides_internal_runtime_services() -> None:

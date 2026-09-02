@@ -44,6 +44,7 @@ from ..physics.stage_rhs import (
     AxisymmetricNoSwirlStageProjection,
     ParticleExternalStageContribution,
     StageRHS,
+    VLMStageContribution,
 )
 from ..runtime.backend import initialize_taichi_backend, reset_taichi_backend
 from ..stabilization import StabilizationManager
@@ -225,11 +226,7 @@ class VPMSolver:
 
         self.integrator_tableau = final_setup.integrator
         configured_induction = final_setup.induction
-        self.induction = (
-            configured_induction.build()
-            if hasattr(configured_induction, "build")
-            else configured_induction
-        )
+        self.induction = configured_induction.build()
         self.compute_device = final_setup.compute_device.upper()
         self.flow_model = final_setup.turbulence.flow_model.upper()
         self.viscous_scheme = final_setup.viscous.scheme
@@ -521,6 +518,12 @@ class VPMSolver:
             self._vlm_velocity_at_vpm = None
             try:
                 self._setup_vlm_solver()
+                # The VLM circulation is solved in the accepted-step coupling
+                # phase. Its induced field is sampled at each temporary
+                # particle RK position through the common StageRHS boundary.
+                # VLM is prepended so the axisymmetric provider, when present,
+                # remains the final stage projection for every contribution.
+                self.stage_rhs.add_provider(VLMStageContribution(self.vlm_solver), prepend=True)
             except Exception as e:
                 Logging.warning(f"component=VLM status=initialization_failed error={e!r}")
 
@@ -1166,19 +1169,6 @@ class VPMSolver:
         self.source_strength.from_numpy(str_buf)
         self.source_core_radius.from_numpy(core_radius_buffer)
 
-    def _compute_particle_velocity_gradient_at_points(
-        self, evaluation_position: np.ndarray
-    ) -> np.ndarray:
-        """Evaluate the particle-induced ``∇u`` at arbitrary points.
-
-        Returns an ``(N, 9)`` array in row-major Jacobian order,
-        ``J[i, j] = d(u_i)/d(x_j)``.  This kernel differentiates the vortex
-        particle velocity; the uniform freestream has zero gradient and the
-        optional regularized sources and body-potential callback are not
-        differentiated here.
-        """
-        return self.physics.compute_target_velocity_gradient(self.particles, evaluation_position)
-
     def compute_velocity_gradient_at_points(
         self, evaluation_position: np.ndarray, *, particle_spacing: float
     ) -> np.ndarray:
@@ -1191,23 +1181,13 @@ class VPMSolver:
         ``J[i,j] = d(u_i)/d(x_j)``.
         """
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
-        # Use the same approximation as the target-velocity trace.  In a
-        # treecode run, mixing a direct Jacobian with a treecode velocity is
-        # both prohibitively expensive at coupling faces and inconsistent with
-        # the boundary trace from which the normal velocity is taken.
-        if self.physics.velocity_method == "TREECODE":
-            gradient = np.asarray(
-                self.physics.compute_target_velocity_gradient_hierarchical(
-                    self.particles,
-                    points,
-                    theta=self.physics.velocity_theta,
-                ),
-                dtype=np.float64,
-            ).reshape(-1, 3, 3)
-        else:
-            gradient = np.asarray(
-                self._compute_particle_velocity_gradient_at_points(points), dtype=np.float64
-            ).reshape(-1, 3, 3)
+        # Use the same approximation as the target-velocity trace.  Mixing a
+        # direct Jacobian with a treecode velocity is both prohibitively
+        # expensive at coupling faces and inconsistent with the boundary trace.
+        gradient = np.asarray(
+            self.physics.compute_target_velocity_gradient_consistent(self.particles, points),
+            dtype=np.float64,
+        ).reshape(-1, 3, 3)
         return self._add_nonparticle_target_gradient(
             points, gradient, particle_spacing=particle_spacing
         )
@@ -1242,21 +1222,9 @@ class VPMSolver:
         the regularized-source and body-potential velocity and Jacobian terms.
         """
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
-        if self.physics.velocity_method == "TREECODE":
-            velocity, gradient = self.physics.compute_target_velocity_and_gradients_hierarchical(
-                self.particles,
-                points,
-                theta=self.physics.velocity_theta,
-                include_freestream=True,
-            )
-        else:
-            velocity = self.physics.compute_target_velocity(
-                self.particles,
-                points,
-                include_freestream=True,
-                zone_mask=None,
-            )
-            gradient = self.physics.compute_target_velocity_gradient(self.particles, points)
+        velocity, gradient = self.physics.compute_target_velocity_and_gradients_consistent(
+            self.particles, points, include_freestream=True
+        )
         complete_velocity = self._add_target_velocity_corrections(
             points, velocity, include_body=True
         )
@@ -1288,21 +1256,9 @@ class VPMSolver:
             raise ValueError("target normal must be finite and non-zero")
         unit_normals = face_normals / normal_magnitude[:, None]
 
-        if self.physics.velocity_method == "TREECODE":
-            velocity, gradient = self.physics.compute_target_velocity_and_gradients_hierarchical(
-                self.particles,
-                points,
-                theta=self.physics.velocity_theta,
-                include_freestream=True,
-            )
-        else:
-            velocity = self.physics.compute_target_velocity(
-                self.particles,
-                points,
-                include_freestream=True,
-                zone_mask=None,
-            )
-            gradient = self.physics.compute_target_velocity_gradient(self.particles, points)
+        velocity, gradient = self.physics.compute_target_velocity_and_gradients_consistent(
+            self.particles, points, include_freestream=True
+        )
 
         complete_velocity = self._add_target_velocity_corrections(
             points, velocity, include_body=True

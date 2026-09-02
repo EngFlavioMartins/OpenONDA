@@ -34,10 +34,7 @@ def _make_construct_stage_kernel(scalar_dtype):
     ):
         for i in range(count):
             stage_position[i] = position[i] + time_step_size * (
-                a0 * velocity_0[i]
-                + a1 * velocity_1[i]
-                + a2 * velocity_2[i]
-                + a3 * velocity_3[i]
+                a0 * velocity_0[i] + a1 * velocity_1[i] + a2 * velocity_2[i] + a3 * velocity_3[i]
             )
             stage_vortex_strength[i] = vortex_strength[i] + time_step_size * (
                 a0 * strength_rate_0[i]
@@ -73,10 +70,7 @@ def _make_combine_kernel(scalar_dtype):
     ):
         for i in range(count):
             position[i] += time_step_size * (
-                b0 * velocity_0[i]
-                + b1 * velocity_1[i]
-                + b2 * velocity_2[i]
-                + b3 * velocity_3[i]
+                b0 * velocity_0[i] + b1 * velocity_1[i] + b2 * velocity_2[i] + b3 * velocity_3[i]
             )
             vortex_strength[i] += time_step_size * (
                 b0 * strength_rate_0[i]
@@ -91,9 +85,7 @@ def _make_combine_kernel(scalar_dtype):
 class CoupledStageRHS(Protocol):
     """Evaluate both rates for one supplied temporary stage state."""
 
-    def evaluate(
-        self, stage_state: StageState, stage_time: float, stage_rates: StageRates
-    ) -> None:
+    def evaluate(self, stage_state: StageState, stage_time: float, stage_rates: StageRates) -> None:
         """Write velocity and vortex-strength rate into ``stage_rates``."""
 
 
@@ -121,16 +113,12 @@ class RungeKutta:
             raise ValueError("the VPM RK workspace supports at most four stages")
 
         self.stage_position = ti.Vector.field(3, dtype=dtype, shape=(self.max_n_particles,))
-        self.stage_vortex_strength = ti.Vector.field(
-            3, dtype=dtype, shape=(self.max_n_particles,)
-        )
+        self.stage_vortex_strength = ti.Vector.field(3, dtype=dtype, shape=(self.max_n_particles,))
         self.stage_velocity = [
-            ti.Vector.field(3, dtype=dtype, shape=(self.max_n_particles,))
-            for _ in range(4)
+            ti.Vector.field(3, dtype=dtype, shape=(self.max_n_particles,)) for _ in range(4)
         ]
         self.stage_strength_rate = [
-            ti.Vector.field(3, dtype=dtype, shape=(self.max_n_particles,))
-            for _ in range(4)
+            ti.Vector.field(3, dtype=dtype, shape=(self.max_n_particles,)) for _ in range(4)
         ]
         scalar_dtype = ti.f64 if dtype == ti.f64 else ti.f32
         self._construct_stage_kernel = _make_construct_stage_kernel(scalar_dtype)

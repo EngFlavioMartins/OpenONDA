@@ -488,6 +488,53 @@ def _make_stretching_rate_batch_kernel(q_, zeta_):
     return compute_stretching_rate_batch_kernel
 
 
+def _make_velocity_and_stretching_rate_kernel(q_, zeta_):
+    """Fuse direct velocity and canonical transposed rate in one pair walk."""
+
+    @ti.kernel
+    def compute_velocity_and_stretching_rate_kernel(
+        position: ti.template(),
+        vortex_strength: ti.template(),
+        core_radius: ti.template(),
+        velocity: ti.template(),
+        vortex_strength_rate: ti.template(),
+        freestream_velocity: ti.template(),
+        n_particles_total: ti.i32,
+    ):  # type: ignore
+        for i in range(n_particles_total):
+            position_i = position[i]
+            strength_i = vortex_strength[i]
+            radius_i = core_radius[i]
+            induced_velocity = position_i * 0.0
+            strength_rate = strength_i * 0.0
+            for j in range(n_particles_total):
+                displacement = position_i - position[j]
+                radius_sq = displacement.dot(displacement)
+                radius = ti.sqrt(radius_sq)
+                if radius > EPSILON:
+                    sigma = 0.5 * (radius_i + core_radius[j])
+                    normalized_radius = radius / sigma
+                    q_value = q_(normalized_radius)
+                    zeta_value = zeta_(normalized_radius)
+                    induced_velocity += (
+                        q_value * displacement.cross(vortex_strength[j]) / (radius_sq * radius)
+                    )
+                    strength_rate += _stretching_contribution(
+                        strength_i,
+                        vortex_strength[j],
+                        displacement,
+                        q_value,
+                        zeta_value,
+                        sigma,
+                        normalized_radius,
+                        1,
+                    )
+            velocity[i] = -induced_velocity + freestream_velocity[None]
+            vortex_strength_rate[i] = strength_rate
+
+    return compute_velocity_and_stretching_rate_kernel
+
+
 def _create_basic_kernels(kernel_functions):
     """Create basic velocity and vorticity computation kernels."""
     q_ = kernel_functions["q_"]
@@ -854,6 +901,9 @@ def _create_stretching_kernels(kernel_functions):
     return {
         "compute_stretching_rate_kernel": _make_stretching_rate_kernel(q_, zeta_),
         "compute_stretching_rate_batch_kernel": _make_stretching_rate_batch_kernel(q_, zeta_),
+        "compute_velocity_and_stretching_rate_kernel": _make_velocity_and_stretching_rate_kernel(
+            q_, zeta_
+        ),
         "gradient_contraction_rate_kernel": _make_gradient_contraction_kernel(),
     }
 

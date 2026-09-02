@@ -6,15 +6,16 @@ plus peak RSS, so a change can be attributed to a stage rather than guessed at.
 
 Usage::
 
-    python scripts/benchmarks/benchmark_vpm_step.py                # default sweep
+    python scripts/benchmarks/benchmark_vpm_step.py                # direct default sweep
     python scripts/benchmarks/benchmark_vpm_step.py --n 1000 8000  # explicit N
-    python scripts/benchmarks/benchmark_vpm_step.py --backend CPU --steps 8
+    python scripts/benchmarks/benchmark_vpm_step.py --induction treecode --backend CPU
 
 The particle field is a seeded random cloud in a unit box with random vortex
 vortex_strength; identical for a given N across runs, so timings are comparable.
 """
 
 import argparse
+from dataclasses import asdict
 import json
 import sys
 import time
@@ -33,15 +34,34 @@ def _rss_mb() -> float:
     return float("nan")
 
 
-def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = False):
+def _make_solver(
+    backend: str,
+    n: int,
+    tmpdir: str,
+    induction_name: str,
+    theta: float,
+    fmm_tolerance: float,
+    leaf_capacity: int,
+):
     from source.solvers.vpm import (
         Backup,
         DirectInduction,
+        FMMInduction,
         Numerics,
         TreecodeInduction,
         VPMCase,
         VPMSolver,
     )
+
+    induction_factories = {
+        "direct": lambda: DirectInduction(),
+        "treecode": lambda: TreecodeInduction(theta=theta),
+        "fmm": lambda: FMMInduction(tolerance=fmm_tolerance, leaf_capacity=leaf_capacity),
+    }
+    try:
+        induction = induction_factories[induction_name.lower()]()
+    except KeyError as exc:
+        raise ValueError(f"unsupported induction method: {induction_name}") from exc
 
     solver = VPMSolver(
         VPMCase(
@@ -49,12 +69,8 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
             backup=Backup(0, tmpdir, tmpdir),
             numerics=Numerics(
                 compute_device=backend,
-                induction=(
-                    TreecodeInduction(theta=0.5)
-                    if stretch_treecode
-                    else DirectInduction()
-                ),
-                max_n_particles=max(2 * n, 4096),
+                induction=induction,
+                max_n_particles=max(n, 4096),
             ),
         )
     )
@@ -66,14 +82,31 @@ def _make_solver(backend: str, n: int, tmpdir: str, stretch_treecode: bool = Fal
         velocity=np.zeros((n, 3), np.float32),
         vortex_strength=(rng.normal(size=(n, 3)) * 1e-3).astype(np.float32),
         core_radius=np.full(n, 1.5 * h, np.float32),
-        volume=np.full(n, h**3, np.float32),
+        particle_volume=np.full(n, h**3, np.float32),
         kinematic_viscosity=np.full(n, 1e-3, np.float32),
     )
     return solver
 
 
-def run_case(backend: str, n: int, steps: int, tmpdir: str, stretch_treecode: bool = False) -> dict:
-    solver = _make_solver(backend, n, tmpdir, stretch_treecode)
+def run_case(
+    backend: str,
+    n: int,
+    steps: int,
+    tmpdir: str,
+    induction_name: str,
+    theta: float,
+    fmm_tolerance: float,
+    leaf_capacity: int,
+) -> dict:
+    solver = _make_solver(
+        backend,
+        n,
+        tmpdir,
+        induction_name,
+        theta,
+        fmm_tolerance,
+        leaf_capacity,
+    )
     solver.advance()  # warm-up: pays the Taichi JIT
     solver.profiler.reset()
 
@@ -84,7 +117,7 @@ def run_case(backend: str, n: int, steps: int, tmpdir: str, stretch_treecode: bo
 
     stages = {name: total / steps * 1e3 for name, total in solver.profiler._cumulative.items()}
 
-    return {
+    result = {
         "backend": backend,
         "particles": n,
         "steps": steps,
@@ -93,25 +126,39 @@ def run_case(backend: str, n: int, steps: int, tmpdir: str, stretch_treecode: bo
         "stages_ms": dict(sorted(stages.items(), key=lambda kv: -kv[1])),
     }
 
+    diagnostics = getattr(solver.induction, "diagnostics", None)
+    if diagnostics is not None:
+        result["induction_diagnostics"] = (
+            diagnostics if isinstance(diagnostics, dict) else asdict(diagnostics)
+        )
+    return result
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--n", type=int, nargs="+", default=[1000, 4000, 16000])
+    parser.add_argument("--n", type=int, nargs="+", default=[1000, 4000])
     parser.add_argument("--steps", type=int, default=5)
     parser.add_argument("--backend", default="CPU")
+    parser.add_argument("--induction", choices=("direct", "treecode", "fmm"), default="direct")
+    parser.add_argument("--theta", type=float, default=0.5)
+    parser.add_argument("--fmm-tolerance", type=float, default=1.0e-4)
+    parser.add_argument("--leaf-capacity", type=int, default=8)
     parser.add_argument("--json", type=str, default=None, help="write results to this path")
     parser.add_argument("--tmpdir", type=str, default="/tmp/vpm_bench")
-    parser.add_argument(
-        "--stretch-treecode",
-        action="store_true",
-        help="evaluate the stretching rate from the treecode gradient (O(N log N)) "
-        "instead of the default direct O(N^2) pair sum",
-    )
     args = parser.parse_args()
 
     results = []
     for n in args.n:
-        res = run_case(args.backend, n, args.steps, args.tmpdir, args.stretch_treecode)
+        res = run_case(
+            args.backend,
+            n,
+            args.steps,
+            args.tmpdir,
+            args.induction,
+            args.theta,
+            args.fmm_tolerance,
+            args.leaf_capacity,
+        )
         results.append(res)
         print(
             f"N={res['particles']:>7}  {res['ms_per_step']:9.1f} ms/step  "

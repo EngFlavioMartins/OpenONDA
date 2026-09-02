@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Self
+
 import taichi as ti
 
 from ...kernels.base import RadialVortexKernel, make_vortex_kernel
@@ -21,10 +23,14 @@ class DirectInduction:
     supported_kernels = frozenset(
         {"GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"}
     )
+    supports_gradient = True
+    supports_variable_core_radius = True
+    supports_f64 = True
+    device_resident = True
 
     def __init__(
         self,
-        physics=None,
+        physics: object | None = None,
         max_n_particles: int | None = None,
         kernel: RadialVortexKernel | None = None,
     ) -> None:
@@ -36,11 +42,11 @@ class DirectInduction:
         if physics is not None:
             self.bind(physics)
 
-    def build(self):
+    def build(self) -> Self:
         """Return a fresh unbound runtime evaluator for an immutable case."""
         return type(self)(max_n_particles=self.max_n_particles, kernel=self.kernel)
 
-    def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
+    def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind this immutable construction object to one physics workspace."""
         self.physics = physics
         physics.configure_velocity("DIRECT")
@@ -58,13 +64,13 @@ class DirectInduction:
     def evaluate_stage(
         self,
         *,
-        position,
-        vortex_strength,
-        core_radius,
+        position: object,
+        vortex_strength: object,
+        core_radius: object,
         count: int,
-        velocity_out,
-        vortex_strength_rate_out,
-        velocity_gradient_out=None,
+        velocity_out: object,
+        vortex_strength_rate_out: object,
+        velocity_gradient_out: object | None = None,
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
@@ -74,19 +80,34 @@ class DirectInduction:
             raise RuntimeError("DirectInduction must be bound to a PhysicsEngine before evaluation")
         count = int(count)
         if count < 0 or count > self.max_n_particles:
-            raise ValueError(f"stage count {count} exceeds induction capacity {self.max_n_particles}")
+            raise ValueError(
+                f"stage count {count} exceeds induction capacity {self.max_n_particles}"
+            )
         if count == 0:
             return
 
-        self.physics.compute_velocities_kernel(
-            position,
-            vortex_strength,
-            core_radius,
-            velocity_out,
-            self.physics._zero_velocity,
-            count,
-        )
-        if strength_rate_enabled:
+        if strength_rate_enabled and velocity_gradient_out is None:
+            self.physics.compute_velocity_and_stretching_rate_kernel(
+                position,
+                vortex_strength,
+                core_radius,
+                velocity_out,
+                vortex_strength_rate_out,
+                self.physics._zero_velocity,
+                count,
+            )
+        else:
+            self.physics.compute_velocities_kernel(
+                position,
+                vortex_strength,
+                core_radius,
+                velocity_out,
+                self.physics._zero_velocity,
+                count,
+            )
+        if not strength_rate_enabled:
+            self.physics._zero_vec3_field(vortex_strength_rate_out, count)
+        elif velocity_gradient_out is not None:
             for start in range(0, count, 4096):
                 target_count = min(4096, count - start)
                 self.physics.compute_stretching_rate_batch_kernel(
@@ -99,9 +120,6 @@ class DirectInduction:
                     target_count,
                     count,
                 )
-        else:
-            self.physics._zero_vec3_field(vortex_strength_rate_out, count)
-
         if velocity_gradient_out is not None:
             self.physics.compute_velocity_gradients_kernel(
                 position,

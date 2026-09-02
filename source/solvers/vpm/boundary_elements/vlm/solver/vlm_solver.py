@@ -23,6 +23,7 @@ from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
 from ..kernels.collision import detect_surface_collisions_kernel
 from .influence import (
+    add_induced_velocity_at_targets,
     apply_circulation_smoothing,
     compute_aerodynamic_influence_coefficient_matrix,
     compute_coupled_right_hand_side,
@@ -1011,6 +1012,28 @@ class VLMSolver:
             print("-" * 60)
         self._solved = True
         return circulation_np
+
+    def add_stage_velocity(
+        self, target_position, target_velocity, count: int, stage_time: float
+    ) -> None:
+        """Accumulate the latest solved VLM velocity at temporary VPM targets.
+
+        ``stage_time`` is accepted explicitly at the stage boundary. The
+        current VLM coupling is lagged to the latest accepted-step solve, so
+        solved circulation and geometry are held fixed while target positions
+        change across RK stages.
+        """
+        del stage_time
+        if not self._solved or self.lattice is None or count <= 0:
+            return
+        add_induced_velocity_at_targets(
+            target_position,
+            target_velocity,
+            self.lattice.vortex_point_position,
+            self.lattice.circulation,
+            int(count),
+            int(self.lattice.n_panels),
+        )
 
     def compute_postprocess(
         self,

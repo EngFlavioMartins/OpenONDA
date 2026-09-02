@@ -74,9 +74,7 @@ def test_coupled_update_keeps_symmetric_core_spreading_without_subcycling():
     stepper._apply_core_spreading_diffusion = lambda time_step_size: calls.append(
         ("diffusion", time_step_size)
     )
-    stepper._advance_particles = lambda time_step_size: calls.append(
-        ("coupled", time_step_size)
-    )
+    stepper._advance_particles = lambda time_step_size: calls.append(("coupled", time_step_size))
 
     stepper._apply_coupled_update(0.2)
 

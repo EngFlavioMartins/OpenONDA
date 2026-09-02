@@ -51,9 +51,7 @@ def test_unequal_core_radii_use_the_symmetric_arithmetic_pair_radius():
         gradient(position, vortex_strength, core_radius), vortex_strength, "TRANSPOSED"
     )
 
-    np.testing.assert_allclose(
-        pairwise_rate, pair_radius_gradient_rate, rtol=1.0e-13, atol=1.0e-14
-    )
+    np.testing.assert_allclose(pairwise_rate, pair_radius_gradient_rate, rtol=1.0e-13, atol=1.0e-14)
 
 
 def test_unequal_radii_distinguish_pairwise_rate_from_source_radius_gradient():
@@ -61,9 +59,7 @@ def test_unequal_radii_distinguish_pairwise_rate_from_source_radius_gradient():
     core_radius = np.array([0.1, 0.45, 0.2, 0.35])
 
     pairwise_rate = pair_rate(position, vortex_strength, core_radius, "TRANSPOSED")
-    _, _, source_radius_gradient = target_fields(
-        position, position, vortex_strength, core_radius
-    )
+    _, _, source_radius_gradient = target_fields(position, position, vortex_strength, core_radius)
     source_radius_rate = contract(source_radius_gradient, vortex_strength, "TRANSPOSED")
 
     assert not np.allclose(pairwise_rate, source_radius_rate, rtol=1.0e-8, atol=1.0e-10)

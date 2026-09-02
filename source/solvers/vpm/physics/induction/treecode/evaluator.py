@@ -1,12 +1,16 @@
 """Barnes--Hut induction evaluator behind the common VPM stage contract."""
 
+from typing import Self
+
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 
 
 @ti.kernel
-def _rate_from_gradient(gradient: ti.template(), strength: ti.template(), output: ti.template(), count: ti.i32):
+def _rate_from_gradient(
+    gradient: ti.template(), strength: ti.template(), output: ti.template(), count: ti.i32
+):
     """Contract the hierarchical velocity gradient with Γᵀ for each target."""
     for i in range(count):
         output[i] = gradient[i].transpose() @ strength[i]
@@ -22,11 +26,18 @@ class TreecodeInduction:
     same hierarchical velocity gradient used for optional diagnostics; no
     direct pairwise rate fallback is hidden behind the treecode interface.
     """
+
     supported_kernels = frozenset({"GAUSSIAN", "WINCKELMANS"})
+    supports_gradient = True
+    supports_variable_core_radius = True
+    # The LBVH fields are intentionally f32 to keep the device workspace
+    # bounded; reject a nominal f64 case at the immutable configuration edge.
+    supports_f64 = False
+    device_resident = True
 
     def __init__(
         self,
-        physics=None,
+        physics: object | None = None,
         theta: float = 0.3,
         multipole_order: int = 1,
         sort_particle_targets: bool = False,
@@ -57,7 +68,7 @@ class TreecodeInduction:
         if physics is not None:
             self.bind(physics)
 
-    def build(self):
+    def build(self) -> Self:
         """Return a fresh unbound runtime evaluator for an immutable case."""
         return type(self)(
             theta=self.theta,
@@ -68,7 +79,7 @@ class TreecodeInduction:
             kernel=self.kernel,
         )
 
-    def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
+    def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind this construction object to one physics workspace."""
         self.physics = physics
         physics.configure_velocity(
@@ -87,13 +98,13 @@ class TreecodeInduction:
     def evaluate_stage(
         self,
         *,
-        position,
-        vortex_strength,
-        core_radius,
+        position: object,
+        vortex_strength: object,
+        core_radius: object,
         count: int,
-        velocity_out,
-        vortex_strength_rate_out,
-        velocity_gradient_out=None,
+        velocity_out: object,
+        vortex_strength_rate_out: object,
+        velocity_gradient_out: object | None = None,
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
@@ -129,7 +140,9 @@ class TreecodeInduction:
             self.physics._copy_mat3(tree.velocity_gradient, velocity_gradient_out, count)
 
         if strength_rate_enabled:
-            _rate_from_gradient(tree.velocity_gradient, tree.vortex_strength, vortex_strength_rate_out, count)
+            _rate_from_gradient(
+                tree.velocity_gradient, tree.vortex_strength, vortex_strength_rate_out, count
+            )
             self.diagnostics["hierarchical_strength_rates"] += 1
         else:
             self.physics._zero_vec3_field(vortex_strength_rate_out, count)

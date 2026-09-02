@@ -3,9 +3,31 @@
 import numpy as np
 import pytest
 
+from source.solvers.vpm.config.case import Numerics
 from source.solvers.vpm.kernels.base import make_vortex_kernel
+from source.solvers.vpm.physics.induction.direct import DirectInduction
+from source.solvers.vpm.physics.induction.fmm import FMMInduction
+from source.solvers.vpm.physics.induction.treecode import TreecodeInduction
 
 KERNELS = ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS")
+
+
+@pytest.mark.parametrize("name", KERNELS)
+@pytest.mark.parametrize("induction_type", (DirectInduction, FMMInduction))
+def test_direct_and_fmm_advertise_every_supported_kernel(name, induction_type):
+    """Construction rejects no member of the shared radial-kernel family."""
+    numerics = Numerics(particle_kernel=name, induction=induction_type(), verbose=False)
+    assert numerics.particle_kernel == name
+
+
+@pytest.mark.parametrize("name", KERNELS)
+def test_treecode_rejects_unsupported_kernels_at_configuration_boundary(name):
+    induction = TreecodeInduction()
+    if name in induction.supported_kernels:
+        Numerics(particle_kernel=name, induction=induction, verbose=False)
+    else:
+        with pytest.raises(ValueError, match="does not support"):
+            Numerics(particle_kernel=name, induction=TreecodeInduction(), verbose=False)
 
 
 @pytest.mark.parametrize("name", KERNELS)

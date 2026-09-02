@@ -35,10 +35,17 @@ def well_separated(
     return distance > opening_factor * geometric_radius and distance > geometric_radius + core_bound
 
 
-def interaction_lists(tree, tolerance: float):
-    """Return deterministic ``(target, source, far)`` cell relationships."""
+def interaction_lists(tree, tolerance: float, kernel: RadialVortexKernel | None = None):
+    """Return deterministic ``(target, source, far)`` cell relationships.
+
+    The optional kernel is deliberately forwarded to :func:`well_separated`.
+    Callers that omit it receive the geometric-only classification used by
+    structural tooling; production FMM callers must provide the configured
+    kernel so its regularization tail and core-radius bound participate in the
+    near/far decision.
+    """
     return tuple(
-        (target, source, well_separated(source, target, tolerance))
+        (target, source, well_separated(source, target, tolerance, kernel))
         for target in tree.cells
         for source in tree.cells
     )

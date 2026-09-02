@@ -7,7 +7,14 @@ import numpy as np
 from ....kernels.base import RadialVortexKernel
 
 
-def p2p_velocity(kernel: RadialVortexKernel, target_position, source_position, source_strength, target_core, source_core):
+def p2p_velocity(
+    kernel: RadialVortexKernel,
+    target_position,
+    source_position,
+    source_strength,
+    target_core,
+    source_core,
+):
     """Evaluate exact regularized P2P velocity interactions."""
     displacement = np.asarray(target_position)[:, None, :] - np.asarray(source_position)[None, :, :]
     pair_velocity = kernel.velocity_pair(

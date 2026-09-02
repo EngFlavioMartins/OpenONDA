@@ -18,6 +18,24 @@ Post-audit continuation on the unchanged `development` branch:
 - the current audit commit completes the local-expansion `M2L → L2L → L2P`
   path and removes the remaining public pressure `treecode_theta` knob.
 
+Completion pass on the same branch:
+
+- the VLM field is now exposed through the common stage-provider boundary;
+- external callbacks can explicitly contribute velocity, direct strength rate,
+  and/or transposed-gradient stretching at the supplied stage time;
+- FMM host transfers are bounded to the active particle prefix and use shared
+  reusable staging buffers;
+- direct velocity and canonical strength-rate evaluation is fused for the
+  no-gradient stage path;
+- target-query backend selection is encapsulated in the physics workspace,
+  leaving the solver and RK information path backend-agnostic;
+- induction capabilities are explicit: every configured backend builds a
+  solver-local runtime evaluator, and unsupported precision/backend pairs are
+  rejected before runtime allocation;
+- the benchmark harness supports all three induction backends and records
+  hierarchy diagnostics, while the permanent FMM test uses an independent
+  kernel-level pair oracle.
+
 ## Architecture result
 
 The production information path is:
