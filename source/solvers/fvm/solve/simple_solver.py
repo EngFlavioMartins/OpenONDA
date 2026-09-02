@@ -53,11 +53,16 @@ class PressureCorrectionWorkspace:
         Pressure operator assembled from ``face_conductance``. It is reusable
         for every pressure/non-orthogonal correction belonging to the same
         momentum predictor because ``momentum_diagonal`` is unchanged within that loop.
+    velocity_h_over_a : np.ndarray or None
+        Pressure-free velocity reconstructed for the current PISO corrector.
+        A non-orthogonal pressure sweep must keep this field frozen while its
+        explicit pressure-gradient contribution is iterated.
     """
 
     pressure_velocity_coefficient: np.ndarray
     face_conductance: np.ndarray
     matrix: Any | None = None
+    velocity_h_over_a: np.ndarray | None = None
 
 
 def _resolve_pressure_constraint(params) -> str:
@@ -578,7 +583,7 @@ def _process_boundary_faces_jit(
                 k2 = Sf2 - sf_dot_e * e2
                 k_norm = (k0 * k0 + k1 * k1 + k2 * k2) ** 0.5
                 if k_norm > 1e-12:
-                    flux_nonortho = (
+                    flux_nonortho = -(
                         k0 * owner_pressure_velocity_coefficient_x * gp0
                         + k1 * owner_pressure_velocity_coefficient_y * gp1
                         + k2 * owner_pressure_velocity_coefficient_z * gp2
@@ -833,7 +838,7 @@ def _pressure_interior_flux_scalar(
             weight * kinematic_pressure_gradient[nei, 2]
             + owner_weight * kinematic_pressure_gradient[own, 2]
         )
-        nonorthogonal_flux = face_pressure_velocity_coefficient * (
+        nonorthogonal_flux = -face_pressure_velocity_coefficient * (
             (sf0 - orthogonal_area * edge0) * grad0
             + (sf1 - orthogonal_area * edge1) * grad1
             + (sf2 - orthogonal_area * edge2) * grad2
@@ -914,7 +919,7 @@ def _pressure_interior_flux_vector(
             weight * kinematic_pressure_gradient[nei, 2]
             + owner_weight * kinematic_pressure_gradient[own, 2]
         )
-        nonorthogonal_flux = (
+        nonorthogonal_flux = -(
             (sf0 - orthogonal_area * edge0) * pressure_velocity_coefficient_x * grad0
             + (sf1 - orthogonal_area * edge1) * pressure_velocity_coefficient_y * grad1
             + (sf2 - orthogonal_area * edge2) * pressure_velocity_coefficient_z * grad2
@@ -969,6 +974,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     ddt_flux_correction=None,
     correction_workspace=None,
     reuse_matrix=False,
+    frozen_velocity_h_over_a=None,
     return_workspace=False,
 ):
     """
@@ -1058,10 +1064,18 @@ def assemble_pressure_correction_equation_rhie_chow(
         if scalar_diagonal
         else pressure_velocity_coefficient
     )
-    velocity_h_over_a = (
-        velocity_star[:n_cells]
-        + pressure_velocity_coefficient_vector * kinematic_pressure_gradient[:n_cells]
-    )
+    if frozen_velocity_h_over_a is None:
+        velocity_h_over_a = (
+            velocity_star[:n_cells]
+            + pressure_velocity_coefficient_vector * kinematic_pressure_gradient[:n_cells]
+        )
+    else:
+        velocity_h_over_a = np.asarray(frozen_velocity_h_over_a, dtype=np.float64)
+        if velocity_h_over_a.shape != (n_cells, 3):
+            raise ValueError(
+                "frozen_velocity_h_over_a must have shape "
+                f"({n_cells}, 3), got {velocity_h_over_a.shape}"
+            )
 
     # Fuse the interior-face interpolation and non-orthogonal correction in a
     # compiled loop. Besides being faster than eight chains of NumPy advanced
@@ -1221,11 +1235,11 @@ def assemble_pressure_correction_equation_rhie_chow(
             velocity_h_over_a_face_flux = np.sum(hbya_b * sf_b, axis=1)
             compact = conductance_b * (kinematic_pressure[own_b] - kinematic_pressure[nei_b])
             if scalar_diagonal:
-                nonorthogonal_flux = boundary_pressure_velocity_coefficient * np.sum(
+                nonorthogonal_flux = -boundary_pressure_velocity_coefficient * np.sum(
                     nonorthogonal * grad_b, axis=1
                 )
             else:
-                nonorthogonal_flux = np.sum(
+                nonorthogonal_flux = -np.sum(
                     nonorthogonal * boundary_pressure_velocity_coefficient * grad_b, axis=1
                 )
             flux_vf[cyclic_faces] = velocity_h_over_a_face_flux + compact + nonorthogonal_flux
@@ -1278,9 +1292,15 @@ def assemble_pressure_correction_equation_rhie_chow(
             )
 
     if return_workspace:
-        if correction_workspace is None:
+        if (
+            correction_workspace is None
+            or correction_workspace.velocity_h_over_a is not velocity_h_over_a
+        ):
             correction_workspace = PressureCorrectionWorkspace(
-                pressure_velocity_coefficient, face_conductance, pressure_matrix
+                pressure_velocity_coefficient,
+                face_conductance,
+                pressure_matrix,
+                velocity_h_over_a,
             )
         return pressure_matrix, pressure_right_hand_side, flux_vf, correction_workspace
     return pressure_matrix, pressure_right_hand_side, flux_vf
@@ -1615,6 +1635,7 @@ def correct_velocity_and_flux(
     velocity_relaxation=1.0,
     pressure_relaxation=1.0,
     workspace: PressureCorrectionWorkspace | None = None,
+    velocity_kinematic_pressure_correction=None,
 ):
     """
     Apply pressure correction to velocity and persistent flux.
@@ -1657,9 +1678,24 @@ def correct_velocity_and_flux(
         pressure_velocity_coefficient = workspace.pressure_velocity_coefficient
         face_conductance = workspace.face_conductance
 
+    # A non-orthogonal sweep can accumulate several pressure increments while
+    # only its final increment belongs to the final predicted face flux.  In
+    # that case the cell velocity needs the accumulated correction and the
+    # face flux needs only the final increment.
+    velocity_pressure_correction = (
+        kinematic_pressure_correction
+        if velocity_kinematic_pressure_correction is None
+        else np.asarray(velocity_kinematic_pressure_correction, dtype=np.float64)
+    )
+    if velocity_pressure_correction.shape != (n_cells,):
+        raise ValueError(
+            "velocity_kinematic_pressure_correction must have shape "
+            f"({n_cells},), got {velocity_pressure_correction.shape}"
+        )
+
     # 1. Correct Cell Velocity
     kinematic_pressure_correction_extended = _extend_kinematic_pressure_correction_bcs(
-        kinematic_pressure_correction,
+        velocity_pressure_correction,
         mesh_data,
         boundaries,
         volumetric_face_flux=volumetric_face_flux,

@@ -68,6 +68,13 @@ def test_cylinder_boundary_layer_is_complete_and_stitched():
         ),
     )
 
+    # Four transition rings would leave oversized square-to-cylinder cells.
+    # The mesher treats that input as a minimum and resolves the bridge.
+    assert mesher.requested_boundary_layer is not None
+    assert mesher.requested_boundary_layer.transition_layers == 4
+    assert mesher.boundary_layer is not None
+    assert mesher.boundary_layer.transition_layers == 8
+
     mesh = mesher.build()
     validate_topology(mesh)
     geometry = compute_mesh_geometry(mesh, compute_lsq=False)
@@ -77,6 +84,10 @@ def test_cylinder_boundary_layer_is_complete_and_stitched():
     layer_index = np.asarray(mesh["boundary_layer_index"])
     expected = generation["theta_cells"] * generation["z_cells"]
     assert generation["wall_layers"] == 4
+    assert generation["requested_transition_layers"] == 4
+    assert generation["transition_layers"] == 8
+    assert generation["transition_layers_auto_expanded"]
+    assert generation["transition_to_lattice_ratio_max"] <= 1.0 + 1.0e-10
     assert all(np.count_nonzero(layer_index == layer) == expected for layer in range(4))
     assert "__boundary_layer_interface__" not in {patch["name"] for patch in mesh["boundary"]}
     assert quality["max_non_orthogonality_deg"] < 60.0

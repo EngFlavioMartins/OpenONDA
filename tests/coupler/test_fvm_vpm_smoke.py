@@ -122,9 +122,9 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert (sol / "fvm.log").exists()
     vpm_log = (sol / "vpm.log").read_text()
     assert "fvm      step" not in vpm_log
-    assert vpm_log.count("vpm      step 1") == 1
+    assert vpm_log.count("VPM TIME STEP 1") == 1
     # The VPM startup report is written once, not repeated by the coupler.
-    assert vpm_log.count("vpm solver  configuration") == 1
+    assert vpm_log.count("VPM SOLVER CONFIGURATION") == 1
     coupler_log = (sol / "coupler.log").read_text()
     assert "coupler  run" in coupler_log
     # Initial synchronization plus one absolute replacement after each FVM interval.

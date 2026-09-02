@@ -18,17 +18,18 @@ CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_long.stl"
 
 # ---- Physics -------------------------------------------------------------
 DIAMETER = 1.0
-CYLINDER_LENGTH = 4.0
+CYLINDER_LENGTH = 1.0
 REYNOLDS_NUMBER = 150.0
 FREESTREAM_VELOCITY = [1.0, 0.0, 0.0]
 KINEMATIC_VISCOSITY = 1.0 / REYNOLDS_NUMBER
-DOMAIN = (-8.0, 20.0, -8.0, 8.0, -2.0, 2.0)
+DOMAIN = (-8.0, 20.0, -8.0, 8.0, -0.5, 0.5)
 
 # ---- Time and output -----------------------------------------------------
 TIME_STEP_SIZE = 0.001
 MAX_TIME_STEP_SIZE = 4.0 * TIME_STEP_SIZE
 MAX_COURANT_NUMBER = 0.9
-TOTAL_TIME = 30.0
+# Discard the start-up transient and analyse the final 30 convective units.
+TOTAL_TIME = 60.0
 FORCE_INTERVAL_TIME = 0.02
 LINE_INTERVAL_TIME = 0.1
 SLICE_INTERVAL_TIME = 0.5
@@ -45,16 +46,26 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def grid_mesh(dx: float) -> fvm.ExplicitCylinderGridMesher:
-    """Return the exact wall=dx, near=2dx, wake=4dx, far=12dx mesh."""
+    """Return the grid-study mesh with a resolved, graded cylinder O-grid.
+
+    ``dx`` remains the cylinder-tangential resolution and the basis of the
+    2dx/4dx/8dx outer zones. Wall-normal spacing is deliberately smaller:
+    ten gently growing layers resolve the viscous region, followed by enough
+    graded transition rings to land directly on a 2dx square.  That square
+    sits inside a 2dx body/wake rectangle extended to x=6D before the 2:1
+    handoff to the 4dx wake grid.
+    """
     return fvm.ExplicitCylinderGridMesher(
         domain=DOMAIN,
         surface_file=CYLINDER_STL,
         wall_patch_name="cylinder",
         wall_cell_size=dx,
         near_body_half_width=2.0,
+        near_body_wake_xmax=6.0,
         wake_half_width=4.0,
         wake_xmin=-4.0,
-        interface_half_width=2.0 / 3.0,
+        wake_xmax=12.0,
+        interface_half_width=4.0 / 3.0,
         spanwise_cell_size=SPANWISE_CELL_SIZE,
     )
 
@@ -138,6 +149,11 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
     return fvm.FVMSetup(
         case_name=case_name,
         cores=NUMBER_OF_CORES,
+        mesh=fvm.MeshQualityConfig(
+            max_non_orthogonality_deg=45.0,
+            max_skewness=0.495,
+            max_lsq_condition=5.5,
+        ),
         execution=fvm.ComputeConfig(operator_backend="numba"),
         output=fvm.OutputConfig(
             format="vtk_xml",
@@ -149,6 +165,17 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
             ghost_layers=0,
         ),
         logging=fvm.LoggingConfig(schedule=fvm.RunSchedule(every_time=0.1)),
+        acceptance=fvm.RunAcceptanceLimits(
+            sustained_steps=1,
+            max_continuity_error_warning=1.0e-4,
+            max_continuity_error_abort=1.0e-2,
+            max_equation_residual_warning=1.0e-4,
+            max_equation_residual_abort=1.0e-2,
+            max_courant_number_warning=MAX_COURANT_NUMBER,
+            max_courant_number_abort=1.5,
+            max_velocity_magnitude_warning=3.0,
+            max_velocity_magnitude_abort=5.0,
+        ),
         backup=fvm.BackupConfig(
             schedule=fvm.RunSchedule(every_time=FIELD_INTERVAL_TIME),
             write_at_end=True,
@@ -179,7 +206,11 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
         pimple=fvm.PimpleControl(
             n_correctors=2,
             n_outer_correctors=2,
-            n_orthogonal_correctors=1,
+            # The Rhie--Chow assembly already includes the explicit
+            # non-orthogonal pressure flux.  An additional fixed-point sweep
+            # is not contractive on the medium/fine O-grid transition; keep
+            # the two stable PISO corrections without that extra sweep.
+            n_orthogonal_correctors=0,
             velocity_relaxation=0.7,
             pressure_relaxation=0.3,
         ),

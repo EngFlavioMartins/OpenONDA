@@ -9,6 +9,7 @@ import json
 import numpy as np
 
 from source.solvers.fvm.factory import create_fvm_solver
+from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow import setup
 from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow.assets import (
     postprocess,
 )
@@ -52,9 +53,12 @@ def test_grid_study_force_report_uses_one_common_statistics_window(tmp_path, mon
 
     report = json.loads((tmp_path / "solution" / "grid_study.json").read_text())
     assert report["common_window"] == {"start": 30.0, "end": 60.0}
+    assert report["production_cases"] == ["coarse", "medium", "fine"]
+    assert report["refinement_ratio"] == 1.5
     np.testing.assert_allclose(report["cases"][-1]["mean_cd"], 1.3, atol=1.0e-12)
     np.testing.assert_allclose(report["cases"][-1]["strouhal"], 0.2, atol=2.0e-3)
     assert len(report["comparisons"]) == 3
+    assert report["grid_convergence"]["mean_cd"]["status"] == "converged_to_roundoff"
 
 
 def test_grid_study_uses_reasonable_monotone_wall_spacings():
@@ -62,8 +66,25 @@ def test_grid_study_uses_reasonable_monotone_wall_spacings():
     spacing = np.asarray([dx for _case, dx in postprocess.CASES])
 
     assert names == ["very_coarse", "coarse", "medium", "fine"]
-    np.testing.assert_allclose(spacing, [1 / 12, 1 / 24, 1 / 36, 1 / 48])
+    np.testing.assert_allclose(spacing, [1 / 12, 1 / 24, 1 / 36, 1 / 54])
     assert np.all(np.diff(spacing) < 0.0)
+    production = np.asarray([dx for _case, dx in postprocess.PRODUCTION_CASES])
+    np.testing.assert_allclose(production[:-1] / production[1:], 1.5)
+
+
+def test_richardson_gci_recovers_second_order_limit():
+    exact = 1.25
+    records = [
+        {"case": case, "dx": dx, "mean_cd": exact + 2.0 * dx**2}
+        for case, dx in postprocess.PRODUCTION_CASES
+    ]
+
+    result = postprocess.richardson_gci(records, "mean_cd", tolerance_percent=1.0)
+
+    assert result["status"] == "asymptotic"
+    np.testing.assert_allclose(result["observed_order"], 2.0, atol=1.0e-12)
+    np.testing.assert_allclose(result["richardson_extrapolated_value"], exact, atol=1.0e-12)
+    assert result["passed"]
 
 
 def test_fvm_solver_api_owns_named_solution_and_sample_directories():
@@ -71,3 +92,10 @@ def test_fvm_solver_api_owns_named_solution_and_sample_directories():
 
     assert "solution_dir" in parameters
     assert "samples_dir" in parameters
+
+
+def test_reference_grid_disables_the_unstable_extra_nonorthogonal_sweep():
+    controls = setup.solver_setup("qualification", 1.0 / 36.0).pimple
+
+    assert controls.n_correctors == 2
+    assert controls.n_orthogonal_correctors == 0

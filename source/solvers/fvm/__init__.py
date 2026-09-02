@@ -31,6 +31,7 @@ from .mesh.adaptive_cartesian import (
     BoxRefinement,
     ExplicitCylinderGridMesher,
 )
+from .mesh.general_body import GeneralBodyMesher
 from .sampling.fields import LineSampler, SurfaceSampler
 from .sampling.forces import (
     ForceSampler,
@@ -56,6 +57,7 @@ __all__ = [
     "FieldState",
     "ExplicitCylinderGridMesher",
     "ForceSampler",
+    "GeneralBodyMesher",
     "IBMForceSampler",
     "LinearSolveResult",
     "LinearSolverConfig",

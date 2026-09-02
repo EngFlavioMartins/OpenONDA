@@ -306,6 +306,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
             for _corr in range(n_corr):
                 n_non_ortho = int(self.params.get("n_orthogonal_correctors", 0))
+                pressure_before_nonorthogonal_sweeps = kinematic_pressure[:n_elem].copy()
+                frozen_velocity_h_over_a = None
                 for non_ortho in range(n_non_ortho + 1):
                     # Coupling can intentionally replace a patch type between
                     # calls.  Keep cached indexing only while that structural
@@ -347,10 +349,13 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         ddt_flux_correction=ddt_flux_correction,
                         correction_workspace=pressure_geometry,
                         reuse_matrix=reuse_pressure_matrix,
+                        frozen_velocity_h_over_a=frozen_velocity_h_over_a,
                         return_workspace=True,
                     )
                     if pressure_geometry is None:
                         pressure_geometry = pressure_workspace
+                    if frozen_velocity_h_over_a is None:
+                        frozen_velocity_h_over_a = pressure_workspace.velocity_h_over_a
                     logging.Timer.log(
                         "Pressure Assembly",
                         sink=logger,
@@ -409,39 +414,59 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         sink=logger,
                     )
 
-                    logging.Timer.start("Velocity Correction")
-                    velocity_iter, corrected_volumetric_face_flux = (
-                        simple_solver.correct_velocity_and_flux(
-                            velocity_iter,
-                            volumetric_face_flux_star,
-                            kinematic_pressure_correction,
-                            momentum_diagonal,
-                            self.mesh_data,
-                            self.geo_data,
-                            self.boundaries,
-                            density=density,
-                            velocity_relaxation=outer_velocity_relaxation,
-                            pressure_relaxation=outer_pressure_relaxation,
-                            workspace=pressure_workspace,
+                    if non_ortho < n_non_ortho:
+                        # Iterate only the explicit non-orthogonal pressure
+                        # contribution.  The momentum predictor (H/A), cell
+                        # velocity, and persistent face flux remain frozen
+                        # until the final sweep.  Treating this as another
+                        # complete PISO correction over-corrects skewed meshes
+                        # and made nNonOrthogonalCorrectors=1 identical to
+                        # doubling nCorrectors.
+                        kinematic_pressure[:n_elem] += kinematic_pressure_correction
+                        pressure_flux_for_boundaries = volumetric_face_flux_star
+                    else:
+                        accumulated_kinematic_pressure_correction = (
+                            kinematic_pressure[:n_elem]
+                            - pressure_before_nonorthogonal_sweeps
+                            + kinematic_pressure_correction
                         )
-                    )
-                    if non_ortho == n_non_ortho:
+                        logging.Timer.start("Velocity Correction")
+                        velocity_iter, corrected_volumetric_face_flux = (
+                            simple_solver.correct_velocity_and_flux(
+                                velocity_iter,
+                                volumetric_face_flux_star,
+                                kinematic_pressure_correction,
+                                momentum_diagonal,
+                                self.mesh_data,
+                                self.geo_data,
+                                self.boundaries,
+                                density=density,
+                                velocity_relaxation=outer_velocity_relaxation,
+                                pressure_relaxation=outer_pressure_relaxation,
+                                workspace=pressure_workspace,
+                                velocity_kinematic_pressure_correction=(
+                                    accumulated_kinematic_pressure_correction
+                                ),
+                            )
+                        )
                         volumetric_face_flux = corrected_volumetric_face_flux
+                        pressure_flux_for_boundaries = volumetric_face_flux
+                        kinematic_pressure[:n_elem] = (
+                            pressure_before_nonorthogonal_sweeps
+                            + outer_pressure_relaxation
+                            * accumulated_kinematic_pressure_correction
+                        )
+                        logging.Timer.log(
+                            "Velocity Correction",
+                            sink=logger,
+                        )
 
-                    logging.Timer.log(
-                        "Velocity Correction",
-                        sink=logger,
-                    )
-
-                    kinematic_pressure[:n_elem] += (
-                        outer_pressure_relaxation * kinematic_pressure_correction
-                    )
                     simple_solver.update_scalar_boundaries(
                         kinematic_pressure,
                         self.mesh_data,
                         self.boundaries,
                         field_name="kinematic_pressure",
-                        volumetric_face_flux=volumetric_face_flux,
+                        volumetric_face_flux=pressure_flux_for_boundaries,
                     )
                     if parallel is not None and parallel.is_partitioned:
                         parallel.exchange_halo(kinematic_pressure[:n_elem])
@@ -451,7 +476,9 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     # nearly doubling the peak for nCorrectors/nonOrth loops.
                     del kinematic_pressure_correction
                     del volumetric_face_flux_star
-                    del corrected_volumetric_face_flux
+                    if non_ortho == n_non_ortho:
+                        del corrected_volumetric_face_flux
+                        del accumulated_kinematic_pressure_correction
 
             simple_solver._update_velocity_bcs(
                 velocity_iter,

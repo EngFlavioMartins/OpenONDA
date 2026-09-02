@@ -16,6 +16,7 @@ import time
 from typing import SupportsFloat, SupportsInt
 
 WIDTH = 78
+BLOCK_WIDTH = 88
 
 _SCOPE_WIDTH = 7
 _VALUE_WIDTH = 12
@@ -42,6 +43,15 @@ def _detail(indent: int, label_width: int, entry: Row) -> str:
     if unit:
         line = f"{line}  {unit}"
     return line.rstrip()
+
+
+def _block_detail(entry: Row) -> str:
+    """Format one detail row for a human-facing configuration or step block."""
+    label = str(entry[0])
+    if label:
+        label = label[0].upper() + label[1:]
+    normalized: Row = (label, entry[1], entry[2]) if len(entry) > 2 else (label, entry[1])
+    return _detail(_SECTION_INDENT, _SECTION_LABEL_WIDTH, normalized)
 
 
 def header(scope: str, topic: str, *, stamped: bool = False) -> str:
@@ -74,6 +84,51 @@ def banner(left: str, right: str = "") -> str:
     return "\n".join(("", rule, title, rule))
 
 
+def elapsed_time(seconds: SupportsFloat) -> str:
+    """Return an elapsed duration as ``HH:MM:SS.s`` without losing long runs."""
+    total = max(0.0, float(seconds))
+    hours = int(total // 3600.0)
+    minutes = int((total - 3600.0 * hours) // 60.0)
+    remaining = total - 3600.0 * hours - 60.0 * minutes
+    return f"{hours:02d}:{minutes:02d}:{remaining:04.1f}"
+
+
+def step_header(
+    step: SupportsInt,
+    flow_time: SupportsFloat,
+    wall_time: SupportsFloat,
+    *,
+    scope: str = "VPM",
+) -> str:
+    """Open a solver time-step block with its physical and elapsed times."""
+    title = (
+        f" {scope.upper()} TIME STEP {int(step):,}"
+        f"     FLOW TIME {float(flow_time):.6e} s"
+        f"     WALL TIME {elapsed_time(wall_time)}"
+    )
+    width = max(BLOCK_WIDTH, len(title))
+    return "\n".join(("", "=" * width, title, "-" * width))
+
+
+def block_section(title: str, rows: list[Row], *, show_title: bool = True) -> str:
+    """Format one uppercase block section with no gap below its heading."""
+    lines: list[str] = []
+    if show_title:
+        lines.extend(("", f" {title.upper()}"))
+    lines.extend(_block_detail(row) for row in rows)
+    return "\n".join(lines)
+
+
+def block_report(title: str, sections: list[tuple[str, list[Row]]]) -> str:
+    """Format a one-time report with gaps only between uppercase sections."""
+    width = max(BLOCK_WIDTH, len(title) + 2)
+    lines = ["", "=" * width, f" {title.upper()}", "-" * width]
+    for section_title, rows in sections:
+        lines.append(block_section(section_title, rows))
+    lines.extend(("", "=" * width))
+    return "\n".join(lines)
+
+
 def count(value: SupportsInt) -> str:
     """Return an integer count with thousands separators."""
     return f"{int(value):,}"
@@ -90,13 +145,18 @@ def ratio(value: SupportsFloat, digits: int = 3) -> str:
 
 
 __all__ = [
+    "BLOCK_WIDTH",
     "WIDTH",
     "banner",
+    "block_report",
+    "block_section",
     "count",
+    "elapsed_time",
     "header",
     "quantity",
     "ratio",
     "record",
     "section",
     "stamp",
+    "step_header",
 ]

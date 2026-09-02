@@ -25,7 +25,7 @@ scope of the adaptation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 import math
 from math import gcd, lcm
@@ -38,6 +38,7 @@ from .boundary_layer import (
     BoundaryLayerSpec,
     build_cylinder_layer_mesh,
     cylinder_interface_bounds,
+    cylinder_transition_layer_count,
     stitch_boundary_layer,
 )
 from .surface_classification import SurfaceIndex
@@ -159,11 +160,18 @@ def _dyadic_level(background: float, requested: float) -> int:
     return max(0, int(math.ceil(math.log2(ratio) - 1.0e-12)))
 
 
-def _fitted_background_size(domain: Bounds, requested: float) -> float:
-    """Return the largest isotropic spacing no larger than ``requested`` that tiles ``domain``."""
+def _fitted_background_size(
+    domain: Bounds,
+    requested: float,
+    *,
+    axes: tuple[int, ...] = (0, 1, 2),
+) -> float:
+    """Return the largest spacing no larger than ``requested`` that tiles selected axes."""
+    if not axes or any(axis not in (0, 1, 2) for axis in axes):
+        raise ValueError("axes must contain one or more of 0, 1, and 2")
     extents = [
         Fraction(str(domain[2 * axis + 1] - domain[2 * axis])).limit_denominator(1_000_000)
-        for axis in range(3)
+        for axis in axes
     ]
     denominator = 1
     for extent in extents:
@@ -673,7 +681,14 @@ class AdaptiveCartesianMesher:
             ):
                 raise ValueError(f"{refinement.name} must lie inside domain")
 
-        fitted_max_cell_size = _fitted_background_size(requested_domain, max_cell_size)
+        independent_spanwise_spacing = (
+            boundary_layer is not None and boundary_layer.spanwise_cell_size is not None
+        )
+        fitted_max_cell_size = _fitted_background_size(
+            requested_domain,
+            max_cell_size,
+            axes=(0, 1) if independent_spanwise_spacing else (0, 1, 2),
+        )
         requested_sizes = [refinement.cell_size for refinement in refinements]
         if surface_cell_size is not None:
             requested_sizes.append(surface_cell_size)
@@ -730,10 +745,37 @@ class AdaptiveCartesianMesher:
             else fitted_max_cell_size / (2**requested_level)
         )
         self._body_lattice_indices = resolved.body_lattice_indices if resolved is not None else None
+        requested_boundary_layer = boundary_layer
+        if boundary_layer is not None:
+            if surface is None:
+                raise RuntimeError("Boundary-layer surface data are missing")
+            # Treat transition_layers as a requested minimum. A cylinder
+            # O-grid must never bridge its circular wall block to the square
+            # Cartesian collar with a cell taller than the finest lattice
+            # cell. Resolve that invariant here so every AdaptiveCartesianMesher
+            # caller gets the same protection, not only the grid-study helper.
+            boundary_layer_lattice_size = getattr(
+                self,
+                "_boundary_layer_lattice_size_override",
+                self._resolved_h_min,
+            )
+            transition_layers = cylinder_transition_layer_count(
+                surface,
+                requested_domain,
+                boundary_layer_lattice_size,
+                boundary_layer,
+                minimum=boundary_layer.transition_layers,
+            )
+            if transition_layers != boundary_layer.transition_layers:
+                boundary_layer = replace(
+                    boundary_layer,
+                    transition_layers=transition_layers,
+                )
         self.surface = surface
         self.surface_file = str(surface.path) if surface is not None else None
         self.surface_bounds = surface.bounds if surface is not None else None
         self.surface_cell_size = float(surface_cell_size) if surface_cell_size is not None else None
+        self.requested_boundary_layer = requested_boundary_layer
         self.boundary_layer = boundary_layer
         self.refinements = tuple(refinements)
         self.wall_patch_name = wall_patch_name or ""
@@ -766,9 +808,16 @@ class AdaptiveCartesianMesher:
         counts = []
         for axis in range(3):
             extent = self.domain[2 * axis + 1] - self.domain[2 * axis]
-            count = int(round(extent / self.max_cell_size))
+            cell_size = self.max_cell_size
+            if (
+                axis == 2
+                and self.boundary_layer is not None
+                and self.boundary_layer.spanwise_cell_size is not None
+            ):
+                cell_size = self.boundary_layer.spanwise_cell_size
+            count = int(round(extent / cell_size))
             if count < 1 or not math.isclose(
-                count * self.max_cell_size,
+                count * cell_size,
                 extent,
                 rel_tol=1.0e-10,
                 abs_tol=1.0e-12,
@@ -1605,6 +1654,14 @@ class AdaptiveCartesianMesher:
             self.wall_patch_name,
             interface_patch_name,
         )
+        requested_layer = self.requested_boundary_layer
+        layer_mesh["mesh_generation"]["requested_transition_layers"] = (
+            requested_layer.transition_layers if requested_layer is not None else None
+        )
+        layer_mesh["mesh_generation"]["transition_layers_auto_expanded"] = (
+            requested_layer is not None
+            and requested_layer.transition_layers != self.boundary_layer.transition_layers
+        )
         mesh_data = stitch_boundary_layer(mesh_data, layer_mesh, interface_patch_name)
         validate_curved_wall_conformance(
             mesh_data,
@@ -1798,6 +1855,14 @@ class AdaptiveCartesianMesher:
                 self.wall_patch_name,
                 interface_patch_name,
             )
+            requested_layer = self.requested_boundary_layer
+            layer_mesh["mesh_generation"]["requested_transition_layers"] = (
+                requested_layer.transition_layers if requested_layer is not None else None
+            )
+            layer_mesh["mesh_generation"]["transition_layers_auto_expanded"] = (
+                requested_layer is not None
+                and requested_layer.transition_layers != self.boundary_layer.transition_layers
+            )
             mesh_data = stitch_boundary_layer(mesh_data, layer_mesh, interface_patch_name)
             validate_curved_wall_conformance(
                 mesh_data,
@@ -1838,13 +1903,12 @@ class AdaptiveCartesianMesher:
 class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
     """Body-fitted cylinder mesh with an explicit four-zone x-y size layout.
 
-    The regular adaptive Cartesian path deliberately uses dyadic refinement.
-    That is a good default, but it cannot represent the ``4 h`` to ``12 h``
-    transition required by a compact grid study without silently replacing one
-    of those requested sizes.  This specialised extruded mesher constructs
-    the requested square cells directly and splits the three fine faces that
-    meet each ``12 h`` far-field face.  The circular O-grid remains exactly
-    conformal to the input STL.
+    The regular adaptive Cartesian path chooses refinement from local surface
+    proximity. A convergence exercise also needs identical physical zone
+    boundaries at every resolution, so this specialised extruded mesher
+    constructs an exact ``2h/4h/8h`` outer layout with only 2:1 Cartesian
+    interfaces. The circular O-grid remains exactly conformal to the input STL
+    and grows smoothly to the adjoining ``2h`` body/wake region.
     """
 
     def __init__(
@@ -1855,10 +1919,13 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
         wall_patch_name: str,
         wall_cell_size: float,
         near_body_half_width: float = 2.0,
+        near_body_wake_xmax: float = 6.0,
         wake_half_width: float = 4.0,
         wake_xmin: float = -4.0,
-        interface_half_width: float = 2.0 / 3.0,
+        wake_xmax: float = 12.0,
+        interface_half_width: float = 4.0 / 3.0,
         spanwise_cell_size: float = 0.5,
+        boundary_layer: BoundaryLayerSpec | None = None,
     ) -> None:
         if not math.isfinite(wall_cell_size) or wall_cell_size <= 0.0:
             raise ValueError("wall_cell_size must be finite and positive")
@@ -1867,40 +1934,88 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
                 "Require 0 < interface_half_width < near_body_half_width < wake_half_width"
             )
         if not domain[0] < wake_xmin < -near_body_half_width:
-            raise ValueError("wake_xmin must lie upstream of the near-body square")
-        if domain[1] <= wake_half_width:
-            raise ValueError("The domain outlet must lie beyond the wake square")
+            raise ValueError("wake_xmin must lie upstream of the near-body region")
+        if not near_body_half_width < near_body_wake_xmax < wake_xmax < domain[1]:
+            raise ValueError(
+                "Require near_body_half_width < near_body_wake_xmax < wake_xmax < domain maximum"
+            )
         if not math.isfinite(spanwise_cell_size) or spanwise_cell_size <= 0.0:
             raise ValueError("spanwise_cell_size must be finite and positive")
 
         self.wall_cell_size = float(wall_cell_size)
+        # The O-grid ends on the 2h body/wake lattice.  Its outer square is
+        # therefore face-for-face conformal with the first refinement region,
+        # while the wall still retains h tangential resolution.
+        self.interface_cell_size = 2.0 * self.wall_cell_size
+        # AdaptiveCartesianMesher's internal dyadic h_min is not used by this
+        # subclass and must not drive its transition-layer safety check.
+        # The O-grid transition is constrained by the lattice it actually
+        # joins: interface_cell_size, not the wall tangential spacing.
+        self._boundary_layer_lattice_size_override = self.interface_cell_size
         self.near_body_half_width = float(near_body_half_width)
+        self.near_body_wake_xmax = float(near_body_wake_xmax)
         self.wake_half_width = float(wake_half_width)
         self.wake_xmin = float(wake_xmin)
+        self.wake_xmax = float(wake_xmax)
         self.interface_half_width = float(interface_half_width)
         self.spanwise_cell_size = float(spanwise_cell_size)
-        self.far_field_cell_size = 12.0 * self.wall_cell_size
+        self.far_field_cell_size = 8.0 * self.wall_cell_size
+        if boundary_layer is None:
+            provisional_layer = BoundaryLayerSpec(
+                first_cell_height=self.wall_cell_size / 16.0,
+                layers=10,
+                growth_ratio=1.18,
+                transition_layers=1,
+                interface_half_width=self.interface_half_width,
+                spanwise_cell_size=self.spanwise_cell_size,
+            )
+            transition_layers = cylinder_transition_layer_count(
+                TriangulatedSurface.from_stl(surface_file),
+                domain,
+                self.interface_cell_size,
+                provisional_layer,
+                minimum=12,
+            )
+            boundary_layer = BoundaryLayerSpec(
+                first_cell_height=provisional_layer.first_cell_height,
+                layers=provisional_layer.layers,
+                growth_ratio=provisional_layer.growth_ratio,
+                transition_layers=transition_layers,
+                interface_half_width=provisional_layer.interface_half_width,
+                spanwise_cell_size=provisional_layer.spanwise_cell_size,
+            )
+        else:
+            boundary_layer.validate()
+            if boundary_layer.interface_half_width is None or not math.isclose(
+                boundary_layer.interface_half_width,
+                self.interface_half_width,
+                rel_tol=0.0,
+                abs_tol=1.0e-12,
+            ):
+                raise ValueError(
+                    "boundary_layer.interface_half_width must match interface_half_width"
+                )
+            if boundary_layer.spanwise_cell_size is None or not math.isclose(
+                boundary_layer.spanwise_cell_size,
+                self.spanwise_cell_size,
+                rel_tol=0.0,
+                abs_tol=1.0e-12,
+            ):
+                raise ValueError("boundary_layer.spanwise_cell_size must match spanwise_cell_size")
         super().__init__(
             domain=domain,
             max_cell_size=self.far_field_cell_size,
             surface_file=surface_file,
             wall_patch_name=wall_patch_name,
             surface_cell_size=self.wall_cell_size,
-            boundary_layer=BoundaryLayerSpec(
-                first_cell_height=self.wall_cell_size,
-                layers=1,
-                growth_ratio=1.0,
-                transition_layers=1,
-                interface_half_width=self.interface_half_width,
-                spanwise_cell_size=self.spanwise_cell_size,
-            ),
+            boundary_layer=boundary_layer,
             surface_may_cross_domain_boundary=True,
         )
         if not math.isclose(
             self.max_cell_size, self.far_field_cell_size, rel_tol=0.0, abs_tol=1.0e-12
         ):
             raise ValueError(
-                "The requested domain must tile exactly with the 12*wall_cell_size far field"
+                "The requested domain must tile exactly with the 8*wall_cell_size far field"
             )
 
     def _study_index(self, coordinate: float, axis: int) -> int:
@@ -1914,12 +2029,13 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
         return rounded
 
     def _study_leaves(self) -> tuple[np.ndarray, tuple[int, int], _IntegerBox]:
-        """Tile the exact 1h/2h/4h/12h study regions in the x-y plane."""
+        """Tile the exact 2h/4h/8h study regions in the x-y plane."""
         nx = self._study_index(self.domain[1], 0)
         ny = self._study_index(self.domain[3], 1)
         x_wake = self._study_index(self.wake_xmin, 0)
+        x_wake_end = self._study_index(self.wake_xmax, 0)
         x_near_lo = self._study_index(-self.near_body_half_width, 0)
-        x_near_hi = self._study_index(self.near_body_half_width, 0)
+        x_near_wake_hi = self._study_index(self.near_body_wake_xmax, 0)
         y_wake_lo = self._study_index(-self.wake_half_width, 1)
         y_wake_hi = self._study_index(self.wake_half_width, 1)
         y_near_lo = self._study_index(-self.near_body_half_width, 1)
@@ -1928,14 +2044,11 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
         x_interface_hi = self._study_index(self.interface_half_width, 0)
         y_interface_lo = self._study_index(-self.interface_half_width, 1)
         y_interface_hi = self._study_index(self.interface_half_width, 1)
-        collar = 2
-        x_collar_lo, x_collar_hi = x_interface_lo - collar, x_interface_hi + collar
-        y_collar_lo, y_collar_hi = y_interface_lo - collar, y_interface_hi + collar
-
         for value in (
             x_wake,
+            x_wake_end,
             x_near_lo,
-            x_near_hi,
+            x_near_wake_hi,
             y_wake_lo,
             y_wake_hi,
             y_near_lo,
@@ -1944,14 +2057,19 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
             x_interface_hi,
             y_interface_lo,
             y_interface_hi,
-            x_collar_lo,
-            x_collar_hi,
-            y_collar_lo,
-            y_collar_hi,
         ):
             if value < 0:
                 raise ValueError("Grid-study regions must remain inside the requested domain")
-        if not (0 < x_wake < x_near_lo < x_interface_lo < x_interface_hi < x_near_hi < nx):
+        if not (
+            0
+            < x_wake
+            < x_near_lo
+            < x_interface_lo
+            < x_interface_hi
+            < x_near_wake_hi
+            < x_wake_end
+            < nx
+        ):
             raise ValueError("Invalid x-direction grid-study region ordering")
         if not (
             0 < y_wake_lo < y_near_lo < y_interface_lo < y_interface_hi < y_near_hi < y_wake_hi < ny
@@ -1975,28 +2093,27 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
                 for x0_cell in range(x0, x1, width):
                     leaves.append((x0_cell, y0_cell, width, level))
 
-        # The 12h far field surrounds the whole 4h wake strip.
-        tile(0, x_wake, 0, ny, 12, 0)
-        tile(x_wake, nx, 0, y_wake_lo, 12, 0)
-        tile(x_wake, nx, y_wake_hi, ny, 12, 0)
+        # The 8h far field surrounds the resolved wake and receives its
+        # downstream tail after x=wake_xmax. Every Cartesian jump is 2:1.
+        tile(0, x_wake, 0, ny, 8, 0)
+        tile(x_wake, x_wake_end, 0, y_wake_lo, 8, 0)
+        tile(x_wake, x_wake_end, y_wake_hi, ny, 8, 0)
+        tile(x_wake_end, nx, 0, ny, 8, 0)
 
-        # The 4h region contains both the +/-4D neighbourhood and all downstream wake cells.
+        # The 4h region resolves the force-producing wake through the last
+        # x=12D convergence sampler without paying that cost to the outlet.
+        # It starts downstream of the elongated 2h body/wake rectangle.
         tile(x_wake, x_near_lo, y_wake_lo, y_wake_hi, 4, 1)
-        tile(x_near_hi, nx, y_wake_lo, y_wake_hi, 4, 1)
-        tile(x_near_lo, x_near_hi, y_wake_lo, y_near_lo, 4, 1)
-        tile(x_near_lo, x_near_hi, y_near_hi, y_wake_hi, 4, 1)
+        tile(x_near_wake_hi, x_wake_end, y_wake_lo, y_wake_hi, 4, 1)
+        tile(x_near_lo, x_near_wake_hi, y_wake_lo, y_near_lo, 4, 1)
+        tile(x_near_lo, x_near_wake_hi, y_near_hi, y_wake_hi, 4, 1)
 
-        # The requested +/-2D body square uses 2h apart from its fitted wall collar.
-        tile(x_near_lo, x_collar_lo, y_near_lo, y_near_hi, 2, 2)
-        tile(x_collar_hi, x_near_hi, y_near_lo, y_near_hi, 2, 2)
-        tile(x_collar_lo, x_collar_hi, y_near_lo, y_collar_lo, 2, 2)
-        tile(x_collar_lo, x_collar_hi, y_collar_hi, y_near_hi, 2, 2)
-
-        # The dx collar supplies a face-for-face match to the conformal O-grid.
-        tile(x_collar_lo, x_interface_lo, y_collar_lo, y_collar_hi, 1, 3)
-        tile(x_interface_hi, x_collar_hi, y_collar_lo, y_collar_hi, 1, 3)
-        tile(x_interface_lo, x_interface_hi, y_collar_lo, y_interface_lo, 1, 3)
-        tile(x_interface_lo, x_interface_hi, y_interface_hi, y_collar_hi, 1, 3)
+        # The body/wake rectangle is intentionally longer downstream. It
+        # reaches x=near_body_wake_xmax before the handoff to the 4h wake grid.
+        tile(x_near_lo, x_interface_lo, y_near_lo, y_near_hi, 2, 2)
+        tile(x_interface_hi, x_near_wake_hi, y_near_lo, y_near_hi, 2, 2)
+        tile(x_interface_lo, x_interface_hi, y_near_lo, y_interface_lo, 2, 2)
+        tile(x_interface_lo, x_interface_hi, y_interface_hi, y_near_hi, 2, 2)
 
         interface = _IntegerBox(
             x_interface_lo,
@@ -2018,7 +2135,7 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
         limits: tuple[int, int],
         z_cells: int,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[dict], np.ndarray, np.ndarray]:
-        """Extrude explicit x-y cells, allowing the required 3:1 transition."""
+        """Extrude the explicit x-y cells across conformal 2:1 transitions."""
         n_slice_cells = len(leaves)
         n_cells = n_slice_cells * z_cells
         nx, ny = limits
@@ -2294,24 +2411,25 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
             "cell_type_code": np.full(len(levels), 5, dtype=np.int32),
             "mesh_generation": {
                 "method": "explicit_spanwise_cylinder_grid_study",
-                "max_cell_size": 12.0 * self.wall_cell_size,
-                "requested_max_cell_size": 12.0 * self.wall_cell_size,
+                "max_cell_size": self.far_field_cell_size,
+                "requested_max_cell_size": self.far_field_cell_size,
                 "finest_cell_size": self.wall_cell_size,
                 "requested_domain": self.requested_domain,
                 "effective_domain": self.effective_domain,
                 "wall_cell_size": self.wall_cell_size,
+                "interface_cell_size": self.interface_cell_size,
                 "near_body_cell_size": 2.0 * self.wall_cell_size,
                 "wake_cell_size": 4.0 * self.wall_cell_size,
-                "far_field_cell_size": 12.0 * self.wall_cell_size,
+                "far_field_cell_size": self.far_field_cell_size,
                 "near_body_bounds": (
                     -self.near_body_half_width,
-                    self.near_body_half_width,
+                    self.near_body_wake_xmax,
                     -self.near_body_half_width,
                     self.near_body_half_width,
                 ),
                 "wake_bounds": (
                     self.wake_xmin,
-                    self.domain[1],
+                    self.wake_xmax,
                     -self.wake_half_width,
                     self.wake_half_width,
                 ),
@@ -2346,10 +2464,18 @@ class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
             self.surface,
             self._surface_index,
             self.domain,
-            self.wall_cell_size,
+            self.interface_cell_size,
             self.boundary_layer,
             self.wall_patch_name,
             interface_patch_name,
+        )
+        requested_layer = self.requested_boundary_layer
+        layer["mesh_generation"]["requested_transition_layers"] = (
+            requested_layer.transition_layers if requested_layer is not None else None
+        )
+        layer["mesh_generation"]["transition_layers_auto_expanded"] = (
+            requested_layer is not None
+            and requested_layer.transition_layers != self.boundary_layer.transition_layers
         )
         mesh = stitch_boundary_layer(outer, layer, interface_patch_name)
         mesh["mesh_generation"].update(outer["mesh_generation"])

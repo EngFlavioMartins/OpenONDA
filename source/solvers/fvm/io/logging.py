@@ -145,6 +145,9 @@ class _StepRecord:
     turbulence: tuple[float, float, float] | None = None
     kinematic_viscosity: float = 0.0
     warnings: tuple[str, ...] = ()
+    events: list[tuple[str, tuple[log_style.Row, ...]]] = field(default_factory=list)
+    sections: list[tuple[str, list[log_style.Row]]] = field(default_factory=list)
+    wall_time_at_start: float = 0.0
     elapsed: float = 0.0
 
     def drag(self) -> float | None:
@@ -264,14 +267,28 @@ def _sections(record: _StepRecord) -> list[tuple[str, list[log_style.Row]]]:
     return sections
 
 
+def _event_rows(record: _StepRecord) -> list[log_style.Row]:
+    """Flatten event records into rows for the current block's event section."""
+    rows: list[log_style.Row] = []
+    for topic, details in record.events:
+        rows.append((topic, ""))
+        for detail in details:
+            label = f"  {detail[0]}"
+            if len(detail) > 2:
+                rows.append((label, detail[1], detail[2]))
+            else:
+                rows.append((label, detail[1]))
+    return rows
+
+
 class Logging:
     """Single FVM output sink and formatter.
 
     Rank zero tees messages to the live console and ``solution/<filename>``;
     worker ranks use a disabled instance, so call sites need no MPI guard.
 
-    ``simple`` mode prints one table row per reported step; ``debug`` mode
-    prints the full per-step block and the performance profile.
+    ``simple`` mode prints a compact block for each reported step; ``debug``
+    mode prints the full per-step block and the performance profile.
     """
 
     def __init__(
@@ -335,19 +352,33 @@ class Logging:
 
     def message(self, text: str = "", *, flush: bool = False) -> None:
         """Emit one complete message to every configured sink."""
+        if self._step is not None:
+            self._step.events.append((text, ()))
+            return
         self._emit(text, flush=flush)
 
     def info(self, text: str, *, flush: bool = False) -> None:
-        """Emit an informational message."""
-        self.message(log_style.header("fvm", text, stamped=True), flush=flush)
+        """Record an informational event in the current block."""
+        if self._step is not None:
+            self._step.events.append((text, ()))
+            return
+        self._emit(log_style.block_section("EVENTS", [(text, "")]), flush=flush)
 
     def warning(self, text: str, *, flush: bool = True) -> None:
-        """Emit a warning message."""
-        self.message(log_style.header("fvm", f"warning  {text}", stamped=True), flush=flush)
+        """Record a warning that remains visible regardless of step cadence."""
+        if self._step is not None:
+            self._step.warnings = (*self._step.warnings, text)
+            return
+        self._emit(log_style.block_section("WARNINGS", [(text, "")]), flush=flush)
 
     def record(self, topic: str, *rows: log_style.Row, flush: bool = False) -> None:
-        """Emit one stamped FVM record with indented detail rows."""
-        self.message(log_style.record("fvm", topic, *rows, stamped=True), flush=flush)
+        """Record one event with optional detail rows in the current block."""
+        if self._step is not None:
+            self._step.events.append((topic, tuple(rows)))
+            return
+        event = _StepRecord(step=0, time=0.0, time_step_size=0.0)
+        event.events.append((topic, tuple(rows)))
+        self._emit(log_style.block_section("EVENTS", _event_rows(event)), flush=flush)
 
     def debug_message(self, text: str, *, flush: bool = False) -> None:
         """Emit a message only in debug mode."""
@@ -362,9 +393,18 @@ class Logging:
     def _section(title: str, items: list[log_style.Row]) -> list[str]:
         return log_style.section(title, items).split("\n")
 
-    def section(self, title: str, items: list[log_style.Row]) -> None:
-        """Emit one consistently formatted information section."""
-        self.message(log_style.section(title, items))
+    def section(
+        self,
+        title: str,
+        items: list[log_style.Row],
+        *,
+        flush: bool = False,
+    ) -> None:
+        """Record or emit one consistently formatted information section."""
+        if self._step is not None:
+            self._step.sections.append((title, list(items)))
+            return
+        self._emit(log_style.block_section(title, items), flush=flush)
 
     # -- Per-step diagnostics --------------------------------------------------
 
@@ -372,7 +412,10 @@ class Logging:
         """Open a new per-step record, flushing any left open by an abort."""
         self._flush_step()
         self._step = _StepRecord(
-            step=int(step), time=float(time), time_step_size=float(time_step_size)
+            step=int(step),
+            time=float(time),
+            time_step_size=float(time_step_size),
+            wall_time_at_start=self._step_wall_time,
         )
 
     def _record(self, **values: Any) -> None:
@@ -478,43 +521,92 @@ class Logging:
 
     def _debug_block(self, record: _StepRecord) -> str:
         """Return the full step report, one detail row per quantity."""
-        rows: list[log_style.Row] = list(self._core_rows(record))
-        for title, items in _sections(record):
-            rows.append((f"{title}:", ""))
-            for item in items:
-                label, value = item[0], item[1]
-                rows.append(
-                    (f"  {label}", value, item[2]) if len(item) > 2 else (f"  {label}", value)
-                )
-        rows.append(("cumulative wall time", f"{self._step_wall_time:.3e}", "s"))
-        return log_style.record("fvm", f"step {record.step:,}", *rows, stamped=True)
+        return self._render_step_block(record, detailed=True)
 
     @staticmethod
     def _core_rows(record: _StepRecord) -> list[log_style.Row]:
-        """Return the quantities reported for every step in either mode."""
-        return [
-            ("time", f"{record.time:.3e}", "s"),
-            ("time step", f"{record.time_step_size:.3e}", "s"),
+        """Return the time-control quantities reported for every step."""
+        return [("time step", f"{record.time_step_size:.3e}", "s")]
+
+    @staticmethod
+    def _render_sections(record: _StepRecord, *, detailed: bool) -> list[str]:
+        """Return the current step's populated sections in display order."""
+        sections: list[tuple[str, list[log_style.Row]]] = []
+        events = _event_rows(record)
+        if events:
+            sections.append(("events", events))
+        sections.extend(record.sections)
+
+        time_rows = Logging._core_rows(record)
+        if record.courant is not None:
+            courant_value = f"{record.courant:.3e}" if detailed else f"{record.courant:.3f}"
+            time_rows.append(("courant, max", courant_value))
+        if detailed and record.courant_target is not None:
+            time_rows.append(("courant target", f"{record.courant_target:.3e}"))
+        sections.append(("time control", time_rows))
+
+        if detailed:
+            sections.extend(
+                (title, items) for title, items in _sections(record) if title != "time control"
+            )
+        else:
+            residuals = record.residuals
+            convergence: list[log_style.Row] = []
+            if "velocity" in residuals:
+                convergence.append(("residual, velocity", f"{residuals['velocity']:.2e}"))
+            if "kinematic_pressure" in residuals:
+                convergence.append(("residual, pressure", f"{residuals['kinematic_pressure']:.2e}"))
+            if convergence:
+                sections.append(("convergence", convergence))
+
+            if record.max_continuity_error is not None:
+                sections.append(
+                    (
+                        "conservation",
+                        [("continuity error, max", f"{record.max_continuity_error:.2e}")],
+                    )
+                )
+
+            drag = record.drag()
+            if drag is not None:
+                sections.append(("aerodynamic loads", [("drag coefficient", f"{drag:.4f}")]))
+
+        if not detailed and record.warnings:
+            sections.append(
+                (
+                    "warnings",
+                    [(f"({index + 1})", text) for index, text in enumerate(record.warnings)],
+                )
+            )
+
+        timing_rows: list[log_style.Row] = [("wall time", f"{record.elapsed:.2f}", "s")]
+        if detailed:
+            timing_rows.append(
+                (
+                    "cumulative wall time",
+                    f"{record.wall_time_at_start + record.elapsed:.3e}",
+                    "s",
+                )
+            )
+        sections.append(("timing", timing_rows))
+        return [log_style.block_section(title, items) for title, items in sections]
+
+    def _render_step_block(self, record: _StepRecord, *, detailed: bool) -> str:
+        """Render one complete FVM step in the shared block layout."""
+        parts = [
+            log_style.step_header(
+                record.step,
+                record.time,
+                record.wall_time_at_start,
+                scope="FVM",
+            )
         ]
+        parts.extend(self._render_sections(record, detailed=detailed))
+        return "\n".join(parts)
 
     def _step_block(self, record: _StepRecord) -> str:
         """Return the routine step report: the quantities watched every step."""
-        residuals = record.residuals
-        drag = record.drag()
-        rows: list[log_style.Row] = list(self._core_rows(record))
-        if record.courant is not None:
-            rows.append(("courant, max", f"{record.courant:.3f}"))
-        if "velocity" in residuals:
-            rows.append(("residual, velocity", f"{residuals['velocity']:.2e}"))
-        if "kinematic_pressure" in residuals:
-            rows.append(("residual, pressure", f"{residuals['kinematic_pressure']:.2e}"))
-        if record.max_continuity_error is not None:
-            rows.append(("continuity error, max", f"{record.max_continuity_error:.2e}"))
-        if drag is not None:
-            rows.append(("drag coefficient", f"{drag:.4f}"))
-        rows.append(("wall time", f"{record.elapsed:.2f}", "s"))
-        rows.extend(("warning", text) for text in record.warnings)
-        return log_style.record("fvm", f"step {record.step:,}", *rows, stamped=True)
+        return self._render_step_block(record, detailed=False)
 
     # -- Startup and shutdown reports ------------------------------------------
 
@@ -526,10 +618,9 @@ class Logging:
         parallel = solver.parallel
         partition = getattr(parallel, "partition", None)
 
-        lines = [log_style.banner("fvm solver")]
-        lines.append(
-            log_style.section(
-                "fvm solver  configuration",
+        sections: list[tuple[str, list[log_style.Row]]] = [
+            (
+                "RUN",
                 [
                     ("case", str(config.case_name)),
                     ("algorithm", str(config.pimple.algorithm).upper()),
@@ -539,7 +630,7 @@ class Logging:
                     ("linear backend", str(config.execution.linear_backend)),
                 ],
             )
-        )
+        ]
 
         if partition is None:
             mesh_items: list[log_style.Row] = [
@@ -555,14 +646,14 @@ class Logging:
                 ("faces, rank 0 local", f"{int(mesh['n_faces']):,}"),
                 ("patches, configured", str(len(config.boundaries))),
             ]
-        lines.append(log_style.section("fvm solver  mesh", mesh_items))
+        sections.append(("MESH", mesh_items))
 
         linear_method = config.linear.linear_solver
         pressure_method = config.linear.pressure_solver or linear_method
         momentum_method = config.linear.momentum_solver or linear_method
-        lines.append(
-            log_style.section(
-                "fvm solver  numerics",
+        sections.append(
+            (
+                "NUMERICS",
                 [
                     ("time step", f"{config.time.time_step_size:.3e}", "s"),
                     ("end time", f"{config.time.end_time:.3e}", "s"),
@@ -578,9 +669,9 @@ class Logging:
         )
         turbulence = config.turbulence
         turbulence_name = "DNS / laminar" if turbulence is None else str(turbulence.model)
-        lines.append(
-            log_style.section(
-                "fvm solver  physics",
+        sections.append(
+            (
+                "PHYSICS",
                 [
                     ("density", f"{config.transport.density:.6g}", "kg/m^3"),
                     (
@@ -601,12 +692,12 @@ class Logging:
                     (f"{boundary.name}, value", str(boundary.velocity_value)),
                 )
             )
-        lines.append(log_style.section("fvm solver  boundary conditions", boundary_items))
+        sections.append(("BOUNDARY CONDITIONS", boundary_items))
         sink = getattr(solver, "logger", None)
         log_file_path = getattr(sink, "log_file_path", None)
-        lines.append(
-            log_style.section(
-                "fvm solver  monitoring and output",
+        sections.append(
+            (
+                "MONITORING AND OUTPUT",
                 [
                     ("solution directory", str(solver.solution_dir)),
                     ("log file", str(log_file_path or "disabled")),
@@ -637,8 +728,7 @@ class Logging:
                 ],
             )
         )
-        lines.append("")
-        return "\n".join(lines)
+        return log_style.block_report("FVM SOLVER CONFIGURATION", sections)
 
     def log_solver_info(self, solver: Any, initialization_time: float) -> None:
         """Emit the formatted initialization report."""
@@ -735,7 +825,7 @@ class Logging:
             for name, values in inventory.items():
                 label = _MEMORY_LABELS.get(name, name)
                 rows.append((f"  {label}", f"{values['aggregate_bytes'] / _MIB:.1f}", "MiB"))
-        self.record("performance profile, this step", *rows, flush=True)
+        self.section("PERFORMANCE PROFILE", rows, flush=True)
 
     def run_summary(self) -> None:
         """Emit the closing wall-time summary."""
@@ -743,11 +833,13 @@ class Logging:
             return
         mean = self._step_wall_time / self._steps
         self._emit("")
-        self.record(
-            "run complete",
-            ("steps", f"{self._steps:,}"),
-            ("wall time, total", f"{self._step_wall_time:.3e}", "s"),
-            ("wall time, mean per step", f"{mean:.3f}", "s"),
+        self.section(
+            "RUN COMPLETE",
+            [
+                ("steps", f"{self._steps:,}"),
+                ("wall time, total", f"{self._step_wall_time:.3e}", "s"),
+                ("wall time, mean per step", f"{mean:.3f}", "s"),
+            ],
             flush=True,
         )
 

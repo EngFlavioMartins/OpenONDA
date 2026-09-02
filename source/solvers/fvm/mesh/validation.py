@@ -115,6 +115,7 @@ def validate_topology(mesh_data):
         "cell_type_code": n_cells,
         "cell_families": n_cells,
         "cell_order": n_cells,
+        "boundary_layer_index": n_cells,
         "global_cell_id": n_cells,
         "global_face_id": n_faces,
     }
@@ -239,7 +240,21 @@ def validate_geometry(mesh_data, geo_data):
         ratios = max_distance[start:stop] / np.maximum(min_distance[start:stop], 1e-30)
         max_aspect_ratio = max(max_aspect_ratio, float(np.max(ratios, initial=0.0)))
 
-    lsq_condition = np.asarray(geo_data.get("lsq_condition", []), dtype=np.float64)
+    # Partitioned meshes store owned cells first and halo cells afterward.
+    # Halo-only LSQ rows are communication placeholders on some ranks and are
+    # not solved as local control volumes; including them can report enormous
+    # artificial condition numbers or deficient ranks for an otherwise valid
+    # global mesh.  Every owned cell is checked exactly once across the MPI
+    # communicator.
+    parallel = mesh_data.get("_parallel_context")
+    n_quality_cells = (
+        int(parallel.n_owned)
+        if parallel is not None and parallel.is_partitioned
+        else n_cells
+    )
+    lsq_condition = np.asarray(
+        geo_data.get("lsq_condition", []), dtype=np.float64
+    )[:n_quality_cells]
     finite_lsq_condition = lsq_condition[np.isfinite(lsq_condition)]
 
     return {
@@ -255,10 +270,15 @@ def validate_geometry(mesh_data, geo_data):
             float(np.max(finite_lsq_condition)) if finite_lsq_condition.size else None
         ),
         "rank_deficient_lsq_cells": int(
-            np.count_nonzero(np.asarray(geo_data.get("lsq_rank", [])) < 3)
+            np.count_nonzero(
+                np.asarray(geo_data.get("lsq_rank", []))[:n_quality_cells] < 3
+            )
         ),
         "svd_lsq_cells": int(
-            np.count_nonzero(np.asarray(geo_data.get("lsq_solver_method", [])) == "svd")
+            np.count_nonzero(
+                np.asarray(geo_data.get("lsq_solver_method", []))[:n_quality_cells]
+                == "svd"
+            )
         ),
     }
 

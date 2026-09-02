@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare common-window cylinder force statistics across the four grids."""
+"""Compute force statistics and formal spatial convergence for the cylinder grids."""
 
 from __future__ import annotations
 
@@ -10,13 +10,23 @@ from pathlib import Path
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-CASES = (
-    ("very_coarse", 1.0 / 12.0),
+PREFLIGHT_CASE = ("very_coarse", 1.0 / 12.0)
+PRODUCTION_CASES = (
     ("coarse", 1.0 / 24.0),
     ("medium", 1.0 / 36.0),
-    ("fine", 1.0 / 48.0),
+    ("fine", 1.0 / 54.0),
 )
+CASES = (PREFLIGHT_CASE, *PRODUCTION_CASES)
+REFINEMENT_RATIO = 1.5
 STATISTICS_WINDOW = 30.0
+CONVERGENCE_TOLERANCE_PERCENT = {
+    "mean_cd": 1.0,
+    "cd_rms": 2.0,
+    "cd_peak_to_peak": 2.0,
+    "cl_rms": 2.0,
+    "cl_amplitude": 2.0,
+    "strouhal": 1.0,
+}
 
 
 def force_history(case_name: str) -> dict[str, np.ndarray]:
@@ -73,6 +83,95 @@ def statistics(history: dict[str, np.ndarray], start: float, end: float) -> dict
     }
 
 
+def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -> dict:
+    """Return observed order, Richardson limit, and fine-grid GCI for three grids."""
+    if len(records) != 3:
+        raise ValueError("Richardson/GCI analysis requires exactly three production grids")
+    spacing = np.asarray([record["dx"] for record in records], dtype=np.float64)
+    ratios = spacing[:-1] / spacing[1:]
+    if not np.allclose(ratios, REFINEMENT_RATIO, rtol=0.0, atol=1.0e-12):
+        raise ValueError(
+            f"Production grids must have constant refinement ratio {REFINEMENT_RATIO:g}; "
+            f"received {ratios.tolist()}"
+        )
+    values = np.asarray([record[metric] for record in records], dtype=np.float64)
+    coarse_medium = values[0] - values[1]
+    medium_fine = values[1] - values[2]
+    scale = max(float(np.max(np.abs(values))), 1.0)
+    roundoff = 1.0e-12 * scale
+    base = {
+        "metric": metric,
+        "grids": [record["case"] for record in records],
+        "refinement_ratio": REFINEMENT_RATIO,
+        "tolerance_percent": tolerance_percent,
+        "monotone": bool(coarse_medium * medium_fine > 0.0),
+    }
+    if abs(coarse_medium) <= roundoff and abs(medium_fine) <= roundoff:
+        return {
+            **base,
+            "status": "converged_to_roundoff",
+            "monotone": True,
+            "observed_order": None,
+            "richardson_extrapolated_value": float(values[2]),
+            "fine_grid_relative_change_percent": 0.0,
+            "fine_grid_gci_percent": 0.0,
+            "asymptotic_ratio": None,
+            "passed": True,
+        }
+    if coarse_medium * medium_fine <= 0.0:
+        return {
+            **base,
+            "status": "oscillatory_or_non_monotone",
+            "observed_order": None,
+            "richardson_extrapolated_value": None,
+            "fine_grid_relative_change_percent": (
+                100.0 * abs(medium_fine) / max(abs(float(values[2])), 1.0e-14)
+            ),
+            "fine_grid_gci_percent": None,
+            "asymptotic_ratio": None,
+            "passed": False,
+        }
+
+    observed_order = float(
+        np.log(abs(coarse_medium / medium_fine)) / np.log(REFINEMENT_RATIO)
+    )
+    if not np.isfinite(observed_order) or observed_order <= 0.0:
+        return {
+            **base,
+            "status": "not_in_asymptotic_range",
+            "observed_order": observed_order if np.isfinite(observed_order) else None,
+            "richardson_extrapolated_value": None,
+            "fine_grid_relative_change_percent": (
+                100.0 * abs(medium_fine) / max(abs(float(values[2])), 1.0e-14)
+            ),
+            "fine_grid_gci_percent": None,
+            "asymptotic_ratio": None,
+            "passed": False,
+        }
+
+    denominator = REFINEMENT_RATIO**observed_order - 1.0
+    extrapolated = float(values[2] + (values[2] - values[1]) / denominator)
+    fine_change = 100.0 * abs(medium_fine) / max(abs(float(values[2])), 1.0e-14)
+    safety_factor = 1.25
+    fine_gci = safety_factor * fine_change / denominator
+    medium_change = 100.0 * abs(coarse_medium) / max(abs(float(values[1])), 1.0e-14)
+    medium_gci = safety_factor * medium_change / denominator
+    asymptotic_ratio = medium_gci / max(
+        REFINEMENT_RATIO**observed_order * fine_gci,
+        1.0e-30,
+    )
+    return {
+        **base,
+        "status": "asymptotic",
+        "observed_order": observed_order,
+        "richardson_extrapolated_value": extrapolated,
+        "fine_grid_relative_change_percent": fine_change,
+        "fine_grid_gci_percent": fine_gci,
+        "asymptotic_ratio": asymptotic_ratio,
+        "passed": bool(fine_gci <= tolerance_percent),
+    }
+
+
 def main() -> None:
     histories = {name: force_history(name) for name, _dx in CASES}
     common_end = min(float(history["time"][-1]) for history in histories.values())
@@ -91,7 +190,7 @@ def main() -> None:
             }
         )
 
-    metrics = ("mean_cd", "cd_rms", "cd_peak_to_peak", "cl_rms", "cl_amplitude", "strouhal")
+    metrics = tuple(CONVERGENCE_TOLERANCE_PERCENT)
     comparisons = []
     for coarser, finer in zip(records[:-1], records[1:], strict=True):
         comparisons.append(
@@ -105,14 +204,39 @@ def main() -> None:
             }
         )
 
+    production_names = {case for case, _dx in PRODUCTION_CASES}
+    production_records = [record for record in records if record["case"] in production_names]
+    convergence = {
+        metric: richardson_gci(
+            production_records,
+            metric,
+            CONVERGENCE_TOLERANCE_PERCENT[metric],
+        )
+        for metric in metrics
+    }
     report = {
         "common_window": {"start": common_start, "end": common_end},
+        "preflight_case": PREFLIGHT_CASE[0],
+        "production_cases": [case for case, _dx in PRODUCTION_CASES],
+        "refinement_ratio": REFINEMENT_RATIO,
         "cases": records,
         "comparisons": comparisons,
+        "grid_convergence": convergence,
+        "grid_independent": all(result["passed"] for result in convergence.values()),
     }
     output = CASE_DIR / "solution" / "grid_study.json"
     output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     print(f"Wrote {output}")
+    for metric, result in convergence.items():
+        order = result["observed_order"]
+        gci = result["fine_grid_gci_percent"]
+        detail = (
+            f"p={order:.3f}, GCI_fine={gci:.3f}%"
+            if order is not None and gci is not None
+            else result["status"]
+        )
+        print(f"  {metric}: {detail}, passed={result['passed']}")
+    print(f"Grid-independent at configured tolerances: {report['grid_independent']}")
 
 
 if __name__ == "__main__":

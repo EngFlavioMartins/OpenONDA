@@ -18,13 +18,21 @@ from .triangulated_surface import TriangulatedSurface
 
 @dataclass(frozen=True)
 class BoundaryLayerSpec:
-    """Wall-normal layers and the smooth transition to the Cartesian mesh."""
+    """Wall-normal layers and the smooth transition to the volume mesh.
+
+    ``interface_half_width`` and ``spanwise_cell_size`` are only needed by
+    the specialised extruded-cylinder O-grid.  General closed STL bodies use
+    the same first-height/layer/growth controls without either value. For a
+    cylinder O-grid, ``transition_layers`` is a minimum: the adaptive mesher
+    increases it when necessary to keep every transition step no larger than
+    the adjoining finest Cartesian cell.
+    """
 
     first_cell_height: float
     layers: int
     growth_ratio: float
     transition_layers: int
-    interface_half_width: float
+    interface_half_width: float | None = None
     spanwise_cell_size: float | None = None
 
     def validate(self) -> None:
@@ -37,7 +45,9 @@ class BoundaryLayerSpec:
             raise ValueError("growth_ratio must be finite and at least one")
         if self.transition_layers < 1:
             raise ValueError("transition_layers must be at least one")
-        if not math.isfinite(self.interface_half_width) or self.interface_half_width <= 0.0:
+        if self.interface_half_width is not None and (
+            not math.isfinite(self.interface_half_width) or self.interface_half_width <= 0.0
+        ):
             raise ValueError("interface_half_width must be finite and positive")
         if self.spanwise_cell_size is not None and (
             not math.isfinite(self.spanwise_cell_size) or self.spanwise_cell_size <= 0.0
@@ -54,6 +64,18 @@ class BoundaryLayerSpec:
             * (self.growth_ratio**self.layers - 1.0)
             / (self.growth_ratio - 1.0)
         )
+
+    @property
+    def layer_heights(self) -> tuple[float, ...]:
+        """Individual wall-normal cell heights, from the wall outwards."""
+        return tuple(
+            self.first_cell_height * self.growth_ratio**layer for layer in range(self.layers)
+        )
+
+    @property
+    def cumulative_heights(self) -> tuple[float, ...]:
+        """Cumulative extrusion distances expected by advancing-layer meshers."""
+        return tuple(np.cumsum(np.asarray(self.layer_heights, dtype=np.float64)).tolist())
 
 
 def _cylinder_geometry(
@@ -91,6 +113,8 @@ def cylinder_interface_bounds(
     """Cartesian square occupied by the body-fitted cylinder block."""
     spec.validate()
     centre, radius = _cylinder_geometry(surface, domain)
+    if spec.interface_half_width is None:
+        raise ValueError("Cylinder boundary layers require interface_half_width")
     half_width = spec.interface_half_width
     if half_width <= radius + spec.thickness:
         raise ValueError("interface_half_width must exceed cylinder radius plus layer thickness")
@@ -151,6 +175,104 @@ def _wall_points(
     return projected[:, :2]
 
 
+def _geometric_transition_fractions(
+    path_lengths: np.ndarray,
+    first_height: float,
+    layers: int,
+) -> np.ndarray:
+    """Return smooth per-path cumulative fractions for the O-grid transition.
+
+    A linear blend makes the first transition cell arbitrarily larger or
+    smaller than the last boundary-layer cell and is the direct cause of the
+    conspicuous wedges in the old cylinder grid.  Each ray now uses a
+    geometric series whose first term continues the wall-layer grading and
+    whose sum lands exactly on the Cartesian square.  The ratio may be below
+    one when the remaining gap is short, but every step stays positive.
+    """
+    fractions = np.empty((layers, len(path_lengths)), dtype=np.float64)
+    for path_id, length in enumerate(path_lengths):
+        if length <= 0.0:
+            raise ValueError("Boundary-layer transition path has non-positive length")
+        target_first = min(first_height, length / layers)
+        if layers == 1:
+            fractions[0, path_id] = 1.0
+            continue
+
+        def series_sum(ratio: float, first: float = target_first) -> float:
+            if math.isclose(ratio, 1.0, rel_tol=0.0, abs_tol=1.0e-12):
+                return layers * first
+            return first * (ratio**layers - 1.0) / (ratio - 1.0)
+
+        if math.isclose(series_sum(1.0), length, rel_tol=1.0e-10, abs_tol=1.0e-14):
+            ratio = 1.0
+        elif series_sum(1.0) < length:
+            low, high = 1.0, 2.0
+            while series_sum(high) < length:
+                high *= 2.0
+            for _ in range(80):
+                middle = 0.5 * (low + high)
+                if series_sum(middle) < length:
+                    low = middle
+                else:
+                    high = middle
+            ratio = 0.5 * (low + high)
+        else:
+            low, high = 0.0, 1.0
+            for _ in range(80):
+                middle = 0.5 * (low + high)
+                if series_sum(middle) < length:
+                    low = middle
+                else:
+                    high = middle
+            ratio = 0.5 * (low + high)
+
+        steps = target_first * np.power(ratio, np.arange(layers, dtype=np.float64))
+        # Force the endpoint exactly onto the square despite the root-solve
+        # tolerance; the correction is at roundoff scale.
+        steps[-1] += length - float(np.sum(steps))
+        fractions[:, path_id] = np.cumsum(steps) / length
+    fractions[-1] = 1.0
+    return fractions
+
+
+def cylinder_transition_layer_count(
+    surface: TriangulatedSurface,
+    domain: tuple[float, float, float, float, float, float],
+    lattice_size: float,
+    spec: BoundaryLayerSpec,
+    *,
+    minimum: int = 1,
+) -> int:
+    """Minimum O-grid transition count whose wall-normal step is at most ``lattice_size``.
+
+    The longest path is the corner ray from the outer wall-layer ring to the
+    Cartesian square.  Solving against that path makes the guarantee apply to
+    every circumferential location and every grid-study resolution.
+    """
+    spec.validate()
+    if spec.interface_half_width is None:
+        raise ValueError("Cylinder boundary layers require interface_half_width")
+    if not math.isfinite(lattice_size) or lattice_size <= 0.0:
+        raise ValueError("lattice_size must be finite and positive")
+    if minimum < 1:
+        raise ValueError("minimum transition layer count must be positive")
+    _centre, radius = _cylinder_geometry(surface, domain)
+    longest_path = math.sqrt(2.0) * spec.interface_half_width - (radius + spec.thickness)
+    if longest_path <= 0.0:
+        raise ValueError("Cylinder wall layers extend beyond the Cartesian interface")
+    first_height = spec.layer_heights[-1] * spec.growth_ratio
+    layers = minimum
+    while layers < 100_000:
+        fractions = _geometric_transition_fractions(
+            np.asarray([longest_path]), first_height, layers
+        )[:, 0]
+        steps = np.diff(np.concatenate(([0.0], fractions))) * longest_path
+        if float(np.max(steps)) <= lattice_size * (1.0 + 1.0e-12):
+            return layers
+        layers += 1
+    raise RuntimeError("Could not resolve the cylinder transition within 100000 layers")
+
+
 def _face_area_vectors(points: np.ndarray, faces: np.ndarray) -> np.ndarray:
     coordinates = points[faces]
     centres = coordinates.mean(axis=1)
@@ -195,6 +317,8 @@ def build_cylinder_layer_mesh(
     spec.validate()
     centre, radius = _cylinder_geometry(surface, domain)
     interface = cylinder_interface_bounds(surface, domain, spec)
+    if spec.interface_half_width is None:
+        raise ValueError("Cylinder boundary layers require interface_half_width")
     side_value = 2.0 * spec.interface_half_width / lattice_size
     spanwise_cell_size = spec.spanwise_cell_size or lattice_size
     z_value = (domain[5] - domain[4]) / spanwise_cell_size
@@ -223,16 +347,31 @@ def build_cylinder_layer_mesh(
     rings = np.empty((radial_points, theta_cells, 2), dtype=np.float64)
     rings[0] = wall
     distance = 0.0
-    layer_heights = []
-    for layer in range(spec.layers):
-        height = spec.first_cell_height * spec.growth_ratio**layer
-        layer_heights.append(height)
+    layer_heights = list(spec.layer_heights)
+    for layer, height in enumerate(layer_heights):
         distance += height
         rings[layer + 1] = wall + distance * normals
     transition_start = rings[spec.layers].copy()
+    transition_vectors = square - transition_start
+    transition_lengths = np.linalg.norm(transition_vectors, axis=1)
+    transition_fractions = _geometric_transition_fractions(
+        transition_lengths,
+        layer_heights[-1] * spec.growth_ratio,
+        spec.transition_layers,
+    )
+    transition_steps = np.diff(
+        np.vstack((np.zeros((1, theta_cells)), transition_fractions)),
+        axis=0,
+    ) * transition_lengths[None, :]
+    max_transition_height = float(np.max(transition_steps))
+    if max_transition_height > lattice_size * (1.0 + 1.0e-10):
+        raise ValueError(
+            "Cylinder transition contains a wall-normal step larger than the "
+            "finest Cartesian cell; increase transition_layers"
+        )
     for layer in range(1, spec.transition_layers + 1):
-        fraction = layer / spec.transition_layers
-        rings[spec.layers + layer] = (1.0 - fraction) * transition_start + fraction * square
+        fraction = transition_fractions[layer - 1, :, None]
+        rings[spec.layers + layer] = transition_start + fraction * transition_vectors
 
     z_coordinates = np.linspace(domain[4], domain[5], z_points)
     points = np.empty((z_points, radial_points, theta_cells, 3), dtype=np.float64)
@@ -443,6 +582,12 @@ def build_cylinder_layer_mesh(
             "layer_heights": layer_heights,
             "layer_thickness": distance,
             "interface_half_width": spec.interface_half_width,
+            "transition_path_length_min": float(np.min(transition_lengths)),
+            "transition_path_length_max": float(np.max(transition_lengths)),
+            "transition_first_height_requested": layer_heights[-1] * spec.growth_ratio,
+            "transition_cell_height_min": float(np.min(transition_steps)),
+            "transition_cell_height_max": max_transition_height,
+            "transition_to_lattice_ratio_max": max_transition_height / lattice_size,
         },
     }
 
@@ -675,5 +820,6 @@ __all__ = [
     "BoundaryLayerSpec",
     "build_cylinder_layer_mesh",
     "cylinder_interface_bounds",
+    "cylinder_transition_layer_count",
     "stitch_boundary_layer",
 ]
