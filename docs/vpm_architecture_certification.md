@@ -11,6 +11,13 @@ Starting commit: `60fdb79b31c9a4a488972f579ba4815797bc02e8`
 
 Final implementation commit: `8d5283f0` (`cleanup(vpm): finalize the coupled induction architecture`)
 
+Post-audit continuation on the unchanged `development` branch:
+
+- `cf2ccad4` (`test(vpm): isolate study and tutorial imports`)
+- `51638e0d` (`refactor(vpm): complete stage induction backend paths`)
+- the current audit commit completes the local-expansion `M2L → L2L → L2P`
+  path and removes the remaining public pressure `treecode_theta` knob.
+
 ## Architecture result
 
 The production information path is:
@@ -94,10 +101,12 @@ tests/vpm/test_fmm_hierarchy.py
 tests/vpm/test_core_numerical_qualification.py
 ```
 
-The complete implementation-scoped suites pass with 166 VPM tests and 164
-coupler tests. The maintained individual lamb--Oseen, storage/output, and
-tutorial-schema test files also pass. VPM source Ruff checks and test
-collection pass.
+The implementation-scoped suites and maintained individual lamb--Oseen,
+storage/output, tutorial-schema, and coupler regression files pass when run in
+bounded processes. The broad `tests/vpm` invocation was intentionally not used
+as a certification command after it exhausted the host's available RAM; the
+focused batches below are the reproducible validation boundary for this audit.
+VPM source Ruff checks and test collection pass.
 
 The FMM qualification covers deterministic hierarchy construction, expansion
 helpers, shared-kernel near interactions, tolerance trends, and a hierarchical
@@ -109,9 +118,8 @@ because this reference evaluator is host-oriented; no 14,080- or
 
 ## Known validation limits
 
-- A full repository `pytest -q` run completed collection but retained 11
-  order-sensitive or unrelated failures outside the implementation-scoped VPM
-  and coupler suites; the individual affected files pass in isolation.
+- A monolithic full-suite run was not completed because its aggregate memory
+  footprint exhausted the host; tests were run as bounded isolated batches.
 - Repository-wide Ruff remains blocked by 485 pre-existing style/unused-import
   findings concentrated in the historical VPM study scripts and tests.
 - The final worktree intentionally retains the user's unrelated FVM/tutorial

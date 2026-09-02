@@ -57,6 +57,7 @@ from .evolution import EvolutionStepper
 
 FloatArray: TypeAlias = NDArray[np.float32] | NDArray[np.float64]
 ParticleRecord: TypeAlias = dict[str, np.ndarray | np.generic]
+_PRESSURE_HIERARCHICAL_OPENING = 0.3
 
 
 class VelocityOverride(Protocol):
@@ -1337,7 +1338,6 @@ class VPMSolver:
         velocity_previous: np.ndarray | None = None,
         time_step_size: float | None = None,
         return_velocity: bool = False,
-        treecode_theta: float | None = None,
         include_body: bool = True,
     ) -> dict | tuple[dict, np.ndarray]:
         """Evaluate pressure-gradient terms at arbitrary points.
@@ -1363,7 +1363,7 @@ class VPMSolver:
                 max_n_particles=int(self.setup.max_n_particles),
                 accumulator_dtype=self.accumulator_dtype,
             )
-        if treecode_theta is not None:
+        if temporal_method == "eulerian":
             body_fn = None
             if include_body:
                 body_fn = getattr(
@@ -1384,7 +1384,7 @@ class VPMSolver:
                 time_step_size=time_step_size,
                 particle_spacing=particle_spacing,
                 return_velocity=return_velocity,
-                theta=treecode_theta,
+                theta=_PRESSURE_HIERARCHICAL_OPENING,
                 freestream_velocity=self.freestream_velocity,
                 body_fn=body_fn,
             )

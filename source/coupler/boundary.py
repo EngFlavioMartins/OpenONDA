@@ -278,7 +278,6 @@ def evaluate_vpm_boundary(
                     velocity_previous=coupler._pressure_velocity_snapshot,
                     time_step_size=coupler.vpm_time_step_size,
                     return_velocity=True,
-                    treecode_theta=0.3,
                 )
             )
             pressure_gradient = (

@@ -21,6 +21,9 @@ def test_public_solver_requires_one_case_construction_object() -> None:
     assert not hasattr(vpm, "create_vpm_solver")
     assert "time" not in inspect.signature(vpm.Numerics).parameters
     assert "step" not in inspect.signature(vpm.Numerics).parameters
+    assert "treecode_theta" not in inspect.signature(
+        vpm.VPMSolver.compute_pressure_gradient_at_points
+    ).parameters
 
 
 def test_induction_configuration_builds_independent_runtime_evaluators() -> None:
