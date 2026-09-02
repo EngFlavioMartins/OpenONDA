@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Geometry-independent wall-normal boundary-layer construction."""
+"""Planar patch-layer construction for the native Cartesian adapter.
+
+Curved/non-planar boundary layers are deliberately rejected by
+``CartesianMesher`` until a surface-first layer and transition-shell
+algorithm is available.  This module therefore only serves exact planar
+patches where the Cartesian interface topology is already authoritative.
+"""
 
 from __future__ import annotations
 
@@ -47,13 +53,14 @@ def build_patch_layers(
     wall_patch_name: str,
     interface_patch_name: str,
 ) -> dict:
-    """Build hexahedral wall-normal layers over one extracted wall patch.
+    """Build hexahedral wall-normal layers over one exact planar wall patch.
 
     The input patch is the outer interface of the Cartesian core.  Its points
-    are mapped to the nearest points on the immutable triangulated surface and
-    connected with a monotone geometric progression.  The interface points
-    are deliberately retained as an explicit matching set so the native
-    stitcher can make the core/layer face internal.
+    are connected with a monotone geometric progression.  The interface
+    points are deliberately retained as an explicit matching set so the
+    native stitcher can make the core/layer face internal.  Curved surfaces
+    must be rejected by the caller; mapping a Cartesian staircase here is not
+    a conformal curved-surface algorithm.
     """
     layer_patch = next(
         (patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name),

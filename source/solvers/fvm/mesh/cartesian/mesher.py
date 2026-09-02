@@ -15,7 +15,12 @@ from ..boundary_layer import stitch_boundary_layer
 from ..geometry import compute_mesh_geometry
 from ..surface_classification import SurfaceIndex
 from ..triangulated_surface import TriangulatedSurface
-from ..validation import validate_geometry, validate_topology
+from ..validation import (
+    validate_geometry,
+    validate_no_fluid_cell_centres_inside_surface,
+    validate_topology,
+    validate_wall_vertex_conformance,
+)
 from .boundary_layers import build_patch_layers
 from .config import (
     BoundaryLayers,
@@ -165,7 +170,7 @@ def _rename_boundary_patches(
     mesh_data["n_faces"] = len(faces)
 
 
-def _quality_snapshot(mesh_data: dict[str, Any]) -> dict[str, Any]:
+def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Compute the authoritative native geometry/quality evidence."""
     topology = validate_topology(mesh_data)
     geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
@@ -179,7 +184,7 @@ def _quality_snapshot(mesh_data: dict[str, Any]) -> dict[str, Any]:
         )
         for patch in mesh_data["boundary"]
     }
-    return {**topology, **quality}
+    return {**topology, **quality}, geometry
 
 
 def _surface_distance_snapshot(
@@ -300,6 +305,23 @@ class CartesianMesher:
             unknown = sorted(set(layer.patches) - known_patches)
             if unknown:
                 raise ValueError(f"boundary layer refers to unknown surface patches: {unknown}")
+        curved_layer_patches = sorted(
+            {
+                surface.patch
+                for surface in surfaces
+                if surface.kind != "box"
+                and any(surface.patch in layer.patches for layer in boundary_layers)
+            }
+        )
+        if curved_layer_patches:
+            raise ValueError(
+                "CartesianMesher cannot build boundary layers on curved/non-planar STL "
+                "surfaces yet: "
+                f"{curved_layer_patches}. The current patch-normal builder starts from "
+                "a Cartesian staircase and cannot guarantee a conformal layer front; "
+                "use a surface-conforming backend or omit boundary_layers until native "
+                "cut-cell/transition-shell stitching is implemented."
+            )
 
         self.domain = domain
         self.surfaces = surfaces
@@ -412,7 +434,22 @@ class CartesianMesher:
         )
         if self.boundary_layers:
             mesh_data = self._apply_boundary_layers(mesh_data)
-        quality = _quality_snapshot(mesh_data)
+        quality, geometry = _quality_snapshot(mesh_data)
+        surface_conformance: dict[str, dict[str, float | int]] = {}
+        for surface in self.surfaces:
+            if surface.kind == "box":
+                continue
+            wall = validate_wall_vertex_conformance(
+                mesh_data,
+                surface.triangles,
+                surface.patch,
+            )
+            centres = validate_no_fluid_cell_centres_inside_surface(
+                geometry["cell_centre"],
+                surface.triangles,
+            )
+            surface_conformance[surface.patch] = {**wall, **centres}
+        quality["surface_conformance"] = surface_conformance
         quality["surface_distance"] = _surface_distance_snapshot(mesh_data, self.surfaces)
         recovery = RecoveryDiagnostics.from_mesh(mesh_data)
         optimisation = OptimisationDiagnostics.from_quality(quality)

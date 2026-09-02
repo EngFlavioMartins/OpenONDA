@@ -2,44 +2,50 @@
 
 from __future__ import annotations
 
-import numpy as np
+from pathlib import Path
 
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-from source.solvers.fvm.mesh.validation import validate_geometry, validate_topology
+import numpy as np
+import pytest
+
+import openonda.fvm.mesher as msh
+from source.solvers.fvm.mesh.adaptive_cartesian import AdaptiveCartesianMesher
+from source.solvers.fvm.mesh.validation import (
+    MeshValidationError,
+    validate_no_fluid_cell_centres_inside_surface,
+    validate_wall_vertex_conformance,
+)
 from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow import setup
 
 
-def test_cylinder_reference_uses_declarative_native_controls():
-    mesher = setup.grid_mesh(1.0 / 12.0)
-
-    assert type(mesher).__name__ == "CartesianMesher"
-    assert mesher.surface_may_cross_domain_boundary
-    assert [refinement.name for refinement in mesher.refinements] == ["near_body", "wake"]
-    assert mesher.boundary_layers[0].patches == ("cylinder",)
-    assert mesher.boundary_layers[0].layers == 10
-    assert mesher.effective_cell_size(2.0 / 12.0) == 0.125
-    assert mesher.effective_cell_size(4.0 / 12.0) == 0.25
+def test_cylinder_reference_curved_layers_fail_fast_in_native_cartesian_path():
+    with pytest.raises(ValueError, match="curved/non-planar"):
+        setup.grid_mesh(1.0 / 12.0)
 
 
-def test_cylinder_reference_build_is_native_and_layered():
-    mesh = setup.grid_mesh(0.25).build()
-    validate_topology(mesh)
-    geometry = compute_mesh_geometry(mesh, compute_lsq=False)
-    quality = validate_geometry(mesh, geometry)
+def test_staircase_wall_is_rejected_by_surface_conformance_gate():
+    surface = msh.STLSurface(
+        Path(setup.CYLINDER_STL),
+        patch="cylinder",
+    )
+    legacy = AdaptiveCartesianMesher(
+        domain=(-3.0, 6.0, -3.0, 3.0, -0.6, 0.6),
+        max_cell_size=0.5,
+        surface_data=surface.surface_data,
+        surface_exclusion_distance=0.3,
+        skip_surface_recovery=True,
+        wall_patch_name="cylinder",
+        surface_cell_size=0.25,
+        surface_may_cross_domain_boundary=True,
+    )
+    mesh = legacy.build()
+    with pytest.raises(MeshValidationError, match="not conformal"):
+        validate_wall_vertex_conformance(mesh, surface.triangles, "cylinder")
 
-    assert mesh["mesh_generation"]["method"] == "cartesian.adapter"
-    assert mesh["mesh_generation"]["boundary_layer"]["method"] == "patch_normal_layers"
-    assert {patch["name"] for patch in mesh["boundary"]} == {
-        "inlet",
-        "outlet",
-        "ymin",
-        "ymax",
-        "zmin",
-        "zmax",
-        "cylinder",
-        "layer_termination",
-    }
-    assert mesh["mesh_generation"]["boundary_layer"]["layers"] == 10
-    assert np.max(np.asarray(mesh["boundary_layer_index"])) == 9
-    assert quality["min_volume"] > 0.0
-    assert np.all(np.isfinite(np.asarray(mesh["vertex_position"])))
+
+def test_fluid_centres_inside_surface_are_a_hard_failure():
+    surface = msh.STLSurface(Path(setup.CYLINDER_STL), patch="cylinder")
+    with pytest.raises(MeshValidationError, match="inside the input surface"):
+        validate_no_fluid_cell_centres_inside_surface(
+            np.asarray(((0.0, 0.0, 0.0), (2.0, 0.0, 0.0))),
+            surface.triangles,
+        )

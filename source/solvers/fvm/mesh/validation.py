@@ -312,6 +312,101 @@ def enforce_quality_thresholds(report, mesh_config) -> None:
         raise MeshValidationError("Mesh quality rejection: " + "; ".join(violations))
 
 
+def validate_wall_vertex_conformance(
+    mesh_data,
+    surface_triangles,
+    wall_patch_name: str,
+    *,
+    tolerance: float | None = None,
+) -> dict[str, float | int]:
+    """Require every vertex of a wall patch to lie on the input surface.
+
+    A positive cell volume is not evidence that a curved wall was recovered:
+    a displaced Cartesian staircase can have entirely valid volumes.  This
+    gate measures the actual wall vertices against the immutable triangulated
+    surface and rejects any partial or silently abandoned projection.
+
+    Parameters
+    ----------
+    mesh_data:
+        Native face-based mesh data containing ``wall_patch_name``.
+    surface_triangles:
+        Input STL triangles, shape ``(n, 3, 3)``.
+    wall_patch_name:
+        Boundary patch whose vertices define the wall.
+    tolerance:
+        Absolute distance tolerance.  When omitted, use ``1e-8`` times the
+        larger of the geometry span and one model unit.
+    """
+    from .surface_classification import SurfaceIndex
+
+    points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
+    patch = next(
+        (item for item in mesh_data["boundary"] if item["name"] == wall_patch_name),
+        None,
+    )
+    if patch is None:
+        raise MeshValidationError(f"Wall patch {wall_patch_name!r} is missing")
+    start = int(patch["start_face"])
+    stop = start + int(patch["n_faces"])
+    faces = mesh_data["faces"][start:stop]
+    if not len(faces):
+        raise MeshValidationError(f"Wall patch {wall_patch_name!r} has no faces")
+    wall_vertex_ids = np.unique(
+        np.concatenate([np.asarray(face, dtype=np.int64) for face in faces])
+    )
+    surface_triangles = np.asarray(surface_triangles, dtype=np.float64)
+    scale = max(float(np.ptp(surface_triangles, axis=(0, 1)).max()), 1.0)
+    limit = 1.0e-8 * scale if tolerance is None else float(tolerance)
+    if not np.isfinite(limit) or limit <= 0.0:
+        raise MeshValidationError("wall conformance tolerance must be finite and positive")
+    index = SurfaceIndex.build(surface_triangles)
+    distances = np.asarray(
+        [index.nearest_point(points[int(vertex_id)])[1] for vertex_id in wall_vertex_ids],
+        dtype=np.float64,
+    )
+    maximum = float(distances.max(initial=0.0))
+    if maximum > limit:
+        worst = int(wall_vertex_ids[int(np.argmax(distances))])
+        raise MeshValidationError(
+            f"Wall patch {wall_patch_name!r} is not conformal to the input surface: "
+            f"maximum vertex distance {maximum:.6g} exceeds tolerance {limit:.6g} "
+            f"(worst vertex {worst})"
+        )
+    return {
+        "vertex_count": int(len(wall_vertex_ids)),
+        "max_vertex_distance": maximum,
+        "mean_vertex_distance": float(distances.mean() if len(distances) else 0.0),
+        "tolerance": limit,
+    }
+
+
+def validate_no_fluid_cell_centres_inside_surface(
+    cell_centres,
+    surface_triangles,
+) -> dict[str, int]:
+    """Reject fluid-cell centres classified strictly inside a closed surface.
+
+    This is intentionally a point-classification gate rather than a proxy
+    based on the surface bounding box.  It catches cells left inside a curved
+    body when a staircase or incomplete recovery stage is returned.
+    """
+    from .surface_classification import SurfaceIndex
+
+    values = np.asarray(cell_centres, dtype=np.float64)
+    if values.ndim != 2 or values.shape[1] != 3 or not np.all(np.isfinite(values)):
+        raise MeshValidationError("cell_centres must have shape (n, 3) and contain finite values")
+    index = SurfaceIndex.build(np.asarray(surface_triangles, dtype=np.float64))
+    inside = index.is_inside(values)
+    bad = np.flatnonzero(inside)
+    if bad.size:
+        raise MeshValidationError(
+            f"{bad.size} fluid-cell centres are inside the input surface; "
+            f"first cell ids {bad[:10].tolist()}"
+        )
+    return {"cell_count": int(len(values)), "inside_count": 0}
+
+
 def validate_no_fluid_solid_overlap(mesh_data, solid_bounds, *, tolerance: float = 1.0e-10) -> None:
     """Reject any ordinary fluid cell whose volume overlaps the solid AABB.
 
@@ -475,6 +570,12 @@ def validate_curved_wall_conformance(
                 f"{len(bad)} cells have non-positive volume after curved-surface "
                 f"conformance; first ids {bad[:10]}"
             )
+
+    validate_wall_vertex_conformance(
+        mesh_data,
+        surface_triangles,
+        wall_patch_name,
+    )
 
     faces = mesh_data["faces"]
     (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
