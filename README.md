@@ -89,9 +89,14 @@ The stable public modules are:
 ```python
 from openonda import __version__
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
 import openonda.coupler as coupling
 ```
+
+Solver configuration stays under `fvm`; mesh construction and mesh utilities
+stay under `msh` (for example, `msh.CartesianMesher` and
+`msh.BoxRefinement`).
 
 Runnable cases live under `tutorials/fvm`, `tutorials/vpm`, and
 `tutorials/coupled_fvm_vpm`. The coupled cases use the native FVM's internal

@@ -14,8 +14,14 @@ def p2p_velocity(
     source_strength,
     target_core,
     source_core,
+    *,
+    exclude_self: bool = False,
 ):
-    """Evaluate exact regularized P2P velocity interactions."""
+    """Evaluate exact regularized P2P velocity interactions.
+
+    ``exclude_self`` is explicit because target and source arrays may be
+    distinct sets whose matching indices are valid interactions.
+    """
     displacement = np.asarray(target_position)[:, None, :] - np.asarray(source_position)[None, :, :]
     pair_velocity = kernel.velocity_pair(
         displacement,
@@ -23,9 +29,10 @@ def p2p_velocity(
         np.asarray(target_core)[:, None],
         np.asarray(source_core)[None, :],
     )
-    diagonal = min(len(pair_velocity), len(pair_velocity[0]) if len(pair_velocity) else 0)
-    if diagonal:
-        pair_velocity[np.arange(diagonal), np.arange(diagonal)] = 0.0
+    if exclude_self:
+        diagonal = min(len(pair_velocity), len(pair_velocity[0]) if len(pair_velocity) else 0)
+        if diagonal:
+            pair_velocity[np.arange(diagonal), np.arange(diagonal)] = 0.0
     return pair_velocity.sum(axis=1)
 
 

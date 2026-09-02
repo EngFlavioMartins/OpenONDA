@@ -48,7 +48,8 @@ PUBLIC_SURFACE_FILES = (
     "source/coupler/solver.py",
     "source/coupler/boundary.py",
     "source/coupler/vorticity_transfer.py",
-    "openonda/fvm.py",
+    "openonda/fvm/__init__.py",
+    "openonda/fvm/mesher.py",
     "openonda/vpm.py",
     "openonda/coupler.py",
 )

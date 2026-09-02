@@ -101,11 +101,10 @@ def test_callable_stage_contribution_always_provides_a_writable_gradient_array()
     np.testing.assert_allclose(rates.vortex_strength_rate, 0.0)
 
 
-def test_stage_provider_prepend_keeps_projection_last():
+def test_stage_rhs_provider_order_is_fixed_at_construction():
     first = object()
     second = object()
-    rhs = StageRHS(_Induction(), (first,))
-    rhs.add_provider(second, prepend=True)
+    rhs = StageRHS(_Induction(), (second, first))
 
     assert rhs.providers == (second, first)
 

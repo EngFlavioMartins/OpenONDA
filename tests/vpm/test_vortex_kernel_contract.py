@@ -84,3 +84,21 @@ def test_kernel_gradient_matches_a_finite_difference_of_pair_velocity():
         rtol=2.0e-8,
         atol=2.0e-10,
     )
+
+
+def test_induction_backends_declare_strength_rate_semantics_explicitly():
+    direct = DirectInduction()
+    treecode = TreecodeInduction()
+    fmm = FMMInduction()
+
+    assert direct.strength_rate_mode == "PAIRWISE_TRANSPOSED"
+    assert treecode.strength_rate_mode == "HIERARCHICAL_GRADIENT"
+    assert fmm.strength_rate_mode == "HIERARCHICAL_GRADIENT"
+    assert treecode.diagnostics["strength_rate_mode"] == "HIERARCHICAL_GRADIENT"
+    assert fmm.diagnostics.strength_rate_mode == "HIERARCHICAL_GRADIENT"
+
+
+@pytest.mark.parametrize("induction_type", (TreecodeInduction, FMMInduction))
+def test_hierarchical_backends_reject_unimplemented_exact_rate_mode(induction_type):
+    with pytest.raises(ValueError, match="exact pairwise rates require DirectInduction"):
+        induction_type(strength_rate_mode="PAIRWISE_TRANSPOSED")

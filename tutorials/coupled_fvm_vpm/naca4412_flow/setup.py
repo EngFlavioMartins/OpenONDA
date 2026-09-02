@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 import openonda.coupler as coupling
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
@@ -82,7 +83,7 @@ def naca4_vertices(code: str, n_chord: int = 161) -> np.ndarray:
 
 
 AIRFOIL_VERTICES = naca4_vertices(NACA_CODE)
-FVM_MESH = fvm.coupling_box_mesh(FVM_BOX, SPACING, patch_name="numericalBoundary")
+FVM_MESH = msh.coupling_box_mesh(FVM_BOX, SPACING, patch_name="numericalBoundary")
 AIRFOIL = fvm.ImmersedBody.extruded_polygon_z(
     AIRFOIL_VERTICES,
     z_bounds=[-0.5 * SPAN, 0.5 * SPAN],

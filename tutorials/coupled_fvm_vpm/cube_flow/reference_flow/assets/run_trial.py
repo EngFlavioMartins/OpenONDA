@@ -21,6 +21,7 @@ REFERENCE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFERENCE_DIR))
 
 import reference_flow_setup as case  # noqa: E402
+import openonda.fvm.mesher as msh  # noqa: E402
 
 
 def _positive(value: float, name: str) -> float:
@@ -96,22 +97,22 @@ def _samplers(force_interval: float, line_interval: float):
 
 
 def _mesh(surface_cell_size: float, background_cell_size: float):
-    return case.fvm.CartesianMesher(
-        domain=case.fvm.BoxDomain(
+    return msh.CartesianMesher(
+        domain=msh.BoxDomain(
             bounds=case.FVM_DOMAIN,
-            patches=case.fvm.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+            patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
         ),
-        surfaces=(case.fvm.STLSurface(case.CUBE_STL, patch="cube"),),
+        surfaces=(msh.STLSurface(case.CUBE_STL, patch="cube"),),
         max_cell_size=background_cell_size,
         boundary_cell_size=surface_cell_size,
         min_cell_size=surface_cell_size,
         refinements=(
-            case.fvm.BoxRefinement(
+            msh.BoxRefinement(
                 name="wakeBox",
                 bounds=case.WAKE_BOX,
                 cell_size=surface_cell_size * 2.0,
             ),
-            case.fvm.BoxRefinement(
+            msh.BoxRefinement(
                 name="downstreamWakeBox",
                 bounds=case.DOWNSTREAM_WAKE_BOX,
                 cell_size=surface_cell_size * 4.0,

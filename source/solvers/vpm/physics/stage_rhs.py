@@ -119,15 +119,6 @@ class StageRHS:
         self.providers = tuple(providers)
         self.strength_enabled = bool(strength_enabled)
 
-    def add_provider(self, provider: ExternalStageContribution, *, prepend: bool = False) -> None:
-        """Attach one runtime provider while preserving projection ordering.
-
-        Providers are normally appended. A provider that contributes a field
-        which must be projected by a later symmetry provider can be prepended;
-        this keeps the projection as the final stage operation.
-        """
-        self.providers = (provider, *self.providers) if prepend else (*self.providers, provider)
-
     def evaluate(self, stage_state: StageState, stage_time: float, stage_rates: StageRates) -> None:
         """Evaluate self-induced and external rates for one common stage state."""
         self.induction.evaluate_stage(
@@ -255,7 +246,7 @@ class ParticleExternalStageContribution:
             ).reshape(count, 3)
         if override is not None:
             if hasattr(override, "blend_into"):
-                override.blend_into(position, velocity, velocity)
+                override.blend_into(position, stage_time, velocity, velocity)
             else:
                 velocity[...] = np.asarray(
                     _call_stage_velocity_callback(override, position, stage_time, velocity),
@@ -295,35 +286,15 @@ class AxisymmetricNoSwirlStageProjection:
 
 
 def _call_stage_velocity_callback(callback, position, stage_time, velocity=None):
-    """Call a legacy or stage-aware host velocity callback.
+    """Call one explicitly stage-aware host callback signature.
 
-    Existing body callbacks accept ``(position)`` while new coupled providers
-    may accept ``(position, stage_time)`` or ``(position, stage_time, velocity)``.
-    Signature inspection would reject callable objects with dynamic signatures;
-    the small arity ladder keeps both forms explicit and backwards-compatible.
+    Body callbacks accept ``(stage_position, stage_time)`` and velocity
+    overrides accept ``(stage_position, stage_time, current_velocity)``.  A
+    callback's own ``TypeError`` is never interpreted as an arity mismatch.
     """
-    if velocity is not None:
-        try:
-            return callback(position, stage_time, velocity)
-        except TypeError as exc:
-            try:
-                return callback(position, velocity)
-            except TypeError:
-                try:
-                    return callback(position, stage_time)
-                except TypeError:
-                    if exc.__traceback__ is not None:
-                        raise
-                    raise
-    try:
+    if velocity is None:
         return callback(position, stage_time)
-    except TypeError as exc:
-        try:
-            return callback(position)
-        except TypeError:
-            if exc.__traceback__ is not None:
-                raise
-            raise
+    return callback(position, stage_time, velocity)
 
 
 def _call_stage_velocity_field(callback, stage_state, velocity, count):

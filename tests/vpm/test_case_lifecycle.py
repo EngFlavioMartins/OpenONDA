@@ -52,6 +52,30 @@ def test_numerics_rejects_treecode_double_precision_before_solver_allocation() -
         vpm.Numerics(induction=vpm.TreecodeInduction(), precision="f64", verbose=False)
 
 
+def test_requested_vlm_initialization_failure_is_fatal(monkeypatch) -> None:
+    from source.solvers.vpm.boundary_elements.vlm.solver import vlm_solver as vlm_module
+
+    class _VLM:
+        def __init__(self, _config):
+            self._solved = False
+
+    def fail_setup(self):
+        raise ValueError("invalid VLM mesh")
+
+    monkeypatch.setattr(vlm_module, "VLMSolver", _VLM)
+    solver = object.__new__(VPMSolver)
+    solver._stage_providers = []
+    solver._setup_vlm_solver = fail_setup.__get__(solver, VPMSolver)
+    setup = SimpleNamespace(
+        panel_solver=None,
+        vlm=SimpleNamespace(kinematic_viscosity=0.0),
+        viscous=SimpleNamespace(scheme="NONE"),
+    )
+
+    with pytest.raises(RuntimeError, match="Failed to initialize VLM solver"):
+        solver._init_optional_solvers(setup)
+
+
 def test_public_namespace_hides_internal_runtime_services() -> None:
     """Only construction/value objects are exposed from ``openonda.vpm``."""
     assert set(vpm.__all__).isdisjoint(

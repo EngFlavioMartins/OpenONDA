@@ -1,29 +1,28 @@
-"""Native finite-volume solver API."""
+"""Public finite-volume solver API.
+
+Meshing construction lives in :mod:`openonda.fvm.mesher` so that solver
+configuration and mesh-generation intent remain separate namespaces::
+
+    import openonda.fvm as fvm
+    import openonda.fvm.mesher as msh
+
+    mesh = msh.CartesianMesher(
+        domain=msh.BoxDomain(...),
+        surfaces=(msh.STLSurface(...),),
+    )
+"""
 
 from source.solvers.fvm import (
-    AdaptiveCartesianMesher,
     BackupConfig,
     BoundaryConfig,
-    BoundaryLayers,
-    BoundaryLayerSpec,
-    BoxDomain,
-    BoxPatches,
-    BoxRefinement,
-    CartesianMesher,
-    CompositeSizeField,
     ComputeConfig,
-    ConeRefinement,
     DiscretizationConfig,
-    FeatureRefinement,
     FieldState,
     ForceSampler,
     FVMSetup,
-    GeneralBodyMesher,
-    GenerationReport,
     IBMForceSampler,
     LinearSolverConfig,
     LinearSolveResult,
-    LineRefinement,
     LineSampler,
     LoggingConfig,
     MaximumCourantTimeStep,
@@ -33,15 +32,12 @@ from source.solvers.fvm import (
     PimpleControl,
     RunAcceptanceLimits,
     RunSchedule,
-    SizeField,
-    SizeReport,
-    SphereRefinement,
     StepDiagnostics,
-    STLSurface,
     SurfaceSampler,
     TimeConfig,
     TransportConfig,
     TurbulenceConfig,
+    YPlusSampler,
     create_fvm_solver,
 )
 from source.solvers.fvm.fields.diagnostics import (
@@ -50,42 +46,22 @@ from source.solvers.fvm.fields.diagnostics import (
     compute_kinetic_energy,
 )
 from source.solvers.fvm.immersed_boundary import ImmersedBody
-from source.solvers.fvm.mesh import geometry
-from source.solvers.fvm.mesh.gmsh_importer import GmshImporter
-from source.solvers.fvm.mesh.rectilinear import (
-    coupling_box_mesh,
-    periodic_square_mesh,
-    stretched,
-    wall_refined_axis,
-)
+
+from . import mesher
 
 __all__ = [
-    "AdaptiveCartesianMesher",
-    "BoundaryLayers",
     "BackupConfig",
-    "BoundaryLayerSpec",
     "BoundaryConfig",
-    "BoxDomain",
-    "BoxPatches",
-    "BoxRefinement",
-    "CartesianMesher",
-    "CompositeSizeField",
     "ComputeConfig",
     "DiscretizationConfig",
-    "ConeRefinement",
-    "FeatureRefinement",
     "FieldState",
     "ForceSampler",
     "FVMSetup",
-    "GmshImporter",
-    "GeneralBodyMesher",
-    "GenerationReport",
     "IBMForceSampler",
     "ImmersedBody",
     "LinearSolveResult",
     "LinearSolverConfig",
     "LineSampler",
-    "LineRefinement",
     "LoggingConfig",
     "MaximumCourantTimeStep",
     "MeshMotionConfig",
@@ -95,21 +71,14 @@ __all__ = [
     "RunAcceptanceLimits",
     "RunSchedule",
     "StepDiagnostics",
-    "SphereRefinement",
-    "STLSurface",
     "SurfaceSampler",
-    "SizeField",
-    "SizeReport",
     "TimeConfig",
     "TransportConfig",
     "TurbulenceConfig",
+    "YPlusSampler",
     "compute_continuity_error",
     "compute_enstrophy",
     "compute_kinetic_energy",
-    "coupling_box_mesh",
     "create_fvm_solver",
-    "geometry",
-    "periodic_square_mesh",
-    "stretched",
-    "wall_refined_axis",
+    "mesher",
 ]

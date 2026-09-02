@@ -30,8 +30,8 @@ GRIDS = (
 )
 
 LIMITS = {
-    "max_non_orthogonality_deg": 90.0,
-    "max_skewness": 8.0,
+    "max_non_orthogonality_deg": 80.0,
+    "max_skewness": 2.0,
     "max_lsq_condition": 5.5,
     "max_wall_cell_in_plane_edge_ratio": 20.0,
     "out_of_bounds_interpolation_weights": 200,
@@ -198,7 +198,7 @@ def main() -> None:
         "status": "passed" if all(record["passed"] for record in records) else "failed",
         "limits": LIMITS,
         "aspect_ratio_note": (
-            "The 3-D max_aspect_ratio is dominated by the fixed 0.5D spanwise "
+            "The 3-D max_aspect_ratio is dominated by the fixed 1.2D spanwise "
             "extrusion. max_wall_cell_in_plane_edge_ratio measures the resolved "
             "two-dimensional cylinder plane used by this reference study."
         ),

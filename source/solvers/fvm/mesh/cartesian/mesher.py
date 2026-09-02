@@ -11,7 +11,6 @@ from typing import Any, cast
 import numpy as np
 
 from ..adaptive_cartesian import AdaptiveCartesianMesher as _LegacyMesher
-from ..adaptive_cartesian import BoxRefinement as _LegacyBoxRefinement
 from ..boundary_layer import stitch_boundary_layer
 from ..geometry import compute_mesh_geometry
 from ..surface_classification import SurfaceIndex
@@ -33,6 +32,27 @@ from .native_mesh import require_native_mesh
 from .optimisation import OptimisationDiagnostics
 from .report import GenerationReport, SizeReport
 from .surface_recovery import RecoveryDiagnostics
+
+
+class _EffectiveRefinement:
+    """Carry a typed refinement into the octree without changing its shape."""
+
+    def __init__(self, source: Refinement, cell_size: float) -> None:
+        self.source = source
+        self.name = str(_refinement_attribute(source, "name"))
+        self.bounds = cast(
+            Bounds,
+            tuple(float(value) for value in _refinement_attribute(source, "bounds")),
+        )
+        self.cell_size = float(cell_size)
+
+    def contains(self, points: np.ndarray) -> np.ndarray:
+        """Delegate point containment to the immutable typed control."""
+        return self.source.contains(points)
+
+    def intersects_box(self, lower: np.ndarray, upper: np.ndarray) -> bool:
+        """Delegate conservative cell intersection to the typed control."""
+        return self.source.intersects_box(lower, upper)
 
 
 def _dyadic_size(background: float, requested: float) -> tuple[float, int]:
@@ -316,15 +336,11 @@ class CartesianMesher:
             effective = max(effective, self.min_cell_size)
         return effective
 
-    def _legacy_refinements(self) -> tuple[_LegacyBoxRefinement, ...]:
+    def _legacy_refinements(self) -> tuple[_EffectiveRefinement, ...]:
         return tuple(
-            _LegacyBoxRefinement(
-                cast(
-                    Bounds,
-                    tuple(float(value) for value in _refinement_attribute(refinement, "bounds")),
-                ),
+            _EffectiveRefinement(
+                refinement,
                 self.effective_cell_size(float(_refinement_attribute(refinement, "cell_size"))),
-                str(_refinement_attribute(refinement, "name")),
             )
             for refinement in self.refinements
         )
@@ -357,7 +373,7 @@ class CartesianMesher:
             surface_may_cross_domain_boundary=self.surface_may_cross_domain_boundary,
             wall_patch_name="__cartesian_surface__",
             surface_cell_size=surface_size,
-            refinements=self._legacy_refinements(),
+            refinements=cast(Any, self._legacy_refinements()),
         )
 
     def _apply_boundary_layers(self, mesh_data: dict[str, Any]) -> dict[str, Any]:
@@ -423,6 +439,7 @@ class CartesianMesher:
             "optimisation": optimisation.as_dict(),
             "surface_count": len(self.surfaces),
             "surface_patches": tuple(surface.patch for surface in self.surfaces),
+            "surface_may_cross_domain_boundary": self.surface_may_cross_domain_boundary,
             "refinement_count": len(self.refinements),
             "feature_control": self.features is not None,
             "feature_edge_counts": tuple(len(edges) for edges in self._feature_sets),

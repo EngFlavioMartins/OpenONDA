@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 
 # ---- Case definition -----------------------------------------------------
 CASE_NAME = "airfoil_flow"
@@ -39,12 +40,12 @@ DOMAIN = (-5.0, 15.0, -5.0, 5.0, -0.5, 0.5)
 AIRFOIL_STL = Path(__file__).resolve().parent / "assets" / "airfoil.stl"
 
 
-def create_fvm_mesh() -> fvm.CartesianMesher:
+def create_fvm_mesh() -> msh.CartesianMesher:
     """Declare the native surface-driven mesh for the finite wing."""
-    return fvm.CartesianMesher(
-        domain=fvm.BoxDomain(
+    return msh.CartesianMesher(
+        domain=msh.BoxDomain(
             bounds=DOMAIN,
-            patches=fvm.BoxPatches(
+            patches=msh.BoxPatches(
                 xmin="inlet",
                 xmax="outlet",
                 ymin="walls",
@@ -53,12 +54,12 @@ def create_fvm_mesh() -> fvm.CartesianMesher:
                 zmax="frontAndBack",
             ),
         ),
-        surfaces=(fvm.STLSurface(AIRFOIL_STL, patch="airfoil"),),
+        surfaces=(msh.STLSurface(AIRFOIL_STL, patch="airfoil"),),
         max_cell_size=1.0,
         boundary_cell_size=0.03125,
         min_cell_size=0.03125,
         refinements=(
-            fvm.BoxRefinement(
+            msh.BoxRefinement(
                 name="near_airfoil",
                 bounds=(-1.0, 3.0, -1.0, 1.0, -0.4, 0.4),
                 cell_size=0.125,

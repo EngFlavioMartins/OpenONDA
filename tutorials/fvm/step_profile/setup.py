@@ -16,6 +16,7 @@ import numpy as np
 from assets.mesh_step import backward_facing_step_mesh
 
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 
 # ---- Case definition -----------------------------------------------------
 CASE_NAME = "step_profile"
@@ -198,7 +199,7 @@ def main() -> None:
         n_downstream=N_DOWNSTREAM,
         n_height=N_HEIGHT,
     )
-    geo_data = fvm.geometry.compute_mesh_geometry(mesh_data)
+    geo_data = msh.geometry.compute_mesh_geometry(mesh_data)
     print(f"  cells: {mesh_data['n_cells']}; extrusion depth: {depth:g}")
     print("  geometry: inlet y/h=1..2, vertical step at x/h=0, outlet height=2h")
 

@@ -22,20 +22,30 @@ topology routines, and validation routines remain useful and authoritative.
 
 ## Decision
 
-OpenONDA will converge on one public meshing object:
+OpenONDA will converge on one public meshing namespace and one public
+Cartesian mesher. Solver configuration stays in `openonda.fvm`; mesh
+construction is imported from `openonda.fvm.mesher`:
 
 ```python
-fvm.CartesianMesher(
-    domain=fvm.BoxDomain(...),
-    surfaces=(fvm.STLSurface(...),),
+import openonda.fvm.mesher as msh
+
+msh.CartesianMesher(
+    domain=msh.BoxDomain(...),
+    surfaces=(msh.STLSurface(...),),
     max_cell_size=0.50,
     boundary_cell_size=0.0625,
     min_cell_size=0.015625,
     refinements=(...),
-    features=fvm.FeatureRefinement(...),
+    features=msh.FeatureRefinement(...),
     boundary_layers=(...),
 )
 ```
+
+The flat paths `openonda.fvm.BoxRefinement`, `openonda.fvm.STLSurface`, and
+the other mesher-object exports are deliberately absent. The namespace also
+contains the mesher's refinement, surface, layer, report, and structured-mesh
+helpers, so users can keep mesh construction under one `msh` import without
+mixing mesh intent into the solver facade.
 
 Configuration objects express physical intent and are immutable after
 construction. `build()` and `__call__()` return OpenONDA's native face-based

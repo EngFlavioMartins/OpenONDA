@@ -40,8 +40,11 @@ VPMSolver.advance()
 `DirectInduction`, `TreecodeInduction`, and `FMMInduction` implement the same
 stage contract. Each receives the complete temporary state and writes velocity,
 vortex-strength rate, and an optional auxiliary velocity gradient into
-preallocated fields. The RK engine knows none of the backend names or
-coefficients beyond its selected tableau.
+preallocated fields. Their rate semantics are explicit: direct uses the exact
+pairwise transposed operator, while the hierarchical backends use the reported
+`HIERARCHICAL_GRADIENT` approximation and expose its measured rate defect. The
+RK engine knows none of the backend names or coefficients beyond its selected
+tableau.
 
 The documented strength equation is the conservative pairwise transposed
 operator with symmetric target/source core regularization. The auxiliary
@@ -83,6 +86,16 @@ and RK4 are available through the generic `RungeKutta` engine. There is no
 fractional integration switch and no separate advection or stretching
 integrator.
 
+External stage providers are assembled once, after optional panel/VLM
+components have initialized, and then held in the immutable `StageRHS`
+provider tuple. Host velocity callbacks use one stage-aware signature; callback
+errors are propagated without retrying alternate arities. A requested VLM or
+panel component that cannot initialize aborts case construction rather than
+silently degrading to an uncoupled VPM run. VLM circulation and geometry are
+currently solved once per accepted step, so its induced particle velocity is a
+lagged partitioned field sampled at each temporary RK position; VLM does not
+currently contribute external stretching.
+
 ## Public API
 
 Typical construction is:
@@ -111,10 +124,11 @@ objects are not public compatibility paths.
 
 Permanent regression coverage is listed in
 [VPM induction-method qualification](vpm_induction_qualification.md). Direct
-and treecode stage paths are qualified against independent references; the FMM
-stage is checked against a direct NumPy evaluation of the shared kernel
-contract, and its hierarchy, kernel matrix, and tolerance trend are covered by
-focused tests.
+stage rates are qualified against the exact pairwise operator; hierarchical
+velocity/rate paths are checked against independent shared-kernel references.
+The FMM stage is checked against a direct NumPy evaluation of that contract,
+and its hierarchy, kernel matrix, and tolerance trend are covered by focused
+tests.
 The FMM path executes a deterministic octree with P2M, M2M, M2L, L2L, L2P and
 near-field P2P phases. Its far field retains second-order singular
 Biot--Savart source moments and derives the strength rate from the resulting

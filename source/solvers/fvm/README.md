@@ -132,7 +132,8 @@ mesh-flux terms have not been implemented.
 
 The supported mesh-input contracts are deliberately narrow. Native meshes are
 plain in-memory Python dictionaries, typically produced by the bundled
-rectilinear and adaptive Cartesian meshers. Gmsh input is read through the
+rectilinear and adaptive Cartesian meshers exposed through
+`openonda.fvm.mesher`. Gmsh input is read through the
 installed Gmsh API and accepts only first-order 3D tetrahedra (type 4),
 hexahedra (5), prisms (6), and pyramids (7). Other dimensions and higher-order
 cells fail before geometry assembly. Import provenance records the exact

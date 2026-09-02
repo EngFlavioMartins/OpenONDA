@@ -5,7 +5,7 @@ import taichi as ti
 
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.induction.direct import DirectInduction
-from source.solvers.vpm.physics.induction.fmm import FMMTree, interaction_lists
+from source.solvers.vpm.physics.induction.fmm import FMMInduction, FMMTree, interaction_lists
 from source.solvers.vpm.physics.induction.fmm.local_expansions import l2l, l2p, m2l
 from source.solvers.vpm.physics.induction.fmm.multipoles import m2m, p2m
 from source.solvers.vpm.physics.induction.fmm.near_field import p2p_velocity
@@ -17,6 +17,33 @@ class _Field:
 
     def to_numpy(self):
         return self._values
+
+
+class _HostPhysics:
+    """Minimal transfer surface for qualifying the host FMM without Taichi fields."""
+
+    max_n_particles = 16
+    np_dtype = np.float64
+
+    @staticmethod
+    def _download_vector_field(values, count):
+        return np.asarray(values[:count], dtype=np.float64).copy()
+
+    @staticmethod
+    def _download_scalar_field(values, count):
+        return np.asarray(values[:count], dtype=np.float64).copy()
+
+    @staticmethod
+    def _upload_vector_array(values, output, count):
+        output[:count] = values
+
+    @staticmethod
+    def _upload_matrix_array(values, output, count):
+        output[:count] = values
+
+    @staticmethod
+    def _zero_vec3_field(output, count):
+        output[:count] = 0.0
 
 
 def test_fmm_tree_owns_deterministic_stage_geometry_and_core_metadata():
@@ -42,7 +69,11 @@ def test_multipole_and_local_translations_preserve_leading_coefficients():
 
     np.testing.assert_allclose(parent["circulation"], strength.sum(axis=0))
     local = m2l(parent, np.array([1.0, 2.0, 3.0]))
-    np.testing.assert_allclose(l2p(l2l(local, np.array([0.1, 0.0, 0.0]))), parent["circulation"])
+    translated = l2l(local, np.array([0.1, 0.0, 0.0]))
+    np.testing.assert_allclose(
+        l2p(translated),
+        local["value"] + local["gradient"] @ np.array([0.1, 0.0, 0.0]),
+    )
 
 
 def test_near_field_p2p_uses_the_shared_radial_kernel_and_excludes_self_pairs():
@@ -51,7 +82,15 @@ def test_near_field_p2p_uses_the_shared_radial_kernel_and_excludes_self_pairs():
     strength = np.array([[0.0, 0.2, 0.0], [0.0, -0.1, 0.0]])
     core_radius = np.array([0.1, 0.3])
 
-    actual = p2p_velocity(kernel, position, position, strength, core_radius, core_radius)
+    actual = p2p_velocity(
+        kernel,
+        position,
+        position,
+        strength,
+        core_radius,
+        core_radius,
+        exclude_self=True,
+    )
     expected = kernel.velocity_pair(
         position[0] - position[1], strength[1], core_radius[0], core_radius[1]
     )
@@ -63,6 +102,33 @@ def test_near_field_p2p_uses_the_shared_radial_kernel_and_excludes_self_pairs():
             position[1] - position[0], strength[0], core_radius[1], core_radius[0]
         ),
     )
+
+
+def test_near_field_p2p_preserves_matching_indices_for_distinct_sets():
+    kernel = make_vortex_kernel("GAUSSIAN")
+    target_position = np.array([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0]])
+    source_position = np.array([[0.1, 0.1, 0.0], [0.5, 0.1, 0.0]])
+    source_strength = np.array([[0.0, 0.2, 0.0], [0.0, -0.1, 0.0]])
+    target_core = np.array([0.1, 0.3])
+    source_core = np.array([0.2, 0.4])
+
+    actual = p2p_velocity(
+        kernel,
+        target_position,
+        source_position,
+        source_strength,
+        target_core,
+        source_core,
+    )
+    displacement = target_position[:, None, :] - source_position[None, :, :]
+    expected = kernel.velocity_pair(
+        displacement,
+        source_strength[None, :, :],
+        target_core[:, None],
+        source_core[None, :],
+    ).sum(axis=1)
+
+    np.testing.assert_allclose(actual, expected)
 
 
 def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path):
@@ -212,3 +278,73 @@ def test_fmm_velocity_error_decreases_with_tighter_requested_tolerance(tmp_path)
         )
 
     assert errors[0] >= errors[1] >= errors[2]
+
+
+def test_fmm_stage_smoke_qualifies_all_radial_kernels_and_reports_rate_mode():
+    rng = np.random.default_rng(20260903)
+    count = 16
+    position = rng.uniform(-1.0, 1.0, size=(count, 3))
+    strength = rng.normal(scale=0.01, size=(count, 3))
+    radius = rng.uniform(0.08, 0.15, size=count)
+    physics = _HostPhysics()
+
+    for name in ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"):
+        induction = FMMInduction(
+            physics,
+            kernel=make_vortex_kernel(name),
+            tolerance=1.0e-3,
+            max_n_particles=count,
+            leaf_capacity=1,
+        )
+        velocity = np.zeros((count, 3), dtype=np.float64)
+        gradient = np.zeros((count, 3, 3), dtype=np.float64)
+        rate = np.zeros((count, 3), dtype=np.float64)
+        induction.evaluate_stage(
+            position=position,
+            vortex_strength=strength,
+            core_radius=radius,
+            count=count,
+            velocity_out=velocity,
+            vortex_strength_rate_out=rate,
+            velocity_gradient_out=gradient,
+        )
+
+        kernel = make_vortex_kernel(name)
+        displacement = position[:, None, :] - position[None, :, :]
+        expected_velocity = kernel.velocity_pair(
+            displacement,
+            strength[None, :, :],
+            radius[:, None],
+            radius[None, :],
+        )
+        expected_gradient = kernel.gradient_pair(
+            displacement,
+            strength[None, :, :],
+            radius[:, None],
+            radius[None, :],
+        )
+        diagonal = np.arange(count)
+        expected_velocity[diagonal, diagonal] = 0.0
+        expected_gradient[diagonal, diagonal] = 0.0
+        expected_velocity = expected_velocity.sum(axis=1)
+        expected_gradient = expected_gradient.sum(axis=1)
+        expected_rate = np.einsum("nji,nj->ni", expected_gradient, strength)
+
+        velocity_error = np.linalg.norm(velocity - expected_velocity) / np.linalg.norm(
+            expected_velocity
+        )
+        gradient_error = np.linalg.norm(gradient - expected_gradient) / np.linalg.norm(
+            expected_gradient
+        )
+        rate_error = np.linalg.norm(rate - expected_rate) / np.linalg.norm(expected_rate)
+
+        assert velocity_error < 3.0e-2
+        assert gradient_error < 3.0e-2
+        assert rate_error < 5.0e-2
+        assert induction.diagnostics.m2l_interactions > 0
+        assert induction.diagnostics.l2l_operations > 0
+        assert induction.diagnostics.nonzero_l2l_operations > 0
+        assert induction.diagnostics.direct_strength_rate_fallbacks == 0
+        assert induction.diagnostics.strength_rate_mode == "HIERARCHICAL_GRADIENT"
+        assert induction.diagnostics.last_strength_rate_norm > 0.0
+        assert induction.diagnostics.last_relative_rate_defect >= 0.0

@@ -64,8 +64,10 @@ _PRESSURE_HIERARCHICAL_OPENING = 0.3
 class VelocityOverride(Protocol):
     """Callable that selects the advection velocity at one RK stage."""
 
-    def __call__(self, position: FloatArray, induced_velocity: FloatArray) -> FloatArray:
-        """Return one ``(N, 3)`` replacement velocity field."""
+    def __call__(
+        self, position: FloatArray, stage_time: float, induced_velocity: FloatArray
+    ) -> FloatArray:
+        """Return one ``(N, 3)`` replacement velocity field for the stage."""
 
 
 class VelocityOverrideBlender(Protocol):
@@ -74,10 +76,11 @@ class VelocityOverrideBlender(Protocol):
     def blend_into(
         self,
         position: FloatArray,
+        stage_time: float,
         induced_velocity: FloatArray,
         output: FloatArray,
     ) -> None:
-        """Write the selected ``(N, 3)`` velocity field to ``output``."""
+        """Write the selected stage velocity field to ``output``."""
 
 
 @ti.data_oriented
@@ -298,21 +301,17 @@ class VPMSolver:
             max_n_particles=max_p,
             dtype=self.accumulator_dtype,
         )
-        providers = [ParticleExternalStageContribution(self.particles, self.physics, self)]
+        self._stage_providers = [
+            ParticleExternalStageContribution(self.particles, self.physics, self)
+        ]
         if self.axisymmetric_axis >= 0:
-            providers.append(
+            self._stage_providers.append(
                 AxisymmetricNoSwirlStageProjection(
                     self.physics,
                     self.particles.zone_id,
                     self.axisymmetric_axis,
                 )
             )
-        self.stage_rhs = StageRHS(
-            self.induction,
-            providers=tuple(providers),
-            strength_enabled=self.flow_model != "POTENTIAL",
-        )
-
         _visc_cfg = getattr(final_setup, "viscous", None)
         if _visc_cfg is not None and hasattr(self.physics, "core_radius_ratio"):
             self.physics.core_radius_ratio = float(getattr(_visc_cfg, "core_radius_ratio", 2.5))
@@ -440,6 +439,11 @@ class VPMSolver:
                 *(("  " + mechanism, "active") for mechanism in active),
             )
         self._init_optional_solvers(final_setup)
+        self.stage_rhs = StageRHS(
+            self.induction,
+            providers=tuple(self._stage_providers),
+            strength_enabled=self.flow_model != "POTENTIAL",
+        )
         # Detailed section timing forces a device barrier around every phase.
         # Make that diagnostic opt-in; the whole-step timer remains available in
         # normal production runs without serialising every kernel launch.
@@ -489,16 +493,19 @@ class VPMSolver:
                 self.panel_solver.initialize(force=True)
                 scope = getattr(self.panel_solver, "coupling_scope", "full")
                 self._pressure_body_induced_fn = self.panel_solver.compute_induced_velocity
-                if scope in ("full", "vpm_boundary_condition"):
-                    self.set_body_induced_velocity(self.panel_solver.compute_induced_velocity)
-                else:
-                    self.set_body_induced_velocity(None)
+                self._body_induced_fn = lambda points, _stage_time: (
+                    self.panel_solver.compute_induced_velocity(points)
+                )
                 if scope == "full":
                     # Only "full" deflects particle trajectories, and it does so
                     # at every RK stage, so give it the device-resident hook.
                     self.physics.body_velocity_field = (
                         self.panel_solver.accumulate_induced_velocity_on_field
                     )
+                    # Target-query diagnostics still use _body_induced_fn, but
+                    # the stage provider must not add the same panel velocity a
+                    # second time through its host callback.
+                    self.physics.body_velocity = None
                 else:
                     self.physics.body_velocity = None
                     self.physics.body_velocity_field = None
@@ -521,11 +528,12 @@ class VPMSolver:
                 # The VLM circulation is solved in the accepted-step coupling
                 # phase. Its induced field is sampled at each temporary
                 # particle RK position through the common StageRHS boundary.
-                # VLM is prepended so the axisymmetric provider, when present,
-                # remains the final stage projection for every contribution.
-                self.stage_rhs.add_provider(VLMStageContribution(self.vlm_solver), prepend=True)
+                # Construct the immutable provider tuple only after optional
+                # solvers have initialized. VLM is first so the axisymmetric
+                # provider, when present, remains the final projection.
+                self._stage_providers.insert(0, VLMStageContribution(self.vlm_solver))
             except Exception as e:
-                Logging.warning(f"component=VLM status=initialization_failed error={e!r}")
+                raise RuntimeError(f"Failed to initialize VLM solver: {e}") from e
 
     @staticmethod
     def _require_consistent_molecular_viscosity(viscous_cfg, vlm_setup) -> None:
@@ -1093,9 +1101,9 @@ class VPMSolver:
 
         body_fn = self._body_induced_fn
         if include_body and body_fn is not None:
-            velocity = velocity + np.asarray(body_fn(points), dtype=velocity.dtype).reshape(
-                velocity.shape
-            )
+            velocity = velocity + np.asarray(
+                body_fn(points, self.time), dtype=velocity.dtype
+            ).reshape(velocity.shape)
 
         return velocity
 
@@ -1110,12 +1118,13 @@ class VPMSolver:
 
     def set_body_induced_velocity(
         self,
-        fn: Callable[[np.ndarray], np.ndarray] | None,
+        fn: Callable[[np.ndarray, float], np.ndarray] | None,
     ) -> None:
-        """Set the optional boundary-element velocity callback.
+        """Set the optional stage-aware boundary-element velocity callback.
 
-        The callback must map an ``(N, 3)`` point array to an ``(N, 3)`` velocity
-        array. Pass ``None`` to disable body induction.
+        The callback must map ``(stage_position, stage_time)`` to an ``(N, 3)``
+        velocity array. Pass ``None`` to disable body induction. Target-query
+        diagnostics invoke the same callback at the solver's accepted time.
         """
         self._body_induced_fn = fn
         self.physics.body_velocity = fn

@@ -12,6 +12,7 @@ PUBLIC_MODULES = (
     "openonda",
     "openonda.coupler",
     "openonda.fvm",
+    "openonda.fvm.mesher",
     "openonda.runtime",
     "openonda.vpm",
 )

@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 
 CASE_DIR = Path(__file__).resolve().parent
 CUBE_STL = CASE_DIR / "assets" / "cube.stl"
@@ -87,18 +88,18 @@ SAMPLERS = (
     ),
 )
 
-FVM_MESH = fvm.CartesianMesher(
-    domain=fvm.BoxDomain(
+FVM_MESH = msh.CartesianMesher(
+    domain=msh.BoxDomain(
         bounds=FVM_DOMAIN,
-        patches=fvm.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+        patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
     ),
-    surfaces=(fvm.STLSurface(CUBE_STL, patch="cube"),),
+    surfaces=(msh.STLSurface(CUBE_STL, patch="cube"),),
     max_cell_size=BACKGROUND_CELL_SIZE,
     boundary_cell_size=SURFACE_CELL_SIZE,
     min_cell_size=SURFACE_CELL_SIZE,
     refinements=(
-        fvm.BoxRefinement("wakeBox", WAKE_BOX, SURFACE_CELL_SIZE * 2),
-        fvm.BoxRefinement("downstreamWakeBox", DOWNSTREAM_WAKE_BOX, SURFACE_CELL_SIZE * 4),
+        msh.BoxRefinement("wakeBox", WAKE_BOX, SURFACE_CELL_SIZE * 2),
+        msh.BoxRefinement("downstreamWakeBox", DOWNSTREAM_WAKE_BOX, SURFACE_CELL_SIZE * 4),
     ),
 )
 

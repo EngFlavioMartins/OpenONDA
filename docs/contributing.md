@@ -43,7 +43,8 @@ During the staged filesystem migration, also run
 checkpoint, tutorial, and launcher names without modifying them.
 
 Tutorial setup files use public namespace imports (`openonda.fvm as fvm`,
-`openonda.vpm as vpm`, and `openonda.coupler as coupling`), uppercase physical
+`openonda.fvm.mesher as msh`, `openonda.vpm as vpm`, and
+`openonda.coupler as coupling`), uppercase physical
 constants, a short usage docstring, and the same construction path in serial
 and MPI.
 

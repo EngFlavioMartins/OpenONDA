@@ -56,11 +56,20 @@ INVALID_FIXTURE_NAMES = (
 
 
 def test_target_public_cartesian_api_is_exposed():
-    """The target names must be exported through ``openonda.fvm``."""
-    import openonda.fvm as fvm
+    """The target names must be exported through ``openonda.fvm.mesher``."""
+    import openonda.fvm.mesher as msh
 
-    missing = sorted(name for name in TARGET_PUBLIC_NAMES if not hasattr(fvm, name))
+    missing = sorted(name for name in TARGET_PUBLIC_NAMES if not hasattr(msh, name))
     assert not missing, f"target Cartesian mesher exports are missing: {missing}"
+
+
+def test_solver_facade_keeps_mesher_objects_in_the_mesher_namespace():
+    """The solver facade exposes one mesher namespace instead of flat controls."""
+    import openonda.fvm as fvm
+    import openonda.fvm.mesher as msh
+
+    assert fvm.mesher is msh
+    assert not any(hasattr(fvm, name) for name in TARGET_PUBLIC_NAMES)
 
 
 def test_target_cartesian_pipeline_is_split_into_required_modules():
@@ -102,19 +111,19 @@ def test_cartesian_mesher_production_package_has_no_forbidden_geometry_names():
 @pytest.mark.parametrize("fixture_name", VALID_FIXTURE_NAMES)
 def test_geometry_independence_acceptance_matrix(tmp_path, fixture_name):
     """Every valid fixture must use the same target construction and build path."""
-    import openonda.fvm as fvm
+    import openonda.fvm.mesher as msh
 
     fixtures = make_acceptance_fixtures(tmp_path)
     fixture = fixtures[fixture_name]
     patches = ("body_a", "body_b") if fixture_name == "two_disjoint_bodies" else (fixture_name,)
     surfaces = tuple(
-        fvm.STLSurface(path, patch=patch)
+        msh.STLSurface(path, patch=patch)
         for path, patch in zip(fixture.paths, patches, strict=True)
     )
-    mesher = fvm.CartesianMesher(
-        domain=fvm.BoxDomain(
+    mesher = msh.CartesianMesher(
+        domain=msh.BoxDomain(
             bounds=(-1.5, 1.5, -1.5, 1.5, -1.5, 1.5),
-            patches=fvm.BoxPatches(
+            patches=msh.BoxPatches(
                 xmin="inlet",
                 xmax="outlet",
                 ymin="farfield",
@@ -127,7 +136,7 @@ def test_geometry_independence_acceptance_matrix(tmp_path, fixture_name):
         max_cell_size=0.50,
         boundary_cell_size=0.25,
         min_cell_size=0.125,
-        features=fvm.FeatureRefinement(angle=35.0, cell_size=0.125),
+        features=msh.FeatureRefinement(angle=35.0, cell_size=0.125),
     )
     mesh = mesher.build()
     assert {patch["name"] for patch in mesh["boundary"]} >= {"inlet", "outlet", *patches}
@@ -136,20 +145,20 @@ def test_geometry_independence_acceptance_matrix(tmp_path, fixture_name):
 @pytest.mark.parametrize("fixture_name", INVALID_FIXTURE_NAMES)
 def test_invalid_surface_fixtures_fail_diagnostically(tmp_path, fixture_name):
     """Broken topology must fail explicitly during target surface construction."""
-    import openonda.fvm as fvm
+    import openonda.fvm.mesher as msh
 
     fixture = make_acceptance_fixtures(tmp_path)[fixture_name]
     with pytest.raises((ValueError, RuntimeError)):
-        fvm.STLSurface(fixture.paths[0], patch="broken")
+        msh.STLSurface(fixture.paths[0], patch="broken")
 
 
 def test_target_configuration_objects_are_immutable():
     """Declarative intent objects cannot be mutated after construction."""
     import dataclasses
 
-    import openonda.fvm as fvm
+    import openonda.fvm.mesher as msh
 
-    patches = fvm.BoxPatches(
+    patches = msh.BoxPatches(
         xmin="inlet", xmax="outlet", ymin="farfield", ymax="farfield", zmin="front", zmax="back"
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
@@ -158,8 +167,8 @@ def test_target_configuration_objects_are_immutable():
 
 def test_target_cartesian_mesher_has_native_build_contract():
     """The public object must expose both equivalent build entry points and a report."""
-    import openonda.fvm as fvm
+    import openonda.fvm.mesher as msh
 
-    assert hasattr(fvm.CartesianMesher, "build")
-    assert callable(fvm.CartesianMesher)
-    assert hasattr(fvm.CartesianMesher, "report")
+    assert hasattr(msh.CartesianMesher, "build")
+    assert callable(msh.CartesianMesher)
+    assert hasattr(msh.CartesianMesher, "report")

@@ -25,9 +25,9 @@ from openonda.fvm import (
     RunSchedule,
     TimeConfig,
     TransportConfig,
-    coupling_box_mesh,
     create_fvm_solver,
 )
+import openonda.fvm.mesher as msh
 import openonda.vpm
 
 
@@ -68,7 +68,7 @@ def _verify_taichi() -> tuple[str, str]:
 
 
 def _verify_native_fvm() -> dict[str, float | int]:
-    mesh = coupling_box_mesh(
+    mesh = msh.coupling_box_mesh(
         (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
         0.5,
         hole_box=(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5),

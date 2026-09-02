@@ -119,6 +119,34 @@ class _CompositeIntegerBox:
 _SolidRegion = _IntegerBox | _CompositeIntegerBox
 
 
+class _WorldRefinementRegion:
+    """Evaluate a typed refinement against world-space Cartesian cells."""
+
+    def __init__(self, refinement, h_min: float, origin: tuple[float, float, float]) -> None:
+        self.refinement = refinement
+        self.h_min = float(h_min)
+        self.origin = np.asarray(origin, dtype=np.float64)
+        indices = []
+        for axis in range(3):
+            lower = (refinement.bounds[2 * axis] - self.origin[axis]) / self.h_min
+            upper = (refinement.bounds[2 * axis + 1] - self.origin[axis]) / self.h_min
+            indices.extend((math.floor(lower), math.ceil(upper)))
+        self._integer_bounds = _IntegerBox(*indices)
+
+    def expanded(self, amount: int, limits: tuple[int, int, int]) -> _IntegerBox:
+        """Return an integer transition band around the primitive bounds."""
+        return self._integer_bounds.expanded(amount, limits)
+
+    def overlaps(self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool:
+        """Test the current Cartesian cell against the primitive volume."""
+        lower = self.origin + self.h_min * np.asarray((x0, y0, z0), dtype=np.float64)
+        upper = self.origin + self.h_min * np.asarray((x1, y1, z1), dtype=np.float64)
+        return bool(self.refinement.intersects_box(lower, upper))
+
+
+_RefinementRegion = _SolidRegion | _WorldRefinementRegion
+
+
 class _SurfaceSolid:
     """Real curved-surface classifier, duck-typed to ``_IntegerBox``'s
     ``contains``/``overlaps`` interface so the octree traversal in
@@ -907,10 +935,12 @@ class AdaptiveCartesianMesher:
         max_level: int,
         limits: tuple[int, int, int],
         body_region: _SolidRegion | None,
-    ) -> tuple[tuple[_SolidRegion, int], ...]:
-        regions: list[tuple[_SolidRegion, int]] = []
+    ) -> tuple[tuple[_RefinementRegion, int], ...]:
+        regions: list[tuple[_RefinementRegion, int]] = []
 
-        def add_balanced(box: _SolidRegion, target_level: int, first_padding: int = 0) -> None:
+        def add_balanced(
+            box: _RefinementRegion, target_level: int, first_padding: int = 0
+        ) -> None:
             current = box.expanded(first_padding, limits) if first_padding else box
             regions.append((current, target_level))
             for level in range(target_level - 1, 0, -1):
@@ -930,7 +960,15 @@ class AdaptiveCartesianMesher:
         for refinement in self.refinements:
             level = _dyadic_level(self.max_cell_size, refinement.cell_size)
             if level:
-                add_balanced(self._integer_box(refinement.bounds, h_min), level)
+                if hasattr(refinement, "intersects_box"):
+                    region = _WorldRefinementRegion(
+                        refinement,
+                        h_min,
+                        (self.domain[0], self.domain[2], self.domain[4]),
+                    )
+                else:
+                    region = self._integer_box(refinement.bounds, h_min)
+                add_balanced(region, level)
 
         # Higher levels take precedence in overlap regions.
         regions.sort(key=lambda item: item[1], reverse=True)
@@ -941,7 +979,7 @@ class AdaptiveCartesianMesher:
         base_counts: tuple[int, int, int],
         max_level: int,
         solid: _SolidRegion | _SurfaceSolid | None,
-        regions: tuple[tuple[_SolidRegion, int], ...],
+        regions: tuple[tuple[_RefinementRegion, int], ...],
     ) -> np.ndarray:
         base_width = 2**max_level
         # A Python tuple/list representation costs several times the 20 bytes

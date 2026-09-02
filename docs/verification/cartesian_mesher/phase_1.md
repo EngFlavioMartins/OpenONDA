@@ -4,10 +4,10 @@
 *Status: implementation gate passed for the typed configuration and native
 adapter scope.*
 
-The public `openonda.fvm` API now exposes immutable `BoxDomain`, `BoxPatches`,
-`STLSurface`, `BoxRefinement`, `SphereRefinement`, `ConeRefinement`,
-`LineRefinement`, `FeatureRefinement`, `BoundaryLayers`, and
-`CartesianMesher` objects. Requested sizes are combined by a minimum size
+The public `openonda.fvm.mesher` namespace now exposes immutable `BoxDomain`,
+`BoxPatches`, `STLSurface`, `BoxRefinement`, `SphereRefinement`,
+`ConeRefinement`, `LineRefinement`, `FeatureRefinement`, `BoundaryLayers`,
+and `CartesianMesher` objects. Requested sizes are combined by a minimum size
 field, clamped by `min_cell_size`, and recorded with their effective dyadic
 level in `GenerationReport`.
 

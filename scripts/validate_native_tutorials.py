@@ -25,6 +25,7 @@ def _worker(
 
     import openonda.coupler as coupling
     import openonda.fvm as fvm
+    import openonda.fvm.mesher as msh
     import openonda.vpm as vpm
 
     fvm_time_step_size = 0.05
@@ -64,7 +65,7 @@ def _worker(
         samplers=(line,),
         initial_velocity=freestream,
     )
-    mesh = fvm.coupling_box_mesh(
+    mesh = msh.coupling_box_mesh(
         (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5),
         spacing,
     )

@@ -2,8 +2,10 @@
 
 The production VPM driver uses one coupled Runge--Kutta state,
 `(position, vortex_strength)`, and invokes the configured induction object once
-for each RK stage.  `DirectInduction`, `TreecodeInduction`, and `FMMInduction`
-all implement the same stage contract.
+for each RK stage. `DirectInduction`, `TreecodeInduction`, and `FMMInduction`
+all implement the same stage contract while declaring their rate semantics:
+direct is exact pairwise-transposed, and the hierarchical paths are explicitly
+hierarchical-gradient approximations.
 
 The permanent qualification suite covers:
 
@@ -32,7 +34,8 @@ conda run -n OpenONDA python -m pytest -q \
 
 The FMM uses exact regularized P2P for near interactions and second-order
 singular Biot--Savart source moments for well-separated cells. Its strength
-rate is contracted from the gradient of that same hierarchical far field; the
+rate is contracted from the gradient of that same hierarchical far field and is
+reported as an approximation to the exact pairwise-transposed rate; the
 diagnostic counter for direct strength-rate fallbacks must remain zero. The
 independent stage oracle evaluates the documented pair operator directly from
 the shared radial-kernel contract rather than calling another induction

@@ -6,7 +6,7 @@ Status: engineering specification for `EngFlavioMartins/OpenONDA`, audited on 20
 
 OpenONDA must have one **surface-driven, geometry-agnostic Cartesian mesher**. A tutorial may describe *what* mesh is wanted, but it must never implement *how* that mesh is constructed.
 
-The required public object is `fvm.CartesianMesher`. It accepts triangulated surfaces, an outer domain, physical cell-size requests, refinement regions, feature controls, and optional boundary-layer controls. It returns OpenONDA's native face-based FVM mesh. Geometry-specific meshers such as `ExplicitCylinderGridMesher` are forbidden and must be deleted once the replacement passes the acceptance matrix.
+The required public object is `fvm.mesher.CartesianMesher`. All mesh-construction objects live under the dedicated `fvm.mesher` namespace; solver configuration remains under `fvm`. The mesher accepts triangulated surfaces, an outer domain, physical cell-size requests, refinement regions, feature controls, and optional boundary-layer controls. It returns OpenONDA's native face-based FVM mesh. Geometry-specific meshers such as `ExplicitCylinderGridMesher` are forbidden and must be deleted once the replacement passes the acceptance matrix.
 
 This is a cfMesh-inspired mesher, not a claim of API or output compatibility with cfMesh. Its pipeline follows the openly documented cfMesh Cartesian workflow, while its public interface and output are native to OpenONDA.
 
@@ -18,7 +18,7 @@ The present code contains useful foundations, but the public capability is not g
 | --- | --- |
 | [`CFMESH_ATTRIBUTION.md`](https://github.com/EngFlavioMartins/OpenONDA/blob/development/source/solvers/fvm/mesh/CFMESH_ATTRIBUTION.md) describes an axis-aligned subset created for cube verification and explicitly excludes general surface mapping, feature/corner extraction, untangling, optimisation, general boundary layers, geometry repair, and parallel meshing. | The repository already admits that the implemented scope is only a subset of cfMesh. The attribution document is also stale because the Python code now attempts a general-surface projection path. |
 | [`adaptive_cartesian.py`](https://github.com/EngFlavioMartins/OpenONDA/blob/development/source/solvers/fvm/mesh/adaptive_cartesian.py) is a 2,383-line module containing octree construction, topology extraction, surface projection, a cylinder O-grid, and a separate exact grid-study mesher. | Algorithmic layers are coupled in a monolith, making case-specific additions easier than general extensions. |
-| `ExplicitCylinderGridMesher` hard-codes `1h/2h/4h/12h` regions, assumes a centred cylinder, and contains cylinder-specific coordinates and an O-grid interface. It is exported by both [`source.solvers.fvm`](https://github.com/EngFlavioMartins/OpenONDA/blob/development/source/solvers/fvm/__init__.py) and [`openonda.fvm`](https://github.com/EngFlavioMartins/OpenONDA/blob/development/openonda/fvm.py). | A scientific case has become a public meshing algorithm. |
+| `ExplicitCylinderGridMesher` hard-codes `1h/2h/4h/12h` regions, assumes a centred cylinder, and contains cylinder-specific coordinates and an O-grid interface. It is exported by both [`source.solvers.fvm`](https://github.com/EngFlavioMartins/OpenONDA/blob/development/source/solvers/fvm/__init__.py) and [`openonda.fvm.mesher`](https://github.com/EngFlavioMartins/OpenONDA/blob/development/openonda/fvm/mesher.py). | A scientific case has become a public meshing algorithm. |
 | [`boundary_layer.py`](https://github.com/EngFlavioMartins/OpenONDA/blob/development/source/solvers/fvm/mesh/boundary_layer.py) recognises only a straight, z-aligned circular cylinder and exposes `interface_half_width` and `spanwise_cell_size` in the nominally general `BoundaryLayerSpec`. | Boundary-layer generation is geometry-specific rather than patch-normal and surface-driven. |
 | General curved conformance projects wall vertices independently to their nearest triangle. A rejected projection silently leaves a local staircase corner. The acceptance check permits a wall-area error of 35%. | The mesher can call a partially snapped boundary conformal. This is not an adequate correctness gate for a general body-fitted FVM mesh. |
 | [`test_curved_cylinder_mesh.py`](https://github.com/EngFlavioMartins/OpenONDA/blob/development/tests/fvm/test_curved_cylinder_mesh.py) is the only visible arbitrary-curvature regression and it tests the same cylinder used to develop the implementation. | The tests demonstrate cylinder support, not geometric generality. |
@@ -51,11 +51,12 @@ This is the target interface. Agents may improve names only through a design pro
 from pathlib import Path
 
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 
-mesh = fvm.CartesianMesher(
-    domain=fvm.BoxDomain(
+mesh = msh.CartesianMesher(
+    domain=msh.BoxDomain(
         bounds=(-8.0, 20.0, -8.0, 8.0, -2.0, 2.0),
-        patches=fvm.BoxPatches(
+        patches=msh.BoxPatches(
             xmin="inlet",
             xmax="outlet",
             ymin="farfield",
@@ -65,7 +66,7 @@ mesh = fvm.CartesianMesher(
         ),
     ),
     surfaces=(
-        fvm.STLSurface(
+        msh.STLSurface(
             Path("assets/cylinder_long.stl"),
             patch="cylinder",
         ),
@@ -74,24 +75,24 @@ mesh = fvm.CartesianMesher(
     boundary_cell_size=0.0625,
     min_cell_size=0.015625,
     refinements=(
-        fvm.BoxRefinement(
+        msh.BoxRefinement(
             name="wake",
             bounds=(-1.0, 12.0, -2.0, 2.0, -2.0, 2.0),
             cell_size=0.125,
         ),
-        fvm.SphereRefinement(
+        msh.SphereRefinement(
             name="near_body",
             centre=(0.0, 0.0, 0.0),
             radius=2.0,
             cell_size=0.0625,
         ),
     ),
-    features=fvm.FeatureRefinement(
+    features=msh.FeatureRefinement(
         angle=35.0,
         cell_size=0.03125,
     ),
     boundary_layers=(
-        fvm.BoundaryLayers(
+        msh.BoundaryLayers(
             patches=("cylinder",),
             layers=10,
             first_cell_height=0.004,
@@ -171,7 +172,7 @@ Gate: reviewers can point from every requirement in Section 3 to a test name or 
 
 Deliverables:
 
-- Implement the public objects in Section 4 with complete docstrings, units, examples, validation, and exports through `openonda.fvm`.
+- Implement the public objects in Section 4 with complete docstrings, units, examples, validation, and exports through `openonda.fvm.mesher`.
 - Replace hard-coded outer patch names with `BoxPatches` mapping.
 - Introduce a general size-field interface and the box, sphere, cone/cylinder, and line refinement primitives.
 - Make requested-to-effective dyadic resolution explicit in the build report.
@@ -321,7 +322,7 @@ The reviewing agent must independently rerun the tests and inspect at least one 
 
 > Implement the OpenONDA general Cartesian mesher according to `OpenONDA_general_cartesian_mesher_program.md`. Work only on the next incomplete phase. Begin by auditing the current branch and mapping the phase requirements to existing code and tests. Do not write implementation code until you have stated which generic components will be retained, rewritten, or deleted.
 >
-> The outcome must be one surface-driven `fvm.CartesianMesher` with the typed Python interface in the specification. Tutorials declare geometry and sizing intent; they do not implement topology. Production code must never recognise a cylinder, airfoil, cube, plate, sphere, tutorial, filename, or coordinate-axis special case. Do not use external meshers, silent fallbacks, legacy wrappers, skipped tests, or fixture-specific tolerances.
+> The outcome must be one surface-driven `fvm.mesher.CartesianMesher` with the typed Python interface in the specification. Tutorials import `openonda.fvm.mesher as msh` and declare geometry and sizing intent; they do not implement topology. Production code must never recognise a cylinder, airfoil, cube, plate, sphere, tutorial, filename, or coordinate-axis special case. Do not use external meshers, silent fallbacks, legacy wrappers, skipped tests, or fixture-specific tolerances.
 >
 > Follow the phase gates exactly. Add the tests and evidence required for the phase, run the relevant existing FVM suite, and write `docs/verification/cartesian_mesher/phase_<n>.md`. If a robust general algorithm cannot satisfy a gate, stop and report the precise technical blocker instead of adding a special case. Do not claim completion unless every mandatory gate for the phase passes.
 >

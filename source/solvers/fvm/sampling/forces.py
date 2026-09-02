@@ -224,7 +224,7 @@ class YPlusSampler(Sampler):
 
     def __init__(
         self,
-        patch_names=None,
+        patch_names: Sequence[str] | None = None,
         file_name: str | None = None,
         schedule: RunSchedule | None = None,
     ) -> None:
@@ -245,7 +245,7 @@ class YPlusSampler(Sampler):
         spec["patch_names"] = self.patch_names
         return spec
 
-    def sample(self, context) -> dict[str, dict[str, float]]:
+    def sample(self, context: FVMSolver) -> dict[str, dict[str, float]]:
         """Compute y+ statistics for the current state (collective)."""
         stats = diagnostics.compute_y_plus(
             context.velocity,
@@ -259,7 +259,12 @@ class YPlusSampler(Sampler):
             stats = diagnostics.merge_partition_yplus(context.parallel.comm.allgather(stats))
         return stats
 
-    def write_csv(self, context, samples_dir: str, stats: dict) -> None:
+    def write_csv(
+        self,
+        context: FVMSolver,
+        samples_dir: str,
+        stats: dict[str, dict[str, float]],
+    ) -> None:
         """Append one row per patch to ``<samples_dir>/<name>.csv``."""
         if self.file_name is None:
             return

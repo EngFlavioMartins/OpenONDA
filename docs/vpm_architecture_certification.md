@@ -32,6 +32,9 @@ Completion pass on the same branch:
 - induction capabilities are explicit: every configured backend builds a
   solver-local runtime evaluator, and unsupported precision/backend pairs are
   rejected before runtime allocation;
+- stage providers are assembled once after optional solver initialization;
+  requested VLM initialization failures now abort construction, and host body
+  or override callbacks use one explicit stage-aware arity with no retry ladder;
 - the benchmark harness supports all three induction backends and records
   hierarchy diagnostics, while the permanent FMM test uses an independent
   kernel-level pair oracle.
@@ -50,9 +53,11 @@ VPMSolver.advance
 
 The integrated state is `(position, vortex_strength)`. One common temporary
 stage state is passed to the selected induction method, which writes velocity
-and the canonical vortex-strength rate into preallocated output fields. The
-optional velocity gradient is auxiliary work and is not used as a replacement
-for the conservative strength equation.
+and a declared vortex-strength rate into preallocated output fields. Direct
+uses the exact conservative pairwise-transposed rate; treecode and FMM declare
+their hierarchical-gradient approximation and report the uncorrected rate
+defect. The optional velocity gradient is auxiliary work and is not silently
+presented as the exact conservative pairwise equation.
 
 `DirectInduction`, `TreecodeInduction`, and `FMMInduction` implement the same
 stage boundary. RK2, SSPRK3, and RK4 are tableaus consumed by one generic
@@ -127,12 +132,18 @@ focused batches below are the reproducible validation boundary for this audit.
 VPM source Ruff checks and test collection pass.
 
 The FMM qualification covers deterministic hierarchy construction, expansion
-helpers, shared-kernel near interactions, tolerance trends, and a hierarchical
-strength-rate path with zero direct-fallback count. Its far-field velocity and
-gradient use second-order singular Biot--Savart source moments, while near
-interactions use the shared regularized kernel. FMM remains explicit opt-in
-because this reference evaluator is host-oriented; no 14,080- or
-70,200-particle performance certification was performed for this path.
+helpers, shared-kernel near interactions, tolerance trends, and a declared
+hierarchical-gradient strength-rate path with zero direct-fallback count. Its
+far-field velocity and gradient use second-order singular Biot--Savart source
+moments, while near interactions use the shared regularized kernel. FMM remains
+explicit opt-in because this reference evaluator is host-oriented; no 14,080-
+or 70,200-particle performance certification was performed for this path.
+
+VLM is an explicitly lagged partitioned coupling: circulation and geometry are
+solved once per accepted step, while the resulting field is sampled at the
+temporary RK particle positions. It is an advection-only provider and does not
+add an external stretching rate. A configured VLM that cannot initialize is a
+construction error; it is not converted into a VPM-only run.
 
 ## Known validation limits
 

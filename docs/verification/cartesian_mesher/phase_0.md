@@ -41,7 +41,7 @@ specification.
 
 | Requirement | Current evidence | Phase 0 test or scheduled gate |
 | --- | --- | --- |
-| One public `fvm.CartesianMesher` | The historical baseline exported only `AdaptiveCartesianMesher` and `GeneralBodyMesher`; no `CartesianMesher` | `test_target_public_cartesian_api_is_exposed`; Phase 1 gate |
+| One public `fvm.mesher.CartesianMesher` | The historical baseline exported only `AdaptiveCartesianMesher` and `GeneralBodyMesher`; no organized mesher namespace existed | `test_target_public_cartesian_api_is_exposed`; Phase 1 gate |
 | Typed immutable configuration | Current constructors accept tuples, paths, and cylinder-specific arguments directly | `test_target_configuration_objects_are_immutable`; Phase 1 gate |
 | Surface-driven geometry independence | `adaptive_cartesian.py` contains `_SurfaceSolid`, exact box handling, curved recovery, and a separate explicit cylinder class | `test_geometry_independence_acceptance_matrix`; Phase 2–4 gates |
 | Native-only meshing | `GeneralBodyMesher` imports and calls the Gmsh Python API for layer/core generation | `test_cartesian_mesher_has_no_external_mesher_dependency`; Phase 3–4 gate |

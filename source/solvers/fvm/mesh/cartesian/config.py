@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import math
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 
 import numpy as np
 
@@ -138,6 +138,14 @@ class Refinement(ABC):
         """Return a boolean mask for points controlled by this request."""
         return np.empty(0, dtype=bool)
 
+    def intersects_box(self, lower: np.ndarray, upper: np.ndarray) -> bool:
+        """Return a conservative intersection test for one axis-aligned box."""
+        bounds = np.asarray(cast(Any, self).bounds, dtype=np.float64)
+        return bool(
+            np.all(np.asarray(lower, dtype=np.float64) < bounds[1::2])
+            and np.all(np.asarray(upper, dtype=np.float64) > bounds[::2])
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class BoxRefinement(Refinement):
@@ -182,6 +190,12 @@ class SphereRefinement(Refinement):
         values = np.asarray(points, dtype=np.float64)
         centre = np.asarray(self.centre, dtype=np.float64)
         return np.einsum("ij,ij->i", values - centre, values - centre) <= self.radius**2
+
+    def intersects_box(self, lower: np.ndarray, upper: np.ndarray) -> bool:
+        """Use the exact closest-point test for a radial/AABB pair."""
+        centre = np.asarray(self.centre, dtype=np.float64)
+        closest = np.minimum(np.maximum(centre, lower), upper)
+        return bool(np.dot(closest - centre, closest - centre) <= self.radius**2)
 
     @property
     def bounds(self) -> Bounds:

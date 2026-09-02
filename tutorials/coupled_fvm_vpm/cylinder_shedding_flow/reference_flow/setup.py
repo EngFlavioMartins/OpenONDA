@@ -12,6 +12,7 @@ import argparse
 from pathlib import Path
 
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 
 CASE_DIR = Path(__file__).resolve().parent
 CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_spanwise.stl"
@@ -46,39 +47,37 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def grid_mesh(dx: float) -> fvm.CartesianMesher:
+def grid_mesh(dx: float) -> msh.CartesianMesher:
     """Return a declarative grid-study mesh at requested wall size ``dx``."""
     if dx <= 0.0:
         raise ValueError("--dx must be positive")
-    return fvm.CartesianMesher(
-        domain=fvm.BoxDomain(
+    return msh.CartesianMesher(
+        domain=msh.BoxDomain(
             bounds=DOMAIN,
-            patches=fvm.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+            patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
         ),
-        surfaces=(fvm.STLSurface(CYLINDER_STL, patch="cylinder"),),
-        # Keep the background lattice fixed across the grid study. The two
-        # declarative refinement zones and wall request vary with ``dx``.
+        surfaces=(msh.STLSurface(CYLINDER_STL, patch="cylinder"),),
         max_cell_size=0.5,
         boundary_cell_size=dx,
         min_cell_size=dx,
         refinements=(
-            fvm.BoxRefinement(
+            msh.BoxRefinement(
                 name="near_body",
                 bounds=(-2.0, 6.0, -2.0, 2.0, -0.5, 0.5),
                 cell_size=2.0 * dx,
             ),
-            fvm.BoxRefinement(
+            msh.BoxRefinement(
                 name="wake",
                 bounds=(-4.0, 12.0, -4.0, 4.0, -0.5, 0.5),
                 cell_size=4.0 * dx,
             ),
         ),
         boundary_layers=(
-            fvm.BoundaryLayers(
+            msh.BoundaryLayers(
                 patches=("cylinder",),
                 layers=10,
                 first_cell_height=dx / 16.0,
-                growth_ratio=1.18,
+                growth_ratio=1.15,
             ),
         ),
         # The body is deliberately longer than the finite reference span, so
@@ -169,11 +168,11 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
         cores=NUMBER_OF_CORES,
         mesh=fvm.MeshQualityConfig(
             # The native patch-normal layer collar is intentionally graded
-            # independently of the Cartesian core. These limits describe the
-            # bounded reference mesh contract; the full report remains
+            # independently of the Cartesian core. These are explicit quality
+            # limits for the bounded reference mesh; the full report remains
             # available in mesh_generation.cartesian_report.
-            max_non_orthogonality_deg=90.0,
-            max_skewness=8.0,
+            max_non_orthogonality_deg=80.0,
+            max_skewness=2.0,
             max_lsq_condition=5.5,
         ),
         execution=fvm.ComputeConfig(operator_backend="numba"),

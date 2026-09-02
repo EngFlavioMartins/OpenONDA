@@ -5,6 +5,7 @@ from typing import Self
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
+from ..base import StrengthRateMode
 
 
 @ti.kernel
@@ -34,6 +35,7 @@ class TreecodeInduction:
     # bounded; reject a nominal f64 case at the immutable configuration edge.
     supports_f64 = False
     device_resident = True
+    strength_rate_mode = "HIERARCHICAL_GRADIENT"
 
     def __init__(
         self,
@@ -44,6 +46,7 @@ class TreecodeInduction:
         traversal_block_dim: int = 128,
         max_n_particles: int | None = None,
         kernel: RadialVortexKernel | None = None,
+        strength_rate_mode: StrengthRateMode = "HIERARCHICAL_GRADIENT",
     ) -> None:
         self.method = "TREECODE"
         self.kernel = make_vortex_kernel("GAUSSIAN") if kernel is None else kernel
@@ -59,7 +62,15 @@ class TreecodeInduction:
         if self.traversal_block_dim < 0:
             raise ValueError("treecode traversal_block_dim must be non-negative")
         self.max_n_particles = int(max_n_particles or 1)
+        normalized_rate_mode = strength_rate_mode.upper()
+        if normalized_rate_mode != self.strength_rate_mode:
+            raise ValueError(
+                "TreecodeInduction supports only strength_rate_mode="
+                f"{self.strength_rate_mode}; exact pairwise rates require DirectInduction"
+            )
+        self.strength_rate_mode = normalized_rate_mode
         self.diagnostics = {
+            "strength_rate_mode": self.strength_rate_mode,
             "stage_evaluations": 0,
             "gradient_evaluations": 0,
             "hierarchical_strength_rates": 0,
@@ -77,6 +88,7 @@ class TreecodeInduction:
             traversal_block_dim=self.traversal_block_dim,
             max_n_particles=self.max_n_particles,
             kernel=self.kernel,
+            strength_rate_mode=self.strength_rate_mode,
         )
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:

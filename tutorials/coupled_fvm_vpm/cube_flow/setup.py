@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 import openonda.coupler as coupling
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
@@ -129,10 +130,10 @@ OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
 WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
 
-FVM_MESH = fvm.CartesianMesher(
-    domain=fvm.BoxDomain(
+FVM_MESH = msh.CartesianMesher(
+    domain=msh.BoxDomain(
         bounds=FVM_BOX,
-        patches=fvm.BoxPatches(
+        patches=msh.BoxPatches(
             xmin="numericalBoundary",
             xmax="numericalBoundary",
             ymin="numericalBoundary",
@@ -141,12 +142,12 @@ FVM_MESH = fvm.CartesianMesher(
             zmax="numericalBoundary",
         ),
     ),
-    surfaces=(fvm.STLSurface(CUBE_STL, patch="cube"),),
+    surfaces=(msh.STLSurface(CUBE_STL, patch="cube"),),
     max_cell_size=FVM_MAX_CELL_SIZE,
     boundary_cell_size=SURFACE_CELL_SIZE,
     min_cell_size=SURFACE_CELL_SIZE,
     refinements=(
-        fvm.BoxRefinement(
+        msh.BoxRefinement(
             name="wakeBox",
             bounds=FVM_WAKE_BOX,
             cell_size=SURFACE_CELL_SIZE * 2.0,
@@ -154,7 +155,7 @@ FVM_MESH = fvm.CartesianMesher(
     ),
 )
 
-# refinements=(fvm.BoxRefinement(FVM_WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),),
+# refinements=(msh.BoxRefinement(FVM_WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),),
 
 FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
 VPM_SAMPLING_SCHEDULE = vpm.EverySteps(VPM_SAMPLING_INTERVAL_STEPS)

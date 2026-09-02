@@ -8,7 +8,9 @@ the output fields.  Implementations must read only that supplied state.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Literal, Protocol
+
+StrengthRateMode = Literal["PAIRWISE_TRANSPOSED", "HIERARCHICAL_GRADIENT"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +42,7 @@ class InductionMethod(Protocol):
     supports_variable_core_radius: ClassVar[bool]
     supports_f64: ClassVar[bool]
     device_resident: ClassVar[bool]
+    strength_rate_mode: ClassVar[StrengthRateMode]
 
     def build(self) -> InductionMethod:
         """Create an unbound runtime evaluator for one solver instance."""
@@ -58,3 +61,6 @@ class InductionMethod(Protocol):
         stage_time: float = 0.0,
     ) -> None:
         """Write velocity, strength rate, and optionally gradient to outputs."""
+
+
+__all__ = ["InductionMethod", "StageRates", "StageState", "StrengthRateMode"]

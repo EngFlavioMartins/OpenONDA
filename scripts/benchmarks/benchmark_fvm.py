@@ -33,8 +33,8 @@ from openonda.fvm import (
     TimeConfig,
     TransportConfig,
     create_fvm_solver,
-    periodic_square_mesh,
 )
+import openonda.fvm.mesher as msh
 
 
 def _velocity(centres: np.ndarray) -> np.ndarray:
@@ -103,7 +103,7 @@ def _run(
     cold_one_step: bool,
 ) -> dict:
     n = max(4, int(round(math.sqrt(target_cells))))
-    mesh = periodic_square_mesh(n)
+    mesh = msh.periodic_square_mesh(n)
     selected_solver = (
         "spsolve" if linear_solver == "auto" and target_cells <= 100_000 else linear_solver
     )

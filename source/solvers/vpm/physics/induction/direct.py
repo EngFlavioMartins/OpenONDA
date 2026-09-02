@@ -27,6 +27,7 @@ class DirectInduction:
     supports_variable_core_radius = True
     supports_f64 = True
     device_resident = True
+    strength_rate_mode = "PAIRWISE_TRANSPOSED"
 
     def __init__(
         self,

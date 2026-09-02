@@ -8,10 +8,11 @@ import numpy as np
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
+from ..base import StrengthRateMode
 from .diagnostics import FMMDiagnostics
 from .interaction_lists import well_separated
-from .local_expansions import l2l
-from .multipoles import m2m, multipole_velocity, p2m
+from .local_expansions import l2l, m2l
+from .multipoles import m2m, p2m
 from .near_field import p2p_velocity_gradient
 from .tree import FMMNode, FMMTree
 
@@ -39,6 +40,7 @@ class FMMInduction:
     # This reference implementation stages the active prefix through
     # reusable host buffers. It is not a device-resident production backend.
     device_resident = False
+    strength_rate_mode = "HIERARCHICAL_GRADIENT"
 
     def __init__(
         self,
@@ -48,6 +50,7 @@ class FMMInduction:
         kernel: RadialVortexKernel | None = None,
         max_n_particles: int | None = None,
         leaf_capacity: int = 8,
+        strength_rate_mode: StrengthRateMode = "HIERARCHICAL_GRADIENT",
     ) -> None:
         if not 0.0 < float(tolerance) < 1.0:
             raise ValueError("FMM tolerance must lie in (0, 1)")
@@ -59,8 +62,15 @@ class FMMInduction:
         self.physics = None
         self.max_n_particles = int(max_n_particles or 1)
         self.leaf_capacity = int(leaf_capacity)
+        normalized_rate_mode = strength_rate_mode.upper()
+        if normalized_rate_mode != self.strength_rate_mode:
+            raise ValueError(
+                "FMMInduction supports only strength_rate_mode="
+                f"{self.strength_rate_mode}; exact pairwise rates require DirectInduction"
+            )
+        self.strength_rate_mode = normalized_rate_mode
         self.tree = FMMTree(leaf_capacity=self.leaf_capacity)
-        self.diagnostics = FMMDiagnostics()
+        self.diagnostics = FMMDiagnostics(strength_rate_mode=self.strength_rate_mode)
         if physics is not None:
             self.bind(physics)
 
@@ -71,6 +81,7 @@ class FMMInduction:
             kernel=self.kernel,
             max_n_particles=self.max_n_particles,
             leaf_capacity=self.leaf_capacity,
+            strength_rate_mode=self.strength_rate_mode,
         )
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
@@ -129,6 +140,13 @@ class FMMInduction:
             self.diagnostics.last_uncorrected_rate_defect = float(
                 np.linalg.norm(rate_np.sum(axis=0))
             )
+            # Normalize the net-rate defect by the sum of individual rate
+            # magnitudes, which remains meaningful when cancellation is strong.
+            self.diagnostics.last_strength_rate_norm = float(np.linalg.norm(rate_np, axis=1).sum())
+            self.diagnostics.last_relative_rate_defect = (
+                self.diagnostics.last_uncorrected_rate_defect
+                / max(self.diagnostics.last_strength_rate_norm, np.finfo(float).eps)
+            )
             self._write_vector(vortex_strength_rate_out, rate_np)
         else:
             self.physics._zero_vec3_field(vortex_strength_rate_out, count)
@@ -156,97 +174,129 @@ class FMMInduction:
     def _downward_pass(
         self, multipoles: dict[int, dict[str, np.ndarray]]
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Propagate local expansions and evaluate exact near-field leaves."""
+        """Accumulate dual-tree locals, propagate them, and evaluate leaves."""
         count = len(self.tree.position)
         velocity = np.zeros((count, 3), dtype=np.float64)
         gradient = np.zeros((count, 3, 3), dtype=np.float64)
         assert self.tree.root is not None
-        self._resolve_sources(
-            self.tree.nodes[self.tree.root],
-            [self.tree.root],
+        locals_by_node = {index: _zero_local() for index in range(len(self.tree.nodes))}
+        near_pairs: list[tuple[int, int]] = []
+        self._resolve_node_pair(
             multipoles,
-            _zero_local(),
-            velocity,
-            gradient,
+            self.tree.root,
+            self.tree.root,
+            locals_by_node,
+            near_pairs,
         )
+        # FMM local coefficients are evaluated only after a distinct top-down
+        # pass. Nodes are stored preorder, so parents precede their children.
+        for node_index, node in enumerate(self.tree.nodes):
+            for child_index in node.children:
+                child_local = l2l(
+                    locals_by_node[node_index],
+                    self.tree.nodes[child_index].centre - node.centre,
+                )
+                locals_by_node[child_index] = _add_local(locals_by_node[child_index], child_local)
+                self.diagnostics.l2l_operations += 1
+                if (
+                    np.linalg.norm(child_local["value"]) > 0.0
+                    or np.linalg.norm(child_local["gradient"]) > 0.0
+                ):
+                    self.diagnostics.nonzero_l2l_operations += 1
+
+        near_by_target: dict[int, list[int]] = {}
+        for target_index, source_index in near_pairs:
+            near_by_target.setdefault(target_index, []).append(source_index)
+        for target_index, target in enumerate(self.tree.nodes):
+            if target.children:
+                continue
+            self._evaluate_leaf(
+                target_index,
+                target,
+                locals_by_node[target_index],
+                near_by_target.get(target_index, []),
+                velocity,
+                gradient,
+            )
         self.diagnostics.gradient_evaluations += 1
         return velocity, gradient
 
-    def _resolve_sources(
+    def _resolve_node_pair(
         self,
-        target: FMMNode,
-        sources: list[int],
         multipoles: dict[int, dict[str, np.ndarray]],
-        local: dict[str, np.ndarray],
-        velocity: np.ndarray,
-        gradient: np.ndarray,
+        target_index: int,
+        source_index: int,
+        locals_by_node: dict[int, dict[str, np.ndarray]],
+        near_pairs: list[tuple[int, int]],
     ) -> None:
-        """Classify cell pairs, recurse unresolved pairs, then perform L2P/P2P."""
-        far_local = dict(local)
-        unresolved: list[int] = []
-        for source_index in sources:
-            source = self.tree.nodes[source_index]
-            if well_separated(source, target, self.tolerance, self.kernel):
-                far_local = _add_m2l(
-                    far_local,
-                    multipoles[source_index],
-                    source.centre,
-                    target.centre,
-                )
-                self.diagnostics.m2l_interactions += 1
-            else:
-                unresolved.append(source_index)
+        """Resolve one target/source pair with dual-tree descent."""
+        target = self.tree.nodes[target_index]
+        source = self.tree.nodes[source_index]
+        if target_index != source_index and well_separated(
+            source, target, self.tolerance, self.kernel
+        ):
+            locals_by_node[target_index] = _add_local(
+                locals_by_node[target_index],
+                m2l(multipoles[source_index], target.centre - source.centre),
+            )
+            self.diagnostics.m2l_interactions += 1
+            return
 
-        if target.children:
+        if not target.children and not source.children:
+            near_pairs.append((target_index, source_index))
+            return
+
+        if target.children and (not source.children or target.half_width >= source.half_width):
             for child_index in target.children:
-                child = self.tree.nodes[child_index]
-                child_local = l2l(far_local, child.centre - target.centre)
-                self.diagnostics.l2l_operations += 1
-                self._resolve_sources(
-                    child,
-                    unresolved,
+                self._resolve_node_pair(
                     multipoles,
-                    child_local,
-                    velocity,
-                    gradient,
+                    child_index,
+                    source_index,
+                    locals_by_node,
+                    near_pairs,
                 )
             return
 
+        for child_index in source.children:
+            self._resolve_node_pair(
+                multipoles,
+                target_index,
+                child_index,
+                locals_by_node,
+                near_pairs,
+            )
+
+    def _evaluate_leaf(
+        self,
+        target_index: int,
+        target: FMMNode,
+        local: dict[str, np.ndarray],
+        source_node_indices: list[int],
+        velocity: np.ndarray,
+        gradient: np.ndarray,
+    ) -> None:
+        """Evaluate one target leaf's propagated local and exact near pairs."""
         target_indices = target.indices
         target_position = self.tree.position[target_indices]
         near_velocity = np.zeros((len(target_indices), 3), dtype=np.float64)
         near_gradient = np.zeros((len(target_indices), 3, 3), dtype=np.float64)
-        pending = list(unresolved)
-        while pending:
-            source_index = pending.pop()
+        for source_index in source_node_indices:
             source = self.tree.nodes[source_index]
-            if well_separated(source, target, self.tolerance, self.kernel):
-                far_local = _add_m2l(
-                    far_local,
-                    multipoles[source_index],
-                    source.centre,
-                    target.centre,
-                )
-                self.diagnostics.m2l_interactions += 1
-                continue
-            if source.children:
-                pending.extend(source.children)
-                continue
-            source_indices = source.indices
+            particle_indices = source.indices
             source_velocity, source_gradient = p2p_velocity_gradient(
                 self.kernel,
                 target_position,
-                self.tree.position[source_indices],
-                self.tree.vortex_strength[source_indices],
+                self.tree.position[particle_indices],
+                self.tree.vortex_strength[particle_indices],
                 self.tree.core_radius[target_indices],
-                self.tree.core_radius[source_indices],
-                exclude_self=source is target,
+                self.tree.core_radius[particle_indices],
+                exclude_self=source_index == target_index,
             )
             near_velocity += source_velocity
             near_gradient += source_gradient
-            self.diagnostics.p2p_interactions += len(target_indices) * len(source_indices)
+            self.diagnostics.p2p_interactions += len(target_indices) * len(particle_indices)
 
-        far_velocity, far_gradient = _l2p_batch(far_local, target_position - target.centre)
+        far_velocity, far_gradient = _l2p_batch(local, target_position - target.centre)
         velocity[target_indices] += far_velocity + near_velocity
         gradient[target_indices] += far_gradient + near_gradient
         self.diagnostics.l2p_evaluations += len(target_indices)
@@ -278,34 +328,13 @@ def _zero_local() -> dict[str, np.ndarray]:
     }
 
 
-def _add_m2l(
-    local: dict[str, np.ndarray],
-    multipole: dict[str, np.ndarray],
-    source_centre: np.ndarray,
-    target_centre: np.ndarray,
-) -> dict[str, np.ndarray]:
-    """Translate one low-order multipole into a first-order local expansion.
-
-    The coefficients are evaluated at the target-cell centre, propagated by
-    ``L2L``, and consumed by the leaf ``L2P`` evaluation.
-    """
-    displacement = np.asarray(target_centre, dtype=np.float64) - np.asarray(
-        source_centre, dtype=np.float64
-    )
-    value = multipole_velocity(multipole, displacement)
-    radius = max(float(np.linalg.norm(displacement)), np.finfo(float).eps)
-    difference = max(1.0e-7, 1.0e-5 * radius)
-    derivative = np.empty((3, 3), dtype=np.float64)
-    for axis in range(3):
-        offset = np.zeros(3, dtype=np.float64)
-        offset[axis] = difference
-        derivative[:, axis] = (
-            multipole_velocity(multipole, displacement + offset)
-            - multipole_velocity(multipole, displacement - offset)
-        ) / (2.0 * difference)
+def _add_local(left: dict[str, np.ndarray], right: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Add two first-order local expansions coefficient-wise."""
     return {
-        "value": local["value"] + value,
-        "gradient": local["gradient"] + derivative,
+        "value": np.asarray(left["value"], dtype=np.float64)
+        + np.asarray(right["value"], dtype=np.float64),
+        "gradient": np.asarray(left["gradient"], dtype=np.float64)
+        + np.asarray(right["gradient"], dtype=np.float64),
         "displacement": np.zeros(3, dtype=np.float64),
     }
 

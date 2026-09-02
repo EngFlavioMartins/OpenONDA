@@ -14,6 +14,7 @@ import numpy as np
 
 import openonda.coupler as coupling
 import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
@@ -63,10 +64,10 @@ def interval_steps(interval: float, time_step_size: float) -> int:
     return steps
 
 
-FVM_MESH = fvm.CartesianMesher(
-    domain=fvm.BoxDomain(
+FVM_MESH = msh.CartesianMesher(
+    domain=msh.BoxDomain(
         bounds=FVM_DOMAIN,
-        patches=fvm.BoxPatches(
+        patches=msh.BoxPatches(
             xmin="numericalBoundary",
             xmax="numericalBoundary",
             ymin="numericalBoundary",
@@ -75,12 +76,12 @@ FVM_MESH = fvm.CartesianMesher(
             zmax="zmax",
         ),
     ),
-    surfaces=(fvm.STLSurface(CYLINDER_STL, patch="cylinder"),),
+    surfaces=(msh.STLSurface(CYLINDER_STL, patch="cylinder"),),
     max_cell_size=FVM_BACKGROUND_CELL_SIZE,
     boundary_cell_size=FVM_SURFACE_CELL_SIZE,
     min_cell_size=FVM_SURFACE_CELL_SIZE,
     boundary_layers=(
-        fvm.BoundaryLayers(
+        msh.BoundaryLayers(
             patches=("cylinder",),
             layers=8,
             first_cell_height=FVM_FIRST_WALL_CELL_HEIGHT,
