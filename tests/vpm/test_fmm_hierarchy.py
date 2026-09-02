@@ -20,9 +20,7 @@ class _Field:
 
 
 def test_fmm_tree_owns_deterministic_stage_geometry_and_core_metadata():
-    position = np.array(
-        [[-1.0, 0.0, 0.0], [-0.8, 0.0, 0.0], [0.8, 0.0, 0.0], [1.0, 0.0, 0.0]]
-    )
+    position = np.array([[-1.0, 0.0, 0.0], [-0.8, 0.0, 0.0], [0.8, 0.0, 0.0], [1.0, 0.0, 0.0]])
     strength = np.arange(12, dtype=float).reshape(4, 3)
     core_radius = np.array([0.1, 0.2, 0.3, 0.4])
     tree = FMMTree(leaf_capacity=1)
@@ -59,9 +57,12 @@ def test_near_field_p2p_uses_the_shared_radial_kernel_and_excludes_self_pairs():
     )
 
     np.testing.assert_allclose(actual[0], expected)
-    np.testing.assert_allclose(actual[1], kernel.velocity_pair(
-        position[1] - position[0], strength[0], core_radius[1], core_radius[0]
-    ))
+    np.testing.assert_allclose(
+        actual[1],
+        kernel.velocity_pair(
+            position[1] - position[0], strength[0], core_radius[1], core_radius[0]
+        ),
+    )
 
 
 def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path):
@@ -79,7 +80,7 @@ def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path
                 compute_device="CPU",
                 max_n_particles=64,
                 max_evaluation_points=64,
-                induction=FMMInduction(tolerance=1.0e-3),
+                induction=FMMInduction(tolerance=1.0e-3, leaf_capacity=1),
                 viscous=ViscousConfig.inviscid(particle_spacing=0.2),
                 verbose=False,
             ),
@@ -119,7 +120,12 @@ def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path
     error = np.linalg.norm(velocity_fmm.to_numpy() - reference) / np.linalg.norm(reference)
     assert solver.induction.diagnostics.m2l_interactions > 0
     assert error < 2.0e-2
-    np.testing.assert_allclose(rate_fmm.to_numpy(), rate_direct.to_numpy(), rtol=2.0e-6, atol=2.0e-7)
+    rate_error = np.linalg.norm(rate_fmm.to_numpy() - rate_direct.to_numpy()) / np.linalg.norm(
+        rate_direct.to_numpy()
+    )
+    assert rate_error < 5.0e-2
+    assert solver.induction.diagnostics.hierarchical_strength_rates == 1
+    assert solver.induction.diagnostics.direct_strength_rate_fallbacks == 0
 
 
 def test_fmm_velocity_error_decreases_with_tighter_requested_tolerance(tmp_path):
@@ -164,7 +170,9 @@ def test_fmm_velocity_error_decreases_with_tighter_requested_tolerance(tmp_path)
     )
     errors = []
     for tolerance in (1.0e-2, 1.0e-3, 1.0e-4):
-        induction = FMMInduction(solver.physics, tolerance=tolerance, max_n_particles=count)
+        induction = FMMInduction(
+            solver.physics, tolerance=tolerance, max_n_particles=count, leaf_capacity=1
+        )
         velocity = ti.Vector.field(3, dtype=ti.f32, shape=(count,))
         rate = ti.Vector.field(3, dtype=ti.f32, shape=(count,))
         induction.evaluate_stage(

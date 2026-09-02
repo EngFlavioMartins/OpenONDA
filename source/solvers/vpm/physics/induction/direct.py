@@ -18,6 +18,10 @@ class DirectInduction:
     intentionally private to this migration adapter.
     """
 
+    supported_kernels = frozenset(
+        {"GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"}
+    )
+
     def __init__(
         self,
         physics=None,
@@ -31,6 +35,10 @@ class DirectInduction:
         self._strain_rate = None
         if physics is not None:
             self.bind(physics)
+
+    def build(self):
+        """Return a fresh unbound runtime evaluator for an immutable case."""
+        return type(self)(max_n_particles=self.max_n_particles, kernel=self.kernel)
 
     def bind(self, physics, *, kernel: RadialVortexKernel | None = None):
         """Bind this immutable construction object to one physics workspace."""
@@ -57,6 +65,7 @@ class DirectInduction:
         velocity_out,
         vortex_strength_rate_out,
         velocity_gradient_out=None,
+        strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
         """Evaluate one supplied stage without reading accepted particle state."""
@@ -77,18 +86,21 @@ class DirectInduction:
             self.physics._zero_velocity,
             count,
         )
-        for start in range(0, count, 4096):
-            target_count = min(4096, count - start)
-            self.physics.compute_stretching_rate_batch_kernel(
-                position,
-                vortex_strength,
-                core_radius,
-                vortex_strength_rate_out,
-                1,
-                start,
-                target_count,
-                count,
-            )
+        if strength_rate_enabled:
+            for start in range(0, count, 4096):
+                target_count = min(4096, count - start)
+                self.physics.compute_stretching_rate_batch_kernel(
+                    position,
+                    vortex_strength,
+                    core_radius,
+                    vortex_strength_rate_out,
+                    1,
+                    start,
+                    target_count,
+                    count,
+                )
+        else:
+            self.physics._zero_vec3_field(vortex_strength_rate_out, count)
 
         if velocity_gradient_out is not None:
             self.physics.compute_velocity_gradients_kernel(

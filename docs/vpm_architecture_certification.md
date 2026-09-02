@@ -100,13 +100,12 @@ tutorial-schema test files also pass. VPM source Ruff checks and test
 collection pass.
 
 The FMM qualification covers deterministic hierarchy construction, expansion
-helpers, shared-kernel near interactions, tolerance trends, and canonical
-pairwise strength-rate agreement. Its current far-field velocity is a
-first-order singular Biot--Savart multipole path; the canonical strength rate
-and auxiliary gradient remain exact pairwise evaluations. FMM is consequently
-explicit opt-in and is not claimed to outperform the treecode at production
-scale. No 14,080- or 70,200-particle performance certification was performed
-for the new FMM path.
+helpers, shared-kernel near interactions, tolerance trends, and a hierarchical
+strength-rate path with zero direct-fallback count. Its far-field velocity and
+gradient use second-order singular Biot--Savart source moments, while near
+interactions use the shared regularized kernel. FMM remains explicit opt-in
+because this reference evaluator is host-oriented; no 14,080- or
+70,200-particle performance certification was performed for this path.
 
 ## Known validation limits
 

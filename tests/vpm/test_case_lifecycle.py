@@ -23,6 +23,26 @@ def test_public_solver_requires_one_case_construction_object() -> None:
     assert "step" not in inspect.signature(vpm.Numerics).parameters
 
 
+def test_induction_configuration_builds_independent_runtime_evaluators() -> None:
+    for configured in (
+        vpm.DirectInduction(),
+        vpm.TreecodeInduction(theta=0.4),
+        vpm.FMMInduction(tolerance=1.0e-3),
+    ):
+        runtime = configured.build()
+        assert runtime is not configured
+        assert runtime.physics is None
+        assert runtime.method == configured.method
+
+
+def test_numerics_rejects_an_unsupported_treecode_kernel() -> None:
+    with pytest.raises(ValueError, match="does not support particle_kernel=SUPER_GAUSSIAN"):
+        vpm.Numerics(
+            induction=vpm.TreecodeInduction(),
+            particle_kernel="SUPER_GAUSSIAN",
+        )
+
+
 def test_public_namespace_hides_internal_runtime_services() -> None:
     """Only construction/value objects are exposed from ``openonda.vpm``."""
     assert set(vpm.__all__).isdisjoint(

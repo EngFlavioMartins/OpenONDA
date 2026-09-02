@@ -40,7 +40,11 @@ from ..kernels.base import make_vortex_kernel
 from ..numerics.runge_kutta import RungeKutta
 from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
-from ..physics.stage_rhs import ParticleExternalStageContribution, StageRHS
+from ..physics.stage_rhs import (
+    AxisymmetricNoSwirlStageProjection,
+    ParticleExternalStageContribution,
+    StageRHS,
+)
 from ..runtime.backend import initialize_taichi_backend, reset_taichi_backend
 from ..stabilization import StabilizationManager
 from ..stabilization.context import (
@@ -219,7 +223,12 @@ class VPMSolver:
             )
 
         self.integrator_tableau = final_setup.integrator
-        self.induction = final_setup.induction
+        configured_induction = final_setup.induction
+        self.induction = (
+            configured_induction.build()
+            if hasattr(configured_induction, "build")
+            else configured_induction
+        )
         self.compute_device = final_setup.compute_device.upper()
         self.flow_model = final_setup.turbulence.flow_model.upper()
         self.viscous_scheme = final_setup.viscous.scheme
@@ -291,9 +300,18 @@ class VPMSolver:
             max_n_particles=max_p,
             dtype=self.accumulator_dtype,
         )
+        providers = [ParticleExternalStageContribution(self.particles, self.physics, self)]
+        if self.axisymmetric_axis >= 0:
+            providers.append(
+                AxisymmetricNoSwirlStageProjection(
+                    self.physics,
+                    self.particles.zone_id,
+                    self.axisymmetric_axis,
+                )
+            )
         self.stage_rhs = StageRHS(
             self.induction,
-            providers=(ParticleExternalStageContribution(self.particles, self.physics),),
+            providers=tuple(providers),
             strength_enabled=self.flow_model != "POTENTIAL",
         )
 

@@ -26,10 +26,9 @@ conda run -n OpenONDA python -m pytest -q \
   tests/vpm/test_core_numerical_qualification.py
 ```
 
-The FMM currently uses exact pairwise evaluation for the conservative
-vortex-strength rate and the auxiliary gradient.  Its velocity path performs
-exact regularized P2P for near interactions and a first-order singular
-Biot--Savart multipole translation for well-separated cells.  This preserves
-the canonical strength equation while leaving higher-order device translation
-optimization as a separate performance task; FMM is therefore not the default
-`Numerics` induction choice yet.
+The FMM uses exact regularized P2P for near interactions and second-order
+singular Biot--Savart source moments for well-separated cells. Its strength
+rate is contracted from the gradient of that same hierarchical far field; the
+diagnostic counter for direct strength-rate fallbacks must remain zero. The
+reference evaluator is host-oriented and remains an explicit opt-in method
+until a device-resident backend is separately qualified.

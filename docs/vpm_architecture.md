@@ -113,7 +113,10 @@ Permanent regression coverage is listed in
 [VPM induction-method qualification](vpm_induction_qualification.md). Direct
 and treecode stage paths are qualified against independent references; the FMM
 hierarchy, kernel contract, and tolerance trend are covered by focused tests.
-The current FMM velocity far field uses first-order singular Biot--Savart
-multipoles, while its canonical strength rate and auxiliary gradient remain
-exact pairwise evaluations. FMM is therefore retained as an explicit opt-in
-method rather than silently promoted to the default.
+The FMM path executes a deterministic octree with P2M, M2M, M2L, L2L, L2P and
+near-field P2P phases. Its far field retains second-order singular
+Biot--Savart source moments and derives the strength rate from the resulting
+hierarchical velocity gradient; direct strength-rate fallback counters are
+kept at zero. The current reference backend is host-oriented and therefore
+remains explicit opt-in while a device-resident production backend is
+qualified.

@@ -98,6 +98,12 @@ class Numerics:
         if kernel not in valid_kernels:
             raise ValueError(f"particle_kernel must be one of {sorted(valid_kernels)}")
         object.__setattr__(self, "particle_kernel", kernel)
+        supported_kernels = getattr(self.induction, "supported_kernels", None)
+        if supported_kernels is not None and kernel not in supported_kernels:
+            raise ValueError(
+                f"{type(self.induction).__name__} does not support particle_kernel={kernel}; "
+                f"supported kernels: {sorted(supported_kernels)}"
+            )
         object.__setattr__(self, "compute_device", self.compute_device.upper())
         object.__setattr__(self, "precision", self.precision.lower())
         if len(self.freestream_velocity) != 3:

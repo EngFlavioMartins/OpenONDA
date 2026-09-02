@@ -29,6 +29,7 @@ class StageRates:
     velocity: Any
     vortex_strength_rate: Any
     velocity_gradient: Any | None = None
+    strength_rate_enabled: bool = True
 
 
 class InductionMethod(Protocol):
@@ -44,6 +45,7 @@ class InductionMethod(Protocol):
         velocity_out: Any,
         vortex_strength_rate_out: Any,
         velocity_gradient_out: Any | None = None,
+        strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
         """Write velocity, strength rate, and optionally gradient to outputs."""

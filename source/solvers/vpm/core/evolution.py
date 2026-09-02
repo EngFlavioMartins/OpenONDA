@@ -315,6 +315,7 @@ class EvolutionStepper:
                 velocity=self.particles.velocity,
                 vortex_strength_rate=self.physics.dstr_dt_temp,
                 velocity_gradient=self.particles.velocity_gradient,
+                strength_rate_enabled=False,
             ),
         )
 
