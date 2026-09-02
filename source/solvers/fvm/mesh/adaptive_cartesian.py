@@ -10,13 +10,12 @@ require an external mesher.
 Algorithmic lineage and credit
 ------------------------------
 The workflow is inspired by the open-source cfMesh Cartesian mesher by Dr.
-Franjo Juretic and Creative Fields, Ltd.  cfMesh creates an octree template,
-extracts a predominantly hexahedral/polyhedral mesh, maps it to the input
-surface, and optionally creates boundary layers.  This is an independent
-Python implementation of the template/extraction stages; it does not copy
-cfMesh source code. Boundary-layer extrusion currently supports a straight
-z-aligned circular-cylinder STL through a conformal O-grid insert. Other
-curved surfaces retain the projection-based conformal path.
+Franjo Juretic and Creative Fields, Ltd.  cfMesh creates an octree template
+and extracts a predominantly hexahedral/polyhedral mesh.  This is an
+independent Python implementation of the template/extraction stages; it does
+not copy cfMesh source code. Generic patch-normal boundary layers are handled
+by the typed mesher in ``mesh/cartesian`` rather than by this compatibility
+adapter.
 
 Both cfMesh and OpenONDA are distributed under GPL-3.0-or-later.  See
 ``CFMESH_ATTRIBUTION.md`` beside this file for upstream links and the precise
@@ -25,7 +24,7 @@ scope of the adaptation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from fractions import Fraction
 import math
 from math import gcd, lcm
@@ -34,13 +33,6 @@ from typing import cast
 
 import numpy as np
 
-from .boundary_layer import (
-    BoundaryLayerSpec,
-    build_cylinder_layer_mesh,
-    cylinder_interface_bounds,
-    cylinder_transition_layer_count,
-    stitch_boundary_layer,
-)
 from .surface_classification import SurfaceIndex
 from .triangulated_surface import SurfaceBounds as Bounds
 from .triangulated_surface import TriangulatedSurface
@@ -106,6 +98,27 @@ class _IntegerBox:
         )
 
 
+@dataclass(frozen=True)
+class _CompositeIntegerBox:
+    """A set of disjoint lattice-aligned solid boxes."""
+
+    components: tuple[_IntegerBox, ...]
+
+    def expanded(self, amount: int, limits: tuple[int, int, int]) -> _CompositeIntegerBox:
+        return _CompositeIntegerBox(
+            tuple(component.expanded(amount, limits) for component in self.components)
+        )
+
+    def overlaps(self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool:
+        return any(component.overlaps(x0, x1, y0, y1, z0, z1) for component in self.components)
+
+    def contains(self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool:
+        return any(component.contains(x0, x1, y0, y1, z0, z1) for component in self.components)
+
+
+_SolidRegion = _IntegerBox | _CompositeIntegerBox
+
+
 class _SurfaceSolid:
     """Real curved-surface classifier, duck-typed to ``_IntegerBox``'s
     ``contains``/``overlaps`` interface so the octree traversal in
@@ -113,11 +126,16 @@ class _SurfaceSolid:
     """
 
     def __init__(
-        self, index: SurfaceIndex, h_min: float, origin: tuple[float, float, float]
+        self,
+        index: SurfaceIndex,
+        h_min: float,
+        origin: tuple[float, float, float],
+        exclusion_distance: float = 0.0,
     ) -> None:
         self.index = index
         self.h_min = h_min
         self.origin = np.asarray(origin, dtype=np.float64)
+        self.exclusion_distance = exclusion_distance
 
     def _world_bounds(
         self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int
@@ -137,7 +155,24 @@ class _SurfaceSolid:
         # ``overlaps`` still drives full surface refinement; this predicate
         # decides only which side of the interface owns the leaf.
         centre = 0.5 * (lo + hi)
-        return bool(self.index.is_inside(centre[None, :])[0])
+        if bool(self.index.is_inside(centre[None, :])[0]):
+            return True
+        if (
+            self.exclusion_distance > 0.0
+            and self.index.nearest_point(centre)[1] <= self.exclusion_distance
+        ):
+            return True
+        # A body thinner than one finest Cartesian cell may have no cell
+        # centre inside it (a finite wing is the important example).  Remove
+        # finest cells cut by the surface as conservative cut-cell recovery;
+        # coarser intersected cells are refined first by the AABB refinement
+        # region and must not be discarded here.
+        return (
+            x1 - x0 == 1
+            and y1 - y0 == 1
+            and z1 - z0 == 1
+            and self.index.box_intersects_surface(lo, hi)
+        )
 
     def overlaps(self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool:
         lo, hi = self._world_bounds(x0, x1, y0, y1, z0, z1)
@@ -406,10 +441,12 @@ def _conform_wall_to_surface(
     rejected, leaving the point on its original Cartesian lattice position,
     if it would drive any cell referencing that point to a non-positive
     volume or shrink it by more than ``min_volume_ratio`` of its original
-    volume -- cfMesh's real robustness fallback: partial conformance (a small
-    stairstep at that one corner) beats an invalid mesh.
+    volume. The bounded interpolation is recorded as partial recovery, so a
+    caller can distinguish it from a fully mapped wall.
     """
     points = mesh_data["vertex_position"]
+    mesh_scale = max(float(np.ptp(points, axis=0).max()), 1.0)
+    point_quantum = 1.0e-12 * mesh_scale
     cell_vertex_indices = mesh_data.get("cell_vertex_indices")
     if cell_vertex_indices is None:
         return
@@ -417,6 +454,10 @@ def _conform_wall_to_surface(
     faces = np.asarray(mesh_data["faces"])
     first, count = int(wall["start_face"]), int(wall["n_faces"])
     wall_point_ids = np.unique(faces[first : first + count])
+    point_face_ids: dict[int, list[int]] = {}
+    for face_id, face in enumerate(faces):
+        for point_id in face:
+            point_face_ids.setdefault(int(point_id), []).append(face_id)
 
     point_cells: dict[int, list[int]] = {}
     for cell_id, corners in enumerate(cell_vertex_indices):
@@ -424,8 +465,10 @@ def _conform_wall_to_surface(
             point_cells.setdefault(int(corner), []).append(cell_id)
 
     accepted = 0
+    partial_accepted = 0
     rejected_nonpositive = 0
     rejected_volume_ratio = 0
+    rejected_face_collapse = 0
     maximum_requested_displacement = 0.0
     maximum_rejected_displacement = 0.0
     rejection_examples: list[dict] = []
@@ -440,18 +483,63 @@ def _conform_wall_to_surface(
         original = points[point_id].copy()
         requested_displacement = float(np.linalg.norm(target - original))
         maximum_requested_displacement = max(maximum_requested_displacement, requested_displacement)
-        points[point_id] = target
-        after = [_hex_volume(points[cell_vertex_indices[c]]) for c in affected]
-        minimum_after = min(after)
-        minimum_ratio = min(a / b for a, b in zip(after, before, strict=True))
-        if minimum_after <= 0.0 or minimum_ratio < min_volume_ratio:
+
+        def check_candidate(
+            candidate: np.ndarray,
+            point_id: int = int(point_id),
+            affected: list[int] = affected,
+            before: list[float] = before,
+        ) -> tuple[float, float, bool]:
+            points[point_id] = candidate
+            after = [_hex_volume(points[cell_vertex_indices[c]]) for c in affected]
+            minimum_after = min(after)
+            minimum_ratio = min(a / b for a, b in zip(after, before, strict=True))
+            face_invalid = False
+            for face_id in point_face_ids[int(point_id)]:
+                coordinates = points[faces[face_id]]
+                distinct = np.unique(np.rint(coordinates / point_quantum), axis=0)
+                if len(distinct) < 3:
+                    face_invalid = True
+                    break
+                centre = coordinates.mean(axis=0)
+                area_vector = np.zeros(3, dtype=np.float64)
+                for index in range(len(coordinates)):
+                    area_vector += 0.5 * np.cross(
+                        coordinates[index] - centre,
+                        coordinates[(index + 1) % len(coordinates)] - centre,
+                    )
+                if np.linalg.norm(area_vector) <= np.finfo(np.float64).eps * 64.0:
+                    face_invalid = True
+                    break
+            return minimum_after, minimum_ratio, face_invalid
+
+        minimum_after, minimum_ratio, face_invalid = check_candidate(target)
+        if minimum_after <= 0.0 or minimum_ratio < min_volume_ratio or face_invalid:
+            low = 0.0
+            high = 1.0
+            for _ in range(32):
+                fraction = 0.5 * (low + high)
+                candidate = original + fraction * (target - original)
+                trial_after, trial_ratio, trial_invalid = check_candidate(candidate)
+                if trial_after > 0.0 and trial_ratio >= min_volume_ratio and not trial_invalid:
+                    low = fraction
+                else:
+                    high = fraction
+            if low > 1.0e-6:
+                points[point_id] = original + low * (target - original)
+                accepted += 1
+                partial_accepted += 1
+                continue
             points[point_id] = original
             if minimum_after <= 0.0:
                 rejected_nonpositive += 1
                 reason = "nonpositive_volume"
-            else:
+            elif minimum_ratio < min_volume_ratio:
                 rejected_volume_ratio += 1
                 reason = "volume_ratio"
+            else:
+                rejected_face_collapse += 1
+                reason = "face_collapse"
             maximum_rejected_displacement = max(
                 maximum_rejected_displacement, requested_displacement
             )
@@ -473,8 +561,10 @@ def _conform_wall_to_surface(
     mesh_data["mesh_generation"]["surface_projection"] = {
         "attempted_points": int(len(wall_point_ids)),
         "accepted_points": accepted,
+        "partial_accepted_points": partial_accepted,
         "rejected_nonpositive_volume": rejected_nonpositive,
         "rejected_volume_ratio": rejected_volume_ratio,
+        "rejected_face_collapse": rejected_face_collapse,
         "maximum_requested_displacement": maximum_requested_displacement,
         "maximum_rejected_displacement": maximum_rejected_displacement,
         "rejection_examples": rejection_examples,
@@ -516,7 +606,9 @@ def _compact_conformed_topology(mesh_data: dict, *, tolerance: float = 1.0e-12) 
                 compact.append(value)
         if len(compact) < 3:
             raise ValueError(
-                f"Curved-surface projection collapsed face {face_id} to {len(compact)} unique nodes"
+                f"Curved-surface projection collapsed face {face_id} to {len(compact)} "
+                f"unique nodes: original={np.asarray(face).tolist()}, "
+                f"remapped={remapped.tolist()}"
             )
         compact_array = np.asarray(compact, dtype=np.int32)
         coordinates = unique_points[compact_array]
@@ -568,10 +660,6 @@ class AdaptiveCartesianMesher:
     surface_cell_size:
         Requested size in the first fluid-cell layer around the STL surface.
         Refinement coarsens outwards in automatically generated 2:1 bands.
-    boundary_layer:
-        Optional body-fitted wall-normal layers. The current implementation
-        supports a straight z-aligned circular-cylinder STL and joins its
-        O-grid to a lattice-aligned square in the Cartesian mesh.
     refinements:
         Additional box refinements, such as a resolved wake region.
     merge_outer_patch:
@@ -611,9 +699,12 @@ class AdaptiveCartesianMesher:
         max_cell_size: float,
         *,
         surface_file: str | Path | None = None,
+        surface_data: TriangulatedSurface | None = None,
+        exact_surface_components: tuple[Bounds, ...] = (),
+        surface_exclusion_distance: float = 0.0,
+        skip_surface_recovery: bool = False,
         wall_patch_name: str | None = None,
         surface_cell_size: float | None = None,
-        boundary_layer: BoundaryLayerSpec | None = None,
         refinements: tuple[BoxRefinement, ...] = (),
         merge_outer_patch: str | None = None,
         preserve_outer_patches: tuple[str, ...] = (),
@@ -624,24 +715,27 @@ class AdaptiveCartesianMesher:
         _validate_bounds(domain, "domain")
         if not math.isfinite(max_cell_size) or max_cell_size <= 0.0:
             raise ValueError("max_cell_size must be finite and positive")
-        if (surface_file is None) != (wall_patch_name is None):
+        if surface_file is not None and surface_data is not None:
+            raise ValueError("surface_file and surface_data are mutually exclusive")
+        if exact_surface_components and surface_data is None:
+            raise ValueError("exact_surface_components requires surface_data")
+        if not math.isfinite(surface_exclusion_distance) or surface_exclusion_distance < 0.0:
+            raise ValueError("surface_exclusion_distance must be finite and non-negative")
+        if (surface_file is None and surface_data is None) != (wall_patch_name is None):
             raise ValueError("surface_file and wall_patch_name must be supplied together")
-        if surface_file is None and surface_cell_size is not None:
+        if surface_file is None and surface_data is None and surface_cell_size is not None:
             raise ValueError("surface_cell_size requires surface_file")
-        if boundary_layer is not None and (surface_file is None or surface_cell_size is None):
-            raise ValueError("boundary_layer requires surface_file and surface_cell_size")
-        if boundary_layer is not None and not include_cell_vertex_indices:
-            raise ValueError("boundary_layer requires include_cell_vertex_indices=True")
         if wall_patch_name is not None and not wall_patch_name.strip():
             raise ValueError("wall_patch_name must not be empty")
 
         requested_domain: Bounds = cast(Bounds, tuple(float(value) for value in domain))
-        surface = TriangulatedSurface.from_stl(surface_file) if surface_file is not None else None
-        if boundary_layer is not None:
-            boundary_layer.validate()
-            if surface is None or surface.kind != "general":
-                raise ValueError("boundary_layer currently requires a curved cylinder STL")
-            cylinder_interface_bounds(surface, requested_domain, boundary_layer)
+        surface = (
+            surface_data
+            if surface_data is not None
+            else TriangulatedSurface.from_stl(surface_file)
+            if surface_file is not None
+            else None
+        )
         if surface is not None and not surface_may_cross_domain_boundary:
             surface_bounds = surface.bounds
             if not all(
@@ -681,13 +775,9 @@ class AdaptiveCartesianMesher:
             ):
                 raise ValueError(f"{refinement.name} must lie inside domain")
 
-        independent_spanwise_spacing = (
-            boundary_layer is not None and boundary_layer.spanwise_cell_size is not None
-        )
         fitted_max_cell_size = _fitted_background_size(
             requested_domain,
             max_cell_size,
-            axes=(0, 1) if independent_spanwise_spacing else (0, 1, 2),
         )
         requested_sizes = [refinement.cell_size for refinement in refinements]
         if surface_cell_size is not None:
@@ -704,7 +794,7 @@ class AdaptiveCartesianMesher:
                     "body-snapping path was removed and the input body is always "
                     "preserved exactly."
                 )
-            if surface.kind == "box":
+            if surface.kind == "box" and surface_exclusion_distance <= 0.0:
                 resolved = _resolve_preserved_lattice(
                     requested_domain, fitted_max_cell_size, requested_level, surface.bounds
                 )
@@ -745,38 +835,10 @@ class AdaptiveCartesianMesher:
             else fitted_max_cell_size / (2**requested_level)
         )
         self._body_lattice_indices = resolved.body_lattice_indices if resolved is not None else None
-        requested_boundary_layer = boundary_layer
-        if boundary_layer is not None:
-            if surface is None:
-                raise RuntimeError("Boundary-layer surface data are missing")
-            # Treat transition_layers as a requested minimum. A cylinder
-            # O-grid must never bridge its circular wall block to the square
-            # Cartesian collar with a cell taller than the finest lattice
-            # cell. Resolve that invariant here so every AdaptiveCartesianMesher
-            # caller gets the same protection, not only the grid-study helper.
-            boundary_layer_lattice_size = getattr(
-                self,
-                "_boundary_layer_lattice_size_override",
-                self._resolved_h_min,
-            )
-            transition_layers = cylinder_transition_layer_count(
-                surface,
-                requested_domain,
-                boundary_layer_lattice_size,
-                boundary_layer,
-                minimum=boundary_layer.transition_layers,
-            )
-            if transition_layers != boundary_layer.transition_layers:
-                boundary_layer = replace(
-                    boundary_layer,
-                    transition_layers=transition_layers,
-                )
         self.surface = surface
         self.surface_file = str(surface.path) if surface is not None else None
         self.surface_bounds = surface.bounds if surface is not None else None
         self.surface_cell_size = float(surface_cell_size) if surface_cell_size is not None else None
-        self.requested_boundary_layer = requested_boundary_layer
-        self.boundary_layer = boundary_layer
         self.refinements = tuple(refinements)
         self.wall_patch_name = wall_patch_name or ""
         self.merge_outer_patch = merge_outer_patch
@@ -784,6 +846,9 @@ class AdaptiveCartesianMesher:
         self.surface_may_cross_domain_boundary = bool(surface_may_cross_domain_boundary)
         self.include_cell_vertex_indices = include_cell_vertex_indices
         self.preserve_body_geometry = preserve_body_geometry
+        self.exact_surface_components = tuple(exact_surface_components)
+        self.surface_exclusion_distance = float(surface_exclusion_distance)
+        self.skip_surface_recovery = bool(skip_surface_recovery)
 
     def effective_cell_size(self, requested: float) -> float:
         """Return the dyadic size generated for a requested size."""
@@ -809,12 +874,6 @@ class AdaptiveCartesianMesher:
         for axis in range(3):
             extent = self.domain[2 * axis + 1] - self.domain[2 * axis]
             cell_size = self.max_cell_size
-            if (
-                axis == 2
-                and self.boundary_layer is not None
-                and self.boundary_layer.spanwise_cell_size is not None
-            ):
-                cell_size = self.boundary_layer.spanwise_cell_size
             count = int(round(extent / cell_size))
             if count < 1 or not math.isclose(
                 count * cell_size,
@@ -847,11 +906,11 @@ class AdaptiveCartesianMesher:
         h_min: float,
         max_level: int,
         limits: tuple[int, int, int],
-        body_region: _IntegerBox | None,
-    ) -> tuple[tuple[_IntegerBox, int], ...]:
-        regions: list[tuple[_IntegerBox, int]] = []
+        body_region: _SolidRegion | None,
+    ) -> tuple[tuple[_SolidRegion, int], ...]:
+        regions: list[tuple[_SolidRegion, int]] = []
 
-        def add_balanced(box: _IntegerBox, target_level: int, first_padding: int = 0) -> None:
+        def add_balanced(box: _SolidRegion, target_level: int, first_padding: int = 0) -> None:
             current = box.expanded(first_padding, limits) if first_padding else box
             regions.append((current, target_level))
             for level in range(target_level - 1, 0, -1):
@@ -881,8 +940,8 @@ class AdaptiveCartesianMesher:
         self,
         base_counts: tuple[int, int, int],
         max_level: int,
-        solid: _IntegerBox | _SurfaceSolid | None,
-        regions: tuple[tuple[_IntegerBox, int], ...],
+        solid: _SolidRegion | _SurfaceSolid | None,
+        regions: tuple[tuple[_SolidRegion, int], ...],
     ) -> np.ndarray:
         base_width = 2**max_level
         # A Python tuple/list representation costs several times the 20 bytes
@@ -927,7 +986,7 @@ class AdaptiveCartesianMesher:
 
             if (
                 solid is not None
-                and isinstance(solid, _IntegerBox)
+                and isinstance(solid, (_IntegerBox, _CompositeIntegerBox))
                 and solid.overlaps(x0, x1, y0, y1, z0, z1)
             ):
                 # Exact interval/AABB classification: a leaf may touch the body
@@ -937,10 +996,15 @@ class AdaptiveCartesianMesher:
                 # overlap means a body plane is not an exact leaf lattice
                 # plane, which preserved mode must reject rather than silently
                 # keep or remove on a cell-centre test.
-                overlap_x = min(x1, solid.x1) - max(x0, solid.x0)
-                overlap_y = min(y1, solid.y1) - max(y0, solid.y0)
-                overlap_z = min(z1, solid.z1) - max(z0, solid.z0)
-                if overlap_x > 0 and overlap_y > 0 and overlap_z > 0:
+                components = (
+                    solid.components if isinstance(solid, _CompositeIntegerBox) else (solid,)
+                )
+                if any(
+                    min(x1, component.x1) > max(x0, component.x0)
+                    and min(y1, component.y1) > max(y0, component.y0)
+                    and min(z1, component.z1) > max(z0, component.z0)
+                    for component in components
+                ):
                     raise ValueError(
                         "STL surface cuts a leaf cell with positive volume; the body "
                         "was not modified. The preserved-body contract requires every "
@@ -963,323 +1027,6 @@ class AdaptiveCartesianMesher:
             raise ValueError("Meshing configuration removed every fluid cell")
         return leaves[:n_leaves].copy()
 
-    def _build_extruded_leaves(
-        self,
-        base_counts: tuple[int, int],
-        max_level: int,
-        solid: _IntegerBox,
-        regions: tuple[tuple[_IntegerBox, int], ...],
-    ) -> np.ndarray:
-        """Build one adaptive x-y slice for uniform spanwise extrusion."""
-        base_width = 2**max_level
-        capacity = max(1024, math.prod(base_counts))
-        leaves = np.empty((capacity, 4), dtype=np.int32)
-        n_leaves = 0
-
-        def append_leaf(x0: int, y0: int, width: int, level: int) -> None:
-            nonlocal capacity, leaves, n_leaves
-            if n_leaves == capacity:
-                new_capacity = int(capacity * 1.5) + 1
-                grown = np.empty((new_capacity, 4), dtype=np.int32)
-                grown[:n_leaves] = leaves[:n_leaves]
-                leaves = grown
-                capacity = new_capacity
-            leaves[n_leaves] = (x0, y0, width, level)
-            n_leaves += 1
-
-        def overlaps_xy(box: _IntegerBox, x0: int, x1: int, y0: int, y1: int) -> bool:
-            return x0 < box.x1 and x1 > box.x0 and y0 < box.y1 and y1 > box.y0
-
-        def visit(x0: int, y0: int, width: int, level: int) -> None:
-            x1, y1 = x0 + width, y0 + width
-            if x0 >= solid.x0 and x1 <= solid.x1 and y0 >= solid.y0 and y1 <= solid.y1:
-                return
-
-            target = level
-            for region, region_level in regions:
-                if region_level <= target:
-                    break
-                if overlaps_xy(region, x0, x1, y0, y1):
-                    target = region_level
-                    break
-            if level < target:
-                child = width // 2
-                for dy in (0, child):
-                    for dx in (0, child):
-                        visit(x0 + dx, y0 + dy, child, level + 1)
-                return
-
-            overlap_x = min(x1, solid.x1) - max(x0, solid.x0)
-            overlap_y = min(y1, solid.y1) - max(y0, solid.y0)
-            if overlap_x > 0 and overlap_y > 0:
-                raise ValueError(
-                    "Boundary-layer interface cuts an extruded Cartesian leaf; "
-                    "choose lattice-aligned interface bounds"
-                )
-            append_leaf(x0, y0, width, level)
-
-        nx, ny = base_counts
-        for j in range(ny):
-            for i in range(nx):
-                visit(i * base_width, j * base_width, base_width, 0)
-        if not n_leaves:
-            raise ValueError("Meshing configuration removed every fluid cell")
-        return leaves[:n_leaves].copy()
-
-    def _extract_extruded_topology(
-        self,
-        leaves: np.ndarray,
-        max_level: int,
-        limits: tuple[int, int],
-        z_cells: int,
-    ) -> tuple[
-        np.ndarray,
-        np.ndarray,
-        np.ndarray,
-        list[dict],
-        np.ndarray,
-        np.ndarray,
-    ]:
-        """Extrude an adaptive x-y slice into native 3D finite-volume cells."""
-        n_slice_cells = len(leaves)
-        n_cells = n_slice_cells * z_cells
-        nx, ny = limits
-        max_point_code = (nx + 1) * (ny + 1) * (z_cells + 1) - 1
-        code_dtype = np.int32 if max_point_code <= np.iinfo(np.int32).max else np.int64
-        point_strides = (nx + 1, ny + 1)
-
-        level_maps: list[dict[int, int]] = [{} for _ in range(max_level + 1)]
-        for slice_id, (x0, y0, _width, level) in enumerate(leaves):
-            level_maps[int(level)][int(x0) + nx * int(y0)] = slice_id
-
-        def find_cell(x: int, y: int) -> int:
-            if x < 0 or y < 0 or x >= nx or y >= ny:
-                return -1
-            for level in range(max_level, -1, -1):
-                width = 2 ** (max_level - level)
-                ox, oy = (x // width) * width, (y // width) * width
-                found = level_maps[level].get(ox + nx * oy)
-                if found is not None:
-                    return found
-            return -1
-
-        def cell_id(z_index: int, slice_id: int) -> int:
-            return z_index * n_slice_cells + slice_id
-
-        capacity = max(16, int(math.ceil(3.35 * n_cells)))
-        interior_codes = np.empty((capacity, 4), dtype=code_dtype)
-        interior_owners = np.empty(capacity, dtype=np.int32)
-        interior_neighbours = np.empty(capacity, dtype=np.int32)
-        n_interior = 0
-
-        boundary_names = (
-            (self.merge_outer_patch, *self.preserve_outer_patches)
-            if self.merge_outer_patch
-            else OUTER_PATCH_NAMES
-        )
-        patch_codes: dict[str, list[tuple[int, int, int, int]]] = {
-            name: [] for name in boundary_names
-        }
-        patch_owners: dict[str, list[int]] = {name: [] for name in boundary_names}
-        patch_codes[self.wall_patch_name] = []
-        patch_owners[self.wall_patch_name] = []
-
-        def grow() -> None:
-            nonlocal capacity, interior_codes, interior_owners, interior_neighbours
-            new_capacity = int(capacity * 1.35) + 1
-            codes = np.empty((new_capacity, 4), dtype=code_dtype)
-            codes[:capacity] = interior_codes
-            interior_codes = codes
-            owners = np.empty(new_capacity, dtype=np.int32)
-            owners[:capacity] = interior_owners
-            interior_owners = owners
-            neighbours = np.empty(new_capacity, dtype=np.int32)
-            neighbours[:capacity] = interior_neighbours
-            interior_neighbours = neighbours
-            capacity = new_capacity
-
-        def emit_interior(
-            owner: int,
-            neighbour: int,
-            axis: int,
-            coordinate: int,
-            a0: int,
-            a1: int,
-            b0: int,
-            b1: int,
-        ) -> None:
-            nonlocal n_interior
-            if n_interior == capacity:
-                grow()
-            interior_codes[n_interior] = self._face_codes(
-                axis, coordinate, a0, a1, b0, b1, point_strides, True
-            )
-            interior_owners[n_interior] = owner
-            interior_neighbours[n_interior] = neighbour
-            n_interior += 1
-
-        def patch_for(axis: int, positive: bool, coordinate: int) -> str:
-            axis_limit = (nx, ny, z_cells)[axis]
-            if coordinate == (axis_limit if positive else 0):
-                outer_name = OUTER_PATCH_NAMES[2 * axis + int(positive)]
-                if outer_name in self.preserve_outer_patches:
-                    return outer_name
-                return self.merge_outer_patch or outer_name
-            return self.wall_patch_name
-
-        def samples(lo: int, width: int) -> tuple[int, ...]:
-            if width == 1:
-                return (lo,)
-            return (lo + width // 4, lo + 3 * width // 4)
-
-        for z_index in range(z_cells):
-            for slice_id, (x0v, y0v, widthv, levelv) in enumerate(leaves):
-                x0, y0, width, level = map(int, (x0v, y0v, widthv, levelv))
-                x1, y1 = x0 + width, y0 + width
-                owner = cell_id(z_index, slice_id)
-
-                for axis in (0, 1):
-                    lo, hi = (y0, y1) if axis == 0 else (x0, x1)
-                    positive_coordinate = x1 if axis == 0 else y1
-                    neighbour_ids = {
-                        find_cell(positive_coordinate, sample)
-                        if axis == 0
-                        else find_cell(sample, positive_coordinate)
-                        for sample in samples(lo, width)
-                    }
-                    neighbour_ids.discard(-1)
-                    if neighbour_ids:
-                        for neighbour_slice in sorted(neighbour_ids):
-                            nx0, ny0, nw, neighbour_level = map(int, leaves[neighbour_slice])
-                            if abs(level - neighbour_level) > 1:
-                                raise RuntimeError("Extruded refinement transition is not 2:1")
-                            if axis == 0:
-                                a0, a1 = max(y0, ny0), min(y1, ny0 + nw)
-                            else:
-                                a0, a1 = max(x0, nx0), min(x1, nx0 + nw)
-                            emit_interior(
-                                owner,
-                                cell_id(z_index, neighbour_slice),
-                                axis,
-                                positive_coordinate,
-                                a0,
-                                a1,
-                                z_index,
-                                z_index + 1,
-                            )
-                    else:
-                        name = patch_for(axis, True, positive_coordinate)
-                        patch_codes[name].append(
-                            self._face_codes(
-                                axis,
-                                positive_coordinate,
-                                lo,
-                                hi,
-                                z_index,
-                                z_index + 1,
-                                point_strides,
-                                True,
-                            )
-                        )
-                        patch_owners[name].append(owner)
-
-                    negative_coordinate = x0 if axis == 0 else y0
-                    negative_neighbours = {
-                        find_cell(negative_coordinate - 1, sample)
-                        if axis == 0
-                        else find_cell(sample, negative_coordinate - 1)
-                        for sample in samples(lo, width)
-                    }
-                    negative_neighbours.discard(-1)
-                    if not negative_neighbours:
-                        name = patch_for(axis, False, negative_coordinate)
-                        patch_codes[name].append(
-                            self._face_codes(
-                                axis,
-                                negative_coordinate,
-                                lo,
-                                hi,
-                                z_index,
-                                z_index + 1,
-                                point_strides,
-                                False,
-                            )
-                        )
-                        patch_owners[name].append(owner)
-
-                if z_index + 1 < z_cells:
-                    emit_interior(
-                        owner,
-                        cell_id(z_index + 1, slice_id),
-                        2,
-                        z_index + 1,
-                        x0,
-                        x1,
-                        y0,
-                        y1,
-                    )
-                else:
-                    name = patch_for(2, True, z_cells)
-                    patch_codes[name].append(
-                        self._face_codes(2, z_cells, x0, x1, y0, y1, point_strides, True)
-                    )
-                    patch_owners[name].append(owner)
-                if z_index == 0:
-                    name = patch_for(2, False, 0)
-                    patch_codes[name].append(
-                        self._face_codes(2, 0, x0, x1, y0, y1, point_strides, False)
-                    )
-                    patch_owners[name].append(owner)
-
-        face_blocks = [interior_codes[:n_interior]]
-        owner_blocks = [interior_owners[:n_interior]]
-        boundary: list[dict] = []
-        start = n_interior
-        ordered_names = [*boundary_names, self.wall_patch_name]
-        for name in ordered_names:
-            codes = np.asarray(patch_codes[name], dtype=code_dtype).reshape(-1, 4)
-            owners = np.asarray(patch_owners[name], dtype=np.int32)
-            face_blocks.append(codes)
-            owner_blocks.append(owners)
-            boundary.append(
-                {
-                    "name": name,
-                    "start_face": start,
-                    "n_faces": len(codes),
-                    "type": "wall" if name == self.wall_patch_name else "patch",
-                }
-            )
-            start += len(codes)
-
-        def point_code(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> np.ndarray:
-            return x + (nx + 1) * (y + (ny + 1) * z)
-
-        z_index = np.repeat(np.arange(z_cells), n_slice_cells)
-        tiled = np.tile(leaves, (z_cells, 1))
-        x0, y0, width = (tiled[:, index].astype(np.int64) for index in range(3))
-        x1, y1 = x0 + width, y0 + width
-        encoded_cells = np.column_stack(
-            (
-                point_code(x0, y0, z_index),
-                point_code(x1, y0, z_index),
-                point_code(x1, y1, z_index),
-                point_code(x0, y1, z_index),
-                point_code(x0, y0, z_index + 1),
-                point_code(x1, y0, z_index + 1),
-                point_code(x1, y1, z_index + 1),
-                point_code(x0, y1, z_index + 1),
-            )
-        ).astype(code_dtype)
-        levels = np.tile(leaves[:, 3], z_cells).astype(np.int8)
-        return (
-            np.ascontiguousarray(np.vstack(face_blocks), dtype=code_dtype),
-            np.ascontiguousarray(np.concatenate(owner_blocks), dtype=np.int32),
-            np.ascontiguousarray(interior_neighbours[:n_interior], dtype=np.int32),
-            boundary,
-            levels,
-            encoded_cells,
-        )
-
     @staticmethod
     def _face_codes(
         axis: int,
@@ -1291,7 +1038,7 @@ class AdaptiveCartesianMesher:
         strides: tuple[int, int],
         positive: bool,
     ) -> tuple[int, int, int, int]:
-        """Encoded point ring with normal along ``axis`` and sign."""
+        """Encode one axis-aligned face ring with outward orientation."""
         sx, sy = strides
 
         def code(x: int, y: int, z: int) -> int:
@@ -1546,131 +1293,6 @@ class AdaptiveCartesianMesher:
         neighbour_array = np.ascontiguousarray(interior_neighbours[:n_interior], dtype=np.int32)
         return encoded_faces, owners, neighbour_array, boundary, levels
 
-    def _build_spanwise_extruded(
-        self,
-        base_counts: tuple[int, int, int],
-        max_level: int,
-        h_min: float,
-        solid: _IntegerBox,
-        regions: tuple[tuple[_IntegerBox, int], ...],
-    ) -> dict:
-        """Build and validate a full-span cylinder mesh with independent z spacing."""
-        assert self.boundary_layer is not None
-        assert self.boundary_layer.spanwise_cell_size is not None
-        assert self.surface is not None and self._surface_index is not None
-        span = self.domain[5] - self.domain[4]
-        z_value = span / self.boundary_layer.spanwise_cell_size
-        z_cells = int(round(z_value))
-        if z_cells < 1 or not math.isclose(z_value, z_cells, rel_tol=0.0, abs_tol=1.0e-9):
-            raise ValueError("Mesh span must be divisible by boundary-layer spanwise_cell_size")
-
-        base_width = 2**max_level
-        limits_xy = (base_counts[0] * base_width, base_counts[1] * base_width)
-        leaves = self._build_extruded_leaves(base_counts[:2], max_level, solid, regions)
-        encoded_faces, owners, neighbours, boundary, levels, encoded_cells = (
-            self._extract_extruded_topology(leaves, max_level, limits_xy, z_cells)
-        )
-
-        point_codes = np.unique(encoded_faces)
-        faces = np.empty(encoded_faces.shape, dtype=np.int32)
-        for start in range(0, len(encoded_faces), 250_000):
-            stop = min(start + 250_000, len(encoded_faces))
-            faces[start:stop] = np.searchsorted(point_codes, encoded_faces[start:stop]).astype(
-                np.int32
-            )
-        nx, ny = limits_xy
-        sx, sy = nx + 1, ny + 1
-        px = point_codes % sx
-        yz = point_codes // sx
-        py = yz % sy
-        pz = yz // sy
-        points = np.column_stack(
-            (
-                self.domain[0] + px * h_min,
-                self.domain[2] + py * h_min,
-                self.domain[4] + pz * (span / z_cells),
-            )
-        ).astype(np.float64)
-        cell_vertex_indices = np.searchsorted(point_codes, encoded_cells)
-        if np.any(cell_vertex_indices >= len(point_codes)) or not np.array_equal(
-            point_codes[cell_vertex_indices], encoded_cells
-        ):
-            raise RuntimeError("An extruded Cartesian cell corner is absent from face points")
-
-        n_cells = len(levels)
-        mesh_data = {
-            "vertex_position": np.ascontiguousarray(points),
-            "faces": np.ascontiguousarray(faces, dtype=np.int32),
-            "owners": owners,
-            "neighbours": neighbours,
-            "boundary": boundary,
-            "n_cells": n_cells,
-            "n_faces": len(faces),
-            "n_interior_faces": len(neighbours),
-            "n_points": len(points),
-            "cell_levels": levels,
-            "cell_sizes": np.asarray(self.max_cell_size / np.power(2.0, levels), dtype=np.float32),
-            "cell_vertex_indices": np.ascontiguousarray(cell_vertex_indices, dtype=np.int32),
-            "cell_type_code": np.full(n_cells, 5, dtype=np.int32),
-            "mesh_generation": {
-                "method": "spanwise_extruded_adaptive_cartesian",
-                "max_cell_size": self.max_cell_size,
-                "requested_max_cell_size": self.requested_max_cell_size,
-                "finest_cell_size": h_min,
-                "spanwise_cell_size": span / z_cells,
-                "spanwise_cells": z_cells,
-                "max_level": max_level,
-                "base_counts": (*base_counts[:2], z_cells),
-                "requested_domain": self.requested_domain,
-                "effective_domain": self.effective_domain,
-                "padding_per_face": self.padding_per_face,
-                "preserve_body_geometry": self.preserve_body_geometry,
-                "surface_file": self.surface_file,
-                "surface_sha256": self.surface.sha256,
-                "surface_bounds": self.surface_bounds,
-                "surface_triangle_count": len(self.surface.triangles),
-                "wall_patch_name": self.wall_patch_name,
-                "surface_may_cross_domain_boundary": self.surface_may_cross_domain_boundary,
-                "preserve_outer_patches": self.preserve_outer_patches,
-                "attribution": "Inspired by cfMesh cartesianMesh (Franjo Juretic / Creative Fields)",
-            },
-        }
-
-        interface_patch_name = "__boundary_layer_interface__"
-        wall_patch = next(
-            (patch for patch in mesh_data["boundary"] if patch["name"] == self.wall_patch_name),
-            None,
-        )
-        if wall_patch is None:
-            raise RuntimeError("Cartesian boundary-layer interface patch is missing")
-        wall_patch["name"] = interface_patch_name
-        wall_patch["type"] = "patch"
-        layer_mesh = build_cylinder_layer_mesh(
-            self.surface,
-            self._surface_index,
-            self.domain,
-            h_min,
-            self.boundary_layer,
-            self.wall_patch_name,
-            interface_patch_name,
-        )
-        requested_layer = self.requested_boundary_layer
-        layer_mesh["mesh_generation"]["requested_transition_layers"] = (
-            requested_layer.transition_layers if requested_layer is not None else None
-        )
-        layer_mesh["mesh_generation"]["transition_layers_auto_expanded"] = (
-            requested_layer is not None
-            and requested_layer.transition_layers != self.boundary_layer.transition_layers
-        )
-        mesh_data = stitch_boundary_layer(mesh_data, layer_mesh, interface_patch_name)
-        validate_curved_wall_conformance(
-            mesh_data,
-            self.surface.triangles,
-            self.wall_patch_name,
-            surface_clip_bounds=(self.domain if self.surface_may_cross_domain_boundary else None),
-        )
-        return mesh_data
-
     def build(self) -> dict:
         """Generate and return a solver-native ``mesh_data`` dictionary.
 
@@ -1692,28 +1314,11 @@ class AdaptiveCartesianMesher:
         h_min = self.max_cell_size / (2**max_level)
         base_width = 2**max_level
         limits = tuple(count * base_width for count in base_counts)
-        body_region: _IntegerBox | None
-        if self.boundary_layer is not None:
-            if self.surface is None or self._surface_index is None:
-                raise RuntimeError("Boundary-layer surface data are missing")
-            interface_bounds = cylinder_interface_bounds(
-                self.surface, self.domain, self.boundary_layer
+        body_region: _SolidRegion | None
+        if self.exact_surface_components:
+            solid = _CompositeIntegerBox(
+                tuple(self._integer_box(bounds, h_min) for bounds in self.exact_surface_components)
             )
-            for axis in range(3):
-                origin = self.domain[2 * axis]
-                for coordinate in interface_bounds[2 * axis : 2 * axis + 2]:
-                    lattice_coordinate = (coordinate - origin) / h_min
-                    if not math.isclose(
-                        lattice_coordinate,
-                        round(lattice_coordinate),
-                        rel_tol=0.0,
-                        abs_tol=1.0e-9,
-                    ):
-                        raise ValueError(
-                            "Boundary-layer interface is not aligned with the finest "
-                            "Cartesian lattice"
-                        )
-            solid = self._integer_box(interface_bounds, h_min)
             body_region = solid
         elif (
             self.surface_bounds is not None
@@ -1729,16 +1334,24 @@ class AdaptiveCartesianMesher:
             if self.surface_bounds is None:
                 raise RuntimeError("Surface bounds are missing for the curved body")
             origin = (self.domain[0], self.domain[2], self.domain[4])
-            solid = _SurfaceSolid(self._surface_index, h_min, origin)
-            body_region = self._integer_box(self.surface_bounds, h_min)
+            solid = _SurfaceSolid(
+                self._surface_index,
+                h_min,
+                origin,
+                self.surface_exclusion_distance,
+            )
+            body_bounds = self.surface_bounds
+            if self.surface_exclusion_distance > 0.0:
+                distance = self.surface_exclusion_distance
+                body_bounds = tuple(
+                    float(value + (distance if index % 2 else -distance))
+                    for index, value in enumerate(self.surface_bounds)
+                )
+            body_region = self._integer_box(cast(Bounds, body_bounds), h_min)
         else:
             solid = None
             body_region = None
         regions = self._refinement_regions(h_min, max_level, limits, body_region)
-        if self.boundary_layer is not None and self.boundary_layer.spanwise_cell_size is not None:
-            if not isinstance(solid, _IntegerBox):
-                raise RuntimeError("Spanwise extrusion requires a lattice-aligned interface")
-            return self._build_spanwise_extruded(base_counts, max_level, h_min, solid, regions)
         leaves = self._build_leaves(base_counts, max_level, solid, regions)
         encoded_faces, owners, neighbours, boundary, levels = self._extract_topology(
             leaves, max_level, limits
@@ -1835,51 +1448,17 @@ class AdaptiveCartesianMesher:
             mesh_data["cell_vertex_indices"] = cell_vertex_indices
             mesh_data["cell_type_code"] = np.full(len(leaves), 5, dtype=np.int32)
 
-        if self.boundary_layer is not None:
-            if self.surface is None or self._surface_index is None:
-                raise RuntimeError("Boundary-layer surface data are missing")
-            interface_patch_name = "__boundary_layer_interface__"
-            for patch in mesh_data["boundary"]:
-                if patch["name"] == self.wall_patch_name:
-                    patch["name"] = interface_patch_name
-                    patch["type"] = "patch"
-                    break
-            else:
-                raise RuntimeError("Cartesian boundary-layer interface patch is missing")
-            layer_mesh = build_cylinder_layer_mesh(
-                self.surface,
-                self._surface_index,
-                self.domain,
-                h_min,
-                self.boundary_layer,
-                self.wall_patch_name,
-                interface_patch_name,
-            )
-            requested_layer = self.requested_boundary_layer
-            layer_mesh["mesh_generation"]["requested_transition_layers"] = (
-                requested_layer.transition_layers if requested_layer is not None else None
-            )
-            layer_mesh["mesh_generation"]["transition_layers_auto_expanded"] = (
-                requested_layer is not None
-                and requested_layer.transition_layers != self.boundary_layer.transition_layers
-            )
-            mesh_data = stitch_boundary_layer(mesh_data, layer_mesh, interface_patch_name)
-            validate_curved_wall_conformance(
-                mesh_data,
-                self.surface.triangles,
-                self.wall_patch_name,
-                surface_clip_bounds=(
-                    self.domain if self.surface_may_cross_domain_boundary else None
-                ),
-            )
-        elif (
+        if (
             self.surface_bounds is not None
             and self.surface is not None
             and self.surface.kind == "box"
         ):
             validate_no_fluid_solid_overlap(mesh_data, self.surface_bounds)
             _validate_wall_on_surface(mesh_data, self.surface_bounds, self.wall_patch_name)
-        elif self._surface_index is not None:
+        elif self.exact_surface_components:
+            for bounds in self.exact_surface_components:
+                validate_no_fluid_solid_overlap(mesh_data, bounds)
+        elif self._surface_index is not None and not self.skip_surface_recovery:
             if self.surface is None:
                 raise RuntimeError("Surface data are missing for the curved body")
             _conform_wall_to_surface(mesh_data, self._surface_index, self.wall_patch_name)
@@ -1900,595 +1479,6 @@ class AdaptiveCartesianMesher:
         return self.build()
 
 
-class ExplicitCylinderGridMesher(AdaptiveCartesianMesher):
-    """Body-fitted cylinder mesh with an explicit four-zone x-y size layout.
-
-    The regular adaptive Cartesian path chooses refinement from local surface
-    proximity. A convergence exercise also needs identical physical zone
-    boundaries at every resolution, so this specialised extruded mesher
-    constructs an exact ``2h/4h/8h`` outer layout with only 2:1 Cartesian
-    interfaces. The circular O-grid remains exactly conformal to the input STL
-    and grows smoothly to the adjoining ``2h`` body/wake region.
-    """
-
-    def __init__(
-        self,
-        domain: Bounds,
-        *,
-        surface_file: str | Path,
-        wall_patch_name: str,
-        wall_cell_size: float,
-        near_body_half_width: float = 2.0,
-        near_body_wake_xmax: float = 6.0,
-        wake_half_width: float = 4.0,
-        wake_xmin: float = -4.0,
-        wake_xmax: float = 12.0,
-        interface_half_width: float = 4.0 / 3.0,
-        spanwise_cell_size: float = 0.5,
-        boundary_layer: BoundaryLayerSpec | None = None,
-    ) -> None:
-        if not math.isfinite(wall_cell_size) or wall_cell_size <= 0.0:
-            raise ValueError("wall_cell_size must be finite and positive")
-        if not (0.0 < interface_half_width < near_body_half_width < wake_half_width):
-            raise ValueError(
-                "Require 0 < interface_half_width < near_body_half_width < wake_half_width"
-            )
-        if not domain[0] < wake_xmin < -near_body_half_width:
-            raise ValueError("wake_xmin must lie upstream of the near-body region")
-        if not near_body_half_width < near_body_wake_xmax < wake_xmax < domain[1]:
-            raise ValueError(
-                "Require near_body_half_width < near_body_wake_xmax < wake_xmax < domain maximum"
-            )
-        if not math.isfinite(spanwise_cell_size) or spanwise_cell_size <= 0.0:
-            raise ValueError("spanwise_cell_size must be finite and positive")
-
-        self.wall_cell_size = float(wall_cell_size)
-        # The O-grid ends on the 2h body/wake lattice.  Its outer square is
-        # therefore face-for-face conformal with the first refinement region,
-        # while the wall still retains h tangential resolution.
-        self.interface_cell_size = 2.0 * self.wall_cell_size
-        # AdaptiveCartesianMesher's internal dyadic h_min is not used by this
-        # subclass and must not drive its transition-layer safety check.
-        # The O-grid transition is constrained by the lattice it actually
-        # joins: interface_cell_size, not the wall tangential spacing.
-        self._boundary_layer_lattice_size_override = self.interface_cell_size
-        self.near_body_half_width = float(near_body_half_width)
-        self.near_body_wake_xmax = float(near_body_wake_xmax)
-        self.wake_half_width = float(wake_half_width)
-        self.wake_xmin = float(wake_xmin)
-        self.wake_xmax = float(wake_xmax)
-        self.interface_half_width = float(interface_half_width)
-        self.spanwise_cell_size = float(spanwise_cell_size)
-        self.far_field_cell_size = 8.0 * self.wall_cell_size
-        if boundary_layer is None:
-            provisional_layer = BoundaryLayerSpec(
-                first_cell_height=self.wall_cell_size / 16.0,
-                layers=10,
-                growth_ratio=1.18,
-                transition_layers=1,
-                interface_half_width=self.interface_half_width,
-                spanwise_cell_size=self.spanwise_cell_size,
-            )
-            transition_layers = cylinder_transition_layer_count(
-                TriangulatedSurface.from_stl(surface_file),
-                domain,
-                self.interface_cell_size,
-                provisional_layer,
-                minimum=12,
-            )
-            boundary_layer = BoundaryLayerSpec(
-                first_cell_height=provisional_layer.first_cell_height,
-                layers=provisional_layer.layers,
-                growth_ratio=provisional_layer.growth_ratio,
-                transition_layers=transition_layers,
-                interface_half_width=provisional_layer.interface_half_width,
-                spanwise_cell_size=provisional_layer.spanwise_cell_size,
-            )
-        else:
-            boundary_layer.validate()
-            if boundary_layer.interface_half_width is None or not math.isclose(
-                boundary_layer.interface_half_width,
-                self.interface_half_width,
-                rel_tol=0.0,
-                abs_tol=1.0e-12,
-            ):
-                raise ValueError(
-                    "boundary_layer.interface_half_width must match interface_half_width"
-                )
-            if boundary_layer.spanwise_cell_size is None or not math.isclose(
-                boundary_layer.spanwise_cell_size,
-                self.spanwise_cell_size,
-                rel_tol=0.0,
-                abs_tol=1.0e-12,
-            ):
-                raise ValueError("boundary_layer.spanwise_cell_size must match spanwise_cell_size")
-        super().__init__(
-            domain=domain,
-            max_cell_size=self.far_field_cell_size,
-            surface_file=surface_file,
-            wall_patch_name=wall_patch_name,
-            surface_cell_size=self.wall_cell_size,
-            boundary_layer=boundary_layer,
-            surface_may_cross_domain_boundary=True,
-        )
-        if not math.isclose(
-            self.max_cell_size, self.far_field_cell_size, rel_tol=0.0, abs_tol=1.0e-12
-        ):
-            raise ValueError(
-                "The requested domain must tile exactly with the 8*wall_cell_size far field"
-            )
-
-    def _study_index(self, coordinate: float, axis: int) -> int:
-        origin = self.domain[2 * axis]
-        value = (coordinate - origin) / self.wall_cell_size
-        rounded = int(round(value))
-        if not math.isclose(value, rounded, rel_tol=0.0, abs_tol=1.0e-9):
-            raise ValueError(
-                f"Grid-study boundary {coordinate:g} is not aligned with dx={self.wall_cell_size:g}"
-            )
-        return rounded
-
-    def _study_leaves(self) -> tuple[np.ndarray, tuple[int, int], _IntegerBox]:
-        """Tile the exact 2h/4h/8h study regions in the x-y plane."""
-        nx = self._study_index(self.domain[1], 0)
-        ny = self._study_index(self.domain[3], 1)
-        x_wake = self._study_index(self.wake_xmin, 0)
-        x_wake_end = self._study_index(self.wake_xmax, 0)
-        x_near_lo = self._study_index(-self.near_body_half_width, 0)
-        x_near_wake_hi = self._study_index(self.near_body_wake_xmax, 0)
-        y_wake_lo = self._study_index(-self.wake_half_width, 1)
-        y_wake_hi = self._study_index(self.wake_half_width, 1)
-        y_near_lo = self._study_index(-self.near_body_half_width, 1)
-        y_near_hi = self._study_index(self.near_body_half_width, 1)
-        x_interface_lo = self._study_index(-self.interface_half_width, 0)
-        x_interface_hi = self._study_index(self.interface_half_width, 0)
-        y_interface_lo = self._study_index(-self.interface_half_width, 1)
-        y_interface_hi = self._study_index(self.interface_half_width, 1)
-        for value in (
-            x_wake,
-            x_wake_end,
-            x_near_lo,
-            x_near_wake_hi,
-            y_wake_lo,
-            y_wake_hi,
-            y_near_lo,
-            y_near_hi,
-            x_interface_lo,
-            x_interface_hi,
-            y_interface_lo,
-            y_interface_hi,
-        ):
-            if value < 0:
-                raise ValueError("Grid-study regions must remain inside the requested domain")
-        if not (
-            0
-            < x_wake
-            < x_near_lo
-            < x_interface_lo
-            < x_interface_hi
-            < x_near_wake_hi
-            < x_wake_end
-            < nx
-        ):
-            raise ValueError("Invalid x-direction grid-study region ordering")
-        if not (
-            0 < y_wake_lo < y_near_lo < y_interface_lo < y_interface_hi < y_near_hi < y_wake_hi < ny
-        ):
-            raise ValueError("Invalid y-direction grid-study region ordering")
-
-        coverage = np.zeros((ny, nx), dtype=np.int8)
-        leaves: list[tuple[int, int, int, int]] = []
-
-        def tile(x0: int, x1: int, y0: int, y1: int, width: int, level: int) -> None:
-            if x1 <= x0 or y1 <= y0:
-                raise ValueError("Grid-study region has no area")
-            if (x1 - x0) % width or (y1 - y0) % width:
-                raise ValueError(
-                    f"Grid-study region [{x0}:{x1}]x[{y0}:{y1}] does not tile with {width} dx cells"
-                )
-            if np.any(coverage[y0:y1, x0:x1]):
-                raise RuntimeError("Overlapping grid-study refinement regions")
-            coverage[y0:y1, x0:x1] = 1
-            for y0_cell in range(y0, y1, width):
-                for x0_cell in range(x0, x1, width):
-                    leaves.append((x0_cell, y0_cell, width, level))
-
-        # The 8h far field surrounds the resolved wake and receives its
-        # downstream tail after x=wake_xmax. Every Cartesian jump is 2:1.
-        tile(0, x_wake, 0, ny, 8, 0)
-        tile(x_wake, x_wake_end, 0, y_wake_lo, 8, 0)
-        tile(x_wake, x_wake_end, y_wake_hi, ny, 8, 0)
-        tile(x_wake_end, nx, 0, ny, 8, 0)
-
-        # The 4h region resolves the force-producing wake through the last
-        # x=12D convergence sampler without paying that cost to the outlet.
-        # It starts downstream of the elongated 2h body/wake rectangle.
-        tile(x_wake, x_near_lo, y_wake_lo, y_wake_hi, 4, 1)
-        tile(x_near_wake_hi, x_wake_end, y_wake_lo, y_wake_hi, 4, 1)
-        tile(x_near_lo, x_near_wake_hi, y_wake_lo, y_near_lo, 4, 1)
-        tile(x_near_lo, x_near_wake_hi, y_near_hi, y_wake_hi, 4, 1)
-
-        # The body/wake rectangle is intentionally longer downstream. It
-        # reaches x=near_body_wake_xmax before the handoff to the 4h wake grid.
-        tile(x_near_lo, x_interface_lo, y_near_lo, y_near_hi, 2, 2)
-        tile(x_interface_hi, x_near_wake_hi, y_near_lo, y_near_hi, 2, 2)
-        tile(x_interface_lo, x_interface_hi, y_near_lo, y_interface_lo, 2, 2)
-        tile(x_interface_lo, x_interface_hi, y_interface_hi, y_near_hi, 2, 2)
-
-        interface = _IntegerBox(
-            x_interface_lo,
-            x_interface_hi,
-            y_interface_lo,
-            y_interface_hi,
-            0,
-            int(round((self.domain[5] - self.domain[4]) / self.spanwise_cell_size)),
-        )
-        expected_hole = np.zeros_like(coverage, dtype=bool)
-        expected_hole[y_interface_lo:y_interface_hi, x_interface_lo:x_interface_hi] = True
-        if not np.array_equal(coverage == 0, expected_hole):
-            raise RuntimeError("Grid-study tiling leaves gaps outside the cylinder interface")
-        return np.asarray(leaves, dtype=np.int32), (nx, ny), interface
-
-    def _extract_explicit_extruded_topology(
-        self,
-        leaves: np.ndarray,
-        limits: tuple[int, int],
-        z_cells: int,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[dict], np.ndarray, np.ndarray]:
-        """Extrude the explicit x-y cells across conformal 2:1 transitions."""
-        n_slice_cells = len(leaves)
-        n_cells = n_slice_cells * z_cells
-        nx, ny = limits
-        max_point_code = (nx + 1) * (ny + 1) * (z_cells + 1) - 1
-        code_dtype = np.int32 if max_point_code <= np.iinfo(np.int32).max else np.int64
-        point_strides = (nx + 1, ny + 1)
-
-        owner_grid = np.full((ny, nx), -1, dtype=np.int32)
-        for slice_id, (x0v, y0v, widthv, _levelv) in enumerate(leaves):
-            x0, y0, width = int(x0v), int(y0v), int(widthv)
-            if np.any(owner_grid[y0 : y0 + width, x0 : x0 + width] >= 0):
-                raise RuntimeError("Overlapping explicit grid-study cells")
-            owner_grid[y0 : y0 + width, x0 : x0 + width] = slice_id
-
-        def cell_id(z_index: int, slice_id: int) -> int:
-            return z_index * n_slice_cells + slice_id
-
-        capacity = max(16, int(math.ceil(3.8 * n_cells)))
-        interior_codes = np.empty((capacity, 4), dtype=code_dtype)
-        interior_owners = np.empty(capacity, dtype=np.int32)
-        interior_neighbours = np.empty(capacity, dtype=np.int32)
-        n_interior = 0
-
-        boundary_names = (
-            (self.merge_outer_patch, *self.preserve_outer_patches)
-            if self.merge_outer_patch
-            else OUTER_PATCH_NAMES
-        )
-        patch_codes: dict[str, list[tuple[int, int, int, int]]] = {
-            name: [] for name in boundary_names
-        }
-        patch_owners: dict[str, list[int]] = {name: [] for name in boundary_names}
-        patch_codes[self.wall_patch_name] = []
-        patch_owners[self.wall_patch_name] = []
-
-        def grow() -> None:
-            nonlocal capacity, interior_codes, interior_owners, interior_neighbours
-            new_capacity = int(capacity * 1.35) + 1
-            codes = np.empty((new_capacity, 4), dtype=code_dtype)
-            codes[:capacity] = interior_codes
-            interior_codes = codes
-            owners = np.empty(new_capacity, dtype=np.int32)
-            owners[:capacity] = interior_owners
-            interior_owners = owners
-            neighbours = np.empty(new_capacity, dtype=np.int32)
-            neighbours[:capacity] = interior_neighbours
-            interior_neighbours = neighbours
-            capacity = new_capacity
-
-        def emit_interior(
-            owner: int,
-            neighbour: int,
-            axis: int,
-            coordinate: int,
-            a0: int,
-            a1: int,
-            b0: int,
-            b1: int,
-        ) -> None:
-            nonlocal n_interior
-            if n_interior == capacity:
-                grow()
-            interior_codes[n_interior] = self._face_codes(
-                axis, coordinate, a0, a1, b0, b1, point_strides, True
-            )
-            interior_owners[n_interior] = owner
-            interior_neighbours[n_interior] = neighbour
-            n_interior += 1
-
-        def patch_for(axis: int, positive: bool, coordinate: int) -> str:
-            limit = (nx, ny, z_cells)[axis] if positive else 0
-            if coordinate == limit:
-                outer_name = OUTER_PATCH_NAMES[2 * axis + int(positive)]
-                if outer_name in self.preserve_outer_patches:
-                    return outer_name
-                return self.merge_outer_patch or outer_name
-            return self.wall_patch_name
-
-        for z_index in range(z_cells):
-            for slice_id, (x0v, y0v, widthv, _levelv) in enumerate(leaves):
-                x0, y0, width = int(x0v), int(y0v), int(widthv)
-                x1, y1 = x0 + width, y0 + width
-                owner = cell_id(z_index, slice_id)
-
-                for axis in (0, 1):
-                    lo, hi = (y0, y1) if axis == 0 else (x0, x1)
-                    positive_coordinate = x1 if axis == 0 else y1
-                    if positive_coordinate < (nx if axis == 0 else ny):
-                        line = (
-                            owner_grid[lo:hi, positive_coordinate]
-                            if axis == 0
-                            else owner_grid[positive_coordinate, lo:hi]
-                        )
-                        neighbour_ids = np.unique(line[line >= 0])
-                    else:
-                        neighbour_ids = np.empty(0, dtype=np.int32)
-                    if neighbour_ids.size:
-                        for neighbour_slice in neighbour_ids:
-                            nx0, ny0, nw, _nl = map(int, leaves[int(neighbour_slice)])
-                            if axis == 0:
-                                a0, a1 = max(y0, ny0), min(y1, ny0 + nw)
-                            else:
-                                a0, a1 = max(x0, nx0), min(x1, nx0 + nw)
-                            emit_interior(
-                                owner,
-                                cell_id(z_index, int(neighbour_slice)),
-                                axis,
-                                positive_coordinate,
-                                a0,
-                                a1,
-                                z_index,
-                                z_index + 1,
-                            )
-                    else:
-                        name = patch_for(axis, True, positive_coordinate)
-                        patch_codes[name].append(
-                            self._face_codes(
-                                axis,
-                                positive_coordinate,
-                                lo,
-                                hi,
-                                z_index,
-                                z_index + 1,
-                                point_strides,
-                                True,
-                            )
-                        )
-                        patch_owners[name].append(owner)
-
-                    negative_coordinate = x0 if axis == 0 else y0
-                    if negative_coordinate > 0:
-                        line = (
-                            owner_grid[lo:hi, negative_coordinate - 1]
-                            if axis == 0
-                            else owner_grid[negative_coordinate - 1, lo:hi]
-                        )
-                        has_neighbour = bool(np.any(line >= 0))
-                    else:
-                        has_neighbour = False
-                    if not has_neighbour:
-                        name = patch_for(axis, False, negative_coordinate)
-                        patch_codes[name].append(
-                            self._face_codes(
-                                axis,
-                                negative_coordinate,
-                                lo,
-                                hi,
-                                z_index,
-                                z_index + 1,
-                                point_strides,
-                                False,
-                            )
-                        )
-                        patch_owners[name].append(owner)
-
-                if z_index + 1 < z_cells:
-                    emit_interior(
-                        owner,
-                        cell_id(z_index + 1, slice_id),
-                        2,
-                        z_index + 1,
-                        x0,
-                        x1,
-                        y0,
-                        y1,
-                    )
-                else:
-                    name = patch_for(2, True, z_cells)
-                    patch_codes[name].append(
-                        self._face_codes(2, z_cells, x0, x1, y0, y1, point_strides, True)
-                    )
-                    patch_owners[name].append(owner)
-                if z_index == 0:
-                    name = patch_for(2, False, 0)
-                    patch_codes[name].append(
-                        self._face_codes(2, 0, x0, x1, y0, y1, point_strides, False)
-                    )
-                    patch_owners[name].append(owner)
-
-        face_blocks = [interior_codes[:n_interior]]
-        owner_blocks = [interior_owners[:n_interior]]
-        boundary: list[dict] = []
-        start = n_interior
-        for name in [*boundary_names, self.wall_patch_name]:
-            codes = np.asarray(patch_codes[name], dtype=code_dtype).reshape(-1, 4)
-            owners = np.asarray(patch_owners[name], dtype=np.int32)
-            face_blocks.append(codes)
-            owner_blocks.append(owners)
-            boundary.append(
-                {
-                    "name": name,
-                    "start_face": start,
-                    "n_faces": len(codes),
-                    "type": "wall" if name == self.wall_patch_name else "patch",
-                }
-            )
-            start += len(codes)
-
-        def point_code(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> np.ndarray:
-            return x + (nx + 1) * (y + (ny + 1) * z)
-
-        z_index = np.repeat(np.arange(z_cells), n_slice_cells)
-        tiled = np.tile(leaves, (z_cells, 1))
-        x0, y0, width = (tiled[:, index].astype(np.int64) for index in range(3))
-        x1, y1 = x0 + width, y0 + width
-        encoded_cells = np.column_stack(
-            (
-                point_code(x0, y0, z_index),
-                point_code(x1, y0, z_index),
-                point_code(x1, y1, z_index),
-                point_code(x0, y1, z_index),
-                point_code(x0, y0, z_index + 1),
-                point_code(x1, y0, z_index + 1),
-                point_code(x1, y1, z_index + 1),
-                point_code(x0, y1, z_index + 1),
-            )
-        ).astype(code_dtype)
-        levels = np.tile(leaves[:, 3], z_cells).astype(np.int8)
-        return (
-            np.ascontiguousarray(np.vstack(face_blocks), dtype=code_dtype),
-            np.ascontiguousarray(np.concatenate(owner_blocks), dtype=np.int32),
-            np.ascontiguousarray(interior_neighbours[:n_interior], dtype=np.int32),
-            boundary,
-            levels,
-            encoded_cells,
-        )
-
-    def build(self) -> dict:
-        assert self.boundary_layer is not None
-        assert self.surface is not None and self._surface_index is not None
-        leaves, limits_xy, interface = self._study_leaves()
-        span = self.domain[5] - self.domain[4]
-        z_value = span / self.spanwise_cell_size
-        z_cells = int(round(z_value))
-        if z_cells < 1 or not math.isclose(z_value, z_cells, rel_tol=0.0, abs_tol=1.0e-9):
-            raise ValueError("Mesh span must be divisible by spanwise_cell_size")
-        encoded_faces, owners, neighbours, boundary, levels, encoded_cells = (
-            self._extract_explicit_extruded_topology(leaves, limits_xy, z_cells)
-        )
-
-        point_codes = np.unique(encoded_faces)
-        faces = np.searchsorted(point_codes, encoded_faces).astype(np.int32)
-        nx, ny = limits_xy
-        sx, sy = nx + 1, ny + 1
-        px = point_codes % sx
-        yz = point_codes // sx
-        py = yz % sy
-        pz = yz // sy
-        points = np.column_stack(
-            (
-                self.domain[0] + px * self.wall_cell_size,
-                self.domain[2] + py * self.wall_cell_size,
-                self.domain[4] + pz * self.spanwise_cell_size,
-            )
-        ).astype(np.float64)
-        cell_vertex_indices = np.searchsorted(point_codes, encoded_cells).astype(np.int32)
-        if not np.array_equal(point_codes[cell_vertex_indices], encoded_cells):
-            raise RuntimeError("An explicit grid-study cell corner is absent from face points")
-
-        outer = {
-            "vertex_position": np.ascontiguousarray(points),
-            "faces": np.ascontiguousarray(faces),
-            "owners": owners,
-            "neighbours": neighbours,
-            "boundary": boundary,
-            "n_cells": len(levels),
-            "n_faces": len(faces),
-            "n_interior_faces": len(neighbours),
-            "n_points": len(points),
-            "cell_levels": levels,
-            "cell_sizes": np.tile(leaves[:, 2], z_cells).astype(np.float32) * self.wall_cell_size,
-            "cell_vertex_indices": np.ascontiguousarray(cell_vertex_indices),
-            "cell_type_code": np.full(len(levels), 5, dtype=np.int32),
-            "mesh_generation": {
-                "method": "explicit_spanwise_cylinder_grid_study",
-                "max_cell_size": self.far_field_cell_size,
-                "requested_max_cell_size": self.far_field_cell_size,
-                "finest_cell_size": self.wall_cell_size,
-                "requested_domain": self.requested_domain,
-                "effective_domain": self.effective_domain,
-                "wall_cell_size": self.wall_cell_size,
-                "interface_cell_size": self.interface_cell_size,
-                "near_body_cell_size": 2.0 * self.wall_cell_size,
-                "wake_cell_size": 4.0 * self.wall_cell_size,
-                "far_field_cell_size": self.far_field_cell_size,
-                "near_body_bounds": (
-                    -self.near_body_half_width,
-                    self.near_body_wake_xmax,
-                    -self.near_body_half_width,
-                    self.near_body_half_width,
-                ),
-                "wake_bounds": (
-                    self.wake_xmin,
-                    self.wake_xmax,
-                    -self.wake_half_width,
-                    self.wake_half_width,
-                ),
-                "interface_bounds": (
-                    -self.interface_half_width,
-                    self.interface_half_width,
-                    -self.interface_half_width,
-                    self.interface_half_width,
-                ),
-                "spanwise_cell_size": self.spanwise_cell_size,
-                "spanwise_cells": z_cells,
-                "base_counts": (nx, ny, z_cells),
-                "surface_file": self.surface_file,
-                "surface_sha256": self.surface.sha256,
-                "surface_bounds": self.surface_bounds,
-                "surface_triangle_count": len(self.surface.triangles),
-                "wall_patch_name": self.wall_patch_name,
-                "surface_may_cross_domain_boundary": True,
-                "attribution": "Inspired by cfMesh cartesianMesh (Franjo Juretic / Creative Fields)",
-            },
-        }
-        interface_patch_name = "__boundary_layer_interface__"
-        interface_patch = next(
-            (patch for patch in outer["boundary"] if patch["name"] == self.wall_patch_name),
-            None,
-        )
-        if interface_patch is None:
-            raise RuntimeError("Explicit Cartesian boundary-layer interface patch is missing")
-        interface_patch["name"] = interface_patch_name
-        interface_patch["type"] = "patch"
-        layer = build_cylinder_layer_mesh(
-            self.surface,
-            self._surface_index,
-            self.domain,
-            self.interface_cell_size,
-            self.boundary_layer,
-            self.wall_patch_name,
-            interface_patch_name,
-        )
-        requested_layer = self.requested_boundary_layer
-        layer["mesh_generation"]["requested_transition_layers"] = (
-            requested_layer.transition_layers if requested_layer is not None else None
-        )
-        layer["mesh_generation"]["transition_layers_auto_expanded"] = (
-            requested_layer is not None
-            and requested_layer.transition_layers != self.boundary_layer.transition_layers
-        )
-        mesh = stitch_boundary_layer(outer, layer, interface_patch_name)
-        mesh["mesh_generation"].update(outer["mesh_generation"])
-        mesh["mesh_generation"]["method"] = "explicit_spanwise_cylinder_grid_study"
-        validate_curved_wall_conformance(
-            mesh,
-            self.surface.triangles,
-            self.wall_patch_name,
-            surface_clip_bounds=self.domain,
-        )
-        return mesh
-
-
 def adaptive_cartesian_mesh(
     domain: Bounds,
     max_cell_size: float,
@@ -2500,9 +1490,7 @@ def adaptive_cartesian_mesh(
 
 __all__ = [
     "AdaptiveCartesianMesher",
-    "BoundaryLayerSpec",
     "Bounds",
     "BoxRefinement",
-    "ExplicitCylinderGridMesher",
     "adaptive_cartesian_mesh",
 ]

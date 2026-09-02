@@ -1,0 +1,73 @@
+{
+  "configuration": {
+    "domain": [-1.5, 1.5, -1.5, 1.5, -1.5, 1.5],
+    "max_cell_size": 0.5,
+    "boundary_cell_size": 0.25,
+    "min_cell_size": 0.125,
+    "feature_angle_degrees": 35.0,
+    "feature_cell_size": 0.125
+  },
+  "reports": {
+    "rotated_box": {
+      "n_cells": 1600,
+      "n_faces": 5513,
+      "n_boundary_patches": 7,
+      "min_volume": 0.00032215874120532993,
+      "max_non_orthogonality_deg": 89.79117573166982,
+      "max_skewness": 0.6069599055088938,
+      "max_aspect_ratio": 5.076052599999999,
+      "surface_distance_max": 0.15000000004656616,
+      "surface_sha256": "9b3843fd15779a883bb525b2de85d9a0438f6be2291f23971296faa82254f722"
+    },
+    "ellipsoid": {
+      "n_cells": 1640,
+      "n_faces": 5704,
+      "n_boundary_patches": 7,
+      "min_volume": 0.0006399981879362923,
+      "max_non_orthogonality_deg": 46.003249290751995,
+      "max_skewness": 0.44333411003220263,
+      "max_aspect_ratio": 5.910683991738584,
+      "surface_distance_max": 8.326672684688674e-17,
+      "surface_sha256": "8a1ca34bd51f2b6c329be67a0839eb4fbd0c59dff5f0aad26fe9a46308635180"
+    },
+    "torus": {
+      "n_cells": 3432,
+      "n_faces": 11540,
+      "n_boundary_patches": 7,
+      "min_volume": 0.0006635576656782276,
+      "max_non_orthogonality_deg": 55.04903520355966,
+      "max_skewness": 0.22472565882953127,
+      "max_aspect_ratio": 4.231678581566514,
+      "surface_distance_max": 1.3092278833360675e-16,
+      "surface_sha256": "889e4f7b031318aa263bdb71867e7bc3f752f397eb549433542eae5caed995f9"
+    },
+    "finite_naca_wing": {
+      "n_cells": 792,
+      "n_faces": 2875,
+      "n_boundary_patches": 7,
+      "min_volume": 0.000080552407013,
+      "max_non_orthogonality_deg": 50.95927326688954,
+      "max_skewness": 0.3711555699838525,
+      "max_aspect_ratio": 4.2950043613620545,
+      "surface_distance_max": 4.095212244493269e-11,
+      "surface_sha256": "f81e1becdb3c69d5c255ae0b515cf08baa0afb11df9962f7c8fd8b68ab655c5d"
+    },
+    "two_disjoint_bodies": {
+      "n_cells": 1524,
+      "n_faces": 5264,
+      "n_boundary_patches": 8,
+      "min_volume": 0.001953125,
+      "max_non_orthogonality_deg": 25.23940182067897,
+      "max_skewness": 0.1421338109037415,
+      "max_aspect_ratio": 1.2247448713915932,
+      "surface_distance_max": {
+        "body_a": 0.1457737973711325,
+        "body_b": 0.09999999999999998
+      },
+      "surface_sha256": [
+        "fde8b9835d14b2af3cf5f828ed42b49c3c398bb4d697c5bf6a904070a4456a00",
+        "3b78e5d1453f015ab88c7281c285f5113d343831d88de0ac7efe80a84c401884"
+      ]
+    }
+  }
+}

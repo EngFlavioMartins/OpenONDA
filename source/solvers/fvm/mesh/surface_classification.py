@@ -250,7 +250,7 @@ class SurfaceIndex:
                         found.update(bucket.tolist())
         if not found:
             return np.empty(0, dtype=np.int64)
-        return np.fromiter(found, dtype=np.int64)
+        return np.asarray(sorted(found), dtype=np.int64)
 
     def box_intersects_surface(self, box_min: np.ndarray, box_max: np.ndarray) -> bool:
         """True if any triangle has positive-area overlap with the box."""
@@ -295,12 +295,48 @@ class SurfaceIndex:
         return result
 
     def nearest_point(self, point: np.ndarray) -> tuple[np.ndarray, float]:
-        """Closest point on the surface to ``point``, brute force over all triangles."""
+        """Closest point on the surface using expanding indexed candidates."""
+        point = np.asarray(point, dtype=np.float64)
+        if point.shape != (3,) or not np.all(np.isfinite(point)):
+            raise ValueError("point must contain three finite coordinates")
         v0, v1, v2 = self.triangles[:, 0], self.triangles[:, 1], self.triangles[:, 2]
+        span = float(np.max(self.triangles.max(axis=(0, 1)) - self.triangles.min(axis=(0, 1))))
+        radius = max(self.cell_size, np.finfo(np.float64).eps * max(span, 1.0))
+        for _ in range(32):
+            candidate_ids = self.candidate_triangles(point - radius, point + radius)
+            if candidate_ids.size:
+                candidates = closest_point_on_triangles(
+                    point, v0[candidate_ids], v1[candidate_ids], v2[candidate_ids]
+                )
+                distances = np.linalg.norm(candidates - point, axis=1)
+                best = int(np.argmin(distances))
+                distance = float(distances[best])
+                if radius >= distance:
+                    return candidates[best], distance
+            radius *= 2.0
+            if radius > 4.0 * max(span, self.cell_size):
+                break
+
         candidates = closest_point_on_triangles(point, v0, v1, v2)
         distances = np.linalg.norm(candidates - point, axis=1)
         best = int(np.argmin(distances))
         return candidates[best], float(distances[best])
+
+    def classify(self, points: np.ndarray, *, tolerance: float | None = None) -> np.ndarray:
+        """Classify points as outside ``0``, inside ``1``, or on surface ``-1``."""
+        values = np.atleast_2d(np.asarray(points, dtype=np.float64))
+        if values.shape[1] != 3 or not np.all(np.isfinite(values)):
+            raise ValueError("points must have shape (n, 3) and contain finite coordinates")
+        scale = max(float(np.ptp(self.triangles, axis=(0, 1)).max()), 1.0)
+        surface_tolerance = tolerance if tolerance is not None else 1.0e-10 * scale
+        if not np.isfinite(surface_tolerance) or surface_tolerance <= 0.0:
+            raise ValueError("tolerance must be finite and positive")
+        result = np.where(self.is_inside(values), 1, 0).astype(np.int8)
+        for index, point in enumerate(values):
+            _nearest, distance = self.nearest_point(point)
+            if distance <= surface_tolerance:
+                result[index] = -1
+        return result
 
 
 __all__ = [

@@ -11,14 +11,14 @@ from __future__ import annotations
 import csv
 import math
 import os
-
-from assets import mesh_airfoil as mesher
+from pathlib import Path
 
 import openonda.fvm as fvm
 
 # ---- Case definition -----------------------------------------------------
 CASE_NAME = "airfoil_flow"
 CHORD = 1.0  # airfoil chord length [m]
+DEPTH = 0.8  # finite-span extrusion depth [m]
 FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
 DENSITY = 1.0  # fluid density [kg/m^3]
 REYNOLDS_NUMBER = 1000.0
@@ -35,6 +35,36 @@ OUTER_CORRECTORS = 1
 ORTHOGONAL_CORRECTORS = 1
 CONVECTION_SCHEME = "limitedLinear"
 LINEAR_SOLVER = "bicgstab"
+DOMAIN = (-5.0, 15.0, -5.0, 5.0, -0.5, 0.5)
+AIRFOIL_STL = Path(__file__).resolve().parent / "assets" / "airfoil.stl"
+
+
+def create_fvm_mesh() -> fvm.CartesianMesher:
+    """Declare the native surface-driven mesh for the finite wing."""
+    return fvm.CartesianMesher(
+        domain=fvm.BoxDomain(
+            bounds=DOMAIN,
+            patches=fvm.BoxPatches(
+                xmin="inlet",
+                xmax="outlet",
+                ymin="walls",
+                ymax="walls",
+                zmin="frontAndBack",
+                zmax="frontAndBack",
+            ),
+        ),
+        surfaces=(fvm.STLSurface(AIRFOIL_STL, patch="airfoil"),),
+        max_cell_size=1.0,
+        boundary_cell_size=0.03125,
+        min_cell_size=0.03125,
+        refinements=(
+            fvm.BoxRefinement(
+                name="near_airfoil",
+                bounds=(-1.0, 3.0, -1.0, 1.0, -0.4, 0.4),
+                cell_size=0.125,
+            ),
+        ),
+    )
 
 
 def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
@@ -52,7 +82,7 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
         fvm.ForceSampler(
             patch_names=["airfoil"],
             reference_velocity=FREESTREAM_VELOCITY,
-            reference_area=CHORD * mesher.DEPTH,
+            reference_area=CHORD * DEPTH,
             reference_length=CHORD,
             moment_centre=[0.25 * CHORD, 0.0, 0.0],
         )
@@ -124,24 +154,17 @@ def main() -> None:
         0.0,
     ]
 
-    print("\n===== MESH =====")
-    print("---- Generating the airfoil mesh (gmsh) ----")
-    msh_path = os.path.join(case_dir, "assets", "airfoil.msh")
-    mesher.generate_mesh(msh_path)
-
-    print("---- Importing the mesh ----")
-    importer = fvm.GmshImporter()
-    importer.load_mesh(msh_path)
-    mesh_data = importer.get_mesh_data()
-    importer.finalize()
-
     print("\n===== SIMULATION =====")
     fvm_setup = create_fvm_setup(u_vec)
-    fvm_solver = fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh_data)
+    fvm_solver = fvm.create_fvm_solver(
+        fvm_setup,
+        case_dir=case_dir,
+        mesh=create_fvm_mesh(),
+    )
     fvm_solver.run()
 
     sol_dir = os.path.join(case_dir, "solution")
-    os.makedirs(sol_dir, exist_ok=True)
+    Path(sol_dir).mkdir(parents=True, exist_ok=True)
     write_surface_cp(fvm_solver, sol_dir)
 
     print("\n===== DONE =====")

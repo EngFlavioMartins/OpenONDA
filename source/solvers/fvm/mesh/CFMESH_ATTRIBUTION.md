@@ -1,48 +1,24 @@
-# cfMesh algorithmic attribution
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
-OpenONDA's `adaptive_cartesian.py` implements a Python, axis-aligned subset of
-the workflow popularised by the open-source **cfMesh** Cartesian mesher.
+# cfMesh attribution and current-scope note
 
-- Principal cfMesh developer: Dr. Franjo Juretić
-- Original copyright holder: Creative Fields, Ltd.
-- Official open-source project page: <https://cfmesh.com/cfmesh-open-source/>
-- Upstream project: <https://sourceforge.net/projects/cfmesh/>
-- Historical source mirror consulted for scope and workflow:
-  <https://github.com/wyldckat/cfMesh>
-- cfMesh license: GNU GPL version 3 or later
-- OpenONDA license: GNU GPL version 3 or later
+OpenONDA's `CartesianMesher` is an independent, solver-native
+implementation inspired by the openly documented **cfMesh** Cartesian
+workflow. The principal cfMesh developer is Dr. Franjo Juretić and the
+original copyright holder is Creative Fields. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the source links and the
+Phase 0 provenance boundary.
 
-## Scope of the adaptation
+The typed implementation lives in `mesh/cartesian/` and is the production
+path used by the migrated tutorials. `adaptive_cartesian.py`,
+`general_body.py`, and `boundary_layer.py` remain legacy compatibility modules
+recorded by the mesher programme; they are not the public implementation of
+the target API. In particular, the former cylinder-specific O-grid class is no
+longer defined or exported from the solver.
 
-The OpenONDA implementation reproduces the high-level octree-template ideas
-needed by its cube verification cases:
-
-1. reading and validating a closed triangulated STL surface;
-2. dyadic Cartesian refinement;
-3. explicit 2:1 transition bands;
-4. polyhedral coarse/fine interfaces made of coplanar subfaces;
-5. removal of an axis-aligned solid defined by the STL; and
-6. direct construction of OpenONDA's face-based FVM mesh representation;
-7. graded, conformal O-grid boundary layers for extruded cylinders; and
-8. general closed-STL feature classification, surface-normal prismatic-layer
-   advancement, size transition, and solver-native volume-core conversion.
-
-Since the geometry-preserving policy was introduced, the body is the
-authority: the STL body is never snapped, stretched or inflated.  On the exact
-Cartesian-box path, the lattice is resolved so that every body face is an
-exact lattice plane (the finest spacing is refined when the requested spacing
-does not divide a body extent, and the outer domain is padded outward until the
-lattice tiles it). On curved and general-body paths, wall vertices remain on
-the triangulated surface while conformal cells advance into the fluid. The
-mesh is validated at build time so that cells have positive volume and the
-wall patch matches the STL surface. This mirrors cfMesh's core principle that
-the input geometry is preserved while the volume mesh conforms to it.
-
-It is an independent Python implementation and is not a line-by-line
-translation of cfMesh. It does **not** claim file-format or implementation
-compatibility with cfMesh. General-body layer advancement and core filling use
-the in-process Gmsh library API already shipped as an OpenONDA dependency; no
-external mesher executable or intermediate solver case is required. Geometry
-repair, MPI-distributed meshing, and cfMesh's exact optimiser are outside the
-implemented scope. General bodies must be closed, watertight STL surfaces and
-must have adequate layer clearance inside the requested domain.
+The implementation must distinguish architectural inspiration from any
+source translated or adapted directly. No cfMesh source has been copied or
+translated in Phase 0. It must not describe silent partial snapping, Gmsh
+delegation, or cylinder-only layers as a cfMesh robustness behavior. The exact
+upstream study commit and file-level provenance must be added before direct
+translation, if any, is introduced.

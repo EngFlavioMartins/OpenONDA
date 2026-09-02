@@ -25,12 +25,23 @@ from .config import (
 from .core.solver import FVMSolver
 from .core.state import FieldState
 from .factory import create_fvm_solver
-from .mesh.adaptive_cartesian import (
-    AdaptiveCartesianMesher,
-    BoundaryLayerSpec,
+from .mesh.adaptive_cartesian import AdaptiveCartesianMesher
+from .mesh.boundary_layer import BoundaryLayerSpec
+from .mesh.cartesian import (
+    BoundaryLayers,
+    BoxDomain,
+    BoxPatches,
     BoxRefinement,
-    ExplicitCylinderGridMesher,
+    CartesianMesher,
+    CompositeSizeField,
+    ConeRefinement,
+    FeatureRefinement,
+    LineRefinement,
+    SphereRefinement,
+    STLSurface,
 )
+from .mesh.cartesian.report import GenerationReport, SizeReport
+from .mesh.cartesian.size_field import SizeField
 from .mesh.general_body import GeneralBodyMesher
 from .sampling.fields import LineSampler, SurfaceSampler
 from .sampling.forces import (
@@ -46,20 +57,28 @@ __author__ = "OpenONDA Project (translated from uFVM by CFD Group @ AUB)"
 
 __all__ = [
     "AdaptiveCartesianMesher",
+    "BoundaryLayers",
     "BackupConfig",
     "BoundaryLayerSpec",
+    "BoxDomain",
+    "BoxPatches",
     "BoundaryConfig",
     "BoxRefinement",
+    "CartesianMesher",
+    "CompositeSizeField",
     "ComputeConfig",
     "DiscretizationConfig",
     "FVMSetup",
     "FVMSolver",
     "FieldState",
-    "ExplicitCylinderGridMesher",
+    "ConeRefinement",
+    "FeatureRefinement",
     "ForceSampler",
     "GeneralBodyMesher",
+    "GenerationReport",
     "IBMForceSampler",
     "LinearSolveResult",
+    "LineRefinement",
     "LinearSolverConfig",
     "LineSampler",
     "LoggingConfig",
@@ -71,6 +90,10 @@ __all__ = [
     "RunAcceptanceLimits",
     "RunSchedule",
     "StepDiagnostics",
+    "SphereRefinement",
+    "STLSurface",
+    "SizeField",
+    "SizeReport",
     "SurfaceSampler",
     "TimeConfig",
     "TransportConfig",

@@ -1,8 +1,8 @@
 """Coupled LES FVM–VPM simulation of flow past a cube at Re = 1000.
 
-The FVM mesh is generated directly as solver-native data by OpenONDA's
-adaptive Cartesian mesher. No external solver case is used. Both solvers use
-the same equilibrium Smagorinsky coefficients.
+The FVM mesh is generated directly as solver-native data by OpenONDA's native
+surface-driven Cartesian mesher. No external solver case is used. Both
+solvers use the same equilibrium Smagorinsky coefficients.
 
 All case parameters are kept below in one explicit configuration block. Edit
 them here to define a different case.
@@ -124,17 +124,34 @@ TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 10
 CASE_DIR = Path(__file__).resolve().parent
 CUBE_STL = CASE_DIR / "assets" / "cube.stl"
 BODY_STL = str(CUBE_STL)
+CUBE_BOUNDS = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 OFFAXIS_Y = 0.75 * CUBE_SIDE
 SLICE_BOUNDS = [FVM_BOX[0], FVM_BOX[1], FVM_BOX[2], FVM_BOX[3]]
 WAKE_SLICE_BOUNDS = [0.0, 5.0, -1.5, 1.5]
 
-FVM_MESH = fvm.AdaptiveCartesianMesher(
-    domain=FVM_BOX,
-    max_cell_size=SURFACE_CELL_SIZE * 2,
-    surface_file=CUBE_STL,
-    wall_patch_name="cube",
-    surface_cell_size=SURFACE_CELL_SIZE,
-    merge_outer_patch="numericalBoundary",
+FVM_MESH = fvm.CartesianMesher(
+    domain=fvm.BoxDomain(
+        bounds=FVM_BOX,
+        patches=fvm.BoxPatches(
+            xmin="numericalBoundary",
+            xmax="numericalBoundary",
+            ymin="numericalBoundary",
+            ymax="numericalBoundary",
+            zmin="numericalBoundary",
+            zmax="numericalBoundary",
+        ),
+    ),
+    surfaces=(fvm.STLSurface(CUBE_STL, patch="cube"),),
+    max_cell_size=FVM_MAX_CELL_SIZE,
+    boundary_cell_size=SURFACE_CELL_SIZE,
+    min_cell_size=SURFACE_CELL_SIZE,
+    refinements=(
+        fvm.BoxRefinement(
+            name="wakeBox",
+            bounds=FVM_WAKE_BOX,
+            cell_size=SURFACE_CELL_SIZE * 2.0,
+        ),
+    ),
 )
 
 # refinements=(fvm.BoxRefinement(FVM_WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),),
@@ -172,7 +189,7 @@ FVM_SAMPLERS = (
         spacing=SAMPLE_SPACING,
         file_name="fvm_slice_z0",
         schedule=FVM_SAMPLING_SCHEDULE,
-        body_bounds=FVM_MESH.surface_bounds,
+        body_bounds=CUBE_BOUNDS,
     ),
 )
 

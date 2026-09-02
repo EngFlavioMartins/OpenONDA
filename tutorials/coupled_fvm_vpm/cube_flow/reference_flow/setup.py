@@ -87,15 +87,18 @@ SAMPLERS = (
     ),
 )
 
-FVM_MESH = fvm.AdaptiveCartesianMesher(
-    domain=FVM_DOMAIN,
+FVM_MESH = fvm.CartesianMesher(
+    domain=fvm.BoxDomain(
+        bounds=FVM_DOMAIN,
+        patches=fvm.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+    ),
+    surfaces=(fvm.STLSurface(CUBE_STL, patch="cube"),),
     max_cell_size=BACKGROUND_CELL_SIZE,
-    surface_file=CUBE_STL,
-    wall_patch_name="cube",
-    surface_cell_size=SURFACE_CELL_SIZE,
+    boundary_cell_size=SURFACE_CELL_SIZE,
+    min_cell_size=SURFACE_CELL_SIZE,
     refinements=(
-        fvm.BoxRefinement(WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),
-        fvm.BoxRefinement(DOWNSTREAM_WAKE_BOX, SURFACE_CELL_SIZE * 4, "downstreamWakeBox"),
+        fvm.BoxRefinement("wakeBox", WAKE_BOX, SURFACE_CELL_SIZE * 2),
+        fvm.BoxRefinement("downstreamWakeBox", DOWNSTREAM_WAKE_BOX, SURFACE_CELL_SIZE * 4),
     ),
 )
 

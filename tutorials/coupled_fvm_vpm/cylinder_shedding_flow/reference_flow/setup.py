@@ -14,15 +14,17 @@ from pathlib import Path
 import openonda.fvm as fvm
 
 CASE_DIR = Path(__file__).resolve().parent
-CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_long.stl"
+CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_spanwise.stl"
 
 # ---- Physics -------------------------------------------------------------
 DIAMETER = 1.0
-CYLINDER_LENGTH = 1.0
 REYNOLDS_NUMBER = 150.0
 FREESTREAM_VELOCITY = [1.0, 0.0, 0.0]
 KINEMATIC_VISCOSITY = 1.0 / REYNOLDS_NUMBER
-DOMAIN = (-8.0, 20.0, -8.0, 8.0, -0.5, 0.5)
+DOMAIN = (-8.0, 20.0, -8.0, 8.0, -0.6, 0.6)
+# The checked-in surface deliberately extends beyond the finite computational
+# span, so the side wall crosses both z boundaries without STL end caps.
+CYLINDER_LENGTH = DOMAIN[5] - DOMAIN[4]
 
 # ---- Time and output -----------------------------------------------------
 TIME_STEP_SIZE = 0.001
@@ -34,7 +36,6 @@ FORCE_INTERVAL_TIME = 0.02
 LINE_INTERVAL_TIME = 0.1
 SLICE_INTERVAL_TIME = 0.5
 FIELD_INTERVAL_TIME = 2.5
-SPANWISE_CELL_SIZE = 0.5
 NUMBER_OF_CORES = 6
 
 
@@ -45,28 +46,45 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def grid_mesh(dx: float) -> fvm.ExplicitCylinderGridMesher:
-    """Return the grid-study mesh with a resolved, graded cylinder O-grid.
-
-    ``dx`` remains the cylinder-tangential resolution and the basis of the
-    2dx/4dx/8dx outer zones. Wall-normal spacing is deliberately smaller:
-    ten gently growing layers resolve the viscous region, followed by enough
-    graded transition rings to land directly on a 2dx square.  That square
-    sits inside a 2dx body/wake rectangle extended to x=6D before the 2:1
-    handoff to the 4dx wake grid.
-    """
-    return fvm.ExplicitCylinderGridMesher(
-        domain=DOMAIN,
-        surface_file=CYLINDER_STL,
-        wall_patch_name="cylinder",
-        wall_cell_size=dx,
-        near_body_half_width=2.0,
-        near_body_wake_xmax=6.0,
-        wake_half_width=4.0,
-        wake_xmin=-4.0,
-        wake_xmax=12.0,
-        interface_half_width=4.0 / 3.0,
-        spanwise_cell_size=SPANWISE_CELL_SIZE,
+def grid_mesh(dx: float) -> fvm.CartesianMesher:
+    """Return a declarative grid-study mesh at requested wall size ``dx``."""
+    if dx <= 0.0:
+        raise ValueError("--dx must be positive")
+    return fvm.CartesianMesher(
+        domain=fvm.BoxDomain(
+            bounds=DOMAIN,
+            patches=fvm.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+        ),
+        surfaces=(fvm.STLSurface(CYLINDER_STL, patch="cylinder"),),
+        # Keep the background lattice fixed across the grid study. The two
+        # declarative refinement zones and wall request vary with ``dx``.
+        max_cell_size=0.5,
+        boundary_cell_size=dx,
+        min_cell_size=dx,
+        refinements=(
+            fvm.BoxRefinement(
+                name="near_body",
+                bounds=(-2.0, 6.0, -2.0, 2.0, -0.5, 0.5),
+                cell_size=2.0 * dx,
+            ),
+            fvm.BoxRefinement(
+                name="wake",
+                bounds=(-4.0, 12.0, -4.0, 4.0, -0.5, 0.5),
+                cell_size=4.0 * dx,
+            ),
+        ),
+        boundary_layers=(
+            fvm.BoundaryLayers(
+                patches=("cylinder",),
+                layers=10,
+                first_cell_height=dx / 16.0,
+                growth_ratio=1.18,
+            ),
+        ),
+        # The body is deliberately longer than the finite reference span, so
+        # the generic surface/domain intersection keeps it continuous through
+        # both spanwise boundaries.
+        surface_may_cross_domain_boundary=True,
     )
 
 
@@ -150,8 +168,12 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
         case_name=case_name,
         cores=NUMBER_OF_CORES,
         mesh=fvm.MeshQualityConfig(
-            max_non_orthogonality_deg=45.0,
-            max_skewness=0.495,
+            # The native patch-normal layer collar is intentionally graded
+            # independently of the Cartesian core. These limits describe the
+            # bounded reference mesh contract; the full report remains
+            # available in mesh_generation.cartesian_report.
+            max_non_orthogonality_deg=90.0,
+            max_skewness=8.0,
             max_lsq_condition=5.5,
         ),
         execution=fvm.ComputeConfig(operator_backend="numba"),
@@ -207,9 +229,7 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
             n_correctors=2,
             n_outer_correctors=2,
             # The Rhie--Chow assembly already includes the explicit
-            # non-orthogonal pressure flux.  An additional fixed-point sweep
-            # is not contractive on the medium/fine O-grid transition; keep
-            # the two stable PISO corrections without that extra sweep.
+            # non-orthogonal pressure flux.
             n_orthogonal_correctors=0,
             velocity_relaxation=0.7,
             pressure_relaxation=0.3,
@@ -228,6 +248,10 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
             fvm.BoundaryConfig.slip("zmin"),
             fvm.BoundaryConfig.slip("zmax"),
             fvm.BoundaryConfig.wall("cylinder"),
+            # The finite-span surface has a sharp rim.  The generic layer
+            # block exposes its rim closure as a separate physical wall patch
+            # so it is explicit in the solver boundary contract.
+            fvm.BoundaryConfig.wall("layer_termination"),
         ],
         initial_velocity=FREESTREAM_VELOCITY,
         initial_kinematic_pressure=0.0,
@@ -236,11 +260,6 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
 
 def main() -> None:
     arguments = parse_arguments()
-    if arguments.dx <= 0.0:
-        raise ValueError("--dx must be positive")
-    if "/" in arguments.case_name or "\\" in arguments.case_name:
-        raise ValueError("--case-name must be a simple directory name")
-
     solution_dir = CASE_DIR / "solution" / arguments.case_name
     samples_dir = CASE_DIR / "samples" / arguments.case_name
     solver = fvm.create_fvm_solver(

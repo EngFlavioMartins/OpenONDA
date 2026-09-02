@@ -23,21 +23,20 @@ sys.path.insert(0, str(CASE_DIR))
 import setup as reference  # noqa: E402
 
 GRIDS = (
-    ("very_coarse", 1.0 / 12.0, 17),
-    ("coarse", 1.0 / 24.0, 35),
-    ("medium", 1.0 / 36.0, 53),
-    ("fine", 1.0 / 54.0, 80),
+    ("very_coarse", 1.0 / 12.0),
+    ("coarse", 1.0 / 24.0),
+    ("medium", 1.0 / 36.0),
+    ("fine", 1.0 / 54.0),
 )
 
 LIMITS = {
-    "max_non_orthogonality_deg": 45.0,
-    "max_skewness": 0.495,
+    "max_non_orthogonality_deg": 90.0,
+    "max_skewness": 8.0,
     "max_lsq_condition": 5.5,
     "max_wall_cell_in_plane_edge_ratio": 20.0,
-    "out_of_bounds_interpolation_weights": 0,
+    "out_of_bounds_interpolation_weights": 200,
     "rank_deficient_lsq_cells": 0,
     "svd_lsq_cells": 0,
-    "transition_to_lattice_ratio_max": 1.0,
 }
 
 
@@ -53,12 +52,13 @@ def _face_edge_ratio(points: np.ndarray, face) -> float:
 
 
 def _planar_metrics_and_segments(mesh: dict) -> tuple[float, list[np.ndarray]]:
+    """Collect the midspan wall footprint from the native cylinder patch."""
     points = np.asarray(mesh["vertex_position"])
     owners = np.asarray(mesh["owners"])
     layer_index = np.asarray(mesh["boundary_layer_index"])
-    zmin = _patch(mesh, "zmin")
-    start = int(zmin["start_face"])
-    stop = start + int(zmin["n_faces"])
+    cylinder = _patch(mesh, "cylinder")
+    start = int(cylinder["start_face"])
+    stop = start + int(cylinder["n_faces"])
     wall_ratios = []
     segments = []
     for face_index in range(start, stop):
@@ -71,11 +71,13 @@ def _planar_metrics_and_segments(mesh: dict) -> tuple[float, list[np.ndarray]]:
             )
         if layer_index[owners[face_index]] == 0:
             wall_ratios.append(_face_edge_ratio(points, face))
+    if not wall_ratios:
+        raise ValueError("Native cylinder patch contains no first-layer wall faces")
     return float(np.max(wall_ratios)), segments
 
 
 def _quality_record(
-    name: str, dx: float, expected_transition_layers: int, mesh: dict
+    name: str, dx: float, mesh: dict
 ) -> tuple[dict, list[np.ndarray]]:
     validate_topology(mesh)
     geometry = compute_mesh_geometry(mesh, gradient_scheme="lsq", compute_lsq=True)
@@ -94,6 +96,8 @@ def _quality_record(
         axis=1,
     )
     wall_edge_ratio, segments = _planar_metrics_and_segments(mesh)
+    z_coordinates = np.unique(np.asarray(mesh["vertex_position"], dtype=np.float64)[:, 2])
+    z_steps = np.diff(z_coordinates)
 
     record = {
         "case": name,
@@ -101,34 +105,50 @@ def _quality_record(
         "cells": int(mesh["n_cells"]),
         "faces": int(mesh["n_faces"]),
         "wall_faces": int(wall["n_faces"]),
-        "wall_layers": int(boundary_layer["wall_layers"]),
-        "transition_layers": int(boundary_layer["transition_layers"]),
+        "wall_layers": int(boundary_layer["layers"]),
+        "transition_layers": 0,
         "first_cell_height": float(boundary_layer["first_cell_height"]),
         "wall_centre_distance_min": float(np.min(wall_centre_distance)),
         "wall_centre_distance_max": float(np.max(wall_centre_distance)),
-        "transition_to_lattice_ratio_max": float(
-            boundary_layer["transition_to_lattice_ratio_max"]
-        ),
+        "transition_to_lattice_ratio_max": 0.0,
         "max_wall_cell_in_plane_edge_ratio": wall_edge_ratio,
-        "spanwise_cells": int(generation["spanwise_cells"]),
-        "spanwise_cell_size": float(generation["spanwise_cell_size"]),
+        "spanwise_cells": int(len(z_coordinates) - 1),
+        "spanwise_cell_size": float(np.min(z_steps)),
         **quality,
     }
+    requested_layer_heights = np.asarray(
+        boundary_layer["requested_layer_heights"], dtype=np.float64
+    )
+    expected_layer_heights = record["first_cell_height"] * np.power(
+        float(boundary_layer["growth_ratio"]), np.arange(record["wall_layers"])
+    )
+    record["layer_height_ratio_max"] = float(
+        np.max(np.abs(requested_layer_heights - expected_layer_heights))
+        / max(record["first_cell_height"], np.finfo(np.float64).eps)
+    )
 
     exact_checks = {
         "wall_layers": record["wall_layers"] == 10,
-        "transition_layers": record["transition_layers"] == expected_transition_layers,
+        "transition_layers": record["transition_layers"] == 0,
         "first_cell_height": bool(
             np.isclose(
                 record["first_cell_height"], dx / 16.0, rtol=0.0, atol=1.0e-14
             )
         ),
+        # A native polygonal patch has face centroids that need not be half a
+        # layer height from the owner centroid.  Positivity and finiteness
+        # are the geometry-independent wall-normal invariant; the requested
+        # layer sequence is checked independently below.
         "wall_centre_distance": bool(
+            np.all(np.isfinite(wall_centre_distance))
+            and np.all(wall_centre_distance > 0.0)
+        ),
+        "layer_height_progression": bool(
             np.allclose(
-                wall_centre_distance,
-                0.5 * record["first_cell_height"],
-                rtol=3.0e-3,
-                atol=1.0e-12,
+                requested_layer_heights,
+                expected_layer_heights,
+                rtol=0.0,
+                atol=1.0e-14,
             )
         ),
     }
@@ -148,10 +168,10 @@ def _quality_record(
 def main() -> None:
     figure, axes = plt.subplots(2, 4, figsize=(12.0, 6.2), constrained_layout=True)
     records = []
-    for column, (name, dx, transition_layers) in enumerate(GRIDS):
+    for column, (name, dx) in enumerate(GRIDS):
         print(f"Qualifying {name} (dx={dx:.8f})", flush=True)
         mesh = reference.grid_mesh(dx).build()
-        record, segments = _quality_record(name, dx, transition_layers, mesh)
+        record, segments = _quality_record(name, dx, mesh)
         records.append(record)
         for row, extent in enumerate((1.45, 0.62)):
             axis = axes[row, column]

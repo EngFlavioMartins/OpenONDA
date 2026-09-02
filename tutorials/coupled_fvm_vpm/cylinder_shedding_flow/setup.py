@@ -30,7 +30,9 @@ KINEMATIC_VISCOSITY = 1.0 / REYNOLDS_NUMBER
 REFERENCE_AREA = DIAMETER * CYLINDER_LENGTH
 
 # ---- Domains -------------------------------------------------------------
-FVM_DOMAIN = (-3.0, 4.5, -3.5, 3.5, -2.0, 2.0)
+# The supplied finite surface spans z=-6..6; the typed mesher requires the
+# geometric authority to be strictly inside its outer domain.
+FVM_DOMAIN = (-3.0, 4.5, -3.5, 3.5, -6.25, 6.25)
 TRANSFER_REGION = (-2.75, 4.25, -3.25, 3.25, -1.5, 1.5)
 VPM_DOMAIN = (-8.0, 20.0, -8.0, 8.0, -4.0, 4.0)
 
@@ -45,11 +47,10 @@ FIELD_INTERVAL_TIME = 2.5
 
 # Medium adaptive FVM mesh. D/32 is the next exact dyadic level below the
 # former D/16 coarse mesh; the wall-normal resolution follows the same
-# resolved O-grid policy as the standalone reference-flow grid study.
+# generic patch-normal layer policy as the standalone reference-flow study.
 FVM_BACKGROUND_CELL_SIZE = 0.5
 FVM_SURFACE_CELL_SIZE = 1.0 / 32.0
 FVM_FIRST_WALL_CELL_HEIGHT = FVM_SURFACE_CELL_SIZE / 32.0
-FVM_SPANWISE_CELL_SIZE = 0.5
 VPM_PARTICLE_SPACING = 1.0 / 16.0
 SAMPLE_SPACING = 1.0 / 16.0
 VPM_PARTICLE_LIMIT = 750_000
@@ -62,25 +63,30 @@ def interval_steps(interval: float, time_step_size: float) -> int:
     return steps
 
 
-FVM_MESH = fvm.AdaptiveCartesianMesher(
-    domain=FVM_DOMAIN,
-    max_cell_size=FVM_BACKGROUND_CELL_SIZE,
-    surface_file=CYLINDER_STL,
-    wall_patch_name="cylinder",
-    surface_cell_size=FVM_SURFACE_CELL_SIZE,
-    boundary_layer=fvm.BoundaryLayerSpec(
-        first_cell_height=FVM_FIRST_WALL_CELL_HEIGHT,
-        layers=8,
-        growth_ratio=1.22,
-        # This is a minimum. AdaptiveCartesianMesher adds enough rings to
-        # guarantee that no square-to-cylinder transition step exceeds h.
-        transition_layers=12,
-        interface_half_width=0.75,
-        spanwise_cell_size=FVM_SPANWISE_CELL_SIZE,
+FVM_MESH = fvm.CartesianMesher(
+    domain=fvm.BoxDomain(
+        bounds=FVM_DOMAIN,
+        patches=fvm.BoxPatches(
+            xmin="numericalBoundary",
+            xmax="numericalBoundary",
+            ymin="numericalBoundary",
+            ymax="numericalBoundary",
+            zmin="zmin",
+            zmax="zmax",
+        ),
     ),
-    surface_may_cross_domain_boundary=True,
-    merge_outer_patch="numericalBoundary",
-    preserve_outer_patches=("zmin", "zmax"),
+    surfaces=(fvm.STLSurface(CYLINDER_STL, patch="cylinder"),),
+    max_cell_size=FVM_BACKGROUND_CELL_SIZE,
+    boundary_cell_size=FVM_SURFACE_CELL_SIZE,
+    min_cell_size=FVM_SURFACE_CELL_SIZE,
+    boundary_layers=(
+        fvm.BoundaryLayers(
+            patches=("cylinder",),
+            layers=8,
+            first_cell_height=FVM_FIRST_WALL_CELL_HEIGHT,
+            growth_ratio=1.22,
+        ),
+    ),
 )
 
 FVM_FORCE_SCHEDULE = fvm.RunSchedule(

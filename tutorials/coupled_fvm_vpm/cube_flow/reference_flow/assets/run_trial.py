@@ -96,18 +96,25 @@ def _samplers(force_interval: float, line_interval: float):
 
 
 def _mesh(surface_cell_size: float, background_cell_size: float):
-    return case.fvm.AdaptiveCartesianMesher(
-        domain=case.FVM_DOMAIN,
+    return case.fvm.CartesianMesher(
+        domain=case.fvm.BoxDomain(
+            bounds=case.FVM_DOMAIN,
+            patches=case.fvm.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+        ),
+        surfaces=(case.fvm.STLSurface(case.CUBE_STL, patch="cube"),),
         max_cell_size=background_cell_size,
-        surface_file=case.CUBE_STL,
-        wall_patch_name="cube",
-        surface_cell_size=surface_cell_size,
+        boundary_cell_size=surface_cell_size,
+        min_cell_size=surface_cell_size,
         refinements=(
-            case.fvm.BoxRefinement(case.WAKE_BOX, surface_cell_size * 2.0, "wakeBox"),
             case.fvm.BoxRefinement(
-                case.DOWNSTREAM_WAKE_BOX,
-                surface_cell_size * 4.0,
-                "downstreamWakeBox",
+                name="wakeBox",
+                bounds=case.WAKE_BOX,
+                cell_size=surface_cell_size * 2.0,
+            ),
+            case.fvm.BoxRefinement(
+                name="downstreamWakeBox",
+                bounds=case.DOWNSTREAM_WAKE_BOX,
+                cell_size=surface_cell_size * 4.0,
             ),
         ),
     )

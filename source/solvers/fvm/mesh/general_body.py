@@ -179,8 +179,8 @@ class GeneralBodyMesher:
     surface_cell_size:
         Target tangential cell size at the body.
     boundary_layer:
-        First height, layer count and geometric growth.  Cylinder-only fields
-        ``interface_half_width`` and ``spanwise_cell_size`` must be omitted.
+        First height, layer count, geometric growth, and generic transition
+        count for the compatibility Gmsh path.
     refinements:
         Optional cfMesh-style box refinements in the volume.
     """
@@ -213,11 +213,6 @@ class GeneralBodyMesher:
             raise ValueError("core_algorithm must be Gmsh Delaunay (1), Frontal (4), or HXT (10)")
 
         boundary_layer.validate()
-        if boundary_layer.interface_half_width is not None:
-            raise ValueError("GeneralBodyMesher does not use cylinder interface_half_width")
-        if boundary_layer.spanwise_cell_size is not None:
-            raise ValueError("GeneralBodyMesher does not use cylinder spanwise_cell_size")
-
         surface = TriangulatedSurface.from_stl(surface_file)
         body_min = np.asarray(surface.bounds[::2], dtype=np.float64)
         body_max = np.asarray(surface.bounds[1::2], dtype=np.float64)

@@ -111,67 +111,6 @@ def test_general_body_mesher_builds_complete_prismatic_wall_layers():
     assert quality["max_non_orthogonality_deg"] < 75.0
 
 
-def test_explicit_cylinder_defaults_are_a_resolved_boundary_layer():
-    from source.solvers.fvm.mesh.adaptive_cartesian import ExplicitCylinderGridMesher
-
-    cylinder_stl = (
-        REPOSITORY_ROOT
-        / "tutorials"
-        / "coupled_fvm_vpm"
-        / "cylinder_shedding_flow"
-        / "assets"
-        / "cylinder_long.stl"
-    )
-    for dx, expected_transition_layers in (
-        (1.0 / 12.0, 17),
-        (1.0 / 24.0, 35),
-        (1.0 / 36.0, 53),
-        (1.0 / 48.0, 71),
-        (1.0 / 54.0, 80),
-    ):
-        mesher = ExplicitCylinderGridMesher(
-            domain=(-8.0, 20.0, -8.0, 8.0, -2.0, 2.0),
-            surface_file=cylinder_stl,
-            wall_patch_name="cylinder",
-            wall_cell_size=dx,
-        )
-
-        layer = mesher.boundary_layer
-        assert layer is not None
-        assert layer.first_cell_height == dx / 16.0
-        assert layer.layers == 10
-        assert layer.growth_ratio == 1.18
-        assert layer.transition_layers == expected_transition_layers
-
-
-def test_explicit_cylinder_grid_has_only_smooth_dyadic_cartesian_transitions():
-    from collections import Counter
-
-    from source.solvers.fvm.mesh.adaptive_cartesian import ExplicitCylinderGridMesher
-
-    cylinder_stl = (
-        REPOSITORY_ROOT
-        / "tutorials"
-        / "coupled_fvm_vpm"
-        / "cylinder_shedding_flow"
-        / "assets"
-        / "cylinder_long.stl"
-    )
-    mesher = ExplicitCylinderGridMesher(
-        domain=(-8.0, 20.0, -8.0, 8.0, -0.5, 0.5),
-        surface_file=cylinder_stl,
-        wall_patch_name="cylinder",
-        wall_cell_size=1.0 / 24.0,
-    )
-    leaves, _limits, _interface = mesher._study_leaves()
-
-    assert mesher.wake_xmax == 12.0
-    assert mesher.near_body_wake_xmax == 6.0
-    assert mesher.interface_cell_size == 2.0 / 24.0
-    assert mesher.far_field_cell_size == 8.0 / 24.0
-    assert Counter(leaves[:, 2].tolist()) == {2: 3584, 4: 3456, 8: 2880}
-
-
 def test_general_body_mesher_handles_non_axis_aligned_facets(tmp_path):
     surface_file = tmp_path / "octahedron.stl"
     _write_octahedron_stl(surface_file)
