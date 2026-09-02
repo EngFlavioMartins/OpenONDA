@@ -155,8 +155,10 @@ def _zero_stage_field(field: ti.template(), count: ti.i32):
 
 def _stage_array(field, count: int, physics=None) -> np.ndarray:
     """Return a bounded NumPy view/copy for host-side external providers."""
-    if physics is not None and hasattr(field, "to_numpy") and hasattr(
-        physics, "_download_vector_field"
+    if (
+        physics is not None
+        and hasattr(field, "to_numpy")
+        and hasattr(physics, "_download_vector_field")
     ):
         return physics._download_vector_field(field, count).astype(np.float64, copy=False)
     values = field.to_numpy() if hasattr(field, "to_numpy") else np.asarray(field)
@@ -165,8 +167,10 @@ def _stage_array(field, count: int, physics=None) -> np.ndarray:
 
 def _accumulate_stage_array(field, values: np.ndarray, count: int, physics=None) -> None:
     """Accumulate a host provider result into NumPy or Taichi output storage."""
-    if physics is not None and hasattr(field, "to_numpy") and hasattr(
-        physics, "_download_vector_field"
+    if (
+        physics is not None
+        and hasattr(field, "to_numpy")
+        and hasattr(physics, "_download_vector_field")
     ):
         if values.ndim == 2 and values.shape[1] == 3:
             stored = physics._download_vector_field(field, count)
