@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 import math
 
 import numpy as np
@@ -126,18 +127,26 @@ class RadialVortexKernel:
 
     def near_field_cutoff(self, core_radius: float, tolerance: float) -> float:
         """Return a conservative physical near-field radius for ``tolerance``."""
-        if core_radius <= 0.0 or not 0.0 < tolerance < 1.0:
-            raise ValueError("core_radius must be positive and tolerance must lie in (0, 1)")
-        low, high = 0.0, 1.0
-        while float(np.max(self.far_field_error(high))) > tolerance and high < 1.0e6:
-            high *= 2.0
-        for _ in range(64):
-            middle = 0.5 * (low + high)
-            if float(np.max(self.far_field_error(middle))) > tolerance:
-                low = middle
-            else:
-                high = middle
-        return float(core_radius * high)
+        return _cached_near_field_cutoff(self, float(core_radius), float(tolerance))
+
+
+@lru_cache(maxsize=512)
+def _cached_near_field_cutoff(
+    kernel: RadialVortexKernel, core_radius: float, tolerance: float
+) -> float:
+    """Cache scalar kernel cutoff solves without retaining mutable instances."""
+    if core_radius <= 0.0 or not 0.0 < tolerance < 1.0:
+        raise ValueError("core_radius must be positive and tolerance must lie in (0, 1)")
+    low, high = 0.0, 1.0
+    while float(np.max(kernel.far_field_error(high))) > tolerance and high < 1.0e6:
+        high *= 2.0
+    for _ in range(64):
+        middle = 0.5 * (low + high)
+        if float(np.max(kernel.far_field_error(middle))) > tolerance:
+            low = middle
+        else:
+            high = middle
+    return float(core_radius * high)
 
 
 def _erf(values: np.ndarray) -> np.ndarray:
