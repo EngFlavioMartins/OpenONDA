@@ -1,0 +1,15 @@
+{
+  "bound_circulation_history_relative_difference": 0.019576672057743858,
+  "integrated_force_coefficient_relative_difference": 0.007932793602671448,
+  "final_wake_centroid_distance": 0.0018944185749298565,
+  "wake_centroid_tolerance": 0.1,
+  "fmm_maximum_rate_defect": 0.00016198048427340013,
+  "circulation_gate_passed": true,
+  "force_gate_passed": true,
+  "centroid_gate_passed": true,
+  "fmm_wake_insertion_passed": true,
+  "fmm_zero_host_transfer_passed": true,
+  "fmm_zero_fallback_passed": true,
+  "fmm_scheduled_output_passed": true,
+  "comparison_gate_passed": true
+}

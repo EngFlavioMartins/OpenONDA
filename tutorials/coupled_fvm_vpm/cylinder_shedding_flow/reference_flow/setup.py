@@ -15,7 +15,7 @@ import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
 CASE_DIR = Path(__file__).resolve().parent
-CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_spanwise.stl"
+CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_long.stl"
 
 # ---- Physics -------------------------------------------------------------
 DIAMETER = 1.0

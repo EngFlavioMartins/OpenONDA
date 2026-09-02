@@ -125,6 +125,30 @@ class RadialVortexKernel:
         """Estimate regularization error relative to the singular far field."""
         return np.abs(self.q_infinity - self.q(rho))
 
+    def gradient_far_field_error(self, rho):
+        """Estimate the radial gradient-coefficient error in the far field."""
+        rho = np.asarray(rho, dtype=np.float64)
+        regularized = 3.0 * self.q(rho) - self.zeta(rho) * rho**3
+        return np.abs(3.0 * self.q_infinity - regularized)
+
+    def dimensionless_tail_cutoffs(
+        self,
+        velocity_relative_tolerance: float,
+        gradient_relative_tolerance: float,
+    ) -> tuple[float, float]:
+        """Return cached velocity and gradient regularization cutoffs."""
+        velocity = _cached_dimensionless_tail_cutoff(
+            self,
+            float(velocity_relative_tolerance),
+            False,
+        )
+        gradient = _cached_dimensionless_tail_cutoff(
+            self,
+            float(gradient_relative_tolerance),
+            True,
+        )
+        return velocity, gradient
+
     def near_field_cutoff(self, core_radius: float, tolerance: float) -> float:
         """Return a conservative physical near-field radius for ``tolerance``."""
         return _cached_near_field_cutoff(self, float(core_radius), float(tolerance))
@@ -147,6 +171,32 @@ def _cached_near_field_cutoff(
         else:
             high = middle
     return float(core_radius * high)
+
+
+@lru_cache(maxsize=128)
+def _cached_dimensionless_tail_cutoff(
+    kernel: RadialVortexKernel,
+    relative_tolerance: float,
+    gradient: bool,
+) -> float:
+    if not 0.0 < relative_tolerance < 1.0:
+        raise ValueError("relative_tolerance must lie in (0, 1)")
+    reference = 3.0 * kernel.q_infinity if gradient else kernel.q_infinity
+
+    def relative_error(rho: float) -> float:
+        error = kernel.gradient_far_field_error(rho) if gradient else kernel.far_field_error(rho)
+        return float(np.max(error)) / reference
+
+    low, high = 0.0, 1.0
+    while relative_error(high) > relative_tolerance and high < 1.0e6:
+        high *= 2.0
+    for _ in range(64):
+        middle = 0.5 * (low + high)
+        if relative_error(middle) > relative_tolerance:
+            low = middle
+        else:
+            high = middle
+    return float(high)
 
 
 def _erf(values: np.ndarray) -> np.ndarray:
@@ -216,17 +266,53 @@ def _super_gaussian_zeta(rho):
     )
 
 
+def _gaussian_device_factory(dtype):
+    from .gaussian import create_gaussian_kernels
+
+    return create_gaussian_kernels(dtype)
+
+
+def _high_order_device_factory(dtype):
+    from .high_order_gaussian import create_high_order_gaussian_kernels
+
+    return create_high_order_gaussian_kernels(dtype)
+
+
+def _super_gaussian_device_factory(dtype):
+    from .super_gaussian import create_super_gaussian_kernels
+
+    return create_super_gaussian_kernels(dtype)
+
+
+def _winckelmans_device_factory(dtype):
+    from .winckelmans import create_winckelmans_kernels
+
+    return create_winckelmans_kernels(dtype)
+
+
+_KERNEL_REGISTRY = {
+    "GAUSSIAN": (_gaussian_q, _gaussian_zeta, 1.5, _gaussian_device_factory),
+    "HIGH_ORDER_GAUSSIAN": (
+        _high_order_q,
+        _high_order_zeta,
+        0.0,
+        _high_order_device_factory,
+    ),
+    "SUPER_GAUSSIAN": (
+        _super_gaussian_q,
+        _super_gaussian_zeta,
+        0.0,
+        _super_gaussian_device_factory,
+    ),
+    "WINCKELMANS": (_winckelmans_q, _winckelmans_zeta, 1.5, _winckelmans_device_factory),
+}
+
+
 def make_vortex_kernel(name: str) -> RadialVortexKernel:
     """Construct one of the supported isotropic radial vortex kernels."""
     key = name.upper()
-    factories = {
-        "GAUSSIAN": (_gaussian_q, _gaussian_zeta, 1.5),
-        "HIGH_ORDER_GAUSSIAN": (_high_order_q, _high_order_zeta, 0.0),
-        "SUPER_GAUSSIAN": (_super_gaussian_q, _super_gaussian_zeta, 0.0),
-        "WINCKELMANS": (_winckelmans_q, _winckelmans_zeta, 1.5),
-    }
     try:
-        q_function, zeta_function, angular_constant = factories[key]
+        q_function, zeta_function, angular_constant, _ = _KERNEL_REGISTRY[key]
     except KeyError as exc:
         raise ValueError(f"unsupported vortex kernel {name!r}") from exc
     return RadialVortexKernel(
@@ -234,4 +320,14 @@ def make_vortex_kernel(name: str) -> RadialVortexKernel:
     )
 
 
-__all__ = ["RadialVortexKernel", "make_vortex_kernel"]
+def make_device_vortex_kernels(name: str, dtype):
+    """Build the Taichi radial functions from the authoritative registry."""
+    key = name.upper()
+    try:
+        device_factory = _KERNEL_REGISTRY[key][3]
+    except KeyError as exc:
+        raise ValueError(f"unsupported vortex kernel {name!r}") from exc
+    return device_factory(dtype)
+
+
+__all__ = ["RadialVortexKernel", "make_device_vortex_kernels", "make_vortex_kernel"]

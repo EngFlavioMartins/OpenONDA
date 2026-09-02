@@ -74,7 +74,6 @@ def pitch_velocity(phase: float):
 
 
 def run() -> None:
-    treecode_theta = 0.30
     smagorinsky_coefficient = 0.0
     n_steps = N_STEPS
     sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
@@ -134,7 +133,7 @@ def run() -> None:
     case = vpm.VPMCase(
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="AUTO",
+            compute_device="VULKAN",
             turbulence=vpm.TurbulenceConfig.les_smagorinsky(
                 smagorinsky_coefficient=smagorinsky_coefficient
             ),
@@ -142,11 +141,7 @@ def run() -> None:
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            induction=vpm.TreecodeInduction(
-                theta=treecode_theta,
-                sort_particle_targets=True,
-                traversal_block_dim=128,
-            ),
+            induction=vpm.FMMInduction(),
             freestream_velocity=[-FREESTREAM_VELOCITY, 0, 0],
             stabilization=vpm.StabilizationConfig(
                 remove_particles_by_bounds=[

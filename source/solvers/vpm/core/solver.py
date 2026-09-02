@@ -269,6 +269,13 @@ class VPMSolver:
             device_memory_fraction=getattr(final_setup, "device_memory_fraction", 0.5),
             random_seed=final_setup.random_seed,
         )
+        supported_devices = getattr(self.induction, "supported_devices", None)
+        if supported_devices is not None and self.compute_device not in supported_devices:
+            raise ValueError(
+                f"{type(self.induction).__name__} resolved AUTO to unsupported "
+                f"compute_device={self.compute_device}; supported devices: "
+                f"{sorted(device for device in supported_devices if device != 'AUTO')}"
+            )
         print_openonda_header(self.precision)
         # Initialization can call the same particle/model helpers used at run
         # time.  Suppress their routine event records until the complete,

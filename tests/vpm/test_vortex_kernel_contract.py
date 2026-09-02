@@ -1,15 +1,35 @@
 """Qualification tests for the shared radial vortex-kernel contract."""
 
+import inspect
+
 import numpy as np
 import pytest
+import taichi as ti
 
 from source.solvers.vpm.config.case import Numerics
-from source.solvers.vpm.kernels.base import make_vortex_kernel
+from source.solvers.vpm.kernels.base import make_device_vortex_kernels, make_vortex_kernel
 from source.solvers.vpm.physics.induction.direct import DirectInduction
 from source.solvers.vpm.physics.induction.fmm import FMMInduction
 from source.solvers.vpm.physics.induction.treecode import TreecodeInduction
 
 KERNELS = ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS")
+
+
+@ti.data_oriented
+class _DeviceKernelSampler:
+    def __init__(self, name: str, count: int) -> None:
+        functions = make_device_vortex_kernels(name, ti.f32)
+        self.q_kernel = functions["q_"]
+        self.zeta_kernel = functions["zeta_"]
+        self.rho = ti.field(dtype=ti.f32, shape=count)
+        self.q = ti.field(dtype=ti.f32, shape=count)
+        self.zeta = ti.field(dtype=ti.f32, shape=count)
+
+    @ti.kernel
+    def evaluate(self):
+        for index in self.rho:
+            self.q[index] = self.q_kernel(self.rho[index])
+            self.zeta[index] = self.zeta_kernel(self.rho[index])
 
 
 @pytest.mark.parametrize("name", KERNELS)
@@ -39,6 +59,30 @@ def test_radial_kernel_has_regular_origin_and_singular_far_field_limit(name):
     assert np.all(np.isfinite(kernel.q(rho)))
     assert np.all(np.isfinite(kernel.zeta(rho)))
     assert kernel.q(rho)[-1] == pytest.approx(kernel.q_infinity, rel=2.0e-5)
+
+
+@pytest.mark.parametrize("name", KERNELS)
+def test_host_and_device_radial_functions_share_one_registry_contract(name):
+    if ti.lang.impl.get_runtime().prog is None:
+        ti.init(arch=ti.cpu, offline_cache=False, cpu_max_num_threads=2)
+    rho = np.array([0.0, 1.0e-4, 0.25, 1.0, 4.0, 20.0], dtype=np.float32)
+    sampler = _DeviceKernelSampler(name, len(rho))
+    sampler.rho.from_numpy(rho)
+    sampler.evaluate()
+    kernel = make_vortex_kernel(name)
+
+    np.testing.assert_allclose(
+        sampler.q.to_numpy(),
+        kernel.q(rho),
+        rtol=4.0e-5,
+        atol=2.0e-8,
+    )
+    np.testing.assert_allclose(
+        sampler.zeta.to_numpy(),
+        kernel.zeta(rho),
+        rtol=4.0e-5,
+        atol=2.0e-8,
+    )
 
 
 @pytest.mark.parametrize("name", KERNELS)
@@ -98,7 +142,6 @@ def test_induction_backends_declare_strength_rate_semantics_explicitly():
     assert fmm.diagnostics.strength_rate_mode == "HIERARCHICAL_GRADIENT"
 
 
-@pytest.mark.parametrize("induction_type", (TreecodeInduction, FMMInduction))
-def test_hierarchical_backends_reject_unimplemented_exact_rate_mode(induction_type):
-    with pytest.raises(ValueError, match="exact pairwise rates require DirectInduction"):
-        induction_type(strength_rate_mode="PAIRWISE_TRANSPOSED")
+@pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
+def test_public_induction_constructors_expose_no_tuning_arguments(induction_type):
+    assert not inspect.signature(induction_type).parameters

@@ -106,7 +106,14 @@ class Numerics:
                 f"{type(self.induction).__name__} does not support particle_kernel={kernel}; "
                 f"supported kernels: {sorted(supported_kernels)}"
             )
-        object.__setattr__(self, "compute_device", self.compute_device.upper())
+        device = self.compute_device.upper()
+        supported_devices = getattr(self.induction, "supported_devices", None)
+        if supported_devices is not None and device not in supported_devices:
+            raise ValueError(
+                f"{type(self.induction).__name__} does not support compute_device={device}; "
+                f"supported devices: {sorted(supported_devices)}"
+            )
+        object.__setattr__(self, "compute_device", device)
         object.__setattr__(self, "precision", self.precision.lower())
         if self.precision == "f64" and not getattr(self.induction, "supports_f64", True):
             raise ValueError(f"{type(self.induction).__name__} does not support precision='f64'")

@@ -42,8 +42,6 @@ TOTAL_TIME = 103.0 * 0.291  # total simulation time [s]
 SAMPLE_INTERVAL_TIME = 2.0 * 0.291  # time between field samples [s]
 MERGING_SAMPLE_INTERVAL_STEPS = 6  # resolve the rapid final collapse of the two vorticity peaks
 BACKUP_INTERVAL_TIME = 10.0 * 0.291  # time between snapshots [s]
-TREECODE_THETA = 0.30  # treecode accuracy parameter (higher = faster, less accurate)
-TREECODE_MULTIPOLE_ORDER = 3  # treecode multipole expansion order
 ADVECTION_SCHEME = "RK3"  # Runge-Kutta 2nd-order particle advection
 DVH_RD_RATIO = 4  # DVH support radius / particle spacing ratio
 DVH_PADDING = 5.0  # DVH diffusion grid: extra cells around domain [in cell units]
@@ -235,11 +233,7 @@ def run_case(
             time_step_size=TIME_STEP_SIZE,
             viscous=viscous,
             integrator=vpm.RK4() if ADVECTION_SCHEME == "RK4" else vpm.SSPRK3(),
-            induction=vpm.TreecodeInduction(
-                theta=TREECODE_THETA,
-                multipole_order=TREECODE_MULTIPOLE_ORDER,
-                sort_particle_targets=True,
-            ),
+            induction=vpm.TreecodeInduction(),
             write_precision="f32",
             domain_bounds=domain_bounds,
             compute_device=compute_device,

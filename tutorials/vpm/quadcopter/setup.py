@@ -108,16 +108,12 @@ def run() -> None:
     case = vpm.VPMCase(
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="AUTO",
+            compute_device="VULKAN",
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            induction=vpm.TreecodeInduction(
-                theta=0.35,
-                sort_particle_targets=True,
-                traversal_block_dim=128,
-            ),
+            induction=vpm.FMMInduction(),
             turbulence=vpm.TurbulenceConfig.dns(),
             particle_kernel="WINCKELMANS",
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],

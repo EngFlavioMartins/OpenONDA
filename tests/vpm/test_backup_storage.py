@@ -18,6 +18,7 @@ from source.solvers.vpm import (
     SSPRK3,
     Backup,
     DirectInduction,
+    FMMInduction,
     Numerics,
     TreecodeInduction,
     ViscousConfig,
@@ -290,6 +291,69 @@ def test_split_run_matches_each_deterministic_integrator(tmp_path, integrator):
     )
 
 
+@pytest.mark.qualification
+def test_fmm_restart_and_repeated_run_match_over_twenty_accepted_steps(tmp_path):
+    """Production FMM preserves state across a 10+10 restart and a repeated run."""
+    uninterrupted = _solver(
+        tmp_path / "uninterrupted",
+        integrator=SSPRK3(),
+        viscous=ViscousConfig.inviscid(particle_spacing=0.2),
+        induction=FMMInduction(),
+    )
+    interrupted = _solver(
+        tmp_path / "interrupted",
+        integrator=SSPRK3(),
+        viscous=ViscousConfig.inviscid(particle_spacing=0.2),
+        induction=FMMInduction(),
+    )
+    repeated = _solver(
+        tmp_path / "repeated",
+        integrator=SSPRK3(),
+        viscous=ViscousConfig.inviscid(particle_spacing=0.2),
+        induction=FMMInduction(),
+    )
+    for solver in (uninterrupted, interrupted, repeated):
+        _add_counter_rotating_pair(solver)
+
+    _advance(uninterrupted, 20)
+    _advance(repeated, 20)
+    _advance(interrupted, 10)
+    with contextlib.redirect_stdout(io.StringIO()):
+        interrupted.save_backup()
+
+    resumed = _solver(
+        tmp_path / "resumed",
+        integrator=SSPRK3(),
+        viscous=ViscousConfig.inviscid(particle_spacing=0.2),
+        induction=FMMInduction(),
+    )
+    resumed.load_backup(str(tmp_path / "interrupted" / "solution" / "vpm_000010"))
+    _advance(resumed, 10)
+
+    assert uninterrupted.step == repeated.step == resumed.step == 20
+    assert uninterrupted.time == repeated.time == resumed.time
+    for candidate in (repeated, resumed):
+        np.testing.assert_allclose(
+            candidate.particle_position,
+            uninterrupted.particle_position,
+            rtol=2.0e-6,
+            atol=2.0e-9,
+        )
+        np.testing.assert_allclose(
+            candidate.particle_vortex_strength,
+            uninterrupted.particle_vortex_strength,
+            rtol=2.0e-6,
+            atol=2.0e-9,
+        )
+        np.testing.assert_array_equal(
+            candidate.particle_core_radius,
+            uninterrupted.particle_core_radius,
+        )
+    for solver in (uninterrupted, repeated, resumed):
+        assert solver.induction.diagnostics.host_particle_transfers == 0
+        assert solver.induction.diagnostics.direct_strength_rate_fallbacks == 0
+
+
 @pytest.mark.parametrize(
     "viscous",
     [
@@ -389,7 +453,7 @@ def test_backup_storage_handles_more_than_fifty_thousand_particles(tmp_path, mon
     writer = _solver(
         tmp_path / "writer",
         max_n_particles=count,
-        induction=TreecodeInduction(theta=0.5),
+        induction=TreecodeInduction(),
         viscous=ViscousConfig.inviscid(particle_spacing=0.2),
     )
     index = np.arange(count, dtype=np.float32)
@@ -415,7 +479,7 @@ def test_backup_storage_handles_more_than_fifty_thousand_particles(tmp_path, mon
     reader = _solver(
         tmp_path / "reader",
         max_n_particles=count,
-        induction=TreecodeInduction(theta=0.5),
+        induction=TreecodeInduction(),
         viscous=ViscousConfig.inviscid(particle_spacing=0.2),
     )
     monkeypatch.setattr(reader.stepper, "_update_velocity_and_gradients", lambda **_kwargs: None)

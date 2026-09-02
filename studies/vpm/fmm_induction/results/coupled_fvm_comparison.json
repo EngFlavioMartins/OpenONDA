@@ -1,0 +1,16 @@
+{
+  "cycles": 10,
+  "relative_difference_tolerance": 0.02,
+  "fvm_velocity_relative_difference": 4.1117405834787217e-05,
+  "vpm_position_relative_difference": 0.0,
+  "vpm_strength_relative_difference": 0.002964386967479636,
+  "fmm_final_particle_count": 1000,
+  "treecode_final_particle_count": 1000,
+  "fmm_insertion_observed": true,
+  "fmm_replacement_or_removal_observed": true,
+  "fmm_coupled_backup_written": true,
+  "fmm_scheduled_particle_output_written": true,
+  "fmm_host_particle_transfers": 0,
+  "finite_fields": true,
+  "comparison_gate_passed": true
+}

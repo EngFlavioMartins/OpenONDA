@@ -23,29 +23,23 @@ class DirectInduction:
     supported_kernels = frozenset(
         {"GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"}
     )
+    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "CUDA", "METAL"})
     supports_gradient = True
     supports_variable_core_radius = True
     supports_f64 = True
     device_resident = True
     strength_rate_mode = "PAIRWISE_TRANSPOSED"
 
-    def __init__(
-        self,
-        physics: object | None = None,
-        max_n_particles: int | None = None,
-        kernel: RadialVortexKernel | None = None,
-    ) -> None:
+    def __init__(self) -> None:
         self.method = "DIRECT"
-        self.kernel = make_vortex_kernel("GAUSSIAN") if kernel is None else kernel
+        self.kernel = make_vortex_kernel("GAUSSIAN")
         self.physics = None
-        self.max_n_particles = int(max_n_particles or 1)
+        self.max_n_particles = 1
         self._strain_rate = None
-        if physics is not None:
-            self.bind(physics)
 
     def build(self) -> Self:
         """Return a fresh unbound runtime evaluator for an immutable case."""
-        return type(self)(max_n_particles=self.max_n_particles, kernel=self.kernel)
+        return type(self)()
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind this immutable construction object to one physics workspace."""
@@ -53,7 +47,7 @@ class DirectInduction:
         physics.configure_velocity("DIRECT")
         if kernel is not None:
             self.kernel = kernel
-        capacity = physics.max_n_particles if self.max_n_particles == 1 else self.max_n_particles
+        capacity = physics.max_n_particles
         if capacity < 1:
             raise ValueError("max_n_particles must be positive")
         self.max_n_particles = capacity

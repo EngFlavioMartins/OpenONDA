@@ -193,7 +193,7 @@ VPM_CASE = vpm.VPMCase(
         ),
         integrator=vpm.RK2(),
         turbulence=vpm.TurbulenceConfig.les_smagorinsky(smagorinsky_coefficient=0.17),
-        induction=vpm.TreecodeInduction(theta=0.3),
+        induction=vpm.TreecodeInduction(),
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         particle_kernel="GAUSSIAN",
         precision="f32",

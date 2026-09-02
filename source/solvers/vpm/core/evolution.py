@@ -236,7 +236,7 @@ class EvolutionStepper:
 
             if self.vlm_solver is not None:
                 with self.profiler.section("VLM diagnostics"):
-                    self._record_vlm_diagnostics()
+                    self.solver._record_vlm_diagnostics()
 
             self.stabilization.run_phase("post_step", profiler=self.profiler)
             self._debug_validate_particle_geometry("particle retention")

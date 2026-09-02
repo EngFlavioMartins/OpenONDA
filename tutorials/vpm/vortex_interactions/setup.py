@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Particle-stabilization comparison for two leapfrogging vortex rings.
+"""FMM particle-stabilization comparison for two leapfrogging vortex rings.
+
+The device-resident FMM computes the self-induced field while SSPRK3 advances
+position and vortex strength from common temporary stages. Direct induction
+remains the exact small-cloud reference backend.
 
 Usage:
     python setup.py --case leapfrog_les_splitting_remeshing
@@ -37,7 +41,6 @@ TIME_STEP_SIZE = 20.0 * PARTICLE_SPACING**2 / RING_CIRCULATION
 NUMBER_OF_STEPS = 1200
 DIAGNOSTIC_INTERVAL_STEPS = 5
 BACKUP_INTERVAL_STEPS = 50
-TREECODE_THETA = 0.30
 MAXIMUM_PARTICLES = 120_000
 # The historical 0.15 value limited internal coupled substeps; it is not a
 # calibrated rejection threshold for the complete accepted macro-step.
@@ -144,6 +147,7 @@ def build_case(case_name: str) -> vpm.VPMCase:
     return vpm.VPMCase(
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
+            compute_device="VULKAN",
             integrator=vpm.SSPRK3(),
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
@@ -156,11 +160,7 @@ def build_case(case_name: str) -> vpm.VPMCase:
             health_limits=vpm.HealthLimits(
                 lagrangian_cfl=vpm.LagrangianCFLLimit(maximum=MAX_LAGRANGIAN_CFL)
             ),
-            induction=vpm.TreecodeInduction(
-                theta=TREECODE_THETA,
-                sort_particle_targets=True,
-                traversal_block_dim=128,
-            ),
+            induction=vpm.FMMInduction(),
             particle_kernel="GAUSSIAN",
             write_precision="f32",
             max_n_particles=MAXIMUM_PARTICLES,

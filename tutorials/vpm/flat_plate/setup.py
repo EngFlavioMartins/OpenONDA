@@ -185,11 +185,7 @@ def run_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
             freestream_velocity=freestream_velocity,
-            induction=vpm.TreecodeInduction(
-                theta=0.35,
-                sort_particle_targets=True,
-                traversal_block_dim=128,
-            ),
+            induction=vpm.TreecodeInduction(),
             write_precision="f32",
             max_n_particles=120_000,
         ),

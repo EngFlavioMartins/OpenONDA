@@ -1440,8 +1440,6 @@ from tutorials.vpm.lamb_oseen_vortex.setup import (
     SPACING,
     TIME_STEP_SIZE,
     TOTAL_TIME as CONFIGURED_TOTAL_TIME,
-    TREECODE_MULTIPOLE_ORDER,
-    TREECODE_THETA,
 )
 
 
@@ -2806,8 +2804,7 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
                 "metadata_time_step_size": metadata.get("time_step_size"),
                 "observed_time_step_size": observed_time_step,
                 "advection_scheme": ADVECTION_SCHEME,
-                "treecode_theta": TREECODE_THETA,
-                "treecode_multipole_order": TREECODE_MULTIPOLE_ORDER,
+                "induction_backend": "TreecodeInduction",
                 "dvh_rd_ratio": DVH_RD_RATIO,
                 "dvh_max_nodes": DVH_MAX_NODES,
                 "gbd_max_nodes": GBD_MAX_NODES,

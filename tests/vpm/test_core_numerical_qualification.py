@@ -172,7 +172,7 @@ def test_treecode_converges_to_direct_summation_as_the_opening_angle_closes(
         tree = _solver(
             tmp_path,
             f"tree_theta_tenths_{theta_tenths}",
-            TreecodeInduction(theta=theta, multipole_order=2),
+            TreecodeInduction._for_testing(theta=theta, multipole_order=2),
         )
         _add_cloud(tree, position, vortex_strength, core_radius)
         approximation = tree.compute_velocity_at_points(targets)

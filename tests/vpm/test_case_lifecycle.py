@@ -30,13 +30,24 @@ def test_public_solver_requires_one_case_construction_object() -> None:
 def test_induction_configuration_builds_independent_runtime_evaluators() -> None:
     for configured in (
         vpm.DirectInduction(),
-        vpm.TreecodeInduction(theta=0.4),
-        vpm.FMMInduction(tolerance=1.0e-3),
+        vpm.TreecodeInduction(),
+        vpm.FMMInduction(),
     ):
         runtime = configured.build()
         assert runtime is not configured
         assert runtime.physics is None
         assert runtime.method == configured.method
+
+
+def test_fmm_advertises_only_qualified_device_backends() -> None:
+    assert vpm.FMMInduction.supported_devices == frozenset({"AUTO", "CPU", "VULKAN"})
+    for device in ("CUDA", "METAL"):
+        with pytest.raises(ValueError, match="does not support compute_device"):
+            vpm.Numerics(
+                induction=vpm.FMMInduction(),
+                compute_device=device,
+                verbose=False,
+            )
 
 
 def test_numerics_rejects_an_unsupported_treecode_kernel() -> None:

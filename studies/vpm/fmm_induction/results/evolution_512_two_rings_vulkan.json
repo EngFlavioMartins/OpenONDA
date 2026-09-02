@@ -1,0 +1,239 @@
+{
+  "timestamp_utc": "2026-09-02T15:46:39.653959+00:00",
+  "commit": "2942d13958f9c3fed43ce90dd3eec10eeb83dd1c",
+  "dirty": true,
+  "backend": "VULKAN",
+  "hardware_model": "Intel Corporation Alder Lake-P GT2 [Iris Xe Graphics] (rev 0c); NVIDIA Corporation GA106M [GeForce RTX 3060 Mobile / Max-Q] (rev a1)",
+  "precision": "f32",
+  "kernel": "GAUSSIAN",
+  "distribution": "two_rings",
+  "count": 512,
+  "integrator": "SSPRK3",
+  "steps": 200,
+  "time_step_size": 0.0001,
+  "elapsed_seconds": 36.81875311397016,
+  "mean_accepted_step_seconds": 0.1840937655698508,
+  "velocity_relative_l2": 5.4699696959285036e-05,
+  "gradient_relative_l2": 1.1956380607979055e-05,
+  "rate_relative_l2": 0.0002881302288763352,
+  "maximum_raw_rate_defect": 6.672356544177225e-05,
+  "total_strength_relative_drift": 4.413580676900309e-06,
+  "linear_impulse_relative_drift": 0.003632485937524138,
+  "initial_maximum_strength": 0.010000000707805157,
+  "final_maximum_strength": 0.011055104434490204,
+  "initial_cloud_radius": 1.1300386123229784,
+  "final_cloud_radius": 1.130302365080051,
+  "initial_cloud_rms_radius": 1.096457433902276,
+  "final_cloud_rms_radius": 1.095820398689456,
+  "initial_cloud_radius_to_rms": 1.0306269786517728,
+  "final_cloud_radius_to_rms": 1.0314668046258617,
+  "initial_total_kinetic_energy": 1.1473350637336701,
+  "final_total_kinetic_energy": 1.1472859685471573,
+  "total_kinetic_energy_relative_drift": 4.279062678786581e-05,
+  "host_particle_transfers": 0,
+  "peak_host_rss_kib": 1597124,
+  "estimated_device_bytes": 1570816,
+  "state_sha256": "fabf72238bcdc021c77dd3110fbcf6a66f9ec670c7e8cee2f79c067fb6b74e03",
+  "records": [
+    {
+      "step": 20,
+      "time": 0.002,
+      "total_strength": [
+        -2.818547457650311e-07,
+        -1.6297470446152147,
+        0.005000088567612693
+      ],
+      "linear_impulse": [
+        2.5594620000154418,
+        0.0018721142305354386,
+        0.36522584619956
+      ],
+      "maximum_strength": 0.010133594274520874,
+      "cloud_radius": 1.1307878462261844,
+      "cloud_rms_radius": 1.0964092934171628,
+      "cloud_radius_to_rms": 1.0313555831890795,
+      "total_kinetic_energy": 1.1474050802111702,
+      "raw_rate_defect": 6.55248549388405e-05
+    },
+    {
+      "step": 40,
+      "time": 0.004,
+      "total_strength": [
+        -6.85434315528255e-07,
+        -1.6297447929282498,
+        0.005000211242986552
+      ],
+      "linear_impulse": [
+        2.5594139462571173,
+        0.0018552679890887374,
+        0.3642565113995275
+      ],
+      "maximum_strength": 0.010280078276991844,
+      "cloud_radius": 1.1313830652408106,
+      "cloud_rms_radius": 1.096343125731166,
+      "cloud_radius_to_rms": 1.0319607417488716,
+      "total_kinetic_energy": 1.147420840600812,
+      "raw_rate_defect": 6.292236816550124e-05
+    },
+    {
+      "step": 60,
+      "time": 0.006,
+      "total_strength": [
+        -1.2174595838132518e-06,
+        -1.6297425977645617,
+        0.005000286009817501
+      ],
+      "linear_impulse": [
+        2.5593532043042924,
+        0.0018352600888120775,
+        0.3633052091829865
+      ],
+      "maximum_strength": 0.01046947855502367,
+      "cloud_radius": 1.1318180325906573,
+      "cloud_rms_radius": 1.0962665608909992,
+      "cloud_radius_to_rms": 1.032429586897883,
+      "total_kinetic_energy": 1.147395789061734,
+      "raw_rate_defect": 6.010903223047498e-05
+    },
+    {
+      "step": 80,
+      "time": 0.008,
+      "total_strength": [
+        -1.8943029829188163e-06,
+        -1.6297404735341843,
+        0.005000330297207256
+      ],
+      "linear_impulse": [
+        2.559292945099138,
+        0.0018200956599009346,
+        0.3623627496013039
+      ],
+      "maximum_strength": 0.010683870874345303,
+      "cloud_radius": 1.1320892591817977,
+      "cloud_rms_radius": 1.096186470230192,
+      "cloud_radius_to_rms": 1.0327524467110658,
+      "total_kinetic_energy": 1.1473313222979467,
+      "raw_rate_defect": 5.916212633709123e-05
+    },
+    {
+      "step": 100,
+      "time": 0.01,
+      "total_strength": [
+        -2.4032246983551886e-06,
+        -1.6297382572429342,
+        0.00500036518133129
+      ],
+      "linear_impulse": [
+        2.559233575075899,
+        0.001807132316186834,
+        0.36143069659252713
+      ],
+      "maximum_strength": 0.010846331715583801,
+      "cloud_radius": 1.132196655087371,
+      "cloud_rms_radius": 1.0961087195389854,
+      "cloud_radius_to_rms": 1.0329236825737176,
+      "total_kinetic_energy": 1.147231799021777,
+      "raw_rate_defect": 5.845345262211064e-05
+    },
+    {
+      "step": 120,
+      "time": 0.012,
+      "total_strength": [
+        -2.897870331253216e-06,
+        -1.6297360846856463,
+        0.005000379536795663
+      ],
+      "linear_impulse": [
+        2.559175690338139,
+        0.0017959763856210502,
+        0.36049976856139226
+      ],
+      "maximum_strength": 0.010735689662396908,
+      "cloud_radius": 1.1321426630232356,
+      "cloud_rms_radius": 1.0960370781275162,
+      "cloud_radius_to_rms": 1.0329419374729574,
+      "total_kinetic_energy": 1.1472292866652425,
+      "raw_rate_defect": 5.5885964036601596e-05
+    },
+    {
+      "step": 140,
+      "time": 0.014,
+      "total_strength": [
+        -3.3878608860504755e-06,
+        -1.6297338636672976,
+        0.005000361168640666
+      ],
+      "linear_impulse": [
+        2.559122492097054,
+        0.001784108905982336,
+        0.35956537285072004
+      ],
+      "maximum_strength": 0.011035648174583912,
+      "cloud_radius": 1.1319264117552352,
+      "cloud_rms_radius": 1.0959735254110075,
+      "cloud_radius_to_rms": 1.0328045208306877,
+      "total_kinetic_energy": 1.1471832630577585,
+      "raw_rate_defect": 5.629900101910422e-05
+    },
+    {
+      "step": 160,
+      "time": 0.016,
+      "total_strength": [
+        -4.075354695487476e-06,
+        -1.629731623902444,
+        0.005000336359444191
+      ],
+      "linear_impulse": [
+        2.5590708759607486,
+        0.0017608550439678966,
+        0.3586410354522009
+      ],
+      "maximum_strength": 0.01126115582883358,
+      "cloud_radius": 1.1315437946138729,
+      "cloud_rms_radius": 1.0959175402416117,
+      "cloud_radius_to_rms": 1.0325081523600825,
+      "total_kinetic_energy": 1.1472193187040656,
+      "raw_rate_defect": 5.225905553542222e-05
+    },
+    {
+      "step": 180,
+      "time": 0.018000000000000002,
+      "total_strength": [
+        -4.631076535588363e-06,
+        -1.6297295506228693,
+        0.005000285616915789
+      ],
+      "linear_impulse": [
+        2.5590200408478143,
+        0.0017471656587778697,
+        0.3577282058591761
+      ],
+      "maximum_strength": 0.011262523010373116,
+      "cloud_radius": 1.1309974071780018,
+      "cloud_rms_radius": 1.0958673018590896,
+      "cloud_radius_to_rms": 1.0320568970890138,
+      "total_kinetic_energy": 1.1472639830234899,
+      "raw_rate_defect": 5.5545121097577e-05
+    },
+    {
+      "step": 200,
+      "time": 0.02,
+      "total_strength": [
+        -5.0800466340206185e-06,
+        -1.629727158921014,
+        0.005000289693271043
+      ],
+      "linear_impulse": [
+        2.5589696449446535,
+        0.0017400650491619504,
+        0.35682029408617016
+      ],
+      "maximum_strength": 0.011055104434490204,
+      "cloud_radius": 1.130302365080051,
+      "cloud_rms_radius": 1.095820398689456,
+      "cloud_radius_to_rms": 1.0314668046258617,
+      "total_kinetic_energy": 1.1472859685471573,
+      "raw_rate_defect": 5.399860697099748e-05
+    }
+  ]
+}

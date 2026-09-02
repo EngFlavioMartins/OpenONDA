@@ -1,0 +1,36 @@
+{
+  "created_utc": "2026-09-02T15:07:39.901384+00:00",
+  "commit": "2942d13958f9c3fed43ce90dd3eec10eeb83dd1c",
+  "dirty": true,
+  "python": "3.11.15",
+  "numpy": "2.4.6",
+  "taichi": [
+    1,
+    7,
+    4
+  ],
+  "platform": "Linux-7.0.0-30-generic-x86_64-with-glibc2.43",
+  "seed": 20260902,
+  "kernels": [
+    "GAUSSIAN",
+    "HIGH_ORDER_GAUSSIAN",
+    "SUPER_GAUSSIAN",
+    "WINCKELMANS"
+  ],
+  "distributions": [
+    "uniform",
+    "clustered",
+    "elongated",
+    "ring",
+    "two_rings",
+    "leapfrog",
+    "rotor"
+  ],
+  "accuracy_gates": {
+    "velocity_relative_l2": 0.005,
+    "gradient_relative_l2": 0.01,
+    "rate_relative_l2": 0.015,
+    "rate_particle_p95": 0.03,
+    "raw_rate_defect": 0.001
+  }
+}

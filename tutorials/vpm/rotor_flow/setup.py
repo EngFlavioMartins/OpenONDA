@@ -31,7 +31,6 @@ AIR_DENSITY = 1.225
 N_RADIAL_STATIONS = 23
 ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS
 
-TREECODE_THETA = 0.20
 TIME_STEP_SIZE = 0.006
 N_STEPS = 2400
 DEFAULT_SMAGORINSKY_COEFFICIENT = 0.17
@@ -77,8 +76,8 @@ def build_case(
     return vpm.VPMCase(
         numerics=vpm.Numerics(
             time_step_size=time_step_size,
-            compute_device="AUTO",
-            integrator=vpm.RK2(),
+            compute_device="VULKAN",
+            integrator=vpm.SSPRK3(),
             vlm=vlm_setup,
             freestream_velocity=[FREESTREAM_SPEED, 0.0, 0.0],
             turbulence=vpm.TurbulenceConfig.les_smagorinsky(
@@ -98,11 +97,7 @@ def build_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=wake_spacing,
             ),
-            induction=vpm.TreecodeInduction(
-                theta=TREECODE_THETA,
-                sort_particle_targets=True,
-                traversal_block_dim=128,
-            ),
+            induction=vpm.FMMInduction(),
             particle_kernel="WINCKELMANS",
             write_precision="f32",
         ),

@@ -45,7 +45,6 @@ DEFAULT_WIDNALL_AMPLITUDE = 0.05  # broadband centreline perturbation amplitude
 TOROIDAL_TAIL_FRACTION = 0.05  # toroidal particle distribution tail fraction
 MAX_N_PARTICLES = 100_000  # particle count guard
 ENABLE_STABILIZATION = False  # enable conservative particle filter
-TREECODE_THETA = 0.30  # treecode accuracy parameter
 SMAGORINSKY_COEFFICIENT = 0.20  # Smagorinsky coefficient for LES
 
 # -- Derived quantities -------------------------------------------------------
@@ -129,11 +128,7 @@ def run_case(variant: str, compute_device: str = "AUTO") -> None:
                 )
             ),
             stabilization=stabilization,
-            induction=vpm.TreecodeInduction(
-                theta=TREECODE_THETA,
-                sort_particle_targets=True,
-                traversal_block_dim=128,
-            ),
+            induction=vpm.TreecodeInduction(),
             viscous=vpm.ViscousConfig.cs(),
             write_precision="f32",
             max_n_particles=MAX_N_PARTICLES,

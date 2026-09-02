@@ -5,7 +5,11 @@ from typing import Self
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
-from ..base import StrengthRateMode
+
+_TREECODE_THETA = 0.1
+_TREECODE_MULTIPOLE_ORDER = 1
+_TREECODE_SORT_PARTICLE_TARGETS = False
+_TREECODE_TRAVERSAL_BLOCK_DIM = 128
 
 
 @ti.kernel
@@ -29,6 +33,7 @@ class TreecodeInduction:
     """
 
     supported_kernels = frozenset({"GAUSSIAN", "WINCKELMANS"})
+    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "CUDA", "METAL"})
     supports_gradient = True
     supports_variable_core_radius = True
     # The LBVH fields are intentionally f32 to keep the device workspace
@@ -37,38 +42,15 @@ class TreecodeInduction:
     device_resident = True
     strength_rate_mode = "HIERARCHICAL_GRADIENT"
 
-    def __init__(
-        self,
-        physics: object | None = None,
-        theta: float = 0.3,
-        multipole_order: int = 1,
-        sort_particle_targets: bool = False,
-        traversal_block_dim: int = 128,
-        max_n_particles: int | None = None,
-        kernel: RadialVortexKernel | None = None,
-        strength_rate_mode: StrengthRateMode = "HIERARCHICAL_GRADIENT",
-    ) -> None:
+    def __init__(self) -> None:
         self.method = "TREECODE"
-        self.kernel = make_vortex_kernel("GAUSSIAN") if kernel is None else kernel
-        if not 0.0 < float(theta) < 2.0:
-            raise ValueError("treecode theta must be in (0, 2)")
+        self.kernel = make_vortex_kernel("GAUSSIAN")
         self.physics = None
-        self.theta = float(theta)
-        self.multipole_order = int(multipole_order)
-        self.sort_particle_targets = bool(sort_particle_targets)
-        self.traversal_block_dim = int(traversal_block_dim)
-        if self.multipole_order not in (1, 2, 3):
-            raise ValueError("treecode multipole_order must be 1, 2, or 3")
-        if self.traversal_block_dim < 0:
-            raise ValueError("treecode traversal_block_dim must be non-negative")
-        self.max_n_particles = int(max_n_particles or 1)
-        normalized_rate_mode = strength_rate_mode.upper()
-        if normalized_rate_mode != self.strength_rate_mode:
-            raise ValueError(
-                "TreecodeInduction supports only strength_rate_mode="
-                f"{self.strength_rate_mode}; exact pairwise rates require DirectInduction"
-            )
-        self.strength_rate_mode = normalized_rate_mode
+        self.theta = _TREECODE_THETA
+        self.multipole_order = _TREECODE_MULTIPOLE_ORDER
+        self.sort_particle_targets = _TREECODE_SORT_PARTICLE_TARGETS
+        self.traversal_block_dim = _TREECODE_TRAVERSAL_BLOCK_DIM
+        self.max_n_particles = 1
         self.diagnostics = {
             "strength_rate_mode": self.strength_rate_mode,
             "stage_evaluations": 0,
@@ -76,19 +58,37 @@ class TreecodeInduction:
             "hierarchical_strength_rates": 0,
             "direct_strength_rate_fallbacks": 0,
         }
-        if physics is not None:
-            self.bind(physics)
+
+    @classmethod
+    def _for_testing(
+        cls,
+        *,
+        theta: float = _TREECODE_THETA,
+        multipole_order: int = _TREECODE_MULTIPOLE_ORDER,
+        sort_particle_targets: bool = _TREECODE_SORT_PARTICLE_TARGETS,
+        traversal_block_dim: int = _TREECODE_TRAVERSAL_BLOCK_DIM,
+    ) -> Self:
+        """Construct a non-public evaluator for controlled qualification studies."""
+        if not 0.0 < float(theta) < 2.0:
+            raise ValueError("treecode theta must be in (0, 2)")
+        if int(multipole_order) not in (1, 2, 3):
+            raise ValueError("treecode multipole_order must be 1, 2, or 3")
+        if int(traversal_block_dim) < 0:
+            raise ValueError("treecode traversal_block_dim must be non-negative")
+        instance = cls()
+        instance.theta = float(theta)
+        instance.multipole_order = int(multipole_order)
+        instance.sort_particle_targets = bool(sort_particle_targets)
+        instance.traversal_block_dim = int(traversal_block_dim)
+        return instance
 
     def build(self) -> Self:
         """Return a fresh unbound runtime evaluator for an immutable case."""
-        return type(self)(
+        return type(self)._for_testing(
             theta=self.theta,
             multipole_order=self.multipole_order,
             sort_particle_targets=self.sort_particle_targets,
             traversal_block_dim=self.traversal_block_dim,
-            max_n_particles=self.max_n_particles,
-            kernel=self.kernel,
-            strength_rate_mode=self.strength_rate_mode,
         )
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
@@ -103,8 +103,7 @@ class TreecodeInduction:
         )
         if kernel is not None:
             self.kernel = kernel
-        if self.max_n_particles == 1:
-            self.max_n_particles = physics.max_n_particles
+        self.max_n_particles = physics.max_n_particles
         return self
 
     def evaluate_stage(

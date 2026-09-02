@@ -42,12 +42,12 @@ def test_case_restores_global_weak_particle_pruning():
     assert case.initial_weak_particle_percent == setup.WEAK_PARTICLE_PERCENT == 5.0
 
 
-def test_case_keeps_transposed_rk3_without_an_uncalibrated_macro_step_cfl_gate():
+def test_case_selects_fmm_rk3_without_an_uncalibrated_macro_step_cfl_gate():
     setup = _load_setup()
     case = setup.build_case("leapfrog_les")
 
     assert case.numerics.integrator.name == "SSPRK3"
-    assert case.numerics.induction.method == "TREECODE"
+    assert case.numerics.induction.method == "FMM"
     assert case.numerics.health_limits.lagrangian_cfl.maximum is None
 
 

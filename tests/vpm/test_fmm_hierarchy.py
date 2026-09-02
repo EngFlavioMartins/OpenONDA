@@ -5,10 +5,11 @@ import taichi as ti
 
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.induction.direct import DirectInduction
-from source.solvers.vpm.physics.induction.fmm import FMMInduction, FMMTree, interaction_lists
+from source.solvers.vpm.physics.induction.fmm import FMMTree, interaction_lists
 from source.solvers.vpm.physics.induction.fmm.local_expansions import l2l, l2p, m2l
 from source.solvers.vpm.physics.induction.fmm.multipoles import m2m, p2m
 from source.solvers.vpm.physics.induction.fmm.near_field import p2p_velocity
+from source.solvers.vpm.physics.induction.fmm.reference import HostFMMReference
 
 
 class _Field:
@@ -135,9 +136,11 @@ def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path
     from openonda.vpm import Backup, FMMInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
 
     rng = np.random.default_rng(20260901)
-    position = rng.uniform(-1.0, 1.0, size=(64, 3)).astype(np.float32)
+    position = rng.normal(scale=0.08, size=(64, 3)).astype(np.float32)
+    position[:32, 0] -= 4.0
+    position[32:, 0] += 4.0
     strength = rng.normal(scale=0.01, size=(64, 3)).astype(np.float32)
-    radius = rng.uniform(0.05, 0.15, size=64).astype(np.float32)
+    radius = rng.uniform(0.008, 0.016, size=64).astype(np.float32)
     solver = VPMSolver(
         VPMCase(
             directory=tmp_path,
@@ -146,7 +149,7 @@ def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path
                 compute_device="CPU",
                 max_n_particles=64,
                 max_evaluation_points=64,
-                induction=FMMInduction(tolerance=1.0e-3, leaf_capacity=1),
+                induction=FMMInduction(),
                 viscous=ViscousConfig.inviscid(particle_spacing=0.2),
                 verbose=False,
             ),
@@ -192,7 +195,7 @@ def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path
     )
     expected_rate[np.arange(64), np.arange(64)] = 0.0
     expected_rate = expected_rate.sum(axis=1)
-    direct = DirectInduction(solver.physics, max_n_particles=64)
+    direct = DirectInduction().bind(solver.physics)
     direct_rate = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
     direct_velocity = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
     direct.evaluate_stage(
@@ -208,79 +211,19 @@ def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path
         expected_velocity
     )
     assert solver.induction.diagnostics.m2l_interactions > 0
-    assert error < 2.0e-2
+    assert error < 5.0e-3
     rate_error = np.linalg.norm(rate_fmm.to_numpy()[:64] - expected_rate) / np.linalg.norm(
         expected_rate
     )
-    assert rate_error < 5.0e-2
+    assert rate_error < 1.5e-2
     assert solver.induction.diagnostics.hierarchical_strength_rates == 1
     assert solver.induction.diagnostics.direct_strength_rate_fallbacks == 0
+    assert solver.induction.diagnostics.host_particle_transfers == 0
+    assert solver.induction.diagnostics.hierarchy_builds == 1
+    assert solver.induction.diagnostics.last_relative_rate_defect <= 1.0e-3
 
 
-def test_fmm_velocity_error_decreases_with_tighter_requested_tolerance(tmp_path):
-    from openonda.vpm import Backup, FMMInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
-
-    rng = np.random.default_rng(20260902)
-    count = 48
-    position = rng.uniform(-1.0, 1.0, size=(count, 3)).astype(np.float32)
-    strength = rng.normal(scale=0.01, size=(count, 3)).astype(np.float32)
-    radius = np.full(count, 0.08, dtype=np.float32)
-    solver = VPMSolver(
-        VPMCase(
-            directory=tmp_path,
-            backup=Backup(0),
-            numerics=Numerics(
-                compute_device="CPU",
-                max_n_particles=count,
-                max_evaluation_points=count,
-                viscous=ViscousConfig.inviscid(particle_spacing=0.2),
-                verbose=False,
-            ),
-        )
-    )
-    solver.add_vortex_particles(
-        position=position,
-        velocity=np.zeros_like(position),
-        vortex_strength=strength,
-        core_radius=radius,
-        particle_volume=np.full(count, 0.008, dtype=np.float32),
-        kinematic_viscosity=np.zeros(count, dtype=np.float32),
-    )
-    direct = DirectInduction(solver.physics, max_n_particles=count)
-    reference = ti.Vector.field(3, dtype=ti.f32, shape=(count,))
-    reference_rate = ti.Vector.field(3, dtype=ti.f32, shape=(count,))
-    direct.evaluate_stage(
-        position=solver.particles.position,
-        vortex_strength=solver.particles.vortex_strength,
-        core_radius=solver.particles.core_radius,
-        count=count,
-        velocity_out=reference,
-        vortex_strength_rate_out=reference_rate,
-    )
-    errors = []
-    for tolerance in (1.0e-2, 1.0e-3, 1.0e-4):
-        induction = FMMInduction(
-            solver.physics, tolerance=tolerance, max_n_particles=count, leaf_capacity=1
-        )
-        velocity = ti.Vector.field(3, dtype=ti.f32, shape=(count,))
-        rate = ti.Vector.field(3, dtype=ti.f32, shape=(count,))
-        induction.evaluate_stage(
-            position=solver.particles.position,
-            vortex_strength=solver.particles.vortex_strength,
-            core_radius=solver.particles.core_radius,
-            count=count,
-            velocity_out=velocity,
-            vortex_strength_rate_out=rate,
-        )
-        errors.append(
-            np.linalg.norm(velocity.to_numpy() - reference.to_numpy())
-            / np.linalg.norm(reference.to_numpy())
-        )
-
-    assert errors[0] >= errors[1] >= errors[2]
-
-
-def test_fmm_stage_smoke_qualifies_all_radial_kernels_and_reports_rate_mode():
+def test_private_host_fmm_reference_qualifies_all_radial_kernels():
     rng = np.random.default_rng(20260903)
     count = 16
     position = rng.uniform(-1.0, 1.0, size=(count, 3))
@@ -289,7 +232,7 @@ def test_fmm_stage_smoke_qualifies_all_radial_kernels_and_reports_rate_mode():
     physics = _HostPhysics()
 
     for name in ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"):
-        induction = FMMInduction(
+        induction = HostFMMReference(
             physics,
             kernel=make_vortex_kernel(name),
             tolerance=1.0e-3,

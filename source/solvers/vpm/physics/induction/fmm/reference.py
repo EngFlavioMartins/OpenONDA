@@ -1,4 +1,4 @@
-"""Host reference FMM stage evaluator with explicit upward/downward passes."""
+"""Private host reference FMM with explicit upward/downward passes."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from .tree import FMMNode, FMMTree
 
 
 @ti.data_oriented
-class FMMInduction:
+class HostFMMReference:
     """Evaluate a coupled stage with a deterministic host FMM reference.
 
     This implementation executes a complete low-order cell hierarchy:
@@ -65,7 +65,7 @@ class FMMInduction:
         normalized_rate_mode = strength_rate_mode.upper()
         if normalized_rate_mode != self.strength_rate_mode:
             raise ValueError(
-                "FMMInduction supports only strength_rate_mode="
+                "HostFMMReference supports only strength_rate_mode="
                 f"{self.strength_rate_mode}; exact pairwise rates require DirectInduction"
             )
         self.strength_rate_mode = normalized_rate_mode
@@ -109,7 +109,7 @@ class FMMInduction:
         """Evaluate velocity, gradient, and strength rate from one stage state."""
         del stage_time
         if self.physics is None:
-            raise RuntimeError("FMMInduction must be bound before evaluation")
+            raise RuntimeError("HostFMMReference must be bound before evaluation")
         count = int(count)
         if count < 0 or count > self.max_n_particles:
             raise ValueError(f"stage count {count} exceeds FMM capacity {self.max_n_particles}")
@@ -350,4 +350,4 @@ def _l2p_batch(
     return velocity, gradient
 
 
-__all__ = ["FMMInduction"]
+__all__ = ["HostFMMReference"]

@@ -848,28 +848,20 @@ class PhysicsBase:
         Dynamically loads kernel functions from the appropriate module
         (gaussian, super_gaussian, or winckelmans).
         """
-        # Import kernel factory
+        # Import the shared numerical and radial-kernel factories.
+        from ..kernels.base import make_device_vortex_kernels
         from ..numerics.kernels_common import create_kernels
 
-        # Select kernel module based on type
-        if self.particle_kernel == "GAUSSIAN":
-            from ..kernels.gaussian import create_gaussian_kernels
+        kernel_functions = make_device_vortex_kernels(
+            self.particle_kernel,
+            self.accumulator_dtype,
+        )
 
-            kernel_functions = create_gaussian_kernels(self.accumulator_dtype)
-        elif self.particle_kernel == "HIGH_ORDER_GAUSSIAN":
-            from ..kernels.high_order_gaussian import create_high_order_gaussian_kernels
-
-            kernel_functions = create_high_order_gaussian_kernels(self.accumulator_dtype)
-        elif self.particle_kernel == "SUPER_GAUSSIAN":
-            from ..kernels.super_gaussian import create_super_gaussian_kernels
-
-            kernel_functions = create_super_gaussian_kernels(self.accumulator_dtype)
-        elif self.particle_kernel == "WINCKELMANS":
-            from ..kernels.winckelmans import create_winckelmans_kernels
-
-            kernel_functions = create_winckelmans_kernels(self.accumulator_dtype)
-        else:
-            raise ValueError(f"Unknown particle kernel: {self.particle_kernel}")
+        # Retain the authoritative device radial functions for induction
+        # backends that assemble additional device-resident passes (notably the
+        # production FMM).  The public physics surface remains the assembled
+        # kernels below; this private registry avoids a second q/zeta selector.
+        self._kernel_functions = kernel_functions
 
         # Create all kernels from factory
         self.kernels = create_kernels(kernel_functions)

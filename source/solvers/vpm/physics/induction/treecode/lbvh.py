@@ -86,6 +86,7 @@ class TaichiTreecode:
         multipole_order: int = 1,
         sort_particle_targets: bool = False,
         traversal_block_dim: int = 128,
+        device_sort_only: bool = False,
     ):
         self.max_n_particles = max_n_particles
         self.max_nodes = max_nodes
@@ -98,6 +99,12 @@ class TaichiTreecode:
         if traversal_block_dim < 0:
             raise ValueError(f"traversal_block_dim must be >= 0, got {traversal_block_dim}")
         self.traversal_block_dim = int(traversal_block_dim)
+        # Production FMM uses the hierarchy only.  It cannot accept the
+        # defensive NumPy sorting fallback used by the legacy treecode because
+        # an RK stage must remain device-resident.  When enabled, a sort or
+        # backend failure is surfaced to the caller instead of downloading
+        # Morton keys.
+        self.device_sort_only = bool(device_sort_only)
 
         # -------------------------------------------------------------
         # PARTICLE DATA (copied from input via GPU kernel — no to_numpy)
@@ -742,6 +749,10 @@ class TaichiTreecode:
 
     def _sort_morton(self, N):
         """Morton sort → sorted_indices, on-device when the backend supports it."""
+        if self.device_sort_only:
+            self._init_sort_pairs_kernel(N)
+            ti.algorithms.parallel_sort(keys=self._sort_keys, values=self.sorted_indices)
+            return
         if self._gpu_sort:
             try:
                 self._init_sort_pairs_kernel(N)
@@ -766,6 +777,8 @@ class TaichiTreecode:
             # Trivial: single particle, root = that particle
             self.n_nodes[None] = N
             self._root[None] = 0 if N == 0 else 0
+            self._max_depth[None] = 0
+            self._topology_error[None] = 0
             self.node_is_leaf[0] = 1
             self.node_particle_start[0] = 0
             self.node_particle_count[0] = N
@@ -782,9 +795,11 @@ class TaichiTreecode:
                 self.node_centre[0] = self.position[0]
                 self.node_half_size[0] = 0.0
                 self.node_avg_radius[0] = self.core_radius[0]
+                self.node_max_radius[0] = self.core_radius[0]
                 self.node_left[0] = -1
                 self.node_right[0] = -1
                 self.node_parent[0] = -1
+                self.node_depth[0] = 0
             return
 
         # Step 1: AABB (parallel min/max reduction)

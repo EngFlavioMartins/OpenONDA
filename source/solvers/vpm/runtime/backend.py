@@ -370,6 +370,22 @@ def _probe_taichi_backend() -> None:
         raise RuntimeError("Taichi backend field probe failed")
 
 
+def _active_backend_name() -> str:
+    """Return a stable public name for an already-initialized Taichi arch."""
+    active_arch = ti.lang.impl.current_cfg().arch
+    for attribute, name in (
+        ("cpu", "CPU"),
+        ("x64", "CPU"),
+        ("vulkan", "VULKAN"),
+        ("cuda", "CUDA"),
+        ("metal", "METAL"),
+    ):
+        candidate = getattr(ti, attribute, None)
+        if candidate is not None and active_arch == candidate:
+            return name
+    return "INITIALIZED"
+
+
 def initialize_taichi_backend(
     preferred_backend: str = "AUTO",
     debug_mode: bool = False,
@@ -405,7 +421,12 @@ def initialize_taichi_backend(
     """
     # Check if Taichi is already initialized
     if ti.lang.impl.get_runtime().prog is not None:
-        return getattr(constants_module, "TAICHI_BACKEND", "INITIALIZED")
+        cached = getattr(constants_module, "TAICHI_BACKEND", None)
+        if cached in {"CPU", "VULKAN", "CUDA", "METAL"}:
+            return cached
+        resolved = _active_backend_name()
+        constants_module.TAICHI_BACKEND = resolved
+        return resolved
 
     if precision not in _PRECISION_MAP:
         raise ValueError(f"precision must be 'f32' or 'f64', got '{precision}'")
