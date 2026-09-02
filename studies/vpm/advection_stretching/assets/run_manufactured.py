@@ -3,12 +3,11 @@
 from __future__ import annotations
 import csv, hashlib, json, platform, subprocess, sys, time
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import scipy
-import setup
-from assets.core import (AffineFlow, AnalyticEvaluator, State, advance, contract, errors,
-                         flows, integrate, pair_rate, gradient)
+from .. import setup
+from .core import (AffineFlow, AnalyticEvaluator, State, advance, contract, errors,
+                   flows, integrate, pair_rate, gradient)
 
 def write_csv(path,rows):
     rows=list(rows); path.parent.mkdir(parents=True,exist_ok=True)

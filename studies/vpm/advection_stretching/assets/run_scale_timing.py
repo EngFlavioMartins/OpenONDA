@@ -6,15 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import sys
 import time
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
+from .. import setup
 
-import setup
-
-from assets.run_full_checkpoint import CONFIGS, build_solver, load_checkpoint, upload, write_csv
+from .run_full_checkpoint import CONFIGS, build_solver, load_checkpoint, upload, write_csv
 
 COUNTS = (4_000, 14_000, 35_000, 70_200)
 EXACT_70K_LIMIT_SECONDS = 120.0

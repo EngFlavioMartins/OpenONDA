@@ -12,7 +12,6 @@ ASSETS = ROOT / "tutorials" / "vpm" / "lamb_oseen_vortex" / "assets"
 
 
 def _load(name: str):
-    sys.path.insert(0, str(ASSETS))
     spec = importlib.util.spec_from_file_location(name, ASSETS / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

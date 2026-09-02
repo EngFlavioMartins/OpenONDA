@@ -4,13 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import sys
-from pathlib import Path
 
-# ``setup.py`` remains the public case definition; this helper only drives
-# repeated random-walk realizations for the comparison.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from setup import run_case
+from tutorials.vpm.lamb_oseen_vortex.setup import run_case
 
 
 CIRCULATIONS = {

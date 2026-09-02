@@ -31,7 +31,6 @@ import pandas as pd
 from scipy import ndimage
 
 import math
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -1430,8 +1429,7 @@ def surface_plot_tiles(
     return tiles, comparison_time
 
 
-sys.path.insert(0, str(CASE_DIR))
-from setup import (
+from tutorials.vpm.lamb_oseen_vortex.setup import (
     ADVECTION_SCHEME,
     COLUMN_LENGTH,
     CORE_RADIUS,

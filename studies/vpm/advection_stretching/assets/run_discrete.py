@@ -3,13 +3,12 @@
 from __future__ import annotations
 import csv, sys, time
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import h5py
 import numpy as np
 from scipy.spatial import cKDTree
-import setup
-from assets.core import (ParticleEvaluator, State, advance, errors, integrate, invariants,
-                         reference_particle, target_fields, velocity, pair_rate)
+from .. import setup
+from .core import (ParticleEvaluator, State, advance, errors, integrate, invariants,
+                   reference_particle, target_fields, velocity, pair_rate)
 
 def write_csv(path,rows):
     rows=list(rows); keys=[]

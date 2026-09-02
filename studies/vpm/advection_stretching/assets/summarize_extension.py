@@ -6,15 +6,13 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
-import setup
+from .. import setup
 
-from assets.run_full_checkpoint import load_checkpoint, write_csv
+from .run_full_checkpoint import load_checkpoint, write_csv
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:

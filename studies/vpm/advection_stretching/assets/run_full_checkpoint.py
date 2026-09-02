@@ -16,12 +16,9 @@ import h5py
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
-sys.path.insert(0, str(HERE.parents[3] / "source"))
+from .. import setup
 
-import setup
-
-from assets.core import contract, target_fields
+from .core import contract, target_fields
 from openonda.vpm import (
     RK2,
     RK4,

@@ -3,11 +3,10 @@
 from __future__ import annotations
 import json, sys
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import setup
+from .. import setup
 
 LABEL={'fractional_x_gamma':'fractional x→Γ','fractional_gamma_x':'fractional Γ→x','parallel_lagged':'parallel lagged','strang_x_gamma_x':'Strang xΓx','strang_gamma_x_gamma':'Strang ΓxΓ','coupled_rk2':'coupled RK2','coupled_rk3':'coupled RK3','coupled_rk4_reference':'coupled RK4 (study)','reuse_stage_gradients':'reuse stage J','averaged_gradient_exponential':'averaged-J exponential'}
 

@@ -1,14 +1,13 @@
 """Regression tests for the frozen discrete VPM induction operator."""
 
-from pathlib import Path
-import sys
-
 import numpy as np
 
-STUDY = Path(__file__).resolve().parents[2] / "studies/vpm/advection_stretching"
-sys.path.insert(0, str(STUDY))
-
-from assets.core import contract, gradient, pair_rate, target_fields  # noqa: E402
+from studies.vpm.advection_stretching.assets.core import (
+    contract,
+    gradient,
+    pair_rate,
+    target_fields,
+)
 
 
 def _cloud() -> tuple[np.ndarray, np.ndarray]:

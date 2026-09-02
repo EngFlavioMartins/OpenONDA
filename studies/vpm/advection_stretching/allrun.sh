@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")"
-python assets/run_manufactured.py
-python assets/run_discrete_clouds.py
-python assets/run_checkpoint_replay.py
-python assets/run_production_envelope.py
-python assets/run_performance.py
-python assets/plot_results.py
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cd "${REPO_ROOT}"
+MODULE="studies.vpm.advection_stretching.assets"
+python -m "${MODULE}.run_manufactured"
+python -m "${MODULE}.run_discrete_clouds"
+python -m "${MODULE}.run_checkpoint_replay"
+python -m "${MODULE}.run_production_envelope"
+python -m "${MODULE}.run_performance"
+python -m "${MODULE}.plot_results"

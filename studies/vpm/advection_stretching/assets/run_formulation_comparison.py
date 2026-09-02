@@ -5,15 +5,13 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-import sys
 import time
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 from scipy.integrate import solve_ivp
-import setup
+from .. import setup
 
-from assets.core import AnalyticEvaluator, State, errors, integrate
+from .core import AnalyticEvaluator, State, errors, integrate
 
 
 class ABCFlow:

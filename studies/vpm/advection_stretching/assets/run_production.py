@@ -3,12 +3,11 @@
 from __future__ import annotations
 import contextlib, csv, io, sys, time
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1])); sys.path.insert(0,str(Path(__file__).resolve().parents[4]/'source'))
 import h5py
 import numpy as np
 from scipy.spatial import cKDTree
-import setup
-from assets.core import contract, target_fields
+from .. import setup
+from .core import contract, target_fields
 
 def winckelmans_target_gradient(target,x,gamma,sigma):
     """Exact f64 direct gradient for the rotor's Winckelmans kernel."""
