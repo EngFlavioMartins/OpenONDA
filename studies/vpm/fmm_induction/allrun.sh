@@ -4,7 +4,6 @@ set -euo pipefail
 study_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "${study_dir}/../../.."
 
-"${study_dir}/allclean.sh"
 python studies/vpm/fmm_induction/setup.py init
 
 for kernel in GAUSSIAN HIGH_ORDER_GAUSSIAN SUPER_GAUSSIAN WINCKELMANS; do

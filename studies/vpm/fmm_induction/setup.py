@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 import platform
 import resource
+import shutil
 import subprocess
 import sys
 import time
@@ -56,24 +57,78 @@ DISTRIBUTIONS = (
 )
 
 
-def _revision() -> tuple[str, bool]:
-    sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=STUDY_DIR,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    dirty = bool(
+def find_repository_root() -> Path:
+    return Path(
         subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "rev-parse", "--show-toplevel"],
             cwd=STUDY_DIR,
             check=True,
             capture_output=True,
             text=True,
-        ).stdout
+        ).stdout.strip()
+    ).resolve()
+
+
+def source_revision(repository_root: Path | None = None) -> tuple[str, bool, tuple[str, ...]]:
+    """Return the source revision and porcelain changes outside study outputs."""
+    root = (repository_root or find_repository_root()).resolve()
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    changes = tuple(
+        line
+        for line in subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--",
+                ".",
+                ":(exclude)studies/vpm/fmm_induction/results",
+                ":(exclude)studies/vpm/fmm_induction/figures",
+            ],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        if line
     )
-    return sha, dirty
+    return sha, bool(changes), changes
+
+
+def load_manifest_source_commit() -> str:
+    """Load the immutable source revision captured during study initialization."""
+    manifest = json.loads((RESULTS_DIR / "manifest.json").read_text(encoding="utf-8"))
+    source_commit = manifest.get("source_commit")
+    if not isinstance(source_commit, str) or not source_commit:
+        raise RuntimeError("study manifest has no non-empty source_commit")
+    if manifest.get("source_dirty") is not False:
+        raise RuntimeError("study manifest source_dirty must be false")
+    return source_commit
+
+
+def _manifest_provenance() -> tuple[str, bool]:
+    return load_manifest_source_commit(), False
+
+
+def _required_fmm_diagnostic(diagnostics, name: str):
+    if isinstance(diagnostics, dict):
+        if name not in diagnostics:
+            raise RuntimeError(f"FMM study diagnostic {name!r} is unavailable")
+        value = diagnostics[name]
+    else:
+        if not hasattr(diagnostics, name):
+            raise RuntimeError(f"FMM study diagnostic {name!r} is unavailable")
+        value = getattr(diagnostics, name)
+    if value is None:
+        raise RuntimeError(f"FMM study diagnostic {name!r} is unavailable")
+    return value
 
 
 def _hardware_model(backend_name: str) -> str:
@@ -104,18 +159,38 @@ def _hardware_model(backend_name: str) -> str:
     return f"{platform.machine()} {backend_name} device"
 
 
-def initialize_results() -> None:
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-    sha, dirty = _revision()
+def initialize_results(
+    *,
+    repository_root: Path | None = None,
+    results_dir: Path | None = None,
+    figures_dir: Path | None = None,
+) -> None:
+    results_path = results_dir or RESULTS_DIR
+    figures_path = figures_dir or FIGURES_DIR
+    root = (repository_root or find_repository_root()).resolve()
+    sha, source_dirty, source_changes = source_revision(root)
+    if source_dirty:
+        print("FMM study requires a clean source revision; source changes:")
+        for change in source_changes:
+            print(change)
+        raise SystemExit("aborting before deleting prior FMM study results")
+    for directory in (results_path, figures_path):
+        if directory.exists():
+            shutil.rmtree(directory)
+    results_path.mkdir(parents=True, exist_ok=True)
+    figures_path.mkdir(parents=True, exist_ok=True)
     manifest = {
         "created_utc": datetime.now(UTC).isoformat(),
-        "commit": sha,
-        "dirty": dirty,
-        "python": platform.python_version(),
-        "numpy": np.__version__,
-        "taichi": ti.__version__,
+        "source_commit": sha,
+        "source_dirty": False,
+        "python_version": platform.python_version(),
+        "numpy_version": np.__version__,
+        "taichi_version": ti.__version__,
         "platform": platform.platform(),
+        "hardware": {
+            "cpu": _hardware_model("CPU"),
+            "vulkan": _hardware_model("VULKAN"),
+        },
         "seed": SEED,
         "kernels": KERNELS,
         "distributions": DISTRIBUTIONS,
@@ -127,7 +202,7 @@ def initialize_results() -> None:
             "raw_rate_defect": 1.0e-3,
         },
     }
-    (RESULTS_DIR / "manifest.json").write_text(
+    (results_path / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
         encoding="utf-8",
     )
@@ -372,7 +447,17 @@ def run_case(method: str, backend_name: str, count: int, distribution: str, kern
             / max(np.linalg.norm(actual_rate, axis=1).sum(), np.finfo(float).eps)
         )
     )
-    sha, dirty = _revision()
+    source_commit, source_dirty = _manifest_provenance()
+    if method == "FMM":
+        host_particle_transfers = int(
+            _required_fmm_diagnostic(diagnostics, "host_particle_transfers")
+        )
+        direct_strength_rate_fallbacks = int(
+            _required_fmm_diagnostic(diagnostics, "direct_strength_rate_fallbacks")
+        )
+    else:
+        host_particle_transfers = None
+        direct_strength_rate_fallbacks = None
     integrator = RungeKutta(SSPRK3(), max_n_particles=count, dtype=ti.f32)
     right_hand_side = StageRHS(induction)
     integrator.advance(
@@ -403,8 +488,8 @@ def run_case(method: str, backend_name: str, count: int, distribution: str, kern
     accepted_step_seconds = time.perf_counter() - accepted_step_start
     row = {
         "timestamp_utc": datetime.now(UTC).isoformat(),
-        "commit": sha,
-        "dirty": dirty,
+        "source_commit": source_commit,
+        "source_dirty": source_dirty,
         "method": method,
         "backend": backend_name,
         "hardware_model": _hardware_model(backend_name),
@@ -431,7 +516,8 @@ def run_case(method: str, backend_name: str, count: int, distribution: str, kern
         "estimated_device_bytes": (
             diagnostics.device_memory_estimate_bytes if method == "FMM" else 0
         ),
-        "host_particle_transfers": diagnostics.host_particle_transfers if method == "FMM" else 0,
+        "host_particle_transfers": host_particle_transfers,
+        "direct_strength_rate_fallbacks": direct_strength_rate_fallbacks,
     }
     _append_csv(RESULTS_DIR / "accuracy.csv", row)
     _append_csv(RESULTS_DIR / "scaling.csv", row)
@@ -439,7 +525,8 @@ def run_case(method: str, backend_name: str, count: int, distribution: str, kern
         RESULTS_DIR / "conservation.csv",
         {
             "timestamp_utc": row["timestamp_utc"],
-            "commit": row["commit"],
+            "source_commit": row["source_commit"],
+            "source_dirty": row["source_dirty"],
             "method": method,
             "backend": backend_name,
             "kernel": kernel_name,
@@ -643,11 +730,11 @@ def run_evolution(backend_name: str, count: int, steps: int, distribution: str) 
     checksum.update(np.ascontiguousarray(final_position).tobytes())
     checksum.update(np.ascontiguousarray(final_strength).tobytes())
     checksum.update(np.ascontiguousarray(radius_np).tobytes())
-    sha, dirty = _revision()
+    source_commit, source_dirty = _manifest_provenance()
     result = {
         "timestamp_utc": datetime.now(UTC).isoformat(),
-        "commit": sha,
-        "dirty": dirty,
+        "source_commit": source_commit,
+        "source_dirty": source_dirty,
         "backend": backend_name,
         "hardware_model": _hardware_model(backend_name),
         "precision": "f32",
@@ -687,7 +774,12 @@ def run_evolution(backend_name: str, count: int, steps: int, distribution: str) 
             if record_direct_energy
             else None
         ),
-        "host_particle_transfers": induction.diagnostics.host_particle_transfers,
+        "host_particle_transfers": int(
+            _required_fmm_diagnostic(induction.diagnostics, "host_particle_transfers")
+        ),
+        "direct_strength_rate_fallbacks": int(
+            _required_fmm_diagnostic(induction.diagnostics, "direct_strength_rate_fallbacks")
+        ),
         "peak_host_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
         "estimated_device_bytes": induction.diagnostics.device_memory_estimate_bytes,
         "state_sha256": checksum.hexdigest(),
@@ -763,9 +855,13 @@ def _run_short_trajectory(
     if method == "FMM":
         metadata.update(
             {
-                "host_particle_transfers": induction.diagnostics.host_particle_transfers,
-                "direct_strength_rate_fallbacks": (
-                    induction.diagnostics.direct_strength_rate_fallbacks
+                "host_particle_transfers": int(
+                    _required_fmm_diagnostic(induction.diagnostics, "host_particle_transfers")
+                ),
+                "direct_strength_rate_fallbacks": int(
+                    _required_fmm_diagnostic(
+                        induction.diagnostics, "direct_strength_rate_fallbacks"
+                    )
                 ),
                 "maximum_raw_rate_defect": maximum_rate_defect,
             }
@@ -788,10 +884,11 @@ def run_short_comparison(
     fmm = _run_short_trajectory("FMM", backend_name, position, strength, radius, steps)
     position_difference = _relative(fmm[0], direct[0])
     strength_difference = _relative(fmm[1], direct[1])
+    source_commit, source_dirty = _manifest_provenance()
     result = {
         "timestamp_utc": datetime.now(UTC).isoformat(),
-        "commit": _revision()[0],
-        "dirty": _revision()[1],
+        "source_commit": source_commit,
+        "source_dirty": source_dirty,
         "backend": backend_name,
         "hardware_model": _hardware_model(backend_name),
         "precision": "f32",

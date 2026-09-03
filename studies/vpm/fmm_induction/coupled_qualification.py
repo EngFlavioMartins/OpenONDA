@@ -47,6 +47,31 @@ def _diagnostic(induction, name: str, default=0):
     return getattr(diagnostics, name, default)
 
 
+def load_manifest_source_commit() -> str:
+    manifest = json.loads((RESULTS_DIR / "manifest.json").read_text(encoding="utf-8"))
+    source_commit = manifest.get("source_commit")
+    if not isinstance(source_commit, str) or not source_commit:
+        raise RuntimeError("study manifest has no non-empty source_commit")
+    if manifest.get("source_dirty") is not False:
+        raise RuntimeError("study manifest source_dirty must be false")
+    return source_commit
+
+
+def _required_fmm_diagnostic(induction, name: str):
+    diagnostics = induction.diagnostics
+    if isinstance(diagnostics, dict):
+        if name not in diagnostics:
+            raise RuntimeError(f"FMM study diagnostic {name!r} is unavailable")
+        value = diagnostics[name]
+    else:
+        if not hasattr(diagnostics, name):
+            raise RuntimeError(f"FMM study diagnostic {name!r} is unavailable")
+        value = getattr(diagnostics, name)
+    if value is None:
+        raise RuntimeError(f"FMM study diagnostic {name!r} is unavailable")
+    return value
+
+
 def run_vlm(method: str, backend: str, steps: int) -> None:
     """Run a stationary maintained delta-wing surface with a shedding wake."""
     method = "TREECODE" if method.upper() in {"TREE", "TREECODE"} else "FMM"
@@ -116,6 +141,8 @@ def run_vlm(method: str, backend: str, steps: int) -> None:
             )
         elapsed = time.perf_counter() - start
         result = {
+            "source_commit": load_manifest_source_commit(),
+            "source_dirty": False,
             "method": method,
             "backend": backend.upper(),
             "steps": steps,
@@ -124,12 +151,6 @@ def run_vlm(method: str, backend: str, steps: int) -> None:
             "elapsed_seconds": elapsed,
             "final_wake_particle_count": solver.particles.n_particles_total,
             "stage_evaluations": int(_diagnostic(solver.induction, "stage_evaluations", 0)),
-            "host_particle_transfers": int(
-                _diagnostic(solver.induction, "host_particle_transfers", 0)
-            ),
-            "direct_strength_rate_fallbacks": int(
-                _diagnostic(solver.induction, "direct_strength_rate_fallbacks", 0)
-            ),
             "scheduled_backup_written": (
                 Path(directory) / f"solution/vpm_{steps:06d}.h5"
             ).is_file(),
@@ -139,6 +160,17 @@ def run_vlm(method: str, backend: str, steps: int) -> None:
             "peak_host_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
             "history": history,
         }
+        if method == "FMM":
+            result.update(
+                {
+                    "host_particle_transfers": int(
+                        _required_fmm_diagnostic(solver.induction, "host_particle_transfers")
+                    ),
+                    "direct_strength_rate_fallbacks": int(
+                        _required_fmm_diagnostic(solver.induction, "direct_strength_rate_fallbacks")
+                    ),
+                }
+            )
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     path = RESULTS_DIR / f"coupled_vlm_{method.lower()}.json"
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -163,6 +195,8 @@ def compare_vlm() -> None:
         / max(np.linalg.norm(tree_force.sum(axis=0)), np.finfo(float).eps)
     )
     result = {
+        "source_commit": load_manifest_source_commit(),
+        "source_dirty": False,
         "bound_circulation_history_relative_difference": circulation_difference,
         "integrated_force_coefficient_relative_difference": integrated_force_difference,
         "final_wake_centroid_distance": float(np.linalg.norm(fmm_centroid - tree_centroid)),
@@ -305,6 +339,8 @@ def run_fvm(method: str, backend: str, cycles: int) -> None:
         elapsed = time.perf_counter() - start
         particle_count = vpm_solver.particles.n_particles_total
         result = {
+            "source_commit": load_manifest_source_commit(),
+            "source_dirty": False,
             "method": method,
             "backend": backend.upper(),
             "cycles": cycles,
@@ -322,14 +358,24 @@ def run_fvm(method: str, backend: str, cycles: int) -> None:
             "finite_fvm_velocity": bool(np.isfinite(fvm_solver.velocity).all()),
             "finite_vpm_position": bool(np.isfinite(vpm_solver.particle_position).all()),
             "stage_evaluations": int(_diagnostic(vpm_solver.induction, "stage_evaluations", 0)),
-            "host_particle_transfers": int(
-                _diagnostic(vpm_solver.induction, "host_particle_transfers", 0)
-            ),
             "final_fvm_velocity": np.asarray(fvm_solver.velocity).astype(float).tolist(),
             "final_vpm_position": vpm_solver.particle_position.astype(float).tolist(),
             "final_vpm_strength": vpm_solver.particle_vortex_strength.astype(float).tolist(),
             "peak_host_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
         }
+        if method == "FMM":
+            result.update(
+                {
+                    "host_particle_transfers": int(
+                        _required_fmm_diagnostic(vpm_solver.induction, "host_particle_transfers")
+                    ),
+                    "direct_strength_rate_fallbacks": int(
+                        _required_fmm_diagnostic(
+                            vpm_solver.induction, "direct_strength_rate_fallbacks"
+                        )
+                    ),
+                }
+            )
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     path = RESULTS_DIR / f"coupled_fvm_{method.lower()}.json"
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -363,6 +409,8 @@ def compare_fvm() -> None:
     )
     comparison_tolerance = 0.02
     result = {
+        "source_commit": load_manifest_source_commit(),
+        "source_dirty": False,
         "cycles": fmm["cycles"],
         "relative_difference_tolerance": comparison_tolerance,
         "fvm_velocity_relative_difference": velocity_difference,
@@ -375,6 +423,7 @@ def compare_fvm() -> None:
         "fmm_coupled_backup_written": fmm["coupled_backup_written"],
         "fmm_scheduled_particle_output_written": fmm["scheduled_particle_output_written"],
         "fmm_host_particle_transfers": fmm["host_particle_transfers"],
+        "fmm_direct_strength_rate_fallbacks": fmm["direct_strength_rate_fallbacks"],
         "finite_fields": bool(
             fmm["finite_fvm_velocity"]
             and fmm["finite_vpm_position"]
@@ -386,6 +435,8 @@ def compare_fvm() -> None:
             and position_difference <= comparison_tolerance
             and strength_difference <= comparison_tolerance
             and fmm["final_particle_count"] == tree["final_particle_count"]
+            and fmm["host_particle_transfers"] == 0
+            and fmm["direct_strength_rate_fallbacks"] == 0
         ),
     }
     (RESULTS_DIR / "coupled_fvm_comparison.json").write_text(
