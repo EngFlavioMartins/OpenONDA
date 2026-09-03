@@ -14,9 +14,7 @@ The solver facade intentionally does not re-export these names at
 """
 
 from source.solvers.fvm.mesher import (
-    AdaptiveCartesianMesher,
     BoundaryLayers,
-    BoundaryLayerSpec,
     BoxDomain,
     BoxPatches,
     BoxRefinement,
@@ -40,8 +38,6 @@ from source.solvers.fvm.mesher import (
 )
 
 __all__ = [
-    "AdaptiveCartesianMesher",
-    "BoundaryLayerSpec",
     "BoundaryLayers",
     "BoxDomain",
     "BoxPatches",

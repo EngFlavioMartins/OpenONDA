@@ -10,11 +10,10 @@ original copyright holder is Creative Fields. See
 Phase 0 provenance boundary.
 
 The typed implementation lives in `mesh/cartesian/` and is the production
-path used by the migrated tutorials. `adaptive_cartesian.py`,
-`general_body.py`, and `boundary_layer.py` remain legacy compatibility modules
-recorded by the mesher programme; they are not the public implementation of
-the target API. In particular, the former cylinder-specific O-grid class is no
-longer defined or exported from the solver.
+path used by the migrated tutorials. The former adaptive monolith and
+cylinder-specific O-grid class are no longer defined or exported from the
+solver. General Cartesian construction is exposed only through
+`openonda.fvm.mesher.CartesianMesher`.
 
 The implementation must distinguish architectural inspiration from any
 source translated or adapted directly. No cfMesh source has been copied or

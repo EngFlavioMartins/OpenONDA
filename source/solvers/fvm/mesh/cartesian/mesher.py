@@ -10,8 +10,6 @@ from typing import Any, cast
 
 import numpy as np
 
-from ..adaptive_cartesian import AdaptiveCartesianMesher as _LegacyMesher
-from ..boundary_layer import stitch_boundary_layer
 from ..geometry import compute_mesh_geometry
 from ..surface_classification import SurfaceIndex
 from ..triangulated_surface import TriangulatedSurface
@@ -21,7 +19,11 @@ from ..validation import (
     validate_topology,
     validate_wall_vertex_conformance,
 )
-from .boundary_layers import build_patch_layers
+from .boundary_layers import (
+    LayerSurface,
+    build_layer_surface,
+    insert_surface_layers,
+)
 from .config import (
     BoundaryLayers,
     Bounds,
@@ -34,9 +36,13 @@ from .config import (
 )
 from .features import classify_features
 from .native_mesh import require_native_mesh
-from .optimisation import OptimisationDiagnostics
+from .octree import CartesianOctree
+from .optimisation import (
+    OptimisationDiagnostics,
+    agglomerate_small_cut_cells,
+)
 from .report import GenerationReport, SizeReport
-from .surface_recovery import RecoveryDiagnostics
+from .surface_recovery import RecoveryDiagnostics, recover_cut_cells
 
 
 class _EffectiveRefinement:
@@ -69,11 +75,15 @@ def _dyadic_size(background: float, requested: float) -> tuple[float, int]:
     return background / (2**level), level
 
 
-def _combined_surface(surfaces: tuple[STLSurface, ...]) -> TriangulatedSurface:
+def _combined_surface(
+    surfaces: tuple[STLSurface, ...],
+    triangle_sets: tuple[np.ndarray, ...] | None = None,
+) -> TriangulatedSurface:
     """Create one immutable geometric authority for multi-surface extraction."""
-    if len(surfaces) == 1:
+    if triangle_sets is None and len(surfaces) == 1:
         return surfaces[0].surface_data
-    triangles = np.ascontiguousarray(np.concatenate([surface.triangles for surface in surfaces]))
+    authority = triangle_sets or tuple(surface.triangles for surface in surfaces)
+    triangles = np.ascontiguousarray(np.concatenate(authority))
     triangles.setflags(write=False)
     lower = triangles.min(axis=(0, 1))
     upper = triangles.max(axis=(0, 1))
@@ -83,7 +93,11 @@ def _combined_surface(surfaces: tuple[STLSurface, ...]) -> TriangulatedSurface:
         triangles=triangles,
         bounds=bounds,  # type: ignore[arg-type]
         sha256=hashlib.sha256(triangles.tobytes()).hexdigest(),
-        kind="multi_box" if all(surface.kind == "box" for surface in surfaces) else "general",
+        kind=(
+            "multi_box"
+            if triangle_sets is None and all(surface.kind == "box" for surface in surfaces)
+            else "general"
+        ),
     )
 
 
@@ -92,6 +106,8 @@ def _rename_boundary_patches(
     domain: BoxDomain,
     surfaces: tuple[STLSurface, ...],
     source_wall_name: str,
+    *,
+    surface_triangles: tuple[np.ndarray, ...] | None = None,
 ) -> None:
     """Apply declarative patch names while preserving contiguous face ranges."""
     source_faces = mesh_data["faces"]
@@ -123,7 +139,8 @@ def _rename_boundary_patches(
     source_wall_owners = source_owners[first : first + count]
     wall_faces: dict[str, list[Any]] = {surface.patch: [] for surface in surfaces}
     wall_owners: dict[str, list[Any]] = {surface.patch: [] for surface in surfaces}
-    indices = [SurfaceIndex.build(surface.triangles) for surface in surfaces]
+    authority = surface_triangles or tuple(surface.triangles for surface in surfaces)
+    indices = [SurfaceIndex.build(triangles) for triangles in authority]
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     for face, owner in zip(source_wall_faces, source_wall_owners, strict=True):
         centre = points[np.asarray(face, dtype=np.int64)].mean(axis=0)
@@ -168,6 +185,8 @@ def _rename_boundary_patches(
     mesh_data["owners"] = np.asarray(owners, dtype=np.int32)
     mesh_data["boundary"] = boundaries
     mesh_data["n_faces"] = len(faces)
+    mesh_data.pop("cell_face_indices", None)
+    mesh_data.pop("cell_face_offset", None)
 
 
 def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -212,6 +231,35 @@ def _surface_distance_snapshot(
             "mean": float(distances.mean() if len(distances) else 0.0),
         }
     return result
+
+
+def _cell_type_counts(mesh_data: dict[str, Any]) -> dict[str, int]:
+    """Classify untouched hexahedra versus general polyhedral control volumes."""
+    n_cells = int(mesh_data["n_cells"])
+    n_internal = int(mesh_data["n_interior_faces"])
+    owners = np.asarray(mesh_data["owners"], dtype=np.int64)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
+    face_count = np.zeros(n_cells, dtype=np.int16)
+    non_quad_count = np.zeros(n_cells, dtype=np.int16)
+    np.add.at(face_count, owners, 1)
+    np.add.at(face_count, neighbours, 1)
+    non_quad = np.fromiter(
+        (len(face) != 4 for face in mesh_data["faces"]),
+        dtype=bool,
+        count=int(mesh_data["n_faces"]),
+    )
+    np.add.at(non_quad_count, owners[non_quad], 1)
+    internal_non_quad = non_quad[:n_internal]
+    np.add.at(non_quad_count, neighbours[internal_non_quad], 1)
+    hexahedra = (face_count == 6) & (non_quad_count == 0)
+    labels = np.asarray(mesh_data.get("boundary_layer_index", ()), dtype=np.int16)
+    return {
+        "hexahedra": int(np.count_nonzero(hexahedra)),
+        "polyhedra": int(n_cells - np.count_nonzero(hexahedra)),
+        "boundary_layer_cells": int(
+            np.count_nonzero(labels >= 0) if labels.shape == (n_cells,) else 0
+        ),
+    }
 
 
 class CartesianMesher:
@@ -305,24 +353,6 @@ class CartesianMesher:
             unknown = sorted(set(layer.patches) - known_patches)
             if unknown:
                 raise ValueError(f"boundary layer refers to unknown surface patches: {unknown}")
-        curved_layer_patches = sorted(
-            {
-                surface.patch
-                for surface in surfaces
-                if surface.kind != "box"
-                and any(surface.patch in layer.patches for layer in boundary_layers)
-            }
-        )
-        if curved_layer_patches:
-            raise ValueError(
-                "CartesianMesher cannot build boundary layers on curved/non-planar STL "
-                "surfaces yet: "
-                f"{curved_layer_patches}. The current patch-normal builder starts from "
-                "a Cartesian staircase and cannot guarantee a conformal layer front; "
-                "use a surface-conforming backend or omit boundary_layers until native "
-                "cut-cell/transition-shell stitching is implemented."
-            )
-
         self.domain = domain
         self.surfaces = surfaces
         self.max_cell_size = max_cell_size
@@ -358,7 +388,7 @@ class CartesianMesher:
             effective = max(effective, self.min_cell_size)
         return effective
 
-    def _legacy_refinements(self) -> tuple[_EffectiveRefinement, ...]:
+    def _octree_refinements(self) -> tuple[_EffectiveRefinement, ...]:
         return tuple(
             _EffectiveRefinement(
                 refinement,
@@ -367,73 +397,91 @@ class CartesianMesher:
             for refinement in self.refinements
         )
 
-    def _legacy_mesher(self) -> _LegacyMesher:
-        surface = _combined_surface(self.surfaces)
+    def _background_mesher(
+        self, surface_triangles: tuple[np.ndarray, ...] | None = None
+    ) -> CartesianOctree:
+        surface = _combined_surface(self.surfaces, surface_triangles)
         surface_size = self.effective_cell_size(self.boundary_cell_size)
         if self.features is not None:
             surface_size = self.effective_cell_size(min(surface_size, self.features.cell_size))
         exact_surface_components = (
             tuple(surface.bounds for surface in self.surfaces)
             if (
-                not self.boundary_layers
+                surface_triangles is None
+                and not self.boundary_layers
                 and len(self.surfaces) > 1
                 and all(surface.kind == "box" for surface in self.surfaces)
             )
             else ()
         )
-        layer_thickness = max(
-            (sum(layer.layer_heights) for layer in self.boundary_layers),
-            default=0.0,
-        )
-        return _LegacyMesher(
+        return CartesianOctree(
             domain=self.domain.bounds,
             max_cell_size=self.max_cell_size,
             surface_data=surface,
             exact_surface_components=exact_surface_components,
-            surface_exclusion_distance=layer_thickness,
-            skip_surface_recovery=bool(self.boundary_layers),
+            surface_exclusion_distance=0.0,
+            # General STL recovery is the separate transactional cut-cell
+            # stage below; the octree constructs only the background topology.
             surface_may_cross_domain_boundary=self.surface_may_cross_domain_boundary,
             wall_patch_name="__cartesian_surface__",
             surface_cell_size=surface_size,
-            refinements=cast(Any, self._legacy_refinements()),
+            refinements=cast(Any, self._octree_refinements()),
         )
-
-    def _apply_boundary_layers(self, mesh_data: dict[str, Any]) -> dict[str, Any]:
-        """Extrude each selected wall patch and stitch it to the core."""
-        result = mesh_data
-        for layer in self.boundary_layers:
-            for patch_name in layer.patches:
-                surface = next(surface for surface in self.surfaces if surface.patch == patch_name)
-                interface_name = f"__cartesian_layer_interface_{patch_name}__"
-                layer_mesh = build_patch_layers(
-                    result,
-                    SurfaceIndex.build(surface.triangles),
-                    layer,
-                    patch_name,
-                    interface_name,
-                )
-                for patch in result["boundary"]:
-                    if patch["name"] == patch_name:
-                        patch["name"] = interface_name
-                        patch["type"] = "patch"
-                        break
-                else:
-                    raise ValueError(f"Boundary-layer patch {patch_name!r} is missing")
-                result = stitch_boundary_layer(result, layer_mesh, interface_name)
-        return result
 
     def build(self) -> dict[str, Any]:
         """Build, validate, name, and return native face-based mesh data."""
-        mesher = self._legacy_mesher()
+        layer_surfaces: list[LayerSurface] = []
+        layer_specs: list[BoundaryLayers] = []
+        authority = [surface.triangles for surface in self.surfaces]
+        if self.boundary_layers:
+            feature_angle = self.features.angle if self.features is not None else 45.0
+            for layer in self.boundary_layers:
+                for patch_name in layer.patches:
+                    surface_id = next(
+                        index
+                        for index, surface in enumerate(self.surfaces)
+                        if surface.patch == patch_name
+                    )
+                    geometry = build_layer_surface(
+                        self.surfaces[surface_id].triangles,
+                        patch_name,
+                        layer,
+                        feature_angle_degrees=feature_angle,
+                    )
+                    authority[surface_id] = geometry.outer_triangles
+                    layer_surfaces.append(geometry)
+                    layer_specs.append(layer)
+        authority_tuple = tuple(authority)
+        mesher = self._background_mesher(authority_tuple if self.boundary_layers else None)
         mesh_data = require_native_mesh(mesher.build())
+        if any(surface.kind != "box" for surface in self.surfaces):
+            mesh_data = recover_cut_cells(
+                mesh_data,
+                tuple(SurfaceIndex.build(triangles) for triangles in authority_tuple),
+                "__cartesian_surface__",
+            )
         _rename_boundary_patches(
             mesh_data,
             self.domain,
             self.surfaces,
             "__cartesian_surface__",
+            surface_triangles=authority_tuple,
+        )
+        mesh_data = agglomerate_small_cut_cells(
+            mesh_data,
+            tuple(surface.patch for surface in self.surfaces),
+            surface_indices=tuple(
+                SurfaceIndex.build(triangles) for triangles in authority_tuple
+            ),
         )
         if self.boundary_layers:
-            mesh_data = self._apply_boundary_layers(mesh_data)
+            mesh_data = insert_surface_layers(
+                mesh_data,
+                tuple(layer_surfaces),
+                tuple(layer_specs),
+                self.domain.bounds,
+                self.domain.patches.as_tuple(),
+            )
         quality, geometry = _quality_snapshot(mesh_data)
         surface_conformance: dict[str, dict[str, float | int]] = {}
         for surface in self.surfaces:
@@ -481,9 +529,10 @@ class CartesianMesher:
             "feature_control": self.features is not None,
             "feature_edge_counts": tuple(len(edges) for edges in self._feature_sets),
             "layer_control": bool(self.boundary_layers),
+            "cell_types": _cell_type_counts(mesh_data),
         }
         self._report = GenerationReport(
-            method="cartesian.adapter",
+            method="cartesian",
             sizes=sizes,
             boundary_patches=tuple(patch["name"] for patch in mesh_data["boundary"]),
             surface_hashes=tuple(surface.sha256 for surface in self.surfaces),
@@ -492,9 +541,10 @@ class CartesianMesher:
         generation = mesh_data.setdefault("mesh_generation", {})
         generation.update(
             {
-                "method": "cartesian.adapter",
+                "method": "cartesian",
                 "requested_sizes": [size.as_dict() for size in sizes],
                 "cartesian_report": self._report.as_dict(),
+                "cell_types": diagnostics["cell_types"],
             }
         )
         return mesh_data

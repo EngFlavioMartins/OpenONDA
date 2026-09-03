@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 import openonda.fvm.mesher as msh
-from source.solvers.fvm.mesh.adaptive_cartesian import AdaptiveCartesianMesher
 from source.solvers.fvm.mesh.validation import (
     MeshValidationError,
     validate_no_fluid_cell_centres_inside_surface,
@@ -17,29 +16,42 @@ from source.solvers.fvm.mesh.validation import (
 from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow import setup
 
 
-def test_cylinder_reference_curved_layers_fail_fast_in_native_cartesian_path():
-    with pytest.raises(ValueError, match="curved/non-planar"):
-        setup.grid_mesh(1.0 / 12.0)
-
-
-def test_staircase_wall_is_rejected_by_surface_conformance_gate():
-    surface = msh.STLSurface(
-        Path(setup.CYLINDER_STL),
-        patch="cylinder",
-    )
-    legacy = AdaptiveCartesianMesher(
-        domain=(-3.0, 6.0, -3.0, 3.0, -0.6, 0.6),
-        max_cell_size=0.5,
-        surface_data=surface.surface_data,
-        surface_exclusion_distance=0.3,
-        skip_surface_recovery=True,
-        wall_patch_name="cylinder",
-        surface_cell_size=0.25,
+def test_cylinder_reference_builds_ten_conformal_native_layers():
+    dx = 0.15
+    surface = msh.STLSurface(Path(setup.CYLINDER_STL), patch="cylinder")
+    mesher = msh.CartesianMesher(
+        domain=msh.BoxDomain(
+            bounds=(-1.5, 1.5, -1.5, 1.5, -0.6, 0.6),
+            patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
+        ),
+        surfaces=(surface,),
+        max_cell_size=0.3,
+        boundary_cell_size=dx,
+        min_cell_size=dx,
+        boundary_layers=(
+            msh.BoundaryLayers(
+                patches=("cylinder",),
+                layers=10,
+                first_cell_height=dx / 16.0,
+                growth_ratio=1.15,
+            ),
+        ),
         surface_may_cross_domain_boundary=True,
     )
-    mesh = legacy.build()
-    with pytest.raises(MeshValidationError, match="not conformal"):
-        validate_wall_vertex_conformance(mesh, surface.triangles, "cylinder")
+    mesh = mesher.build()
+    labels = np.asarray(mesh["boundary_layer_index"])
+    layer_counts = np.bincount(labels[labels >= 0])
+    assert len(layer_counts) == 10
+    assert len(set(layer_counts.tolist())) == 1
+    assert layer_counts[0] > 0
+    assert "layer_termination" not in {patch["name"] for patch in mesh["boundary"]}
+    assert validate_wall_vertex_conformance(mesh, surface.triangles, "cylinder")[
+        "max_vertex_distance"
+    ] < 1.0e-10
+    assert mesher.report is not None
+    quality = mesher.report.diagnostics["quality"]
+    assert quality["max_non_orthogonality_deg"] < 80.0
+    assert quality["max_skewness"] < 2.0
 
 
 def test_fluid_centres_inside_surface_are_a_hard_failure():

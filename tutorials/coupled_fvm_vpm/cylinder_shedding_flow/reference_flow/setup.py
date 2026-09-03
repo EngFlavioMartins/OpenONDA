@@ -23,8 +23,6 @@ REYNOLDS_NUMBER = 150.0
 FREESTREAM_VELOCITY = [1.0, 0.0, 0.0]
 KINEMATIC_VISCOSITY = 1.0 / REYNOLDS_NUMBER
 DOMAIN = (-8.0, 20.0, -8.0, 8.0, -0.6, 0.6)
-# The checked-in surface deliberately extends beyond the finite computational
-# span, so the side wall crosses both z boundaries without STL end caps.
 CYLINDER_LENGTH = DOMAIN[5] - DOMAIN[4]
 
 # ---- Time and output -----------------------------------------------------
@@ -49,8 +47,6 @@ def parse_arguments() -> argparse.Namespace:
 
 def grid_mesh(dx: float) -> msh.CartesianMesher:
     """Return a declarative grid-study mesh at requested wall size ``dx``."""
-    if dx <= 0.0:
-        raise ValueError("--dx must be positive")
     return msh.CartesianMesher(
         domain=msh.BoxDomain(
             bounds=DOMAIN,
@@ -247,10 +243,6 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
             fvm.BoundaryConfig.slip("zmin"),
             fvm.BoundaryConfig.slip("zmax"),
             fvm.BoundaryConfig.wall("cylinder"),
-            # The finite-span surface has a sharp rim.  The generic layer
-            # block exposes its rim closure as a separate physical wall patch
-            # so it is explicit in the solver boundary contract.
-            fvm.BoundaryConfig.wall("layer_termination"),
         ],
         initial_velocity=FREESTREAM_VELOCITY,
         initial_kinematic_pressure=0.0,

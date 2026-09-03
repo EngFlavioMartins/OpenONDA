@@ -47,10 +47,7 @@ VALID_FIXTURE_NAMES = (
     "finite_naca_wing",
     "two_disjoint_bodies",
 )
-# The native Cartesian recovery stage is intentionally not allowed to claim
-# success for sharp, rotated geometry until its topology reconstruction is
-# replaced.  Smooth/closed fixtures remain executable below.
-KNOWN_NATIVE_RECOVERY_GAPS = {"rotated_box"}
+KNOWN_NATIVE_RECOVERY_GAPS: set[str] = set()
 INVALID_FIXTURE_NAMES = (
     "open_edge",
     "non_manifold_edge",

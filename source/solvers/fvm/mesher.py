@@ -7,8 +7,6 @@ leaving :mod:`source.solvers.fvm` focused on solver configuration and runtime.
 """
 
 from .mesh import geometry
-from .mesh.adaptive_cartesian import AdaptiveCartesianMesher
-from .mesh.boundary_layer import BoundaryLayerSpec
 from .mesh.cartesian import (
     BoundaryLayers,
     BoxDomain,
@@ -34,8 +32,6 @@ from .mesh.rectilinear import (
 )
 
 __all__ = [
-    "AdaptiveCartesianMesher",
-    "BoundaryLayerSpec",
     "BoundaryLayers",
     "BoxDomain",
     "BoxPatches",

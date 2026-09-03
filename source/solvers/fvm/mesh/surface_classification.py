@@ -2,7 +2,7 @@
 watertight triangulated surface.
 
 This is the piece of cfMesh's ``cartesianMesh`` workflow that the axis-aligned
-box path in ``adaptive_cartesian.py`` never needed: real triangle-geometry
+box path in the octree stage never needed: real triangle-geometry
 tests against a curved surface, used to classify octree leaves as solid,
 fluid, or boundary, and to project boundary-cell corners onto the surface so
 the extracted wall patch conforms to the true geometry rather than a
@@ -271,6 +271,10 @@ class SurfaceIndex:
         result = np.zeros(n, dtype=bool)
         resolved = np.zeros(n, dtype=bool)
         v0, v1, v2 = self.triangles[:, 0], self.triangles[:, 1], self.triangles[:, 2]
+        # Ray testing materialises several ``(points, triangles)`` arrays.
+        # Keep that product bounded when layer preparation has subdivided long
+        # source facets; otherwise a benign surface refinement can exhaust RAM.
+        chunk_size = min(chunk_size, max(16, 2_000_000 // max(len(self.triangles), 1)))
         for raw_direction in _DEFAULT_RAY_DIRECTIONS:
             direction = _normalize(raw_direction)
             pending = np.flatnonzero(~resolved)

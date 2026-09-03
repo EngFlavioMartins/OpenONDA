@@ -44,8 +44,6 @@ def test_public_solver_api_matches_the_explicit_allowlist():
             "mesher",
         },
         mesher: {
-            "AdaptiveCartesianMesher",
-            "BoundaryLayerSpec",
             "BoundaryLayers",
             "BoxDomain",
             "BoxPatches",

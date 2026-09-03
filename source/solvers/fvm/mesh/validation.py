@@ -561,7 +561,7 @@ def validate_curved_wall_conformance(
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     cell_vertex_indices = mesh_data.get("cell_vertex_indices")
     if cell_vertex_indices is not None:
-        from .adaptive_cartesian import _hex_volume
+        from .cartesian.octree import _hex_volume
 
         vertices = points[np.asarray(cell_vertex_indices, dtype=np.int64)]
         bad = [i for i in range(len(vertices)) if _hex_volume(vertices[i]) <= 0.0]

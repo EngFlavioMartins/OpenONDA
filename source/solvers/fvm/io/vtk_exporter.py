@@ -1,3 +1,4 @@
+from array import array
 from html import escape, unescape
 import os
 from pathlib import Path
@@ -154,21 +155,134 @@ class VTKExporter:
             self.mesh_data["cell_face_indices"] = cell_face_indices
             self.mesh_data["cell_face_offset"] = cell_face_offset
 
+        # Keep ordinary six-quad/eight-corner cells as native VTK hexahedra.
+        # This preserves the expected hex-dominant cfMesh appearance in
+        # ParaView; only genuine cut and transition cells need polyhedra.
         # VTK Polyhedron format:
         # [n_faces, num_nodes_f1, n1, n2, ..., num_nodes_f2, n1, n2, ...]
-        cells = []
-        cell_types = []
-        for c_idx in range(n_cells):
-            f_indices = cell_face_indices[cell_face_offset[c_idx] : cell_face_offset[c_idx + 1]]
-            cell_data = [len(f_indices)]
-            for f_idx in f_indices:
-                f_nodes = faces[f_idx]
-                cell_data.append(len(f_nodes))
-                cell_data.extend(f_nodes)
+        # ``mesh_data`` permits coarse/fine subfaces whose hanging vertices do
+        # not appear on an adjacent long face edge. Native FVM closure remains
+        # exact, but VTK_POLYHEDRON requires every local edge to be split at
+        # those vertices. Build a compact, cell-local conforming face stream.
+        # ``array('q')`` avoids the tens of bytes per entry consumed by a
+        # Python ``list[int]`` while allowing the expanded length to vary.
+        stream = array("q")
+        cell_types = np.empty(n_cells, dtype=np.uint8)
+        point_values = np.asarray(points, dtype=np.float64)
+        for cell in range(n_cells):
+            start = int(cell_face_offset[cell])
+            stop = int(cell_face_offset[cell + 1])
+            face_ids = cell_face_indices[start:stop]
+            local_faces: list[np.ndarray] = []
+            for face_id in face_ids:
+                nodes = np.asarray(faces[int(face_id)], dtype=np.int64)
+                if int(face_id) < int(self.mesh_data["n_interior_faces"]) and int(
+                    neighbours[int(face_id)]
+                ) == cell:
+                    nodes = nodes[::-1]
+                local_faces.append(nodes)
 
-            cells.append(len(cell_data))
-            cells.extend(cell_data)
-            cell_types.append(_pyvista.CellType.POLYHEDRON)
+            candidate_ids = np.unique(
+                np.concatenate(local_faces)
+            )
+
+            if (
+                len(local_faces) == 6
+                and len(candidate_ids) == 8
+                and all(len(nodes) == 4 for nodes in local_faces)
+            ):
+                base = local_faces[0]
+                base_set = set(map(int, base))
+                opposite = next(
+                    (
+                        nodes
+                        for nodes in local_faces[1:]
+                        if base_set.isdisjoint(map(int, nodes))
+                    ),
+                    None,
+                )
+                adjacency: dict[int, set[int]] = {
+                    int(node): set() for node in candidate_ids
+                }
+                for nodes in local_faces:
+                    for edge, first_node in enumerate(nodes):
+                        first = int(first_node)
+                        second = int(nodes[(edge + 1) % len(nodes)])
+                        adjacency[first].add(second)
+                        adjacency[second].add(first)
+                vtk_base = base[::-1]
+                vtk_top = [
+                    next(
+                        (
+                            adjacent
+                            for adjacent in adjacency[int(node)]
+                            if adjacent not in base_set
+                        ),
+                        -1,
+                    )
+                    for node in vtk_base
+                ]
+                if (
+                    opposite is not None
+                    and -1 not in vtk_top
+                    and len(set(vtk_top)) == 4
+                    and set(vtk_top) == set(map(int, opposite))
+                ):
+                    stream.append(8)
+                    stream.extend(map(int, vtk_base))
+                    stream.extend(vtk_top)
+                    cell_types[cell] = _pyvista.CellType.HEXAHEDRON
+                    continue
+
+            candidates = point_values[candidate_ids]
+            expanded_faces: list[np.ndarray] = []
+            for nodes in local_faces:
+                expanded: list[int] = []
+                for edge, first_node in enumerate(nodes):
+                    second_node = int(nodes[(edge + 1) % len(nodes)])
+                    first_node = int(first_node)
+                    first_point = point_values[first_node]
+                    direction = point_values[second_node] - first_point
+                    length_squared = float(np.dot(direction, direction))
+                    expanded.append(first_node)
+                    if length_squared <= np.finfo(np.float64).tiny:
+                        continue
+                    parameter = (candidates - first_point) @ direction / length_squared
+                    projection = first_point + parameter[:, None] * direction
+                    distance = np.linalg.norm(candidates - projection, axis=1)
+                    tolerance = max(1.0e-10 * np.sqrt(length_squared), 1.0e-12)
+                    interior = np.flatnonzero(
+                        (parameter > 1.0e-10)
+                        & (parameter < 1.0 - 1.0e-10)
+                        & (distance <= tolerance)
+                    )
+                    for local_id in interior[np.argsort(parameter[interior])]:
+                        expanded.append(int(candidate_ids[local_id]))
+                expanded_faces.append(np.asarray(expanded, dtype=np.int64))
+            edge_use: dict[tuple[int, int], int] = {}
+            for nodes in expanded_faces:
+                for edge, first_node in enumerate(nodes):
+                    pair = tuple(
+                        sorted(
+                            (
+                                int(first_node),
+                                int(nodes[(edge + 1) % len(nodes)]),
+                            )
+                        )
+                    )
+                    edge_use[pair] = edge_use.get(pair, 0) + 1
+            if any(count != 2 for count in edge_use.values()):
+                raise ValueError(
+                    f"Cell {cell} cannot be represented as a watertight VTK polyhedron"
+                )
+            record_width = 1 + sum(1 + len(nodes) for nodes in expanded_faces)
+            stream.append(record_width)
+            stream.append(len(expanded_faces))
+            for nodes in expanded_faces:
+                stream.append(len(nodes))
+                stream.extend(map(int, nodes))
+            cell_types[cell] = _pyvista.CellType.POLYHEDRON
+        cells = np.frombuffer(stream, dtype=np.int64)
 
         grid = _pyvista.UnstructuredGrid(cells, cell_types, points)
         return grid
