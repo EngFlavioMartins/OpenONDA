@@ -29,10 +29,13 @@ HUB_RADIUS = 1.0
 KINEMATIC_VISCOSITY = 1.5e-5
 AIR_DENSITY = 1.225
 N_RADIAL_STATIONS = 23
+MAX_N_PARTICLES = 100_000
 ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS
 
 TIME_STEP_SIZE = 0.006
-N_STEPS = 2400
+END_TIME = 14.4
+N_STEPS = round(END_TIME / TIME_STEP_SIZE)
+RELEASE_INTERVAL = TIME_STEP_SIZE
 DEFAULT_SMAGORINSKY_COEFFICIENT = 0.17
 RAMP_ROTATIONS = 1.0
 SAMPLE_INTERVAL_TIME = 0.12  # write a snapshot every this many seconds
@@ -56,6 +59,9 @@ def nominal_wake_spacing(time_step_size: float) -> float:
     return min(radial_spacing, tip_streamwise_spacing)
 
 
+FIXED_WAKE_SPACING = (ROTOR_RADIUS - HUB_RADIUS) / (N_RADIAL_STATIONS - 1)
+
+
 def cadence_steps(period: float, time_step_size: float) -> int:
     """Convert a physical output period to solver steps."""
     return max(1, round(period / time_step_size))
@@ -70,9 +76,12 @@ def build_case(
     time_step_size: float = TIME_STEP_SIZE,
     smagorinsky_coefficient: float = DEFAULT_SMAGORINSKY_COEFFICIENT,
     steps: int = N_STEPS,
+    max_n_particles: int = MAX_N_PARTICLES,
+    induction: object | None = None,
+    directory: Path = TUTORIAL_DIR,
+    wake_spacing: float = FIXED_WAKE_SPACING,
 ) -> vpm.VPMCase:
     """Build the complete declarative rotor case."""
-    wake_spacing = nominal_wake_spacing(time_step_size)
     return vpm.VPMCase(
         numerics=vpm.Numerics(
             time_step_size=time_step_size,
@@ -97,8 +106,9 @@ def build_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=wake_spacing,
             ),
-            induction=vpm.FMMInduction(),
+            induction=vpm.FMMInduction() if induction is None else induction,
             particle_kernel="WINCKELMANS",
+            max_n_particles=max_n_particles,
             write_precision="f32",
         ),
         backup=Backup(
@@ -116,18 +126,21 @@ def build_case(
             directory=CASE_NAME,
         ),
         run=vpm.RunPlan(steps=steps),
-        directory=TUTORIAL_DIR,
+        directory=directory,
     )
 
 
-def main() -> int:
+def build_rotor_case(
+    *,
+    steps: int = N_STEPS,
+    max_n_particles: int = MAX_N_PARTICLES,
+    directory: Path = TUTORIAL_DIR,
+    induction: object | None = None,
+    time_step_size: float = TIME_STEP_SIZE,
+    wake_spacing: float = FIXED_WAKE_SPACING,
+) -> vpm.VPMCase:
+    """Build the maintained three-blade rotor case for a requested run length."""
     from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
-
-    sample_interval_time = SAMPLE_INTERVAL_TIME
-    backup_interval_time = BACKUP_INTERVAL_TIME
-    n_steps = N_STEPS
-    time_step_size = TIME_STEP_SIZE
-    smagorinsky_coefficient = DEFAULT_SMAGORINSKY_COEFFICIENT
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
 
@@ -182,15 +195,15 @@ def main() -> int:
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         sample_surface_forces=True,
-        logging_interval_steps=cadence_steps(sample_interval_time, TIME_STEP_SIZE),
+        logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME, time_step_size),
     )
 
     # Downstream planes at 1.5R, 3R, and 4.5R.
     off_wake = ROTOR_RADIUS * 1.2
     sample_spacing = ROTOR_RADIUS / 36
     plane_schedule = vpm.EverySteps(
-        cadence_steps(sample_interval_time, TIME_STEP_SIZE),
-        start_time=PLANE_SAMPLING_START_TIME,
+        cadence_steps(SAMPLE_INTERVAL_TIME, time_step_size),
+        start_time=max(0.0, END_TIME - PLANE_SAMPLING_ROTATIONS * ROTATION_PERIOD),
     )
     plane_samplers = [
         vpm.SurfaceSampler(
@@ -206,14 +219,23 @@ def main() -> int:
     ]
 
     case = build_case(
-        sample_interval_time,
-        backup_interval_time,
+        SAMPLE_INTERVAL_TIME,
+        BACKUP_INTERVAL_TIME,
         vlm_setup=vlm_setup,
         samplers=plane_samplers,
         time_step_size=time_step_size,
-        smagorinsky_coefficient=smagorinsky_coefficient,
-        steps=n_steps,
+        smagorinsky_coefficient=DEFAULT_SMAGORINSKY_COEFFICIENT,
+        steps=steps,
+        max_n_particles=max_n_particles,
+        induction=induction,
+        directory=directory,
+        wake_spacing=wake_spacing,
     )
+    return case
+
+
+def main() -> int:
+    case = build_rotor_case()
 
     print("\n===== SIMULATION =====")
     vpm.VPMSolver(case).run()

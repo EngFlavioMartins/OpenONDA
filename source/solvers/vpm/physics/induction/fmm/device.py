@@ -809,6 +809,18 @@ class FMMInduction:
         )
         return self
 
+    def estimated_workspace_bytes(self, max_n_particles: int) -> int:
+        """Return the fixed FMM workspace allocation for a particle capacity."""
+        capacity = int(max_n_particles)
+        if capacity < 1:
+            raise ValueError("max_n_particles must be positive")
+        node_count = 2 * capacity
+        max_pairs = max(64, _PAIR_CAPACITY_FACTOR * capacity)
+        coefficient_bytes = node_count * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT)
+        interaction_bytes = max_pairs * 8 * 4
+        output_bytes = capacity * (3 + 9 + 3) * 4
+        return int(coefficient_bytes + interaction_bytes + output_bytes)
+
     def evaluate_stage(
         self,
         *,
@@ -874,11 +886,7 @@ class FMMInduction:
             self.diagnostics.last_strength_rate_seconds = phase["strength_rate"]
 
     def _estimate_memory_bytes(self) -> int:
-        node_count = 2 * self.max_n_particles
-        coefficient_bytes = node_count * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT)
-        interaction_bytes = self.workspace.max_pairs * 8 * 4 if self.workspace is not None else 0
-        output_bytes = self.max_n_particles * (3 + 9 + 3) * 4
-        return int(coefficient_bytes + interaction_bytes + output_bytes)
+        return self.estimated_workspace_bytes(self.max_n_particles)
 
 
 __all__ = ["FMMDeviceWorkspace", "FMMInduction"]

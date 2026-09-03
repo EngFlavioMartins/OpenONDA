@@ -200,7 +200,8 @@ class SolverIO:
         if health is not None:
             row.update(
                 {
-                    "lagrangian_cfl": health.lagrangian_cfl,
+                    "strain_increment_infinity": health.strain_increment_infinity,
+                    "strain_increment_spectral": health.strain_increment_spectral,
                     "maximum_particle_strength": health.maximum_particle_strength,
                     "maximum_particle_vorticity": health.maximum_vorticity,
                 }

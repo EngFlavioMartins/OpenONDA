@@ -303,6 +303,10 @@ class VPMSolver:
                 self.physics,
                 kernel=make_vortex_kernel(self.particle_kernel),
             )
+        if hasattr(self.induction, "estimated_workspace_bytes"):
+            self.fmm_workspace_bytes = self.induction.estimated_workspace_bytes(max_p)
+        else:
+            self.fmm_workspace_bytes = None
         self.integrator = RungeKutta(
             tableau=self.integrator_tableau,
             max_n_particles=max_p,
@@ -746,7 +750,7 @@ class VPMSolver:
         # The stabilization diagnostic record is persisted by the existing
         # restart layout. It mirrors this solver-owned measurement only;
         # stabilization no longer evaluates or limits the CFL number.
-        self.stabilization.lagrangian_cfl = self._accepted_health_snapshot.lagrangian_cfl
+        self.stabilization.lagrangian_cfl = self._accepted_health_snapshot.strain_increment_infinity
 
     def _refresh_diagnostics_for_output(self) -> None:
         """Refresh dependencies before framework-owned diagnostics are sampled."""

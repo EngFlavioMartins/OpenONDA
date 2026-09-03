@@ -110,18 +110,23 @@ def test_cartesian_build_preserves_declared_patch_names_and_reports_effective_si
 
 
 @pytest.mark.parametrize("fixture_name", ("ellipsoid", "rotated_box", "finite_naca_wing"))
-def test_curved_boundary_layers_fail_before_staircase_generation(tmp_path: Path, fixture_name: str):
+def test_curved_boundary_layers_build_on_non_planar_surfaces(tmp_path: Path, fixture_name: str):
     fixtures = make_acceptance_fixtures(tmp_path)
     surface = msh.STLSurface(fixtures[fixture_name].paths[0], patch="body")
-    with pytest.raises(ValueError, match="curved/non-planar"):
-        msh.CartesianMesher(
-            domain=_domain(),
-            surfaces=(surface,),
-            max_cell_size=0.5,
-            boundary_cell_size=0.25,
-            min_cell_size=0.125,
-            boundary_layers=(msh.BoundaryLayers(("body",), 2, 0.02, 1.1),),
-        )
+    mesher = msh.CartesianMesher(
+        domain=_domain(),
+        surfaces=(surface,),
+        max_cell_size=0.5,
+        boundary_cell_size=0.25,
+        min_cell_size=0.125,
+        boundary_layers=(msh.BoundaryLayers(("body",), 2, 0.02, 1.1),),
+    )
+    mesh = mesher.build()
+    validate_topology(mesh)
+    validate_geometry(mesh, compute_mesh_geometry(mesh, compute_lsq=False))
+    assert "body" in {patch["name"] for patch in mesh["boundary"]}
+    labels = np.asarray(mesh["boundary_layer_index"])
+    assert np.count_nonzero(labels >= 0) > 0
 
 
 def test_surface_index_and_features_are_deterministic_for_smooth_and_sharp_inputs(
@@ -145,8 +150,13 @@ def test_repeated_cartesian_builds_are_canonically_equal(tmp_path: Path):
     mesher = msh.CartesianMesher(domain=_domain(), surfaces=(surface,), max_cell_size=0.5)
     first = mesher.build()
     second = mesher.build()
-    for key in ("vertex_position", "faces", "owners", "neighbours"):
+    for key in ("vertex_position", "owners", "neighbours"):
         np.testing.assert_array_equal(first[key], second[key])
+    faces_a = first["faces"]
+    faces_b = second["faces"]
+    assert len(faces_a) == len(faces_b)
+    for fa, fb in zip(faces_a, faces_b, strict=True):
+        np.testing.assert_array_equal(np.asarray(fa), np.asarray(fb))
     assert first["boundary"] == second["boundary"]
     assert (
         first["mesh_generation"]["cartesian_report"]

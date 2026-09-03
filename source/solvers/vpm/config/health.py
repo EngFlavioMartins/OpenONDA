@@ -128,9 +128,35 @@ class HealthLimits:
 class HealthSnapshot:
     """Measured accepted-step health values used by :class:`HealthLimits`."""
 
-    lagrangian_cfl: float
+    strain_increment_infinity: float
+    strain_increment_spectral: float
     maximum_particle_strength: float
     maximum_vorticity: float
+    strain_increment_infinity_particle: int = -1
+    strain_increment_spectral_particle: int = -1
+
+    @property
+    def lagrangian_cfl(self) -> float:
+        """Compatibility alias for the legacy health-limit storage field."""
+        return self.strain_increment_infinity
+
+
+def strain_increments(
+    velocity_gradient: np.ndarray, time_step_size: float
+) -> tuple[float, float, int, int]:
+    """Return infinity/spectral strain increments and their particle indices."""
+    gradient = np.asarray(velocity_gradient, dtype=np.float64)
+    if gradient.size == 0:
+        return 0.0, 0.0, -1, -1
+    strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))
+    infinity_values = float(time_step_size) * np.abs(strain).sum(axis=2).max(axis=1)
+    spectral_values = float(time_step_size) * np.linalg.norm(strain, ord=2, axis=(1, 2))
+    return (
+        float(infinity_values.max(initial=0.0)),
+        float(spectral_values.max(initial=0.0)),
+        int(np.argmax(infinity_values)),
+        int(np.argmax(spectral_values)),
+    )
 
 
 class HealthError(RuntimeError):
@@ -173,9 +199,12 @@ def accepted_step_health(
             )
 
     if count:
-        gradient = np.asarray(arrays["velocity_gradient"], dtype=np.float64)
-        strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))
-        cfl = float(time_step_size * np.abs(strain).sum(axis=1).max(initial=0.0))
+        (
+            strain_increment_infinity,
+            strain_increment_spectral,
+            infinity_particle,
+            spectral_particle,
+        ) = strain_increments(arrays["velocity_gradient"], time_step_size)
         strength = np.linalg.norm(arrays["vortex_strength"], axis=1)
         maximum_strength = float(strength.max(initial=0.0))
         maximum_vorticity = float(
@@ -184,12 +213,24 @@ def accepted_step_health(
             )
         )
     else:
-        cfl = maximum_strength = maximum_vorticity = 0.0
-    snapshot = HealthSnapshot(cfl, maximum_strength, maximum_vorticity)
+        strain_increment_infinity = strain_increment_spectral = 0.0
+        infinity_particle = spectral_particle = -1
+    snapshot = HealthSnapshot(
+        strain_increment_infinity,
+        strain_increment_spectral,
+        maximum_strength,
+        maximum_vorticity,
+        infinity_particle,
+        spectral_particle,
+    )
 
-    if limits.lagrangian_cfl.maximum is not None and cfl > limits.lagrangian_cfl.maximum:
+    if (
+        limits.lagrangian_cfl.maximum is not None
+        and strain_increment_infinity > limits.lagrangian_cfl.maximum
+    ):
         raise HealthError(
-            f"VPM accepted state at step {step}: Lagrangian CFL number {cfl:.3g} exceeds "
+            f"VPM accepted state at step {step}: strain increment infinity norm "
+            f"{strain_increment_infinity:.3g} exceeds "
             f"maximum={limits.lagrangian_cfl.maximum:.3g}; reduce time_step_size."
         )
     if (

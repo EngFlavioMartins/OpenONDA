@@ -1,0 +1,7 @@
+{
+  "health_formula": "cfl = time_step_size * max_i(sum_j(abs(S[i,j]))), S=0.5*(J+J.T)",
+  "failure": null,
+  "records": 300,
+  "positive_finite_denominators": true,
+  "diagnostic_note": "health.py uses no characteristic-length denominator; particle age and source surface are not fields in the maintained solver"
+}

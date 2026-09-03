@@ -108,6 +108,7 @@ class Particles:
             float_dtype (str): 'f32' (default) or 'f64' - precision for particle data
         """
         self._max_particles = max_n_particles
+        self._capacity_warning_emitted = False
         self.float_dtype = float_dtype or "f32"
         self._taichi_dtype = ti.f32 if self.float_dtype == "f32" else ti.f64
         self.n_particles_total = 0
@@ -196,14 +197,29 @@ class Particles:
 
     def _grow_capacity(self, needed: int) -> None:
         """Validate that a particle insertion fits the startup allocation."""
+        current = int(self.n_particles_total)
+        requested = max(0, int(needed) - current)
         if needed <= self._max_particles:
             return
         raise ValueError(
-            f"Particle insertion requires capacity {needed}, but max_n_particles="
-            f"{self._max_particles}. Increase Numerics.max_n_particles before "
+            f"Particle insertion would exceed capacity: current particle count={current}, "
+            f"requested new particles={requested}, configured capacity={self._max_particles}. "
+            f"Increase max_n_particles before "
             "constructing the solver; runtime Taichi field resizing is disabled "
             "because replaced fields retain device memory."
         )
+
+    def _warn_near_capacity(self) -> None:
+        """Warn once when the active population reaches 80% of capacity."""
+        if (
+            not self._capacity_warning_emitted
+            and self.n_particles_total >= 0.80 * self._max_particles
+        ):
+            self._capacity_warning_emitted = True
+            Logging.warning(
+                f"Particle capacity warning: active particle count={self.n_particles_total}, "
+                f"configured capacity={self._max_particles}, threshold=80%"
+            )
 
     def resize(self, new_capacity: int) -> None:
         """
@@ -1092,6 +1108,7 @@ class Particles:
         # Increment particle count
         self.n_particles_total += 1
         self.touch_state()
+        self._warn_near_capacity()
         self._log_particles_added(1)
 
     def add_vortex_particles(
@@ -1228,6 +1245,7 @@ class Particles:
         self.n_particles_total = total_particles
 
         self.touch_state()
+        self._warn_near_capacity()
         self._log_particles_added(N)
 
     def replace_from_numpy(

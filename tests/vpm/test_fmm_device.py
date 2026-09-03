@@ -8,9 +8,11 @@ import numpy as np
 import pytest
 import taichi as ti
 
+from source.solvers.vpm.io.logging import Logging
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.numerics.rk_tableaux import RK2, RK4, SSPRK3
 from source.solvers.vpm.numerics.runge_kutta import RungeKutta
+from source.solvers.vpm.particles import Particles
 from source.solvers.vpm.physics.base import PhysicsBase
 from source.solvers.vpm.physics.induction.base import StageRates, StageState
 from source.solvers.vpm.physics.induction.fmm import FMMInduction
@@ -24,6 +26,45 @@ from source.solvers.vpm.physics.induction.fmm.device import (
 def _ensure_taichi_cpu() -> None:
     if ti.lang.impl.get_runtime().prog is None:
         ti.init(arch=ti.cpu, offline_cache=False, cpu_max_num_threads=2)
+
+
+def test_fmm_workspace_estimate_is_linear_in_capacity():
+    induction = FMMInduction()
+    estimates = [induction.estimated_workspace_bytes(capacity) for capacity in (1, 10, 100)]
+    assert estimates[1] > estimates[0]
+    assert estimates[2] > estimates[1]
+    assert estimates[2] - estimates[1] == 10 * (estimates[1] - estimates[0])
+
+
+def test_particle_capacity_warning_is_emitted_at_eighty_percent(monkeypatch):
+    _ensure_taichi_cpu()
+    warnings = []
+    monkeypatch.setattr(Logging, "warning", lambda text, **kwargs: warnings.append(text))
+    particles = Particles(max_n_particles=10, float_dtype="f32")
+    particles.add_vortex_particles(
+        position=np.zeros((8, 3), dtype=np.float32),
+        velocity=np.zeros((8, 3), dtype=np.float32),
+        vortex_strength=np.ones((8, 3), dtype=np.float32),
+        core_radius=np.ones(8, dtype=np.float32),
+        particle_volume=np.ones(8, dtype=np.float32),
+        kinematic_viscosity=np.zeros(8, dtype=np.float32),
+    )
+    assert len(warnings) == 1
+    assert "active particle count=8" in warnings[0]
+
+
+def test_particle_capacity_error_precedes_overflow():
+    _ensure_taichi_cpu()
+    particles = Particles(max_n_particles=2, float_dtype="f32")
+    with pytest.raises(ValueError, match="current particle count=0.*requested new particles=3"):
+        particles.add_vortex_particles(
+            position=np.zeros((3, 3), dtype=np.float32),
+            velocity=np.zeros((3, 3), dtype=np.float32),
+            vortex_strength=np.ones((3, 3), dtype=np.float32),
+            core_radius=np.ones(3, dtype=np.float32),
+            particle_volume=np.ones(3, dtype=np.float32),
+            kinematic_viscosity=np.zeros(3, dtype=np.float32),
+        )
 
 
 class _DeviceFMMHarness:

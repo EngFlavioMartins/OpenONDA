@@ -447,10 +447,22 @@ class Logging:
     def _format_particle_system(system) -> list:
         """Return static particle-storage configuration rows."""
         setup = getattr(system, "setup", None)
-        return [
+        rows = [
             ("particles, maximum", f"{int(getattr(setup, 'max_n_particles', 0)):,}"),
             ("precision", str(getattr(system, "precision", "unknown"))),
         ]
+        workspace_bytes = getattr(system, "fmm_workspace_bytes", None)
+        if workspace_bytes is not None:
+            rows.extend(
+                (
+                    ("FMM particle capacity", f"{int(getattr(setup, 'max_n_particles', 0)):,}"),
+                    ("estimated FMM workspace", f"{workspace_bytes / 1024**2:.3f}", "MiB"),
+                    ("selected device", str(getattr(system, "compute_device", "unknown"))),
+                    ("selected precision", str(getattr(system, "precision", "unknown"))),
+                    ("particle kernel", str(getattr(system, "particle_kernel", "unknown"))),
+                )
+            )
+        return rows
 
     @staticmethod
     def _format_physics_model(system) -> list:
@@ -658,7 +670,7 @@ class Logging:
             rows.append(("solution stability check", "disabled"))
         else:
             rows.append(("solution stability check", "enabled"))
-            rows.append(("  maximum Lagrangian CFL", f"{stability_limit:.3f}"))
+            rows.append(("  maximum strain increment, infinity norm", f"{stability_limit:.3f}"))
         coefficient = getattr(cfg, "stretching_viscosity_coefficient", 0.0)
         if coefficient > 0.0:
             rows.append(("stretching viscosity", "enabled"))

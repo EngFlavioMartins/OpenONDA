@@ -79,12 +79,14 @@ class CouplingStepper:
         solver = self.solver
         if solver.vlm_solver is None:
             return
+        if not getattr(solver, "_release_wake_particles", True):
+            return
 
         wake_particles = solver.vlm_solver.advance_coupled(
             particles=solver.particles,
             physics=solver.physics,
             config=solver.setup,
-            time_step_size=time_step_size,
+            time_step_size=getattr(solver, "_release_interval", time_step_size),
             step=solver.stepper.step,
             time=solver.stepper.time,
         )

@@ -64,6 +64,10 @@ ENERGY_CASES = (
 )
 DIRECT_ENERGY_PARTICLE_LIMIT = 50_000
 
+# Legacy-input fallbacks used only when a result folder lacks run_metadata.json.
+# They are NOT a second source of truth: the authoritative values are read from
+# samples/<case>/run_metadata.json, with setup.py as the physical definition.
+# These fallbacks match the maintained setup exactly.
 BETA_RMAX = 1.12
 REFERENCE_CIRCULATION = 1.0
 REYNOLDS_NUMBER = 530.0
@@ -71,7 +75,7 @@ CORE_RADIUS = 0.125  # paper's radius of maximum azimuthal velocity
 GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX
 SEPARATION = 1.0
 COLUMN_LENGTH = 40.0 * CORE_RADIUS  # mirrors setup.py::COLUMN_LENGTH
-FIELD_SPACING = 0.16 * CORE_RADIUS  # mirrors setup.py::FIELD_SPACING
+FIELD_SPACING = 0.15 * CORE_RADIUS  # mirrors setup.py::FIELD_SPACING
 TOTAL_TIME = 30.0  # fallback reference time [s] when no run data is available
 
 VTS_STEP_RE = re.compile(r"_(\d+)\.vts$")
@@ -1430,20 +1434,16 @@ def surface_plot_tiles(
 
 
 from tutorials.vpm.lamb_oseen_vortex.setup import (
-    ADVECTION_SCHEME,
     COLUMN_LENGTH,
     CORE_RADIUS,
-    DVH_MAX_NODES,
-    DVH_RD_RATIO,
     FIELD_SPACING,
-    GBD_MAX_NODES,
+    MAX_PARTICLES,
     SPACING,
     TIME_STEP_SIZE,
     TOTAL_TIME as CONFIGURED_TOTAL_TIME,
 )
 
 
-MEMBER_RE = re.compile(r"member_(\d+)$")
 STEP_RE = re.compile(r"_(\d{6})\.h5$")
 PHYSICS_CASES = ("vortex", "dipole", "merging")
 MINIMUM_ENSEMBLE_SIZE = 4
@@ -1494,15 +1494,14 @@ def discover_members(
     case_name: str,
     expected_members: int | None = None,
 ) -> list[Member]:
-    solution_case = Path(solution_root) / "rwm_ensemble" / case_name
-    samples_case = Path(samples_root) / "rwm_ensemble" / case_name
+    member_re = re.compile(rf"^{re.escape(case_name)}_(\d+)$")
     members: list[Member] = []
-    for solution_dir in sorted(solution_case.glob("member_*")):
-        match = MEMBER_RE.fullmatch(solution_dir.name)
+    for solution_dir in sorted(solution_root.glob(f"{case_name}_*")):
+        match = member_re.fullmatch(solution_dir.name)
         if not solution_dir.is_dir() or match is None:
             continue
         index = int(match.group(1))
-        member_samples = samples_case / solution_dir.name
+        member_samples = Path(samples_root) / solution_dir.name
         metadata_path = member_samples / "run_metadata.json"
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -2486,9 +2485,7 @@ def runtime_audit(solution_dir: Path = SOLUTION_DIR) -> dict:
         name = f"{case_id}_rwm"
         member_records = [
             record
-            for path in sorted(
-                (solution_dir / "rwm_ensemble" / name).glob(f"member_*/vpm_{name}.log")
-            )
+            for path in sorted((solution_dir).glob(f"{name}_*/vpm_*.log"))
             if (record := _solver_log_record(path)) is not None
         ]
         if member_records:
@@ -2742,7 +2739,7 @@ def _quality_warnings(
     if scheme == "rwm" and metadata:
         if int(metadata.get("ensemble_size", 0)) < 8:
             warnings.append("RWM ensemble has fewer than eight independent members.")
-    cap = {"dvh": DVH_MAX_NODES, "gbd": GBD_MAX_NODES}.get(scheme)
+    cap = MAX_PARTICLES if scheme in ("dvh", "gbd") else None
     if cap and max_particles is not None and max_particles >= float(cap):
         warnings.append(
             f"{scheme.upper()} reached its particle-count guard; inspect late-time sensitivity."
@@ -2803,11 +2800,12 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
                 "requested_time_step_size": TIME_STEP_SIZE,
                 "metadata_time_step_size": metadata.get("time_step_size"),
                 "observed_time_step_size": observed_time_step,
-                "advection_scheme": ADVECTION_SCHEME,
-                "induction_backend": "TreecodeInduction",
-                "dvh_rd_ratio": DVH_RD_RATIO,
-                "dvh_max_nodes": DVH_MAX_NODES,
-                "gbd_max_nodes": GBD_MAX_NODES,
+                "integrator": metadata.get("integrator"),
+                "induction_backend": metadata.get("induction_backend"),
+                "strength_rate_formulation": metadata.get("strength_rate_formulation"),
+                "particle_kernel": metadata.get("particle_kernel"),
+                "precision": metadata.get("precision"),
+                "max_particles_capacity": MAX_PARTICLES,
                 "initial_n_particles_total": metadata.get("initial_n_particles_total"),
                 "ensemble_size": metadata.get("ensemble_size"),
                 "compute_device": metadata.get("compute_device"),

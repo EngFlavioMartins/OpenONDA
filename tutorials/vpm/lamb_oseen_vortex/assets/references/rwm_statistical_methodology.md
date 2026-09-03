@@ -150,9 +150,10 @@ for DVH and GBD, whose regenerated grids can exceed the direct-integral limit.
 
 ## Reproducibility and files
 
-Raw, independently seeded member backups and flow integrals are retained
-under `solution/rwm_ensemble/` and `samples/rwm_ensemble/`. Canonical ensemble
-means are written under `samples/{vortex,dipole,merging}_rwm/`, alongside:
+Raw, independently seeded member backups and flow integrals are retained as
+distinct flat cases `{physics}_rwm_<nnn>` under `solution/` and `samples/`.
+Canonical ensemble means are written under `samples/{vortex,dipole,merging}_rwm/`,
+alongside:
 
 - `run_metadata.json`: seeds, estimator, confidence level, and definitions;
 - `rwm_convergence.csv`: time-resolved field uncertainty and projection QA;

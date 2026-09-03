@@ -283,11 +283,19 @@ class LayerSurface:
     patch: str
     distances: np.ndarray
     triangles: tuple[np.ndarray, ...]
+    source_vertices: np.ndarray
+    vertex_offsets: np.ndarray
 
     @property
     def outer_triangles(self) -> np.ndarray:
         """Triangulated interface between the layer block and Cartesian core."""
         return self.triangles[-1]
+
+    @property
+    def outer_vertices(self) -> np.ndarray:
+        """Unique vertices of the outermost offset level (shared with source)."""
+        total = float(self.distances[-1])
+        return self.source_vertices + total * self.vertex_offsets
 
 
 def _optimise_coplanar_quad_diagonals(
@@ -653,7 +661,13 @@ def build_layer_surface(
     distances.setflags(write=False)
     for values in levels:
         values.setflags(write=False)
-    return LayerSurface(patch=patch, distances=distances, triangles=levels)
+    return LayerSurface(
+        patch=patch,
+        distances=distances,
+        triangles=levels,
+        source_vertices=vertices,
+        vertex_offsets=vertex_offsets,
+    )
 
 
 def _barycentric_coordinates(points: np.ndarray, triangle: np.ndarray) -> np.ndarray:
