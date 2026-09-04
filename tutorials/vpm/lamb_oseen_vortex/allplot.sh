@@ -2,11 +2,13 @@
 # Rebuild the Lamb--Oseen diagnostics and figures from existing samples.
 set -euo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+cd "${REPO_ROOT}"
 MODULE="tutorials.vpm.lamb_oseen_vortex"
 
 export MPLCONFIGDIR="${TMPDIR:-/tmp}/openonda-matplotlib-cache"
-mkdir -p "$MPLCONFIGDIR" figures
+mkdir -p "$MPLCONFIGDIR" "${SCRIPT_DIR}/figures"
 
 python -m "${MODULE}.assets.postprocess" --extract-fields
 

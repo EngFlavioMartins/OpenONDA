@@ -89,6 +89,25 @@ def test_lamb_oseen_energy_reader_preserves_backend_provenance(tmp_path: Path):
     np.testing.assert_allclose(data["viscous_kinetic_energy_rate"], [-0.9, -1.8])
 
 
+def test_lamb_oseen_energy_reader_keeps_persistent_fourier_rate(tmp_path: Path):
+    diagnostics = _load_module(
+        TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py",
+        "lamb_oseen_persistent_fourier_energy_schema_test",
+    )
+    path = tmp_path / "flow_integrals.csv"
+    path.write_text(
+        "time,kinetic_energy_rate,viscous_kinetic_energy_rate,kinetic_energy_rate_source\n"
+        "0.1,-1.0,-0.9,direct_energy_backward_difference\n"
+        "0.2,-1.8,-1.7,fourier_energy_backward_difference\n",
+        encoding="utf-8",
+    )
+
+    data = diagnostics.read_flow_integrals(path)
+
+    assert data is not None
+    np.testing.assert_allclose(data["kinetic_energy_rate"], [-1.0, -1.8])
+
+
 def test_vortex_ring_backup_schedule_follows_the_completed_horizon():
     postprocess = _load_module(
         TUTORIALS / "vpm/vortex_ring/assets/postprocess.py",

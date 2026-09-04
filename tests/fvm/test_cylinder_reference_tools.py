@@ -72,6 +72,20 @@ def test_grid_study_uses_reasonable_monotone_wall_spacings():
     np.testing.assert_allclose(production[:-1] / production[1:], 1.5)
 
 
+def test_grid_study_preserves_the_refinement_ratio_at_every_octree_level():
+    meshers = [setup.grid_mesh(dx) for _case, dx in postprocess.PRODUCTION_CASES]
+
+    np.testing.assert_allclose(
+        [mesher.max_cell_size for mesher in meshers],
+        8.0 * np.asarray([dx for _case, dx in postprocess.PRODUCTION_CASES]),
+    )
+    for mesher, (_case, dx) in zip(meshers, postprocess.PRODUCTION_CASES, strict=True):
+        assert mesher.boundary_layers == ()
+        assert mesher.effective_cell_size(dx) == dx
+        assert mesher.effective_cell_size(2.0 * dx) == 2.0 * dx
+        assert mesher.effective_cell_size(4.0 * dx) == 4.0 * dx
+
+
 def test_richardson_gci_recovers_second_order_limit():
     exact = 1.25
     records = [

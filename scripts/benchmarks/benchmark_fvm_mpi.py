@@ -16,19 +16,8 @@ import time
 from mpi4py import MPI
 import numpy as np
 
-from source.solvers.fvm import (
-    BoundaryConfig,
-    ComputeConfig,
-    DiscretizationConfig,
-    FVMSetup,
-    FVMSolver,
-    LinearSolverConfig,
-    PimpleControl,
-    RunSchedule,
-    TimeConfig,
-    TransportConfig,
-)
-from source.solvers.fvm.mesh.cartesian import structured_box
+import openonda.fvm as fvm
+import openonda.fvm.mesher as msh
 
 
 def _peak_rss_bytes() -> int:
@@ -51,32 +40,33 @@ def main() -> None:
     if args.warmup_steps < 0 or args.measured_steps < 1:
         raise ValueError("warmup-steps must be >= 0 and measured-steps must be >= 1")
     nx_per_rank = args.cells_per_rank // 64
-    mesh = structured_box(nx_per_rank * size, 8, 8) if rank == 0 else None
-    execution = ComputeConfig.petsc_partitioned()
-    config = FVMSetup(
+    mesh = msh.structured_box(nx_per_rank * size, 8, 8) if rank == 0 else None
+    execution = fvm.ComputeConfig.petsc_partitioned()
+    config = fvm.FVMSetup(
         case_name="partitioned-weak-scaling",
+        cores=size,
         execution=execution,
-        time=TimeConfig(
+        time=fvm.TimeConfig(
             time_step_size=0.01,
             end_time=0.01,
-            output_schedule=RunSchedule(every_n_steps=10**9),
+            output_schedule=fvm.RunSchedule(every_n_steps=10**9),
         ),
-        schemes=DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
-        linear=LinearSolverConfig(
+        schemes=fvm.DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+        linear=fvm.LinearSolverConfig(
             momentum_solver="bicgstab",
             pressure_solver="cg",
             momentum_tolerance=1e-8,
             pressure_tolerance=1e-8,
         ),
-        pimple=PimpleControl(n_correctors=2),
-        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
+        pimple=fvm.PimpleControl(n_correctors=2),
+        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
-            BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
-            BoundaryConfig.outlet("xmax", 0.0),
-            BoundaryConfig.slip("ymin"),
-            BoundaryConfig.slip("ymax"),
-            BoundaryConfig.slip("zmin"),
-            BoundaryConfig.slip("zmax"),
+            fvm.BoundaryConfig.inlet("xmin", [1.0, 0.0, 0.0]),
+            fvm.BoundaryConfig.outlet("xmax", 0.0),
+            fvm.BoundaryConfig.slip("ymin"),
+            fvm.BoundaryConfig.slip("ymax"),
+            fvm.BoundaryConfig.slip("zmin"),
+            fvm.BoundaryConfig.slip("zmax"),
         ],
         # A zero field with a nonzero inlet gives the pressure and momentum
         # solvers meaningful work; the previous uniform stream was an exact
@@ -88,7 +78,7 @@ def main() -> None:
         comm.Barrier()
         started = time.perf_counter()
         with contextlib.redirect_stdout(io.StringIO()):
-            solver = FVMSolver(config, case_dir, mesh_data=mesh)
+            solver = fvm.create_fvm_solver(config, case_dir=case_dir, mesh=mesh)
             solver.auto_write = False
         initialization = time.perf_counter() - started
         for _ in range(args.warmup_steps):

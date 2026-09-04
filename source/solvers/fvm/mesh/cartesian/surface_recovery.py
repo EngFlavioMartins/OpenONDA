@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from scipy.spatial import Delaunay
+from scipy.spatial import Delaunay, QhullError
 
 from ..surface_classification import SurfaceIndex, triangle_box_overlap
 
@@ -132,16 +132,18 @@ def _convex_hull_2d(points: np.ndarray, axes: tuple[int, int], tolerance: float)
 
     lower: list[int] = []
     for local_id in range(len(ordered)):
-        while len(lower) >= 2 and cross(
-            ordered[lower[-2]], ordered[lower[-1]], ordered[local_id]
-        ) <= tolerance:
+        while (
+            len(lower) >= 2
+            and cross(ordered[lower[-2]], ordered[lower[-1]], ordered[local_id]) <= tolerance
+        ):
             lower.pop()
         lower.append(local_id)
     upper: list[int] = []
     for local_id in range(len(ordered) - 1, -1, -1):
-        while len(upper) >= 2 and cross(
-            ordered[upper[-2]], ordered[upper[-1]], ordered[local_id]
-        ) <= tolerance:
+        while (
+            len(upper) >= 2
+            and cross(ordered[upper[-2]], ordered[upper[-1]], ordered[local_id]) <= tolerance
+        ):
             upper.pop()
         upper.append(local_id)
     hull = lower[:-1] + upper[:-1]
@@ -184,9 +186,7 @@ def _surface_fragments(
     return result
 
 
-def _merge_surface_fragments(
-    fragments: list[np.ndarray], tolerance: float
-) -> list[np.ndarray]:
+def _merge_surface_fragments(fragments: list[np.ndarray], tolerance: float) -> list[np.ndarray]:
     """Remove internal STL edges and return manifold boundary loops per cut cell."""
     if len(fragments) < 2:
         return fragments
@@ -281,7 +281,8 @@ def _face_fluid_polygons(
     """Clip one Cartesian face into one or more fluid-side polygons."""
     span = np.ptp(original, axis=0)
     axis = int(np.argmin(span))
-    tangential = tuple(value for value in range(3) if value != axis)
+    tangential_values = [value for value in range(3) if value != axis]
+    tangential = (tangential_values[0], tangential_values[1])
     plane = float(original[:, axis].mean())
     outside = np.ones(len(original), dtype=bool)
     for index in surface_indices:
@@ -324,12 +325,10 @@ def _face_fluid_polygons(
             ordered = on_edge[np.argsort(parameter[on_edge])]
             for first_id, second_id in zip(ordered[:-1], ordered[1:], strict=True):
                 midpoint = 0.5 * (points[first_id] + points[second_id])
-                if any(
-                    bool(index.is_inside(midpoint[None, :])[0])
-                    for index in surface_indices
-                ):
+                if any(bool(index.is_inside(midpoint[None, :])[0]) for index in surface_indices):
                     continue
-                segments.add(tuple(sorted((int(first_id), int(second_id)))))
+                first_value, second_value = int(first_id), int(second_id)
+                segments.add((min(first_value, second_value), max(first_value, second_value)))
         for fragment in fragment_points:
             for edge, first_point in enumerate(fragment):
                 second_point = fragment[(edge + 1) % len(fragment)]
@@ -341,7 +340,7 @@ def _face_fluid_polygons(
                 first_id = local_id(first_point)
                 second_id = local_id(second_point)
                 if first_id is not None and second_id is not None and first_id != second_id:
-                    segments.add(tuple(sorted((first_id, second_id))))
+                    segments.add((min(first_id, second_id), max(first_id, second_id)))
         adjacency: dict[int, list[int]] = {}
         for first_id, second_id in segments:
             adjacency.setdefault(first_id, []).append(second_id)
@@ -382,16 +381,32 @@ def _face_fluid_polygons(
         # the solid and leave overlapping cell faces. Triangulate the planar
         # arrangement and retain only fluid-side simplices.
         coordinates_2d = points[:, tangential]
-        triangulation = Delaunay(coordinates_2d)
+        # A surface can touch a Cartesian face along a line (for example a
+        # triangulated cylinder tangent to a face).  Such an arrangement has
+        # no finite-area face fragment and Qhull correctly rejects it as a
+        # rank-one Delaunay input.  Treat it as empty explicitly instead of
+        # leaking a backend precision exception from an otherwise valid STL.
+        centred = coordinates_2d - coordinates_2d.mean(axis=0)
+        if np.linalg.matrix_rank(centred, tol=tolerance) < 2:
+            return []
+        try:
+            triangulation = Delaunay(coordinates_2d)
+        except QhullError as exc:
+            hull = _convex_hull_2d(points, tangential, tolerance**2)
+            if len(hull) < 3:
+                return []
+            hull_area = _polygon_area_vector(points[hull])
+            if np.linalg.norm(hull_area) <= tolerance**2:
+                return []
+            raise ValueError(
+                "Planar cut-face triangulation failed for a finite-area arrangement"
+            ) from exc
         original_area = _polygon_area_vector(original)
         result: list[np.ndarray] = []
         for simplex in triangulation.simplices:
             polygon = points[np.asarray(simplex, dtype=np.int64)]
             triangle_centre = polygon.mean(axis=0, keepdims=True)
-            if any(
-                bool(index.is_inside(triangle_centre)[0])
-                for index in surface_indices
-            ):
+            if any(bool(index.is_inside(triangle_centre)[0]) for index in surface_indices):
                 continue
             if float(np.dot(_polygon_area_vector(polygon), original_area)) < 0.0:
                 polygon = polygon[::-1].copy()
@@ -483,9 +498,7 @@ def recover_cut_cells(
                     )
                 )
         if fragments:
-            cut_fragments[cell_id] = _merge_coplanar_surface_fragments(
-                fragments, tolerance
-            )
+            cut_fragments[cell_id] = _merge_coplanar_surface_fragments(fragments, tolerance)
     if not cut_fragments:
         raise ValueError("Surface recovery found no intersected fluid-side Cartesian cells")
 
@@ -506,8 +519,7 @@ def recover_cut_cells(
     internal_neighbours: list[int] = []
     patch_order = [str(patch["name"]) for patch in mesh_data["boundary"]]
     patch_types = {
-        str(patch["name"]): str(patch.get("type", "patch"))
-        for patch in mesh_data["boundary"]
+        str(patch["name"]): str(patch.get("type", "patch")) for patch in mesh_data["boundary"]
     }
     patch_faces: dict[str, list[np.ndarray]] = {name: [] for name in patch_order}
     patch_owners: dict[str, list[int]] = {name: [] for name in patch_order}
@@ -519,11 +531,7 @@ def recover_cut_cells(
         owner = int(owners[face_id])
         neighbour = int(neighbours[face_id]) if face_id < n_internal else -1
         incident = [owner] + ([neighbour] if neighbour >= 0 else [])
-        fragments = [
-            polygon
-            for cell_id in incident
-            for polygon in cut_fragments.get(cell_id, ())
-        ]
+        fragments = [polygon for cell_id in incident for polygon in cut_fragments.get(cell_id, ())]
         original = points[np.asarray(source_face, dtype=np.int64)]
         polygons = (
             _face_fluid_polygons(original, fragments, surface_indices, tolerance)
@@ -579,9 +587,7 @@ def recover_cut_cells(
         np.asarray(point_lookup[np.asarray(face, dtype=np.int64)], dtype=np.int32)
         for face in face_blocks
     ]
-    rebuilt_points = np.ascontiguousarray(
-        np.asarray(registry.points, dtype=np.float64)[used]
-    )
+    rebuilt_points = np.ascontiguousarray(np.asarray(registry.points, dtype=np.float64)[used])
     # Recovered cell centroids must be based on the actual cut topology, not
     # on the original Cartesian corners.  Orient only the narrow cut band;
     # untouched packed-core faces retain the extractor's proven orientation.
@@ -597,7 +603,7 @@ def recover_cut_cells(
             neighbour = int(rebuilt_neighbours[face_id])
             if neighbour in cut_point_ids:
                 cut_point_ids[neighbour].update(map(int, face))
-    cut_centres = {
+    cut_centres: dict[int, np.ndarray] = {
         cell_id: rebuilt_points[np.asarray(sorted(point_ids), dtype=np.int64)].mean(axis=0)
         for cell_id, point_ids in cut_point_ids.items()
         if point_ids
@@ -610,16 +616,15 @@ def recover_cut_cells(
         if wall_start <= face_id < wall_stop:
             continue
         owner = int(rebuilt_owners[face_id])
-        neighbour = (
-            int(rebuilt_neighbours[face_id]) if face_id < len(rebuilt_neighbours) else -1
-        )
+        neighbour = int(rebuilt_neighbours[face_id]) if face_id < len(rebuilt_neighbours) else -1
         if owner not in cut_ids and neighbour not in cut_ids:
             continue
         coordinates = rebuilt_points[np.asarray(face, dtype=np.int64)]
         face_centre = coordinates.mean(axis=0)
-        owner_centre = cut_centres.get(owner, original_centres[owner])
+        owner_centre = cut_centres[owner] if owner in cut_centres else original_centres[owner]
         direction = (
-            cut_centres.get(neighbour, original_centres[neighbour]) - owner_centre
+            (cut_centres[neighbour] if neighbour in cut_centres else original_centres[neighbour])
+            - owner_centre
             if neighbour >= 0
             else face_centre - owner_centre
         )
@@ -627,9 +632,7 @@ def recover_cut_cells(
             rebuilt_faces[face_id] = face[::-1].copy()
     widths = {len(face) for face in rebuilt_faces}
     mesh_data["faces"] = (
-        np.ascontiguousarray(rebuilt_faces, dtype=np.int32)
-        if len(widths) == 1
-        else rebuilt_faces
+        np.ascontiguousarray(rebuilt_faces, dtype=np.int32) if len(widths) == 1 else rebuilt_faces
     )
     mesh_data["vertex_position"] = rebuilt_points
     mesh_data["owners"] = np.ascontiguousarray(rebuilt_owners, dtype=np.int32)
@@ -659,6 +662,7 @@ def recover_cut_cells(
     # transaction before the mesh is allowed to leave this stage.
     from ..geometry import compute_mesh_geometry
 
+    orientation_history: list[tuple[int, ...]] = []
     for _iteration in range(4):
         geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
         area = np.asarray(geometry["face_area_vector"], dtype=np.float64)
@@ -671,10 +675,10 @@ def recover_cut_cells(
             - cell_centre[mesh_data["owners"][:n_internal_faces]]
         )
         direction[n_internal_faces:] = (
-            face_centre[n_internal_faces:]
-            - cell_centre[mesh_data["owners"][n_internal_faces:]]
+            face_centre[n_internal_faces:] - cell_centre[mesh_data["owners"][n_internal_faces:]]
         )
         reversed_ids = np.flatnonzero(np.einsum("ij,ij->i", area, direction) < 0.0)
+        orientation_history.append(tuple(map(int, reversed_ids)))
         if not len(reversed_ids):
             break
         for face_id in reversed_ids:
@@ -686,7 +690,10 @@ def recover_cut_cells(
             else rebuilt_faces
         )
     else:
-        raise ValueError("Cut-cell face orientation did not converge")
+        raise ValueError(
+            "Cut-cell face orientation did not converge: "
+            f"reversed_faces_per_iteration={orientation_history}"
+        )
     return mesh_data
 
 

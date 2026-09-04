@@ -6,14 +6,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_DIR="$REPO_ROOT/scripts/environment"
 ENV_NAME="${OPENONDA_CONDA_ENV:-OpenONDA}"
 ENV_FILE="$ENV_DIR/environment.yml"
-AUTO_YES=0
+AUTO_YES=1
 EDITABLE=1
 
 usage() {
     printf '%s\n' \
         "Usage: scripts/install/install_conda.sh [options]" \
         "" \
-        "  -y, --yes       install Miniforge without prompting if Conda is absent" \
+        "  -y, --yes       install Miniforge without prompting (the default)" \
+        "  --prompt        ask before installing Miniforge if Conda is absent" \
         "  --parallel      install the MPI/PETSc environment" \
         "  --no-editable   install a fixed copy instead of linking the repository" \
         "  --name NAME     choose the Conda environment name" \
@@ -23,6 +24,7 @@ usage() {
 while (($#)); do
     case "$1" in
         -y|--yes) AUTO_YES=1 ;;
+        --prompt) AUTO_YES=0 ;;
         --parallel)
             ENV_FILE="$ENV_DIR/environment-parallel.yml"
             if [[ "$ENV_NAME" == "OpenONDA" ]]; then ENV_NAME="OpenONDA-parallel"; fi
@@ -122,7 +124,7 @@ else
     "$ENV_PYTHON" -m pip install "$REPO_ROOT"
 fi
 
-echo "Verifying meshing, Taichi, and a native FVM step outside the source tree..."
+echo "Verifying package resources, plotting, meshing, Taichi, and a native FVM step..."
 VERIFY_ARGS=()
 if [[ $EDITABLE -eq 0 ]]; then VERIFY_ARGS+=(--require-site-packages); fi
 (
@@ -137,6 +139,8 @@ echo "OpenONDA is ready in '$ENV_NAME'."
 printf 'Activate it with:\n  source %q\n  conda activate %q\n' \
     "$CONDA_ROOT/etc/profile.d/conda.sh" "$ENV_NAME"
 echo "The package can then be imported from any directory; PYTHONPATH is not needed."
+echo "Inspect the installation with: openonda info"
+echo "List packaged tutorials with: openonda tutorial list"
 if [[ $EDITABLE -eq 1 ]]; then
     echo "Edits under $REPO_ROOT take effect immediately; no reinstall is needed."
 fi

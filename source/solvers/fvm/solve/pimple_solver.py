@@ -453,8 +453,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         pressure_flux_for_boundaries = volumetric_face_flux
                         kinematic_pressure[:n_elem] = (
                             pressure_before_nonorthogonal_sweeps
-                            + outer_pressure_relaxation
-                            * accumulated_kinematic_pressure_correction
+                            + outer_pressure_relaxation * accumulated_kinematic_pressure_correction
                         )
                         logging.Timer.log(
                             "Velocity Correction",

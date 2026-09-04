@@ -56,6 +56,24 @@ def test_health_limits_enforce_finite_state_and_cfl_after_field_refresh():
         _check(core_radius=np.array([np.nan]))
 
 
+def test_health_limits_accept_an_empty_particle_state():
+    snapshot = _check(
+        position=np.empty((0, 3)),
+        velocity=np.empty((0, 3)),
+        velocity_gradient=np.empty((0, 3, 3)),
+        vortex_strength=np.empty((0, 3)),
+        core_radius=np.empty(0),
+        particle_volume=np.empty(0),
+    )
+
+    assert snapshot.strain_increment_infinity == 0.0
+    assert snapshot.strain_increment_spectral == 0.0
+    assert snapshot.maximum_particle_strength == 0.0
+    assert snapshot.maximum_vorticity == 0.0
+    assert snapshot.strain_increment_infinity_particle == -1
+    assert snapshot.strain_increment_spectral_particle == -1
+
+
 def test_health_limits_apply_strength_resolution_and_growth_limits():
     limits = HealthLimits(
         finite_state=FiniteStateCheck(),

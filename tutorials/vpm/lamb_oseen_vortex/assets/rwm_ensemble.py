@@ -25,6 +25,7 @@ def run_ensemble(
     case: str,
     number_of_realizations: int,
     first_random_seed: int = 42000,
+    induction_method: str = "DIRECT",
 ) -> None:
     """Advance independent random walks of the same initial vortex field."""
     if number_of_realizations < 4:
@@ -44,6 +45,7 @@ def run_ensemble(
             random_seed=random_seed,
             surfaces=False,
             backup_steps=field_interval_steps(case),
+            induction_method=induction_method,
         )
 
 
@@ -57,12 +59,23 @@ def parse_args() -> argparse.Namespace:
         help="number of independent random-seed realizations",
     )
     parser.add_argument("--first-random-seed", type=int, default=42000)
+    parser.add_argument(
+        "--induction",
+        choices=("DIRECT", "TREECODE", "FMM"),
+        default="DIRECT",
+        help="particle-induction backend used by every ensemble member",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    run_ensemble(args.case, args.number_of_realizations, args.first_random_seed)
+    run_ensemble(
+        args.case,
+        args.number_of_realizations,
+        args.first_random_seed,
+        args.induction,
+    )
     return 0
 
 

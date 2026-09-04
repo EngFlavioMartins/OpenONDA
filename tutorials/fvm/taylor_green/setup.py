@@ -16,8 +16,7 @@ import numpy as np
 CASE_DIR = Path(__file__).resolve().parent
 
 import openonda.fvm as fvm
-
-from openonda.fvm import periodic_square_mesh
+from openonda.fvm.mesher import periodic_square_mesh
 
 # ---- Numerics ------------------------------------------------------------
 DENSITY = 1.0  # fluid density [kg/m^3]

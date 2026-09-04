@@ -130,6 +130,42 @@ def test_fvm_export_writes_compact_paraview_readable_vtu(tmp_path):
     assert grid.cell_data["velocity"].dtype == np.float32
 
 
+def test_owned_only_partition_vtu_excludes_incomplete_halo_cells(tmp_path):
+    import pyvista as pv
+
+    from source.solvers.fvm.config.types import OutputConfig
+    from source.solvers.fvm.io.vtk_exporter import VTKExporter
+    from source.solvers.fvm.mesh.cartesian import structured_box
+    from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+    from source.solvers.fvm.mesh.partition import localize_mesh_and_geometry
+
+    mesh = structured_box(4, 2, 1)
+    # Exercise the general-polyhedron path used by recovered Cartesian cells.
+    mesh.pop("cell_vertex_indices", None)
+    mesh.pop("cell_type_code", None)
+    geometry = compute_mesh_geometry(mesh, compute_lsq=False)
+    localized, _local_geometry, partition = localize_mesh_and_geometry(
+        mesh,
+        geometry,
+        rank=0,
+        size=2,
+        include_visualization_ghosts=False,
+    )
+
+    visualization = localized["_visualization_mesh"]
+    assert visualization["n_cells"] == len(partition.owned_global_ids)
+    assert visualization["n_cells"] < localized["n_cells"]
+
+    output = tmp_path / "owned.vtu"
+    exporter = VTKExporter(visualization, OutputConfig(compression="zlib"))
+    exporter.export(
+        str(output),
+        {"global_cell_id": partition.owned_global_ids},
+    )
+    grid = pv.read(output)
+    assert grid.n_cells == len(partition.owned_global_ids)
+
+
 def test_line_sampler_omits_derivatives_from_compact_csv(tmp_path):
     sampler = LineSampler(
         start=[0.0, 0.0, 0.0],

@@ -2,6 +2,7 @@
 # Standard library imports
 # =================================================
 from pathlib import Path
+import shutil
 
 # =================================================
 # Third-party library imports
@@ -343,15 +344,21 @@ def legend_handle_style(style: dict) -> dict:
 
 
 def set_style():
-    """Apply the OpenONDA publication plotting style."""
+    """Apply the OpenONDA publication plotting style.
+
+    A full TeX installation is optional.  Matplotlib's built-in math renderer
+    is used unless both LaTeX and ``dvipng`` are available, which keeps every
+    installed tutorial plot runnable on a normal pip or Conda installation.
+    """
     if FONT_PATH.exists():
         from matplotlib import font_manager
 
         font_manager.fontManager.addfont(str(FONT_PATH))
 
+    use_tex = shutil.which("latex") is not None and shutil.which("dvipng") is not None
     tex_fonts = {
-        "text.usetex": True,
-        "text.latex.preamble": r"\usepackage{amsmath}",
+        "text.usetex": use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}" if use_tex else "",
         "font.family": "serif",
         "font.serif": ["DejaVu Serif", "Computer Modern Roman"],
         "font.size": FONT_SIZE_PT,

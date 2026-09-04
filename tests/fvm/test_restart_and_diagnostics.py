@@ -23,8 +23,11 @@ from source.solvers.fvm import (
     TimeConfig,
     TransportConfig,
 )
+from source.solvers.fvm.factory import create_fvm_solver
 from source.solvers.fvm.io.backup import decode_state, encode_state
+from source.solvers.fvm.io.mesh_storage import load_native_mesh, save_native_mesh
 from source.solvers.fvm.mesh.cartesian import structured_box
+from source.solvers.fvm.mesh.validation import validate_topology
 from source.solvers.fvm.sampling.base import write_pvd
 
 
@@ -134,6 +137,61 @@ def test_solver_owns_named_solution_and_sample_directories(tmp_path):
     assert (solution / "fvm.log").is_file()
     assert (solution / "run_manifest.json").is_file()
     assert (samples / "centreline.csv").is_file()
+
+
+def test_native_mesh_archive_round_trips_without_pickle(tmp_path):
+    mesh = structured_box(2, 3, 2)
+    path = save_native_mesh(mesh, tmp_path / "mesh.npz")
+
+    restored = load_native_mesh(path)
+
+    validate_topology(restored)
+    np.testing.assert_array_equal(restored["vertex_position"], mesh["vertex_position"])
+    np.testing.assert_array_equal(restored["faces"], mesh["faces"])
+    assert restored["boundary"] == mesh["boundary"]
+
+
+def test_solver_factory_persists_generated_mesh_in_solution_directory(tmp_path):
+    solution = tmp_path / "solution" / "generated"
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = create_fvm_solver(
+            _setup(),
+            case_dir=tmp_path,
+            solution_dir=solution,
+            mesh=lambda: structured_box(2, 2, 2),
+        )
+    solver.close()
+
+    native = solution / "mesh.npz"
+    paraview = solution / "mesh.vtu"
+    assert native.is_file()
+    assert paraview.is_file()
+    validate_topology(load_native_mesh(native))
+
+    import pyvista as pv
+
+    grid = pv.read(paraview)
+    assert grid.n_cells == 8
+    assert "cell_volume" in grid.cell_data
+
+
+def test_solver_factory_builds_mesher_objects_and_persists_the_result(tmp_path):
+    class Mesher:
+        def build(self):
+            return structured_box(2, 2, 2)
+
+    solution = tmp_path / "solution" / "mesher-object"
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = create_fvm_solver(
+            _setup(),
+            case_dir=tmp_path,
+            solution_dir=solution,
+            mesh=Mesher(),
+        )
+    solver.close()
+
+    assert (solution / "mesh.npz").is_file()
+    assert (solution / "mesh.vtu").is_file()
 
 
 def test_pvd_index_merges_existing_frames_across_restart(tmp_path):

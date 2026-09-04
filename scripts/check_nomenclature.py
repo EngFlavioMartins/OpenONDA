@@ -2,9 +2,11 @@
 """Fail when any repository surface uses superseded physical nomenclature.
 
 This is a static repository gate, not a test runner. The default scan covers
-source, configuration, documentation, and tracked reference text. Pass
-``--generated`` to include every generated/archive text file plus NPZ and HDF5
-schema names, including ignored workspace artifacts.
+production source, package facades, scripts, documentation, and tutorials. Pass
+``--generated`` to include generated tutorial text plus NPZ and HDF5 schema
+names, including ignored workspace artifacts. Tests and reproducibility studies
+are excluded because they may deliberately name superseded interfaces or retain
+standard mathematical symbols while comparing formulations.
 """
 
 from __future__ import annotations
@@ -357,6 +359,7 @@ NEGATIVE_ASSERTION_FILES = frozenset(
         "scripts/check_public_api.py",
     }
 )
+NON_PRODUCT_TOP_LEVELS = frozenset({"studies", "tests"})
 EXTERNAL_AMERICAN_API_NAMES = frozenset({"CenterOfRotation", "getCenterOfMass", "cell_centers"})
 FORBIDDEN_NAME_WORDS = frozenset(
     {"policy", "policies", "contract", "contracts", "checkpoint", "checkpoints"}
@@ -397,11 +400,18 @@ def _is_generated(path: Path, root: Path) -> bool:
     return bool(set(path.relative_to(root).parts) & GENERATED_COMPONENTS)
 
 
+def _is_product_surface(path: Path, root: Path) -> bool:
+    relative_parts = path.relative_to(root).parts
+    return bool(relative_parts) and relative_parts[0] not in NON_PRODUCT_TOP_LEVELS
+
+
 def scan_text(root: Path, *, include_generated: bool = False) -> list[str]:
     """Scan source and text serialization surfaces."""
     findings: list[str] = []
     for path in root.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
+            continue
+        if not _is_product_surface(path, root):
             continue
         relative = path.relative_to(root).as_posix()
         if relative in NEGATIVE_ASSERTION_FILES:
@@ -428,6 +438,8 @@ def scan_csv_headers(root: Path, *, include_generated: bool = False) -> list[str
     """Reject compact physical names in CSV serialization headers."""
     findings: list[str] = []
     for path in root.rglob("*.csv"):
+        if not _is_product_surface(path, root):
+            continue
         if _is_generated(path, root) and not include_generated:
             continue
         relative = path.relative_to(root).as_posix()
@@ -467,6 +479,8 @@ def scan_python_apis(root: Path) -> list[str]:
     """Reject compact public parameters and American geometry identifiers."""
     findings: list[str] = []
     for path in root.rglob("*.py"):
+        if not _is_product_surface(path, root):
+            continue
         relative = path.relative_to(root).as_posix()
         if relative in NEGATIVE_ASSERTION_FILES:
             continue
@@ -490,8 +504,6 @@ def scan_python_apis(root: Path) -> list[str]:
                     f"{identifier!r}"
                 )
 
-        if relative.startswith("tests/"):
-            continue
         is_kernel_module = "kernels" in path.parts or "numerics" in path.parts
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -520,6 +532,8 @@ def scan_paths(root: Path) -> list[str]:
     for path in root.rglob("*"):
         if ".git" in path.parts or "__pycache__" in path.parts or path.name.startswith("."):
             continue
+        if not _is_product_surface(path, root):
+            continue
         if _is_generated(path, root):
             continue
         relative = path.relative_to(root).as_posix()
@@ -538,6 +552,7 @@ def scan_paths(root: Path) -> list[str]:
                 "CFMESH_ATTRIBUTION.md",
                 "README.md",
                 "REFERENCES.md",
+                "THIRD_PARTY_NOTICES.md",
             }
             if (
                 relative_parts[0] in {"source", "tutorials"}
@@ -573,6 +588,8 @@ def scan_xml_field_names(root: Path, *, include_generated: bool = False) -> list
     findings: list[str] = []
     for path in root.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in XML_FIELD_SUFFIXES:
+            continue
+        if not _is_product_surface(path, root):
             continue
         if _is_generated(path, root) and not include_generated:
             continue
@@ -614,7 +631,7 @@ def scan_generated_binary_schemas(root: Path) -> list[str]:
         return [f"generated NPZ audit unavailable: {error}"]
 
     for path in root.rglob("*.npz"):
-        if not _is_generated(path, root):
+        if not _is_product_surface(path, root) or not _is_generated(path, root):
             continue
         relative = path.relative_to(root).as_posix()
         try:
@@ -628,13 +645,17 @@ def scan_generated_binary_schemas(root: Path) -> list[str]:
     try:
         import h5py
     except ImportError as error:  # pragma: no cover - VPM dependency
-        hdf5_paths = [path for path in root.rglob("*.h5") if _is_generated(path, root)]
+        hdf5_paths = [
+            path
+            for path in root.rglob("*.h5")
+            if _is_product_surface(path, root) and _is_generated(path, root)
+        ]
         if hdf5_paths:
             findings.append(f"generated HDF5 audit unavailable: {error}")
         return findings
 
     for path in root.rglob("*.h5"):
-        if not _is_generated(path, root):
+        if not _is_product_surface(path, root) or not _is_generated(path, root):
             continue
         relative = path.relative_to(root).as_posix()
         try:
@@ -674,7 +695,7 @@ def main() -> int:
     parser.add_argument(
         "--generated",
         action="store_true",
-        help="also scan all generated/reference artifacts, including ignored files",
+        help="also scan generated tutorial artifacts, including ignored files",
     )
     args = parser.parse_args()
     findings = scan_text(args.root, include_generated=args.generated)

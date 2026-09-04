@@ -40,9 +40,10 @@ python -c "import openonda.fvm, openonda.vpm, openonda.coupler; print('OpenONDA 
 openonda-verify-install --require-site-packages
 ```
 
-The verifier initializes Gmsh and Taichi and advances a small native FVM case;
-it also rejects editable/source-tree imports when `--require-site-packages` is
-used.
+The verifier checks the typed public package, materializes an installed
+tutorial, renders a Matplotlib figure, initializes Gmsh and Taichi, and advances
+a small native FVM case. It also rejects editable/source-tree imports when
+`--require-site-packages` is used.
 
 The default installation includes the serial FVM, VPM/VLM, coupler, internal
 Gmsh meshing, PyAMG pressure solver, HDF5 output, and VTK visualization stack.
@@ -80,7 +81,8 @@ scripts/install/install_conda.sh --parallel
 
 The serial installation is recommended unless the case explicitly selects MPI.
 OpenVSP is optional and is only needed to regenerate geometry directly from
-`.vsp3` files; cached DegenGeom input works without it.
+`.vsp3` files; the packaged blade JSON used by the rotor tutorials works without
+it.
 
 ## Use
 
@@ -98,23 +100,44 @@ Solver configuration stays under `fvm`; mesh construction and mesh utilities
 stay under `msh` (for example, `msh.CartesianMesher` and
 `msh.BoxRefinement`).
 
-Runnable cases live under `tutorials/fvm`, `tutorials/vpm`, and
-`tutorials/coupled_fvm_vpm`. The coupled cases use the native FVM's internal
-mesher:
+The wheel contains copyable tutorial templates. List them, create a user-owned
+workspace, and run or plot a case from any directory:
 
 ```bash
-cd tutorials/coupled_fvm_vpm/cube_flow
-./allrun.sh
+openonda tutorial list
+openonda tutorial create vpm/lamb_oseen_vortex ./lamb-oseen-study
+openonda tutorial run vpm/lamb_oseen_vortex --workspace ./lamb-oseen-study
+openonda tutorial plot vpm/lamb_oseen_vortex --workspace ./lamb-oseen-study
+openonda tutorial clean vpm/lamb_oseen_vortex --workspace ./lamb-oseen-study
 ```
 
-The cylinder-shedding and NACA 4412 workflows are in the same directory tree.
-The installed public API, coupled subcycling, output layout, checkpoint names,
-and restart parity can be exercised in an isolated temporary case with:
+Tutorial source and compact input assets are copied below the workspace's
+`tutorials/` directory. Results stay in that workspace; OpenONDA never writes
+inside `site-packages`. Plotting uses the packaged OpenONDA font and
+automatically falls back to Matplotlib math text when a system LaTeX installation
+is unavailable.
+
+Public docstrings are also available from any directory, and the wheel ships
+`py.typed` so editors and language servers can expose type information:
+
+```bash
+openonda api vpm.DirectInduction
+python -m pydoc openonda.fvm
+```
+
+From a development checkout, the installed public API, coupled subcycling,
+output layout, checkpoint names, and restart parity can additionally be
+exercised with:
 
 ```bash
 python scripts/validate_native_tutorials.py
 python scripts/validate_native_tutorials.py --compute-device METAL  # Apple Silicon
 ```
+
+The repository's installation helpers, validation gates, and benchmarks are
+summarized in [scripts/README.md](scripts/README.md).
+Those scripts are developer tools for a source checkout; installed users should
+prefer the `openonda` command shown above.
 
 ### CPU and GPU execution
 
@@ -139,7 +162,7 @@ pyrefly check
 ```
 
 See [docs/contributing.md](docs/contributing.md) for the architecture and code
-quality requirements, and [docs/data_management.md](docs/data_management.md)
+quality requirements, and [docs/storage-output.md](docs/storage-output.md)
 for the result-data policy. Tutorial `samples/` output is versioned so forces,
 probes, surfaces, and post-processing fields remain available across devices;
 full solver state under `solution/` remains local.

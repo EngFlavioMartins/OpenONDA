@@ -18,6 +18,7 @@ of any external mesher's source.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -325,6 +326,45 @@ class SurfaceIndex:
         distances = np.linalg.norm(candidates - point, axis=1)
         best = int(np.argmin(distances))
         return candidates[best], float(distances[best])
+
+    def nearest_points(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Closest surface points, distances, and triangle ids for a batch.
+
+        VTK's static cell locator performs the same triangle projection in
+        compiled code and is orders of magnitude faster for the thousands of
+        wall vertices in a production mesh.  Keep the scalar indexed routine
+        as a fallback for minimal installations.
+        """
+        values = np.atleast_2d(np.asarray(points, dtype=np.float64))
+        if values.shape[1] != 3 or not np.all(np.isfinite(values)):
+            raise ValueError("points must have shape (n, 3) and contain finite coordinates")
+        try:
+            import pyvista as pv
+        except ImportError:  # pragma: no cover - VTK is part of the FVM extra.
+            projected = [self.nearest_point(point) for point in values]
+            nearest = np.asarray([item[0] for item in projected], dtype=np.float64)
+            distances = np.asarray([item[1] for item in projected], dtype=np.float64)
+            return nearest, distances, np.full(len(values), -1, dtype=np.int64)
+
+        locator_mesh = getattr(self, "_locator_mesh", None)
+        if locator_mesh is None:
+            vertices = np.ascontiguousarray(self.triangles.reshape(-1, 3))
+            connectivity = np.column_stack(
+                (
+                    np.full(len(self.triangles), 3, dtype=np.int64),
+                    np.arange(len(vertices), dtype=np.int64).reshape(-1, 3),
+                )
+            ).ravel()
+            locator_mesh = pv.PolyData(
+                vertices,
+                connectivity,  # pyrefly: ignore[bad-argument-type]
+            )
+            self._locator_mesh = locator_mesh
+        located: Any = locator_mesh.find_closest_cell(values, return_closest_point=True)
+        cell_ids, nearest = located
+        nearest = np.asarray(nearest, dtype=np.float64)
+        distances = np.linalg.norm(nearest - values, axis=1)
+        return nearest, distances, np.asarray(cell_ids, dtype=np.int64)
 
     def classify(self, points: np.ndarray, *, tolerance: float | None = None) -> np.ndarray:
         """Classify points as outside ``0``, inside ``1``, or on surface ``-1``."""

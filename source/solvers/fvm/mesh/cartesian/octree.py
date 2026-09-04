@@ -186,17 +186,15 @@ class _SurfaceSolid:
         centre = 0.5 * (lo + hi)
         if bool(self.index.is_inside(centre[None, :])[0]):
             return True
-        if (
-            self.exclusion_distance > 0.0
-            and self.index.nearest_point(centre)[1] <= self.exclusion_distance
-        ):
-            return True
         # Intersected cells on the fluid side are retained.  The staged native
         # recovery transaction clips them against the exact STL triangles;
         # deleting them here recreates the staircase that recovery is meant to
         # replace.  Thin bodies without any centre-inside cell are therefore
         # represented by their cut-cell band instead of disappearing.
-        return False
+        return bool(
+            self.exclusion_distance > 0.0
+            and self.index.nearest_point(centre)[1] <= self.exclusion_distance
+        )
 
     def overlaps(self, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool:
         lo, hi = self._world_bounds(x0, x1, y0, y1, z0, z1)
@@ -429,23 +427,36 @@ _HEX_FACES = (
     (0, 4, 7, 3),
     (1, 2, 6, 5),
 )
+_HEX_FACE_ARRAY = np.asarray(_HEX_FACES, dtype=np.intp)
+
+
+def _hex_volumes(corners: np.ndarray) -> np.ndarray:
+    """Vectorised divergence-theorem volumes for one or more hexahedra."""
+    values = np.asarray(corners, dtype=np.float64)
+    single = values.ndim == 2
+    if single:
+        values = values[None, ...]
+    cell_centres = values.mean(axis=1)
+    face_points = values[:, _HEX_FACE_ARRAY]
+    face_centres = face_points.mean(axis=2)
+    offsets = face_points - face_centres[:, :, None, :]
+    area_vectors = 0.5 * np.cross(offsets, np.roll(offsets, -1, axis=2)).sum(axis=2)
+    volumes = (
+        np.einsum(
+            "nfi,nfi->n",
+            area_vectors,
+            face_centres - cell_centres[:, None, :],
+        )
+        / 3.0
+    )
+    return volumes[0] if single else volumes
 
 
 def _hex_volume(corners: np.ndarray) -> float:
     """Divergence-theorem volume of one hexahedron, matching ``geometry.py``'s
     fan-triangulated face formula so a positive result here means the solver's
     own volume computation will also be positive."""
-    centre = corners.mean(axis=0)
-    volume = 0.0
-    for face in _HEX_FACES:
-        pts = corners[list(face)]
-        face_centre = pts.mean(axis=0)
-        sf = np.zeros(3)
-        for i in range(4):
-            a, b = pts[i], pts[(i + 1) % 4]
-            sf += 0.5 * np.cross(a - face_centre, b - face_centre)
-        volume += float(np.dot(sf, face_centre - centre)) / 3.0
-    return volume
+    return float(_hex_volumes(corners))
 
 
 def _conform_wall_to_surface(
@@ -454,6 +465,7 @@ def _conform_wall_to_surface(
     wall_patch_name: str,
     *,
     min_volume_ratio: float = 0.15,
+    fixed_bounds: Bounds | None = None,
 ) -> None:
     """Snap wall-patch corner points onto the true curved surface.
 
@@ -475,9 +487,78 @@ def _conform_wall_to_surface(
     if cell_vertex_indices is None:
         return
     (wall,) = [patch for patch in mesh_data["boundary"] if patch["name"] == wall_patch_name]
-    faces = np.asarray(mesh_data["faces"])
+    faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
     first, count = int(wall["start_face"]), int(wall["n_faces"])
-    wall_point_ids = np.unique(faces[first : first + count])
+    wall_point_ids = np.unique(np.concatenate(faces[first : first + count]))
+
+    # cfMesh's meshSurfaceMapper::preMapVertices performs three shrinking
+    # Laplace passes before the final nearest-surface projection.  The pass is
+    # essential at Cartesian corners: mapping two orthogonal staircase edges
+    # directly to a curved surface can reverse one of the incident faces.
+    boundary_start = int(mesh_data["n_interior_faces"])
+    point_boundary_faces: dict[int, list[tuple[int, int]]] = {
+        int(point_id): [] for point_id in wall_point_ids
+    }
+    initial_face_distances: dict[tuple[int, int], float] = {}
+    for face_id in range(boundary_start, len(faces)):
+        face = faces[face_id]
+        face_centre = points[face].mean(axis=0)
+        for position, point_id_value in enumerate(face):
+            point_id = int(point_id_value)
+            if point_id not in point_boundary_faces:
+                continue
+            point_boundary_faces[point_id].append((face_id, position))
+            offset = points[point_id] - face_centre
+            initial_face_distances[(face_id, position)] = max(
+                float(np.dot(offset, offset)), np.finfo(np.float64).tiny
+            )
+
+    pre_map_face_ids = sorted(
+        {face_id for entries in point_boundary_faces.values() for face_id, _position in entries}
+    )
+
+    def nearest_many(values: np.ndarray) -> list[tuple[np.ndarray, float]]:
+        if len(surface_index.triangles) < 500:
+            return [surface_index.nearest_point(value) for value in values]
+        nearest, distances, _triangle_ids = surface_index.nearest_points(values)
+        return list(zip(nearest, map(float, distances), strict=True))
+
+    for _iteration in range(3):
+        face_centres = {
+            face_id: points[faces[face_id]].mean(axis=0) for face_id in pre_map_face_ids
+        }
+        weighted_centres = np.empty((len(wall_point_ids), 3), dtype=np.float64)
+        for local_index, point_id_value in enumerate(wall_point_ids):
+            point_id = int(point_id_value)
+            point = points[point_id]
+            weighted_centre = np.zeros(3, dtype=np.float64)
+            weight_sum = 0.0
+            for face_id, position in point_boundary_faces[point_id]:
+                face_centre = face_centres[face_id]
+                offset = point - face_centre
+                weight = max(
+                    float(np.dot(offset, offset)) / initial_face_distances[(face_id, position)],
+                    np.finfo(np.float64).tiny,
+                )
+                weighted_centre += weight * face_centre
+                weight_sum += weight
+            weighted_centres[local_index] = weighted_centre / weight_sum
+        mapped_points = nearest_many(weighted_centres)
+        updates: dict[int, np.ndarray] = {}
+        for local_index, point_id_value in enumerate(wall_point_ids):
+            point_id = int(point_id_value)
+            point = points[point_id]
+            mapped, _distance = mapped_points[local_index]
+            candidate = point + 0.5 * (mapped - point)
+            if fixed_bounds is not None:
+                for side, value in enumerate(fixed_bounds):
+                    axis = side // 2
+                    if abs(float(point[axis]) - value) <= point_quantum:
+                        candidate[axis] = value
+            updates[point_id] = candidate
+        for point_id, candidate in updates.items():
+            points[point_id] = candidate
+
     point_face_ids: dict[int, list[int]] = {}
     for face_id, face in enumerate(faces):
         for point_id in face:
@@ -496,15 +577,22 @@ def _conform_wall_to_surface(
     maximum_requested_displacement = 0.0
     maximum_rejected_displacement = 0.0
     rejection_examples: list[dict] = []
-    for point_id in wall_point_ids:
+    final_targets = nearest_many(points[wall_point_ids].copy())
+    for local_index, point_id in enumerate(wall_point_ids):
         affected = point_cells.get(int(point_id), [])
         if not affected:
             continue
-        before = [_hex_volume(points[cell_vertex_indices[c]]) for c in affected]
-        if min(before) <= 0.0:
+        affected_array = np.asarray(affected, dtype=np.intp)
+        before = _hex_volumes(points[cell_vertex_indices[affected_array]])
+        if float(np.min(before)) <= 0.0:
             continue
-        target, _distance = surface_index.nearest_point(points[point_id])
         original = points[point_id].copy()
+        target, _distance = final_targets[local_index]
+        if fixed_bounds is not None:
+            for side, value in enumerate(fixed_bounds):
+                axis = side // 2
+                if abs(float(original[axis]) - value) <= point_quantum:
+                    target[axis] = value
         requested_displacement = float(np.linalg.norm(target - original))
         maximum_requested_displacement = max(maximum_requested_displacement, requested_displacement)
 
@@ -512,12 +600,13 @@ def _conform_wall_to_surface(
             candidate: np.ndarray,
             point_id: int = int(point_id),
             affected: list[int] = affected,
-            before: list[float] = before,
+            before: np.ndarray = before,
+            affected_array: np.ndarray = affected_array,
         ) -> tuple[float, float, bool]:
             points[point_id] = candidate
-            after = [_hex_volume(points[cell_vertex_indices[c]]) for c in affected]
-            minimum_after = min(after)
-            minimum_ratio = min(a / b for a, b in zip(after, before, strict=True))
+            after = _hex_volumes(points[cell_vertex_indices[affected_array]])
+            minimum_after = float(np.min(after))
+            minimum_ratio = float(np.min(after / before))
             face_invalid = False
             for face_id in point_face_ids[int(point_id)]:
                 coordinates = points[faces[face_id]]
@@ -583,6 +672,7 @@ def _conform_wall_to_surface(
             accepted += 1
 
     mesh_data["mesh_generation"]["surface_projection"] = {
+        "pre_map_iterations": 3,
         "attempted_points": int(len(wall_point_ids)),
         "accepted_points": accepted,
         "partial_accepted_points": partial_accepted,
@@ -593,6 +683,211 @@ def _conform_wall_to_surface(
         "maximum_rejected_displacement": maximum_rejected_displacement,
         "rejection_examples": rejection_examples,
     }
+
+
+def _prepare_wall_topology(mesh_data: dict, wall_patch_name: str) -> None:
+    """Enforce cfMesh's one-surface-face-per-boundary-cell invariant.
+
+    The Cartesian extractor can expose two or more edge-connected staircase
+    faces of one cell to a curved solid.  cfMesh performs a surface-preparation
+    stage before mapping; treating those faces independently makes their
+    nearest-point projections overlap.  Replace each connected group by its
+    oriented outline polygon, retaining the cell and all of its other faces.
+    """
+    patches = list(mesh_data["boundary"])
+    matching = [patch for patch in patches if patch["name"] == wall_patch_name]
+    if len(matching) != 1:
+        raise ValueError(f"Expected exactly one wall patch named {wall_patch_name!r}")
+    wall = matching[0]
+    faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
+    owners = np.asarray(mesh_data["owners"], dtype=np.int32)
+    n_internal = int(mesh_data["n_interior_faces"])
+    wall_start = int(wall["start_face"])
+    wall_stop = wall_start + int(wall["n_faces"])
+
+    grouped: dict[int, list[np.ndarray]] = {}
+    for face_id in range(wall_start, wall_stop):
+        grouped.setdefault(int(owners[face_id]), []).append(faces[face_id])
+
+    def merged_outline(group: list[np.ndarray], owner: int) -> np.ndarray:
+        if len(group) == 1:
+            return group[0].copy()
+        directed: list[tuple[int, int, tuple[int, int]]] = []
+        counts: dict[tuple[int, int], int] = {}
+        for face in group:
+            for first, second in zip(face, np.roll(face, -1), strict=True):
+                a, b = int(first), int(second)
+                edge = (a, b) if a < b else (b, a)
+                counts[edge] = counts.get(edge, 0) + 1
+                directed.append((a, b, edge))
+        outline_edges = [(a, b) for a, b, edge in directed if counts[edge] == 1]
+        if not outline_edges:
+            raise ValueError(f"Surface faces of cell {owner} have no boundary outline")
+        following: dict[int, int] = {}
+        for first, second in outline_edges:
+            if first in following:
+                raise ValueError(f"Surface faces of cell {owner} do not form one mappable outline")
+            following[first] = second
+        outline = [outline_edges[0][0]]
+        while len(outline) < len(outline_edges):
+            next_point = following.get(outline[-1])
+            if next_point is None or next_point in outline:
+                raise ValueError(f"Surface faces of cell {owner} are not one edge-connected group")
+            outline.append(next_point)
+        if following.get(outline[-1]) != outline[0]:
+            raise ValueError(f"Surface outline of cell {owner} is open")
+        return np.asarray(outline, dtype=np.int32)
+
+    merged_faces = [merged_outline(group, owner) for owner, group in grouped.items()]
+    merged_owners = list(grouped)
+    rebuilt_faces = faces[:n_internal]
+    rebuilt_owners = list(map(int, owners[:n_internal]))
+    rebuilt_boundary: list[dict] = []
+    start_face = n_internal
+    for patch in patches:
+        name = str(patch["name"])
+        if name == wall_patch_name:
+            patch_faces = merged_faces
+            patch_owners = merged_owners
+        else:
+            patch_start = int(patch["start_face"])
+            patch_stop = patch_start + int(patch["n_faces"])
+            patch_faces = faces[patch_start:patch_stop]
+            patch_owners = list(map(int, owners[patch_start:patch_stop]))
+        rebuilt_faces.extend(patch_faces)
+        rebuilt_owners.extend(patch_owners)
+        rebuilt_boundary.append(
+            {
+                **patch,
+                "start_face": start_face,
+                "n_faces": len(patch_faces),
+            }
+        )
+        start_face += len(patch_faces)
+
+    widths = {len(face) for face in rebuilt_faces}
+    mesh_data["faces"] = (
+        np.ascontiguousarray(rebuilt_faces, dtype=np.int32) if len(widths) == 1 else rebuilt_faces
+    )
+    mesh_data["owners"] = np.ascontiguousarray(rebuilt_owners, dtype=np.int32)
+    mesh_data["boundary"] = rebuilt_boundary
+    mesh_data["n_faces"] = len(rebuilt_faces)
+    mesh_data.pop("cell_face_indices", None)
+    mesh_data.pop("cell_face_offset", None)
+    mesh_data.setdefault("mesh_generation", {})["surface_preparation"] = {
+        "original_faces": wall_stop - wall_start,
+        "prepared_faces": len(merged_faces),
+        "merged_faces": (wall_stop - wall_start) - len(merged_faces),
+    }
+
+
+def _remove_non_mappable_surface_cells(
+    mesh_data: dict, cell_ids: np.ndarray, wall_patch_name: str
+) -> None:
+    """Remove tangled surface cells and expose their fluid neighbours.
+
+    This is the serial native equivalent of cfMesh's
+    ``checkNonMappableCellConnections::removeCells``.  Faces between retained
+    and removed cells become wall faces; faces whose two cells are removed
+    disappear.  The remaining cell numbering and per-cell metadata stay
+    contiguous.
+    """
+    n_cells = int(mesh_data["n_cells"])
+    remove = np.zeros(n_cells, dtype=bool)
+    remove[np.asarray(cell_ids, dtype=np.int64)] = True
+    if not np.any(remove):
+        return
+    keep = ~remove
+    cell_map = np.full(n_cells, -1, dtype=np.int32)
+    cell_map[keep] = np.arange(np.count_nonzero(keep), dtype=np.int32)
+    faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
+    owners = np.asarray(mesh_data["owners"], dtype=np.int32)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
+    n_internal = int(mesh_data["n_interior_faces"])
+
+    internal_faces: list[np.ndarray] = []
+    internal_owners: list[int] = []
+    internal_neighbours: list[int] = []
+    exposed_faces: list[np.ndarray] = []
+    exposed_owners: list[int] = []
+    for face_id in range(n_internal):
+        owner = int(owners[face_id])
+        neighbour = int(neighbours[face_id])
+        owner_kept = bool(keep[owner])
+        neighbour_kept = bool(keep[neighbour])
+        if owner_kept and neighbour_kept:
+            internal_faces.append(faces[face_id].copy())
+            internal_owners.append(int(cell_map[owner]))
+            internal_neighbours.append(int(cell_map[neighbour]))
+        elif owner_kept:
+            exposed_faces.append(faces[face_id].copy())
+            exposed_owners.append(int(cell_map[owner]))
+        elif neighbour_kept:
+            exposed_faces.append(faces[face_id][::-1].copy())
+            exposed_owners.append(int(cell_map[neighbour]))
+
+    boundary_faces: dict[str, list[np.ndarray]] = {}
+    boundary_owners: dict[str, list[int]] = {}
+    patch_order: list[str] = []
+    patch_records: dict[str, dict] = {}
+    for patch in mesh_data["boundary"]:
+        name = str(patch["name"])
+        patch_order.append(name)
+        patch_records[name] = dict(patch)
+        boundary_faces[name] = []
+        boundary_owners[name] = []
+        start = int(patch["start_face"])
+        stop = start + int(patch["n_faces"])
+        for face_id in range(start, stop):
+            owner = int(owners[face_id])
+            if keep[owner]:
+                boundary_faces[name].append(faces[face_id].copy())
+                boundary_owners[name].append(int(cell_map[owner]))
+    if wall_patch_name not in boundary_faces:
+        raise ValueError(f"Cannot expose removed cells onto missing patch {wall_patch_name!r}")
+    boundary_faces[wall_patch_name].extend(exposed_faces)
+    boundary_owners[wall_patch_name].extend(exposed_owners)
+
+    rebuilt_faces = internal_faces.copy()
+    rebuilt_owners = internal_owners.copy()
+    rebuilt_boundary: list[dict] = []
+    start_face = len(internal_faces)
+    for name in patch_order:
+        rebuilt_faces.extend(boundary_faces[name])
+        rebuilt_owners.extend(boundary_owners[name])
+        rebuilt_boundary.append(
+            {
+                **patch_records[name],
+                "start_face": start_face,
+                "n_faces": len(boundary_faces[name]),
+            }
+        )
+        start_face += len(boundary_faces[name])
+
+    widths = {len(face) for face in rebuilt_faces}
+    mesh_data["faces"] = (
+        np.ascontiguousarray(rebuilt_faces, dtype=np.int32) if len(widths) == 1 else rebuilt_faces
+    )
+    mesh_data["owners"] = np.ascontiguousarray(rebuilt_owners, dtype=np.int32)
+    mesh_data["neighbours"] = np.ascontiguousarray(internal_neighbours, dtype=np.int32)
+    mesh_data["boundary"] = rebuilt_boundary
+    mesh_data["n_cells"] = int(np.count_nonzero(keep))
+    mesh_data["n_faces"] = len(rebuilt_faces)
+    mesh_data["n_interior_faces"] = len(internal_faces)
+    for name in ("cell_levels", "cell_sizes", "cell_type_code", "cell_vertex_indices"):
+        if name in mesh_data:
+            mesh_data[name] = np.ascontiguousarray(np.asarray(mesh_data[name])[keep])
+    mesh_data.pop("cell_face_indices", None)
+    mesh_data.pop("cell_face_offset", None)
+    history = mesh_data.setdefault("mesh_generation", {}).setdefault(
+        "non_mappable_cell_removal", []
+    )
+    history.append(
+        {
+            "removed_cells": int(np.count_nonzero(remove)),
+            "exposed_wall_faces": len(exposed_faces),
+        }
+    )
 
 
 def _compact_conformed_topology(mesh_data: dict, *, tolerance: float = 1.0e-12) -> None:
@@ -621,38 +916,44 @@ def _compact_conformed_topology(mesh_data: dict, *, tolerance: float = 1.0e-12) 
     neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
 
     compact_faces: list[np.ndarray] = []
+    faces_by_width: dict[int, list[int]] = {}
     for face_id, face in enumerate(mesh_data["faces"]):
         remapped = inverse[np.asarray(face, dtype=np.int64)]
-        compact: list[int] = []
-        for node in remapped:
-            value = int(node)
-            if value not in compact:
-                compact.append(value)
+        compact = list(dict.fromkeys(map(int, remapped)))
         if len(compact) < 3:
             raise ValueError(
                 f"Curved-surface projection collapsed face {face_id} to {len(compact)} "
                 f"unique nodes: original={np.asarray(face).tolist()}, "
                 f"remapped={remapped.tolist()}"
             )
-        compact_array = np.asarray(compact, dtype=np.int32)
-        coordinates = unique_points[compact_array]
-        face_centre = coordinates.mean(axis=0)
-        area_vector = np.zeros(3, dtype=np.float64)
-        for index in range(len(coordinates)):
-            area_vector += 0.5 * np.cross(
-                coordinates[index] - face_centre,
-                coordinates[(index + 1) % len(coordinates)] - face_centre,
+        compact_faces.append(np.asarray(compact, dtype=np.int32))
+        faces_by_width.setdefault(len(compact), []).append(face_id)
+
+    # Winding checks dominate this pass on production meshes.  Evaluate equal-
+    # width polygons in bounded vectorised batches instead of issuing four
+    # ``np.cross`` calls per face from Python.
+    for face_ids in faces_by_width.values():
+        for chunk_start in range(0, len(face_ids), 100_000):
+            chunk = np.asarray(face_ids[chunk_start : chunk_start + 100_000], dtype=np.intp)
+            connectivity = np.stack([compact_faces[int(face_id)] for face_id in chunk])
+            coordinates = unique_points[connectivity]
+            face_centres = coordinates.mean(axis=1)
+            offsets = coordinates - face_centres[:, None, :]
+            area_vectors = 0.5 * np.cross(offsets, np.roll(offsets, -1, axis=1)).sum(axis=1)
+            directions = np.empty_like(area_vectors)
+            internal_mask = chunk < n_internal
+            internal_faces = chunk[internal_mask]
+            directions[internal_mask] = (
+                provisional_cell_centres[neighbours[internal_faces]]
+                - provisional_cell_centres[owners[internal_faces]]
             )
-        if face_id < n_internal:
-            direction = (
-                provisional_cell_centres[neighbours[face_id]]
-                - provisional_cell_centres[owners[face_id]]
+            boundary_faces = chunk[~internal_mask]
+            directions[~internal_mask] = (
+                face_centres[~internal_mask] - provisional_cell_centres[owners[boundary_faces]]
             )
-        else:
-            direction = face_centre - provisional_cell_centres[owners[face_id]]
-        if float(np.dot(area_vector, direction)) < 0.0:
-            compact_array = compact_array[::-1].copy()
-        compact_faces.append(compact_array)
+            reverse = chunk[np.einsum("ij,ij->i", area_vectors, directions) < 0.0]
+            for face_id in reverse:
+                compact_faces[int(face_id)] = compact_faces[int(face_id)][::-1].copy()
 
     widths = {len(face) for face in compact_faces}
     mesh_data["faces"] = (
@@ -931,9 +1232,7 @@ class CartesianOctree:
     ) -> tuple[tuple[_RefinementRegion, int], ...]:
         regions: list[tuple[_RefinementRegion, int]] = []
 
-        def add_balanced(
-            box: _RefinementRegion, target_level: int, first_padding: int = 0
-        ) -> None:
+        def add_balanced(box: _RefinementRegion, target_level: int, first_padding: int = 0) -> None:
             current = box.expanded(first_padding, limits) if first_padding else box
             regions.append((current, target_level))
             for level in range(target_level - 1, 0, -1):
@@ -1017,7 +1316,7 @@ class CartesianOctree:
 
             if (
                 solid is not None
-                and isinstance(solid, (_IntegerBox, _CompositeIntegerBox))
+                and isinstance(solid, _IntegerBox | _CompositeIntegerBox)
                 and solid.overlaps(x0, x1, y0, y1, z0, z1)
             ):
                 # Exact interval/AABB classification: a leaf may touch the body

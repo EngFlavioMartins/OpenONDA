@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from importlib import resources
+import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 
@@ -28,6 +31,7 @@ from openonda.fvm import (
     create_fvm_solver,
 )
 import openonda.fvm.mesher as msh
+from openonda.tutorials import TUTORIALS, materialize_tutorial
 import openonda.vpm
 
 
@@ -54,15 +58,20 @@ def _verify_gmsh() -> str:
 def _verify_taichi() -> tuple[str, str]:
     ti.reset()
     try:
-        ti.init(arch=ti.cpu, offline_cache=False)
-        architecture = str(ti.lang.impl.current_cfg().arch)
-        version = ti.__version__
-        version_text = (
-            ".".join(str(value) for value in version)
-            if isinstance(version, tuple)
-            else str(version)
-        )
-        return version_text, architecture
+        with tempfile.TemporaryDirectory(prefix="openonda-taichi-cache-") as cache:
+            ti.init(
+                arch=ti.cpu,
+                offline_cache=False,
+                offline_cache_file_path=cache,
+            )
+            architecture = str(ti.lang.impl.current_cfg().arch)
+            version = ti.__version__
+            version_text = (
+                ".".join(str(value) for value in version)
+                if isinstance(version, tuple)
+                else str(version)
+            )
+            return version_text, architecture
     finally:
         ti.reset()
 
@@ -126,6 +135,80 @@ def _verify_native_fvm() -> dict[str, float | int]:
     }
 
 
+def _verify_distribution_resources() -> dict[str, object]:
+    """Verify typing, tutorial, and plotting resources from the installation."""
+    if not (resources.files("openonda") / "py.typed").is_file():
+        raise RuntimeError("The installed distribution is missing openonda/py.typed")
+
+    tutorial_root = resources.files("tutorials")
+    if not isinstance(tutorial_root, Path):
+        raise RuntimeError("OpenONDA tutorials require an unpacked installation")
+    path_markers = ("/" + "Users/", "/" + "home/")
+    for source in tutorial_root.rglob("*"):
+        if source.suffix not in {".py", ".sh"}:
+            continue
+        text = source.read_text(encoding="utf-8")
+        if any(marker in text for marker in path_markers):
+            raise RuntimeError(f"Installed tutorial contains a machine-specific path: {source}")
+
+    with tempfile.TemporaryDirectory(prefix="openonda-installed-resources-") as directory:
+        workspace = Path(directory) / "workspace"
+        cache = Path(directory) / "cache"
+        cache.mkdir()
+        previous_matplotlib_cache = os.environ.get("MPLCONFIGDIR")
+        previous_xdg_cache = os.environ.get("XDG_CACHE_HOME")
+        os.environ["MPLCONFIGDIR"] = str(cache / "matplotlib")
+        os.environ["XDG_CACHE_HOME"] = str(cache)
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from matplotlib import pyplot as plt
+
+        case_path = materialize_tutorial("fvm/taylor_green", workspace)
+        required = (
+            case_path / "setup.py",
+            case_path / "allrun.sh",
+            case_path / "allplot.sh",
+            workspace / "docs/themes/matplotlib_setup.py",
+            workspace / "docs/themes/DejaVuSerif.ttf",
+        )
+        missing = [str(path) for path in required if not path.is_file()]
+        if missing:
+            raise RuntimeError(f"Installed tutorial resources are incomplete: {missing}")
+
+        theme_path = workspace / "docs/themes/matplotlib_setup.py"
+        spec = importlib.util.spec_from_file_location("_openonda_installed_theme", theme_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Could not load the installed plotting theme: {theme_path}")
+        theme = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(theme)
+        theme.set_style()
+        figure, axes = plt.subplots(figsize=theme.figure_size("single_short"))
+        axes.plot([0.0, 1.0], [0.0, 1.0])
+        axes.set_xlabel(r"$x$")
+        figure_path = workspace / "plot-smoke.png"
+        theme.save_fig(figure, figure_path, dpi=72)
+        if not figure_path.is_file() or figure_path.stat().st_size == 0:
+            raise RuntimeError("Matplotlib installation smoke did not create a figure")
+
+        if previous_matplotlib_cache is None:
+            os.environ.pop("MPLCONFIGDIR", None)
+        else:
+            os.environ["MPLCONFIGDIR"] = previous_matplotlib_cache
+        if previous_xdg_cache is None:
+            os.environ.pop("XDG_CACHE_HOME", None)
+        else:
+            os.environ["XDG_CACHE_HOME"] = previous_xdg_cache
+
+    return {
+        "tutorial_count": len(TUTORIALS),
+        "typed_package": True,
+        "matplotlib_backend": str(matplotlib.get_backend()),
+        "latex_rendering": bool(matplotlib.rcParams["text.usetex"]),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -139,6 +222,7 @@ def main() -> int:
         "openonda_version": openonda.__version__,
         "package_path": str(_verify_package_location(args.require_site_packages)),
         "gmsh_version": _verify_gmsh(),
+        "distribution": _verify_distribution_resources(),
     }
     taichi_version, taichi_arch = _verify_taichi()
     report.update(

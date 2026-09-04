@@ -215,6 +215,7 @@ def accepted_step_health(
     else:
         strain_increment_infinity = strain_increment_spectral = 0.0
         infinity_particle = spectral_particle = -1
+        maximum_strength = maximum_vorticity = 0.0
     snapshot = HealthSnapshot(
         strain_increment_infinity,
         strain_increment_spectral,
@@ -229,8 +230,8 @@ def accepted_step_health(
         and strain_increment_infinity > limits.lagrangian_cfl.maximum
     ):
         raise HealthError(
-            f"VPM accepted state at step {step}: strain increment infinity norm "
-            f"{strain_increment_infinity:.3g} exceeds "
+            f"VPM accepted state at step {step}: Lagrangian CFL number "
+            f"{strain_increment_infinity:.3g} (strain increment infinity norm) exceeds "
             f"maximum={limits.lagrangian_cfl.maximum:.3g}; reduce time_step_size."
         )
     if (

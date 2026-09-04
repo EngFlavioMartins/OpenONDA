@@ -235,12 +235,15 @@ def agglomerate_small_layer_columns(
     target_surface_size: float,
     *,
     minimum_area_fraction: float = 0.005,
+    maximum_skewness: float = 2.0,
 ) -> dict[str, Any]:
-    """Tangentially merge tiny layer columns consistently through all bands."""
+    """Tangentially merge tiny or highly skewed columns through all bands."""
     if not np.isfinite(target_surface_size) or target_surface_size <= 0.0:
         raise ValueError("target_surface_size must be finite and positive")
     if not 0.0 < minimum_area_fraction < 0.5:
         raise ValueError("minimum_area_fraction must lie between zero and 0.5")
+    if not np.isfinite(maximum_skewness) or maximum_skewness <= 0.0:
+        raise ValueError("maximum_skewness must be finite and positive")
     labels = np.asarray(mesh_data.get("boundary_layer_index"), dtype=np.int16)
     if labels.shape != (int(mesh_data["n_cells"]),):
         raise ValueError("boundary_layer_index must cover every layered mesh cell")
@@ -273,9 +276,7 @@ def agglomerate_small_layer_columns(
         columns.setdefault(column_root(int(cell)), {})[int(labels[cell])] = int(cell)
     number_of_layers = int(labels.max(initial=-1)) + 1
     complete_columns = {
-        root: cells
-        for root, cells in columns.items()
-        if len(cells) == number_of_layers
+        root: cells for root, cells in columns.items() if len(cells) == number_of_layers
     }
     volumes = np.asarray(geometry["cell_volume"], dtype=np.float64)
     heights = np.asarray(mesh_data["cell_sizes"], dtype=np.float64)
@@ -283,15 +284,17 @@ def agglomerate_small_layer_columns(
         root: volumes[cells[0]] / max(heights[cells[0]], np.finfo(np.float64).tiny)
         for root, cells in complete_columns.items()
     }
-    area_fraction = {
-        root: area / target_surface_size**2 for root, area in column_area.items()
-    }
+    area_fraction = {root: area / target_surface_size**2 for root, area in column_area.items()}
     candidates = sorted(
         (root for root, fraction in area_fraction.items() if fraction < minimum_area_fraction),
         key=lambda root: (area_fraction[root], root),
     )
     face_areas = np.asarray(geometry["face_area"], dtype=np.float64)
+    face_centres = np.asarray(geometry["face_centre"], dtype=np.float64)
+    cell_centres = np.asarray(geometry["cell_centre"], dtype=np.float64)
+    weights = np.asarray(geometry["face_interpolation_weight"], dtype=np.float64)
     adjacency: dict[int, dict[int, float]] = {root: {} for root in complete_columns}
+    skewed_pairs: dict[tuple[int, int], float] = {}
     for face_id in range(n_internal):
         owner = int(owners[face_id])
         neighbour = int(neighbours[face_id])
@@ -304,10 +307,36 @@ def agglomerate_small_layer_columns(
         area = float(face_areas[face_id])
         adjacency[first_root][second_root] = adjacency[first_root].get(second_root, 0.0) + area
         adjacency[second_root][first_root] = adjacency[second_root].get(first_root, 0.0) + area
+        interpolation = (1.0 - weights[face_id]) * cell_centres[owner] + weights[
+            face_id
+        ] * cell_centres[neighbour]
+        centre_distance = np.linalg.norm(cell_centres[neighbour] - cell_centres[owner])
+        skewness = float(
+            np.linalg.norm(face_centres[face_id] - interpolation)
+            / max(centre_distance, np.finfo(np.float64).tiny)
+        )
+        if skewness > maximum_skewness:
+            pair = (
+                (first_root, second_root) if first_root < second_root else (second_root, first_root)
+            )
+            skewed_pairs[pair] = max(skewness, skewed_pairs.get(pair, 0.0))
 
     parent = np.arange(n_cells, dtype=np.int64)
     used_columns: set[int] = set()
     merged_columns = 0
+    skewness_merges = 0
+    for (first_root, second_root), _skewness in sorted(
+        skewed_pairs.items(), key=lambda item: (-item[1], item[0])
+    ):
+        if first_root in used_columns or second_root in used_columns:
+            continue
+        for layer_index in range(number_of_layers):
+            parent[complete_columns[first_root][layer_index]] = complete_columns[second_root][
+                layer_index
+            ]
+        used_columns.update((first_root, second_root))
+        merged_columns += 1
+        skewness_merges += 1
     candidate_set = set(candidates)
     for source_root in candidates:
         if source_root in used_columns:
@@ -330,7 +359,9 @@ def agglomerate_small_layer_columns(
         mesh_data.setdefault("mesh_generation", {})["layer_column_agglomeration"] = {
             "merged_columns": 0,
             "minimum_area_fraction": minimum_area_fraction,
+            "maximum_skewness": maximum_skewness,
             "candidate_columns": len(candidates),
+            "skewness_candidate_pairs": len(skewed_pairs),
         }
         return mesh_data
     representatives = np.unique(parent)
@@ -397,7 +428,10 @@ def agglomerate_small_layer_columns(
         "merged_columns": merged_columns,
         "merged_cells": merged_columns * number_of_layers,
         "minimum_area_fraction": minimum_area_fraction,
+        "maximum_skewness": maximum_skewness,
         "candidate_columns": len(candidates),
+        "skewness_candidate_pairs": len(skewed_pairs),
+        "skewness_merges": skewness_merges,
         "minimum_fraction_before": float(
             min((area_fraction[root] for root in candidates), default=1.0)
         ),

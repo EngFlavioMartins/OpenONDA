@@ -94,9 +94,20 @@ def _visualization_mesh(mesh_data, cell_ids: np.ndarray) -> dict[str, Any]:
             selected_global_faces,
             return_inverse=True,
         )
+        selected_cells = np.repeat(cell_ids, counts)
+        cell_face_reversed = np.zeros(len(selected_global_faces), dtype=bool)
+        global_interior = int(mesh_data["n_interior_faces"])
+        interior_entry = selected_global_faces < global_interior
+        cell_face_reversed[interior_entry] = (
+            np.asarray(mesh_data["neighbours"], dtype=np.int64)[
+                selected_global_faces[interior_entry]
+            ]
+            == selected_cells[interior_entry]
+        )
     else:
         global_face_id = np.empty(0, dtype=np.int64)
         selected_cell_face_indices = np.empty(0, dtype=np.int64)
+        cell_face_reversed = np.empty(0, dtype=bool)
 
     source_faces = mesh_data["faces"]
     face_array = source_faces if isinstance(source_faces, np.ndarray) else None
@@ -138,6 +149,7 @@ def _visualization_mesh(mesh_data, cell_ids: np.ndarray) -> dict[str, Any]:
         "boundary": [],
         "cell_face_indices": np.ascontiguousarray(selected_cell_face_indices, dtype=np.int32),
         "cell_face_offset": selected_offsets,
+        "cell_face_reversed": np.ascontiguousarray(cell_face_reversed),
         "global_point_ids": np.ascontiguousarray(used_points),
         "global_face_id": np.ascontiguousarray(global_face_id),
         "global_cell_id": np.ascontiguousarray(cell_ids),
@@ -498,8 +510,17 @@ def localize_mesh_and_geometry(
         "partition": partition,
         "_n_owned": len(partition.owned_global_ids),
     }
-    if include_visualization_ghosts:
-        local_mesh["_visualization_mesh"] = _visualization_mesh(mesh_data, local_cell_ids)
+    # The numerical local mesh stores complete topology for owned cells but
+    # only the faces needed to advance halo cells.  VTKExporter constructs its
+    # grid eagerly, so even owned-only output must receive a visualization
+    # mesh that excludes those intentionally incomplete halo cells.
+    visualization_cell_ids = (
+        local_cell_ids if include_visualization_ghosts else partition.owned_global_ids
+    )
+    local_mesh["_visualization_mesh"] = _visualization_mesh(
+        mesh_data,
+        visualization_cell_ids,
+    )
     for key, default, dtype in (
         ("cell_type_code", -1, np.int32),
         ("cell_order", 1, np.int8),

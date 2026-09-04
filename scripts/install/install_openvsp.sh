@@ -14,6 +14,22 @@
 
 set -euo pipefail
 
+usage() {
+    cat <<'EOF'
+Usage: scripts/install/install_openvsp.sh
+
+Install the optional OpenVSP application and Python API for the OpenONDA Conda
+environment. Configure non-default locations with OPENONDA_CONDA_ENV,
+OPENVSP_VERSION, OPENVSP_ROOT, or OPENVSP_ARCHIVE_URL.
+EOF
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    "") ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$REPO_ROOT/scripts/environment/environment.yml"

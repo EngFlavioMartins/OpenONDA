@@ -146,6 +146,7 @@ class VTKExporter:
         # Group faces by cell
         cell_face_indices = self.mesh_data.get("cell_face_indices")
         cell_face_offset = self.mesh_data.get("cell_face_offset")
+        cell_face_reversed = self.mesh_data.get("cell_face_reversed")
         if cell_face_indices is None or cell_face_offset is None:
             from ..mesh.topology import build_cell_face_csr
 
@@ -174,17 +175,20 @@ class VTKExporter:
             stop = int(cell_face_offset[cell + 1])
             face_ids = cell_face_indices[start:stop]
             local_faces: list[np.ndarray] = []
-            for face_id in face_ids:
+            for local_entry, face_id in enumerate(face_ids):
                 nodes = np.asarray(faces[int(face_id)], dtype=np.int64)
-                if int(face_id) < int(self.mesh_data["n_interior_faces"]) and int(
-                    neighbours[int(face_id)]
-                ) == cell:
+                if cell_face_reversed is not None:
+                    reverse = bool(cell_face_reversed[start + local_entry])
+                else:
+                    reverse = (
+                        int(face_id) < int(self.mesh_data["n_interior_faces"])
+                        and int(neighbours[int(face_id)]) == cell
+                    )
+                if reverse:
                     nodes = nodes[::-1]
                 local_faces.append(nodes)
 
-            candidate_ids = np.unique(
-                np.concatenate(local_faces)
-            )
+            candidate_ids = np.unique(np.concatenate(local_faces))
 
             if (
                 len(local_faces) == 6
@@ -194,16 +198,10 @@ class VTKExporter:
                 base = local_faces[0]
                 base_set = set(map(int, base))
                 opposite = next(
-                    (
-                        nodes
-                        for nodes in local_faces[1:]
-                        if base_set.isdisjoint(map(int, nodes))
-                    ),
+                    (nodes for nodes in local_faces[1:] if base_set.isdisjoint(map(int, nodes))),
                     None,
                 )
-                adjacency: dict[int, set[int]] = {
-                    int(node): set() for node in candidate_ids
-                }
+                adjacency: dict[int, set[int]] = {int(node): set() for node in candidate_ids}
                 for nodes in local_faces:
                     for edge, first_node in enumerate(nodes):
                         first = int(first_node)
@@ -213,11 +211,7 @@ class VTKExporter:
                 vtk_base = base[::-1]
                 vtk_top = [
                     next(
-                        (
-                            adjacent
-                            for adjacent in adjacency[int(node)]
-                            if adjacent not in base_set
-                        ),
+                        (adjacent for adjacent in adjacency[int(node)] if adjacent not in base_set),
                         -1,
                     )
                     for node in vtk_base
@@ -262,14 +256,9 @@ class VTKExporter:
             edge_use: dict[tuple[int, int], int] = {}
             for nodes in expanded_faces:
                 for edge, first_node in enumerate(nodes):
-                    pair = tuple(
-                        sorted(
-                            (
-                                int(first_node),
-                                int(nodes[(edge + 1) % len(nodes)]),
-                            )
-                        )
-                    )
+                    first = int(first_node)
+                    second = int(nodes[(edge + 1) % len(nodes)])
+                    pair = (first, second) if first < second else (second, first)
                     edge_use[pair] = edge_use.get(pair, 0) + 1
             if any(count != 2 for count in edge_use.values()):
                 raise ValueError(

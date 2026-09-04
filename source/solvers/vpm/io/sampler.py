@@ -9,8 +9,8 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Protocol, cast, runtime_checkable
-import xml.etree.ElementTree as ET
 
+import defusedxml.ElementTree as ET  # noqa: N817
 import numpy as np
 
 from ..config.artifacts import Samplers
@@ -291,7 +291,7 @@ class OutputManager:
         if not pvd_path.is_file():
             return []
         try:
-            root = ET.parse(pvd_path).getroot()  # noqa: S314
+            root = ET.parse(pvd_path).getroot()
             entries = [
                 (float(dataset.attrib["timestep"]), dataset.attrib["file"])
                 for dataset in root.findall(".//DataSet")

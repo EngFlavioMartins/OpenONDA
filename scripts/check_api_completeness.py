@@ -14,6 +14,7 @@ PUBLIC_MODULES = (
     "openonda.fvm",
     "openonda.fvm.mesher",
     "openonda.runtime",
+    "openonda.tutorials",
     "openonda.vpm",
 )
 

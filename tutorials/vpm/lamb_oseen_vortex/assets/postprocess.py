@@ -62,7 +62,6 @@ ENERGY_CASES = (
     ("dipole", "Vortex dipole", 2),
     ("merging", "Co-rotating merger", 2),
 )
-DIRECT_ENERGY_PARTICLE_LIMIT = 50_000
 
 # Legacy-input fallbacks used only when a result folder lacks run_metadata.json.
 # They are NOT a second source of truth: the authoritative values are read from
@@ -1253,15 +1252,13 @@ def load_merging_references(core_radius: float, vortex_separation: float) -> dic
     return output
 
 
-def _direct_energy_rate_mask(data_frame: pd.DataFrame) -> np.ndarray:
-    """Identify dE/dt samples formed from one consistent unbounded energy."""
+def _reportable_energy_rate_mask(data_frame: pd.DataFrame) -> np.ndarray:
+    """Identify finite dE/dt samples with a documented energy definition."""
     if "kinetic_energy_rate_source" in data_frame:
         source = data_frame["kinetic_energy_rate_source"].astype(str).to_numpy()
-        return source == "direct_energy_backward_difference"
-    if "n_particles_total" in data_frame:
-        # Historical files predate the explicit provenance column. The default
-        # crossover used for these tutorial runs was 50,000 particles.
-        return data_frame["n_particles_total"].to_numpy(float) <= DIRECT_ENERGY_PARTICLE_LIMIT
+        return np.asarray([not value.startswith("undefined_") for value in source])
+    if "kinetic_energy_rate" in data_frame:
+        return np.isfinite(data_frame["kinetic_energy_rate"].to_numpy(float))
     return np.ones(len(data_frame), dtype=bool)
 
 
@@ -1275,7 +1272,7 @@ def read_flow_integrals(csv_path: Path) -> dict | None:
     if data_frame.empty or "kinetic_energy_rate" not in data_frame:
         return None
     kinetic_energy_rate = data_frame["kinetic_energy_rate"].to_numpy(float)
-    reportable_energy_rate = _direct_energy_rate_mask(data_frame)
+    reportable_energy_rate = _reportable_energy_rate_mask(data_frame)
     kinetic_energy_rate = np.where(reportable_energy_rate, kinetic_energy_rate, np.nan)
 
     data = {
@@ -2399,47 +2396,47 @@ def energy_balance_audit(
     samples_dir: Path = SAMPLES_DIR,
     schemes: tuple[str, ...] = SCHEMES,
 ) -> dict:
-    """Separate comparable direct-energy rates from changing-box estimates."""
+    """Audit all finite, continuity-preserving energy-rate samples."""
     runs = {}
     for case_id in CASES:
         for scheme in schemes:
             name = f"{case_id}_{scheme}"
             path = samples_dir / name / "flow_integrals.csv"
             frame = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["time"])
-            direct = _direct_energy_rate_mask(frame)
+            reportable = _reportable_energy_rate_mask(frame)
             energy_rate = frame["kinetic_energy_rate"].to_numpy(float)
             viscous_rate = frame["viscous_kinetic_energy_rate"].to_numpy(float)
             nonzero = np.isfinite(energy_rate) & (energy_rate != 0.0)
-            comparable = direct & nonzero & np.isfinite(viscous_rate)
+            comparable = reportable & nonzero & np.isfinite(viscous_rate)
             raw_positive = nonzero & (energy_rate > 1.0e-7)
             comparable_positive = comparable & (energy_rate > 1.0e-7)
             residual = energy_rate[comparable] - viscous_rate[comparable]
             denominator = float(np.sqrt(np.mean(viscous_rate[comparable] ** 2)))
             runs[name] = {
                 "total_rate_samples": int(nonzero.sum()),
-                "direct_comparable_samples": int(comparable.sum()),
+                "comparable_samples": int(comparable.sum()),
                 "raw_positive_samples": int(raw_positive.sum()),
-                "direct_positive_samples": int(comparable_positive.sum()),
-                "all_positive_samples_outside_direct_definition": bool(
-                    raw_positive.any() and not np.any(raw_positive & direct)
+                "comparable_positive_samples": int(comparable_positive.sum()),
+                "all_positive_samples_outside_reportable_definition": bool(
+                    raw_positive.any() and not np.any(raw_positive & reportable)
                 ),
                 "relative_rms_balance_residual": (
                     float(np.sqrt(np.mean(residual**2)) / denominator)
                     if comparable.any() and denominator > 0.0
                     else None
                 ),
-                "direct_comparable_end_time": (
+                "comparable_end_time": (
                     float(frame.loc[comparable, "time"].max()) if comparable.any() else None
                 ),
             }
     return {
         "finite_difference_definition": (
-            "backward difference of consecutive direct unbounded kinetic-energy integrals"
+            "backward difference of consecutive continuity-preserving unbounded "
+            "kinetic-energy integrals"
         ),
-        "dynamic_fourier_box_mode": (
-            "instantaneous energy and -nu*Omega remain reportable; dE/dt is undefined"
+        "large_cloud_mode": (
+            "phase-locked Fourier grid with direct/Fourier and grid-growth continuity calibration"
         ),
-        "legacy_backend_inference_particle_limit": DIRECT_ENERGY_PARTICLE_LIMIT,
         "runs": runs,
     }
 
@@ -2558,6 +2555,16 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                     failures.append(f"{name}: flow-integral history is incomplete")
                 if np.any(np.diff(integral_time) <= 0.0):
                     failures.append(f"{name}: flow-integral time is not strictly increasing")
+                for column in (
+                    "total_kinetic_energy",
+                    "kinetic_energy_rate",
+                    "viscous_kinetic_energy_rate",
+                ):
+                    if column not in integrals:
+                        failures.append(f"{name}: flow-integral history has no {column} column")
+                        continue
+                    if not np.isfinite(integrals[column].to_numpy(float)).all():
+                        failures.append(f"{name}: non-finite values in {column}")
                 for column in ("kinetic_energy_rate", "viscous_kinetic_energy_rate"):
                     if column not in integrals:
                         continue
@@ -2569,7 +2576,7 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                         tested_column = f"{column}_ci_lower"
                     tested_values = integrals[tested_column].to_numpy(float)
                     if column == "kinetic_energy_rate":
-                        tested_values = tested_values[_direct_energy_rate_mask(integrals)]
+                        tested_values = tested_values[_reportable_energy_rate_mask(integrals)]
                     if np.any(tested_values > 1.0e-7):
                         failures.append(
                             f"{name}: significantly positive modeled energy rate in {column}"

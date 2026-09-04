@@ -788,9 +788,11 @@ class FMMInduction:
         self.diagnostics = FMMDiagnostics(strength_rate_mode=self.strength_rate_mode)
 
     def build(self) -> Self:
+        """Return a fresh unbound FMM evaluator for an immutable case setup."""
         return type(self)()
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
+        """Bind the evaluator to one single-precision VPM physics workspace."""
         if physics.accumulator_dtype != ti.f32:
             raise ValueError("FMMInduction currently supports precision='f32' only")
         self.physics = physics
@@ -834,6 +836,7 @@ class FMMInduction:
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
+        """Evaluate velocity, gradient, and strength rate for one RK stage."""
         del stage_time
         if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before evaluation")

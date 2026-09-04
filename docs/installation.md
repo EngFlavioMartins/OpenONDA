@@ -28,13 +28,41 @@ python -m pip check
 ```
 
 The verifier imports the public modules, initializes Gmsh and Taichi, and
-advances a small native FVM case. `--require-site-packages` also detects an
-accidental import from a source checkout.
+advances a small native FVM case. It also verifies the `py.typed` marker,
+installed tutorial resources, and a headless Matplotlib render.
+`--require-site-packages` detects an accidental import from a source checkout.
+
+## Use the installed tutorials
+
+Tutorials are distributed as immutable templates and copied to a user-owned
+workspace before they run. No repository clone or manually configured import
+path is required:
+
+```bash
+cd /tmp
+openonda tutorial list
+openonda tutorial run fvm/taylor_green
+openonda tutorial create vpm/lamb_oseen_vortex ./lamb-oseen-study
+openonda tutorial run vpm/lamb_oseen_vortex --workspace ./lamb-oseen-study
+openonda tutorial plot vpm/lamb_oseen_vortex --workspace ./lamb-oseen-study
+```
+
+The first `run` command creates `./openonda-fvm-taylor-green` automatically.
+Explicit `create` is useful when a stable workspace name is desired. Existing
+cases are never overwritten. Solver output and plots are written only to the
+workspace, not to the Python environment.
+
+Inspect public API documentation from any directory with, for example,
+`openonda api fvm.FVMSetup` or `python -m pydoc openonda.vpm`. The distribution
+contains `py.typed`, allowing editors and language servers to use OpenONDA's
+inline annotations without extra stub paths.
 
 ## Install with Conda
 
 The repository installer creates a Python 3.11 environment and performs the
-same runtime verification:
+same runtime verification. It is non-interactive by default, discovers its
+paths from the checkout and Conda environment, and installs Miniforge when
+Conda is absent:
 
 ```bash
 git clone --depth 1 --branch development https://github.com/EngFlavioMartins/OpenONDA.git
@@ -46,7 +74,8 @@ It prints the two commands needed to activate the environment. The default is
 an editable development installation; pass `--no-editable` for a fixed copy in
 `site-packages`. Pass `--parallel` to use the MPI/PETSc environment. MPI,
 PETSc, mpi4py, and petsc4py should come from the same Conda channel so their MPI
-implementations agree.
+implementations agree. Pass `--prompt` only when an explicit confirmation is
+desired before installing Miniforge.
 
 ## Select a VPM compute device
 

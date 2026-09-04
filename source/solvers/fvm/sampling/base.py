@@ -29,7 +29,8 @@ from __future__ import annotations
 import csv
 import os
 from typing import Any, ClassVar
-import xml.etree.ElementTree as ET
+
+import defusedxml.ElementTree as ET  # noqa: N817
 
 from ..config.scheduling import RunSchedule
 

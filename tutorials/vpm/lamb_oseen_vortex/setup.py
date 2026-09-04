@@ -9,12 +9,12 @@ chosen diffusion scheme and stores the snapshots under ``solution`` while the
 sampled z=L/4 velocity/vorticity fields and flow integrals are written under
 ``samples``.
 
-The user-facing entry point needs only the physical case and the viscous
-scheme::
+The user-facing entry point accepts the physical case, viscous scheme, and an
+optional induction method::
 
-    python -m tutorials.vpm.lamb_oseen_vortex.setup vortex CS
-    python -m tutorials.vpm.lamb_oseen_vortex.setup dipole DVH
-    python -m tutorials.vpm.lamb_oseen_vortex.setup merging GBD
+    python -m tutorials.vpm.lamb_oseen_vortex.setup vortex CS DIRECT
+    python -m tutorials.vpm.lamb_oseen_vortex.setup dipole DVH TREECODE
+    python -m tutorials.vpm.lamb_oseen_vortex.setup merging GBD TREECODE
 """
 
 from __future__ import annotations
@@ -52,6 +52,7 @@ INITIAL_STRENGTH_CUTOFF = 1e-4  # discard particles with Γ < x% of peak
 MAX_PARTICLES = 400_000  # particle-container capacity (largest DVH/GBD population)
 
 VISCOUS_SCHEMES = ("CS", "DVH", "GBD")
+INDUCTION_METHODS = ("DIRECT", "TREECODE", "FMM")
 
 # ---- Physical case definitions -------------------------------------------
 PHYSICS_CIRCULATIONS = {
@@ -59,6 +60,7 @@ PHYSICS_CIRCULATIONS = {
     "dipole": (+1.0, -1.0),
     "merging": (+1.0, +1.0),
 }
+
 
 def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> vpm.ViscousConfig:
     if scheme == "CS":
@@ -91,6 +93,19 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
         max_nodes=MAX_PARTICLES,
         core_radius_ratio=CORE_RADIUS_RATIO,
     )
+
+
+def induction_config(method: str):
+    """Construct the explicitly selected particle-induction backend."""
+    method = method.upper()
+    if method == "DIRECT":
+        return vpm.DirectInduction()
+    if method == "TREECODE":
+        return vpm.TreecodeInduction()
+    if method == "FMM":
+        return vpm.FMMInduction()
+    raise ValueError(f"Unknown induction method {method!r}; expected one of {INDUCTION_METHODS}")
+
 
 def write_run_metadata(
     *,
@@ -136,8 +151,8 @@ def write_run_metadata(
         "end_time": float(TOTAL_TIME),
         "number_of_steps": int(n_steps),
         "integrator": "SSPRK3",
-        "induction_backend": "FMMInduction",
-        "strength_rate_formulation": "HIERARCHICAL_GRADIENT",
+        "induction_backend": type(solver.induction).__name__,
+        "strength_rate_formulation": solver.induction.strength_rate_mode,
         "particle_kernel": "GAUSSIAN",
         "diffusion_scheme": scheme,
         "compute_backend": getattr(solver, "compute_device", "AUTO"),
@@ -145,9 +160,7 @@ def write_run_metadata(
         "write_precision": "f32",
         "random_seed": int(random_seed),
         "final_time": float(solver.time),
-        "initial_n_particles_total": int(
-            getattr(solver.particles, "n_particles_total", 0)
-        ),
+        "initial_n_particles_total": int(getattr(solver.particles, "n_particles_total", 0)),
     }
     destination = TUTORIAL_DIR / "samples" / sample_directory / "run_metadata.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -165,8 +178,14 @@ def run_case(
     surfaces: bool = True,
     backup_steps: int | None = None,
     compute_device: str = "AUTO",
+    induction_method: str | None = None,
 ) -> None:
     scheme = scheme.upper()
+    induction_method = (
+        ("DIRECT" if scheme in {"CS", "RWM"} else "TREECODE")
+        if induction_method is None
+        else induction_method.upper()
+    )
     case_name = name or f"{physics}_{scheme.lower()}"
     circulations = PHYSICS_CIRCULATIONS[physics]
 
@@ -284,7 +303,7 @@ def run_case(
             time_step_size=TIME_STEP_SIZE,
             viscous=viscous,
             integrator=vpm.SSPRK3(),
-            induction=vpm.FMMInduction(),
+            induction=induction_config(induction_method),
             particle_kernel="GAUSSIAN",
             write_precision="f32",
             precision="f32",
@@ -326,12 +345,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case", choices=tuple(PHYSICS_CIRCULATIONS))
     parser.add_argument("viscous_scheme", choices=VISCOUS_SCHEMES)
+    parser.add_argument("induction_method", nargs="?", choices=INDUCTION_METHODS)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    run_case(args.case, args.viscous_scheme)
+    run_case(args.case, args.viscous_scheme, induction_method=args.induction_method)
     return 0
 
 

@@ -69,6 +69,13 @@ print_configuration() {
 
 print_configuration
 if ! reference_is_ready; then
+    if [[ "$reference_directory" == "$case_directory/reference_flow" ]] && \
+       [[ -x "$reference_directory/allrun.sh" ]]; then
+        echo "reference_status=missing; generating the bundled reference case"
+        (cd "$reference_directory" && ./allrun.sh)
+    fi
+fi
+if ! reference_is_ready; then
     echo "[FAIL] The selected reference must contain forces and both profiles through t=${reference_horizon}: ${reference_directory}" >&2
     exit 1
 fi

@@ -16,6 +16,7 @@ import numpy as np
 
 from ..geometry import compute_mesh_geometry
 from ..surface_classification import SurfaceIndex
+from ..validation import extract_cell_subset_mesh
 from .config import BoundaryLayers
 from .surface_recovery import _merge_coplanar_surface_fragments
 
@@ -218,7 +219,7 @@ def build_patch_layers(
             }
         )
         start_face += len(block)
-    result = {
+    result: dict[str, Any] = {
         "vertex_position": local_points,
         "faces": np.ascontiguousarray(np.vstack(face_blocks), dtype=np.int32),
         "owners": np.ascontiguousarray(np.concatenate(owner_blocks), dtype=np.int32),
@@ -285,6 +286,7 @@ class LayerSurface:
     triangles: tuple[np.ndarray, ...]
     source_vertices: np.ndarray
     vertex_offsets: np.ndarray
+    prefer_vectorized_mapping: bool
 
     @property
     def outer_triangles(self) -> np.ndarray:
@@ -320,9 +322,7 @@ def _optimise_coplanar_quad_diagonals(
     tolerance = max(1.0e-11 * scale, np.finfo(np.float64).eps * scale * 64.0)
     flat = source.reshape(-1, 3)
     keys = np.rint(flat / tolerance).astype(np.int64)
-    _unique, first, inverse = np.unique(
-        keys, axis=0, return_index=True, return_inverse=True
-    )
+    _unique, first, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
     points = flat[first]
     faces = inverse.reshape(-1, 3)
     raw_normals = np.cross(source[:, 1] - source[:, 0], source[:, 2] - source[:, 0])
@@ -331,7 +331,13 @@ def _optimise_coplanar_quad_diagonals(
     edge_faces: dict[tuple[int, int], list[int]] = {}
     for face_id, face in enumerate(faces):
         for first_id, second_id in ((0, 1), (1, 2), (2, 0)):
-            edge = tuple(sorted((int(face[first_id]), int(face[second_id]))))
+            first_vertex = int(face[first_id])
+            second_vertex = int(face[second_id])
+            edge = (
+                (first_vertex, second_vertex)
+                if first_vertex < second_vertex
+                else (second_vertex, first_vertex)
+            )
             edge_faces.setdefault(edge, []).append(face_id)
     coplanar_neighbours = np.zeros(len(faces), dtype=np.int16)
     coplanar_edges: list[tuple[tuple[int, int], int, int]] = []
@@ -342,12 +348,7 @@ def _optimise_coplanar_quad_diagonals(
         if float(np.dot(normals[first_face], normals[second_face])) < 1.0 - 1.0e-10:
             continue
         plane_error = float(
-            np.max(
-                np.abs(
-                    (source[second_face] - source[first_face, 0])
-                    @ normals[first_face]
-                )
-            )
+            np.max(np.abs((source[second_face] - source[first_face, 0]) @ normals[first_face]))
         )
         if plane_error > tolerance:
             continue
@@ -383,9 +384,7 @@ def _optimise_coplanar_quad_diagonals(
         )
         for triangle_id in range(2):
             coordinates = points[alternative[triangle_id]]
-            normal = np.cross(
-                coordinates[1] - coordinates[0], coordinates[2] - coordinates[0]
-            )
+            normal = np.cross(coordinates[1] - coordinates[0], coordinates[2] - coordinates[0])
             if float(np.dot(normal, target_normal)) < 0.0:
                 alternative[triangle_id, 1:] = alternative[triangle_id, :0:-1]
         options = (
@@ -397,7 +396,13 @@ def _optimise_coplanar_quad_diagonals(
             option_edges: dict[tuple[int, int], list[int]] = {}
             for local_face, face in enumerate(option):
                 for first_id, second_id in ((0, 1), (1, 2), (2, 0)):
-                    edge = tuple(sorted((int(face[first_id]), int(face[second_id]))))
+                    first_vertex = int(face[first_id])
+                    second_vertex = int(face[second_id])
+                    edge = (
+                        (first_vertex, second_vertex)
+                        if first_vertex < second_vertex
+                        else (second_vertex, first_vertex)
+                    )
                     option_edges.setdefault(edge, []).append(local_face)
             boundary_centres.append(
                 {
@@ -436,9 +441,7 @@ def _optimise_coplanar_quad_diagonals(
     if not connections:
         return source
 
-    incident: list[list[tuple[int, int, tuple[int, int]]]] = [
-        [] for _ in panels
-    ]
+    incident: list[list[tuple[int, int, tuple[int, int]]]] = [[] for _ in panels]
     for connection in connections:
         incident[connection[0]].append(connection)
         incident[connection[1]].append(connection)
@@ -511,9 +514,7 @@ def _refine_surface_triangles(
                     edge_lengths[edge] = float(
                         np.linalg.norm(vertices[edge[1]] - vertices[edge[0]])
                     )
-        marked = {
-            edge for edge, length in edge_lengths.items() if length > maximum_edge_length
-        }
+        marked = {edge for edge, length in edge_lengths.items() if length > maximum_edge_length}
         if not marked:
             return current
         midpoint: dict[tuple[int, int], int] = {}
@@ -542,9 +543,7 @@ def _refine_surface_triangles(
             elif count == 2 and ca is not None and ab is not None:
                 refined.extend(((a, ab, ca), (c, ca, b), (ca, ab, b)))
             elif ab is not None and bc is not None and ca is not None:
-                refined.extend(
-                    ((a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca))
-                )
+                refined.extend(((a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)))
             else:
                 raise RuntimeError("Unhandled conforming surface-refinement pattern")
         vertex_array = np.asarray(vertices, dtype=np.float64)
@@ -581,9 +580,7 @@ def build_layer_surface(
     tolerance = max(1.0e-11 * scale, np.finfo(np.float64).eps * scale * 64.0)
     flat = source.reshape(-1, 3)
     keys = np.rint(flat / tolerance).astype(np.int64)
-    _unique_keys, first, inverse = np.unique(
-        keys, axis=0, return_index=True, return_inverse=True
-    )
+    _unique_keys, first, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
     vertices = flat[first]
     face_vertices = inverse.reshape(-1, 3)
     raw_normals = np.cross(source[:, 1] - source[:, 0], source[:, 2] - source[:, 0])
@@ -591,8 +588,7 @@ def build_layer_surface(
     if np.any(lengths <= tolerance**2):
         raise ValueError(f"Boundary-layer patch {patch!r} contains a degenerate triangle")
     signed_volume = float(
-        np.einsum("ij,ij->i", source[:, 0], np.cross(source[:, 1], source[:, 2])).sum()
-        / 6.0
+        np.einsum("ij,ij->i", source[:, 0], np.cross(source[:, 1], source[:, 2])).sum() / 6.0
     )
     outward = raw_normals / lengths[:, None]
     if signed_volume < 0.0:
@@ -612,9 +608,7 @@ def build_layer_surface(
             weighted = (candidate_normals * lengths[candidates, None]).sum(axis=0)
             norm = float(np.linalg.norm(weighted))
             if norm <= tolerance:
-                raise ValueError(
-                    f"Boundary-layer patch {patch!r} has an undefined smooth normal"
-                )
+                raise ValueError(f"Boundary-layer patch {patch!r} has an undefined smooth normal")
             vertex_offsets[vertex_id] = weighted / norm
             continue
 
@@ -647,8 +641,7 @@ def build_layer_surface(
         (np.asarray([0.0]), np.cumsum(np.asarray(layer.layer_heights, dtype=np.float64)))
     )
     levels = tuple(
-        np.ascontiguousarray(source + distance * corner_normals)
-        for distance in distances
+        np.ascontiguousarray(source + distance * corner_normals) for distance in distances
     )
     for level, current in enumerate(levels):
         current_lengths = np.linalg.norm(
@@ -661,12 +654,24 @@ def build_layer_surface(
     distances.setflags(write=False)
     for values in levels:
         values.setflags(write=False)
+    triangle_edges = np.stack(
+        (
+            np.linalg.norm(source[:, 1] - source[:, 0], axis=1),
+            np.linalg.norm(source[:, 2] - source[:, 1], axis=1),
+            np.linalg.norm(source[:, 0] - source[:, 2], axis=1),
+        ),
+        axis=1,
+    )
+    facet_aspect = np.max(triangle_edges, axis=1) / np.maximum(
+        np.min(triangle_edges, axis=1), np.finfo(np.float64).tiny
+    )
     return LayerSurface(
         patch=patch,
         distances=distances,
         triangles=levels,
         source_vertices=vertices,
         vertex_offsets=vertex_offsets,
+        prefer_vectorized_mapping=bool(np.median(facet_aspect) > 100.0),
     )
 
 
@@ -688,38 +693,6 @@ def _barycentric_coordinates(points: np.ndarray, triangle: np.ndarray) -> np.nda
     return np.column_stack((1.0 - v - w, v, w))
 
 
-def _source_triangle_for_face(
-    face_points: np.ndarray,
-    surface: LayerSurface,
-    index: SurfaceIndex,
-    tolerance: float,
-) -> tuple[int, np.ndarray]:
-    candidates = index.candidate_triangles(
-        face_points.min(axis=0) - tolerance,
-        face_points.max(axis=0) + tolerance,
-    )
-    best: tuple[float, int, np.ndarray] | None = None
-    for triangle_id in candidates:
-        triangle = surface.outer_triangles[int(triangle_id)]
-        normal = np.cross(triangle[1] - triangle[0], triangle[2] - triangle[0])
-        normal /= np.linalg.norm(normal)
-        plane_error = float(np.max(np.abs((face_points - triangle[0]) @ normal)))
-        barycentric = _barycentric_coordinates(face_points, triangle)
-        range_error = float(
-            max(
-                0.0,
-                -float(barycentric.min()),
-                float(barycentric.max()) - 1.0,
-            )
-        )
-        score = plane_error + range_error
-        if best is None or score < best[0]:
-            best = (score, int(triangle_id), barycentric)
-    if best is None or best[0] > 100.0 * tolerance:
-        raise ValueError("Layer/core interface face cannot be mapped to one offset STL triangle")
-    return best[1], best[2]
-
-
 def _map_offset_point_to_source(
     point: np.ndarray,
     surface: LayerSurface,
@@ -727,6 +700,7 @@ def _map_offset_point_to_source(
     tolerance: float,
     preferred_normal: np.ndarray,
 ) -> np.ndarray:
+    """Map one offset point with deterministic scalar tie-breaking."""
     candidates = index.candidate_triangles(point - tolerance, point + tolerance)
     best: tuple[float, float, int, np.ndarray] | None = None
     for triangle_id in candidates:
@@ -750,6 +724,84 @@ def _map_offset_point_to_source(
     if best is None:
         raise ValueError("Layer/core interface vertex cannot be mapped to the offset STL")
     return best[3] @ surface.triangles[0][best[2]]
+
+
+def _map_offset_face_to_source(
+    face_points: np.ndarray,
+    surface: LayerSurface,
+    index: SurfaceIndex,
+    tolerance: float,
+    preferred_normal: np.ndarray,
+) -> np.ndarray:
+    """Map a recovered polygon to the source STL without per-vertex Python loops."""
+    point_candidates = [
+        index.candidate_triangles(point - tolerance, point + tolerance) for point in face_points
+    ]
+    if not surface.prefer_vectorized_mapping:
+        return np.asarray(
+            [
+                _map_offset_point_to_source(
+                    point,
+                    surface,
+                    index,
+                    tolerance,
+                    preferred_normal,
+                )
+                for point in face_points
+            ],
+            dtype=np.float64,
+        )
+    candidates = np.unique(np.concatenate(point_candidates))
+    if not len(candidates):
+        raise ValueError("Layer/core interface face has no offset-STL candidates")
+    triangles = surface.outer_triangles[candidates]
+    first = triangles[:, 0]
+    edge0 = triangles[:, 1] - first
+    edge1 = triangles[:, 2] - first
+    normals = np.cross(edge0, edge1)
+    lengths = np.linalg.norm(normals, axis=1)
+    if np.any(lengths <= np.finfo(np.float64).eps):
+        raise ValueError("Offset layer surface contains a degenerate triangle")
+    normals /= lengths[:, None]
+
+    point_vectors = face_points[:, None, :] - first[None, :, :]
+    plane_error = np.abs(np.einsum("pni,ni->pn", point_vectors, normals))
+    d00 = np.einsum("ni,ni->n", edge0, edge0)
+    d01 = np.einsum("ni,ni->n", edge0, edge1)
+    d11 = np.einsum("ni,ni->n", edge1, edge1)
+    denominator = d00 * d11 - d01 * d01
+    if np.any(np.abs(denominator) <= np.finfo(np.float64).eps):
+        raise ValueError("Offset layer surface contains a degenerate triangle")
+    d20 = np.einsum("pni,ni->pn", point_vectors, edge0)
+    d21 = np.einsum("pni,ni->pn", point_vectors, edge1)
+    second = (d11[None, :] * d20 - d01[None, :] * d21) / denominator[None, :]
+    third = (d00[None, :] * d21 - d01[None, :] * d20) / denominator[None, :]
+    barycentric = np.stack((1.0 - second - third, second, third), axis=2)
+    range_error = np.maximum.reduce(
+        (
+            np.zeros_like(plane_error),
+            -np.min(barycentric, axis=2),
+            np.max(barycentric, axis=2) - 1.0,
+        )
+    )
+    geometry_error = plane_error + range_error
+    alignment_error = np.broadcast_to(
+        1.0 - np.abs(normals @ preferred_normal),
+        geometry_error.shape,
+    ).copy()
+    spatially_local = np.vstack(
+        [np.isin(candidates, local, assume_unique=True) for local in point_candidates]
+    )
+    valid = (geometry_error <= 100.0 * tolerance) & spatially_local
+    alignment_error[~valid] = np.inf
+    triangle_ids = np.broadcast_to(candidates, geometry_error.shape)
+    selected = np.lexsort((triangle_ids, geometry_error, alignment_error), axis=1)[:, 0]
+    rows = np.arange(len(face_points))
+    if np.any(~valid[rows, selected]):
+        raise ValueError("Layer/core interface vertex cannot be mapped to the offset STL")
+    weights = barycentric[rows, selected]
+    source_triangles = surface.triangles[0][candidates[selected]]
+    return np.einsum("pi,pij->pj", weights, source_triangles)
 
 
 class _CoordinateRegistry:
@@ -790,10 +842,7 @@ def insert_surface_layers(
     registry = _CoordinateRegistry(core_points, tolerance)
     surface_by_patch = {surface.patch: surface for surface in layer_surfaces}
     spec_by_patch = {
-        patch: spec
-        for spec in layer_specs
-        for patch in spec.patches
-        if patch in surface_by_patch
+        patch: spec for spec in layer_specs for patch in spec.patches if patch in surface_by_patch
     }
     if set(surface_by_patch) != set(spec_by_patch):
         raise ValueError("Every offset layer surface must have one boundary-layer control")
@@ -816,8 +865,7 @@ def insert_surface_layers(
         for patch in surface_by_patch
     }
     measured_height_max = {
-        patch: np.zeros(spec_by_patch[patch].layers, dtype=np.float64)
-        for patch in surface_by_patch
+        patch: np.zeros(spec_by_patch[patch].layers, dtype=np.float64) for patch in surface_by_patch
     }
     for patch in core["boundary"]:
         patch_name = str(patch["name"])
@@ -833,31 +881,22 @@ def insert_surface_layers(
             outer_points = core_points[outer_face]
             facet_normal = _area_vector(outer_points)
             facet_normal /= np.linalg.norm(facet_normal)
-            inner_points = np.asarray(
-                [
-                    _map_offset_point_to_source(
-                        point,
-                        surface,
-                        indices[patch_name],
-                        tolerance,
-                        facet_normal,
-                    )
-                    for point in outer_points
-                ],
-                dtype=np.float64,
+            inner_points = _map_offset_face_to_source(
+                outer_points,
+                surface,
+                indices[patch_name],
+                tolerance,
+                facet_normal,
             )
             facet_plane = float(np.dot(facet_normal, outer_points[0]))
             facet_quantum = 1.0e-8
             facet_group = tuple(
                 np.rint(
-                    np.concatenate((facet_normal, np.asarray([facet_plane])))
-                    / facet_quantum
+                    np.concatenate((facet_normal, np.asarray([facet_plane]))) / facet_quantum
                 ).astype(np.int64)
             )
             inner_keys = np.rint(inner_points / tolerance).astype(np.int64)
-            _unique_inner, first_inner = np.unique(
-                inner_keys, axis=0, return_index=True
-            )
+            _unique_inner, first_inner = np.unique(inner_keys, axis=0, return_index=True)
             if len(first_inner) != len(inner_points):
                 keep = np.sort(first_inner)
                 if len(keep) < 3:
@@ -879,19 +918,14 @@ def insert_surface_layers(
                 raise ValueError(
                     f"Boundary-layer patch {patch_name!r} has a tangential layer column"
                 )
-            height_samples = (
-                np.diff(fractions)[:, None] * normal_path_lengths[None, :]
-            )
+            height_samples = np.diff(fractions)[:, None] * normal_path_lengths[None, :]
             measured_height_min[patch_name] = np.minimum(
                 measured_height_min[patch_name], height_samples.min(axis=1)
             )
             measured_height_max[patch_name] = np.maximum(
                 measured_height_max[patch_name], height_samples.max(axis=1)
             )
-            rings = [
-                registry.ids(inner_points + fraction * paths)
-                for fraction in fractions
-            ]
+            rings = [registry.ids(inner_points + fraction * paths) for fraction in fractions]
             for layer_index in range(spec.layers):
                 lower = rings[layer_index]
                 upper = rings[layer_index + 1]
@@ -917,9 +951,7 @@ def insert_surface_layers(
                         )
                     )
                 layer_cells.append(entries)
-                layer_group_keys.append(
-                    (patch_name, core_owner, facet_group, layer_index)
-                )
+                layer_group_keys.append((patch_name, core_owner, facet_group, layer_index))
                 layer_cell_index.append(layer_index)
                 layer_cell_size.append(spec.layer_heights[layer_index])
             signature = tuple(sorted(map(int, rings[-1])))
@@ -1028,21 +1060,21 @@ def insert_surface_layers(
                 return patch_name
         return "layer_termination"
 
-    for signature, entries in records.items():
-        entry_cells = {entry[1] for entry in entries}
-        if len(entry_cells) == 1 and len(entries) > 1:
+    for signature, record_entries in records.items():
+        entry_cells = {entry[1] for entry in record_entries}
+        if len(entry_cells) == 1 and len(record_entries) > 1:
             # STL-fragment and Cartesian-clip subdivision faces internal to
             # one agglomerated cut-cell column disappear from its boundary.
             continue
-        if len(entries) == 2:
-            first, second = entries
+        if len(record_entries) == 2:
+            first, second = record_entries
             layer_internal_faces.append(first[0])
             layer_internal_owners.append(first[1] + layer_offset)
             layer_internal_neighbours.append(second[1] + layer_offset)
             continue
-        if len(entries) != 1:
+        if len(record_entries) != 1:
             raise ValueError("Boundary-layer extrusion produced a non-manifold face")
-        face, local_cell, role = entries[0]
+        face, local_cell, role = record_entries[0]
         owner = local_cell + layer_offset
         if role == "interface":
             if signature in interface_neighbours:
@@ -1132,7 +1164,7 @@ def insert_surface_layers(
         start_face += len(patch_faces[name])
 
     widths = {len(face) for face in combined_faces}
-    result = {
+    result: dict[str, Any] = {
         "vertex_position": np.ascontiguousarray(registry.points, dtype=np.float64),
         "faces": (
             np.ascontiguousarray(combined_faces, dtype=np.int32)
@@ -1188,18 +1220,33 @@ def insert_surface_layers(
             for patch in surface_by_patch
         },
     }
+    # Do not use signed-volume centroids to establish the initial face
+    # orientation: those centroids themselves depend on already-consistent
+    # face winding and can make sharp layer cells oscillate indefinitely.
+    # A mean of incident face centres is orientation-independent and lies
+    # inside every convex layer prism.  Retain the validated geometric
+    # centroids for the unchanged Cartesian core cells.
+    geometry = compute_mesh_geometry(result, compute_lsq=False)
+    area = np.asarray(geometry["face_area_vector"])
+    face_centre = np.asarray(geometry["face_centre"])
+    reference_centre = np.zeros((int(result["n_cells"]), 3), dtype=np.float64)
+    reference_count = np.zeros(int(result["n_cells"]), dtype=np.int64)
+    np.add.at(reference_centre, result["owners"], face_centre)
+    np.add.at(reference_count, result["owners"], 1)
+    np.add.at(reference_centre, result["neighbours"], face_centre[:n_internal])
+    np.add.at(reference_count, result["neighbours"], 1)
+    reference_centre /= reference_count[:, None]
+    core_geometry = compute_mesh_geometry(core, compute_lsq=False)
+    reference_centre[: int(core["n_cells"])] = core_geometry["cell_centre"]
+
     orientation_history: list[int] = []
-    for _iteration in range(8):
-        geometry = compute_mesh_geometry(result, compute_lsq=False)
-        area = np.asarray(geometry["face_area_vector"])
-        face_centre = np.asarray(geometry["face_centre"])
-        cell_centre = np.asarray(geometry["cell_centre"])
+    for _iteration in range(2):
         direction = np.empty_like(area)
         direction[:n_internal] = (
-            cell_centre[result["neighbours"]] - cell_centre[result["owners"][:n_internal]]
+            reference_centre[result["neighbours"]] - reference_centre[result["owners"][:n_internal]]
         )
         direction[n_internal:] = (
-            face_centre[n_internal:] - cell_centre[result["owners"][n_internal:]]
+            face_centre[n_internal:] - reference_centre[result["owners"][n_internal:]]
         )
         reverse = np.flatnonzero(np.einsum("ij,ij->i", area, direction) < 0.0)
         orientation_history.append(len(reverse))
@@ -1212,8 +1259,12 @@ def insert_surface_layers(
             if len(widths) == 1
             else combined_faces
         )
+        geometry = compute_mesh_geometry(result, compute_lsq=False)
+        area = np.asarray(geometry["face_area_vector"])
+        face_centre = np.asarray(geometry["face_centre"])
     else:
         last_reverse = reverse
+        cell_centre = np.asarray(geometry["cell_centre"])
         closure = np.zeros((result["n_cells"], 3), dtype=np.float64)
         np.add.at(closure, result["owners"], area)
         np.add.at(
@@ -1231,9 +1282,7 @@ def insert_surface_layers(
                 )
             ),
             "core_layer_interface": int(
-                np.count_nonzero(
-                    (last_reverse >= interface_start) & (last_reverse < n_internal)
-                )
+                np.count_nonzero((last_reverse >= interface_start) & (last_reverse < n_internal))
             ),
         }
         for patch in boundary:
@@ -1246,18 +1295,10 @@ def insert_surface_layers(
             {
                 "face": int(face_id),
                 "owner": int(result["owners"][face_id]),
-                "neighbour": (
-                    int(result["neighbours"][face_id])
-                    if face_id < n_internal
-                    else None
-                ),
-                "orientation_dot": float(
-                    np.dot(area[face_id], direction[face_id])
-                ),
+                "neighbour": (int(result["neighbours"][face_id]) if face_id < n_internal else None),
+                "orientation_dot": float(np.dot(area[face_id], direction[face_id])),
                 "face_centre": tuple(map(float, face_centre[face_id])),
-                "owner_centre": tuple(
-                    map(float, cell_centre[int(result["owners"][face_id])])
-                ),
+                "owner_centre": tuple(map(float, cell_centre[int(result["owners"][face_id])])),
                 "neighbour_centre": (
                     tuple(
                         map(
@@ -1268,21 +1309,13 @@ def insert_surface_layers(
                     if face_id < n_internal
                     else None
                 ),
-                "owner_volume": float(
-                    geometry["cell_volume"][int(result["owners"][face_id])]
-                ),
+                "owner_volume": float(geometry["cell_volume"][int(result["owners"][face_id])]),
                 "neighbour_volume": (
-                    float(
-                        geometry["cell_volume"][
-                            int(result["neighbours"][face_id])
-                        ]
-                    )
+                    float(geometry["cell_volume"][int(result["neighbours"][face_id])])
                     if face_id < n_internal
                     else None
                 ),
-                "owner_closure": tuple(
-                    map(float, closure[int(result["owners"][face_id])])
-                ),
+                "owner_closure": tuple(map(float, closure[int(result["owners"][face_id])])),
                 "neighbour_closure": (
                     tuple(
                         map(
@@ -1304,10 +1337,716 @@ def insert_surface_layers(
     return result
 
 
+def insert_default_surface_layer(
+    core: dict[str, Any],
+    patch_names: tuple[str, ...],
+    domain_bounds: tuple[float, float, float, float, float, float],
+    domain_patch_names: tuple[str, str, str, str, str, str],
+    surface_index: SurfaceIndex,
+) -> dict[str, Any]:
+    """Insert cfMesh's mandatory post-projection wrapper layer.
+
+    ``cartesianMeshGenerator::generateBoundaryLayers`` calls
+    ``boundaryLayers::addLayerForAllPatches`` even when ``meshDict`` has no
+    user ``boundaryLayers`` entry.  For a smooth patch, cfMesh duplicates each
+    mapped boundary vertex, moves the vertex used by the Cartesian core by
+    half the shortest incident boundary edge along the inward point normal,
+    and leaves the duplicate at the mapped surface.  One conformal layer cell
+    is then inserted per boundary face.  This is the same operation for the
+    selected immersed-surface patches; outer Cartesian patches remain exact.
+    """
+    selected = set(patch_names)
+    if not selected:
+        return core
+
+    points = np.asarray(core["vertex_position"], dtype=np.float64)
+    faces = [np.asarray(face, dtype=np.int32) for face in core["faces"]]
+    owners = np.asarray(core["owners"], dtype=np.int32)
+    neighbours = np.asarray(core["neighbours"], dtype=np.int32)
+    core_internal = int(core["n_interior_faces"])
+    core_cells = int(core["n_cells"])
+    patch_by_name = {str(patch["name"]): patch for patch in core["boundary"]}
+    missing = selected - set(patch_by_name)
+    if missing:
+        raise ValueError(f"Default surface layer patches do not exist: {sorted(missing)}")
+
+    selected_face_ids: list[int] = []
+    selected_face_patch: dict[int, str] = {}
+    for name in patch_names:
+        patch = patch_by_name[name]
+        start = int(patch["start_face"])
+        stop = start + int(patch["n_faces"])
+        selected_face_ids.extend(range(start, stop))
+        selected_face_patch.update(dict.fromkeys(range(start, stop), name))
+    if not selected_face_ids:
+        raise ValueError("Default surface layer controls selected no boundary faces")
+
+    wall_points = np.unique(
+        np.concatenate([faces[face_id] for face_id in selected_face_ids])
+    ).astype(np.int32)
+    point_normals = {int(point_id): np.zeros(3, dtype=np.float64) for point_id in wall_points}
+    point_neighbours: dict[int, set[int]] = {int(point_id): set() for point_id in wall_points}
+    for face_id in selected_face_ids:
+        face = faces[face_id]
+        area = _area_vector(points[face])
+        magnitude = float(np.linalg.norm(area))
+        if magnitude <= np.finfo(np.float64).eps:
+            raise ValueError(f"Default surface layer face {face_id} has zero area")
+        normal = area / magnitude
+        for local_index, point_id in enumerate(face):
+            value = int(point_id)
+            point_normals[value] += normal
+            point_neighbours[value].add(int(face[(local_index - 1) % len(face)]))
+            point_neighbours[value].add(int(face[(local_index + 1) % len(face)]))
+
+    # Include edges from adjacent, untreated boundary patches.  This matches
+    # cfMesh's meshSurfaceEngine::pointPoints distance limiter at patch edges
+    # and keeps a through-cylinder wrapper tangent to z-min/z-max.
+    for patch in core["boundary"]:
+        start = int(patch["start_face"])
+        stop = start + int(patch["n_faces"])
+        for face_id in range(start, stop):
+            face = faces[face_id]
+            for local_index, point_id in enumerate(face):
+                value = int(point_id)
+                if value not in point_neighbours:
+                    continue
+                point_neighbours[value].add(int(face[(local_index - 1) % len(face)]))
+                point_neighbours[value].add(int(face[(local_index + 1) % len(face)]))
+
+    # cfMesh's ``meshSurfaceEngine::pointNormals`` averages the normals of the
+    # mapped boundary faces incident to each mesh point.  Keep those accumulated
+    # mesh normals; substituting source-triangle normals twists neighbouring
+    # columns whenever mapped polygons cross STL triangle edges.
+
+    moved_points = points.copy()
+    old_surface_points = points[wall_points].copy()
+    displacement = np.empty(len(wall_points), dtype=np.float64)
+    bounds = np.asarray(domain_bounds, dtype=np.float64)
+    scale = max(float(np.ptp(points, axis=0).max()), 1.0)
+    boundary_tolerance = max(2.0e-10 * scale, np.finfo(np.float64).eps * scale * 128.0)
+    for local_index, point_id_value in enumerate(wall_points):
+        point_id = int(point_id_value)
+        normal = point_normals[point_id]
+        # At an intersection with an untreated domain patch, cfMesh's patch
+        # edge logic projects the displacement onto that patch's tangent
+        # plane.  Preserve every active Cartesian boundary constraint.
+        for side, value in enumerate(bounds):
+            axis = side // 2
+            if abs(float(points[point_id, axis]) - value) <= boundary_tolerance:
+                normal[axis] = 0.0
+        normal_length = float(np.linalg.norm(normal))
+        if normal_length <= np.finfo(np.float64).eps:
+            raise ValueError(f"Default surface layer point {point_id} has no patch normal")
+        normal /= normal_length
+        adjacent = np.asarray(sorted(point_neighbours[point_id]), dtype=np.int32)
+        if not len(adjacent):
+            raise ValueError(f"Default surface layer point {point_id} has no surface neighbours")
+        distance = 0.5 * float(np.min(np.linalg.norm(points[adjacent] - points[point_id], axis=1)))
+        displacement[local_index] = distance
+        moved_points[point_id] = points[point_id] - distance * normal
+
+    # ``cartesianMeshGenerator::optimiseFinalMesh`` untangles the mesh after
+    # the mandatory layer is inserted.  Our native core has no independent
+    # optimizer that can move the next Cartesian ring, so perform the same
+    # geometry-driven relaxation on the proposed core/interface displacement.
+    # Keep the source-prescribed half-edge target whenever it is valid and
+    # backtrack only when a core volume or face direction would invert.
+    relaxation = 1.0
+    target_points = moved_points.copy()
+    # ``meshOptimizer::optimizeMeshFV`` distributes the mapped-surface motion
+    # into the interior instead of leaving one violently distorted Cartesian
+    # ring.  Propagate the wrapper displacement through four vertex rings with
+    # geometric decay; this produces the same smooth body-normal transition
+    # while retaining the exact 2:1 octree topology.
+    all_point_neighbours: list[set[int]] = [set() for _ in range(len(points))]
+    point_levels: list[set[int]] = [set() for _ in range(len(points))]
+    cell_levels = np.asarray(core["cell_levels"], dtype=np.int16)
+    for face_id, face in enumerate(faces):
+        for first, second in zip(face, np.roll(face, -1), strict=True):
+            first_id, second_id = int(first), int(second)
+            all_point_neighbours[first_id].add(second_id)
+            all_point_neighbours[second_id].add(first_id)
+        incident_levels = {int(cell_levels[int(owners[face_id])])}
+        if face_id < core_internal:
+            incident_levels.add(int(cell_levels[int(neighbours[face_id])]))
+        for point_id in face:
+            point_levels[int(point_id)].update(incident_levels)
+    displacement_field = np.zeros_like(points)
+    displacement_field[wall_points] = target_points[wall_points] - points[wall_points]
+    known_points = set(map(int, wall_points))
+    frontier = known_points.copy()
+    propagated_points: set[int] = set()
+    for _ring in range(4):
+        candidates = {
+            neighbour
+            for point_id in frontier
+            for neighbour in all_point_neighbours[point_id]
+            if neighbour not in known_points and len(point_levels[neighbour]) == 1
+        }
+        next_frontier: set[int] = set()
+        for point_id in candidates:
+            parents = all_point_neighbours[point_id] & frontier
+            if not parents:
+                continue
+            shift = 0.5 * np.mean([displacement_field[parent] for parent in parents], axis=0)
+            for side, value in enumerate(bounds):
+                axis = side // 2
+                if abs(float(points[point_id, axis]) - value) <= boundary_tolerance:
+                    shift[axis] = 0.0
+            displacement_field[point_id] = shift
+            target_points[point_id] = points[point_id] + shift
+            next_frontier.add(point_id)
+        known_points.update(next_frontier)
+        propagated_points.update(next_frontier)
+        frontier = next_frontier
+        if not frontier:
+            break
+    for _iteration in range(12):
+        trial = dict(core)
+        trial["vertex_position"] = np.ascontiguousarray(
+            points + relaxation * (target_points - points)
+        )
+        trial.pop("cell_face_indices", None)
+        trial.pop("cell_face_offset", None)
+        trial_geometry = compute_mesh_geometry(trial, compute_lsq=False)
+        trial_area = np.asarray(trial_geometry["face_area_vector"])
+        trial_direction = np.asarray(trial_geometry["cell_connection_vector"])
+        valid = bool(
+            np.all(np.asarray(trial_geometry["cell_volume"]) > 0.0)
+            and np.all(np.einsum("ij,ij->i", trial_area, trial_direction) > 0.0)
+        )
+        if valid:
+            moved_points = trial["vertex_position"]
+            displacement *= relaxation
+            break
+        relaxation *= 0.5
+    else:
+        raise ValueError("Default surface-layer core untangling did not converge")
+
+    duplicate_ids = np.arange(len(points), len(points) + len(wall_points), dtype=np.int32)
+    duplicate_by_point = {
+        int(point_id): int(duplicate_id)
+        for point_id, duplicate_id in zip(wall_points, duplicate_ids, strict=True)
+    }
+    all_points = np.vstack((moved_points, old_surface_points))
+
+    # cfMesh changes point coordinates before adding the layer.  Establish
+    # orientation-independent core reference centres from incident face
+    # centres; signed-volume centroids are not reliable until all moved faces
+    # have been re-oriented.
+    core_reference = np.zeros((core_cells, 3), dtype=np.float64)
+    core_reference_count = np.zeros(core_cells, dtype=np.int32)
+    for face_id, face in enumerate(faces):
+        face_centre = moved_points[face].mean(axis=0)
+        owner = int(owners[face_id])
+        core_reference[owner] += face_centre
+        core_reference_count[owner] += 1
+        if face_id < core_internal:
+            neighbour = int(neighbours[face_id])
+            core_reference[neighbour] += face_centre
+            core_reference_count[neighbour] += 1
+    if np.any(core_reference_count == 0):
+        raise ValueError("Default surface layer encountered a cell without incident faces")
+    core_reference /= core_reference_count[:, None]
+    reference_centres = [centre.copy() for centre in core_reference]
+    layer_cells: list[dict[str, Any]] = []
+    for local_cell, face_id in enumerate(selected_face_ids):
+        interface = faces[face_id]
+        wall = np.asarray(
+            [duplicate_by_point[int(point_id)] for point_id in interface], dtype=np.int32
+        )
+        entries: list[tuple[np.ndarray, str]] = [
+            (interface.copy(), "interface"),
+            (wall.copy(), "wall"),
+        ]
+        for edge_index, point_id in enumerate(interface):
+            following = int(interface[(edge_index + 1) % len(interface)])
+            entries.append(
+                (
+                    np.asarray(
+                        (
+                            int(point_id),
+                            following,
+                            duplicate_by_point[following],
+                            duplicate_by_point[int(point_id)],
+                        ),
+                        dtype=np.int32,
+                    ),
+                    "side",
+                )
+            )
+        unique = np.unique(np.concatenate([entry[0] for entry in entries]))
+        reference_centres.append(all_points[unique].mean(axis=0))
+        layer_cells.append(
+            {
+                "face_id": face_id,
+                "patch": selected_face_patch[face_id],
+                "cell": core_cells + local_cell,
+                "entries": entries,
+            }
+        )
+    reference_centres_array = np.asarray(reference_centres, dtype=np.float64)
+
+    def orient(face: np.ndarray, owner: int, neighbour: int | None = None) -> np.ndarray:
+        coordinates = all_points[face]
+        centre = coordinates.mean(axis=0)
+        direction = (
+            reference_centres_array[neighbour] - reference_centres_array[owner]
+            if neighbour is not None
+            else centre - reference_centres_array[owner]
+        )
+        return face if float(np.dot(_area_vector(coordinates), direction)) >= 0.0 else face[::-1]
+
+    internal_faces = [
+        orient(face.copy(), int(owners[face_id]), int(neighbours[face_id]))
+        for face_id, face in enumerate(faces[:core_internal])
+    ]
+    internal_owners = list(map(int, owners[:core_internal]))
+    internal_neighbours = list(map(int, neighbours))
+
+    # The former wall face becomes the conformal core/layer interface.
+    for layer_cell in layer_cells:
+        face_id = int(layer_cell["face_id"])
+        owner = int(owners[face_id])
+        neighbour = int(layer_cell["cell"])
+        internal_faces.append(orient(faces[face_id].copy(), owner, neighbour))
+        internal_owners.append(owner)
+        internal_neighbours.append(neighbour)
+
+    side_records: dict[tuple[int, ...], list[tuple[np.ndarray, int]]] = {}
+    for layer_cell in layer_cells:
+        for face, role in layer_cell["entries"]:
+            if role != "side":
+                continue
+            signature = tuple(sorted(map(int, face)))
+            side_records.setdefault(signature, []).append((face, int(layer_cell["cell"])))
+
+    side_boundary: dict[str, list[tuple[np.ndarray, int]]] = {}
+    scale = max(float(np.ptp(all_points, axis=0).max()), 1.0)
+    tolerance = max(2.0e-10 * scale, np.finfo(np.float64).eps * scale * 128.0)
+
+    def side_patch(face: np.ndarray) -> str:
+        coordinates = all_points[face]
+        for side, name in enumerate(domain_patch_names):
+            axis = side // 2
+            if np.all(np.abs(coordinates[:, axis] - bounds[side]) <= tolerance):
+                return name
+        return "layer_termination"
+
+    for side_entries in side_records.values():
+        if len(side_entries) == 2:
+            first, second = side_entries
+            internal_faces.append(orient(first[0], first[1], second[1]))
+            internal_owners.append(first[1])
+            internal_neighbours.append(second[1])
+        elif len(side_entries) == 1:
+            face, owner = side_entries[0]
+            side_boundary.setdefault(side_patch(face), []).append((orient(face, owner), owner))
+        else:
+            raise ValueError("Default surface layer produced a non-manifold side face")
+    n_internal = len(internal_faces)
+
+    boundary_faces: dict[str, list[np.ndarray]] = {}
+    boundary_owners: dict[str, list[int]] = {}
+    patch_order: list[str] = []
+    patch_types: dict[str, str] = {}
+
+    def ensure_patch(name: str, patch_type: str) -> None:
+        if name not in boundary_faces:
+            patch_order.append(name)
+            boundary_faces[name] = []
+            boundary_owners[name] = []
+            patch_types[name] = patch_type
+
+    for patch in core["boundary"]:
+        name = str(patch["name"])
+        ensure_patch(name, str(patch.get("type", "patch")))
+        if name in selected:
+            continue
+        start = int(patch["start_face"])
+        stop = start + int(patch["n_faces"])
+        for face_id in range(start, stop):
+            owner = int(owners[face_id])
+            boundary_faces[name].append(orient(faces[face_id].copy(), owner))
+            boundary_owners[name].append(owner)
+
+    for layer_cell in layer_cells:
+        name = str(layer_cell["patch"])
+        ensure_patch(name, "wall")
+        wall_face = next(face for face, role in layer_cell["entries"] if role == "wall")
+        owner = int(layer_cell["cell"])
+        boundary_faces[name].append(orient(wall_face, owner))
+        boundary_owners[name].append(owner)
+    for name, boundary_entries in side_boundary.items():
+        ensure_patch(name, "wall" if name == "layer_termination" else "patch")
+        boundary_faces[name].extend(face for face, _owner in boundary_entries)
+        boundary_owners[name].extend(owner for _face, owner in boundary_entries)
+
+    combined_faces = internal_faces.copy()
+    combined_owners = internal_owners.copy()
+    combined_neighbours = internal_neighbours.copy()
+    boundary: list[dict[str, Any]] = []
+    start_face = n_internal
+    for name in patch_order:
+        combined_faces.extend(boundary_faces[name])
+        combined_owners.extend(boundary_owners[name])
+        boundary.append(
+            {
+                "name": name,
+                "start_face": start_face,
+                "n_faces": len(boundary_faces[name]),
+                "type": patch_types[name],
+            }
+        )
+        start_face += len(boundary_faces[name])
+
+    widths = {len(face) for face in combined_faces}
+    owner_levels = np.asarray(core["cell_levels"], dtype=np.int8)[
+        owners[np.asarray(selected_face_ids, dtype=np.int32)]
+    ]
+    owner_sizes = np.asarray(core["cell_sizes"], dtype=np.float32)[
+        owners[np.asarray(selected_face_ids, dtype=np.int32)]
+    ]
+    result: dict[str, Any] = {
+        "vertex_position": np.ascontiguousarray(all_points),
+        "faces": (
+            np.ascontiguousarray(combined_faces, dtype=np.int32)
+            if len(widths) == 1
+            else combined_faces
+        ),
+        "owners": np.ascontiguousarray(combined_owners, dtype=np.int32),
+        "neighbours": np.ascontiguousarray(combined_neighbours, dtype=np.int32),
+        "boundary": boundary,
+        "n_cells": core_cells + len(layer_cells),
+        "n_faces": len(combined_faces),
+        "n_interior_faces": n_internal,
+        "n_points": len(all_points),
+        "cell_levels": np.concatenate((np.asarray(core["cell_levels"]), owner_levels)),
+        "cell_sizes": np.concatenate((np.asarray(core["cell_sizes"]), owner_sizes)),
+        "boundary_layer_index": np.concatenate(
+            (
+                np.full(core_cells, -1, dtype=np.int16),
+                np.zeros(len(layer_cells), dtype=np.int16),
+            )
+        ),
+        "mesh_generation": dict(core.get("mesh_generation", {})),
+    }
+    layer_metadata: dict[str, Any] = {
+        "method": "cfmesh_post_projection_wrapper",
+        "patches": tuple(patch_names),
+        "layer_cells": len(layer_cells),
+        "displacement_relaxation": relaxation,
+        "optimizer_propagated_points": len(propagated_points),
+    }
+    result["mesh_generation"]["default_surface_layer"] = layer_metadata
+    # Surface mapping can move a polyhedral core centroid across the
+    # orientation-independent face-centre estimate used above.  cfMesh follows
+    # layer insertion with an untangling/optimisation pass; converge winding
+    # against the solver's own finite-volume centroids before validation.
+    oriented_faces = [np.asarray(face, dtype=np.int32) for face in result["faces"]]
+    orientation_history: list[int] = []
+    for _iteration in range(4):
+        result.pop("cell_face_indices", None)
+        result.pop("cell_face_offset", None)
+        geometry = compute_mesh_geometry(result, compute_lsq=False)
+        area = np.asarray(geometry["face_area_vector"])
+        face_centre = np.asarray(geometry["face_centre"])
+        cell_centre = np.asarray(geometry["cell_centre"])
+        direction = np.empty_like(area)
+        direction[:n_internal] = (
+            cell_centre[result["neighbours"]] - cell_centre[result["owners"][:n_internal]]
+        )
+        direction[n_internal:] = (
+            face_centre[n_internal:] - cell_centre[result["owners"][n_internal:]]
+        )
+        # Boundary winding was already fixed against the orientation-independent
+        # cell references above.  A signed-volume centroid can temporarily move
+        # outside a newly inserted curved layer and would make this test flip
+        # every wall face back and forth.  Only owner/neighbour connectivity can
+        # be resolved unambiguously from the finite-volume centroids here.
+        reverse = np.flatnonzero(
+            np.einsum("ij,ij->i", area[:n_internal], direction[:n_internal]) <= 0.0
+        )
+        orientation_history.append(len(reverse))
+        if not len(reverse):
+            break
+        for face_id in reverse:
+            oriented_faces[int(face_id)] = oriented_faces[int(face_id)][::-1].copy()
+        widths = {len(face) for face in oriented_faces}
+        result["faces"] = (
+            np.ascontiguousarray(oriented_faces, dtype=np.int32)
+            if len(widths) == 1
+            else oriented_faces
+        )
+    else:
+        raise ValueError(
+            "Default surface-layer face orientation did not converge: "
+            f"reversed_per_iteration={orientation_history}"
+        )
+    layer_metadata["orientation_reversals"] = tuple(orientation_history)
+
+    # cfMesh ends with optimizeLowQualityFaces/untangleMeshFV.  Apply the
+    # equivalent operation locally so the Cartesian core's hanging-node lines
+    # remain straight: detect crossing polyhedra, then relax only mapped
+    # interface vertices incident to those cells toward their fixed wall
+    # duplicates.  A global Laplacian pass would destroy collinearity at 2:1
+    # castellated transitions in this mesh representation.
+    from ...io.vtk_exporter import VTKExporter
+
+    try:
+        import vtk
+        from vtk.util.numpy_support import vtk_to_numpy  # pyrefly: ignore[missing-import]
+    except ImportError as exc:  # pragma: no cover - VTK is an FVM dependency.
+        raise ValueError("VTK is required to untangle default surface layers") from exc
+
+    cell_points: list[set[int]] = [set() for _ in range(int(result["n_cells"]))]
+    for face_id, face in enumerate(result["faces"]):
+        owner = int(result["owners"][face_id])
+        cell_points[owner].update(map(int, face))
+        if face_id < n_internal:
+            neighbour = int(result["neighbours"][face_id])
+            cell_points[neighbour].update(map(int, face))
+    wall_point_set = set(map(int, wall_points))
+    validation_cell_ids = np.asarray(
+        [
+            cell_id
+            for cell_id, point_ids in enumerate(cell_points)
+            if cell_id >= core_cells or bool(point_ids & wall_point_set)
+        ],
+        dtype=np.int32,
+    )
+    local_by_wall_point = {
+        int(point_id): local_index for local_index, point_id in enumerate(wall_points)
+    }
+    untangle_history: list[int] = []
+    untangle_layer_history: list[int] = []
+    best_intersection_count = np.iinfo(np.int64).max
+    best_interface_points: np.ndarray | None = None
+    best_displacement: np.ndarray | None = None
+    relaxed_points: set[int] = set()
+    inside_history: list[int] = []
+    restored_points: set[int] = set()
+    for _iteration in range(8):
+        result.pop("cell_face_indices", None)
+        result.pop("cell_face_offset", None)
+        layer_geometry = compute_mesh_geometry(result, compute_lsq=False)
+        inside_layer = np.flatnonzero(
+            surface_index.is_inside(layer_geometry["cell_centre"][core_cells:])
+        )
+        inside_history.append(len(inside_layer))
+        if not len(inside_layer):
+            break
+        affected = (
+            set().union(*(cell_points[core_cells + int(local_cell)] for local_cell in inside_layer))
+            & wall_point_set
+        )
+        if not affected:
+            raise ValueError(
+                "Default surface-layer cells inside the solid have no movable interface points"
+            )
+        changed = False
+        for point_id in affected:
+            current = result["vertex_position"][point_id]
+            target = target_points[point_id]
+            if float(np.linalg.norm(target - current)) <= boundary_tolerance:
+                continue
+            result["vertex_position"][point_id] = current + 0.5 * (target - current)
+            changed = True
+        if not changed:
+            raise ValueError(
+                "Default surface-layer thickness cannot place all cell centres outside the solid"
+            )
+        restored_points.update(affected)
+    else:
+        raise ValueError(
+            "Default surface-layer inside-cell correction did not converge: "
+            f"inside_per_iteration={inside_history}"
+        )
+
+    for _iteration in range(8):
+        result.pop("cell_face_indices", None)
+        result.pop("cell_face_offset", None)
+        validator = vtk.vtkCellValidator()
+        validator.SetInputData(
+            VTKExporter(extract_cell_subset_mesh(result, validation_cell_ids))._grid
+        )
+        validator.Update()
+        state_array = validator.GetOutput().GetCellData().GetArray("ValidityState")
+        if state_array is None:
+            raise ValueError("VTK cell validator did not return ValidityState")
+        states = np.asarray(vtk_to_numpy(state_array), dtype=np.int64)
+        crossing = validation_cell_ids[np.flatnonzero(states & 0b000110)]
+        untangle_history.append(len(crossing))
+        untangle_layer_history.append(int(np.count_nonzero(crossing >= core_cells)))
+        if len(crossing) < best_intersection_count:
+            best_intersection_count = len(crossing)
+            best_interface_points = result["vertex_position"][wall_points].copy()
+            best_displacement = displacement.copy()
+        if not len(crossing):
+            break
+        affected = set().union(*(cell_points[int(cell)] for cell in crossing)) & wall_point_set
+        if not affected:
+            raise ValueError(
+                "Default surface-layer intersections are not incident to movable interface points"
+            )
+        for point_id in affected:
+            duplicate_id = duplicate_by_point[point_id]
+            result["vertex_position"][point_id] = result["vertex_position"][duplicate_id] + 0.5 * (
+                result["vertex_position"][point_id] - result["vertex_position"][duplicate_id]
+            )
+            displacement[local_by_wall_point[point_id]] *= 0.5
+        relaxed_points.update(affected)
+    else:
+        # Thinning the wrapper fixes crossings in the mapped core until a
+        # geometry-dependent optimum; beyond it, additional thinning can make
+        # the layer itself degenerate.  Restore that optimum and let the next
+        # cfMesh-equivalent volume pass move the unrestricted second-ring core
+        # points instead of collapsing the wall columns.
+        if best_interface_points is None or best_displacement is None:
+            raise ValueError("Default surface-layer untangling recorded no valid state")
+        result["vertex_position"][wall_points] = best_interface_points
+        displacement[:] = best_displacement
+
+    # Local intersection relaxation can thin a small subset of curved
+    # columns.  Re-apply the outside-centre constraint, then prove that the
+    # restored columns did not reintroduce a crossing.
+    for _iteration in range(8):
+        result.pop("cell_face_indices", None)
+        result.pop("cell_face_offset", None)
+        layer_geometry = compute_mesh_geometry(result, compute_lsq=False)
+        inside_layer = np.flatnonzero(
+            surface_index.is_inside(layer_geometry["cell_centre"][core_cells:])
+        )
+        inside_history.append(len(inside_layer))
+        if not len(inside_layer):
+            break
+        affected = (
+            set().union(*(cell_points[core_cells + int(local_cell)] for local_cell in inside_layer))
+            & wall_point_set
+        )
+        changed = False
+        for point_id in affected:
+            current = result["vertex_position"][point_id]
+            target = target_points[point_id]
+            if float(np.linalg.norm(target - current)) <= boundary_tolerance:
+                continue
+            result["vertex_position"][point_id] = current + 0.5 * (target - current)
+            changed = True
+        if not changed:
+            raise ValueError(
+                "Default surface-layer thickness cannot place all final centres outside"
+            )
+        restored_points.update(affected)
+    else:
+        raise ValueError(
+            "Final default surface-layer inside-cell correction did not converge: "
+            f"inside_per_iteration={inside_history}"
+        )
+
+    result.pop("cell_face_indices", None)
+    result.pop("cell_face_offset", None)
+    final_validator = vtk.vtkCellValidator()
+    final_validator.SetInputData(
+        VTKExporter(extract_cell_subset_mesh(result, validation_cell_ids))._grid
+    )
+    final_validator.Update()
+    final_states_array = final_validator.GetOutput().GetCellData().GetArray("ValidityState")
+    if final_states_array is None:
+        raise ValueError("VTK cell validator did not return final ValidityState")
+    final_states = np.asarray(vtk_to_numpy(final_states_array), dtype=np.int64)
+    final_crossing = validation_cell_ids[np.flatnonzero(final_states & 0b000110)]
+    volume_untangle_history = [len(final_crossing)]
+    boundary_point_set = set(
+        map(
+            int,
+            np.unique(
+                np.concatenate(
+                    [np.asarray(face, dtype=np.int32) for face in result["faces"][n_internal:]]
+                )
+            ),
+        )
+    )
+    for _iteration in range(32):
+        if not len(final_crossing):
+            break
+        point_shifts: dict[int, list[np.ndarray]] = {}
+        for cell_id_value in final_crossing:
+            cell_id = int(cell_id_value)
+            interface_points = cell_points[cell_id] & wall_point_set
+            if not interface_points:
+                continue
+            local_shift = np.mean(
+                [
+                    result["vertex_position"][point_id]
+                    - result["vertex_position"][duplicate_by_point[point_id]]
+                    for point_id in interface_points
+                ],
+                axis=0,
+            )
+            movable = cell_points[cell_id] - boundary_point_set - wall_point_set
+            for point_id in movable:
+                point_shifts.setdefault(point_id, []).append(local_shift)
+        if not point_shifts:
+            raise ValueError("Final surface-layer crossings have no movable interior vertices")
+        for point_id, shifts in point_shifts.items():
+            result["vertex_position"][point_id] += 0.5 * np.mean(shifts, axis=0)
+        result.pop("cell_face_indices", None)
+        result.pop("cell_face_offset", None)
+        final_validator = vtk.vtkCellValidator()
+        final_validator.SetInputData(
+            VTKExporter(extract_cell_subset_mesh(result, validation_cell_ids))._grid
+        )
+        final_validator.Update()
+        final_states_array = final_validator.GetOutput().GetCellData().GetArray("ValidityState")
+        if final_states_array is None:
+            raise ValueError("VTK cell validator did not return volume-untangle state")
+        final_states = np.asarray(vtk_to_numpy(final_states_array), dtype=np.int64)
+        final_crossing = validation_cell_ids[np.flatnonzero(final_states & 0b000110)]
+        volume_untangle_history.append(len(final_crossing))
+    else:
+        raise ValueError(
+            "Final surface-layer volume untangling did not converge: "
+            f"intersections_per_iteration={volume_untangle_history}"
+        )
+
+    layer_metadata.update(
+        {
+            "minimum_height": float(
+                min(
+                    np.linalg.norm(
+                        result["vertex_position"][int(point_id)]
+                        - result["vertex_position"][duplicate_by_point[int(point_id)]]
+                    )
+                    for point_id in wall_points
+                )
+            ),
+            "maximum_height": float(
+                max(
+                    np.linalg.norm(
+                        result["vertex_position"][int(point_id)]
+                        - result["vertex_position"][duplicate_by_point[int(point_id)]]
+                    )
+                    for point_id in wall_points
+                )
+            ),
+            "locally_relaxed_points": len(relaxed_points),
+            "locally_restored_points": len(restored_points),
+            "inside_cells_per_iteration": tuple(inside_history),
+            "intersections_per_iteration": tuple(untangle_history),
+            "volume_untangle_intersections": tuple(volume_untangle_history),
+        }
+    )
+    result.pop("cell_face_indices", None)
+    result.pop("cell_face_offset", None)
+    return result
+
+
 __all__ = [
     "LayerDiagnostics",
     "LayerSurface",
     "build_layer_surface",
     "build_patch_layers",
+    "insert_default_surface_layer",
     "insert_surface_layers",
 ]

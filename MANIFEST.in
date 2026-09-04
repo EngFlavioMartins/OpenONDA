@@ -2,9 +2,23 @@ include README.md
 include license
 include citation.cff
 include pyproject.toml
-recursive-include openonda *.py
+recursive-include openonda *.py py.typed
 recursive-include source *.py py.typed
-global-exclude *.py[cod]
-global-exclude __pycache__
-global-exclude .DS_Store
-global-exclude *.so
+
+# Install the runnable tutorial sources and their compact input assets.  Solver
+# output, publication figures, movies, ParaView sessions, papers, and obsolete
+# pre-generated meshes do not belong in the distribution wheel.
+recursive-include tutorials *.sh *.md *.json *.csv *.stl *.vsp3
+
+prune tutorials/*/*/solution
+prune tutorials/*/*/samples
+prune tutorials/*/*/figures
+prune tutorials/*/*/.matplotlib
+prune tutorials/*/*/*/solution
+prune tutorials/*/*/*/samples
+prune tutorials/*/*/*/figures
+prune tutorials/vpm/rotor_flow/assets/animation
+
+global-exclude .DS_Store *.py[cod] *.gif *.png *.pdf *.pvsm *.msh *.pvd *.vts *.so
+global-exclude paraview_state.py paraview_tracer.py
+global-exclude run_manifest.json

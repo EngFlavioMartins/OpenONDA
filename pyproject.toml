@@ -61,6 +61,7 @@ dependencies = [
 ]
 
 [project.scripts]
+openonda = "openonda.cli:main"
 openonda-verify-install = "openonda.verify_install:main"
 
 [project.optional-dependencies]
@@ -120,12 +121,13 @@ version = {attr = "source.version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["openonda*", "source*"]
-exclude = ["tests*", "docs*", "examples*"]
+include = ["openonda*", "source*", "tutorials*", "docs", "docs.themes"]
+exclude = ["tests*", "examples*"]
 
 [tool.setuptools.package-data]
 "openonda" = ["py.typed"]
 "source" = ["py.typed"]
+"docs.themes" = ["DejaVuSerif.ttf"]
 
 # Development tools configuration
 [tool.ruff]

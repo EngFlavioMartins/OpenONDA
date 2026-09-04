@@ -14,6 +14,7 @@ from ..geometry import compute_mesh_geometry
 from ..surface_classification import SurfaceIndex
 from ..triangulated_surface import TriangulatedSurface
 from ..validation import (
+    extract_cell_subset_mesh,
     validate_geometry,
     validate_no_fluid_cell_centres_inside_surface,
     validate_topology,
@@ -22,6 +23,7 @@ from ..validation import (
 from .boundary_layers import (
     LayerSurface,
     build_layer_surface,
+    insert_default_surface_layer,
     insert_surface_layers,
 )
 from .config import (
@@ -36,10 +38,17 @@ from .config import (
 )
 from .features import classify_features
 from .native_mesh import require_native_mesh
-from .octree import CartesianOctree
+from .octree import (
+    CartesianOctree,
+    _compact_conformed_topology,
+    _conform_wall_to_surface,
+    _prepare_wall_topology,
+    _remove_non_mappable_surface_cells,
+)
 from .optimisation import (
     OptimisationDiagnostics,
     agglomerate_small_cut_cells,
+    agglomerate_small_layer_columns,
 )
 from .report import GenerationReport, SizeReport
 from .surface_recovery import RecoveryDiagnostics, recover_cut_cells
@@ -194,6 +203,38 @@ def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[s
     topology = validate_topology(mesh_data)
     geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
     quality: dict[str, Any] = dict(validate_geometry(mesh_data, geometry))
+    skew_face = int(quality.get("max_skewness_face", -1))
+    if skew_face >= 0:
+        owner = int(mesh_data["owners"][skew_face])
+        neighbour = (
+            int(mesh_data["neighbours"][skew_face])
+            if skew_face < int(mesh_data["n_interior_faces"])
+            else None
+        )
+        layer_index = np.asarray(mesh_data.get("boundary_layer_index", ()), dtype=np.int64)
+        quality["max_skewness_context"] = {
+            "face": skew_face,
+            "face_centre": tuple(map(float, geometry["face_centre"][skew_face])),
+            "face_points": tuple(
+                tuple(map(float, point))
+                for point in np.asarray(mesh_data["vertex_position"])[
+                    np.asarray(mesh_data["faces"][skew_face], dtype=np.int64)
+                ]
+            ),
+            "vertices": len(mesh_data["faces"][skew_face]),
+            "owner": owner,
+            "owner_centre": tuple(map(float, geometry["cell_centre"][owner])),
+            "owner_layer": int(layer_index[owner]) if len(layer_index) else None,
+            "neighbour": neighbour,
+            "neighbour_centre": (
+                tuple(map(float, geometry["cell_centre"][neighbour]))
+                if neighbour is not None
+                else None
+            ),
+            "neighbour_layer": (
+                int(layer_index[neighbour]) if neighbour is not None and len(layer_index) else None
+            ),
+        }
     face_areas = np.asarray(geometry["face_area"])
     quality["patch_areas"] = {
         str(patch["name"]): float(
@@ -454,12 +495,198 @@ class CartesianMesher:
         authority_tuple = tuple(authority)
         mesher = self._background_mesher(authority_tuple if self.boundary_layers else None)
         mesh_data = require_native_mesh(mesher.build())
-        if any(surface.kind != "box" for surface in self.surfaces):
-            mesh_data = recover_cut_cells(
-                mesh_data,
-                tuple(SurfaceIndex.build(triangles) for triangles in authority_tuple),
-                "__cartesian_surface__",
+        feature_angle = self.features.angle if self.features is not None else 45.0
+
+        def has_active_sharp_edges(surface: STLSurface) -> bool:
+            bounds = self.domain.bounds
+            features = classify_features(surface.triangles, feature_angle)
+            return any(
+                all(
+                    max(edge.start[axis], edge.end[axis]) >= bounds[2 * axis]
+                    and min(edge.start[axis], edge.end[axis]) <= bounds[2 * axis + 1]
+                    for axis in range(3)
+                )
+                for edge in features.edges
             )
+
+        has_sharp_surface = any(
+            surface.kind != "box" and has_active_sharp_edges(surface) for surface in self.surfaces
+        )
+        extracted_wall_faces = int(
+            next(
+                (
+                    patch["n_faces"]
+                    for patch in mesh_data["boundary"]
+                    if patch["name"] == "__cartesian_surface__"
+                ),
+                0,
+            )
+        )
+        used_cut_recovery = bool(
+            self.boundary_layers or has_sharp_surface or extracted_wall_faces == 0
+        )
+        if any(surface.kind != "box" for surface in self.surfaces):
+            if used_cut_recovery:
+                mesh_data = recover_cut_cells(
+                    mesh_data,
+                    tuple(SurfaceIndex.build(triangles) for triangles in authority_tuple),
+                    "__cartesian_surface__",
+                )
+            else:
+                combined_triangles = np.concatenate(authority_tuple, axis=0)
+                surface_index = SurfaceIndex.build(combined_triangles)
+                from ...io.vtk_exporter import VTKExporter
+
+                try:
+                    from vtk import vtkCellValidator  # pyrefly: ignore[missing-import]
+                    from vtk.util.numpy_support import (  # pyrefly: ignore[missing-import]
+                        vtk_to_numpy,  # pyrefly: ignore[missing-import]
+                    )
+                except ImportError as exc:  # pragma: no cover - VTK is an FVM dependency.
+                    raise ValueError("VTK is required for surface-topology preparation") from exc
+                # Removing a non-mappable cell exposes its retained neighbour as
+                # the next surface cell.  Continue to the geometric fixed point;
+                # the long-cylinder/domain intersection needs 17 passes at D/12.
+                for _surface_iteration in range(64):
+                    _prepare_wall_topology(mesh_data, "__cartesian_surface__")
+                    _conform_wall_to_surface(
+                        mesh_data,
+                        surface_index,
+                        "__cartesian_surface__",
+                        fixed_bounds=self.domain.bounds,
+                    )
+                    mesh_data.pop("cell_face_indices", None)
+                    mesh_data.pop("cell_face_offset", None)
+                    validation_view = dict(mesh_data)
+                    _compact_conformed_topology(validation_view)
+                    raw_wall_patch = next(
+                        patch
+                        for patch in mesh_data["boundary"]
+                        if patch["name"] == "__cartesian_surface__"
+                    )
+                    raw_wall_start = int(raw_wall_patch["start_face"])
+                    raw_wall_stop = raw_wall_start + int(raw_wall_patch["n_faces"])
+                    raw_wall_points = np.unique(
+                        np.concatenate(
+                            [
+                                np.asarray(face, dtype=np.int32)
+                                for face in mesh_data["faces"][raw_wall_start:raw_wall_stop]
+                            ]
+                        )
+                    )
+                    raw_cell_vertices = np.asarray(mesh_data["cell_vertex_indices"], dtype=np.int32)
+                    validation_cell_ids = np.flatnonzero(
+                        np.any(np.isin(raw_cell_vertices, raw_wall_points), axis=1)
+                    )
+                    validator = vtkCellValidator()
+                    validator.SetInputData(
+                        VTKExporter(
+                            extract_cell_subset_mesh(validation_view, validation_cell_ids)
+                        )._grid
+                    )
+                    validator.Update()
+                    state_array = validator.GetOutput().GetCellData().GetArray("ValidityState")
+                    if state_array is None:
+                        raise ValueError("VTK cell validator did not return ValidityState")
+                    states = np.asarray(vtk_to_numpy(state_array), dtype=np.int64)
+                    non_mappable_cells = set(
+                        map(int, validation_cell_ids[np.flatnonzero(states & 0b000110)])
+                    )
+                    prepared_geometry = compute_mesh_geometry(validation_view, compute_lsq=False)
+                    non_mappable_cells.update(
+                        map(
+                            int,
+                            np.flatnonzero(np.asarray(prepared_geometry["cell_volume"]) <= 0.0),
+                        )
+                    )
+                    non_mappable_cells.update(
+                        map(
+                            int,
+                            validation_cell_ids[
+                                np.flatnonzero(
+                                    surface_index.is_inside(
+                                        prepared_geometry["cell_centre"][validation_cell_ids]
+                                    )
+                                )
+                            ],
+                        )
+                    )
+                    prepared_area = np.asarray(prepared_geometry["face_area_vector"])
+                    prepared_direction = np.asarray(prepared_geometry["cell_connection_vector"])
+                    prepared_face_centre = np.asarray(prepared_geometry["face_centre"])
+                    prepared_cell_centre = np.asarray(prepared_geometry["cell_centre"])
+                    prepared_owners = np.asarray(validation_view["owners"], dtype=np.int32)
+                    prepared_neighbours = np.asarray(validation_view["neighbours"], dtype=np.int32)
+                    owner_pyramid = np.einsum(
+                        "ij,ij->i",
+                        prepared_area,
+                        prepared_face_centre - prepared_cell_centre[prepared_owners],
+                    )
+                    neighbour_pyramid = np.ones(len(prepared_area), dtype=np.float64)
+                    prepared_internal = int(validation_view["n_interior_faces"])
+                    neighbour_pyramid[:prepared_internal] = np.einsum(
+                        "ij,ij->i",
+                        prepared_area[:prepared_internal],
+                        prepared_cell_centre[prepared_neighbours]
+                        - prepared_face_centre[:prepared_internal],
+                    )
+                    invalid_face_mask = (
+                        np.einsum("ij,ij->i", prepared_area, prepared_direction) <= 0.0
+                    )
+                    if self.surface_may_cross_domain_boundary:
+                        invalid_face_mask |= (owner_pyramid <= 0.0) | (neighbour_pyramid <= 0.0)
+                    invalid_faces = np.flatnonzero(invalid_face_mask)
+                    wall_patch = next(
+                        patch
+                        for patch in mesh_data["boundary"]
+                        if patch["name"] == "__cartesian_surface__"
+                    )
+                    wall_start = int(wall_patch["start_face"])
+                    wall_stop = wall_start + int(wall_patch["n_faces"])
+                    wall_owners = set(
+                        map(int, np.asarray(mesh_data["owners"])[wall_start:wall_stop])
+                    )
+                    prepared_faces = [
+                        np.asarray(face, dtype=np.int32) for face in validation_view["faces"]
+                    ]
+                    wall_points = set(
+                        map(
+                            int,
+                            np.unique(np.concatenate(prepared_faces[wall_start:wall_stop])),
+                        )
+                    )
+                    cell_points: list[set[int]] = [set() for _ in range(int(mesh_data["n_cells"]))]
+                    for prepared_face_id, prepared_face in enumerate(prepared_faces):
+                        prepared_owner = int(mesh_data["owners"][prepared_face_id])
+                        cell_points[prepared_owner].update(map(int, prepared_face))
+                        if prepared_face_id < int(mesh_data["n_interior_faces"]):
+                            prepared_neighbour = int(mesh_data["neighbours"][prepared_face_id])
+                            cell_points[prepared_neighbour].update(map(int, prepared_face))
+                    n_prepared_internal = int(mesh_data["n_interior_faces"])
+                    for face_id_value in invalid_faces:
+                        face_id = int(face_id_value)
+                        candidates = [int(mesh_data["owners"][face_id])]
+                        if face_id < n_prepared_internal:
+                            candidates.append(int(mesh_data["neighbours"][face_id]))
+                        surface_candidates = [
+                            cell
+                            for cell in candidates
+                            if cell in wall_owners or bool(cell_points[cell] & wall_points)
+                        ]
+                        non_mappable_cells.update(
+                            surface_candidates if surface_candidates else candidates
+                        )
+                    non_mappable = np.asarray(sorted(non_mappable_cells), dtype=np.int32)
+                    if not len(non_mappable):
+                        break
+                    _remove_non_mappable_surface_cells(
+                        mesh_data,
+                        non_mappable,
+                        "__cartesian_surface__",
+                    )
+                else:
+                    raise ValueError("Surface non-mappable-cell removal did not converge")
+                _compact_conformed_topology(mesh_data)
         _rename_boundary_patches(
             mesh_data,
             self.domain,
@@ -467,13 +694,14 @@ class CartesianMesher:
             "__cartesian_surface__",
             surface_triangles=authority_tuple,
         )
-        mesh_data = agglomerate_small_cut_cells(
-            mesh_data,
-            tuple(surface.patch for surface in self.surfaces),
-            surface_indices=tuple(
-                SurfaceIndex.build(triangles) for triangles in authority_tuple
-            ),
-        )
+        if used_cut_recovery:
+            mesh_data = agglomerate_small_cut_cells(
+                mesh_data,
+                tuple(surface.patch for surface in self.surfaces),
+                surface_indices=tuple(
+                    SurfaceIndex.build(triangles) for triangles in authority_tuple
+                ),
+            )
         if self.boundary_layers:
             mesh_data = insert_surface_layers(
                 mesh_data,
@@ -482,6 +710,41 @@ class CartesianMesher:
                 self.domain.bounds,
                 self.domain.patches.as_tuple(),
             )
+            if any(surface.prefer_vectorized_mapping for surface in layer_surfaces):
+                mesh_data = agglomerate_small_layer_columns(
+                    mesh_data,
+                    self.effective_cell_size(self.boundary_cell_size),
+                )
+        else:
+            curved_surfaces = tuple(surface for surface in self.surfaces if surface.kind != "box")
+            smooth_curved_patches = tuple(
+                surface.patch
+                for surface in curved_surfaces
+                if not used_cut_recovery and not has_active_sharp_edges(surface)
+            )
+            sharp_curved_patches = tuple(
+                surface.patch
+                for surface in curved_surfaces
+                if surface.patch not in smooth_curved_patches
+            )
+            if smooth_curved_patches:
+                mesh_data = insert_default_surface_layer(
+                    mesh_data,
+                    smooth_curved_patches,
+                    self.domain.bounds,
+                    self.domain.patches.as_tuple(),
+                    SurfaceIndex.build(np.concatenate(authority_tuple, axis=0)),
+                )
+            if sharp_curved_patches:
+                mesh_data.setdefault("mesh_generation", {})["sharp_surface_wrapper"] = {
+                    "patches": sharp_curved_patches,
+                    "method": "snapped_castellated_surface_cells",
+                    "reason": (
+                        "surface_domain_intersection_uses_snapped_cells"
+                        if self.surface_may_cross_domain_boundary
+                        else "sharp_edge_corner_columns_require_partitioned_patch_topology"
+                    ),
+                }
         quality, geometry = _quality_snapshot(mesh_data)
         surface_conformance: dict[str, dict[str, float | int]] = {}
         for surface in self.surfaces:

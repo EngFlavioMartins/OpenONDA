@@ -6,9 +6,10 @@ plus peak RSS, so a change can be attributed to a stage rather than guessed at.
 
 Usage::
 
-    python scripts/benchmarks/benchmark_vpm_step.py                # direct default sweep
+    python scripts/benchmarks/benchmark_vpm_step.py                 # direct default sweep
     python scripts/benchmarks/benchmark_vpm_step.py --n 1000 8000  # explicit N
     python scripts/benchmarks/benchmark_vpm_step.py --induction treecode --backend CPU
+    python scripts/benchmarks/benchmark_vpm_step.py --induction fmm --backend CPU
 
 The particle field is a seeded random cloud in a unit box with random vortex
 vortex_strength; identical for a given N across runs, so timings are comparable.
@@ -17,6 +18,8 @@ vortex_strength; identical for a given N across runs, so timings are comparable.
 import argparse
 from dataclasses import asdict
 import json
+import platform
+import resource
 import sys
 import time
 
@@ -24,14 +27,8 @@ import numpy as np
 
 
 def _rss_mb() -> float:
-    try:
-        with open("/proc/self/status") as fh:
-            for line in fh:
-                if line.startswith("VmRSS"):
-                    return int(line.split()[1]) / 1024
-    except OSError:
-        pass
-    return float("nan")
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return float(peak / 1024**2 if platform.system() == "Darwin" else peak / 1024)
 
 
 def _make_solver(
@@ -39,11 +36,8 @@ def _make_solver(
     n: int,
     tmpdir: str,
     induction_name: str,
-    theta: float,
-    fmm_tolerance: float,
-    leaf_capacity: int,
 ):
-    from source.solvers.vpm import (
+    from openonda.vpm import (
         Backup,
         DirectInduction,
         FMMInduction,
@@ -54,9 +48,9 @@ def _make_solver(
     )
 
     induction_factories = {
-        "direct": lambda: DirectInduction(),
-        "treecode": lambda: TreecodeInduction(theta=theta),
-        "fmm": lambda: FMMInduction(tolerance=fmm_tolerance, leaf_capacity=leaf_capacity),
+        "direct": DirectInduction,
+        "treecode": TreecodeInduction,
+        "fmm": FMMInduction,
     }
     try:
         induction = induction_factories[induction_name.lower()]()
@@ -94,19 +88,8 @@ def run_case(
     steps: int,
     tmpdir: str,
     induction_name: str,
-    theta: float,
-    fmm_tolerance: float,
-    leaf_capacity: int,
 ) -> dict:
-    solver = _make_solver(
-        backend,
-        n,
-        tmpdir,
-        induction_name,
-        theta,
-        fmm_tolerance,
-        leaf_capacity,
-    )
+    solver = _make_solver(backend, n, tmpdir, induction_name)
     solver.advance()  # warm-up: pays the Taichi JIT
     solver.profiler.reset()
 
@@ -119,6 +102,7 @@ def run_case(
 
     result = {
         "backend": backend,
+        "induction": induction_name,
         "particles": n,
         "steps": steps,
         "ms_per_step": wall / steps * 1e3,
@@ -140,9 +124,6 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=5)
     parser.add_argument("--backend", default="CPU")
     parser.add_argument("--induction", choices=("direct", "treecode", "fmm"), default="direct")
-    parser.add_argument("--theta", type=float, default=0.5)
-    parser.add_argument("--fmm-tolerance", type=float, default=1.0e-4)
-    parser.add_argument("--leaf-capacity", type=int, default=8)
     parser.add_argument("--json", type=str, default=None, help="write results to this path")
     parser.add_argument("--tmpdir", type=str, default="/tmp/vpm_bench")
     args = parser.parse_args()
@@ -155,9 +136,6 @@ def main() -> int:
             args.steps,
             args.tmpdir,
             args.induction,
-            args.theta,
-            args.fmm_tolerance,
-            args.leaf_capacity,
         )
         results.append(res)
         print(

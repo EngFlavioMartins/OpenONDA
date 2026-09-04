@@ -98,9 +98,8 @@ any later phase is complete.
 ## Provenance and licensing
 
 The intended implementation is an independent OpenONDA implementation
-inspired by the documented cfMesh Cartesian workflow. Phase 0 copies or
-translates no cfMesh source. The exact upstream study commit and any file-level
-provenance must be recorded before implementation begins. A complete
-repository licence text and third-party notice require maintainer confirmation;
-the audit and attribution requirements are recorded in
-[`phase_0.md`](../verification/cartesian_mesher/phase_0.md).
+inspired by the documented cfMesh Cartesian workflow. The initial architecture
+phase copied or translated no cfMesh source. The exact upstream study commit
+and any file-level provenance must be recorded before direct translation.
+Current topology-parity limitations are recorded in
+[`cfmesh_topology_parity.md`](../verification/cartesian_mesher/cfmesh_topology_parity.md).

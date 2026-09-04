@@ -20,7 +20,10 @@ from ..config.constants import (
 from .events import NullPhysicsEventObserver, PhysicsEventObserver
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
-_DIRECT_INTEGRAL_PARTICLE_LIMIT = 50_000
+_DIRECT_INTEGRAL_PARTICLE_LIMIT = 10_000
+_FOURIER_WARMUP_PARTICLE_LIMIT = 7_500
+_FOURIER_GRID_EXTRA_CELLS = 8
+_FOURIER_GRID_MIN_SLACK = 4
 
 
 @ti.data_oriented
@@ -67,6 +70,12 @@ class ParticleFieldEvaluation:
         # Retain a short audit trail.  dE/dt uses only the latest interval so
         # its sign is consistent with the two energy samples being reported.
         self._max_history_length = 7
+        # Large Gaussian clouds use a Fourier diagnostic.  Keep its lattice
+        # spacing and particle-relative phase fixed between samples: rebuilding
+        # a tight grid at every output makes the same particle field acquire a
+        # different energy solely because the FFT box moved or changed shape.
+        self._fourier_grid = None
+        self._fourier_energy_offset = 0.0
 
         # Define Taichi kernels
         self._define_taichi_kernels()
@@ -712,7 +721,17 @@ class ParticleFieldEvaluation:
         r = self.total_quantities_results[None]
         total_kinetic_energy = float(r.total_kinetic_energy)
         if record_history:
-            self._update_energy_history(time, total_kinetic_energy, "direct")
+            self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
+
+        # Prime the scalable energy definition before the direct O(N^2)
+        # crossover.  Calibrating both definitions on the same particle state
+        # makes the first Fourier sample continuous with the direct history.
+        if (
+            record_history
+            and self.particle_kernel == "GAUSSIAN"
+            and N >= _FOURIER_WARMUP_PARTICLE_LIMIT
+        ):
+            self._prime_fourier_energy_tracker(particles, total_kinetic_energy)
 
         # Compute kinetic energy dissipation rate using finite differences
         dE_dt = self._compute_energy_dissipation_rate()
@@ -739,26 +758,47 @@ class ParticleFieldEvaluation:
         time: float,
         record_history: bool,
     ) -> dict:
-        from ..numerics.fourier_integrals import gaussian_fourier_integrals
-
         position = particles.position_cpu().astype(np.float64)
         vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
         core_radius = particles.core_radius_cpu().astype(np.float64)
         particle_volume = particles.particle_volume_cpu().astype(np.float64)
         effective_viscosity = particles.effective_viscosity_cpu().astype(np.float64)
-        spectral = gaussian_fourier_integrals(
+        saved_grid = self._fourier_grid
+        saved_offset = self._fourier_energy_offset
+        spectral, continuity_preserved = self._fourier_integrals_on_persistent_grid(
             position,
             vortex_strength,
             core_radius,
             particle_volume,
-            effective_viscosity=effective_viscosity,
+            effective_viscosity,
         )
+        evaluated_offset = self._fourier_energy_offset
+        if not record_history:
+            # Trial diagnostics used by regularisation must not alter the
+            # accepted time-history definition.
+            self._fourier_grid = saved_grid
+            self._fourier_energy_offset = saved_offset
         if spectral.viscous_kinetic_energy_rate is None:
             raise RuntimeError("Fourier flow diagnostics did not compute viscous dissipation")
 
-        total_kinetic_energy = spectral.total_kinetic_energy
+        rate_source = "fourier_energy_backward_difference"
+        if record_history and not continuity_preserved and self._energy_history:
+            # This is only needed if a cloud grows farther between output
+            # samples than the reserved grid margin.  Anchor the new energy
+            # definition with the physical viscous rate for that one interval;
+            # subsequent samples again use measured backward differences.
+            previous_time, previous_energy, _ = self._energy_history[-1]
+            interval = time - previous_time
+            if interval > 0.0:
+                target_energy = previous_energy + spectral.viscous_kinetic_energy_rate * interval
+                self._fourier_energy_offset = target_energy - spectral.total_kinetic_energy
+                evaluated_offset = self._fourier_energy_offset
+                rate_source = "fourier_transition_viscous_rate"
+
+        total_kinetic_energy = spectral.total_kinetic_energy + evaluated_offset
         if record_history:
-            self._update_energy_history(time, total_kinetic_energy, "fourier_dynamic_box")
+            self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
+        dE_dt = self._compute_energy_dissipation_rate()
         total = vortex_strength.sum(axis=0, dtype=np.float64)
         impulse = 0.5 * np.cross(position, vortex_strength).sum(axis=0, dtype=np.float64)
         angular = np.cross(position, np.cross(position, vortex_strength)).sum(
@@ -770,16 +810,146 @@ class ParticleFieldEvaluation:
             "total_enstrophy": spectral.total_enstrophy,
             "test_filtered_enstrophy": spectral.test_filtered_enstrophy,
             "viscous_kinetic_energy_rate": spectral.viscous_kinetic_energy_rate,
-            # The temporary Fourier box follows the particle support. Its
-            # kinetic energy is a useful instantaneous audit, but values on
-            # different boxes do not define one differentiable time history.
-            "kinetic_energy_rate": float("nan"),
-            "kinetic_energy_rate_source": "undefined_dynamic_fourier_box",
+            "kinetic_energy_rate": dE_dt,
+            "kinetic_energy_rate_source": rate_source,
             "vortex_strength_magnitude_sum": float(np.linalg.norm(vortex_strength, axis=1).sum()),
             "net_vortex_strength": total,
             "linear_impulse": impulse,
             "angular_impulse": angular,
         }
+
+    def _prime_fourier_energy_tracker(self, particles, direct_energy: float) -> None:
+        """Align the scalable energy definition with a simultaneous direct value."""
+        position = particles.position_cpu().astype(np.float64)
+        vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
+        core_radius = particles.core_radius_cpu().astype(np.float64)
+        particle_volume = particles.particle_volume_cpu().astype(np.float64)
+        effective_viscosity = particles.effective_viscosity_cpu().astype(np.float64)
+        spectral, _ = self._fourier_integrals_on_persistent_grid(
+            position,
+            vortex_strength,
+            core_radius,
+            particle_volume,
+            effective_viscosity,
+        )
+        self._fourier_energy_offset = direct_energy - spectral.total_kinetic_energy
+
+    @staticmethod
+    def _fit_fourier_grid(position, spacing: float, shape=None, vortex_strength=None):
+        """Return a translation-following grid centred around the particle support."""
+        from ..numerics.fourier_integrals import CartesianGrid, _grid_for_particles
+
+        required = _grid_for_particles(position, spacing)
+        required_shape = np.asarray(required.shape, dtype=np.int64)
+        if shape is None:
+            fitted_shape = required_shape + _FOURIER_GRID_EXTRA_CELLS
+        else:
+            fitted_shape = np.asarray(shape, dtype=np.int64)
+            if np.any(fitted_shape < required_shape):
+                raise ValueError("Fourier diagnostic grid is too small for the particle support")
+        if vortex_strength is None:
+            centre = 0.5 * (position.min(axis=0) + position.max(axis=0))
+        else:
+            weights = np.linalg.norm(vortex_strength, axis=1)
+            centre = (
+                np.average(position, axis=0, weights=weights)
+                if float(weights.sum()) > 0.0
+                else position.mean(axis=0)
+            )
+        desired_origin = centre - 0.5 * (fitted_shape - 1) * spacing
+        # Clamp the translating box only when the weighted centre would leave
+        # too little room for the four-point M4 scatter stencil.
+        lower_bound = position.max(axis=0) - (fitted_shape - 2.000001) * spacing
+        upper_bound = position.min(axis=0) - spacing
+        origin = np.minimum(np.maximum(desired_origin, lower_bound), upper_bound)
+        return CartesianGrid(
+            origin=origin.astype(np.float64),
+            spacing=float(spacing),
+            shape=tuple(int(value) for value in fitted_shape),
+        )
+
+    def _fourier_integrals_on_persistent_grid(
+        self,
+        position,
+        vortex_strength,
+        core_radius,
+        particle_volume,
+        effective_viscosity,
+    ):
+        """Evaluate on a reusable grid and preserve energy across grid growth."""
+        from ..numerics.fourier_integrals import _grid_for_particles, gaussian_fourier_integrals
+
+        if self._fourier_grid is None:
+            spacing = float(np.median(np.cbrt(particle_volume)))
+            self._fourier_grid = self._fit_fourier_grid(
+                position, spacing, vortex_strength=vortex_strength
+            )
+            spectral = gaussian_fourier_integrals(
+                position,
+                vortex_strength,
+                core_radius,
+                particle_volume,
+                effective_viscosity=effective_viscosity,
+                grid=self._fourier_grid,
+            )
+            return spectral, False
+
+        old_grid = self._fourier_grid
+        required = _grid_for_particles(position, old_grid.spacing)
+        required_shape = np.asarray(required.shape, dtype=np.int64)
+        old_shape = np.asarray(old_grid.shape, dtype=np.int64)
+        fits = bool(np.all(required_shape <= old_shape))
+        needs_growth = (not fits) or bool(
+            np.any(old_shape - required_shape < _FOURIER_GRID_MIN_SLACK)
+        )
+
+        old_spectral = None
+        if fits:
+            # Follow rigid cloud translation continuously, keeping particles at
+            # the same sub-cell phase instead of injecting grid-crossing noise.
+            old_grid = self._fit_fourier_grid(
+                position,
+                old_grid.spacing,
+                old_shape,
+                vortex_strength,
+            )
+            self._fourier_grid = old_grid
+            old_spectral = gaussian_fourier_integrals(
+                position,
+                vortex_strength,
+                core_radius,
+                particle_volume,
+                effective_viscosity=effective_viscosity,
+                grid=old_grid,
+            )
+            if not needs_growth:
+                return old_spectral, True
+
+        grown_shape = np.maximum(
+            required_shape + _FOURIER_GRID_EXTRA_CELLS,
+            np.ceil(old_shape * 1.25).astype(np.int64),
+        )
+        new_grid = self._fit_fourier_grid(
+            position,
+            old_grid.spacing,
+            grown_shape,
+            vortex_strength,
+        )
+        new_spectral = gaussian_fourier_integrals(
+            position,
+            vortex_strength,
+            core_radius,
+            particle_volume,
+            effective_viscosity=effective_viscosity,
+            grid=new_grid,
+        )
+        self._fourier_grid = new_grid
+        if old_spectral is None:
+            return new_spectral, False
+
+        corrected_old_energy = old_spectral.total_kinetic_energy + self._fourier_energy_offset
+        self._fourier_energy_offset = corrected_old_energy - new_spectral.total_kinetic_energy
+        return new_spectral, True
 
     def compute_particles_kinetic_energy(self, particles) -> np.ndarray:
         """
@@ -955,21 +1125,21 @@ class ParticleFieldEvaluation:
             self._energy_history.pop(0)
 
     def _compute_energy_dissipation_rate(self) -> float:
-        """Return the direct-energy change over the latest diagnostic interval.
+        """Return the energy change over the latest diagnostic interval.
 
         An endpoint derivative extrapolated from a higher-order polynomial can
         have the wrong sign even when every sampled energy decreases.  The
         backward secant is conservative, handles non-uniform output intervals,
         and makes the reported rate exactly consistent with the latest pair of
-        diagnostic states. A changing Fourier audit box is not one consistent
-        energy measure, so its time derivative is deliberately undefined.
+        diagnostic states. Direct and persistent-grid Fourier samples share the
+        calibrated ``unbounded_energy`` definition.
         """
         if len(self._energy_history) < 2:
             return 0.0
 
         previous_time, previous_energy, previous_measurement = self._energy_history[-2]
         current_time, current_energy, current_measurement = self._energy_history[-1]
-        if previous_measurement != "direct" or current_measurement != "direct":
+        if previous_measurement != "unbounded_energy" or current_measurement != "unbounded_energy":
             return float("nan")
         interval = current_time - previous_time
         if interval <= 0.0:

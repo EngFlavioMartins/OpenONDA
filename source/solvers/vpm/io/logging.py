@@ -886,7 +886,7 @@ class Logging:
         """
         if not detailed_timing:
             return
-        rows: list[log_style.Row] = []
+        rows: list[log_style.Row] = [("Wall time, total", f"{total_elapsed:.6f}", "s")]
         for operation, duration in detailed_timing.items():
             fraction = duration / step_elapsed if step_elapsed > 0 else 0.0
             rows.append((operation, f"{duration:.6f}", "s"))

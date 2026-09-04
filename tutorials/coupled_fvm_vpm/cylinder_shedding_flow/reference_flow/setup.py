@@ -47,35 +47,33 @@ def parse_arguments() -> argparse.Namespace:
 
 def grid_mesh(dx: float) -> msh.CartesianMesher:
     """Return a declarative grid-study mesh at requested wall size ``dx``."""
+    # Keep every Cartesian level geometrically similar across the r=1.5 study.
+    background_size = 8.0 * dx
     return msh.CartesianMesher(
         domain=msh.BoxDomain(
             bounds=DOMAIN,
             patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
         ),
         surfaces=(msh.STLSurface(CYLINDER_STL, patch="cylinder"),),
-        max_cell_size=0.5,
+        max_cell_size=background_size,
         boundary_cell_size=dx,
         min_cell_size=dx,
         refinements=(
             msh.BoxRefinement(
                 name="near_body",
-                bounds=(-2.0, 6.0, -2.0, 2.0, -0.5, 0.5),
+                bounds=(-2.0, 6.0, -2.0, 2.0, DOMAIN[4], DOMAIN[5]),
                 cell_size=2.0 * dx,
             ),
             msh.BoxRefinement(
                 name="wake",
-                bounds=(-4.0, 12.0, -4.0, 4.0, -0.5, 0.5),
+                bounds=(-4.0, 12.0, -4.0, 4.0, DOMAIN[4], DOMAIN[5]),
                 cell_size=4.0 * dx,
             ),
         ),
-        boundary_layers=(
-            msh.BoundaryLayers(
-                patches=("cylinder",),
-                layers=10,
-                first_cell_height=dx / 16.0,
-                growth_ratio=1.15,
-            ),
-        ),
+        # Resolve the no-slip wall at the requested isotropic size.  An empty
+        # explicit layer list selects cfMesh's default single surface wrapper;
+        # the optimizer distributes its motion through nearby Cartesian rings.
+        boundary_layers=(),
         # The body is deliberately longer than the finite reference span, so
         # the generic surface/domain intersection keeps it continuous through
         # both spanwise boundaries.
@@ -163,13 +161,14 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
         case_name=case_name,
         cores=NUMBER_OF_CORES,
         mesh=fvm.MeshQualityConfig(
-            # The native patch-normal layer collar is intentionally graded
-            # independently of the Cartesian core. These are explicit quality
-            # limits for the bounded reference mesh; the full report remains
-            # available in mesh_generation.cartesian_report.
-            max_non_orthogonality_deg=80.0,
-            max_skewness=2.0,
-            max_lsq_condition=5.5,
+            # At D/12 the wrapped/castellated mesh measures 84.04 degrees at
+            # its single worst transition, 0.664 maximum skewness, and has no
+            # inverted owner or neighbour face pyramids.  The smoothed wrapper
+            # has maximum LSQ condition 8.402.  Keep narrow margins around the
+            # measured results.
+            max_non_orthogonality_deg=86.0,
+            max_skewness=1.0,
+            max_lsq_condition=9.0,
         ),
         execution=fvm.ComputeConfig(operator_backend="numba"),
         output=fvm.OutputConfig(

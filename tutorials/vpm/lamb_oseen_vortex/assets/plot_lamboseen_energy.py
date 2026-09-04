@@ -8,8 +8,8 @@ Plots one panel for each physics case: single vortex, vortex dipole, and
 co-rotating merger.
 
 Continuous lines show the enstrophy-based sink -2νZ. Sparse filled circles
-show finite-difference dE/dt while the unbounded direct-energy integral is
-available. Colours are consistent per scheme across all three panels.
+show finite-difference dE/dt from the direct or continuity-preserving Fourier
+energy diagnostic. Colours are consistent per scheme across all three panels.
 
 Saves: figures/lamboseen_energy.png
 """
@@ -85,7 +85,7 @@ def plot_case_panel(
         data = prepend_initial_point(data, circulation, t0, n_vortices, column_length)
         st = style_map[scheme]
         tau = data["time"] * tau_scale
-        direct_rate = data["kinetic_energy_rate"] / p_ref
+        energy_rate = data["kinetic_energy_rate"] / p_ref
         enstrophy_rate = data["viscous_kinetic_energy_rate"] / p_ref
 
         ax.plot(
@@ -116,14 +116,14 @@ def plot_case_panel(
                     zorder=scheme_zorder(scheme) - 1,
                 )
 
-        finite_direct = np.flatnonzero(np.isfinite(direct_rate))
-        marker_stride = max(1, len(finite_direct) // 12)
-        marker_indices = finite_direct[::marker_stride]
-        if finite_direct.size and marker_indices[-1] != finite_direct[-1]:
-            marker_indices = np.append(marker_indices, finite_direct[-1])
+        finite_energy = np.flatnonzero(np.isfinite(energy_rate))
+        marker_stride = max(1, len(finite_energy) // 12)
+        marker_indices = finite_energy[::marker_stride]
+        if finite_energy.size and marker_indices[-1] != finite_energy[-1]:
+            marker_indices = np.append(marker_indices, finite_energy[-1])
         ax.plot(
             tau[marker_indices],
-            direct_rate[marker_indices],
+            energy_rate[marker_indices],
             color=st["color"],
             marker="o",
             markersize=2.6,

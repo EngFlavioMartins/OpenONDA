@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""
-Tier-0 measurement harness (OpenONDA_VPM_GPU_plan_v2.md §2 Tier 0).
+"""Low-level direct-versus-treecode crossover benchmark.
 
 Times the self-induced velocity evaluation by **DIRECT** (naive O(N²)) vs the
 **LBVH treecode** across N, and breaks the treecode into *build* vs *traverse*.
-The deliverable is the **crossover N** — below it a (future, tiled) direct kernel
-likely wins outright; above it the treecode earns its complexity. The 2A-vs-2B
-strategy decision in the plan is meant to be made from these numbers, on the GPU
-you actually run, **not** from preference.
+The result is the crossover particle count for one device and opening angle.
 
-This is intentionally standalone (no full Solver) so it boots anywhere. Run it on
-your real backend, e.g.::
+This deliberately exercises internal low-level kernels without a full solver.
+Use ``benchmark_vpm_step.py`` to measure the production modular induction
+backends, including FMM. Run this diagnostic on the target device, for example::
 
     python scripts/benchmarks/bench_velocity_methods.py --arch metal  --n 5000 49000 200000
     python scripts/benchmarks/bench_velocity_methods.py --arch vulkan --n 5000 49000 200000
@@ -20,14 +17,13 @@ The direct kernel here mirrors the production Winckelmans ``q`` kernel and the
 treecode's leaf sum, so the timing is apples-to-apples (and the two are sanity-
 checked against each other at the smallest N).
 
-Interpreting the result (plan §0, §2):
+Interpreting the result:
   * If wall-clock at your working N is dominated by the treecode *build* (Karras
     NSL/NSR serial passes + per-build CPU argsort + ~8 ti.sync barriers), you are
     launch/sync-bound — kernel fusion / sync removal / a parallel build beats any
     accuracy tweak.
-  * If DIRECT is competitive at your N, Tier 1 (tile the direct kernel with
-    block-local shared memory — CUDA only; Vulkan has no portable shared-mem
-    path) may be the whole job.
+  * If DIRECT is competitive at the working particle count, use the production
+    stage benchmark to decide whether changing induction method is worthwhile.
 """
 
 import argparse
@@ -136,7 +132,10 @@ def run(arch_str, sizes, theta, repeats):
             max_n_particles=N + 8, max_nodes=2 * (N + 8), theta=theta, kernel_type="WINCKELMANS"
         )
         t_build = _time(
-            lambda evaluator=tree, position=position, vortex_strength=vortex_strength, core_radii=core_radius: (
+            lambda evaluator=tree,
+            position=position,
+            vortex_strength=vortex_strength,
+            core_radii=core_radius: (
                 evaluator.build(position, vortex_strength, core_radii, force=True)
             ),
             repeats,

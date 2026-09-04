@@ -169,6 +169,15 @@ def validate_geometry(mesh_data, geo_data):
     max_non_orthogonality = 0.0
     sum_non_orthogonality = 0.0
     max_skewness = 0.0
+    max_skewness_face = -1
+    min_owner_pyramid_cosine = 1.0
+    min_neighbour_pyramid_cosine = 1.0
+    inverted_owner_pyramids = 0
+    inverted_neighbour_pyramids = 0
+    max_adjacent_volume_scale_ratio = 1.0
+    max_adjacent_cell_size_ratio = 1.0
+    cell_sizes = np.asarray(mesh_data.get("cell_sizes", ()), dtype=np.float64)
+    has_cell_sizes = cell_sizes.shape == (n_cells,)
     out_of_bounds_weights = 0
     chunk_size = 250_000
     for start in range(0, n_faces, chunk_size):
@@ -203,7 +212,19 @@ def validate_geometry(mesh_data, geo_data):
         sum_non_orthogonality += float(np.sum(non_orthogonality))
 
         owner_block = owners[face_slice]
-        owner_distance = np.linalg.norm(face_centres_block - cell_centre[owner_block], axis=1)
+        owner_vectors = face_centres_block - cell_centre[owner_block]
+        owner_distance = np.linalg.norm(owner_vectors, axis=1)
+        owner_pyramids = np.einsum("ij,ij->i", sf_block, owner_vectors)
+        bad_owner = np.flatnonzero(owner_pyramids <= 0.0)
+        inverted_owner_pyramids += int(len(bad_owner))
+        owner_cosines = owner_pyramids / np.maximum(
+            areas_block * owner_distance,
+            np.finfo(np.float64).tiny,
+        )
+        min_owner_pyramid_cosine = min(
+            min_owner_pyramid_cosine,
+            float(np.min(owner_cosines, initial=1.0)),
+        )
         np.minimum.at(min_distance, owner_block, owner_distance)
         np.maximum.at(max_distance, owner_block, owner_distance)
 
@@ -214,6 +235,23 @@ def validate_geometry(mesh_data, geo_data):
             neighbour_block = neighbours[start:internal_stop]
             owner_internal = owner_block[local]
             weight_internal = weights_block[local]
+            neighbour_vectors = cell_centre[neighbour_block] - face_centres_block[local]
+            neighbour_distance = np.linalg.norm(neighbour_vectors, axis=1)
+            neighbour_pyramids = np.einsum(
+                "ij,ij->i",
+                sf_block[local],
+                neighbour_vectors,
+            )
+            bad_neighbour = np.flatnonzero(neighbour_pyramids <= 0.0)
+            inverted_neighbour_pyramids += int(len(bad_neighbour))
+            neighbour_cosines = neighbour_pyramids / np.maximum(
+                areas_block[local] * neighbour_distance,
+                np.finfo(np.float64).tiny,
+            )
+            min_neighbour_pyramid_cosine = min(
+                min_neighbour_pyramid_cosine,
+                float(np.min(neighbour_cosines, initial=1.0)),
+            )
             out_of_bounds_weights += int(
                 np.count_nonzero((weight_internal < 0.0) | (weight_internal > 1.0))
             )
@@ -226,10 +264,32 @@ def validate_geometry(mesh_data, geo_data):
             skewness = np.linalg.norm(face_centres_block[local] - interpolation, axis=1) / (
                 centre_distance + 1e-30
             )
-            max_skewness = max(max_skewness, float(np.max(skewness, initial=0.0)))
-            neighbour_distance = np.linalg.norm(
-                face_centres_block[local] - cell_centre[neighbour_block], axis=1
+            local_maximum = float(np.max(skewness, initial=0.0))
+            if local_maximum > max_skewness:
+                max_skewness = local_maximum
+                max_skewness_face = start + int(np.argmax(skewness))
+            owner_scale = np.cbrt(volumes[owner_internal])
+            neighbour_scale = np.cbrt(volumes[neighbour_block])
+            volume_scale_ratio = np.maximum(owner_scale, neighbour_scale) / np.maximum(
+                np.minimum(owner_scale, neighbour_scale),
+                np.finfo(np.float64).tiny,
             )
+            max_adjacent_volume_scale_ratio = max(
+                max_adjacent_volume_scale_ratio,
+                float(np.max(volume_scale_ratio, initial=1.0)),
+            )
+            if has_cell_sizes:
+                nominal_ratio = np.maximum(
+                    cell_sizes[owner_internal],
+                    cell_sizes[neighbour_block],
+                ) / np.maximum(
+                    np.minimum(cell_sizes[owner_internal], cell_sizes[neighbour_block]),
+                    np.finfo(np.float64).tiny,
+                )
+                max_adjacent_cell_size_ratio = max(
+                    max_adjacent_cell_size_ratio,
+                    float(np.max(nominal_ratio, initial=1.0)),
+                )
             np.minimum.at(min_distance, neighbour_block, neighbour_distance)
             np.maximum.at(max_distance, neighbour_block, neighbour_distance)
 
@@ -248,13 +308,11 @@ def validate_geometry(mesh_data, geo_data):
     # communicator.
     parallel = mesh_data.get("_parallel_context")
     n_quality_cells = (
-        int(parallel.n_owned)
-        if parallel is not None and parallel.is_partitioned
-        else n_cells
+        int(parallel.n_owned) if parallel is not None and parallel.is_partitioned else n_cells
     )
-    lsq_condition = np.asarray(
-        geo_data.get("lsq_condition", []), dtype=np.float64
-    )[:n_quality_cells]
+    lsq_condition = np.asarray(geo_data.get("lsq_condition", []), dtype=np.float64)[
+        :n_quality_cells
+    ]
     finite_lsq_condition = lsq_condition[np.isfinite(lsq_condition)]
 
     return {
@@ -265,19 +323,23 @@ def validate_geometry(mesh_data, geo_data):
         "mean_non_orthogonality_deg": sum_non_orthogonality / max(n_faces, 1),
         "out_of_bounds_interpolation_weights": out_of_bounds_weights,
         "max_skewness": max_skewness,
+        "max_skewness_face": max_skewness_face,
         "max_aspect_ratio": max_aspect_ratio,
+        "min_owner_face_pyramid_cosine": min_owner_pyramid_cosine,
+        "min_neighbour_face_pyramid_cosine": min_neighbour_pyramid_cosine,
+        "inverted_owner_face_pyramids": inverted_owner_pyramids,
+        "inverted_neighbour_face_pyramids": inverted_neighbour_pyramids,
+        "max_adjacent_volume_scale_ratio": max_adjacent_volume_scale_ratio,
+        "max_adjacent_cell_size_ratio": (max_adjacent_cell_size_ratio if has_cell_sizes else None),
         "max_lsq_condition": (
             float(np.max(finite_lsq_condition)) if finite_lsq_condition.size else None
         ),
         "rank_deficient_lsq_cells": int(
-            np.count_nonzero(
-                np.asarray(geo_data.get("lsq_rank", []))[:n_quality_cells] < 3
-            )
+            np.count_nonzero(np.asarray(geo_data.get("lsq_rank", []))[:n_quality_cells] < 3)
         ),
         "svd_lsq_cells": int(
             np.count_nonzero(
-                np.asarray(geo_data.get("lsq_solver_method", []))[:n_quality_cells]
-                == "svd"
+                np.asarray(geo_data.get("lsq_solver_method", []))[:n_quality_cells] == "svd"
             )
         ),
     }
@@ -289,6 +351,130 @@ def validate_mesh(mesh_data, geo_data=None):
     if geo_data is not None:
         report.update(validate_geometry(mesh_data, geo_data))
     return report
+
+
+def validate_vtk_cell_intersections(dataset) -> dict[str, int]:
+    """Reject intersecting VTK cells and report other validator classifications.
+
+    VTK's validity state is a bit mask.  Concave cut cells can legitimately be
+    reported as non-convex, so this gate rejects the two geometric
+    intersection bits while the native face-pyramid checks above establish
+    finite-volume orientation and star-shapedness about the cell centres.
+    """
+    try:
+        import vtk
+        from vtk.util.numpy_support import vtk_to_numpy  # pyrefly: ignore[missing-import]
+    except ImportError as exc:  # pragma: no cover - FVM dependencies include VTK.
+        raise MeshValidationError("VTK is required for cell-intersection validation") from exc
+
+    validator = vtk.vtkCellValidator()
+    validator.SetInputData(dataset)
+    validator.Update()
+    state_array = validator.GetOutput().GetCellData().GetArray("ValidityState")
+    if state_array is None:
+        raise MeshValidationError("VTK cell validator did not return ValidityState")
+    states = np.asarray(vtk_to_numpy(state_array), dtype=np.int64)
+    intersecting = np.flatnonzero(states & 0b000110)
+    if intersecting.size:
+        examples = ", ".join(map(str, intersecting[:8]))
+        raise MeshValidationError(
+            f"Mesh contains {len(intersecting)} intersecting VTK cells; first ids: {examples}"
+        )
+    return {
+        "cell_count": int(len(states)),
+        "intersecting_cells": 0,
+        "nonconvex_cells": int(np.count_nonzero(states & 0b010000)),
+        "incorrectly_oriented_vtk_cells": int(np.count_nonzero(states & 0b100000)),
+    }
+
+
+def extract_cell_subset_mesh(mesh_data, cell_ids) -> dict:
+    """Return a closed native mesh containing only the selected cells.
+
+    Faces against unselected cells become temporary boundary faces.  Only
+    points referenced by the selected cells are retained, keeping both VTK
+    conversion and the curved-face compaction pass local to the surface band.
+    """
+    selected_ids = np.unique(np.asarray(cell_ids, dtype=np.int32))
+    n_cells = int(mesh_data["n_cells"])
+    if not len(selected_ids):
+        raise ValueError("Cell subset must contain at least one cell")
+    if int(selected_ids[0]) < 0 or int(selected_ids[-1]) >= n_cells:
+        raise ValueError("Cell subset contains an id outside the mesh")
+    selected = np.zeros(n_cells, dtype=bool)
+    selected[selected_ids] = True
+    cell_map = np.full(n_cells, -1, dtype=np.int32)
+    cell_map[selected_ids] = np.arange(len(selected_ids), dtype=np.int32)
+    faces = mesh_data["faces"]
+    owners = np.asarray(mesh_data["owners"], dtype=np.int32)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
+    n_internal = int(mesh_data["n_interior_faces"])
+
+    owner_selected = selected[owners[:n_internal]]
+    neighbour_selected = selected[neighbours]
+    retained_internal = np.flatnonzero(owner_selected & neighbour_selected)
+    exposed_internal = np.flatnonzero(owner_selected ^ neighbour_selected)
+    retained_boundary = n_internal + np.flatnonzero(selected[owners[n_internal:]])
+
+    subset_faces = [
+        np.asarray(faces[int(face_id)], dtype=np.int32).copy() for face_id in retained_internal
+    ]
+    subset_owners = [int(cell_map[owners[int(face_id)]]) for face_id in retained_internal]
+    subset_neighbours = [int(cell_map[neighbours[int(face_id)]]) for face_id in retained_internal]
+    boundary_faces: list[np.ndarray] = []
+    boundary_owners: list[int] = []
+    for face_id_value in exposed_internal:
+        face_id = int(face_id_value)
+        if owner_selected[face_id]:
+            boundary_faces.append(np.asarray(faces[face_id], dtype=np.int32).copy())
+            boundary_owners.append(int(cell_map[owners[face_id]]))
+        else:
+            boundary_faces.append(np.asarray(faces[face_id], dtype=np.int32)[::-1].copy())
+            boundary_owners.append(int(cell_map[neighbours[face_id]]))
+    for face_id_value in retained_boundary:
+        face_id = int(face_id_value)
+        boundary_faces.append(np.asarray(faces[face_id], dtype=np.int32).copy())
+        boundary_owners.append(int(cell_map[owners[face_id]]))
+
+    subset_faces.extend(boundary_faces)
+    subset_owners.extend(boundary_owners)
+    used_points = np.unique(np.concatenate(subset_faces))
+    point_map = np.full(int(mesh_data["n_points"]), -1, dtype=np.int32)
+    point_map[used_points] = np.arange(len(used_points), dtype=np.int32)
+    subset_faces = [point_map[face] for face in subset_faces]
+    widths = {len(face) for face in subset_faces}
+    result = {
+        "vertex_position": np.ascontiguousarray(
+            np.asarray(mesh_data["vertex_position"], dtype=np.float64)[used_points]
+        ),
+        "faces": (
+            np.ascontiguousarray(subset_faces, dtype=np.int32) if len(widths) == 1 else subset_faces
+        ),
+        "owners": np.ascontiguousarray(subset_owners, dtype=np.int32),
+        "neighbours": np.ascontiguousarray(subset_neighbours, dtype=np.int32),
+        "boundary": [
+            {
+                "name": "validation_boundary",
+                "start_face": len(retained_internal),
+                "n_faces": len(boundary_faces),
+                "type": "patch",
+            }
+        ],
+        "n_cells": len(selected_ids),
+        "n_faces": len(subset_faces),
+        "n_interior_faces": len(retained_internal),
+        "n_points": len(used_points),
+    }
+    if "cell_vertex_indices" in mesh_data:
+        result["cell_vertex_indices"] = np.ascontiguousarray(
+            point_map[np.asarray(mesh_data["cell_vertex_indices"], dtype=np.int32)[selected_ids]],
+            dtype=np.int32,
+        )
+    if "cell_type_code" in mesh_data:
+        result["cell_type_code"] = np.ascontiguousarray(
+            np.asarray(mesh_data["cell_type_code"])[selected_ids]
+        )
+    return result
 
 
 def enforce_quality_thresholds(report, mesh_config) -> None:
