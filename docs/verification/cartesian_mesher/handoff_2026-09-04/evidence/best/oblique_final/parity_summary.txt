@@ -1,0 +1,5 @@
+FAIL  boundaryLayerRefinement
+First failure: geometry
+adjacency_mismatches: 0
+patch_incidence_mismatches: 0
+face_topology_mismatches: 0

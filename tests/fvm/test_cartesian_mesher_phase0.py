@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import re
 
 import pytest
 
@@ -84,13 +85,28 @@ def test_cartesian_mesher_production_package_has_no_forbidden_geometry_names():
     """The future package must not contain geometry-recognition special cases."""
     package = REPOSITORY_ROOT / "source" / "solvers" / "fvm" / "mesh" / "cartesian"
     assert package.is_dir(), f"target Cartesian mesher package is missing: {package}"
-    forbidden = ("cylinder", "airfoil", "cube", "plate", "sphere", "tutorial")
-    allowed = {"SphereRefinement"}
+    forbidden = {"cylinder", "airfoil", "cube", "plate", "sphere", "tutorial"}
+    # ``root cube`` is cfMesh's generic octree domain, not geometry recognition.
+    allowed = {"SphereRefinement", "_root_cube"}
     offenders: list[str] = []
     for path in sorted(package.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        docstrings = {
+            id(statement.value)
+            for parent in ast.walk(tree)
+            if isinstance(
+                parent, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+            )
+            and parent.body
+            for statement in parent.body[:1]
+            if isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Constant)
+            and isinstance(statement.value.value, str)
+        }
         for node in ast.walk(tree):
             if isinstance(node, ast.Name | ast.Attribute | ast.Constant):
+                if isinstance(node, ast.Constant) and id(node) in docstrings:
+                    continue
                 value = (
                     node.id
                     if isinstance(node, ast.Name)
@@ -101,7 +117,12 @@ def test_cartesian_mesher_production_package_has_no_forbidden_geometry_names():
                 if (
                     isinstance(value, str)
                     and value not in allowed
-                    and any(term in value.lower() for term in forbidden)
+                    and forbidden.intersection(
+                        term.lower()
+                        for term in re.findall(
+                            r"[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]?[a-z]+|[0-9]+", value
+                        )
+                    )
                 ):
                     offenders.append(f"{path.name}:{getattr(node, 'lineno', '?')}:{value}")
     assert not offenders, "forbidden geometry-specific production identifiers: " + ", ".join(

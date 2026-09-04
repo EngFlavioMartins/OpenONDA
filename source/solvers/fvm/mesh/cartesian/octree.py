@@ -1395,7 +1395,10 @@ class CartesianOctree:
                 code(a1, b1, coordinate),
                 code(a0, b1, coordinate),
             )
-        return ring if positive else (ring[3], ring[2], ring[1], ring[0])
+        # cfMesh reverses a negative face while retaining its first cube
+        # vertex.  The starting vertex matters to its finite-iteration surface
+        # optimizer even though cyclic rotations are topologically equivalent.
+        return ring if positive else (ring[0], ring[3], ring[2], ring[1])
 
     def _extract_topology(
         self,
@@ -1512,6 +1515,30 @@ class CartesianOctree:
 
             for axis in range(3):
                 a0, a1, b0, b1 = tangential[axis]
+                # cfMesh visits cube faces in xmin, xmax, ymin, ymax, zmin,
+                # zmax order.  Preserve that order because its surface
+                # optimizer builds each local simplex from face insertion
+                # order and intentionally stops at a finite tolerance.
+                query = [x0, y0, z0]
+                query[axis] = origins[axis] - 1
+                negative_neighbours: set[int] = set()
+                for a in samples(a0, width):
+                    for b in samples(b0, width):
+                        if axis == 0:
+                            candidate = find_cell(query[0], a, b)
+                        elif axis == 1:
+                            candidate = find_cell(a, query[1], b)
+                        else:
+                            candidate = find_cell(a, b, query[2])
+                        if candidate >= 0:
+                            negative_neighbours.add(candidate)
+                if not negative_neighbours:
+                    name = patch_for(axis, False, origins[axis])
+                    patch_codes[name].append(
+                        self._face_codes(axis, origins[axis], a0, a1, b0, b1, point_strides, False)
+                    )
+                    patch_owners[name].append(owner)
+
                 query = [x0, y0, z0]
                 query[axis] = ends[axis]
                 neighbour_ids: set[int] = set()
@@ -1575,27 +1602,6 @@ class CartesianOctree:
                     )
                     patch_owners[name].append(owner)
 
-                # Negative faces are needed only at a physical boundary;
-                # interior faces are emitted once by the cell on the low side.
-                query[axis] = origins[axis] - 1
-                negative_neighbours: set[int] = set()
-                for a in samples(a0, width):
-                    for b in samples(b0, width):
-                        if axis == 0:
-                            candidate = find_cell(query[0], a, b)
-                        elif axis == 1:
-                            candidate = find_cell(a, query[1], b)
-                        else:
-                            candidate = find_cell(a, b, query[2])
-                        if candidate >= 0:
-                            negative_neighbours.add(candidate)
-                if not negative_neighbours:
-                    name = patch_for(axis, False, origins[axis])
-                    patch_codes[name].append(
-                        self._face_codes(axis, origins[axis], a0, a1, b0, b1, point_strides, False)
-                    )
-                    patch_owners[name].append(owner)
-
         face_blocks = [interior_codes[:n_interior]]
         owner_blocks = [interior_owners[:n_interior]]
         boundary: list[dict] = []
@@ -1603,6 +1609,7 @@ class CartesianOctree:
         ordered_names = list(boundary_names)
         if self.surface is not None:
             ordered_names.append(self.wall_patch_name)
+        ordered_names = list(dict.fromkeys(ordered_names))
         for name in ordered_names:
             codes = np.asarray(patch_codes[name], dtype=code_dtype).reshape(-1, 4)
             owners = np.asarray(patch_owners[name], dtype=np.int32)
@@ -1613,7 +1620,11 @@ class CartesianOctree:
                     "name": name,
                     "start_face": start,
                     "n_faces": len(codes),
-                    "type": "wall" if name == self.wall_patch_name else "patch",
+                    "type": (
+                        getattr(self, "_wall_patch_type", "wall")
+                        if name == self.wall_patch_name
+                        else "patch"
+                    ),
                 }
             )
             start += len(codes)

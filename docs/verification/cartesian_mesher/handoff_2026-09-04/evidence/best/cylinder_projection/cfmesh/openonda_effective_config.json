@@ -1,0 +1,41 @@
+{
+  "boundary_cell_size": 0.5,
+  "box_refinements": [],
+  "domain": {
+    "bounds": [
+      -2.0,
+      2.0,
+      -2.0,
+      2.0,
+      -7.0,
+      7.0
+    ],
+    "patches": {
+      "xmax": "outlet",
+      "xmin": "inlet",
+      "ymax": "walls",
+      "ymin": "walls",
+      "zmax": "front_back",
+      "zmin": "front_back"
+    }
+  },
+  "max_cell_size": 1.0,
+  "min_cell_size": 0.5,
+  "name": "cylinder_coarse",
+  "patch_refinements": [],
+  "patch_types": {
+    "body": "wall",
+    "front_back": "patch",
+    "inlet": "patch",
+    "outlet": "patch",
+    "walls": "patch"
+  },
+  "surface_may_cross_domain_boundary": false,
+  "surfaces": [
+    {
+      "patch": "body",
+      "path": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/assets/cylinder_long.stl",
+      "sha256": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3"
+    }
+  ]
+}

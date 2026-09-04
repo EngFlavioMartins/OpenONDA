@@ -1,0 +1,41 @@
+{
+  "boundary_cell_size": 0.25,
+  "box_refinements": [],
+  "domain": {
+    "bounds": [
+      -1.5,
+      1.5,
+      -1.5,
+      1.5,
+      -1.5,
+      1.5
+    ],
+    "patches": {
+      "xmax": "outlet",
+      "xmin": "inlet",
+      "ymax": "walls",
+      "ymin": "walls",
+      "zmax": "front_back",
+      "zmin": "front_back"
+    }
+  },
+  "max_cell_size": 0.5,
+  "min_cell_size": 0.25,
+  "name": "cube_aligned",
+  "patch_refinements": [],
+  "patch_types": {
+    "body": "wall",
+    "front_back": "patch",
+    "inlet": "patch",
+    "outlet": "patch",
+    "walls": "patch"
+  },
+  "surface_may_cross_domain_boundary": false,
+  "surfaces": [
+    {
+      "patch": "body",
+      "path": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cube_flow/reference_flow/assets/cube.stl",
+      "sha256": "373e37f8aac124cdbad2cc82fa1f85eed4dece301d8464e1e522f754604a9067"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "cube_aligned",
+  "domain": {
+    "bounds": [-1.5, 1.5, -1.5, 1.5, -1.5, 1.5],
+    "patches": {
+      "xmin": "inlet",
+      "xmax": "outlet",
+      "ymin": "walls",
+      "ymax": "walls",
+      "zmin": "front_back",
+      "zmax": "front_back"
+    }
+  },
+  "surfaces": [
+    {
+      "path": "../../../tutorials/coupled_fvm_vpm/cube_flow/reference_flow/assets/cube.stl",
+      "patch": "body"
+    }
+  ],
+  "max_cell_size": 0.5,
+  "boundary_cell_size": 0.25,
+  "min_cell_size": 0.25
+}

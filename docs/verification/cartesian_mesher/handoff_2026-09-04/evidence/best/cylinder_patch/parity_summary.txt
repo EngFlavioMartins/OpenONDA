@@ -1,0 +1,2 @@
+PASS  patchAssignment
+Topology and geometry parity checks passed.

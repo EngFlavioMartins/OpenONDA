@@ -1,0 +1,41 @@
+{
+  "boundary_cell_size": 0.25,
+  "box_refinements": [],
+  "domain": {
+    "bounds": [
+      -1.5,
+      1.5,
+      -1.5,
+      1.5,
+      -1.5,
+      1.5
+    ],
+    "patches": {
+      "xmax": "outlet",
+      "xmin": "inlet",
+      "ymax": "walls",
+      "ymin": "walls",
+      "zmax": "front_back",
+      "zmin": "front_back"
+    }
+  },
+  "max_cell_size": 0.5,
+  "min_cell_size": 0.25,
+  "name": "cube_oblique",
+  "patch_refinements": [],
+  "patch_types": {
+    "body": "wall",
+    "front_back": "patch",
+    "inlet": "patch",
+    "outlet": "patch",
+    "walls": "patch"
+  },
+  "surface_may_cross_domain_boundary": false,
+  "surfaces": [
+    {
+      "patch": "body",
+      "path": "/Users/flaviomartins/OpenONDA/tests/mesh_parity/cases/cube_oblique.stl",
+      "sha256": "dffc63d6713beb77b76da83dde19bab7015ce2bce5b2444d5d42e39e06c92dd5"
+    }
+  ]
+}

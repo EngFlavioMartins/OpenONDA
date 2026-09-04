@@ -1,0 +1,53 @@
+{
+  "cube_boundary_overlays": {
+    "aligned_final": {
+      "cfmesh_body_points": 218,
+      "openonda_body_points": 218
+    },
+    "oblique_final": {
+      "cfmesh_body_points": 204,
+      "openonda_body_points": 204
+    }
+  },
+  "cylinder_diagnostics": {
+    "candidate_centroid_tolerance": 0.00028904618999695545,
+    "cells": 2356,
+    "cfmesh_body_points": 422,
+    "farthest_cfmesh_cell": 1589,
+    "farthest_cfmesh_cell_centre": [
+      -1.0012853333459357,
+      0.7087324104750742,
+      6.321411726782918
+    ],
+    "nearest_neighbour_distance": {
+      "max": 0.136925466162346,
+      "mean": 0.010431980876486703,
+      "p95": 0.06402460874901085,
+      "p99": 0.1055555587503491
+    },
+    "nearest_neighbour_within_tolerance": 1530,
+    "nearest_openonda_cell": 961,
+    "nearest_openonda_cell_centre": [
+      -0.9214686310840813,
+      0.602196627953619,
+      6.353474233958113
+    ],
+    "openonda_body_points": 422,
+    "reported_tight_matches": 1494,
+    "reported_tight_unmatched": 862
+  },
+  "oblique_normal_error": {
+    "cfmesh_face_centre": [
+      -0.468710379119275,
+      0.057676110121083785,
+      0.06333776330646275
+    ],
+    "cfmesh_face_id": 4781,
+    "faces_above_gate": 1,
+    "gate_degrees": 0.032,
+    "max_angle_degrees": 0.03236146973877208,
+    "openonda_face_id": 4919,
+    "paired_boundary_faces": 1066,
+    "patch": "body"
+  }
+}

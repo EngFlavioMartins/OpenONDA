@@ -1,0 +1,26 @@
+cfMesh source repository: https://gitlab.com/openfoam/community/cfmesh.git
+Source commit: 3ff8555514827646c34cacfe5f0f691e49cdbc96
+Source commit date: 2024-12-18T15:43:51Z
+Source commit subject: COMP: scatter v.s. broadcast
+Local source checkout at capture time: /private/tmp/openonda-cfmesh.dwShoa/cfmesh
+Local source status: one modified file, captured byte-for-byte in
+  cfmesh_macos_portability.patch.gz
+
+cartesianMesh executable:
+  /Users/flaviomartins/OpenFOAM/flaviomartins-v2412/platforms/darwin64ClangDPInt32Opt/bin/cartesianMesh
+  SHA256 6585db869dcc47920564d38d454ca286a44f9f95dcececbb7e10e58a421e18ce
+
+OpenFOAM launcher:
+  /Applications/OpenFOAM-v2412.app/Contents/Resources/etc/openfoam
+  SHA256 ee98a21d2841845fe610a48a562be775eda1709268e46ca5ff26e493fd7bd6cf
+
+Oracle version:
+  OpenFOAM-v2412 (2412)
+  Build _8dbc61e11c-20241220
+  Arch LSB;label=32;scalar=64
+  OMP_NUM_THREADS=1
+
+The compressed portability patch replaces an invalid direct
+SLList<label>-to-labelList assignment with an explicit resize-and-copy loop. It was required to compile
+the clean upstream source on this macOS toolchain. No diagnostic or
+OPENONDA-specific behavior was compiled into the captured executable.

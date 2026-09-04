@@ -1,0 +1,23 @@
+{
+  "name": "cylinder_coarse",
+  "domain": {
+    "bounds": [-2.0, 2.0, -2.0, 2.0, -7.0, 7.0],
+    "patches": {
+      "xmin": "inlet",
+      "xmax": "outlet",
+      "ymin": "walls",
+      "ymax": "walls",
+      "zmin": "front_back",
+      "zmax": "front_back"
+    }
+  },
+  "surfaces": [
+    {
+      "path": "../../../tutorials/coupled_fvm_vpm/cylinder_shedding_flow/assets/cylinder_long.stl",
+      "patch": "body"
+    }
+  ],
+  "max_cell_size": 1.0,
+  "boundary_cell_size": 0.5,
+  "min_cell_size": 0.5
+}

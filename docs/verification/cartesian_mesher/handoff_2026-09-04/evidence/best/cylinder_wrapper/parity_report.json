@@ -1,0 +1,300 @@
+{
+  "cfmesh": {
+    "case_directory": "/private/tmp/openonda-clean-cylinder-wrapper-20260904/cfmesh",
+    "command": [
+      "/Applications/OpenFOAM-v2412.app/Contents/Resources/etc/openfoam",
+      "/Users/flaviomartins/OpenFOAM/flaviomartins-v2412/platforms/darwin64ClangDPInt32Opt/bin/cartesianMesh"
+    ],
+    "elapsed_seconds": 0.7240912499837577,
+    "environment": {
+      "OMP_NUM_THREADS": "1"
+    },
+    "executable": {
+      "launcher": {
+        "path": "/Applications/OpenFOAM-v2412.app/Contents/Resources/etc/openfoam",
+        "sha256": "ee98a21d2841845fe610a48a562be775eda1709268e46ca5ff26e493fd7bd6cf"
+      },
+      "path": "/Users/flaviomartins/OpenFOAM/flaviomartins-v2412/platforms/darwin64ClangDPInt32Opt/bin/cartesianMesh",
+      "sha256": "6585db869dcc47920564d38d454ca286a44f9f95dcececbb7e10e58a421e18ce",
+      "version_or_help": "Usage: cartesianMesh [OPTIONS]\nOptions:\n  -case <dir>       Case directory (instead of current directory)\n  -decomposeParDict <file>\n                    Alternative decomposePar dictionary file\n  -parallel         Run in parallel\n  -doc              Display documentation in browser\n  -help             Display short help and exit\n  -help-full        Display full help and exit\n\n(cfmesh)\nTakes a triangulated surface and generates a cartesian mesh\n\nUsing: OpenFOAM-v2412 (2412) - visit www.openfoam.com\nBuild: _8dbc61e11c-20241220\nArch:  LSB;label=32;scalar=64"
+    },
+    "generated_surface_sha256": "5faaf19280a2ae7c2bb20ea0a0844d21d42d6f4543f1cdc425f29b695881d85d",
+    "log": "/private/tmp/openonda-clean-cylinder-wrapper-20260904/cfmesh/cartesianMesh.log",
+    "poly_mesh_directory": "/private/tmp/openonda-clean-cylinder-wrapper-20260904/cfmesh/constant/polyMesh",
+    "return_code": 0,
+    "stop_after": "boundaryLayerGeneration"
+  },
+  "comparison": {
+    "cell_mapping": {
+      "assignments": {
+        "components_too_large_or_non_bijective": 0,
+        "neighbour_evidence": 0,
+        "small_component": 0,
+        "unique": 2356
+      },
+      "candidate_centroid_tolerance": 0.007369727680935062,
+      "candidate_count": {
+        "maximum": 1,
+        "mean": 1.0,
+        "minimum": 1,
+        "zero": 0
+      },
+      "complete": true,
+      "first_unmatched_cfmesh_cell_centre": null,
+      "matched_cells": 2356,
+      "unmatched_cfmesh_cells": 0,
+      "unmatched_openonda_cells": 0
+    },
+    "cfmesh": {
+      "cell_face_histogram": {
+        "4": 308,
+        "5": 250,
+        "6": 1798
+      },
+      "cell_neighbour_histogram": {
+        "3": 8,
+        "4": 512,
+        "5": 1260,
+        "6": 576
+      },
+      "connected_components": 1,
+      "face_vertex_histogram": {
+        "3": 1090,
+        "4": 6266
+      },
+      "n_boundary_faces": 1442,
+      "n_cells": 2356,
+      "n_faces": 7356,
+      "n_internal_faces": 5914,
+      "n_points": 2684,
+      "patches": {
+        "body": {
+          "n_faces": 412,
+          "type": "empty"
+        },
+        "front_back": {
+          "n_faces": 134,
+          "type": "empty"
+        },
+        "inlet": {
+          "n_faces": 224,
+          "type": "empty"
+        },
+        "outlet": {
+          "n_faces": 224,
+          "type": "empty"
+        },
+        "walls": {
+          "n_faces": 448,
+          "type": "empty"
+        }
+      }
+    },
+    "first_failure": null,
+    "geometry": {
+      "boundary_face_centre_distance": {
+        "max": 0.00305751892772704,
+        "mean": 6.467437452002134e-05,
+        "p95": 0.0002523462265042621,
+        "p99": 0.002952661407588834,
+        "rms": 0.00032900272029158127
+      },
+      "boundary_face_normal_angle_degrees": {
+        "max": 0.16266620924813055,
+        "mean": 0.005564354059376926,
+        "p95": 0.03568227171900428,
+        "p99": 0.11903567865304082,
+        "rms": 0.02150495259353323
+      },
+      "boundary_face_pairs_compared": 1442,
+      "cell_centre_distance": {
+        "max": 0.003501539573193879,
+        "mean": 0.00011712050460985721,
+        "p95": 0.000494841167618455,
+        "p99": 0.0025815787397684017,
+        "rms": 0.0003971065168267123
+      },
+      "cell_volume_absolute_error": {
+        "max": 0.001201714923339564,
+        "mean": 1.678239533384942e-05,
+        "p95": 3.978730666030772e-05,
+        "p99": 0.0004296243510824269,
+        "rms": 9.817889327809061e-05
+      },
+      "cell_volume_relative_error": {
+        "max": 0.06801696336695319,
+        "mean": 0.0007070331024241,
+        "p95": 0.002767949295133997,
+        "p99": 0.010660019123244083,
+        "rms": 0.0036485765634802223
+      },
+      "cfmesh_bounding_box": {
+        "max": [
+          2.0,
+          2.0,
+          7.0
+        ],
+        "min": [
+          -2.0,
+          -2.0,
+          -7.0
+        ]
+      },
+      "cfmesh_total_fluid_volume": 211.43703595215092,
+      "openonda_bounding_box": {
+        "max": [
+          2.000007723545699,
+          2.000007729854478,
+          7.0
+        ],
+        "min": [
+          -2.0,
+          -2.0,
+          -7.0
+        ]
+      },
+      "openonda_total_fluid_volume": 211.43770676814688,
+      "total_fluid_volume_absolute_error": 0.0006708159959600835,
+      "wall_point_distance_to_stl": {
+        "cfmesh": {
+          "body": {
+            "max": 1.0277140806818095,
+            "mean": 0.06581237624835228,
+            "p95": 0.5,
+            "p99": 0.5,
+            "rms": 0.18979021219795986
+          }
+        },
+        "openonda": {
+          "body": {
+            "max": 1.0277232479951754,
+            "mean": 0.06581976527028997,
+            "p95": 0.5,
+            "p99": 0.5,
+            "rms": 0.18979724304971024
+          }
+        }
+      }
+    },
+    "invariant_differences": {},
+    "openonda": {
+      "cell_face_histogram": {
+        "4": 308,
+        "5": 250,
+        "6": 1798
+      },
+      "cell_neighbour_histogram": {
+        "3": 8,
+        "4": 512,
+        "5": 1260,
+        "6": 576
+      },
+      "connected_components": 1,
+      "face_vertex_histogram": {
+        "3": 1090,
+        "4": 6266
+      },
+      "n_boundary_faces": 1442,
+      "n_cells": 2356,
+      "n_faces": 7356,
+      "n_internal_faces": 5914,
+      "n_points": 2684,
+      "patches": {
+        "body": {
+          "n_faces": 412,
+          "type": "empty"
+        },
+        "front_back": {
+          "n_faces": 134,
+          "type": "empty"
+        },
+        "inlet": {
+          "n_faces": 224,
+          "type": "empty"
+        },
+        "outlet": {
+          "n_faces": 224,
+          "type": "empty"
+        },
+        "walls": {
+          "n_faces": 448,
+          "type": "empty"
+        }
+      }
+    },
+    "passed": true,
+    "topology": {
+      "adjacency_examples": [],
+      "adjacency_mismatches": 0,
+      "boundary_face_topology_mismatches": 0,
+      "face_topology_examples": [],
+      "face_topology_mismatches": 0,
+      "first_differing_spatial_region": null,
+      "internal_face_topology_mismatches": 0,
+      "patch_incidence_mismatches": 0
+    }
+  },
+  "comparison_options": {
+    "assignment_component_limit": 512,
+    "candidate_limit": 12,
+    "centroid_absolute_tolerance": 1e-10,
+    "centroid_relative_tolerance": 0.0005,
+    "face_normal_angle_tolerance_degrees": 0.65,
+    "volume_relative_tolerance": 0.07
+  },
+  "comparison_profile": "cfmesh_wrapper",
+  "created_at_utc": "2026-09-04T20:34:37.908424+00:00",
+  "effective_configuration": {
+    "boundary_cell_size": 0.5,
+    "box_refinements": [],
+    "domain": {
+      "bounds": [
+        -2.0,
+        2.0,
+        -2.0,
+        2.0,
+        -7.0,
+        7.0
+      ],
+      "patches": {
+        "xmax": "outlet",
+        "xmin": "inlet",
+        "ymax": "walls",
+        "ymin": "walls",
+        "zmax": "front_back",
+        "zmin": "front_back"
+      }
+    },
+    "max_cell_size": 1.0,
+    "min_cell_size": 0.5,
+    "name": "cylinder_coarse",
+    "patch_refinements": [],
+    "patch_types": {
+      "body": "wall",
+      "front_back": "patch",
+      "inlet": "patch",
+      "outlet": "patch",
+      "walls": "patch"
+    },
+    "surface_may_cross_domain_boundary": false,
+    "surfaces": [
+      {
+        "patch": "body",
+        "path": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/assets/cylinder_long.stl",
+        "sha256": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3"
+      }
+    ]
+  },
+  "openonda": {
+    "case_directory": "/private/tmp/openonda-clean-cylinder-wrapper-20260904/openonda",
+    "elapsed_seconds": 24.80493633399601,
+    "poly_mesh_directory": "/private/tmp/openonda-clean-cylinder-wrapper-20260904/openonda/constant/polyMesh",
+    "report": null,
+    "stop_after": "boundaryLayerGeneration"
+  },
+  "openonda_git_commit": "59933d5f7ce1213712c76f81a42ce33ae3fdb008",
+  "reason": null,
+  "schema": "openonda-cfmesh-parity-v1",
+  "stage": "boundaryLayerGeneration",
+  "status": "pass"
+}

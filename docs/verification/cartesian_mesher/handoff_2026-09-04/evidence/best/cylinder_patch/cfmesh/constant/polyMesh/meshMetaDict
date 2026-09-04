@@ -1,0 +1,68 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2412                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    arch        "LSB;label=32;scalar=64";
+    class       dictionary;
+    location    "constant/polyMesh";
+    object      meshMetaDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+surfaceFile     "constant/triSurface/openonda_parity_geometry.stl";
+
+surfaceMeta
+{
+    nPoints         650;
+    nFacets         1292;
+    nPatches        5;
+    nFeatureEdges   0;
+    patches
+    {
+        body
+        {
+            type            empty;
+            nFacets         1280;
+        }
+        front_back
+        {
+            type            empty;
+            nFacets         4;
+        }
+        inlet
+        {
+            type            empty;
+            nFacets         2;
+        }
+        outlet
+        {
+            type            empty;
+            nFacets         2;
+        }
+        walls
+        {
+            type            empty;
+            nFacets         4;
+        }
+    }
+    pointSubsets
+    {
+    }
+    facetSubsets
+    {
+    }
+    featureEdgeSubsets
+    {
+    }
+}
+
+lastStep        patchAssignment;
+
+completedSteps  9 ( start start templateGeneration templateGeneration surfaceTopology surfaceTopology surfaceProjection surfaceProjection patchAssignment );

@@ -1,0 +1,49 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      meshDict;
+}
+surfaceFile "constant/triSurface/openonda_parity_geometry.stl";
+maxCellSize 1.0;
+boundaryCellSize 0.5;
+minCellSize 0.5;
+
+renameBoundary
+{
+    newPatchNames
+    {
+        body
+        {
+            newName body;
+            type wall;
+        }
+        front_back
+        {
+            newName front_back;
+            type patch;
+        }
+        inlet
+        {
+            newName inlet;
+            type patch;
+        }
+        outlet
+        {
+            newName outlet;
+            type patch;
+        }
+        walls
+        {
+            newName walls;
+            type patch;
+        }
+    }
+}
+
+workflowControls
+{
+    stopAfter surfaceProjection;
+}

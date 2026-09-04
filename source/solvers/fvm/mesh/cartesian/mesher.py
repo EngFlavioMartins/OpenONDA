@@ -26,6 +26,16 @@ from .boundary_layers import (
     insert_default_surface_layer,
     insert_surface_layers,
 )
+from .cfmesh_boundary_layer import add_cfmesh_wrapper_layer
+from .cfmesh_edge_extraction import extract_cfmesh_edges
+from .cfmesh_mesh_optimisation import optimise_cfmesh_mesh
+from .cfmesh_surface_optimisation import optimise_cfmesh_surface
+from .cfmesh_template import (
+    assign_cfmesh_patches,
+    build_cfmesh_template,
+    project_cfmesh_template,
+    remap_cfmesh_patch_points,
+)
 from .config import (
     BoundaryLayers,
     Bounds,
@@ -469,8 +479,105 @@ class CartesianMesher:
             refinements=cast(Any, self._octree_refinements()),
         )
 
-    def build(self) -> dict[str, Any]:
+    supported_workflow_stages = (
+        "templateGeneration",
+        "surfaceTopology",
+        "surfaceProjection",
+        "patchAssignment",
+        "edgeExtraction",
+        "boundaryLayerGeneration",
+        "meshOptimisation",
+        "boundaryLayerRefinement",
+    )
+
+    def build(self, *, stop_after: str | None = None) -> dict[str, Any]:
         """Build, validate, name, and return native face-based mesh data."""
+        if stop_after is not None:
+            if stop_after not in self.supported_workflow_stages:
+                raise ValueError(f"Unsupported Cartesian-mesher checkpoint: {stop_after!r}")
+            stage_mesh = build_cfmesh_template(
+                domain=self.domain.bounds,
+                surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                max_cell_size=self.max_cell_size,
+                boundary_cell_size=self.boundary_cell_size,
+            )
+            stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
+            if stop_after == "surfaceTopology":
+                stage_mesh["mesh_generation"]["surface_topology_changes"] = 0
+            elif stop_after in (
+                "surfaceProjection",
+                "patchAssignment",
+                "edgeExtraction",
+                "boundaryLayerGeneration",
+                "meshOptimisation",
+                "boundaryLayerRefinement",
+            ):
+                edge_mapper = None
+                surface_untangler = None
+                stage_mesh["mesh_generation"]["surface_topology_changes"] = 0
+                project_cfmesh_template(
+                    stage_mesh,
+                    domain=self.domain.bounds,
+                    domain_patch_names=self.domain.patches.as_tuple(),
+                    surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                    surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                )
+                if stop_after in (
+                    "patchAssignment",
+                    "edgeExtraction",
+                    "boundaryLayerGeneration",
+                    "meshOptimisation",
+                    "boundaryLayerRefinement",
+                ):
+                    assign_cfmesh_patches(
+                        stage_mesh,
+                        domain=self.domain.bounds,
+                        domain_patch_names=self.domain.patches.as_tuple(),
+                        surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                        surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                    )
+                if stop_after in (
+                    "edgeExtraction",
+                    "boundaryLayerGeneration",
+                    "meshOptimisation",
+                    "boundaryLayerRefinement",
+                ):
+                    extract_cfmesh_edges(stage_mesh)
+                    edge_mapper, surface_untangler = remap_cfmesh_patch_points(
+                        stage_mesh,
+                        domain=self.domain.bounds,
+                        domain_patch_names=self.domain.patches.as_tuple(),
+                        surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                        surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                    )
+                    optimise_cfmesh_surface(
+                        stage_mesh,
+                        map_edge_points=edge_mapper,
+                        untangle_surface=surface_untangler,
+                    )
+                if stop_after in (
+                    "boundaryLayerGeneration",
+                    "meshOptimisation",
+                    "boundaryLayerRefinement",
+                ):
+                    add_cfmesh_wrapper_layer(stage_mesh)
+                if stop_after in ("meshOptimisation", "boundaryLayerRefinement"):
+                    assert edge_mapper is not None
+                    assert surface_untangler is not None
+                    optimise_cfmesh_mesh(
+                        stage_mesh,
+                        map_edge_points=edge_mapper,
+                        untangle_surface=surface_untangler,
+                    )
+                if stop_after == "boundaryLayerRefinement":
+                    # The parity spec has no boundaryLayers dictionary, and
+                    # cfMesh guards its refinement routine on that dictionary.
+                    stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
+                    stage_mesh["mesh_generation"]["boundary_layer_refinement"] = {
+                        "applied": False,
+                        "reason": "no_boundary_layers_dictionary",
+                    }
+            return stage_mesh
         layer_surfaces: list[LayerSurface] = []
         layer_specs: list[BoundaryLayers] = []
         authority = [surface.triangles for surface in self.surfaces]
