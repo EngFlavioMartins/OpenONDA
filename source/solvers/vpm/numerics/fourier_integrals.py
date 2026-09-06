@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy import fft
+from scipy.special import erf
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,7 @@ class FourierIntegrals:
     previous_order_total_helicity: float
     radius_expansion_order: int
     viscous_kinetic_energy_rate: float | None
+    energy_measurement: str = "periodic_fourier_energy"
 
 
 @dataclass(frozen=True)
@@ -115,6 +117,56 @@ def _wave_numbers(
     return np.broadcast_arrays(kx, ky, kz)
 
 
+def _free_space_energy_and_power(compact, spacing, core_radius, viscosity):
+    """Linear correlations with the unbounded Gaussian transverse Green tensor.
+
+    Zero padding prevents wraparound of particle pairs. Unlike division by
+    discrete k², this includes the far-field energy of a cloud with nonzero
+    net strength and is independent of the FFT box size.
+    """
+    shape = tuple(fft.next_fast_len(2 * n - 1) for n in compact.shape[:3])
+    offsets = [fft.fftfreq(n) * n * spacing for n in shape]
+    r = np.meshgrid(*offsets, indexing="ij", sparse=True)
+    radius_sq = sum(component**2 for component in r)
+    sigma = np.sqrt(2.0) * core_radius
+    rho_sq = radius_sq / sigma**2
+    rho = np.sqrt(rho_sq)
+    near = rho < 0.05
+    safe_rho = np.where(near, 1.0, rho)
+    g = erf(safe_rho) / (4.0 * np.pi * safe_rho)
+    zeta = np.exp(-rho_sq) / np.pi**1.5
+    aux = ((2.0 * safe_rho**2 - 1.0) * g + 0.5 * zeta) / (4.0 * safe_rho**2)
+    isotropic = (g - aux) / sigma
+    radial = (-g + 3.0 * aux) / (safe_rho**2 * sigma**3)
+    c = 1.0 / np.pi**1.5
+    isotropic[near] = c / sigma * (1 / 3 - 2 / 15 * rho_sq[near] + 3 / 70 * rho_sq[near] ** 2)
+    radial[near] = c / sigma**3 * (1 / 15 - 1 / 35 * rho_sq[near] + 1 / 126 * rho_sq[near] ** 2)
+    q_over_rho3 = (erf(safe_rho) - 2.0 / np.sqrt(np.pi) * safe_rho * np.exp(-(safe_rho**2))) / (
+        4.0 * np.pi * safe_rho**3
+    )
+    diss_iso = (zeta - q_over_rho3) / sigma**3
+    diss_radial = (-zeta + 3.0 * q_over_rho3) / (sigma**5 * safe_rho**2)
+    diss_iso[near] = c / sigma**3 * (2 / 3 - 4 / 5 * rho_sq[near] + 3 / 7 * rho_sq[near] ** 2)
+    diss_radial[near] = c / sigma**5 * (2 / 5 - 2 / 7 * rho_sq[near] + 1 / 9 * rho_sq[near] ** 2)
+    active = [axis for axis in range(3) if np.any(compact[..., axis])]
+    spectra = {axis: fft.rfftn(compact[..., axis], s=shape, workers=-1) for axis in active}
+    energy = power = 0.0
+    for i in active:
+        for j in active:
+            if j < i:
+                continue
+            correlation = fft.irfftn(spectra[i] * spectra[j].conj(), s=shape, workers=-1)
+            tensor = radial * r[i] * r[j]
+            diss_tensor = diss_radial * r[i] * r[j]
+            if i == j:
+                tensor = tensor + isotropic
+                diss_tensor = diss_tensor + diss_iso
+            multiplicity = 1 if i == j else 2
+            energy += 0.5 * multiplicity * float(np.sum(correlation * tensor))
+            power -= viscosity * multiplicity * float(np.sum(correlation * diss_tensor))
+    return energy, power
+
+
 def gaussian_fourier_integrals(
     position: np.ndarray,
     vortex_strength: np.ndarray,
@@ -125,6 +177,7 @@ def gaussian_fourier_integrals(
     spacing: float | None = None,
     grid: CartesianGrid | None = None,
     radius_expansion_order: int = 3,
+    free_space: bool = False,
 ) -> FourierIntegrals:
     """Audit Gaussian-blob quadratic integrals on a padded Fourier grid.
 
@@ -140,6 +193,11 @@ def gaussian_fourier_integrals(
     energy is therefore a genuine quadratic form in vortex strength. Integrals
     from the penultimate order are returned so transfer convergence can be
     hard-gated without another set of FFTs.
+
+    ``free_space=True`` replaces periodic energy and viscous power with linear
+    correlations against the unbounded transverse Gaussian tensors. This mode
+    requires a common core radius and uniform viscosity; the default spectral
+    quadratic form remains available for variable-core transfer audits.
     """
 
     if radius_expansion_order < 1:
@@ -179,16 +237,22 @@ def gaussian_fourier_integrals(
     radius_sq = core_radius * core_radius
     reference_variance = 0.5 * (float(radius_sq.min()) + float(radius_sq.max()))
     variance_offset = radius_sq - reference_variance
+    common_radius = bool(np.all(variance_offset == 0.0))
+    uniform_viscosity = effective_viscosity is not None and bool(
+        np.all(effective_viscosity == effective_viscosity[0])
+    )
+    if free_space and not (common_radius and uniform_viscosity):
+        raise ValueError("free-space Fourier integrals require common cores and uniform viscosity")
     reference_gaussian = np.exp(-0.25 * reference_variance * norm_sq)
     transformed = [np.zeros(norm_sq.shape, dtype=np.complex128) for _ in range(3)]
     viscosity_transformed = (
         [np.zeros(norm_sq.shape, dtype=np.complex128) for _ in range(3)]
-        if effective_viscosity is not None
+        if effective_viscosity is not None and not uniform_viscosity
         else None
     )
     transformed_previous: list[np.ndarray] | None = None
     factorial = 1
-    for order in range(radius_expansion_order + 1):
+    for order in range(1 if common_radius else radius_expansion_order + 1):
         if order > 0:
             factorial *= order
         compact = _scatter_vortex_strength_m4(
@@ -199,7 +263,7 @@ def gaussian_fourier_integrals(
         padding = tuple((size // 2, size - size // 2) for size in compact.shape[:3])
         field = np.pad(compact, (*padding, (0, 0)))
         viscosity_field = None
-        if effective_viscosity is not None:
+        if viscosity_transformed is not None:
             viscosity_compact = _scatter_vortex_strength_m4(
                 position,
                 vortex_strength * effective_viscosity[:, None] * variance_offset[:, None] ** order,
@@ -213,7 +277,7 @@ def gaussian_fourier_integrals(
                 viscosity_transformed[axis] += (
                     fft.rfftn(viscosity_field[..., axis], workers=-1) * multiplier
                 )
-        if order == radius_expansion_order - 1:
+        if common_radius or order == radius_expansion_order - 1:
             transformed_previous = [component.copy() for component in transformed]
     assert transformed_previous is not None
 
@@ -287,6 +351,8 @@ def gaussian_fourier_integrals(
         quadratic_integrals(transformed)
     )
     viscous_kinetic_energy_rate = None
+    if uniform_viscosity:
+        viscous_kinetic_energy_rate = -float(effective_viscosity[0]) * total_enstrophy
     if viscosity_transformed is not None:
         viscous_kinetic_energy_rate = -float(
             sum(
@@ -305,6 +371,11 @@ def gaussian_fourier_integrals(
         _,
         previous_order_total_helicity,
     ) = quadratic_integrals(transformed_previous)
+    if free_space:
+        total_kinetic_energy, viscous_kinetic_energy_rate = _free_space_energy_and_power(
+            compact, spacing, float(core_radius[0]), float(effective_viscosity[0])
+        )
+        previous_order_total_kinetic_energy = total_kinetic_energy
     return FourierIntegrals(
         total_kinetic_energy=total_kinetic_energy,
         total_enstrophy=total_enstrophy,
@@ -315,4 +386,5 @@ def gaussian_fourier_integrals(
         previous_order_total_helicity=previous_order_total_helicity,
         radius_expansion_order=radius_expansion_order,
         viscous_kinetic_energy_rate=viscous_kinetic_energy_rate,
+        energy_measurement="unbounded_energy" if free_space else "periodic_fourier_energy",
     )

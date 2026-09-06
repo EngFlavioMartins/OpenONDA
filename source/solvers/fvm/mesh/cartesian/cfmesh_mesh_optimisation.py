@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from numba import njit
+from numba.extending import register_jitable
 import numpy as np
 
 from .cfmesh_surface_optimisation import (
@@ -21,6 +22,7 @@ _VSMALL = 1.0e-300
 _ROOT_VSMALL = 1.0e-150
 
 
+@register_jitable
 def _scalar_dot(first: np.ndarray, second: np.ndarray) -> float:
     return float(first[0] * second[0] + first[1] * second[1] + first[2] * second[2])
 
@@ -173,8 +175,27 @@ def _cfmesh_cell_centres(
         len(points),
         cell_face_order=cell_face_order,
     )
+    counts = np.fromiter((len(row) for row in cell_faces), dtype=np.int64)
+    offsets = np.empty(n_cells + 1, dtype=np.int64)
+    offsets[0] = 0
+    np.cumsum(counts, out=offsets[1:])
+    ids = np.concatenate(cell_faces).astype(np.int32)
+    return _cell_centres_kernel(face_centres, face_areas, owners, ids, offsets)
+
+
+@njit(cache=True, fastmath=False)
+def _cell_centres_kernel(
+    face_centres: np.ndarray,
+    face_areas: np.ndarray,
+    owners: np.ndarray,
+    ids: np.ndarray,
+    offsets: np.ndarray,
+) -> np.ndarray:
+    """Stored-order native pyramid accumulation, without Python cell loops."""
+    n_cells = len(offsets) - 1
     centres = np.zeros((n_cells, 3), dtype=np.float64)
-    for cell_id, face_ids in enumerate(cell_faces):
+    for cell_id in range(n_cells):
+        face_ids = ids[offsets[cell_id] : offsets[cell_id + 1]]
         estimate = np.zeros(3, dtype=np.float64)
         for face_id in face_ids:
             estimate += face_centres[face_id]
@@ -225,10 +246,41 @@ def _cfmesh_bad_faces(
         if active_faces is None
         else np.flatnonzero(active_faces)
     )
+    counts = np.fromiter((len(face) for face in faces), dtype=np.int64)
+    offsets = np.empty(len(faces) + 1, dtype=np.int64)
+    offsets[0] = 0
+    np.cumsum(counts, out=offsets[1:])
+    vertices = np.concatenate(faces).astype(np.int32, copy=False)
+    return _bad_face_scan_kernel(
+        points,
+        vertices,
+        offsets,
+        owners,
+        neighbours,
+        face_centres,
+        face_areas,
+        cell_centres,
+        selected,
+    )
+
+
+@njit(cache=True, fastmath=False)
+def _bad_face_scan_kernel(
+    points: np.ndarray,
+    vertices: np.ndarray,
+    offsets: np.ndarray,
+    owners: np.ndarray,
+    neighbours: np.ndarray,
+    face_centres: np.ndarray,
+    face_areas: np.ndarray,
+    cell_centres: np.ndarray,
+    selected: np.ndarray,
+) -> set[int]:
+    """Apply every native bad-face criterion to every selected face."""
     bad: set[int] = set()
     for face_value in selected:
         face_id = int(face_value)
-        face = faces[face_id]
+        face = vertices[offsets[face_id] : offsets[face_id + 1]]
         centre = face_centres[face_id]
         area = face_areas[face_id]
         owner = int(owners[face_id])
@@ -248,10 +300,12 @@ def _cfmesh_bad_faces(
         if area_magnitude < _VSMALL:
             bad.add(face_id)
         if len(face) > 3 and area_magnitude > _VSMALL:
-            following = np.roll(coordinates, -1, axis=0)
-            triangle_areas = 0.5 * np.linalg.norm(
-                np.cross(following - coordinates, centre - coordinates), axis=1
-            )
+            triangle_areas = np.empty(len(face), dtype=np.float64)
+            for j in range(len(face)):
+                normal = np.cross(
+                    coordinates[(j + 1) % len(face)] - coordinates[j], centre - coordinates[j]
+                )
+                triangle_areas[j] = 0.5 * np.sqrt(_mag_squared(normal))
             if area_magnitude / (float(triangle_areas.sum()) + _VSMALL) < 0.8:
                 bad.add(face_id)
 
@@ -299,6 +353,21 @@ def _cfmesh_low_quality_faces(
         if active_faces is None
         else np.flatnonzero(active_faces)
     )
+    return _low_quality_scan_kernel(
+        owners, neighbours, face_centres, face_areas, cell_centres, selected
+    )
+
+
+@njit(cache=True, fastmath=False)
+def _low_quality_scan_kernel(
+    owners: np.ndarray,
+    neighbours: np.ndarray,
+    face_centres: np.ndarray,
+    face_areas: np.ndarray,
+    cell_centres: np.ndarray,
+    selected: np.ndarray,
+) -> set[int]:
+    """Native nonorthogonality and skewness limits, with no face exclusions."""
     non_orthogonal_limit = float(np.cos(np.deg2rad(65.0)))
     bad: set[int] = set()
     for face_value in selected:

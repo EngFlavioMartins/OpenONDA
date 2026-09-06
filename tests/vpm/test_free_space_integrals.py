@@ -1,0 +1,67 @@
+"""Unbounded energy must survive FFT box changes and obey the heat equation."""
+
+import numpy as np
+import pytest
+
+from source.solvers.vpm.numerics.fourier_integrals import CartesianGrid, gaussian_fourier_integrals
+
+
+def _integrals(position, strength, sigma, *, shape=(15, 17, 19)):
+    return gaussian_fourier_integrals(
+        np.asarray(position, dtype=float),
+        np.asarray(strength, dtype=float),
+        np.full(len(position), sigma),
+        np.full(len(position), 0.1**3),
+        effective_viscosity=np.full(len(position), 0.01),
+        grid=CartesianGrid(np.full(3, -0.6), 0.1, shape),
+        free_space=True,
+    )
+
+
+def test_single_blob_has_exact_unbounded_energy_and_viscous_power():
+    sigma = 0.2
+    strength = np.array([[0.3, -0.4, 0.7]])
+    result = _integrals([[0, 0, 0]], strength, sigma)
+    norm_sq = np.sum(strength**2)
+    width = np.sqrt(2) * sigma
+    assert result.total_kinetic_energy == pytest.approx(
+        norm_sq / (6 * np.pi**1.5 * width), rel=1e-12
+    )
+    assert result.viscous_kinetic_energy_rate == pytest.approx(
+        -0.01 * 2 * norm_sq / (3 * np.pi**1.5 * width**3), rel=1e-12
+    )
+
+
+def test_free_space_energy_does_not_change_when_the_fft_box_grows():
+    position = [[0.023, -0.14, 0.012], [0.29, 0.15, 0.19]]
+    strength = [[0.3, -0.4, 0.7], [0.1, 0.6, -0.2]]
+    small = _integrals(position, strength, 0.2)
+    large = _integrals(position, strength, 0.2, shape=(22, 25, 27))
+    assert large.total_kinetic_energy == pytest.approx(small.total_kinetic_energy, rel=1e-12)
+    assert large.viscous_kinetic_energy_rate == pytest.approx(
+        small.viscous_kinetic_energy_rate, rel=1e-12
+    )
+
+
+def test_core_spreading_energy_derivative_matches_projected_viscous_power():
+    position = [[0.023, -0.14, 0.012], [0.29, 0.15, 0.19]]
+    strength = [[0.3, -0.4, 0.7], [0.1, 0.6, -0.2]]
+    sigma = 0.2
+    dt = 1e-5
+    before = _integrals(position, strength, np.sqrt(sigma**2 - 4 * 0.01 * dt))
+    after = _integrals(position, strength, np.sqrt(sigma**2 + 4 * 0.01 * dt))
+    current = _integrals(position, strength, sigma)
+    measured = (after.total_kinetic_energy - before.total_kinetic_energy) / (2 * dt)
+    assert measured == pytest.approx(current.viscous_kinetic_energy_rate, rel=1e-6)
+
+
+def test_free_space_mode_rejects_variable_core_radii():
+    with pytest.raises(ValueError, match="common cores"):
+        gaussian_fourier_integrals(
+            np.array([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]]),
+            np.ones((2, 3)),
+            np.array([0.1, 0.2]),
+            np.full(2, 0.001),
+            effective_viscosity=np.full(2, 0.01),
+            free_space=True,
+        )

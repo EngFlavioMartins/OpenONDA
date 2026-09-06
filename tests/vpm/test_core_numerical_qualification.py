@@ -88,6 +88,34 @@ def _single_gaussian_field(
     return velocity, gradient
 
 
+def test_unbounded_fft_energy_converges_to_direct_particle_integrals(tmp_path, record_property):
+    """Independent direct pair sums qualify the FFT tensor and its cross terms."""
+    from source.solvers.vpm.numerics.fourier_integrals import gaussian_fourier_integrals
+
+    solver = _solver(tmp_path, "free_space_integrals", DirectInduction(), precision="f64")
+    rng = np.random.default_rng(83)
+    position = rng.uniform(-0.3, 0.3, (24, 3))
+    strength = rng.normal(size=(24, 3))
+    radius = np.full(24, 0.19)
+    _add_cloud(solver, position, strength, radius)
+    reference = solver.field_diagnostics.compute_flow_integrals(solver.particles, 0.0)
+    errors = []
+    for spacing in (0.15, 0.075, 0.0375):
+        measured = gaussian_fourier_integrals(
+            position,
+            strength,
+            radius,
+            np.full(24, spacing**3),
+            effective_viscosity=np.zeros(24),
+            free_space=True,
+        )
+        errors.append(abs(measured.total_kinetic_energy / reference["total_kinetic_energy"] - 1.0))
+    for spacing, error in zip((0.15, 0.075, 0.0375), errors, strict=True):
+        record_property(f"energy_relative_error_h_{spacing}", error)
+    assert errors[-1] < 1e-3
+    assert errors[-1] < errors[0] / 10
+
+
 def test_gaussian_biot_savart_velocity_and_gradient_match_the_closed_form(
     tmp_path, record_property
 ):

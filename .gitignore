@@ -172,3 +172,10 @@ tests/**/reference_flow/**
 
 # direnv
 .envrc
+
+# Live cylinder campaign machinery; keep reports, figures and sampler data versionable.
+tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/.study_laptop.lock
+tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop/campaign.json
+tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop/status.json
+tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop/meshes/
+tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop/runs/

@@ -36,8 +36,8 @@ class ParticleFieldEvaluation:
     - Conservation quantities: total strength, impulses
     - Group analysis: vortex_centroids of vortex strength
 
-    All computations use unbounded domain definitions and are optimized for GPU execution.
-    Results are kept on GPU and only transferred to CPU when accessed.
+    Direct pair integrals and uniform-core FFT energies use unbounded definitions.
+    Variable-core Fourier audits carry a distinct periodic energy measurement tag.
     """
 
     def __init__(
@@ -69,7 +69,7 @@ class ParticleFieldEvaluation:
         # Retain a short audit trail.  dE/dt uses only the latest interval so
         # its sign is consistent with the two energy samples being reported.
         self._max_history_length = 7
-        # Large Gaussian clouds use a Fourier diagnostic.  Keep its lattice
+        # Variable-core large clouds use a periodic Fourier diagnostic. Keep its lattice
         # spacing and particle-relative phase fixed between samples: rebuilding
         # a tight grid at every output makes the same particle field acquire a
         # different energy solely because the FFT box moved or changed shape.
@@ -994,6 +994,10 @@ class ParticleFieldEvaluation:
 
         # Compute kinetic energy dissipation rate using finite differences
         dE_dt = self._compute_energy_dissipation_rate()
+        rate_source = "direct_energy_backward_difference"
+        if not np.isfinite(dE_dt):
+            dE_dt = float(r.viscous_kinetic_energy_rate)
+            rate_source = "direct_transition_viscous_rate"
 
         return {
             "total_kinetic_energy": total_kinetic_energy,
@@ -1002,7 +1006,7 @@ class ParticleFieldEvaluation:
             "test_filtered_enstrophy": float(r.test_filtered_enstrophy),
             "viscous_kinetic_energy_rate": float(r.viscous_kinetic_energy_rate),
             "kinetic_energy_rate": dE_dt,
-            "kinetic_energy_rate_source": "direct_energy_backward_difference",
+            "kinetic_energy_rate_source": rate_source,
             "vortex_strength_magnitude_sum": float(r.vortex_strength_magnitude_sum),
             "net_vortex_strength": np.array(
                 [float(r.vortex_strength_x), float(r.vortex_strength_y), float(r.vortex_strength_z)]
@@ -1040,18 +1044,26 @@ class ParticleFieldEvaluation:
             raise RuntimeError("Fourier flow diagnostics did not compute viscous dissipation")
 
         total_kinetic_energy = spectral.total_kinetic_energy
+        measurement = getattr(spectral, "energy_measurement", "unbounded_energy")
+        same_measurement = not self._energy_history or self._energy_history[-1][2] == measurement
         if record_history:
-            if continuity_preserved:
-                self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
+            if continuity_preserved and same_measurement:
+                self._update_energy_history(time, total_kinetic_energy, measurement)
                 dE_dt = self._compute_energy_dissipation_rate()
                 rate_source = "fourier_energy_backward_difference"
+                if getattr(spectral, "energy_measurement", None) == "unbounded_energy":
+                    rate_source = "free_space_fft_energy_backward_difference"
+                elif measurement == "periodic_fourier_energy":
+                    rate_source = "periodic_fourier_energy_backward_difference"
             else:
                 # On grid growth, ``transition_spectral`` is the present cloud
                 # evaluated on the old lattice. Compare it with the preceding
                 # old-lattice sample, then seed history with the raw new-grid
                 # energy so the following interval is continuous again.
                 bridged_rate = (
-                    self._energy_rate_to(time, transition_spectral.total_kinetic_energy)
+                    self._energy_rate_to(
+                        time, transition_spectral.total_kinetic_energy, measurement
+                    )
                     if transition_spectral is not None
                     else None
                 )
@@ -1065,7 +1077,7 @@ class ParticleFieldEvaluation:
                 else:
                     dE_dt = bridged_rate
                     rate_source = "fourier_grid_transition_backward_difference"
-                self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
+                self._update_energy_history(time, total_kinetic_energy, measurement)
         else:
             # Trial diagnostics must not alter either accepted history or the
             # persistent grid. Return the latest accepted derivative.
@@ -1086,7 +1098,7 @@ class ParticleFieldEvaluation:
             "viscous_kinetic_energy_rate": spectral.viscous_kinetic_energy_rate,
             "kinetic_energy_rate": dE_dt,
             "kinetic_energy_rate_source": rate_source,
-            "energy_measurement": "unbounded_energy",
+            "energy_measurement": measurement,
             "vortex_strength_magnitude_sum": float(np.linalg.norm(vortex_strength, axis=1).sum()),
             "net_vortex_strength": total,
             "linear_impulse": impulse,
@@ -1135,8 +1147,28 @@ class ParticleFieldEvaluation:
         particle_volume,
         effective_viscosity,
     ):
-        """Evaluate on a reusable grid and preserve energy across grid growth."""
+        """Use unbounded uniform-core integrals or a persistent periodic audit grid."""
         from ..numerics.fourier_integrals import _grid_for_particles, gaussian_fourier_integrals
+
+        if np.all(core_radius == core_radius[0]) and np.all(
+            effective_viscosity == effective_viscosity[0]
+        ):
+            # Uniform-core regeneration (DVH/GBD) admits an unbounded linear
+            # convolution. A periodic inverse Laplacian loses far-field energy
+            # for open vortex columns, even after zero padding. Its box-size
+            # error must not enter a physical energy history.
+            spacing = float(np.median(np.cbrt(particle_volume)))
+            grid = self._fit_fourier_grid(position, spacing, vortex_strength=vortex_strength)
+            spectral = gaussian_fourier_integrals(
+                position,
+                vortex_strength,
+                core_radius,
+                particle_volume,
+                effective_viscosity=effective_viscosity,
+                grid=grid,
+                free_space=True,
+            )
+            return spectral, True, None
 
         if self._fourier_grid is None:
             spacing = float(np.median(np.cbrt(particle_volume)))
@@ -1391,28 +1423,33 @@ class ParticleFieldEvaluation:
         have the wrong sign even when every sampled energy decreases.  The
         backward secant is conservative, handles non-uniform output intervals,
         and makes the reported rate exactly consistent with the latest pair of
-        diagnostic states. Direct and persistent-grid Fourier samples share the
-        calibrated ``unbounded_energy`` definition.
+        diagnostic states. Unbounded and periodic energy histories carry
+        different measurement tags; no secant crosses those definitions.
         """
         if len(self._energy_history) < 2:
             return 0.0
 
         previous_time, previous_energy, previous_measurement = self._energy_history[-2]
         current_time, current_energy, current_measurement = self._energy_history[-1]
-        if previous_measurement != "unbounded_energy" or current_measurement != "unbounded_energy":
+        if previous_measurement != current_measurement or current_measurement not in {
+            "unbounded_energy",
+            "periodic_fourier_energy",
+        }:
             return float("nan")
         interval = current_time - previous_time
         if interval <= 0.0:
             return 0.0
         return float((current_energy - previous_energy) / interval)
 
-    def _energy_rate_to(self, time: float, energy: float) -> float | None:
+    def _energy_rate_to(
+        self, time: float, energy: float, measurement: str = "unbounded_energy"
+    ) -> float | None:
         """Compare ``energy`` with the latest compatible accepted sample."""
         if not self._energy_history:
             return None
         previous_time, previous_energy, previous_measurement = self._energy_history[-1]
         interval = time - previous_time
-        if previous_measurement != "unbounded_energy" or interval <= 0.0:
+        if previous_measurement != measurement or interval <= 0.0:
             return None
         return float((energy - previous_energy) / interval)
 

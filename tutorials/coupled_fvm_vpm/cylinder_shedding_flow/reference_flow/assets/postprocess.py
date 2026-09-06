@@ -11,19 +11,18 @@ from pathlib import Path
 import numpy as np
 
 from source.solvers.fvm.io.mesh_storage import load_native_mesh
+from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow.case_definition import (
+    GRIDS,
+    REFINEMENT_RATIO,
+)
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-PREFLIGHT_CASE = ("very_coarse", 1.0 / 12.0)
+PREFLIGHT_CASE = ("very_coarse", 1.0 / 4.0)
 PRODUCTION_CASES = (
-    # The Cartesian octree is dyadic.  These requested wall sizes resolve to
-    # background lattices 0.2, 0.1, and 0.05 D respectively, so the stored
-    # production family is genuinely distinct and has r=2 after fitting.
-    ("coarse", 1.0 / 40.0),
-    ("medium", 1.0 / 80.0),
-    ("fine", 1.0 / 160.0),
+    # Local octree levels and the registered spatial triplet are dyadic.
+    *GRIDS.items(),
 )
 CASES = (PREFLIGHT_CASE, *PRODUCTION_CASES)
-REFINEMENT_RATIO = 2.0
 STATISTICS_WINDOW = 30.0
 REQUIRED_END_TIME = 60.0
 CONVERGENCE_TOLERANCE_PERCENT = {
@@ -123,7 +122,13 @@ def statistics(history: dict[str, np.ndarray], start: float, end: float) -> dict
     }
 
 
-def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -> dict:
+def richardson_gci(
+    records: list[dict],
+    metric: str,
+    tolerance_percent: float,
+    *,
+    refinement_ratio: float = REFINEMENT_RATIO,
+) -> dict:
     """Return observed order, Richardson limit, and fine-grid GCI for three grids."""
     if len(records) != 3:
         raise ValueError("Richardson/GCI analysis requires exactly three production grids")
@@ -131,9 +136,9 @@ def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -
         [record.get("effective_h", record["dx"]) for record in records], dtype=np.float64
     )
     ratios = spacing[:-1] / spacing[1:]
-    if not np.allclose(ratios, REFINEMENT_RATIO, rtol=0.0, atol=1.0e-12):
+    if not np.allclose(ratios, refinement_ratio, rtol=1.0e-9, atol=1.0e-12):
         raise ValueError(
-            f"Production grids must have constant refinement ratio {REFINEMENT_RATIO:g}; "
+            f"Production grids must have constant refinement ratio {refinement_ratio:g}; "
             f"received {ratios.tolist()}"
         )
     values = np.asarray([record[metric] for record in records], dtype=np.float64)
@@ -144,21 +149,21 @@ def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -
     base = {
         "metric": metric,
         "grids": [record["case"] for record in records],
-        "refinement_ratio": REFINEMENT_RATIO,
+        "refinement_ratio": refinement_ratio,
         "tolerance_percent": tolerance_percent,
         "monotone": bool(coarse_medium * medium_fine > 0.0),
     }
     if abs(coarse_medium) <= roundoff and abs(medium_fine) <= roundoff:
         return {
             **base,
-            "status": "converged_to_roundoff",
+            "status": "differences_unresolved",
             "monotone": True,
             "observed_order": None,
             "richardson_extrapolated_value": float(values[2]),
             "fine_grid_relative_change_percent": 0.0,
             "fine_grid_gci_percent": 0.0,
             "asymptotic_ratio": None,
-            "passed": True,
+            "passed": False,
         }
     if coarse_medium * medium_fine <= 0.0:
         return {
@@ -174,7 +179,7 @@ def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -
             "passed": False,
         }
 
-    observed_order = float(np.log(abs(coarse_medium / medium_fine)) / np.log(REFINEMENT_RATIO))
+    observed_order = float(np.log(abs(coarse_medium / medium_fine)) / np.log(refinement_ratio))
     if not np.isfinite(observed_order) or observed_order <= 0.0:
         return {
             **base,
@@ -189,7 +194,7 @@ def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -
             "passed": False,
         }
 
-    denominator = REFINEMENT_RATIO**observed_order - 1.0
+    denominator = refinement_ratio**observed_order - 1.0
     extrapolated = float(values[2] + (values[2] - values[1]) / denominator)
     fine_change = 100.0 * abs(medium_fine) / max(abs(float(values[2])), 1.0e-14)
     safety_factor = 1.25
@@ -197,16 +202,17 @@ def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -
     medium_change = 100.0 * abs(coarse_medium) / max(abs(float(values[1])), 1.0e-14)
     medium_gci = safety_factor * medium_change / denominator
     asymptotic_ratio = medium_gci / max(
-        REFINEMENT_RATIO**observed_order * fine_gci,
+        refinement_ratio**observed_order * fine_gci,
         1.0e-30,
     )
     return {
         **base,
-        "status": "asymptotic",
+        "status": "monotone_estimate",
         "observed_order": observed_order,
         "richardson_extrapolated_value": extrapolated,
         "fine_grid_relative_change_percent": fine_change,
         "fine_grid_gci_percent": fine_gci,
+        "medium_grid_gci_percent": medium_gci,
         "asymptotic_ratio": asymptotic_ratio,
         "passed": bool(fine_gci <= tolerance_percent),
     }
@@ -281,7 +287,10 @@ def main() -> None:
         "cases": records,
         "comparisons": comparisons,
         "grid_convergence": convergence,
-        "grid_independent": all(result["passed"] for result in convergence.values()),
+        # Legacy histories have no matched temporal/iterative qualification.
+        # Only study.py's campaign report may make an overall independence claim.
+        "grid_independent": False,
+        "status": "legacy_spatial_estimates_only",
     }
     output = CASE_DIR / "solution" / "grid_study.json"
     output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")

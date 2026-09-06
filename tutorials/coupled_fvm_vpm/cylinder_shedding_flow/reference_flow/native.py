@@ -10,17 +10,26 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 import time
 
-from canonical_surface import DOMAIN, prepare_canonical_surfaces
+try:
+    from .canonical_surface import DOMAIN, prepare_canonical_surfaces
+    from .case_definition import GRIDS
+except ImportError:
+    from canonical_surface import DOMAIN, prepare_canonical_surfaces
+    from case_definition import GRIDS
 
 ROOT = Path(__file__).resolve().parents[4]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 SOURCE_STL = ROOT / "tutorials/coupled_fvm_vpm/cylinder_shedding_flow/assets/cylinder_long.stl"
 EXECUTABLE = Path(
     "/Users/flaviomartins/OpenFOAM/flaviomartins-v2412/platforms/"
     "darwin64ClangDPInt32Opt/bin/cartesianMesh"
 )
 LAUNCHER = Path("/Applications/OpenFOAM-v2412.app/Contents/Resources/etc/openfoam")
+CHECKMESH = Path("/Volumes/OpenFOAM-v2412/platforms/darwin64ClangDPInt32Opt/bin/checkMesh")
 
 
 def _sha256(path: Path) -> str:
@@ -40,7 +49,7 @@ def _foam_header(name: str, location: str) -> str:
 
 
 def _mesh_dict() -> str:
-    return (
+    text = (
         _foam_header("meshDict", "system")
         + """surfaceFile "constant/triSurface/native_geometry.stl";
 maxCellSize 0.2;
@@ -92,6 +101,16 @@ renameBoundary
 """
     )
 
+    dx = GRIDS["fine"]
+    return (
+        text.replace("maxCellSize 0.2;", f"maxCellSize {8 * dx:.17g};")
+        .replace("boundaryCellSize 0.2;", f"boundaryCellSize {8 * dx:.17g};")
+        .replace("cellSize 0.025;", f"cellSize {dx:.17g};")
+        .replace("cellSize 0.05000000000005;", f"cellSize {2 * dx * (1 + 1e-12):.17g};")
+        .replace("cellSize 0.1000000000001;", f"cellSize {4 * dx * (1 + 1e-12):.17g};")
+        .replace("lengthZ 1.2;", f"lengthZ {DOMAIN[5] - DOMAIN[4]:.17g};")
+    )
+
 
 def _control_dict() -> str:
     return (
@@ -121,6 +140,19 @@ def _run_one(case: Path, *, repeat: int) -> dict[str, object]:
     system.mkdir(parents=True, exist_ok=True)
     (system / "meshDict").write_text(_mesh_dict(), encoding="ascii")
     (system / "controlDict").write_text(_control_dict(), encoding="ascii")
+    # checkMesh constructs an fvMesh, which reads these even for a mesh-only
+    # case. They do not change cartesianMesh's meshing dictionary.
+    (system / "fvSchemes").write_text(
+        _foam_header("fvSchemes", "system")
+        + "ddtSchemes { default Euler; }\n"
+        + "gradSchemes { default Gauss linear; }\n"
+        + "divSchemes { default none; }\n"
+        + "laplacianSchemes { default Gauss linear corrected; }\n"
+        + "interpolationSchemes { default linear; }\n"
+        + "snGradSchemes { default corrected; }\n",
+        encoding="ascii",
+    )
+    (system / "fvSolution").write_text(_foam_header("fvSolution", "system"), encoding="ascii")
     log = case / "cartesianMesh.log"
     environment = os.environ.copy()
     environment["FOAM_CASE"] = str(case)
@@ -139,7 +171,9 @@ def _run_one(case: Path, *, repeat: int) -> dict[str, object]:
         )
     elapsed = time.perf_counter() - started
     poly_mesh = case / "constant" / "polyMesh"
-    checkmesh = shutil.which("checkMesh")
+    # The interactive PATH may contain a launcher stub pointing at a missing
+    # user-bin sibling. Prefer the verified executable in this pinned runtime.
+    checkmesh = str(CHECKMESH) if CHECKMESH.is_file() else shutil.which("checkMesh")
     sibling_checkmesh = EXECUTABLE.with_name("checkMesh")
     if checkmesh is None and sibling_checkmesh.is_file():
         checkmesh = str(sibling_checkmesh)
@@ -157,6 +191,7 @@ def _run_one(case: Path, *, repeat: int) -> dict[str, object]:
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 check=False,
+                timeout=1_200,
             )
         text = checkmesh_log.read_text(encoding="utf-8", errors="replace")
         from tests.mesh_parity.native_check import parse_checkmesh_output
@@ -174,7 +209,11 @@ def _run_one(case: Path, *, repeat: int) -> dict[str, object]:
         "launcher": {"path": str(LAUNCHER), "sha256": _sha256(LAUNCHER)},
         "source_revision": "3ff8555514827646c34cacfe5f0f691e49cdbc96",
         "domain": DOMAIN,
-        "controls": {"maxCellSize": 0.2, "boundaryCellSize": 0.2, "cylinder": 0.025},
+        "controls": {
+            "maxCellSize": 8 * GRIDS["fine"],
+            "boundaryCellSize": 8 * GRIDS["fine"],
+            "cylinder": GRIDS["fine"],
+        },
         "log": str(log),
         "mesh_present": (poly_mesh / "points").is_file(),
         "checkMesh": checkmesh_record,
@@ -190,6 +229,10 @@ def _run_one(case: Path, *, repeat: int) -> dict[str, object]:
     )
     if result.returncode != 0 or not metadata["mesh_present"]:
         raise RuntimeError(f"Native cartesianMesh failed; inspect {log}")
+    if not checkmesh_record.get("passed", False):
+        raise RuntimeError(
+            f"Native mesh quality was not accepted; inspect {case / 'checkMesh.log'}"
+        )
     return metadata
 
 

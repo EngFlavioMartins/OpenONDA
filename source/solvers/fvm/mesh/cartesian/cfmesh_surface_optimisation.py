@@ -7,6 +7,8 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from numba import njit
+from numba.extending import register_jitable
 import numpy as np
 
 _SMALL = 1.0e-15
@@ -14,6 +16,7 @@ _VSMALL = 1.0e-300
 _ROOT_VSMALL = 1.0e-150
 
 
+@register_jitable
 def _mag_squared(value: np.ndarray) -> float:
     """Use OpenFOAM's component order, without a BLAS reduction."""
     return float(value[0] * value[0] + value[1] * value[1] + value[2] * value[2])
@@ -98,6 +101,7 @@ def _face_area_vector(coordinates: np.ndarray) -> np.ndarray:
     return area
 
 
+@register_jitable
 def _stabilisation(points: np.ndarray, triangles: np.ndarray) -> float:
     # Keep cfMesh's scalar, triangle-by-triangle reduction order.  Symmetric
     # simplexes can have equal minima to machine precision, so NumPy's pairwise
@@ -117,6 +121,7 @@ def _stabilisation(points: np.ndarray, triangles: np.ndarray) -> float:
     return 0.0
 
 
+@register_jitable
 def _objective(points: np.ndarray, triangles: np.ndarray, stabilisation: float) -> float:
     value = 0.0
     for triangle in triangles:
@@ -131,6 +136,7 @@ def _objective(points: np.ndarray, triangles: np.ndarray, stabilisation: float) 
     return value
 
 
+@register_jitable
 def _gradients(
     points: np.ndarray, triangles: np.ndarray, stabilisation: float
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -150,7 +156,10 @@ def _gradients(
         )
         area_outer = np.outer(area_gradient, area_gradient)
         stable_gradient = 0.5 * (area_gradient + area * area_gradient / stable)
-        stable_hessian = 0.5 * (area_outer / stable - area * area * area_outer / stable**3)
+        # A floating exponent preserves Python/libm pow rounding in the JIT.
+        # Integer-power lowering uses repeated multiplication, which can
+        # change the Newton branch of nearly singular triangle fans.
+        stable_hessian = 0.5 * (area_outer / stable - area * area * area_outer / stable**3.0)
         length_gradient = (4.0 * p0 - 2.0 * p1 - 2.0 * p2)[:2]
         stable_area_squared = stable_area * stable_area
         gradient += (
@@ -176,16 +185,21 @@ def _gradients(
     return gradient, hessian
 
 
+@register_jitable
 def _optimise_point(
     points: np.ndarray,
     triangles: np.ndarray,
-    *,
     tolerance: float = 0.001,
 ) -> np.ndarray:
     target = int(triangles[0, 0])
     neighbour_values = points[triangles[:, 1:].ravel()]
-    lower = neighbour_values.min(axis=0)
-    upper = neighbour_values.max(axis=0)
+    # Axis-wise reductions are explicit because Numba does not support the
+    # axis argument of ndarray.min/max.  This does not change the extrema.
+    lower = np.empty(3, dtype=np.float64)
+    upper = np.empty(3, dtype=np.float64)
+    for axis in range(3):
+        lower[axis] = neighbour_values[:, axis].min()
+        upper[axis] = neighbour_values[:, axis].max()
     scale = float(np.sqrt(_mag_squared(upper - lower)))
     if scale <= _VSMALL:
         return points[target].copy()
@@ -251,6 +265,18 @@ def _optimise_point(
     if steepest_value > divide_value:
         values[target] = divide_point
     return values[target] * scale
+
+
+@njit(cache=True, fastmath=False)
+def _optimise_point_kernel(
+    points: np.ndarray, triangles: np.ndarray, tolerance: float = 0.001
+) -> np.ndarray:
+    """Compile the reference arithmetic, including its branch-sensitive order.
+
+    Keeping one implementation avoids changes to normalization, stabilization,
+    and symmetric-simplex tie breaking in a separately transcribed fast path.
+    """
+    return _optimise_point(points, triangles, tolerance=tolerance)
 
 
 def _smooth_partition_points(
@@ -436,7 +462,7 @@ def _smooth_partition_points(
                     np.zeros(len(offsets), dtype=np.float64),
                 )
             )
-            new_planar = _optimise_point(planar, np.asarray(local_triangles, dtype=np.int32))
+            new_planar = _optimise_point_kernel(planar, np.asarray(local_triangles, dtype=np.int32))
             optimisation_updates[point_id] = (
                 centre_point + vector_x * new_planar[0] + vector_y * new_planar[1]
             )
@@ -923,7 +949,7 @@ def optimise_cfmesh_surface(
                     np.zeros(len(offsets), dtype=np.float64),
                 )
             )
-            new_planar = _optimise_point(planar, np.asarray(local_triangles, dtype=np.int32))
+            new_planar = _optimise_point_kernel(planar, np.asarray(local_triangles, dtype=np.int32))
             optimisation_updates[point_id] = (
                 centre_point + vector_x * new_planar[0] + vector_y * new_planar[1]
             )

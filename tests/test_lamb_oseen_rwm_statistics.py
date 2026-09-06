@@ -6,6 +6,7 @@ import sys
 
 import h5py
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "tutorials" / "vpm" / "lamb_oseen_vortex" / "assets"
@@ -136,3 +137,53 @@ def test_merging_separation_reference_uses_original_figure_four_samples():
         dimensional[:, 0] * diagnostics.REFERENCE_VISCOUS_TIME_PER_SECOND / 0.125**2,
     )
     np.testing.assert_allclose(reference[-1, 0], 0.04744 / 0.125**2)
+
+
+@pytest.mark.parametrize("separator", ["  ", " | "])
+def test_gbd_closure_reads_both_solver_log_layouts(tmp_path, monkeypatch, separator):
+    diagnostics = _load("postprocess")
+    monkeypatch.setattr(diagnostics, "SOLUTION_DIR", tmp_path)
+    folder = tmp_path / "vortex_gbd"
+    folder.mkdir()
+    log = folder / "vpm.log"
+    log.write_text(f"  net residual, after{separator}2.136376e-10\n")
+    assert diagnostics._gbd_moment_recovery_failures(("vortex",)) == []
+    for invalid in ("1e-2", "nan", "inf", "unreadable"):
+        log.write_text(f"  net residual, after{separator}{invalid}\n")
+        assert diagnostics._gbd_moment_recovery_failures(("vortex",))
+
+
+def test_rwm_precision_plans_additional_independent_members_without_relaxing_gate():
+    from tutorials.vpm.lamb_oseen_vortex.assets.rwm_ensemble import required_ensemble_size
+
+    assert required_ensemble_size(10, 0.093436, 0.075) == 18
+    assert required_ensemble_size(18, 0.07, 0.075) == 18
+    with pytest.raises(ValueError, match="finite"):
+        required_ensemble_size(10, float("nan"), 0.075)
+
+
+def test_rwm_convergence_extends_only_the_missing_members(tmp_path, monkeypatch):
+    from tutorials.vpm.lamb_oseen_vortex.assets import postprocess, rwm_ensemble
+
+    monkeypatch.setattr(rwm_ensemble, "TUTORIAL_DIR", tmp_path)
+    batches = []
+    monkeypatch.setattr(
+        rwm_ensemble,
+        "run_ensemble",
+        lambda case, count, seed, **kw: batches.append((count, kw["first_realization"])),
+    )
+    output = tmp_path / "samples/vortex_rwm"
+    output.mkdir(parents=True)
+
+    def aggregate(solution, samples, case, count):
+        error = 0.093436 if count == 10 else 0.07
+        (output / "rwm_convergence.csv").write_text(
+            "relative_standard_error_l2_velocity,relative_standard_error_l2_vorticity\n"
+            f"0.01,{error}\n"
+        )
+
+    monkeypatch.setattr(postprocess, "aggregate_case", aggregate)
+    rwm_ensemble.run_converged_ensemble("vortex", 10, 42000, 80)
+    assert batches == [(10, 0), (18, 10)]
+    with pytest.raises(RuntimeError, match="increase --maximum-realizations"):
+        rwm_ensemble.run_converged_ensemble("vortex", 10, 42000, 10)

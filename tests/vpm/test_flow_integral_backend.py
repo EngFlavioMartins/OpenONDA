@@ -108,3 +108,31 @@ def test_fourier_grid_growth_bridges_the_rate_on_the_old_grid():
     assert result["kinetic_energy_rate"] == pytest.approx(-2.0)
     assert result["kinetic_energy_rate_source"] == ("fourier_grid_transition_backward_difference")
     assert evaluator._energy_history[-1] == (0.5, 3.0, "unbounded_energy")
+
+
+@pytest.mark.parametrize(
+    ("previous", "current"),
+    [
+        ("periodic_fourier_energy", "unbounded_energy"),
+        ("unbounded_energy", "periodic_fourier_energy"),
+    ],
+)
+def test_energy_derivatives_never_compare_periodic_and_unbounded_definitions(previous, current):
+    evaluator = object.__new__(ParticleFieldEvaluation)
+    evaluator._fourier_grid = None
+    evaluator._energy_history = [(0.0, 3.0, previous)]
+    evaluator._max_history_length = 7
+    spectral = SimpleNamespace(
+        total_kinetic_energy=10.0,
+        total_helicity=0.0,
+        total_enstrophy=2.0,
+        test_filtered_enstrophy=1.0,
+        viscous_kinetic_energy_rate=-2.0,
+        energy_measurement=current,
+    )
+    evaluator._fourier_integrals_on_persistent_grid = lambda *args: (spectral, True, None)
+    result = evaluator._compute_fourier_flow_integrals(_FourierParticleCloud(), 0.5, True)
+    assert result["energy_measurement"] == current
+    assert result["kinetic_energy_rate"] == -2.0
+    assert result["kinetic_energy_rate_source"] == "fourier_transition_viscous_rate"
+    assert evaluator._energy_history[-1] == (0.5, 10.0, current)

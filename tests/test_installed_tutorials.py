@@ -72,7 +72,7 @@ def test_materialized_lamb_oseen_case_is_self_contained(tmp_path: Path) -> None:
     assert "run_physics_case vortex" in allrun
     assert "run_physics_case dipole" in allrun
     assert "run_physics_case merging" in allrun
-    assert '--aggregate-rwm-case "${physics}"' in allrun
+    assert "--converge --resume" in allrun
     assert '--validate-case "${physics}"' in allrun
     assert "--induction" not in allrun
     assert " CS DIRECT" not in allrun
@@ -132,9 +132,11 @@ def test_launcher_uses_the_console_scripts_python_environment(
 
 
 def test_lamb_oseen_initial_core_radius_matches_regeneration_ratio(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     setup = _load_lamb_oseen_setup()
+    monkeypatch.setattr(setup, "TUTORIAL_DIR", tmp_path)
 
     observed: dict[str, float] = {}
 
@@ -165,8 +167,9 @@ def test_lamb_oseen_numerical_setup() -> None:
 
 
 @pytest.mark.parametrize("physics", ["vortex", "dipole", "merging"])
-def test_lamb_oseen_workspace_reserves_full_time_diffusion(physics, monkeypatch):
+def test_lamb_oseen_workspace_reserves_full_time_diffusion(physics, monkeypatch, tmp_path):
     setup = _load_lamb_oseen_setup()
+    monkeypatch.setattr(setup, "TUTORIAL_DIR", tmp_path)
     captured = []
 
     class CaseCapturedError(Exception):

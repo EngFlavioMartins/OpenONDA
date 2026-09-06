@@ -82,9 +82,10 @@ def _write_boundary(mesh_data: dict[str, Any]) -> str:
 def write_poly_mesh(mesh_data: dict[str, Any], directory: str | Path) -> Path:
     """Write ``mesh_data`` to an ASCII ``constant/polyMesh`` directory.
 
-    ``directory`` is the polyMesh directory itself.  Internal faces are kept
-    in native owner order, and boundary faces follow the contiguous patch
-    ranges required by both OpenONDA and OpenFOAM.
+    ``directory`` is the polyMesh directory itself. Internal faces are sorted
+    by owner then neighbour for OpenFOAM's upper-triangular addressing. Cell
+    ids, geometric connectivity, boundary ranges and the input mesh are
+    preserved. Reversing an owner/neighbour pair also reverses its face.
     """
     validate_topology(mesh_data)
     destination = Path(directory)
@@ -93,6 +94,16 @@ def write_poly_mesh(mesh_data: dict[str, Any], directory: str | Path) -> Path:
     faces = mesh_data["faces"]
     owners = np.asarray(mesh_data["owners"], dtype=np.int64)
     neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
+    n_internal = len(neighbours)
+    reverse = owners[:n_internal] > neighbours
+    export_owners = np.minimum(owners[:n_internal], neighbours)
+    export_neighbours = np.maximum(owners[:n_internal], neighbours)
+    order = np.lexsort((export_neighbours, export_owners))
+    faces = [
+        np.asarray(faces[int(i)])[::-1] if reverse[i] else faces[int(i)] for i in order
+    ] + list(faces[n_internal:])
+    owners = np.concatenate((export_owners[order], owners[n_internal:]))
+    neighbours = export_neighbours[order]
     (destination / "points").write_text(
         _foam_list(
             [_format_point(point) for point in points],
@@ -192,6 +203,14 @@ def read_poly_mesh(directory: str | Path) -> dict[str, Any]:
     neighbours = np.asarray(
         [int(value) for value in _read_list(source / "neighbour")], dtype=np.int32
     )
+    # cfMesh's polyMeshGen can emit a full-length legacy neighbour list with
+    # -1 for boundary faces; OpenFOAM accepts this as well as a compact list.
+    boundary_entries = np.flatnonzero(neighbours < 0)
+    if len(boundary_entries):
+        first_boundary = int(boundary_entries[0])
+        if not np.all(neighbours[first_boundary:] == -1):
+            raise ValueError("OpenFOAM neighbour list has non-trailing boundary entries")
+        neighbours = neighbours[:first_boundary]
     boundary_tokens = _tokens(source / "boundary")
     patches: list[dict[str, Any]] = []
     index = boundary_tokens.index("(") + 1
@@ -221,7 +240,9 @@ def read_poly_mesh(directory: str | Path) -> dict[str, Any]:
         "owners": owners,
         "neighbours": neighbours,
         "boundary": patches,
-        "n_cells": int(owners.max(initial=-1)) + 1,
+        # An interior cell may occur only as a neighbour after OpenFOAM's
+        # upper-triangular renumbering (including the highest numbered cell).
+        "n_cells": int(max(owners.max(initial=-1), neighbours.max(initial=-1))) + 1,
         "n_faces": len(faces),
         "n_interior_faces": len(neighbours),
         "n_points": len(points),

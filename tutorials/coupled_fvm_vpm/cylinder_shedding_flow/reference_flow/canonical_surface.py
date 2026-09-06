@@ -22,7 +22,10 @@ import vtk
 from source.solvers.fvm.mesh.triangulated_surface import TriangulatedSurface
 
 
-DOMAIN = (-8.0, 20.0, -8.0, 8.0, -0.6, 0.6)
+try:
+    from .case_definition import DOMAIN
+except ImportError:
+    from case_definition import DOMAIN  # pyrefly: ignore [missing-import]
 
 
 def _clip_polygon_z(polygon: np.ndarray, z_min: float, z_max: float) -> np.ndarray:
@@ -78,7 +81,10 @@ def _boundary_loop(points: np.ndarray) -> list[tuple[float, float, float]]:
     centre = unique[:, :2].mean(axis=0)
     angles = np.arctan2(unique[:, 1] - centre[1], unique[:, 0] - centre[0])
     order = np.argsort(angles, kind="mergesort")
-    return [tuple(map(float, unique[index])) for index in order]
+    return [
+        (float(unique[index, 0]), float(unique[index, 1]), float(unique[index, 2]))
+        for index in order
+    ]
 
 
 def _boundary_perimeter(wall: np.ndarray, z: float) -> list[tuple[float, float, float]]:
@@ -92,7 +98,7 @@ def _boundary_perimeter(wall: np.ndarray, z: float) -> list[tuple[float, float, 
         for first, second in zip(triangle, np.roll(triangle, -1, axis=0), strict=True):
             left = key(first)
             right = key(second)
-            edge_key = tuple(sorted((left, right)))  # type: ignore[assignment]
+            edge_key = (left, right) if left < right else (right, left)
             edges[edge_key] = edges.get(edge_key, 0) + 1
     perimeter_edges = [
         edge
@@ -130,9 +136,10 @@ def _plane_annulus(
     perimeter: Iterable[tuple[float, float, float]],
     *,
     outward_sign: float,
+    domain=DOMAIN,
 ) -> np.ndarray:
     """Triangulate a rectangular plane with the cylinder hole preserved."""
-    xmin, xmax, ymin, ymax, _zmin, _zmax = DOMAIN
+    xmin, xmax, ymin, ymax, _zmin, _zmax = domain
     inner = list(perimeter)
     outer = [(xmin, ymin, z), (xmax, ymin, z), (xmax, ymax, z), (xmin, ymax, z)]
     points = vtk.vtkPoints()
@@ -187,9 +194,9 @@ def _native_cylinder_triangles(source: Path) -> np.ndarray:
     return fluid_wall_triangles(source)
 
 
-def _box_triangles() -> dict[str, np.ndarray]:
+def _box_triangles(domain=DOMAIN) -> dict[str, np.ndarray]:
     """Return outward-oriented outer box triangles grouped by patch."""
-    xmin, xmax, ymin, ymax, zmin, zmax = DOMAIN
+    xmin, xmax, ymin, ymax, zmin, zmax = domain
     c = np.asarray(
         (
             (xmin, ymin, zmin),
@@ -298,17 +305,19 @@ def _write_ascii_stl(groups: dict[str, np.ndarray], path: Path) -> None:
         raise
 
 
-def prepare_canonical_surfaces(source: Path, directory: Path) -> dict[str, Path | str]:
+def prepare_canonical_surfaces(
+    source: Path, directory: Path, *, domain=DOMAIN
+) -> dict[str, Path | str | int]:
     """Materialize and hash the shared Python/native fluid-boundary inputs."""
-    wall = clipped_wall_triangles(source, z_min=DOMAIN[4], z_max=DOMAIN[5])
+    wall = clipped_wall_triangles(source, z_min=domain[4], z_max=domain[5])
     wall_path = directory / "cylinder_fluid_wall.stl"
     native_path = directory / "native_geometry.stl"
     _write_ascii_stl({"cylinder": wall}, wall_path)
-    groups = _box_triangles()
-    perimeter_lower = _boundary_perimeter(wall, DOMAIN[4])
-    perimeter_upper = _boundary_perimeter(wall, DOMAIN[5])
-    groups["zmin"] = _plane_annulus(DOMAIN[4], perimeter_lower, outward_sign=-1.0)
-    groups["zmax"] = _plane_annulus(DOMAIN[5], perimeter_upper, outward_sign=1.0)
+    groups = _box_triangles(domain)
+    perimeter_lower = _boundary_perimeter(wall, domain[4])
+    perimeter_upper = _boundary_perimeter(wall, domain[5])
+    groups["zmin"] = _plane_annulus(domain[4], perimeter_lower, outward_sign=-1.0, domain=domain)
+    groups["zmax"] = _plane_annulus(domain[5], perimeter_upper, outward_sign=1.0, domain=domain)
     # The span annuli belong to the outer z patches below; the cylinder solid
     # contributes only its clipped side wall, so no disk is introduced.
     groups["cylinder"] = wall

@@ -80,7 +80,7 @@ SPACING = 0.60 * CORE_RADIUS
 TIME_STEP_SIZE = 0.291 / 9.0
 CONFIGURED_TOTAL_TIME = 103.0 * 0.291
 MAX_PARTICLES = 400_000
-RWM_ENSEMBLE_SIZE = 10
+RWM_RELATIVE_STANDARD_ERROR_LIMIT = 0.075
 COMPUTE_METHOD = {
     "CS": "DIRECT",
     "RWM": "DIRECT",
@@ -2486,12 +2486,12 @@ def energy_balance_audit(
             }
     return {
         "finite_difference_definition": (
-            "backward difference of consecutive same-grid unbounded kinetic-energy "
-            "integrals, plus one labelled viscous estimate when Fourier tracking starts"
+            "backward difference of consecutive unbounded kinetic-energy integrals; "
+            "DVH output intervals include at least one resolved heat transfer"
         ),
         "large_cloud_mode": (
-            "phase-locked Fourier grid; same-grid backward differences bridge grid growth, "
-            "with an explicitly labelled viscous estimate for the first Fourier transition"
+            "uniform-core, uniform-viscosity clouds use zero-padded linear correlations "
+            "with the unbounded transverse Gaussian Green tensor"
         ),
         "runs": runs,
     }
@@ -2593,16 +2593,22 @@ def _gbd_moment_recovery_failures(cases: tuple[str, ...]) -> list[str]:
         except OSError as error:
             failures.append(f"{name}: missing GBD recovery log ({error})")
             continue
-        residuals = np.asarray(
-            [float(value) for value in re.findall(r"net residual, after\s+([0-9.eE+-]+)", log)],
-            dtype=float,
-        )
+        try:
+            residuals = np.asarray(
+                [float(value) for value in re.findall(r"net residual, after\s*\|?\s*(\S+)", log)],
+                dtype=float,
+            )
+        except ValueError:
+            failures.append(f"{name}: malformed GBD recovery residual")
+            continue
         if residuals.size == 0:
             failures.append(f"{name}: no GBD moment-recovery closure was recorded")
-        elif not np.isfinite(residuals).all() or float(residuals.max()) > residual_limit:
+        elif not np.isfinite(residuals).all():
+            failures.append(f"{name}: non-finite GBD recovery residual")
+        elif float(residuals.max()) > residual_limit:
             failures.append(
                 f"{name}: GBD recovery residual exceeds {residual_limit:.1e} "
-                f"(maximum {float(np.nanmax(residuals)):.3e})"
+                f"(maximum {float(residuals.max()):.3e})"
             )
     return failures
 
@@ -2729,7 +2735,7 @@ def validate(
                 ensemble_size = int(metadata.get("ensemble_size", 0))
                 seeds = metadata.get("random_seeds", [])
                 if (
-                    ensemble_size != RWM_ENSEMBLE_SIZE
+                    ensemble_size < MINIMUM_ENSEMBLE_SIZE
                     or len(seeds) != ensemble_size
                     or len(set(seeds)) != ensemble_size
                 ):
@@ -2746,7 +2752,7 @@ def validate(
                     ):
                         if column not in convergence:
                             failures.append(f"{name}: missing convergence column {column}")
-                        elif float(convergence[column].max()) > 0.075:
+                        elif float(convergence[column].max()) > RWM_RELATIVE_STANDARD_ERROR_LIMIT:
                             failures.append(
                                 f"{name}: {column} exceeds the 7.5% Monte Carlo uncertainty limit"
                             )

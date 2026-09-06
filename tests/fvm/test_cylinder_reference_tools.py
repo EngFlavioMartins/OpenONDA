@@ -50,15 +50,11 @@ def test_grid_study_force_report_uses_one_common_statistics_window(tmp_path, mon
     monkeypatch.setattr(postprocess, "CASE_DIR", tmp_path)
     realized_background = {
         "very_coarse": 0.4,
-        "coarse": 0.2,
-        "medium": 0.1,
-        "fine": 0.05,
+        **{name: 8 * dx for name, dx in postprocess.PRODUCTION_CASES},
     }
     realized_wall = {
         "very_coarse": 1.0 / 30.0,
-        "coarse": 0.025,
-        "medium": 0.0125,
-        "fine": 0.00625,
+        **dict(postprocess.PRODUCTION_CASES),
     }
     monkeypatch.setattr(
         postprocess,
@@ -83,7 +79,8 @@ def test_grid_study_force_report_uses_one_common_statistics_window(tmp_path, mon
     np.testing.assert_allclose(report["cases"][-1]["mean_cd"], 1.3, atol=1.0e-12)
     np.testing.assert_allclose(report["cases"][-1]["strouhal"], 0.2, atol=2.0e-3)
     assert len(report["comparisons"]) == 3
-    assert report["grid_convergence"]["mean_cd"]["status"] == "converged_to_roundoff"
+    assert report["grid_convergence"]["mean_cd"]["status"] == "differences_unresolved"
+    assert not report["grid_independent"]
 
 
 def test_grid_study_uses_reasonable_monotone_wall_spacings():
@@ -91,7 +88,7 @@ def test_grid_study_uses_reasonable_monotone_wall_spacings():
     spacing = np.asarray([dx for _case, dx in postprocess.CASES])
 
     assert names == ["very_coarse", "coarse", "medium", "fine"]
-    np.testing.assert_allclose(spacing, [1 / 12, 1 / 40, 1 / 80, 1 / 160])
+    np.testing.assert_allclose(spacing, [1 / 4, 1 / 8, 1 / 16, 1 / 32])
     assert np.all(np.diff(spacing) < 0.0)
     production = np.asarray([dx for _case, dx in postprocess.PRODUCTION_CASES])
     np.testing.assert_allclose(production[:-1] / production[1:], 2.0)
@@ -120,7 +117,7 @@ def test_richardson_gci_recovers_second_order_limit():
 
     result = postprocess.richardson_gci(records, "mean_cd", tolerance_percent=1.0)
 
-    assert result["status"] == "asymptotic"
+    assert result["status"] == "monotone_estimate"
     np.testing.assert_allclose(result["observed_order"], 2.0, atol=1.0e-12)
     np.testing.assert_allclose(result["richardson_extrapolated_value"], exact, atol=1.0e-12)
     assert result["passed"]

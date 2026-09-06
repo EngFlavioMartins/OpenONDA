@@ -4,8 +4,5 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-export MPLCONFIGDIR="${TMPDIR:-/tmp}/openonda-matplotlib-cache"
-mkdir -p "$MPLCONFIGDIR" figures
-
-python -u assets/postprocess.py
-python -u assets/plot_grid_study.py
+export MPLBACKEND=Agg
+exec "${PYTHON:-python}" -u study.py --report-only "$@"

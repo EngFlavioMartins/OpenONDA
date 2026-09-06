@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
+import tempfile
 
 import numpy as np
 
@@ -45,6 +47,7 @@ MAX_PARTICLES = 400_000  # particle-container capacity (largest DVH/GBD populati
 VISCOUS_SCHEMES = ("CS", "DVH", "GBD")
 ALL_VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
 RWM_ENSEMBLE_SIZE = 10
+ENERGY_DIAGNOSTIC_VERSION = 2
 
 COMPUTE_METHOD = {
     "CS": "DIRECT",
@@ -206,12 +209,67 @@ def write_run_metadata(
         "final_time": float(solver.time),
         "initial_n_particles_total": int(initial_n_particles_total),
         "final_n_particles_total": int(getattr(solver.particles, "n_particles_total", 0)),
+        "energy_diagnostic_version": ENERGY_DIAGNOSTIC_VERSION,
     }
     destination = TUTORIAL_DIR / "samples" / sample_directory / "run_metadata.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     temporary.replace(destination)
+
+
+def completed_run_matches(physics: str, scheme: str, name: str, random_seed: int) -> bool:
+    """Reuse a complete compatible run, including its final particle backup."""
+    try:
+        folder = TUTORIAL_DIR / "samples" / name
+        metadata = json.loads((folder / "run_metadata.json").read_text())
+        steps = round(TOTAL_TIME / TIME_STEP_SIZE)
+        expected = {
+            "status": "complete",
+            "completed": True,
+            "case": physics,
+            "scheme": scheme.lower(),
+            "random_seed": random_seed,
+            "particle_spacing": SPACING,
+            "particle_core_radius": PARTICLE_RADIUS,
+            "time_step_size": TIME_STEP_SIZE,
+            "number_of_steps": steps,
+            "induction_backend": COMPUTE_METHOD[scheme],
+            "integrator": "RK2",
+            "circulations": list(PHYSICS_CIRCULATIONS[physics]),
+            "kinematic_viscosity": abs(PHYSICS_CIRCULATIONS[physics][0])
+            / CIRCULATION_REYNOLDS_NUMBER,
+            "gaussian_core_radius": GAUSSIAN_CORE_RADIUS,
+            "column_length": COLUMN_LENGTH,
+            "field_spacing": FIELD_SPACING,
+        }
+        if any(metadata.get(key) != value for key, value in expected.items()):
+            return False
+        if not np.isclose(metadata.get("final_time", -1.0), TOTAL_TIME, rtol=0.0, atol=1e-8):
+            return False
+        if (
+            scheme in {"DVH", "GBD"}
+            and metadata.get("energy_diagnostic_version") != ENERGY_DIAGNOSTIC_VERSION
+        ):
+            return False
+        if scheme == "RWM":
+            interval = (
+                MERGING_SAMPLE_INTERVAL_STEPS
+                if physics == "merging"
+                else round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
+            )
+            if any(
+                not (TUTORIAL_DIR / "solution" / name / f"vpm_{step:06d}.h5").is_file()
+                for step in range(interval, steps, interval)
+            ):
+                return False
+        elif not (folder / f"{name}_zq.pvd").is_file():
+            return False
+        return (folder / "flow_integrals.csv").is_file() and (
+            TUTORIAL_DIR / "solution" / name / f"vpm_{steps:06d}.h5"
+        ).is_file()
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def run_case(
@@ -223,9 +281,22 @@ def run_case(
     surfaces: bool = True,
     backup_steps: int | None = None,
     compute_device: str = "AUTO",
+    resume: bool = False,
 ) -> None:
     scheme = scheme.upper()
     case_name = name or f"{physics}_{scheme.lower()}"
+    if resume and completed_run_matches(physics, scheme, case_name, random_seed):
+        print(f"[resume] {case_name}: reusing completed run", flush=True)
+        return
+    previous = [TUTORIAL_DIR / kind / case_name for kind in ("samples", "solution")]
+    if any(path.exists() for path in previous):
+        archive_root = TUTORIAL_DIR / "solution" / ".previous_runs"
+        archive_root.mkdir(parents=True, exist_ok=True)
+        archive = Path(tempfile.mkdtemp(prefix=f"{case_name}-", dir=archive_root))
+        for path in previous:
+            if path.exists():
+                path.rename(archive / path.parent.name)
+        print(f"[resume] {case_name}: preserved previous outputs in {archive}", flush=True)
     # ---- Derived physical quantities ----
     spacing = SPACING
     particle_core_radius = PARTICLE_RADIUS
@@ -294,7 +365,14 @@ def run_case(
     ]
     # ---- Field samplers ---------------------------------------------------
     sample_plane_fraction = 0.25  # sample at z = L/4
-    samplers = [vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(field_interval_steps))]
+    integral_interval_steps = field_interval_steps
+    if scheme == "DVH":
+        diffusion_steps = math.ceil(viscous.dvh_required_time_step_size() / TIME_STEP_SIZE)
+        # Each energy secant must include an actual heat transfer. Between
+        # transfers DVH advances only advection, whose small discretization
+        # drift is not a viscous energy-rate estimate. Keep field output dense.
+        integral_interval_steps *= math.ceil(diffusion_steps / integral_interval_steps)
+    samplers = [vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(integral_interval_steps))]
     if surfaces:
         samplers.append(
             vpm.SurfaceSampler(
@@ -361,12 +439,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case", choices=tuple(PHYSICS_CIRCULATIONS))
     parser.add_argument("viscous_scheme", choices=VISCOUS_SCHEMES)
+    parser.add_argument("--resume", action="store_true", help="reuse compatible completed outputs")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    run_case(args.case, args.viscous_scheme)
+    run_case(args.case, args.viscous_scheme, resume=args.resume)
     return 0
 
 

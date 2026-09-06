@@ -34,21 +34,23 @@ run_phase() {
 }
 
 printf '[campaign] Lamb–Oseen | vortex → dipole → merging | 4 methods per case\n'
-run_phase "Clean previous outputs" "${SCRIPT_DIR}/allclean.sh"
+case "${1:---resume}" in
+    --clean) run_phase "Clean previous outputs" "${SCRIPT_DIR}/allclean.sh" ;;
+    --resume) ;;
+    *) printf 'Usage: %s [--resume|--clean]\n' "$0" >&2; exit 2 ;;
+esac
 
 run_physics_case() {
     local physics="$1"
-    run_phase "${physics} / CS" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" CS
+    run_phase "${physics} / CS" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" CS --resume
 
-    run_phase "${physics} / RWM / 10 realizations" \
+    run_phase "${physics} / RWM / converge ensemble" \
         "${PYTHON_BIN}" -u -m "${MODULE}.assets.rwm_ensemble" "${physics}" \
-        --number-of-realizations 10
-    run_phase "${physics} / aggregate RWM" "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" \
-        --aggregate-rwm-case "${physics}" --expected-rwm-members 10
+        --number-of-realizations 10 --converge --resume
 
-    run_phase "${physics} / DVH" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" DVH
+    run_phase "${physics} / DVH" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" DVH --resume
 
-    run_phase "${physics} / GBD" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" GBD
+    run_phase "${physics} / GBD" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" GBD --resume
 
     run_phase "${physics} / extract diagnostics" "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" \
         --extract-fields --case "${physics}"

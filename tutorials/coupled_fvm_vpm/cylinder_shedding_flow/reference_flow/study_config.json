@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "dt": 0.001,
+  "end_time": 250.0,
+  "discard_time": 100.0,
+  "minimum_cycles": 20,
+  "force_interval": 0.01,
+  "checkpoint_interval": 5.0,
+  "field_interval": 50.0,
+  "memory_budget_gib": 3.0,
+  "estimated_bytes_per_cell": 10000,
+  "max_cells": 300000,
+  "retained_checkpoints": 2,
+  "disk_reserve_gib": 8.0,
+  "mean_cl_absolute_tolerance": 0.002,
+  "tolerance_percent": {
+    "mean_cd": 1.0,
+    "cd_rms": 2.0,
+    "cd_peak_to_peak": 2.0,
+    "cl_rms": 2.0,
+    "cl_amplitude": 2.0,
+    "strouhal": 1.0
+  }
+}

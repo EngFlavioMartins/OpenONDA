@@ -18,8 +18,13 @@ import openonda.fvm.mesher as msh
 
 try:
     from .canonical_surface import DOMAIN, prepare_canonical_surfaces
+    from .case_definition import domain_for
 except ImportError:  # Direct ``python setup.py`` execution.
-    from canonical_surface import DOMAIN, prepare_canonical_surfaces
+    from canonical_surface import (
+        DOMAIN,
+        prepare_canonical_surfaces,
+    )  # pyrefly: ignore [missing-import]
+    from case_definition import domain_for  # pyrefly: ignore [missing-import]
 
 CASE_DIR = Path(__file__).resolve().parent
 CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_long.stl"
@@ -51,23 +56,27 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def grid_mesh(dx: float) -> msh.CartesianMesher:
+def grid_mesh(dx: float, *, domain=DOMAIN) -> msh.CartesianMesher:
     """Return a declarative grid-study mesh at requested wall size ``dx``."""
-    # Keep every Cartesian level geometrically similar across the dyadic r=2 study.
+    # Local transitions stay dyadic; inter-grid refinement is r=1.5.
     background_size = 8.0 * dx
     canonical = prepare_canonical_surfaces(
         CYLINDER_STL,
-        CASE_DIR / "mesh_evidence" / "canonical_inputs",
+        CASE_DIR
+        / "mesh_evidence"
+        / "laptop_inputs"
+        / hashlib.sha256(repr(domain).encode()).hexdigest()[:12],
+        domain=domain,
     )
     return msh.CartesianMesher(
         domain=msh.BoxDomain(
-            bounds=DOMAIN,
+            bounds=domain,
             patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
         ),
         # The wall is the clipped source representation shared with the native
         # oracle.  The span annuli remain native outer-domain geometry; no
         # artificial cylinder end-cap is introduced.
-        surfaces=(msh.STLSurface(canonical["wall_path"], patch="cylinder", allow_open=True),),
+        surfaces=(msh.STLSurface(str(canonical["wall_path"]), patch="cylinder", allow_open=True),),
         max_cell_size=background_size,
         # Keep the six outer planes at the background scale.  The named
         # cylinder patch carries the requested wall size, avoiding a dense
@@ -77,7 +86,7 @@ def grid_mesh(dx: float) -> msh.CartesianMesher:
         refinements=(
             msh.BoxRefinement(
                 name="near_body",
-                bounds=(-2.0, 6.0, -2.0, 2.0, DOMAIN[4], DOMAIN[5]),
+                bounds=(-2.0, 6.0, -2.0, 2.0, domain[4], domain[5]),
                 # Keep the requested level at 2*dx under cfMesh's strict
                 # object-size conversion; an exact binary equality would
                 # intentionally select the next finer level.
@@ -85,7 +94,7 @@ def grid_mesh(dx: float) -> msh.CartesianMesher:
             ),
             msh.BoxRefinement(
                 name="wake",
-                bounds=(-4.0, 12.0, -4.0, 4.0, DOMAIN[4], DOMAIN[5]),
+                bounds=(-4.0, 12.0, -4.0, 4.0, domain[4], domain[5]),
                 cell_size=4.0 * dx * (1.0 + 1.0e-12),
             ),
         ),
@@ -101,7 +110,7 @@ def grid_mesh(dx: float) -> msh.CartesianMesher:
     )
 
 
-def samplers(dx: float) -> tuple:
+def samplers(dx: float, *, domain=DOMAIN) -> tuple:
     force_schedule = fvm.RunSchedule(every_time=FORCE_INTERVAL_TIME)
     line_schedule = fvm.RunSchedule(every_time=LINE_INTERVAL_TIME)
     slice_schedule = fvm.RunSchedule(every_time=SLICE_INTERVAL_TIME)
@@ -110,7 +119,7 @@ def samplers(dx: float) -> tuple:
         fvm.ForceSampler(
             patch_names=["cylinder"],
             reference_velocity=1.0,
-            reference_area=DIAMETER * CYLINDER_LENGTH,
+            reference_area=DIAMETER * (domain[5] - domain[4]),
             reference_length=DIAMETER,
             moment_centre=[0.0, 0.0, 0.0],
             file_name="forces_history",
@@ -164,7 +173,7 @@ def samplers(dx: float) -> tuple:
         fvm.SurfaceSampler(
             point=[0.0, 0.0, 0.0],
             normal=[0.0, 0.0, 1.0],
-            bounds=[DOMAIN[0], DOMAIN[1], DOMAIN[2], DOMAIN[3]],
+            bounds=[domain[0], domain[1], domain[2], domain[3]],
             spacing=sample_spacing,
             k=12,
             reconstruction="affine",
@@ -229,7 +238,7 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
         schemes=fvm.DiscretizationConfig(
             convection_scheme="limitedLinear",
             gradient_scheme="lsq",
-            time_scheme="euler",
+            time_scheme="euler_implicit",
         ),
         linear=fvm.LinearSolverConfig(
             linear_solver="bicgstab",
@@ -248,7 +257,7 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
             velocity_relaxation=0.7,
             pressure_relaxation=0.3,
         ),
-        samplers=samplers(dx),
+        samplers=samplers(dx, domain=domain_for(case_name)),
         transport=fvm.TransportConfig(
             density=1.0,
             kinematic_viscosity=KINEMATIC_VISCOSITY,
@@ -293,7 +302,7 @@ def main() -> None:
             )
         mesh_source = mesh_file
     else:
-        mesh_source = grid_mesh(arguments.dx)
+        mesh_source = grid_mesh(arguments.dx, domain=domain_for(arguments.case_name))
     solver = fvm.create_fvm_solver(
         solver_setup(arguments.case_name, arguments.dx),
         case_dir=CASE_DIR,

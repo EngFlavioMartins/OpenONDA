@@ -22,6 +22,7 @@ from source.solvers.fvm.mesh.cartesian.cfmesh_mesh_optimisation import (
 from source.solvers.fvm.mesh.cartesian.cfmesh_surface_optimisation import (
     _gradients,
     _optimise_point,
+    _optimise_point_kernel,
     _smooth_partition_points,
 )
 
@@ -120,7 +121,8 @@ def test_mesh_addressing_preserves_and_validates_native_cell_face_order():
         )
 
 
-def test_surface_optimizer_uses_cfmesh_branch_for_symmetric_simplex():
+@pytest.mark.parametrize("optimizer", [_optimise_point, _optimise_point_kernel])
+def test_surface_optimizer_uses_cfmesh_branch_for_symmetric_simplex(optimizer):
     points = np.asarray(
         [
             (0.0, 0.0, 0.0),
@@ -150,7 +152,7 @@ def test_surface_optimizer_uses_cfmesh_branch_for_symmetric_simplex():
         dtype=np.int32,
     )
 
-    result = _optimise_point(points, triangles)
+    result = optimizer(points, triangles)
 
     # Regenerated from these exact (rounded) input coordinates through
     # tools/mesh_parity/native_surface_optimizer, linked to cfMesh 3ff85555.
@@ -160,7 +162,8 @@ def test_surface_optimizer_uses_cfmesh_branch_for_symmetric_simplex():
     )
 
 
-def test_surface_optimizer_matches_native_irregular_fans():
+@pytest.mark.parametrize("optimizer", [_optimise_point, _optimise_point_kernel])
+def test_surface_optimizer_matches_native_irregular_fans(optimizer):
     """Native cfMesh results, with the meshSurfaceOptimizer tolerance (0.001)."""
     expected = (
         (0.3727348298805224, 0.10032591573101839, 0.0),
@@ -189,9 +192,7 @@ def test_surface_optimizer_matches_native_irregular_fans():
             dtype=np.int32,
         )
 
-        assert _optimise_point(points, triangles) == pytest.approx(
-            native_result, abs=1.0e-14, rel=0.0
-        )
+        assert optimizer(points, triangles) == pytest.approx(native_result, abs=1.0e-14, rel=0.0)
 
 
 def test_surface_optimizer_skips_collapsed_opposite_edge_in_gradients():

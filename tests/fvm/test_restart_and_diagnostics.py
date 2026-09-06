@@ -194,6 +194,39 @@ def test_solver_factory_builds_mesher_objects_and_persists_the_result(tmp_path):
     assert (solution / "mesh.vtu").is_file()
 
 
+@pytest.mark.parametrize("source_kind", ["dictionary", "file"])
+def test_factory_backs_up_loaded_mesh_before_solver_admission(tmp_path, monkeypatch, source_kind):
+    from source.solvers.fvm.core import solver as solver_module
+
+    mesh = structured_box(2, 2, 2)
+    source = save_native_mesh(mesh, tmp_path / "input.npz") if source_kind == "file" else mesh
+    solution = tmp_path / "solution" / source_kind
+
+    def reject(*args, **kwargs):
+        import pyvista as pv
+
+        assert pv.read(solution / "mesh.vtu").n_cells == 8
+        validate_topology(load_native_mesh(solution / "mesh.npz"))
+        raise ValueError("deliberate production admission failure")
+
+    monkeypatch.setattr(solver_module, "FVMSolver", reject)
+    with pytest.raises(ValueError, match="deliberate production admission"):
+        create_fvm_solver(_setup(), case_dir=tmp_path, solution_dir=solution, mesh=source)
+
+
+def test_mesh_backup_preserves_previous_pair_on_repeated_startup(tmp_path):
+    from source.solvers.fvm.factory import _save_generated_mesh
+
+    _save_generated_mesh(structured_box(2, 2, 2), tmp_path, _setup().output)
+    previous = {name: (tmp_path / name).read_bytes() for name in ("mesh.npz", "mesh.vtu")}
+    _save_generated_mesh(structured_box(3, 2, 2), tmp_path, _setup().output)
+    archives = list(tmp_path.glob("mesh-backup-*"))
+    assert len(archives) == 1
+    for name, content in previous.items():
+        assert (archives[0] / name).read_bytes() == content
+    assert load_native_mesh(tmp_path / "mesh.npz")["n_cells"] == 12
+
+
 def test_pvd_index_merges_existing_frames_across_restart(tmp_path):
     write_pvd(tmp_path, "slice", [(0.5, "slice_000050.vts"), (1.0, "slice_000100.vts")])
     write_pvd(tmp_path, "slice", [(1.5, "slice_000150.vts")])

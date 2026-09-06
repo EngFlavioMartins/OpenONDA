@@ -113,14 +113,14 @@ def _materialize_mesh(
 
 
 def _save_generated_mesh(mesh_data: dict[str, Any], solution_dir: Path, output: Any) -> None:
-    """Store lossless and ParaView-readable copies of one generated mesh."""
+    """Back up every input mesh before solver admission; preserve earlier copies."""
+    import tempfile
+
     from .io.mesh_storage import save_native_mesh
     from .io.vtk_exporter import VTKExporter
-    from .mesh.geometry import compute_mesh_geometry
 
-    save_native_mesh(mesh_data, solution_dir / "mesh.npz")
-    geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
-    fields: dict[str, Any] = {"cell_volume": geometry["cell_volume"]}
+    solution_dir.mkdir(parents=True, exist_ok=True)
+    fields: dict[str, Any] = {}
     for source_name, output_name in (
         ("cell_sizes", "cell_size"),
         ("cell_levels", "refinement_level"),
@@ -129,6 +129,25 @@ def _save_generated_mesh(mesh_data: dict[str, Any], solution_dir: Path, output: 
         values = mesh_data.get(source_name)
         if values is not None:
             fields[output_name] = values
+    # Export before geometric/LSQ admission so a rejected mesh remains inspectable.
+    # Finish both new files before moving any previous successful backup.
+    with tempfile.TemporaryDirectory(prefix=".mesh-export-", dir=solution_dir) as temporary:
+        staging = Path(temporary)
+        save_native_mesh(mesh_data, staging / "mesh.npz")
+        VTKExporter(mesh_data, output).export(str(staging / "mesh.vtu"), fields)
+        existing = [solution_dir / name for name in ("mesh.npz", "mesh.vtu")]
+        if any(path.exists() for path in existing):
+            previous = Path(tempfile.mkdtemp(prefix="mesh-backup-", dir=solution_dir))
+            for path in existing:
+                if path.exists():
+                    path.rename(previous / path.name)
+        for name in ("mesh.npz", "mesh.vtu"):
+            (staging / name).replace(solution_dir / name)
+    # Enrich a valid backup without making its availability depend on geometry.
+    from .mesh.geometry import compute_mesh_geometry
+
+    geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
+    fields["cell_volume"] = geometry["cell_volume"]
     VTKExporter(mesh_data, output).export(str(solution_dir / "mesh.vtu"), fields)
 
 
@@ -166,8 +185,7 @@ def create_fvm_solver(
         )
 
     mesh_data = _materialize_mesh(mesh, is_root=materialize_mesh_here)
-    generated_source = mesh is not None and not isinstance(mesh, str | Path | dict)
-    if is_root and generated_source and mesh_data is not None:
+    if is_root and mesh_data is not None:
         _save_generated_mesh(mesh_data, resolved_solution_dir, runtime_setup.output)
 
     from .core.solver import FVMSolver

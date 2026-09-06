@@ -119,34 +119,37 @@ The following are separately reported:
 
 The result checks require at least four unique seeds, no identical
 nonzero-time trajectories, at least 99.5% projected absolute circulation, and
-relative field standard error below 7.5%. Eight members are the default pilot.
-If a physics case fails that precision gate, add independent seeds only to
-that case and recompute its fixed-time estimator; case-specific sample sizes
-are valid because no cross-case paired statistic is reported.  Never relax a
-predeclared gate after inspecting the result.  For publication-quality use,
-also extend the ensemble when the confidence interval of the scientific
-conclusion is still material; do not stop solely because a fixed member count
-has been reached.
+relative field standard error at most 7.5%. Ten members form the initial pilot.
+If a case fails that precision gate, the launcher adds an independent batch
+estimated from the observed inverse-square-root scaling, with a 10% sample-count
+margin, and recomputes every fixed-time estimator. It retains all seeds and
+never selects trajectories based on their outcome. Case-specific sample sizes
+are recorded in metadata; no cross-case paired statistic is reported.
 
-For this benchmark, the eight-member pilot passed for the single vortex and
-merger but the dipole did not.  The reproducible production defaults are
-therefore 8/12/8 members for vortex/dipole/merger. These sample sizes are
-written explicitly in `allrun.sh`; deliberate convergence studies should
-change those three arguments explicitly.
+The default cap is 80 members. Failure at the cap is explicit and requires a
+larger `--maximum-realizations`; the 7.5% gate is unchanged. The Student-t and
+jackknife intervals are nominal fixed-ensemble intervals, not confidence
+sequences with an optional-stopping guarantee. For confirmatory inference,
+use the pilot to predeclare a fixed production size or validate conclusions
+on an independent fixed ensemble.
 
 ## Energy-rate convention
 
-The finite-difference \(dE/dt\) is reported only while consecutive samples use
-the direct, unbounded kinetic-energy integral. Above the direct-evaluation
-particle limit, the solver uses a finite Fourier box for instantaneous audits.
-That box follows the particle support, so consecutive energies do not share
-one integration domain and their difference is not a defined time derivative.
-Such rates are stored as unavailable rather than smoothed.
+The finite-difference `dE/dt` compares consecutive unbounded kinetic-energy
+measurements. Small clouds use direct Gaussian pair integrals. Uniform-core,
+uniform-viscosity large clouds use zero-padded linear correlations with the
+unbounded transverse Gaussian Green tensor. Padding prevents pair wraparound;
+resizing the FFT box does not remove the open column's far-field energy.
 
-The enstrophy-based viscous power \(-2\nu Z\), with
-\(Z=\tfrac12\int |\boldsymbol{\omega}|^2\,dV\), remains well defined and is
-retained over the complete history. This distinction is especially important
-for DVH and GBD, whose regenerated grids can exceed the direct-integral limit.
+Viscous power uses the matching transverse (divergence-free) projection of the
+Gaussian vorticity. Using the full vorticity norm instead would include a
+longitudinal component that induces no velocity in a finite open column.
+
+DVH accumulates 29 accepted steps before applying a resolved heat transfer.
+Its energy output interval is rounded up to cover at least one transfer, so
+an advection-only plateau is not tested as a viscous energy interval. The
+field-output cadence is unchanged. Raw finite differences remain signed; no
+positive rate is clipped, smoothed, or replaced by a prescribed negative rate.
 
 ## Reproducibility and files
 
@@ -161,9 +164,9 @@ alongside:
 - `flow_integrals.csv`: ensemble means and Student-t intervals;
 - VTS files: mean velocity/vorticity and their pointwise standard errors.
 
-Seeded RWM ensembles must use CPU, CUDA, or Vulkan with the current Taichi
-runtime. Metal is rejected because that backend does not accept the requested
-random seed, so independent reproducible members cannot be checked.
+RWM uses a deterministic counter-based generator keyed by seed, accepted step,
+and particle index. It supports Metal as well as CPU, CUDA, and Vulkan; the
+nonzero-time distinctness check remains required on every backend.
 
 ## Primary sources
 

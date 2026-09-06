@@ -1,7 +1,7 @@
 # Lamb–Oseen vortex benchmark
 
-This tutorial compares core spreading (CS), a ten-realization Random Walk
-Method ensemble (RWM), diffusion velocity (DVH), and Gaussian blob diffusion
+This tutorial compares core spreading (CS), an adaptive Random Walk
+Method ensemble (RWM), discrete vortex heat diffusion (DVH), and Gaussian blob diffusion
 (GBD) for an isolated vortex, a counter-rotating dipole, and a co-rotating
 merger.
 
@@ -13,9 +13,15 @@ From any directory, with the OpenONDA environment active:
 /path/to/tutorials/vpm/lamb_oseen_vortex/allrun.sh
 ```
 
-`allrun.sh` removes previous tutorial-local output, runs every case, and creates
-the PNG and PDF figures. It stops if a completed result is unsuitable for the
-comparison.
+`allrun.sh` resumes compatible completed runs, runs missing or outdated cases,
+and creates the PNG and PDF figures. Outputs replaced by a rerun are preserved
+under `solution/.previous_runs/`. Use `allrun.sh --clean` to remove previous
+outputs and start from scratch. Validation still stops on unsuitable results.
+
+RWM starts with ten independent seeds and adds batches until the maximum
+velocity and vorticity relative standard errors are both at most 7.5%. It
+reuses completed members when resumed and stops with an actionable error at
+80 seeds if the precision target is still unmet.
 
 To rebuild the figures from completed samples:
 
@@ -42,9 +48,13 @@ benchmark because it is unavailable on Metal and its surface evaluation is
 currently direct. The treecode works on macOS and Linux and accelerates both
 particle stages and sampled fields.
 
-Every method always writes total kinetic energy, measured `dE/dt`, its source,
-and the viscous energy rate. Fourier diagnostic transitions are
-finite and explicitly labelled. The final check rejects missing or
+Every method writes total kinetic energy, measured `dE/dt`, its source,
+and the viscous energy rate. Uniform-core DVH/GBD clouds use a zero-padded
+FFT convolution with the unbounded Gaussian Green tensor, including the
+far-field energy of an open vortex column. Energy is not taken from a
+periodic inverse Laplacian. DVH energy samples span at least one complete
+heat-transfer interval (36 steps for vortex/dipole, 30 for merging); surface
+fields retain their original cadence. The final check rejects missing or
 non-finite energy histories, incomplete RWM ensembles, failed GBD moment
 closure, incomplete physical-time coverage, or missing figures.
 

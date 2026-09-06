@@ -8,7 +8,8 @@ import pytest
 
 
 @pytest.mark.parametrize("fail_dvh", [False, True])
-def test_campaign_phase_logs_preserve_exit_status(tmp_path, monkeypatch, fail_dvh):
+@pytest.mark.parametrize("clean", [False, True])
+def test_campaign_phase_logs_preserve_exit_status(tmp_path, monkeypatch, fail_dvh, clean):
     root = tmp_path / "checkout"
     tutorial = root / "tutorials/vpm/lamb_oseen_vortex"
     tutorial.mkdir(parents=True)
@@ -29,11 +30,15 @@ def test_campaign_phase_logs_preserve_exit_status(tmp_path, monkeypatch, fail_dv
     monkeypatch.setenv("TI_OFFLINE_CACHE_FILE_PATH", str(tmp_path / "cache"))
     monkeypatch.setenv("FAIL_DVH", "1" if fail_dvh else "0")
     result = subprocess.run(
-        ["bash", str(tutorial / "allrun.sh")], cwd=tmp_path, capture_output=True, text=True
+        ["bash", str(tutorial / "allrun.sh"), *(["--clean"] if clean else [])],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == (23 if fail_dvh else 0)
     assert "[campaign] START | vortex / DVH" in result.stdout
-    assert result.stdout.count("[stub] allclean.sh") == 1
+    assert result.stdout.count("[stub] allclean.sh") == int(clean)
+    assert "--converge --resume" in result.stdout
     assert not list((tmp_path / "cache").iterdir())
     if fail_dvh:
         assert "FAILED | vortex / DVH | exit 23" in result.stderr
