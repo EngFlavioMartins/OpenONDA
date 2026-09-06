@@ -64,7 +64,7 @@ def _read_stl(path: Path) -> tuple[np.ndarray, bytes]:
     return np.ascontiguousarray(triangles), data
 
 
-def _validate_triangles(triangles: np.ndarray, path: Path) -> None:
+def _validate_triangles(triangles: np.ndarray, path: Path, *, allow_open: bool = False) -> None:
     if len(triangles) < 4:
         raise ValueError(f"STL surface must contain at least four triangles: {path}")
     if not np.all(np.isfinite(triangles)):
@@ -90,7 +90,7 @@ def _validate_triangles(triangles: np.ndarray, path: Path) -> None:
     )
     edges.sort(axis=1)
     _, edge_counts = np.unique(edges, axis=0, return_counts=True)
-    if np.any(edge_counts != 2):
+    if np.any(edge_counts > 2) or (not allow_open and np.any(edge_counts != 2)):
         raise ValueError(f"STL surface is not watertight: {path}")
 
 
@@ -173,8 +173,8 @@ class TriangulatedSurface:
     kind: str
 
     @classmethod
-    def from_stl(cls, surface_file: str | Path) -> TriangulatedSurface:
-        """Load a watertight STL surface from ``surface_file``.
+    def from_stl(cls, surface_file: str | Path, *, allow_open: bool = False) -> TriangulatedSurface:
+        """Load a validated STL surface from ``surface_file``.
 
         A closed axis-aligned solid is loaded on the exact-preservation path
         (``kind="box"``); any other closed, watertight, manifold surface
@@ -182,7 +182,7 @@ class TriangulatedSurface:
         """
         path = Path(surface_file).expanduser().resolve()
         triangles, data = _read_stl(path)
-        _validate_triangles(triangles, path)
+        _validate_triangles(triangles, path, allow_open=allow_open)
         lower, upper, extent = _surface_extent(triangles, path)
         try:
             bounds = _axis_aligned_box_bounds(triangles, path, lower, upper, extent)

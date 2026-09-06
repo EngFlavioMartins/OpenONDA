@@ -141,6 +141,40 @@ class _WorldRefinementRegion:
 _RefinementRegion = _SolidRegion | _WorldRefinementRegion
 
 
+class SurfacePatchRefinement:
+    """Refine octree leaves intersected by one named surface patch.
+
+    A patch request is geometric rather than an axis-aligned volume request:
+    only cells whose box intersects one of the patch triangles are selected.
+    Keeping this predicate separate from the surface-solid classifier means a
+    patch request can refine one of several imported objects without refining
+    every object in their combined bounding box.
+    """
+
+    def __init__(self, patch: str, triangles: np.ndarray, cell_size: float) -> None:
+        if not patch.strip():
+            raise ValueError("surface patch refinement requires a non-empty patch name")
+        values = np.ascontiguousarray(triangles, dtype=np.float64)
+        if values.ndim != 3 or values.shape[1:] != (3, 3) or not len(values):
+            raise ValueError("surface patch refinement triangles must have shape (n, 3, 3)")
+        if not math.isfinite(float(cell_size)) or cell_size <= 0.0:
+            raise ValueError("surface patch refinement cell_size must be finite and positive")
+        self.patch = patch
+        self.cell_size = float(cell_size)
+        self.triangles = values
+        self.index = SurfaceIndex.build(values)
+        lower = values.min(axis=(0, 1))
+        upper = values.max(axis=(0, 1))
+        self.bounds: Bounds = cast(
+            Bounds,
+            tuple(float(value) for axis in range(3) for value in (lower[axis], upper[axis])),
+        )
+
+    def intersects_box(self, lower: np.ndarray, upper: np.ndarray) -> bool:
+        """Return whether one world-space box intersects this patch."""
+        return self.index.box_intersects_surface(lower, upper)
+
+
 class _SurfaceSolid:
     """Real curved-surface classifier, duck-typed to ``_IntegerBox``'s
     ``contains``/``overlaps`` interface so the octree traversal in
@@ -1028,7 +1062,9 @@ class CartesianOctree:
         surface_exclusion_distance: float = 0.0,
         wall_patch_name: str | None = None,
         surface_cell_size: float | None = None,
+        minimum_cell_size: float | None = None,
         refinements: tuple[BoxRefinement, ...] = (),
+        surface_patch_refinements: tuple[SurfacePatchRefinement, ...] = (),
         merge_outer_patch: str | None = None,
         preserve_outer_patches: tuple[str, ...] = (),
         surface_may_cross_domain_boundary: bool = False,
@@ -1048,6 +1084,11 @@ class CartesianOctree:
             raise ValueError("surface_file and wall_patch_name must be supplied together")
         if surface_file is None and surface_data is None and surface_cell_size is not None:
             raise ValueError("surface_cell_size requires surface_file")
+        if minimum_cell_size is not None:
+            if not math.isfinite(minimum_cell_size) or minimum_cell_size <= 0.0:
+                raise ValueError("minimum_cell_size must be finite and positive")
+            if minimum_cell_size > max_cell_size:
+                raise ValueError("minimum_cell_size must not exceed max_cell_size")
         if wall_patch_name is not None and not wall_patch_name.strip():
             raise ValueError("wall_patch_name must not be empty")
 
@@ -1097,14 +1138,30 @@ class CartesianOctree:
                 for axis in range(3)
             ):
                 raise ValueError(f"{refinement.name} must lie inside domain")
+        for refinement in surface_patch_refinements:
+            if not isinstance(refinement, SurfacePatchRefinement):
+                raise TypeError(
+                    "surface_patch_refinements must contain only SurfacePatchRefinement instances"
+                )
+            if not all(
+                requested_domain[2 * axis] <= refinement.bounds[2 * axis]
+                and refinement.bounds[2 * axis + 1] <= requested_domain[2 * axis + 1]
+                for axis in range(3)
+            ):
+                raise ValueError(
+                    f"surface patch refinement {refinement.patch!r} must lie inside domain"
+                )
 
         fitted_max_cell_size = _fitted_background_size(
             requested_domain,
             max_cell_size,
         )
         requested_sizes = [refinement.cell_size for refinement in refinements]
+        requested_sizes.extend(refinement.cell_size for refinement in surface_patch_refinements)
         if surface_cell_size is not None:
             requested_sizes.append(surface_cell_size)
+        if minimum_cell_size is not None:
+            requested_sizes.append(minimum_cell_size)
         requested_level = max(
             (_dyadic_level(fitted_max_cell_size, size) for size in requested_sizes),
             default=0,
@@ -1162,7 +1219,9 @@ class CartesianOctree:
         self.surface_file = str(surface.path) if surface is not None else None
         self.surface_bounds = surface.bounds if surface is not None else None
         self.surface_cell_size = float(surface_cell_size) if surface_cell_size is not None else None
+        self.minimum_cell_size = float(minimum_cell_size) if minimum_cell_size is not None else None
         self.refinements = tuple(refinements)
+        self.surface_patch_refinements = tuple(surface_patch_refinements)
         self.wall_patch_name = wall_patch_name or ""
         self.merge_outer_patch = merge_outer_patch
         self.preserve_outer_patches = tuple(dict.fromkeys(preserve_outer_patches))
@@ -1247,7 +1306,27 @@ class CartesianOctree:
             # preserved box, ``body_region`` is the exact body; for a general
             # curved surface, it is the body's AABB, which over-refines a
             # little near its corners but never under-refines near the body.
-            add_balanced(body_region, max_level, first_padding=1)
+            surface_level = (
+                _dyadic_level(self.max_cell_size, self.surface_cell_size)
+                if self.surface_cell_size is not None
+                else max_level
+            )
+            if self.minimum_cell_size is not None:
+                surface_level = max(
+                    surface_level,
+                    _dyadic_level(self.max_cell_size, self.minimum_cell_size),
+                )
+            add_balanced(body_region, min(surface_level, max_level), first_padding=1)
+
+        for refinement in self.surface_patch_refinements:
+            level = _dyadic_level(self.max_cell_size, refinement.cell_size)
+            if level:
+                region = _WorldRefinementRegion(
+                    refinement,
+                    h_min,
+                    (self.domain[0], self.domain[2], self.domain[4]),
+                )
+                add_balanced(region, level)
 
         for refinement in self.refinements:
             level = _dyadic_level(self.max_cell_size, refinement.cell_size)
@@ -1399,6 +1478,62 @@ class CartesianOctree:
         # vertex.  The starting vertex matters to its finite-iteration surface
         # optimizer even though cyclic rotations are topologically equivalent.
         return ring if positive else (ring[0], ring[3], ring[2], ring[1])
+
+    @staticmethod
+    def _expand_face_perimeters(
+        encoded_faces: np.ndarray,
+        point_strides: tuple[int, int],
+    ) -> list[np.ndarray]:
+        """Insert existing hanging vertices into every coarse-face perimeter.
+
+        A 2:1 interface is not conforming merely because the coarse face is
+        split into fine subfaces on the other side.  The coarse face's own
+        polygon must also contain the intermediate edge vertices.  Otherwise
+        the area vectors cancel while the cell's undirected edge incidences
+        remain open.  cfMesh's octree addressing performs this operation when
+        it creates variable-length face loops; keep the same rule here for the
+        native extractor.
+
+        ``encoded_faces`` contains logical lattice point codes, so the
+        intermediate points can be recovered without floating-point geometry.
+        Only points already used by another extracted face are inserted.  This
+        avoids manufacturing unused vertices on an unsplit coarse edge.
+        """
+        if encoded_faces.ndim != 2 or encoded_faces.shape[1] != 4:
+            raise ValueError("Cartesian octree face codes must be an (n, 4) array")
+        if not len(encoded_faces):
+            return []
+
+        sx, sy = point_strides
+        available = set(map(int, np.unique(encoded_faces)))
+
+        def decode(code: int) -> np.ndarray:
+            x = code % sx
+            yz = code // sx
+            return np.asarray((x, yz % sy, yz // sy), dtype=np.int64)
+
+        expanded_faces: list[np.ndarray] = []
+        for encoded_face in encoded_faces:
+            expanded: list[int] = []
+            for first_value, second_value in zip(
+                encoded_face, np.roll(encoded_face, -1), strict=True
+            ):
+                first = int(first_value)
+                second = int(second_value)
+                expanded.append(first)
+                first_coordinate = decode(first)
+                delta = decode(second) - first_coordinate
+                length = int(np.max(np.abs(delta)))
+                if length <= 1:
+                    continue
+                step = delta // length
+                for offset in range(1, length):
+                    coordinate = first_coordinate + offset * step
+                    candidate = int(coordinate[0] + sx * (coordinate[1] + sy * coordinate[2]))
+                    if candidate in available:
+                        expanded.append(candidate)
+            expanded_faces.append(np.asarray(expanded, dtype=np.int64))
+        return expanded_faces
 
     def _extract_topology(
         self,
@@ -1644,6 +1779,9 @@ class CartesianOctree:
         """
         base_counts = self._base_counts()
         requested_sizes = [refinement.cell_size for refinement in self.refinements]
+        requested_sizes.extend(
+            refinement.cell_size for refinement in self.surface_patch_refinements
+        )
         if self.surface_cell_size is not None:
             requested_sizes.append(self.surface_cell_size)
         max_level = max(
@@ -1698,16 +1836,22 @@ class CartesianOctree:
             leaves, max_level, limits
         )
 
-        point_codes = np.unique(encoded_faces)
+        expanded_encoded_faces = self._expand_face_perimeters(
+            encoded_faces, (limits[0] + 1, limits[1] + 1)
+        )
+        point_codes = np.unique(np.concatenate(expanded_encoded_faces))
         if len(point_codes) > np.iinfo(np.int32).max:
             raise MemoryError("Adaptive mesh has too many points for int32 face connectivity")
-        faces = np.empty(encoded_faces.shape, dtype=np.int32)
-        for start in range(0, len(encoded_faces), 250_000):
-            stop = min(start + 250_000, len(encoded_faces))
-            faces[start:stop] = np.searchsorted(point_codes, encoded_faces[start:stop]).astype(
-                np.int32
-            )
-        del encoded_faces
+        indexed_faces = [
+            np.searchsorted(point_codes, face).astype(np.int32) for face in expanded_encoded_faces
+        ]
+        widths = {len(face) for face in indexed_faces}
+        faces: list[np.ndarray] | np.ndarray = (
+            np.ascontiguousarray(indexed_faces, dtype=np.int32)
+            if len(widths) == 1
+            else indexed_faces
+        )
+        del encoded_faces, expanded_encoded_faces
 
         nx, ny, _nz = limits
         sx, sy = nx + 1, ny + 1
@@ -1749,6 +1893,15 @@ class CartesianOctree:
                     len(self.surface.triangles) if self.surface is not None else 0
                 ),
                 "wall_patch_name": self.wall_patch_name or None,
+                "minimum_cell_size": self.minimum_cell_size,
+                "surface_patch_refinements": tuple(
+                    {
+                        "patch": refinement.patch,
+                        "requested": refinement.cell_size,
+                        "effective": self.effective_cell_size(refinement.cell_size),
+                    }
+                    for refinement in self.surface_patch_refinements
+                ),
                 "surface_may_cross_domain_boundary": self.surface_may_cross_domain_boundary,
                 "preserve_outer_patches": self.preserve_outer_patches,
                 "attribution": "Inspired by cfMesh cartesianMesh (Franjo Juretic / Creative Fields)",
@@ -1819,5 +1972,6 @@ __all__ = [
     "CartesianOctree",
     "Bounds",
     "BoxRefinement",
+    "SurfacePatchRefinement",
     "build_cartesian_background",
 ]

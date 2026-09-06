@@ -22,6 +22,11 @@ from .cfmesh_surface_optimisation import (
 _VSMALL = 1.0e-300
 
 
+def _reverse_face(face: np.ndarray) -> np.ndarray:
+    """OpenFOAM reverseFace retains the first vertex."""
+    return np.concatenate((face[:1], face[:0:-1]))
+
+
 def _boundary_addressing(
     mesh_data: dict[str, Any], faces: list[np.ndarray]
 ) -> tuple[dict[int, int], dict[tuple[int, int], list[int]], list[int]]:
@@ -126,11 +131,11 @@ def _topology_plan(mesh_data: dict[str, Any]) -> tuple[set[int], dict[int, int],
             previous = int(face[(position - 1) % len(face)])
             following_edge = (min(point_id, following), max(point_id, following))
             previous_edge = (min(previous, point_id), max(previous, point_id))
-            if following_edge in feature_edges and previous_edge in feature_edges:
-                if len(face) != 4:
-                    raise ValueError(
-                        "cfMesh edge correction currently supports feature-corner quads only"
-                    )
+            if (
+                following_edge in feature_edges
+                and previous_edge in feature_edges
+                and len(face) >= 4
+            ):
                 split_boundary[face_id] = position
                 marked_cells.add(int(owners[face_id]))
                 break
@@ -187,7 +192,14 @@ def _split_faces(
     for face_id in range(n_internal, len(source_faces)):
         face = source_faces[face_id]
         patch_id = face_patch[face_id]
-        if face_id in split_boundary:
+        if face_id in split_boundary and len(face) > 4:
+            centre_id = len(point_values)
+            point_values.append(_face_centre(source_points[face]))
+            new_faces = tuple(
+                np.asarray((first, second, centre_id), dtype=np.int32)
+                for first, second in zip(face, np.roll(face, -1), strict=True)
+            )
+        elif face_id in split_boundary:
             position = split_boundary[face_id]
             first = np.asarray(
                 (
@@ -287,17 +299,24 @@ def _rebuild_from_cells(
         if cell_id in marked_cells:
             continue
         output_cells.append(
-            [face.copy() if is_owner else face[::-1].copy() for face, is_owner in entries]
+            [face.copy() if is_owner else _reverse_face(face) for face, is_owner in entries]
         )
         source_cell_ids.append(cell_id)
 
     for cell_id in sorted(marked_cells):
         entries = cell_faces[cell_id]
-        unique_points = np.unique(np.concatenate([face for face, _is_owner in entries]))
+        # cell::labels preserves first occurrence in cell-face/cyclic-vertex
+        # order. Sorting the labels changes the floating-point summation.
+        unique_points = tuple(
+            dict.fromkeys(int(point_id) for face, _is_owner in entries for point_id in face)
+        )
         top_vertex = len(point_values)
-        point_values.append(points[unique_points].mean(axis=0))
+        centre = np.zeros(3, dtype=np.float64)
+        for point_id in unique_points:
+            centre += points[point_id]
+        point_values.append(centre / len(unique_points))
         for face, is_owner in entries:
-            outward_base = face.copy() if is_owner else face[::-1].copy()
+            outward_base = face.copy() if is_owner else _reverse_face(face)
             pyramid_faces = [outward_base]
             for position in range(len(face)):
                 following = int(face[(position + 1) % len(face)])
@@ -343,9 +362,23 @@ def _rebuild_from_cells(
     combined_faces = internal_faces.copy()
     combined_owners = internal_owners.copy()
     combined_neighbours = internal_neighbours.copy()
+    boundary_order = {
+        tuple(sorted(map(int, face))): face_id
+        for face_id, face in enumerate(split_faces)
+        if face_id >= len(split_neighbours)
+    }
     boundary: list[dict[str, Any]] = []
     start_face = len(internal_faces)
     for patch_id, patch in enumerate(mesh_data["boundary"]):
+        # decomposeCells retains its pre-decomposition boundary list and
+        # resolves the new owners without changing the face order. Traversing
+        # newly built cells instead perturbs every boundary-point reduction.
+        ordered = sorted(
+            zip(boundary_faces[patch_id], boundary_owners[patch_id], strict=True),
+            key=lambda item: boundary_order[tuple(sorted(map(int, item[0])))],
+        )
+        boundary_faces[patch_id] = [face for face, _owner in ordered]
+        boundary_owners[patch_id] = [owner for _face, owner in ordered]
         combined_faces.extend(boundary_faces[patch_id])
         combined_owners.extend(boundary_owners[patch_id])
         boundary.append(
@@ -365,9 +398,18 @@ def _rebuild_from_cells(
         tuple(sorted(map(int, face))): face_id for face_id, face in enumerate(combined_faces)
     }
     cfmesh_cell_face_order = [
-        [face_by_signature[tuple(sorted(map(int, face)))] for face in entries]
+        [
+            face_id
+            for face in entries
+            for face_id in (face_by_signature[tuple(sorted(map(int, face)))],)
+            if face_id < len(internal_faces)
+        ]
         for entries in output_cells
     ]
+    # replaceBoundary removes old boundary references before appending the
+    # replacements to each cell, even when the face geometry did not change.
+    for face_id in range(len(internal_faces), len(combined_faces)):
+        cfmesh_cell_face_order[combined_owners[face_id]].append(face_id)
     mesh_data.update(
         {
             "vertex_position": np.ascontiguousarray(point_values, dtype=np.float64),

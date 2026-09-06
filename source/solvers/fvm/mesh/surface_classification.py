@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from numba import njit
 import numpy as np
 
 _DEFAULT_RAY_DIRECTIONS = (
@@ -157,6 +158,83 @@ def triangle_box_overlap(
     return overlap
 
 
+@njit(cache=True, fastmath=False)
+def _triangle_box_overlap_any_kernel(
+    box_centre: np.ndarray,
+    box_half: np.ndarray,
+    v0: np.ndarray,
+    v1: np.ndarray,
+    v2: np.ndarray,
+) -> bool:
+    """Compiled any-hit form of the triangle/AABB separating-axis test."""
+    eps = np.finfo(np.float64).eps
+    for index in range(len(v0)):
+        t0x = v0[index, 0] - box_centre[0]
+        t0y = v0[index, 1] - box_centre[1]
+        t0z = v0[index, 2] - box_centre[2]
+        t1x = v1[index, 0] - box_centre[0]
+        t1y = v1[index, 1] - box_centre[1]
+        t1z = v1[index, 2] - box_centre[2]
+        t2x = v2[index, 0] - box_centre[0]
+        t2y = v2[index, 1] - box_centre[1]
+        t2z = v2[index, 2] - box_centre[2]
+        if (
+            max(t0x, t1x, t2x) < -box_half[0]
+            or min(t0x, t1x, t2x) > box_half[0]
+            or max(t0y, t1y, t2y) < -box_half[1]
+            or min(t0y, t1y, t2y) > box_half[1]
+            or max(t0z, t1z, t2z) < -box_half[2]
+            or min(t0z, t1z, t2z) > box_half[2]
+        ):
+            continue
+        e0x = t1x - t0x
+        e0y = t1y - t0y
+        e0z = t1z - t0z
+        e1x = t2x - t1x
+        e1y = t2y - t1y
+        e1z = t2z - t1z
+        e2x = t0x - t2x
+        e2y = t0y - t2y
+        e2z = t0z - t2z
+        nx = e0y * e1z - e0z * e1y
+        ny = e0z * e1x - e0x * e1z
+        nz = e0x * e1y - e0y * e1x
+        if abs(nx * t0x + ny * t0y + nz * t0z) > (
+            box_half[0] * abs(nx) + box_half[1] * abs(ny) + box_half[2] * abs(nz)
+        ):
+            continue
+        for edge_id in range(3):
+            if edge_id == 0:
+                ex, ey, ez = e0x, e0y, e0z
+            elif edge_id == 1:
+                ex, ey, ez = e1x, e1y, e1z
+            else:
+                ex, ey, ez = e2x, e2y, e2z
+            # The three cross products with the Cartesian box axes are
+            # (0,-ez,ey), (ez,0,-ex), and (-ey,ex,0).
+            for axis_id in range(3):
+                if axis_id == 0:
+                    ax, ay, az = 0.0, -ez, ey
+                elif axis_id == 1:
+                    ax, ay, az = ez, 0.0, -ex
+                else:
+                    ax, ay, az = -ey, ex, 0.0
+                if ax * ax + ay * ay + az * az <= 1.0e-28:
+                    continue
+                p0 = t0x * ax + t0y * ay + t0z * az
+                p1 = t1x * ax + t1y * ay + t1z * az
+                p2 = t2x * ax + t2y * ay + t2z * az
+                radius = box_half[0] * abs(ax) + box_half[1] * abs(ay) + box_half[2] * abs(az)
+                if max(p0, p1, p2) < -radius - eps or min(p0, p1, p2) > radius + eps:
+                    break
+            else:
+                continue
+            break
+        else:
+            return True
+    return False
+
+
 def _ray_triangle_intersections(
     origins: np.ndarray, direction: np.ndarray, v0: np.ndarray, v1: np.ndarray, v2: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -205,20 +283,29 @@ class SurfaceIndex:
     cell_size: float
     grid_origin: np.ndarray
     grid: dict[tuple[int, int, int], np.ndarray] = field(repr=False)
+    triangle_min: np.ndarray = field(init=False, repr=False)
+    triangle_max: np.ndarray = field(init=False, repr=False)
+    surface_lower: np.ndarray = field(init=False, repr=False)
+    surface_upper: np.ndarray = field(init=False, repr=False)
 
     @classmethod
     def build(cls, triangles: np.ndarray) -> SurfaceIndex:
         triangles = np.ascontiguousarray(triangles, dtype=np.float64)
         n = len(triangles)
         v0, v1, v2 = triangles[:, 0], triangles[:, 1], triangles[:, 2]
-        edge_lengths = np.concatenate(
+        edge_lengths = np.column_stack(
             (
                 np.linalg.norm(v1 - v0, axis=1),
                 np.linalg.norm(v2 - v1, axis=1),
                 np.linalg.norm(v0 - v2, axis=1),
             )
         )
-        cell_size = float(np.median(edge_lengths)) * 2.0
+        # Use a local surface scale, not the median of all edge lengths.  A
+        # long, thin STL triangle (for example a spanwise cylinder facet) can
+        # have one edge hundreds of times longer than its circumferential
+        # edges; using that long edge makes every point query scan most of the
+        # surface and defeats the spatial index.
+        cell_size = float(np.median(np.min(edge_lengths, axis=1))) * 2.0
         if not np.isfinite(cell_size) or cell_size <= 0.0:
             span = float(np.max(triangles.max(axis=(0, 1)) - triangles.min(axis=(0, 1))))
             cell_size = max(span / 8.0, 1.0e-9)
@@ -236,12 +323,24 @@ class SurfaceIndex:
                     for iz in range(int(lo[i, 2]), int(hi[i, 2]) + 1):
                         buckets.setdefault((ix, iy, iz), []).append(i)
         grid = {key: np.asarray(value, dtype=np.int64) for key, value in buckets.items()}
-        return cls(triangles=triangles, cell_size=cell_size, grid_origin=grid_origin, grid=grid)
+        result = cls(triangles=triangles, cell_size=cell_size, grid_origin=grid_origin, grid=grid)
+        result.triangle_min = tri_min
+        result.triangle_max = tri_max
+        result.surface_lower = tri_min.min(axis=0)
+        result.surface_upper = tri_max.max(axis=0)
+        return result
 
     def candidate_triangles(self, box_min: np.ndarray, box_max: np.ndarray) -> np.ndarray:
         """Triangle indices whose grid cells overlap ``[box_min, box_max]``."""
         lo = np.floor((box_min - self.grid_origin) / self.cell_size).astype(np.int64)
         hi = np.floor((box_max - self.grid_origin) / self.cell_size).astype(np.int64)
+        cell_count = int(np.prod(hi - lo + 1, dtype=np.int64))
+        # Large ancestor boxes can span a huge number of empty spatial-grid
+        # buckets.  Scanning those bucket coordinates is slower than testing
+        # the compact triangle AABB array directly; both paths are broad
+        # phases and the exact triangle test remains the caller's job.
+        if cell_count > max(4096, 4 * len(self.triangles)):
+            return np.arange(len(self.triangles), dtype=np.int64)
         found: set[int] = set()
         for ix in range(int(lo[0]), int(hi[0]) + 1):
             for iy in range(int(lo[1]), int(hi[1]) + 1):
@@ -255,7 +354,20 @@ class SurfaceIndex:
 
     def box_intersects_surface(self, box_min: np.ndarray, box_max: np.ndarray) -> bool:
         """True if any triangle has positive-area overlap with the box."""
+        if np.any(box_max < self.surface_lower) or np.any(box_min > self.surface_upper):
+            return False
         candidates = self.candidate_triangles(box_min, box_max)
+        if candidates.size == 0:
+            return False
+        # The spatial grid is deliberately coarse enough to keep indexing
+        # cheap.  Reject candidate triangles whose exact AABBs do not touch
+        # the query before allocating the separating-axis arrays.  This
+        # broad-phase filter is especially important during the production
+        # cylinder template walk, which visits every octree ancestor.
+        candidates = candidates[
+            np.all(self.triangle_min[candidates] <= box_max, axis=1)
+            & np.all(self.triangle_max[candidates] >= box_min, axis=1)
+        ]
         if candidates.size == 0:
             return False
         centre = 0.5 * (box_min + box_max)
@@ -263,7 +375,7 @@ class SurfaceIndex:
         v0 = self.triangles[candidates, 0]
         v1 = self.triangles[candidates, 1]
         v2 = self.triangles[candidates, 2]
-        return bool(np.any(triangle_box_overlap(centre, half, v0, v1, v2)))
+        return _triangle_box_overlap_any_kernel(centre, half, v0, v1, v2)
 
     def is_inside(self, points: np.ndarray, *, chunk_size: int = 500) -> np.ndarray:
         """Point-in-closed-manifold test by ray-parity, with degenerate retry."""
@@ -272,6 +384,30 @@ class SurfaceIndex:
         result = np.zeros(n, dtype=bool)
         resolved = np.zeros(n, dtype=bool)
         v0, v1, v2 = self.triangles[:, 0], self.triangles[:, 1], self.triangles[:, 2]
+        if n == 1:
+            # Template extraction asks about one cell centre at a time.  The
+            # default +x ray only needs triangles whose y/z AABBs contain the
+            # point and whose x extent is ahead of it; testing all triangles
+            # for every scalar centre otherwise dominates large cylinder
+            # builds.  Degenerate hits fall through to the general retry loop.
+            point = points[0]
+            candidate = np.flatnonzero(
+                (self.triangle_min[:, 1] <= point[1])
+                & (self.triangle_max[:, 1] >= point[1])
+                & (self.triangle_min[:, 2] <= point[2])
+                & (self.triangle_max[:, 2] >= point[2])
+                & (self.triangle_max[:, 0] >= point[0])
+            )
+            direction = _normalize(_DEFAULT_RAY_DIRECTIONS[0])
+            if not candidate.size:
+                return result
+            if candidate.size:
+                valid, degenerate = _ray_triangle_intersections(
+                    points, direction, v0[candidate], v1[candidate], v2[candidate]
+                )
+                if not np.any(degenerate):
+                    result[0] = bool(np.count_nonzero(valid[0]) % 2)
+                    return result
         # Ray testing materialises several ``(points, triangles)`` arrays.
         # Keep that product bounded when layer preparation has subdivided long
         # source facets; otherwise a benign surface refinement can exhaust RAM.

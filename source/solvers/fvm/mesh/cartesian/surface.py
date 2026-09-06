@@ -63,16 +63,20 @@ def _signed_component_volumes(triangles: np.ndarray, triangle_ids: np.ndarray) -
     return volumes
 
 
-def validate_surface_orientation(surface: TriangulatedSurface) -> None:
+def validate_surface_orientation(surface: TriangulatedSurface, *, allow_open: bool = False) -> None:
     """Reject inconsistent edge winding and disconnected mixed orientation."""
     triangle_ids = _quantized_triangles(surface)
     records = _edge_records(triangle_ids)
     for edge, values in sorted(records.items()):
+        if len(values) == 1 and allow_open:
+            continue
         if len(values) != 2:
             raise ValueError(f"Surface edge {edge} has {len(values)} incident triangles")
         first, second = values
         if first[1:] == second[1:]:
             raise ValueError(f"Surface edge {edge} has inconsistent triangle orientation")
+    if allow_open:
+        return
     volumes = _signed_component_volumes(surface.triangles, triangle_ids)
     nonzero = [volume for volume in volumes if abs(volume) > np.finfo(np.float64).eps]
     if not nonzero:
@@ -82,10 +86,10 @@ def validate_surface_orientation(surface: TriangulatedSurface) -> None:
         raise ValueError("Disconnected surface components have inconsistent orientation")
 
 
-def load_surface(path: str | Path) -> TriangulatedSurface:
+def load_surface(path: str | Path, *, allow_open: bool = False) -> TriangulatedSurface:
     """Load an STL, validate its winding, and preserve the exact source hash."""
-    surface = TriangulatedSurface.from_stl(path)
-    validate_surface_orientation(surface)
+    surface = TriangulatedSurface.from_stl(path, allow_open=allow_open)
+    validate_surface_orientation(surface, allow_open=allow_open)
     return surface
 
 

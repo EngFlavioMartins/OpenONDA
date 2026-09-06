@@ -1,2 +1,0 @@
-PASS  boundaryLayerGeneration
-Topology and geometry parity checks passed.

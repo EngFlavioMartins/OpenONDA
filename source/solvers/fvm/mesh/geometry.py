@@ -277,8 +277,6 @@ def compute_geometry(
     )
 
     # --- Process Secondary Face Geometry ---
-    cfd_small = 1e-15  # Matches uFVM cfdSMALL?
-
     # Interior faces.  These operations used to be two Python face loops and
     # dominate geometry setup for structured meshes; every expression below is
     # the same owner/neighbour formula evaluated in bulk.
@@ -315,7 +313,10 @@ def compute_geometry(
         normals = face_area_vector[face_slice] / face_area[face_slice, np.newaxis]
         cell_connection_vector[face_slice] = vector
         face_interpolation_weight[face_slice] = 1.0
-        wall_distance[face_slice] = np.maximum(np.sum(vector * normals, axis=1), cfd_small)
+        # Keep the signed projection visible to validation.  Clamping a
+        # non-positive owner-to-wall distance here hides inverted wall
+        # pyramids and lets boundary diffusion divide by an artificial floor.
+        wall_distance[face_slice] = np.sum(vector * normals, axis=1)
 
     return {
         "face_centre": face_centre,

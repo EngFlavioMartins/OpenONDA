@@ -33,15 +33,6 @@ or `source/coupler`. The Taichi-based VPM tree is excluded
 from static type checking. Keep repository coverage to the four maintained
 contracts; run case-specific scientific validation outside this test suite.
 
-Run `python scripts/check_nomenclature.py` before publishing a serializer,
-solver API, tutorial output, or checkpoint change. This is the repository gate
-for newly introduced legacy physical-field identifiers; historical archives
-and explicit migration adapters are intentionally excluded.
-
-During the staged filesystem migration, also run
-`python scripts/check_nomenclature.py --paths`; it reports legacy archive,
-checkpoint, tutorial, and launcher names without modifying them.
-
 Tutorial setup files use public namespace imports (`openonda.fvm as fvm`,
 `openonda.fvm.mesher as msh`, `openonda.vpm as vpm`, and
 `openonda.coupler as coupling`), uppercase physical

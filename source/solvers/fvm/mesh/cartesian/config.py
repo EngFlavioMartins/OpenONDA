@@ -96,13 +96,18 @@ class STLSurface:
 
     path: Path | str
     patch: str
+    allow_open: bool = False
     _surface: TriangulatedSurface = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         resolved_path = Path(self.path).expanduser().resolve()
         object.__setattr__(self, "path", resolved_path)
         object.__setattr__(self, "patch", _nonempty(self.patch, "patch"))
-        object.__setattr__(self, "_surface", load_surface(resolved_path))
+        if not isinstance(self.allow_open, bool):
+            raise TypeError("allow_open must be a bool")
+        object.__setattr__(
+            self, "_surface", load_surface(resolved_path, allow_open=self.allow_open)
+        )
 
     @property
     def triangles(self) -> np.ndarray:
@@ -145,6 +150,18 @@ class Refinement(ABC):
             np.all(np.asarray(lower, dtype=np.float64) < bounds[1::2])
             and np.all(np.asarray(upper, dtype=np.float64) > bounds[::2])
         )
+
+
+@dataclass(frozen=True, slots=True)
+class PatchRefinement:
+    """Request a cfMesh local surface size on one exact named patch."""
+
+    patch: str
+    cell_size: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "patch", _nonempty(self.patch, "patch"))
+        object.__setattr__(self, "cell_size", _finite_positive(self.cell_size, "cell_size"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -421,6 +438,7 @@ __all__ = [
     "ConeRefinement",
     "FeatureRefinement",
     "LineRefinement",
+    "PatchRefinement",
     "Refinement",
     "SizeField",
     "SphereRefinement",

@@ -7,17 +7,22 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from numba import njit
 import numpy as np
 
 from .cfmesh_surface_optimisation import (
-    _face_area_vector,
-    _face_centre,
+    _mag_squared,
     optimise_cfmesh_surface,
 )
+from .cfmesh_volume_optimisation import _knupp_point, _optimise_triangles
 
 _SMALL = 1.0e-15
 _VSMALL = 1.0e-300
 _ROOT_VSMALL = 1.0e-150
+
+
+def _scalar_dot(first: np.ndarray, second: np.ndarray) -> float:
+    return float(first[0] * second[0] + first[1] * second[1] + first[2] * second[2])
 
 
 def _mesh_addressing(
@@ -65,11 +70,88 @@ def _mesh_addressing(
     return cell_faces, point_cells
 
 
+@njit(cache=True, fastmath=False)
+def _face_geometry_kernel(
+    points: np.ndarray, vertices: np.ndarray, offsets: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Typed ragged-face geometry kernel preserving cfMesh scalar order."""
+    n_faces = len(offsets) - 1
+    centres = np.empty((n_faces, 3), dtype=np.float64)
+    areas = np.empty((n_faces, 3), dtype=np.float64)
+    vsmall = 1.0e-300
+    for face_id in range(n_faces):
+        first = int(offsets[face_id])
+        stop = int(offsets[face_id + 1])
+        count = stop - first
+        if count == 3:
+            p0 = points[int(vertices[first])]
+            p1 = points[int(vertices[first + 1])]
+            p2 = points[int(vertices[first + 2])]
+            centres[face_id, 0] = (p0[0] + p1[0] + p2[0]) / 3.0
+            centres[face_id, 1] = (p0[1] + p1[1] + p2[1]) / 3.0
+            centres[face_id, 2] = (p0[2] + p1[2] + p2[2]) / 3.0
+            first_x = p1[0] - p0[0]
+            first_y = p1[1] - p0[1]
+            first_z = p1[2] - p0[2]
+            second_x = p2[0] - p0[0]
+            second_y = p2[1] - p0[1]
+            second_z = p2[2] - p0[2]
+            areas[face_id, 0] = 0.5 * (first_y * second_z - first_z * second_y)
+            areas[face_id, 1] = 0.5 * (first_z * second_x - first_x * second_z)
+            areas[face_id, 2] = 0.5 * (first_x * second_y - first_y * second_x)
+            continue
+        estimate = points[int(vertices[first])].copy()
+        for local in range(1, count):
+            estimate += points[int(vertices[first + local])]
+        estimate /= count
+        normal_x = 0.0
+        normal_y = 0.0
+        normal_z = 0.0
+        weighted_x = 0.0
+        weighted_y = 0.0
+        weighted_z = 0.0
+        area_sum = 0.0
+        for local in range(count):
+            current = points[int(vertices[first + local])]
+            following = points[int(vertices[first + ((local + 1) % count)])]
+            first_x = following[0] - current[0]
+            first_y = following[1] - current[1]
+            first_z = following[2] - current[2]
+            second_x = estimate[0] - current[0]
+            second_y = estimate[1] - current[1]
+            second_z = estimate[2] - current[2]
+            cross_x = first_y * second_z - first_z * second_y
+            cross_y = first_z * second_x - first_x * second_z
+            cross_z = first_x * second_y - first_y * second_x
+            area = np.sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z)
+            normal_x += cross_x
+            normal_y += cross_y
+            normal_z += cross_z
+            area_sum += area
+            weighted_x += area * (current[0] + following[0] + estimate[0])
+            weighted_y += area * (current[1] + following[1] + estimate[1])
+            weighted_z += area * (current[2] + following[2] + estimate[2])
+        centres[face_id, 0] = (1.0 / 3.0) * weighted_x / (area_sum + vsmall)
+        centres[face_id, 1] = (1.0 / 3.0) * weighted_y / (area_sum + vsmall)
+        centres[face_id, 2] = (1.0 / 3.0) * weighted_z / (area_sum + vsmall)
+        areas[face_id, 0] = 0.5 * normal_x
+        areas[face_id, 1] = 0.5 * normal_y
+        areas[face_id, 2] = 0.5 * normal_z
+    return centres, areas
+
+
 def _face_geometry(points: np.ndarray, faces: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
-    return (
-        np.asarray([_face_centre(points[face]) for face in faces]),
-        np.asarray([_face_area_vector(points[face]) for face in faces]),
-    )
+    """Use polyMeshGenAddressing's geometry, not face::centre's arithmetic.
+
+    These are mathematically equivalent but not interchangeable in the
+    SMALL-scale plane-side tests used during volume untangling.
+    """
+    counts = np.fromiter((len(face) for face in faces), dtype=np.int64, count=len(faces))
+    offsets = np.empty(len(faces) + 1, dtype=np.int64)
+    offsets[0] = 0
+    np.cumsum(counts, out=offsets[1:])
+    vertices = np.concatenate(faces).astype(np.int32, copy=False)
+    return _face_geometry_kernel(np.asarray(points, dtype=np.float64), vertices, offsets)
 
 
 def _cfmesh_cell_centres(
@@ -93,17 +175,22 @@ def _cfmesh_cell_centres(
     )
     centres = np.zeros((n_cells, 3), dtype=np.float64)
     for cell_id, face_ids in enumerate(cell_faces):
-        selected = np.asarray(face_ids, dtype=np.int32)
-        estimate = face_centres[selected].mean(axis=0)
-        volumes3 = np.einsum(
-            "ij,ij->i",
-            face_areas[selected],
-            face_centres[selected] - estimate,
-        )
-        signs = np.where(owners[selected] == cell_id, 1.0, -1.0)
-        volumes3 = np.maximum(signs * volumes3, _VSMALL)
-        pyramid_centres = 0.75 * face_centres[selected] + 0.25 * estimate
-        centres[cell_id] = np.einsum("i,ij->j", volumes3, pyramid_centres) / volumes3.sum()
+        estimate = np.zeros(3, dtype=np.float64)
+        for face_id in face_ids:
+            estimate += face_centres[face_id]
+        estimate /= len(face_ids)
+        weighted_sum = np.zeros(3, dtype=np.float64)
+        volume_sum = 0.0
+        for face_id in face_ids:
+            normal = face_areas[face_id]
+            offset = face_centres[face_id] - estimate
+            volume3 = float(normal[0] * offset[0] + normal[1] * offset[1] + normal[2] * offset[2])
+            if owners[face_id] != cell_id:
+                volume3 *= -1.0
+            volume3 = max(volume3, _VSMALL)
+            weighted_sum += volume3 * (0.75 * face_centres[face_id] + 0.25 * estimate)
+            volume_sum += volume3
+        centres[cell_id] = weighted_sum / volume_sum
     return centres
 
 
@@ -149,15 +236,15 @@ def _cfmesh_bad_faces(
         # pyramidPointFaceRef has the opposite sign to the stored face area
         # for the owner side.  Testing the equivalent dot products avoids a
         # second polygon triangulation and matches the VSMALL=1e-300 gate.
-        if float(np.dot(area, centre - cell_centres[owner])) <= 0.0:
+        if _scalar_dot(area, centre - cell_centres[owner]) <= 0.0:
             bad.add(face_id)
         if face_id < len(neighbours):
             neighbour = int(neighbours[face_id])
-            if float(np.dot(area, centre - cell_centres[neighbour])) >= 0.0:
+            if _scalar_dot(area, centre - cell_centres[neighbour]) >= 0.0:
                 bad.add(face_id)
 
         coordinates = points[face]
-        area_magnitude = float(np.linalg.norm(area))
+        area_magnitude = float(np.sqrt(_mag_squared(area)))
         if area_magnitude < _VSMALL:
             bad.add(face_id)
         if len(face) > 3 and area_magnitude > _VSMALL:
@@ -171,22 +258,16 @@ def _cfmesh_bad_faces(
         for edge_index in range(len(face)):
             current = points[int(face[edge_index])]
             following = points[int(face[(edge_index + 1) % len(face)])]
-            owner_volume = float(
-                np.dot(
-                    np.cross(following - centre, current - centre),
-                    cell_centres[owner] - centre,
-                )
-                / 6.0
+            owner_volume = (1.0 / 6.0) * _scalar_dot(
+                np.cross(following - centre, current - centre),
+                cell_centres[owner] - centre,
             )
             if owner_volume < _VSMALL:
                 bad.add(face_id)
             if face_id < len(neighbours):
-                neighbour_volume = float(
-                    np.dot(
-                        np.cross(current - centre, following - centre),
-                        cell_centres[int(neighbours[face_id])] - centre,
-                    )
-                    / 6.0
+                neighbour_volume = (1.0 / 6.0) * _scalar_dot(
+                    np.cross(current - centre, following - centre),
+                    cell_centres[int(neighbours[face_id])] - centre,
                 )
                 if neighbour_volume < _VSMALL:
                     bad.add(face_id)
@@ -203,7 +284,7 @@ def _cfmesh_low_quality_faces(
     active_faces: np.ndarray | None = None,
     cell_face_order: Sequence[Sequence[int]] | None = None,
 ) -> set[int]:
-    """Return faces exceeding cfMesh's 70-degree or 2.0 skew gates."""
+    """Return faces exceeding cfMesh's 65-degree or 2.0 skew gates."""
     face_centres, face_areas = _face_geometry(points, faces)
     cell_centres = _cfmesh_cell_centres(
         points,
@@ -218,7 +299,7 @@ def _cfmesh_low_quality_faces(
         if active_faces is None
         else np.flatnonzero(active_faces)
     )
-    non_orthogonal_limit = float(np.cos(np.deg2rad(70.0)))
+    non_orthogonal_limit = float(np.cos(np.deg2rad(65.0)))
     bad: set[int] = set()
     for face_value in selected:
         face_id = int(face_value)
@@ -229,17 +310,19 @@ def _cfmesh_low_quality_faces(
             delta = cell_centres[neighbour] - cell_centres[owner]
             area = face_areas[face_id]
             dot_product = float(
-                np.dot(delta, area) / (np.linalg.norm(delta) * np.linalg.norm(area) + _VSMALL)
+                _scalar_dot(delta, area)
+                / (np.sqrt(_mag_squared(delta)) * np.sqrt(_mag_squared(area)) + _VSMALL)
             )
             if dot_product < non_orthogonal_limit:
                 bad.add(face_id)
-            owner_distance = float(np.linalg.norm(face_centre - cell_centres[owner]))
-            neighbour_distance = float(np.linalg.norm(face_centre - cell_centres[neighbour]))
-            intersection = (
-                cell_centres[owner] * neighbour_distance + cell_centres[neighbour] * owner_distance
-            ) / (owner_distance + neighbour_distance)
+            owner_distance = float(np.sqrt(_mag_squared(face_centre - cell_centres[owner])))
+            neighbour_distance = float(np.sqrt(_mag_squared(face_centre - cell_centres[neighbour])))
+            intersection = cell_centres[owner] * neighbour_distance / (
+                owner_distance + neighbour_distance
+            ) + cell_centres[neighbour] * owner_distance / (owner_distance + neighbour_distance)
             skewness = float(
-                np.linalg.norm(face_centre - intersection) / (np.linalg.norm(delta) + _VSMALL)
+                np.sqrt(_mag_squared(face_centre - intersection))
+                / (np.sqrt(_mag_squared(delta)) + _VSMALL)
             )
         else:
             delta = face_centre - cell_centres[owner]
@@ -451,13 +534,10 @@ def _build_part_tet_mesh(
 
 def _signed_tet_volumes(points: np.ndarray, tets: np.ndarray) -> np.ndarray:
     coordinates = points[tets]
-    return (
-        np.einsum(
-            "ij,ij->i",
-            np.cross(coordinates[:, 1] - coordinates[:, 0], coordinates[:, 2] - coordinates[:, 0]),
-            coordinates[:, 3] - coordinates[:, 0],
-        )
-        / 6.0
+    normal = np.cross(coordinates[:, 1] - coordinates[:, 0], coordinates[:, 2] - coordinates[:, 0])
+    offset = coordinates[:, 3] - coordinates[:, 0]
+    return (1.0 / 6.0) * (
+        normal[:, 0] * offset[:, 0] + normal[:, 1] * offset[:, 1] + normal[:, 2] * offset[:, 2]
     )
 
 
@@ -477,204 +557,66 @@ def _simplex_triangles(part: _PartTetMesh, node_id: int) -> np.ndarray:
     return np.asarray(triangles, dtype=np.int32)
 
 
-def _volume_stabilisation(points: np.ndarray, triangles: np.ndarray, point: np.ndarray) -> float:
-    values = points[triangles]
-    volumes = (
-        np.einsum(
-            "ij,ij->i",
-            np.cross(values[:, 1] - values[:, 0], values[:, 2] - values[:, 0]),
-            point - values[:, 0],
-        )
-        / 6.0
-    )
-    lengths = (
-        np.sum((point - values[:, 0]) ** 2, axis=1)
-        + np.sum((point - values[:, 1]) ** 2, axis=1)
-        + np.sum((point - values[:, 2]) ** 2, axis=1)
-    )
-    if float(volumes.min()) < _SMALL * float(lengths.max()):
-        return _SMALL * float(lengths.max())
-    return 0.0
-
-
-def _volume_objective(points: np.ndarray, triangles: np.ndarray, point: np.ndarray) -> float:
-    values = points[triangles]
-    volumes = (
-        np.einsum(
-            "ij,ij->i",
-            np.cross(values[:, 1] - values[:, 0], values[:, 2] - values[:, 0]),
-            point - values[:, 0],
-        )
-        / 6.0
-    )
-    lengths = (
-        np.sum((point - values[:, 0]) ** 2, axis=1)
-        + np.sum((point - values[:, 1]) ** 2, axis=1)
-        + np.sum((point - values[:, 2]) ** 2, axis=1)
-    )
-    stabilisation = _volume_stabilisation(points, triangles, point)
-    stable_volumes = 0.5 * (volumes + np.sqrt(volumes * volumes + stabilisation))
-    stable_volumes = np.maximum(stable_volumes, _ROOT_VSMALL)
-    return float(np.sum(lengths / np.power(stable_volumes, 2.0 / 3.0)))
-
-
-def _volume_gradients(
-    points: np.ndarray, triangles: np.ndarray, point: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    gradient = np.zeros(3, dtype=np.float64)
-    hessian = np.zeros((3, 3), dtype=np.float64)
-    values = points[triangles]
-    stabilisation = _volume_stabilisation(points, triangles, point)
-    constant = (2.0 / 3.0) * np.power(0.5, 2.0 / 3.0)
-    for triangle in values:
-        a, b, c = triangle
-        volume_gradient = np.cross(b - a, c - a) / 6.0
-        volume = float(np.dot(volume_gradient, point - a))
-        length_squared = float(
-            np.dot(point - a, point - a)
-            + np.dot(point - b, point - b)
-            + np.dot(point - c, point - c)
-        )
-        stable = float(np.sqrt(volume * volume + stabilisation))
-        stable_volume = max(_ROOT_VSMALL, 0.5 * (volume + stable))
-        stable_gradient = 0.5 * (volume_gradient + volume * volume_gradient / stable)
-        length_gradient = 2.0 * (3.0 * point - a - b - c)
-        root_volume = np.power(2.0 * stable_volume, 1.0 / 3.0)
-        volume_power = np.power(stable_volume, 2.0 / 3.0)
-        volume_power_squared = volume_power * volume_power
-        power_gradient = constant * (2.0 * stable_gradient) / root_volume
-        gradient += (
-            length_gradient / volume_power - length_squared * power_gradient / volume_power_squared
-        )
-        stable_hessian = (
-            np.outer(volume_gradient, volume_gradient) / stable
-            - volume * volume * np.outer(volume_gradient, volume_gradient) / stable**3
-        )
-        power_hessian = (
-            constant * stable_hessian / root_volume
-            - (constant / 3.0) * 4.0 * np.outer(stable_gradient, stable_gradient) / root_volume**4
-        )
-        hessian += (
-            6.0 * np.eye(3) / volume_power
-            - (
-                np.outer(length_gradient, power_gradient)
-                + np.outer(power_gradient, length_gradient)
-            )
-            / volume_power_squared
-            - length_squared * power_hessian / volume_power_squared
-            + 2.0
-            * length_squared
-            * np.outer(power_gradient, power_gradient)
-            / (volume_power_squared * volume_power)
-        )
-    return gradient, hessian
-
-
-def _optimise_volume_point(
-    points: np.ndarray, triangles: np.ndarray, point: np.ndarray, tolerance: float = 1.0e-5
+@njit(cache=True, fastmath=False)
+def _optimise_part_nodes_kernel(
+    points: np.ndarray,
+    tets: np.ndarray,
+    node_ids: np.ndarray,
+    tet_ids: np.ndarray,
+    tet_offsets: np.ndarray,
+    tolerance: float,
 ) -> np.ndarray:
-    neighbours = points[triangles.ravel()]
-    lower = neighbours.min(axis=0)
-    upper = neighbours.max(axis=0)
-    scale = float(np.linalg.norm(upper - lower))
-    if scale <= _VSMALL:
-        return point.copy()
-    values = points / scale
-    lower = lower / scale
-    upper = upper / scale
-    candidate = point.copy() / scale
-    if np.any(candidate < lower) or np.any(candidate > upper):
-        candidate = 0.5 * (lower + upper)
-    candidate = 0.5 * (lower + upper)
-    current = candidate.copy()
-    half_range = 0.5 * (upper - lower)
-    before = _volume_objective(values, triangles, candidate)
-    after = before
-    directions = np.asarray(
-        [
-            (-1.0, -1.0, -1.0),
-            (1.0, -1.0, -1.0),
-            (-1.0, 1.0, -1.0),
-            (1.0, 1.0, -1.0),
-            (-1.0, -1.0, 1.0),
-            (1.0, -1.0, 1.0),
-            (-1.0, 1.0, 1.0),
-            (1.0, 1.0, 1.0),
-        ]
-    )
-    for _iteration in range(100):
-        before = after
-        best_value = np.inf
-        best_point = current.copy()
-        for direction in directions:
-            trial = current + 0.5 * direction * half_range
-            value = _volume_objective(values, triangles, trial)
-            if value < best_value:
-                best_value = value
-                best_point = trial
-        current = best_point
-        candidate = best_point.copy()
-        half_range *= 0.5
-        after = best_value
-        if abs(after - before) / after < tolerance:
-            break
-    divide_point = candidate.copy()
-    divide_value = after
+    """Apply serial volume-point updates without Python per-node allocations."""
+    updates = np.empty((len(node_ids), 3), dtype=np.float64)
+    for local_node in range(len(node_ids)):
+        node_id = int(node_ids[local_node])
+        first = int(tet_offsets[local_node])
+        stop = int(tet_offsets[local_node + 1])
+        triangles = np.empty((stop - first, 3, 3), dtype=np.float64)
+        for local_tet in range(stop - first):
+            tet = tets[int(tet_ids[first + local_tet])]
+            position = 0
+            for candidate in range(4):
+                if int(tet[candidate]) == node_id:
+                    position = candidate
+                    break
+            if position == 0:
+                order = (1, 3, 2)
+            elif position == 1:
+                order = (0, 2, 3)
+            elif position == 2:
+                order = (0, 3, 1)
+            else:
+                order = (0, 1, 2)
+            triangles[local_tet, 0] = points[int(tet[order[0]])]
+            triangles[local_tet, 1] = points[int(tet[order[1]])]
+            triangles[local_tet, 2] = points[int(tet[order[2]])]
+        updates[local_node] = _optimise_triangles(triangles, points[node_id], tolerance)
+    return updates
 
-    after = _volume_objective(values, triangles, candidate)
-    for _iteration in range(100):
-        original = candidate.copy()
-        before = after
-        gradient, hessian = _volume_gradients(values, triangles, candidate)
-        determinant = float(np.linalg.det(hessian))
-        finished = False
-        if determinant > _SMALL:
-            displacement = np.linalg.solve(hessian, gradient)
-            candidate -= displacement
-            after = _volume_objective(values, triangles, candidate)
-            relaxation = 0.8
-            loops = 0
-            while after > before:
-                candidate = original - relaxation * displacement
-                relaxation *= 0.5
-                after = _volume_objective(values, triangles, candidate)
-                if after < before:
-                    continue
-                loops += 1
-                if loops == 5:
-                    candidate = original
-                    displacement = np.zeros(3)
-                    after = before
-                    finished = True
-            if abs(before - after) / before < tolerance:
-                finished = True
-        else:
-            displacement = np.zeros(3, dtype=np.float64)
-            triangle_values = values[triangles]
-            volumes = (
-                np.einsum(
-                    "ij,ij->i",
-                    np.cross(
-                        triangle_values[:, 1] - triangle_values[:, 0],
-                        triangle_values[:, 2] - triangle_values[:, 0],
-                    ),
-                    candidate - triangle_values[:, 0],
-                )
-                / 6.0
-            )
-            for triangle, volume in zip(triangle_values, volumes, strict=True):
-                if volume < _SMALL:
-                    normal = 0.5 * np.cross(triangle[1] - triangle[0], triangle[2] - triangle[0])
-                    magnitude = float(np.linalg.norm(normal))
-                    if magnitude > _VSMALL:
-                        displacement += 0.01 * normal / magnitude
-            candidate += displacement
-            after = _volume_objective(values, triangles, candidate)
-        if finished:
-            break
-    if after > divide_value:
-        candidate = divide_point
-    return candidate * scale
+
+def _optimise_part_nodes(
+    part: _PartTetMesh, node_ids: np.ndarray, *, tolerance: float
+) -> np.ndarray:
+    offsets = np.empty(len(node_ids) + 1, dtype=np.int64)
+    offsets[0] = 0
+    counts = np.fromiter(
+        (len(part.point_tets[int(node_id)]) for node_id in node_ids),
+        dtype=np.int64,
+        count=len(node_ids),
+    )
+    np.cumsum(counts, out=offsets[1:])
+    tet_ids = np.concatenate(
+        [np.asarray(part.point_tets[int(node_id)], dtype=np.int32) for node_id in node_ids]
+    )
+    return _optimise_part_nodes_kernel(
+        part.points,
+        part.tets,
+        np.asarray(node_ids, dtype=np.int32),
+        tet_ids,
+        offsets,
+        tolerance,
+    )
 
 
 def _refresh_part_centres(part: _PartTetMesh, changed_nodes: Iterable[int]) -> None:
@@ -702,90 +644,34 @@ def _refresh_part_centres(part: _PartTetMesh, changed_nodes: Iterable[int]) -> N
         # updateVerticesSMP intentionally uses tet[0:3], which includes the
         # old face-centre at tet[2].  This is one relaxation step, not a fresh
         # polygon-centroid evaluation.
-        centroids = values[:, :3].mean(axis=1)
+        centroids = (values[:, 0] + values[:, 1] + values[:, 2]) / 3.0
+        normals = 0.5 * np.cross(values[:, 2] - values[:, 0], values[:, 1] - values[:, 0])
         areas = (
-            0.5
-            * np.linalg.norm(
-                np.cross(values[:, 2] - values[:, 0], values[:, 1] - values[:, 0]),
-                axis=1,
+            np.sqrt(
+                normals[:, 0] * normals[:, 0]
+                + normals[:, 1] * normals[:, 1]
+                + normals[:, 2] * normals[:, 2]
             )
             + _VSMALL
         )
-        part.points[node_id] = np.einsum("i,ij->j", areas, centroids) / areas.sum()
+        weighted_sum = np.zeros(3, dtype=np.float64)
+        area_sum = 0.0
+        for centre, area in zip(centroids, areas, strict=True):
+            weighted_sum += centre * area
+            area_sum += area
+        part.points[node_id] = weighted_sum / area_sum
     for node_id in sorted(update_cells):
         tet_ids = np.asarray(part.point_tets[node_id], dtype=np.int32)
         tets = part.tets[tet_ids]
         values = part.points[tets]
-        centroids = values.mean(axis=1)
+        centroids = 0.25 * (values[:, 0] + values[:, 1] + values[:, 2] + values[:, 3])
         volumes = np.abs(_signed_tet_volumes(part.points, tets)) + _VSMALL
-        part.points[node_id] = np.einsum("i,ij->j", volumes, centroids) / volumes.sum()
-
-
-def _knupp_objective(
-    point: np.ndarray,
-    normals: np.ndarray,
-    centres: np.ndarray,
-    beta: float,
-) -> float:
-    values = (normals @ point) - np.einsum("ij,ij->i", normals, centres) - beta
-    return float(np.sum((np.abs(values) - values) ** 2))
-
-
-def _knupp_point(points: np.ndarray, triangles: np.ndarray, point: np.ndarray) -> np.ndarray:
-    values = points[triangles]
-    raw_normals = 0.5 * np.cross(values[:, 1] - values[:, 0], values[:, 2] - values[:, 0])
-    magnitudes = np.linalg.norm(raw_normals, axis=1)
-    valid = magnitudes > _VSMALL
-    if not np.any(valid):
-        return point.copy()
-    normals = raw_normals[valid] / magnitudes[valid, None]
-    centres = values[valid].mean(axis=1)
-    lower = values.reshape((-1, 3)).min(axis=0)
-    upper = values.reshape((-1, 3)).max(axis=0)
-    candidate = point.copy()
-    if np.any(candidate < lower) or np.any(candidate > upper):
-        candidate = 0.5 * (lower + upper)
-    beta = 0.01 * float(np.linalg.norm(upper - lower))
-    tolerance = (2.0 * _SMALL) ** 2 * float(np.dot(upper - lower, upper - lower))
-    for _outer in range(5):
-        previous = _knupp_objective(candidate, normals, centres, beta)
-        displacement = np.zeros(3, dtype=np.float64)
-        for _iteration in range(10):
-            original = candidate.copy()
-            offsets = (normals @ candidate) - np.einsum("ij,ij->i", normals, centres) - beta
-            metric_gradients = (np.sign(offsets) - 1.0)[:, None] * normals
-            gradient = np.einsum("i,ij->j", np.abs(offsets) - offsets, metric_gradients)
-            hessian = np.einsum("ij,ik->jk", metric_gradients, metric_gradients)
-            determinant = float(np.linalg.det(hessian))
-            if determinant > _SMALL:
-                displacement = np.linalg.solve(hessian, gradient)
-                if not np.isfinite(displacement).all():
-                    displacement = np.zeros(3, dtype=np.float64)
-                candidate -= displacement
-                current = _knupp_objective(candidate, normals, centres, beta)
-                relaxation = 0.8
-                loops = 0
-                while current > previous:
-                    candidate = original - relaxation * displacement
-                    relaxation *= 0.5
-                    current = _knupp_objective(candidate, normals, centres, beta)
-                    if current < previous:
-                        continue
-                    loops += 1
-                    if loops == 5:
-                        candidate = original
-                        displacement = np.zeros(3, dtype=np.float64)
-                        current = 0.0
-                previous = current
-            else:
-                displacement = np.zeros(3, dtype=np.float64)
-            if float(np.dot(displacement, displacement)) <= tolerance:
-                break
-        no_beta = _knupp_objective(candidate, normals, centres, 0.0)
-        if not (previous < _VSMALL and no_beta > _VSMALL):
-            break
-        beta *= 0.5
-    return candidate
+        weighted_sum = np.zeros(3, dtype=np.float64)
+        volume_sum = 0.0
+        for centre, volume in zip(centroids, volumes, strict=True):
+            weighted_sum += centre * volume
+            volume_sum += volume
+        part.points[node_id] = weighted_sum / volume_sum
 
 
 def _optimise_part_knupp(part: _PartTetMesh) -> None:
@@ -862,7 +748,7 @@ class _CutRegion:
             [0, 4, 1, 5],
             [3, 7, 2, 6],
         ]
-        return cls(points, edges, faces, _SMALL * float(np.linalg.norm(upper - lower)))
+        return cls(points, edges, faces, _SMALL * float(np.sqrt(_mag_squared(upper - lower))))
 
     def _find_new_vertices(self, reference: np.ndarray, normal: np.ndarray) -> bool:
         self.new_vertex_labels = [-1] * len(self.points)
@@ -870,7 +756,10 @@ class _CutRegion:
         self.vertex_types = [0] * len(self.points)
         self.candidate_points = []
         for point_id, point in enumerate(self.points):
-            distance = float(np.dot(point - reference, normal))
+            offset = point - reference
+            # Plane-side tests are sensitive at cfMesh's SMALL-sized cut
+            # tolerance. A BLAS dot product may fuse/reorder these products.
+            distance = float(offset[0] * normal[0] + offset[1] * normal[1] + offset[2] * normal[2])
             if distance > self.tolerance:
                 self.new_vertex_labels[point_id] = len(self.candidate_points)
                 self.candidate_points.append(point.copy())
@@ -1046,7 +935,7 @@ class _CutRegion:
     def cut(self, reference: np.ndarray, normal: np.ndarray) -> None:
         if not self.valid:
             return
-        magnitude = float(np.linalg.norm(normal))
+        magnitude = float(np.sqrt(_mag_squared(normal)))
         if magnitude <= _VSMALL:
             return
         normal = normal / magnitude
@@ -1073,7 +962,7 @@ def _untangle_point(points: np.ndarray, triangles: np.ndarray) -> np.ndarray | N
     region = _CutRegion.from_bounds(lower, upper)
     for triangle in values:
         normal = np.cross(triangle[1] - triangle[0], triangle[2] - triangle[0])
-        if float(np.linalg.norm(normal)) > _VSMALL:
+        if float(np.sqrt(_mag_squared(normal))) > _VSMALL:
             region.cut(triangle[0], normal)
     if not region.points:
         return None
@@ -1092,8 +981,14 @@ def _optimise_part_untangler(part: _PartTetMesh, iterations: int = 5) -> None:
         if node_id not in negative_nodes:
             continue
         position = _untangle_point(part.points, _simplex_triangles(part, node_id))
-        if position is not None and np.isfinite(position).all():
-            updates[node_id] = position
+        # cfMesh always queues selected vertices, even when the feasible
+        # region is empty and the simplex leaves their position unchanged.
+        # updateVerticesSMP must still relax the incident auxiliary centres.
+        updates[node_id] = (
+            position
+            if position is not None and np.isfinite(position).all()
+            else part.points[node_id].copy()
+        )
     for node_id, position in updates.items():
         part.points[node_id] = position
     _refresh_part_centres(part, updates)
@@ -1101,67 +996,24 @@ def _optimise_part_untangler(part: _PartTetMesh, iterations: int = 5) -> None:
 
 def _optimise_part_volume(part: _PartTetMesh, iterations: int = 10) -> None:
     for _iteration in range(iterations):
-        updates = {
-            int(node_value): _optimise_volume_point(
-                part.points,
-                _simplex_triangles(part, int(node_value)),
-                part.points[int(node_value)],
-            )
-            for node_value in part.smooth_nodes
-        }
-        for node_id, position in updates.items():
+        positions = _optimise_part_nodes(part, part.smooth_nodes, tolerance=1.0e-5)
+        for node_id, position in zip(part.smooth_nodes, positions, strict=True):
             part.points[node_id] = position
-        _refresh_part_centres(part, updates)
+        _refresh_part_centres(part, part.smooth_nodes)
 
 
-def _optimise_part_boundary_volume(
-    part: _PartTetMesh, *, iterations: int = 3, non_shrinking: bool = True
-) -> None:
+def _optimise_part_boundary_volume(part: _PartTetMesh, *, iterations: int) -> None:
+    """Apply the unconstrained boundary passes used by the native workflow.
+
+    cfMesh calls optimiseBoundaryVolumeOptimizer(true/false). Its first
+    parameter is a label iteration count, not the nonShrinking flag: these
+    calls mean one/zero iterations with nonShrinking left false.
+    """
     for _iteration in range(iterations):
-        updates: dict[int, np.ndarray] = {}
-        for node_value in part.boundary_nodes:
-            node_id = int(node_value)
-            triangles = _simplex_triangles(part, node_id)
-            candidate = _optimise_volume_point(part.points, triangles, part.points[node_id])
-            if not non_shrinking:
-                updates[node_id] = candidate
-                continue
-            edge_counts: dict[tuple[int, int], int] = {}
-            for triangle in triangles:
-                for index in range(3):
-                    start = int(triangle[index])
-                    end = int(triangle[(index + 1) % 3])
-                    edge = (min(start, end), max(start, end))
-                    edge_counts[edge] = edge_counts.get(edge, 0) + 1
-            normal_tensor = np.zeros((3, 3), dtype=np.float64)
-            for (start, end), count in edge_counts.items():
-                if count != 1:
-                    continue
-                normal = np.cross(
-                    part.points[end] - part.points[start],
-                    part.points[node_id] - part.points[start],
-                )
-                magnitude = float(np.linalg.norm(normal))
-                if magnitude > _VSMALL:
-                    normal /= magnitude
-                    normal_tensor += np.outer(normal, normal)
-            eigenvalues, eigenvectors = np.linalg.eigh(normal_tensor)
-            displacement = candidate - part.points[node_id]
-            if abs(float(eigenvalues[2])) > abs(float(eigenvalues[1])) + abs(float(eigenvalues[0])):
-                normal = eigenvectors[:, 2]
-                displacement -= float(np.dot(displacement, normal)) * normal
-            elif abs(float(eigenvalues[1])) > 0.5 * (
-                abs(float(eigenvalues[2])) + abs(float(eigenvalues[0]))
-            ):
-                edge_direction = np.cross(eigenvectors[:, 1], eigenvectors[:, 2])
-                edge_direction /= np.linalg.norm(edge_direction) + _VSMALL
-                displacement = float(np.dot(displacement, edge_direction)) * edge_direction
-            else:
-                continue
-            updates[node_id] = part.points[node_id] + displacement
-        for node_id, position in updates.items():
+        positions = _optimise_part_nodes(part, part.boundary_nodes, tolerance=1.0e-5)
+        for node_id, position in zip(part.boundary_nodes, positions, strict=True):
             part.points[node_id] = position
-        _refresh_part_centres(part, updates)
+        _refresh_part_centres(part, part.boundary_nodes)
 
 
 def _update_mesh_from_part(
@@ -1302,11 +1154,11 @@ def _run_cfmesh_untangle(
                 cell_face_order=cell_face_order,
             )
             if global_iteration < 2:
-                _optimise_part_boundary_volume(part, non_shrinking=True)
+                _optimise_part_boundary_volume(part, iterations=1)
             elif global_iteration < 5:
                 _optimise_part_boundary_laplace(part)
             else:
-                _optimise_part_boundary_volume(part, non_shrinking=False)
+                _optimise_part_boundary_volume(part, iterations=0)
             changed_faces = _update_mesh_from_part(points, part, faces, point_cells, cell_faces)
 
         if n_bad_faces == 0:
@@ -1329,6 +1181,7 @@ def _run_cfmesh_low_quality(
 ) -> list[int]:
     """Port ``meshOptimizer::optimizeLowQualityFaces``."""
     trace: list[int] = []
+    changed_faces = np.ones(len(faces), dtype=np.bool_)
     for _iteration in range(max_iterations):
         low_quality_faces = _cfmesh_low_quality_faces(
             points,
@@ -1336,6 +1189,7 @@ def _run_cfmesh_low_quality(
             owners,
             neighbours,
             n_cells,
+            active_faces=changed_faces,
             cell_face_order=cell_face_order,
         )
         trace.append(len(low_quality_faces))
@@ -1352,7 +1206,7 @@ def _run_cfmesh_low_quality(
             cell_face_order=cell_face_order,
         )
         _optimise_part_volume(part)
-        _update_mesh_from_part(points, part, faces, point_cells, cell_faces)
+        changed_faces = _update_mesh_from_part(points, part, faces, point_cells, cell_faces)
     return trace
 
 
@@ -1360,6 +1214,7 @@ def optimise_cfmesh_mesh(
     mesh_data: dict[str, Any],
     *,
     iterations: int = 5,
+    surface_iterations: int | None = None,
     map_edge_points: Callable[[Sequence[int]], None] | None = None,
     untangle_surface: Callable[[], list[int]] | None = None,
 ) -> None:
@@ -1373,6 +1228,7 @@ def optimise_cfmesh_mesh(
     """
     optimise_cfmesh_surface(
         mesh_data,
+        iterations=iterations if surface_iterations is None else surface_iterations,
         map_edge_points=map_edge_points,
         untangle_surface=untangle_surface,
     )

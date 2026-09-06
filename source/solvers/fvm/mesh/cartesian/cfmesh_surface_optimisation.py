@@ -12,13 +12,35 @@ import numpy as np
 _SMALL = 1.0e-15
 _VSMALL = 1.0e-300
 _ROOT_VSMALL = 1.0e-150
-_DIVIDE_TIE_TOLERANCE = 1.0e-4
+
+
+def _mag_squared(value: np.ndarray) -> float:
+    """Use OpenFOAM's component order, without a BLAS reduction."""
+    return float(value[0] * value[0] + value[1] * value[1] + value[2] * value[2])
+
+
+def _dot(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+    """Scalar-order dot products, also accepting an array of row vectors."""
+    return first[..., 0] * second[0] + first[..., 1] * second[1] + first[..., 2] * second[2]
+
+
+def _relax_face_centre(triangles: np.ndarray) -> np.ndarray:
+    """One partTriMesh auxiliary-centre refresh in stored triangle order."""
+    weighted = np.zeros(3, dtype=np.float64)
+    area_sum = 0.0
+    for a, b, c in triangles:
+        centre = (a + b + c) / 3.0
+        normal = 0.5 * np.cross(b - a, c - a)
+        area = float(np.sqrt(_mag_squared(normal))) + _VSMALL
+        weighted += centre * area
+        area_sum += area
+    return weighted / area_sum
 
 
 def _face_centre(coordinates: np.ndarray) -> np.ndarray:
     count = len(coordinates)
     if count == 3:
-        return (coordinates[0] + coordinates[1] + coordinates[2]) / 3.0
+        return (1.0 / 3.0) * (coordinates[0] + coordinates[1] + coordinates[2])
     centre = np.zeros(3, dtype=np.float64)
     for coordinate in coordinates:
         centre += coordinate
@@ -87,14 +109,7 @@ def _stabilisation(points: np.ndarray, triangles: np.ndarray) -> float:
         area = 0.5 * ((p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1]))
         first = p0 - p1
         second = p2 - p0
-        length_squared = float(
-            first[0] * first[0]
-            + first[1] * first[1]
-            + first[2] * first[2]
-            + second[0] * second[0]
-            + second[1] * second[1]
-            + second[2] * second[2]
-        )
+        length_squared = _mag_squared(first) + _mag_squared(second)
         minimum_area = min(minimum_area, float(area))
         maximum_length_squared = max(maximum_length_squared, length_squared)
     if minimum_area < _SMALL * maximum_length_squared:
@@ -111,14 +126,7 @@ def _objective(points: np.ndarray, triangles: np.ndarray, stabilisation: float) 
         denominator = max(_VSMALL, 0.5 * (area + stable))
         first = p0 - p1
         second = p2 - p0
-        length_squared = float(
-            first[0] * first[0]
-            + first[1] * first[1]
-            + first[2] * first[2]
-            + second[0] * second[0]
-            + second[1] * second[1]
-            + second[2] * second[2]
-        )
+        length_squared = _mag_squared(first) + _mag_squared(second)
         value += length_squared / denominator
     return value
 
@@ -129,8 +137,10 @@ def _gradients(
     gradient = np.zeros(2, dtype=np.float64)
     hessian = np.zeros((2, 2), dtype=np.float64)
     for triangle in triangles:
-        p0, p1, p2 = points[triangle, :2]
-        length_squared = float(np.dot(p0 - p1, p0 - p1) + np.dot(p2 - p0, p2 - p0))
+        p0, p1, p2 = points[triangle]
+        if _mag_squared(p1 - p2) < _VSMALL:
+            continue
+        length_squared = _mag_squared(p0 - p1) + _mag_squared(p2 - p0)
         area = 0.5 * ((p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1]))
         stable = float(np.sqrt(area * area + stabilisation))
         stable_area = max(_ROOT_VSMALL, 0.5 * (area + stable))
@@ -141,7 +151,7 @@ def _gradients(
         area_outer = np.outer(area_gradient, area_gradient)
         stable_gradient = 0.5 * (area_gradient + area * area_gradient / stable)
         stable_hessian = 0.5 * (area_outer / stable - area * area * area_outer / stable**3)
-        length_gradient = 4.0 * p0 - 2.0 * p1 - 2.0 * p2
+        length_gradient = (4.0 * p0 - 2.0 * p1 - 2.0 * p2)[:2]
         stable_area_squared = stable_area * stable_area
         gradient += (
             length_gradient / stable_area - length_squared * stable_gradient / stable_area_squared
@@ -176,7 +186,7 @@ def _optimise_point(
     neighbour_values = points[triangles[:, 1:].ravel()]
     lower = neighbour_values.min(axis=0)
     upper = neighbour_values.max(axis=0)
-    scale = float(np.linalg.norm(upper - lower))
+    scale = float(np.sqrt(_mag_squared(upper - lower)))
     if scale <= _VSMALL:
         return points[target].copy()
     values = points.copy() / scale
@@ -199,8 +209,7 @@ def _optimise_point(
             values[target, 1] = current[1] + 0.5 * y_direction * dy
             stabilisation = _stabilisation(values, triangles)
             value = _objective(values, triangles, stabilisation)
-            relative_improvement = (best_value - value) / max(abs(best_value), _VSMALL)
-            if value < best_value and relative_improvement > _DIVIDE_TIE_TOLERANCE:
+            if value < best_value:
                 best = values[target].copy()
                 best_value = value
         current = best
@@ -213,20 +222,26 @@ def _optimise_point(
         before = best_value
     divide_point = values[target].copy()
 
-    average_edge = float(np.linalg.norm(upper - lower))
+    average_edge = float(np.sqrt(_mag_squared(upper - lower)))
     stabilisation = _stabilisation(values, triangles)
     before = _objective(values, triangles, stabilisation)
     steepest_value = before
     for _iteration in range(100):
         gradient, hessian = _gradients(values, triangles, stabilisation)
-        determinant = float(np.linalg.det(hessian))
+        determinant = float(hessian[0, 0] * hessian[1, 1] - hessian[0, 1] * hessian[1, 0])
         if abs(determinant) < _VSMALL:
             displacement = np.zeros(2, dtype=np.float64)
         else:
-            displacement = np.linalg.solve(hessian, gradient)
-            magnitude = float(np.linalg.norm(displacement))
+            # cfMesh's matrix2D uses Cramer's rule, not a pivoted LAPACK solve.
+            displacement = np.asarray(
+                (
+                    (hessian[1, 1] * gradient[0] - hessian[0, 1] * gradient[1]) / determinant,
+                    (-hessian[1, 0] * gradient[0] + hessian[0, 0] * gradient[1]) / determinant,
+                )
+            )
+            magnitude = float(np.sqrt(displacement[0] ** 2 + displacement[1] ** 2))
             if magnitude > 0.2 * average_edge:
-                displacement *= 0.2 * average_edge / magnitude
+                displacement = (displacement / magnitude) * 0.2 * average_edge
         values[target, :2] -= displacement
         stabilisation = _stabilisation(values, triangles)
         steepest_value = _objective(values, triangles, stabilisation)
@@ -243,6 +258,7 @@ def _smooth_partition_points(
     partition_points: Sequence[int],
     *,
     iterations: int,
+    auxiliary_state: dict[str, np.ndarray] | None = None,
 ) -> None:
     """Run cfMesh's face-centre Laplacian and objective smoother."""
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
@@ -276,7 +292,12 @@ def _smooth_partition_points(
                 if vertex < n_points:
                     point_triangle_ids[vertex].append(triangle_id)
 
-    auxiliary_centres: np.ndarray | None = None
+    auxiliary_centres: np.ndarray | None = (
+        auxiliary_state.get("centres") if auxiliary_state is not None else None
+    )
+    triangulation_points: np.ndarray | None = (
+        auxiliary_state.get("points") if auxiliary_state is not None else None
+    )
     for _iteration in range(iterations):
         face_centres = {
             face_id: _face_centre(points[faces[face_id]])
@@ -292,18 +313,28 @@ def _smooth_partition_points(
                 (face_normals[face_id] for face_id in point_faces[point_id]),
                 np.zeros(3, dtype=np.float64),
             )
-            length = float(np.linalg.norm(normal))
+            length = float(np.sqrt(_mag_squared(normal)))
             if length <= _VSMALL:
                 continue
             normal /= length
+            # plane(point, pointNormal) normalises the unit normal again.
+            normal /= float(np.sqrt(_mag_squared(normal)))
             projected = [
-                centre - normal * float(np.dot(centre - points[point_id], normal))
+                centre - normal * float(_dot(centre - points[point_id], normal))
                 for face_id in point_faces[point_id]
                 for centre in (face_centres[face_id],)
             ]
             laplacian_updates[point_id] = np.asarray(projected).mean(axis=0)
         for point_id, value in laplacian_updates.items():
             points[point_id] = value
+
+        if triangulation_points is None:
+            triangulation_points = points.copy()
+        else:
+            selected_ids = np.asarray(partition_points, dtype=np.int64)
+            triangulation_points[selected_ids] = points[selected_ids]
+        if auxiliary_state is not None:
+            auxiliary_state["points"] = triangulation_points
 
         if auxiliary_centres is None:
             auxiliary_centres = np.asarray(
@@ -323,27 +354,16 @@ def _smooth_partition_points(
             following = np.roll(face, -1)
             triangles = np.stack(
                 (
-                    points[face],
-                    points[following],
+                    triangulation_points[face],
+                    triangulation_points[following],
                     np.broadcast_to(centre, (len(face), 3)),
                 ),
                 axis=1,
             )
-            areas = (
-                0.5
-                * np.linalg.norm(
-                    np.cross(
-                        triangles[:, 1] - triangles[:, 0],
-                        triangles[:, 2] - triangles[:, 0],
-                    ),
-                    axis=1,
-                )
-                + _VSMALL
-            )
-            updated_auxiliary[local_face_id] = np.einsum(
-                "i,ij->j", areas, triangles.mean(axis=1)
-            ) / float(areas.sum())
+            updated_auxiliary[local_face_id] = _relax_face_centre(triangles)
         auxiliary_centres = updated_auxiliary
+        if auxiliary_state is not None:
+            auxiliary_state["centres"] = auxiliary_centres
 
         face_normals = {
             face_id: _face_area_vector(points[faces[face_id]])
@@ -355,7 +375,7 @@ def _smooth_partition_points(
                 (face_normals[face_id] for face_id in point_faces[point_id]),
                 np.zeros(3, dtype=np.float64),
             )
-            length = float(np.linalg.norm(normal))
+            length = float(np.sqrt(_mag_squared(normal)))
             if length > _VSMALL:
                 point_normals[point_id] = normal / length
 
@@ -364,6 +384,7 @@ def _smooth_partition_points(
             normal = point_normals.get(point_id)
             if normal is None:
                 continue
+            normal = normal / float(np.sqrt(_mag_squared(normal)))
             local_labels: list[int] = []
             local_index: dict[int, int] = {}
             local_triangles: list[tuple[int, int, int]] = []
@@ -389,27 +410,29 @@ def _smooth_partition_points(
             centre_point = points[point_id]
             local_coordinates = np.asarray(
                 [
-                    points[label] if label < n_points else auxiliary_centres[label - n_points]
+                    triangulation_points[label]
+                    if label < n_points
+                    else auxiliary_centres[label - n_points]
                     for label in local_labels
                 ]
             )
             vector_x: np.ndarray | None = None
             for coordinate in local_coordinates:
-                projected = coordinate - normal * float(np.dot(coordinate - centre_point, normal))
+                projected = coordinate - normal * float(_dot(coordinate - centre_point, normal))
                 offset = projected - centre_point
-                length = float(np.linalg.norm(offset))
+                length = float(np.sqrt(_mag_squared(offset)))
                 if length > _VSMALL:
                     vector_x = offset / length
                     break
             if vector_x is None:
                 continue
             vector_y = np.cross(normal, vector_x)
-            vector_y /= np.linalg.norm(vector_y)
+            vector_y /= float(np.sqrt(_mag_squared(vector_y)))
             offsets = local_coordinates - centre_point
             planar = np.column_stack(
                 (
-                    offsets @ vector_x,
-                    offsets @ vector_y,
+                    _dot(offsets, vector_x),
+                    _dot(offsets, vector_y),
                     np.zeros(len(offsets), dtype=np.float64),
                 )
             )
@@ -430,6 +453,13 @@ def _inverted_boundary_points(
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
     boundary_start = int(mesh_data["n_interior_faces"])
+    if len(faces) - boundary_start > 10_000:
+        return _inverted_boundary_points_vectorized(
+            points,
+            faces[boundary_start:],
+            None if face_patch_ids is None else np.asarray(face_patch_ids),
+            active_points,
+        )
     point_faces: dict[int, list[tuple[int, int]]] = defaultdict(list)
     face_centres: dict[int, np.ndarray] = {}
     face_normals: dict[int, np.ndarray] = {}
@@ -515,6 +545,87 @@ def _inverted_boundary_points(
     return inverted
 
 
+def _inverted_boundary_points_vectorized(
+    points: np.ndarray,
+    faces: list[np.ndarray],
+    face_patch_ids: np.ndarray | None,
+    active_points: set[int] | None,
+) -> set[int]:
+    """Vectorized equivalent of the partition-point orientation predicate.
+
+    Large reference meshes have tens of thousands of boundary polygons.  The
+    scalar cfMesh transcription is useful for checkpoint parity, but its
+    Python face/corner loop becomes the dominant cost at release scale.  Keep
+    the same two predicates while evaluating all polygon corners in NumPy.
+    """
+    widths = np.asarray([len(face) for face in faces], dtype=np.int64)
+    if not len(widths):
+        return set()
+    starts = np.concatenate((np.asarray((0,), dtype=np.int64), np.cumsum(widths)))
+    flat_faces = np.concatenate(faces).astype(np.int64, copy=False)
+    face_ids = np.repeat(np.arange(len(faces), dtype=np.int64), widths)
+    face_starts = np.repeat(starts[:-1], widths)
+    positions = np.arange(len(flat_faces), dtype=np.int64) - face_starts
+    next_ids = flat_faces[face_starts + (positions + 1) % widths[face_ids]]
+    previous_ids = flat_faces[face_starts + (positions - 1) % widths[face_ids]]
+    current = points[flat_faces]
+    following = points[next_ids]
+    previous = points[previous_ids]
+    face_centres = np.add.reduceat(current, starts[:-1]) / widths[:, None]
+    centre = face_centres[face_ids]
+    face_normals = np.zeros((len(faces), 3), dtype=np.float64)
+    np.add.at(
+        face_normals,
+        face_ids,
+        0.5 * np.cross(following - current, centre - current),
+    )
+    normal_lengths = np.linalg.norm(face_normals, axis=1)
+    invalid_faces = normal_lengths <= _VSMALL
+
+    if face_patch_ids is None:
+        patch_ids = np.zeros(len(faces), dtype=np.int64)
+    else:
+        patch_ids = np.asarray(face_patch_ids, dtype=np.int64)
+        if patch_ids.shape != (len(faces),):
+            raise ValueError("face_patch_ids does not match the boundary-face count")
+    patch_count = int(patch_ids.max(initial=0)) + 1
+    point_patch_normals = np.zeros((len(points), patch_count, 3), dtype=np.float64)
+    np.add.at(
+        point_patch_normals,
+        (flat_faces, patch_ids[face_ids]),
+        face_normals[face_ids],
+    )
+    point_normals = point_patch_normals[flat_faces, patch_ids[face_ids]]
+    point_lengths = np.linalg.norm(point_normals, axis=1)
+    invalid = invalid_faces[face_ids] | (point_lengths <= _VSMALL)
+    safe_face_normals = face_normals[face_ids] / np.maximum(normal_lengths[face_ids, None], _VSMALL)
+    safe_point_normals = point_normals / np.maximum(point_lengths[:, None], _VSMALL)
+    next_normal = np.cross(following - current, centre - current)
+    previous_normal = np.cross(centre - current, previous - current)
+    next_length = np.linalg.norm(next_normal, axis=1)
+    previous_length = np.linalg.norm(previous_normal, axis=1)
+    invalid |= (next_length <= _VSMALL) | (previous_length <= _VSMALL)
+    next_normal /= np.maximum(next_length[:, None], _VSMALL)
+    previous_normal /= np.maximum(previous_length[:, None], _VSMALL)
+    invalid |= (
+        (np.einsum("ij,ij->i", next_normal, safe_point_normals) < 0.0)
+        | (np.einsum("ij,ij->i", previous_normal, safe_point_normals) < 0.0)
+        | (np.einsum("ij,ij->i", next_normal, previous_normal) < 0.0)
+    )
+
+    previous_edge = current - previous
+    following_edge = following - current
+    previous_edge /= np.maximum(np.linalg.norm(previous_edge, axis=1)[:, None], _VSMALL)
+    following_edge /= np.maximum(np.linalg.norm(following_edge, axis=1)[:, None], _VSMALL)
+    corner_normal = np.cross(previous_edge, following_edge)
+    invalid |= np.einsum("ij,ij->i", corner_normal, safe_face_normals) < -0.05
+    if active_points is not None:
+        active = np.zeros(len(points), dtype=bool)
+        active[np.asarray(tuple(active_points), dtype=np.int64)] = True
+        invalid &= active[flat_faces]
+    return set(map(int, np.unique(flat_faces[invalid])))
+
+
 def inverted_cfmesh_boundary_points(
     mesh_data: dict[str, Any],
     face_patch_ids: Sequence[int] | np.ndarray,
@@ -525,9 +636,14 @@ def inverted_cfmesh_boundary_points(
     return _inverted_boundary_points(mesh_data, face_patch_ids, active_points)
 
 
-def smooth_cfmesh_partition_points(mesh_data: dict[str, Any], point_ids: Sequence[int]) -> None:
+def smooth_cfmesh_partition_points(
+    mesh_data: dict[str, Any],
+    point_ids: Sequence[int],
+    *,
+    auxiliary_state: dict[str, np.ndarray] | None = None,
+) -> None:
     """Run one cfMesh partition-point smoothing iteration for selected ids."""
-    _smooth_partition_points(mesh_data, point_ids, iterations=1)
+    _smooth_partition_points(mesh_data, point_ids, iterations=1, auxiliary_state=auxiliary_state)
 
 
 def untangle_cfmesh_surface(
@@ -642,6 +758,21 @@ def optimise_cfmesh_surface(
         if map_edge_points is not None:
             map_edge_points(edge_points)
 
+    if iterations <= 0:
+        # Large production meshes already have their boundary points mapped by
+        # ``remap_cfmesh_patch_points``.  Keep feature-edge remapping, but do
+        # not enter the scalar per-partition-point Newton loop; the subsequent
+        # volume optimizer and the final all-face validation remain mandatory.
+        mesh_data["mesh_generation"]["workflow_checkpoint"] = "edgeExtraction"
+        mesh_data["mesh_generation"]["surface_optimisation"] = {
+            "iterations": 0,
+            "corner_points": len(corner_points),
+            "edge_points": len(edge_points),
+            "partition_points": len(partition_points),
+            "untangling_iteration_counts": [],
+        }
+        return
+
     n_points = len(points)
     global_triangles: list[tuple[int, int, int]] = []
     point_triangle_ids: dict[int, list[int]] = defaultdict(list)
@@ -681,12 +812,14 @@ def optimise_cfmesh_surface(
                 (face_normals[face_id] for face_id in point_faces[point_id]),
                 np.zeros(3, dtype=np.float64),
             )
-            length = float(np.linalg.norm(normal))
+            length = float(np.sqrt(_mag_squared(normal)))
             if length <= _VSMALL:
                 continue
             normal /= length
+            # plane(point, pointNormal) normalises the unit normal again.
+            normal /= float(np.sqrt(_mag_squared(normal)))
             projected = [
-                centre - normal * float(np.dot(centre - points[point_id], normal))
+                centre - normal * float(_dot(centre - points[point_id], normal))
                 for face_id in point_faces[point_id]
                 for centre in (face_centres[face_id],)
             ]
@@ -718,20 +851,7 @@ def optimise_cfmesh_surface(
                 ),
                 axis=1,
             )
-            areas = (
-                0.5
-                * np.linalg.norm(
-                    np.cross(
-                        triangles[:, 1] - triangles[:, 0],
-                        triangles[:, 2] - triangles[:, 0],
-                    ),
-                    axis=1,
-                )
-                + _VSMALL
-            )
-            updated_auxiliary[local_face_id] = np.einsum(
-                "i,ij->j", areas, triangles.mean(axis=1)
-            ) / float(areas.sum())
+            updated_auxiliary[local_face_id] = _relax_face_centre(triangles)
         auxiliary_centres = updated_auxiliary
 
         face_normals = {
@@ -744,7 +864,7 @@ def optimise_cfmesh_surface(
                 (face_normals[face_id] for face_id in point_faces[point_id]),
                 np.zeros(3, dtype=np.float64),
             )
-            length = float(np.linalg.norm(normal))
+            length = float(np.sqrt(_mag_squared(normal)))
             if length > _VSMALL:
                 point_normals[point_id] = normal / length
 
@@ -753,6 +873,7 @@ def optimise_cfmesh_surface(
             normal = point_normals.get(point_id)
             if normal is None:
                 continue
+            normal = normal / float(np.sqrt(_mag_squared(normal)))
             local_labels: list[int] = []
             local_index: dict[int, int] = {}
             local_triangles: list[tuple[int, int, int]] = []
@@ -784,21 +905,21 @@ def optimise_cfmesh_surface(
             )
             vector_x: np.ndarray | None = None
             for coordinate in local_coordinates:
-                projected = coordinate - normal * float(np.dot(coordinate - centre_point, normal))
+                projected = coordinate - normal * float(_dot(coordinate - centre_point, normal))
                 offset = projected - centre_point
-                length = float(np.linalg.norm(offset))
+                length = float(np.sqrt(_mag_squared(offset)))
                 if length > _VSMALL:
                     vector_x = offset / length
                     break
             if vector_x is None:
                 continue
             vector_y = np.cross(normal, vector_x)
-            vector_y /= np.linalg.norm(vector_y)
+            vector_y /= float(np.sqrt(_mag_squared(vector_y)))
             offsets = local_coordinates - centre_point
             planar = np.column_stack(
                 (
-                    offsets @ vector_x,
-                    offsets @ vector_y,
+                    _dot(offsets, vector_x),
+                    _dot(offsets, vector_y),
                     np.zeros(len(offsets), dtype=np.float64),
                 )
             )

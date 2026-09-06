@@ -109,6 +109,8 @@ def validate_topology(mesh_data):
         f"Boundary patches cover through face {expected_start}, expected {n_faces}",
     )
 
+    edge_report = validate_cell_edge_incidence(mesh_data)
+
     metadata_shapes = {
         "source_point_ids": n_points,
         "source_cell_id": n_cells,
@@ -136,6 +138,56 @@ def validate_topology(mesh_data):
         "n_faces": n_faces,
         "n_internal_faces": n_internal,
         "n_boundary_patches": len(mesh_data["boundary"]),
+        **edge_report,
+    }
+
+
+def validate_cell_edge_incidence(mesh_data) -> dict[str, int]:
+    """Require every finite-volume cell polygon edge to occur twice.
+
+    Area-vector closure is necessary but not sufficient for a conforming
+    polyhedral cell: a coarse face can omit the midpoint vertices introduced
+    by a neighbouring fine face while its signed area vectors still cancel.
+    Counting undirected polygon edges catches that topological hole before
+    geometry or wall treatment can mask it.
+    """
+    n_cells = int(mesh_data["n_cells"])
+    n_internal = int(mesh_data["n_interior_faces"])
+    faces = mesh_data["faces"]
+    owners = np.asarray(mesh_data["owners"], dtype=np.int64)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
+    cell_faces: list[list[int]] = [[] for _ in range(n_cells)]
+    for face_id, owner in enumerate(owners):
+        cell_faces[int(owner)].append(face_id)
+    for face_id, neighbour in enumerate(neighbours[:n_internal]):
+        cell_faces[int(neighbour)].append(face_id)
+
+    bad_cells = 0
+    bad_edges = 0
+    first_bad_cell = -1
+    for cell_id, face_ids in enumerate(cell_faces):
+        incidences: dict[tuple[int, int], int] = {}
+        for face_id in face_ids:
+            face = np.asarray(faces[face_id], dtype=np.int64)
+            for first, second in zip(face, np.roll(face, -1), strict=True):
+                edge = (int(min(first, second)), int(max(first, second)))
+                incidences[edge] = incidences.get(edge, 0) + 1
+        invalid = [count for count in incidences.values() if count != 2]
+        if invalid:
+            bad_cells += 1
+            bad_edges += len(invalid)
+            if first_bad_cell < 0:
+                first_bad_cell = cell_id
+
+    _require(
+        bad_cells == 0,
+        "Mesh contains cells with non-closed polygon edges: "
+        f"{bad_cells} cells, {bad_edges} unmatched/overused edges; "
+        f"first cell {first_bad_cell}",
+    )
+    return {
+        "cells_with_unclosed_edges": bad_cells,
+        "unclosed_cell_edges": bad_edges,
     }
 
 
@@ -157,6 +209,11 @@ def validate_geometry(mesh_data, geo_data):
     neighbours = mesh_data["neighbours"]
     cell_centre = np.asarray(geo_data["cell_centre"])
     face_centre = np.asarray(geo_data["face_centre"])
+    # Boundary faces and core/layer interfaces are part of the solver's
+    # finite-volume geometry.  They must use the same orientation and
+    # owner-pyramid checks as internal faces; excluding them hides exactly the
+    # wall-distance failures that can make boundary diffusion singular.
+    quality_face_mask = np.ones(n_faces, dtype=bool)
 
     # Mesh validation used to allocate all quality vectors for all faces at
     # once, briefly adding several hundred megabytes to rank zero's global
@@ -168,8 +225,11 @@ def validate_geometry(mesh_data, geo_data):
     max_distance = np.zeros(n_cells, dtype=np.float64)
     max_non_orthogonality = 0.0
     sum_non_orthogonality = 0.0
+    non_orthogonality_values: list[np.ndarray] = []
+    quality_face_count = 0
     max_skewness = 0.0
     max_skewness_face = -1
+    skewness_values: list[np.ndarray] = []
     min_owner_pyramid_cosine = 1.0
     min_neighbour_pyramid_cosine = 1.0
     inverted_owner_pyramids = 0
@@ -200,27 +260,34 @@ def validate_geometry(mesh_data, geo_data):
         magnitude = np.linalg.norm(cf_block, axis=1)
         _require(np.all(magnitude > 0.0), "Mesh contains zero cell-to-cell/face distances")
         orientation = np.einsum("ij,ij->i", sf_block, cf_block)
+        quality_faces = quality_face_mask[face_slice]
         _require(
-            np.all(orientation > 0.0),
+            np.all(orientation[quality_faces] > 0.0),
             "Face orientation is inconsistent with owner-neighbour/boundary direction",
         )
         cosine = np.clip(orientation / (areas_block * magnitude), -1.0, 1.0)
         non_orthogonality = np.degrees(np.arccos(cosine))
+        quality_non_orthogonality = non_orthogonality[quality_faces]
         max_non_orthogonality = max(
-            max_non_orthogonality, float(np.max(non_orthogonality, initial=0.0))
+            max_non_orthogonality,
+            float(np.max(quality_non_orthogonality, initial=0.0)),
         )
-        sum_non_orthogonality += float(np.sum(non_orthogonality))
+        sum_non_orthogonality += float(np.sum(quality_non_orthogonality))
+        quality_face_count += int(quality_non_orthogonality.size)
+        if quality_non_orthogonality.size:
+            non_orthogonality_values.append(quality_non_orthogonality)
 
         owner_block = owners[face_slice]
         owner_vectors = face_centres_block - cell_centre[owner_block]
         owner_distance = np.linalg.norm(owner_vectors, axis=1)
         owner_pyramids = np.einsum("ij,ij->i", sf_block, owner_vectors)
-        bad_owner = np.flatnonzero(owner_pyramids <= 0.0)
+        bad_owner = np.flatnonzero((owner_pyramids <= 0.0) & quality_faces)
         inverted_owner_pyramids += int(len(bad_owner))
         owner_cosines = owner_pyramids / np.maximum(
             areas_block * owner_distance,
             np.finfo(np.float64).tiny,
         )
+        owner_cosines = owner_cosines[quality_faces]
         min_owner_pyramid_cosine = min(
             min_owner_pyramid_cosine,
             float(np.min(owner_cosines, initial=1.0)),
@@ -242,12 +309,14 @@ def validate_geometry(mesh_data, geo_data):
                 sf_block[local],
                 neighbour_vectors,
             )
-            bad_neighbour = np.flatnonzero(neighbour_pyramids <= 0.0)
+            quality_internal = quality_faces[:count]
+            bad_neighbour = np.flatnonzero((neighbour_pyramids <= 0.0) & quality_internal)
             inverted_neighbour_pyramids += int(len(bad_neighbour))
             neighbour_cosines = neighbour_pyramids / np.maximum(
                 areas_block[local] * neighbour_distance,
                 np.finfo(np.float64).tiny,
             )
+            neighbour_cosines = neighbour_cosines[quality_internal]
             min_neighbour_pyramid_cosine = min(
                 min_neighbour_pyramid_cosine,
                 float(np.min(neighbour_cosines, initial=1.0)),
@@ -264,7 +333,10 @@ def validate_geometry(mesh_data, geo_data):
             skewness = np.linalg.norm(face_centres_block[local] - interpolation, axis=1) / (
                 centre_distance + 1e-30
             )
+            skewness = skewness[quality_internal]
             local_maximum = float(np.max(skewness, initial=0.0))
+            if skewness.size:
+                skewness_values.append(skewness)
             if local_maximum > max_skewness:
                 max_skewness = local_maximum
                 max_skewness_face = start + int(np.argmax(skewness))
@@ -294,6 +366,14 @@ def validate_geometry(mesh_data, geo_data):
             np.maximum.at(max_distance, neighbour_block, neighbour_distance)
 
     _require(np.all(np.isfinite(min_distance)), "Mesh cell has no adjacent face")
+    _require(
+        inverted_owner_pyramids == 0,
+        f"Mesh contains non-positive owner face pyramids: {inverted_owner_pyramids} faces",
+    )
+    _require(
+        inverted_neighbour_pyramids == 0,
+        f"Mesh contains non-positive neighbour face pyramids: {inverted_neighbour_pyramids} faces",
+    )
     max_aspect_ratio = 0.0
     for start in range(0, n_cells, chunk_size):
         stop = min(start + chunk_size, n_cells)
@@ -320,9 +400,17 @@ def validate_geometry(mesh_data, geo_data):
         "max_volume": float(np.max(volumes)),
         "min_face_area": float(np.min(areas)),
         "max_non_orthogonality_deg": max_non_orthogonality,
-        "mean_non_orthogonality_deg": sum_non_orthogonality / max(n_faces, 1),
+        "p99_non_orthogonality_deg": float(
+            np.quantile(np.concatenate(non_orthogonality_values), 0.99)
+            if non_orthogonality_values
+            else 0.0
+        ),
+        "mean_non_orthogonality_deg": sum_non_orthogonality / max(quality_face_count, 1),
         "out_of_bounds_interpolation_weights": out_of_bounds_weights,
         "max_skewness": max_skewness,
+        "p99_internal_face_skewness": float(
+            np.quantile(np.concatenate(skewness_values), 0.99) if skewness_values else 0.0
+        ),
         "max_skewness_face": max_skewness_face,
         "max_aspect_ratio": max_aspect_ratio,
         "min_owner_face_pyramid_cosine": min_owner_pyramid_cosine,
@@ -351,6 +439,68 @@ def validate_mesh(mesh_data, geo_data=None):
     if geo_data is not None:
         report.update(validate_geometry(mesh_data, geo_data))
     return report
+
+
+def validate_cell_area_closure(
+    mesh_data,
+    geo_data,
+    *,
+    tolerance: float = 1.0e-10,
+) -> dict[str, float]:
+    """Validate the normalized divergence-theorem area-vector closure.
+
+    Face vectors point out of the owner.  Internal faces therefore contribute
+    with the opposite sign to the neighbour; a closed finite-volume cell must
+    sum to zero independently of its polygon valence.
+    """
+    n_cells = int(mesh_data["n_cells"])
+    n_internal = int(mesh_data["n_interior_faces"])
+    owners = np.asarray(mesh_data["owners"], dtype=np.int64)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
+    vectors = np.asarray(geo_data["face_area_vector"], dtype=np.float64)
+    areas = np.linalg.norm(vectors, axis=1)
+    closure = np.zeros((n_cells, 3), dtype=np.float64)
+    np.add.at(closure, owners, vectors)
+    np.add.at(closure, neighbours, -vectors[:n_internal])
+    denominator = np.zeros(n_cells, dtype=np.float64)
+    np.add.at(denominator, owners, areas)
+    np.add.at(denominator, neighbours, areas[:n_internal])
+    normalized = np.linalg.norm(closure, axis=1) / np.maximum(
+        denominator, np.finfo(np.float64).tiny
+    )
+    maximum = float(np.max(normalized, initial=0.0))
+    _require(
+        maximum <= tolerance,
+        f"Cell area-vector closure error {maximum:.6g} exceeds tolerance {tolerance:.6g}",
+    )
+    return {"max_normalized_area_closure_error": maximum}
+
+
+def validate_single_fluid_component(mesh_data) -> dict[str, int]:
+    """Require all solver cells to belong to one internal-face component."""
+    n_cells = int(mesh_data["n_cells"])
+    n_internal = int(mesh_data["n_interior_faces"])
+    owners = np.asarray(mesh_data["owners"], dtype=np.int64)[:n_internal]
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
+    adjacency: list[list[int]] = [[] for _ in range(n_cells)]
+    for owner, neighbour in zip(owners, neighbours, strict=True):
+        adjacency[int(owner)].append(int(neighbour))
+        adjacency[int(neighbour)].append(int(owner))
+    visited = np.zeros(n_cells, dtype=bool)
+    stack = [0] if n_cells else []
+    while stack:
+        cell = stack.pop()
+        if visited[cell]:
+            continue
+        visited[cell] = True
+        stack.extend(neighbour for neighbour in adjacency[cell] if not visited[neighbour])
+    missing = np.flatnonzero(~visited)
+    _require(
+        not len(missing),
+        f"Fluid mesh has {len(missing) + 1} disconnected cell components; "
+        f"first unconnected cell {int(missing[0]) if len(missing) else -1}",
+    )
+    return {"fluid_components": 1, "fluid_cells": n_cells}
 
 
 def validate_vtk_cell_intersections(dataset) -> dict[str, int]:

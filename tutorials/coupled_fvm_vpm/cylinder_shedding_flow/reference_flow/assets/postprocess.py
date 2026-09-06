@@ -4,21 +4,28 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from pathlib import Path
 
 import numpy as np
 
+from source.solvers.fvm.io.mesh_storage import load_native_mesh
+
 CASE_DIR = Path(__file__).resolve().parents[1]
 PREFLIGHT_CASE = ("very_coarse", 1.0 / 12.0)
 PRODUCTION_CASES = (
-    ("coarse", 1.0 / 24.0),
-    ("medium", 1.0 / 36.0),
-    ("fine", 1.0 / 54.0),
+    # The Cartesian octree is dyadic.  These requested wall sizes resolve to
+    # background lattices 0.2, 0.1, and 0.05 D respectively, so the stored
+    # production family is genuinely distinct and has r=2 after fitting.
+    ("coarse", 1.0 / 40.0),
+    ("medium", 1.0 / 80.0),
+    ("fine", 1.0 / 160.0),
 )
 CASES = (PREFLIGHT_CASE, *PRODUCTION_CASES)
-REFINEMENT_RATIO = 1.5
+REFINEMENT_RATIO = 2.0
 STATISTICS_WINDOW = 30.0
+REQUIRED_END_TIME = 60.0
 CONVERGENCE_TOLERANCE_PERCENT = {
     "mean_cd": 1.0,
     "cd_rms": 2.0,
@@ -27,6 +34,39 @@ CONVERGENCE_TOLERANCE_PERCENT = {
     "cl_amplitude": 2.0,
     "strouhal": 1.0,
 }
+
+
+def mesh_evidence(case_name: str) -> dict[str, object]:
+    """Read the saved mesh identity and resolved lattice sizes for a case."""
+    path = CASE_DIR / "solution" / case_name / "mesh.npz"
+    if not path.exists():
+        raise ValueError(f"Missing saved solution mesh for {case_name!r}: {path}")
+    mesh = load_native_mesh(path)
+    generation = mesh.get("mesh_generation", {})
+    background = generation.get("resolved_background_cell_size")
+    patch_sizes = generation.get("resolved_surface_patch_sizes", {})
+    boundary = patch_sizes.get("cylinder", generation.get("resolved_boundary_cell_size"))
+    if background is None or boundary is None:
+        raise ValueError(f"Mesh {case_name!r} does not record resolved background and wall sizes")
+    digest = hashlib.sha256()
+    for key in ("vertex_position", "owners", "neighbours", "cell_levels", "cell_sizes"):
+        value = mesh.get(key)
+        if value is None:
+            raise ValueError(f"Mesh {case_name!r} is missing identity array {key!r}")
+        array = np.ascontiguousarray(value)
+        digest.update(key.encode("ascii"))
+        digest.update(str(array.dtype).encode("ascii"))
+        digest.update(np.asarray(array.shape, dtype=np.int64).tobytes())
+        digest.update(array.tobytes())
+    return {
+        "case": case_name,
+        "path": str(path),
+        "identity_sha256": digest.hexdigest(),
+        "n_cells": int(mesh["n_cells"]),
+        "n_faces": int(mesh["n_faces"]),
+        "resolved_background": float(background),
+        "resolved_wall": float(boundary),
+    }
 
 
 def force_history(case_name: str) -> dict[str, np.ndarray]:
@@ -87,7 +127,9 @@ def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -
     """Return observed order, Richardson limit, and fine-grid GCI for three grids."""
     if len(records) != 3:
         raise ValueError("Richardson/GCI analysis requires exactly three production grids")
-    spacing = np.asarray([record["dx"] for record in records], dtype=np.float64)
+    spacing = np.asarray(
+        [record.get("effective_h", record["dx"]) for record in records], dtype=np.float64
+    )
     ratios = spacing[:-1] / spacing[1:]
     if not np.allclose(ratios, REFINEMENT_RATIO, rtol=0.0, atol=1.0e-12):
         raise ValueError(
@@ -171,19 +213,37 @@ def richardson_gci(records: list[dict], metric: str, tolerance_percent: float) -
 
 
 def main() -> None:
-    histories = {name: force_history(name) for name, _dx in CASES}
-    common_end = min(float(history["time"][-1]) for history in histories.values())
-    if common_end < STATISTICS_WINDOW:
+    mesh_records = [mesh_evidence(name) for name, _dx in CASES]
+    identities = [str(record["identity_sha256"]) for record in mesh_records]
+    if len(set(identities)) != len(identities):
+        raise ValueError("Grid study contains duplicate saved mesh identities")
+    realized = np.asarray(
+        [float(record["resolved_background"]) for record in mesh_records], dtype=np.float64
+    )
+    if len(np.unique(realized)) != len(realized):
         raise ValueError(
-            f"Common final time is {common_end:g}; require at least {STATISTICS_WINDOW:g}"
+            f"Grid study contains duplicate resolved background sizes: {realized.tolist()}"
         )
+    histories = {name: force_history(name) for name, _dx in CASES}
+    final_times = {name: float(history["time"][-1]) for name, history in histories.items()}
+    common_end = min(final_times.values())
+    if common_end < REQUIRED_END_TIME - 1.0e-12:
+        raise ValueError(
+            f"Common final time is {common_end:g}; require completed end time {REQUIRED_END_TIME:g}"
+        )
+    common_end = REQUIRED_END_TIME
     common_start = common_end - STATISTICS_WINDOW
     records = []
-    for name, dx in CASES:
+    for mesh_record, (name, dx) in zip(mesh_records, CASES, strict=True):
         records.append(
             {
                 "case": name,
                 "dx": dx,
+                "effective_h": mesh_record["resolved_background"],
+                "resolved_wall": mesh_record["resolved_wall"],
+                "mesh_identity_sha256": mesh_record["identity_sha256"],
+                "mesh_cells": mesh_record["n_cells"],
+                "mesh_faces": mesh_record["n_faces"],
                 **statistics(histories[name], common_start, common_end),
             }
         )
@@ -217,6 +277,7 @@ def main() -> None:
         "preflight_case": PREFLIGHT_CASE[0],
         "production_cases": [case for case, _dx in PRODUCTION_CASES],
         "refinement_ratio": REFINEMENT_RATIO,
+        "refinement_measure": "resolved_background_cell_size",
         "cases": records,
         "comparisons": comparisons,
         "grid_convergence": convergence,

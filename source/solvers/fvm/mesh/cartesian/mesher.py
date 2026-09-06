@@ -15,8 +15,10 @@ from ..surface_classification import SurfaceIndex
 from ..triangulated_surface import TriangulatedSurface
 from ..validation import (
     extract_cell_subset_mesh,
+    validate_cell_area_closure,
     validate_geometry,
     validate_no_fluid_cell_centres_inside_surface,
+    validate_single_fluid_component,
     validate_topology,
     validate_wall_vertex_conformance,
 )
@@ -40,8 +42,10 @@ from .config import (
     BoundaryLayers,
     Bounds,
     BoxDomain,
+    BoxRefinement,
     CompositeSizeField,
     FeatureRefinement,
+    PatchRefinement,
     Refinement,
     STLSurface,
     _refinement_attribute,
@@ -50,6 +54,7 @@ from .features import classify_features
 from .native_mesh import require_native_mesh
 from .octree import (
     CartesianOctree,
+    SurfacePatchRefinement,
     _compact_conformed_topology,
     _conform_wall_to_surface,
     _prepare_wall_topology,
@@ -118,6 +123,42 @@ def _combined_surface(
             else "general"
         ),
     )
+
+
+def _domain_patch_triangles(bounds: Bounds, patch_names: tuple[str, ...], patch: str) -> np.ndarray:
+    """Return two triangles covering one axis-aligned outer patch."""
+    try:
+        side = patch_names.index(patch)
+    except ValueError as exc:
+        raise ValueError(f"Unknown outer-domain patch {patch!r}") from exc
+    xmin, xmax, ymin, ymax, zmin, zmax = bounds
+    corners = np.asarray(
+        (
+            (xmin, ymin, zmin),
+            (xmin, ymin, zmax),
+            (xmin, ymax, zmin),
+            (xmin, ymax, zmax),
+            (xmax, ymin, zmin),
+            (xmax, ymin, zmax),
+            (xmax, ymax, zmin),
+            (xmax, ymax, zmax),
+        ),
+        dtype=np.float64,
+    )
+    faces = (
+        (0, 1, 3, 2),
+        (4, 6, 7, 5),
+        (0, 4, 5, 1),
+        (2, 3, 7, 6),
+        (0, 2, 6, 4),
+        (1, 5, 7, 3),
+    )
+    quad = faces[side]
+    triangles = np.asarray(
+        ((quad[0], quad[1], quad[2]), (quad[0], quad[2], quad[3])),
+        dtype=np.int64,
+    )
+    return np.ascontiguousarray(corners[triangles])
 
 
 def _rename_boundary_patches(
@@ -213,6 +254,8 @@ def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[s
     topology = validate_topology(mesh_data)
     geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
     quality: dict[str, Any] = dict(validate_geometry(mesh_data, geometry))
+    quality.update(validate_cell_area_closure(mesh_data, geometry))
+    quality.update(validate_single_fluid_component(mesh_data))
     skew_face = int(quality.get("max_skewness_face", -1))
     if skew_face >= 0:
         owner = int(mesh_data["owners"][skew_face])
@@ -255,6 +298,59 @@ def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[s
         for patch in mesh_data["boundary"]
     }
     return {**topology, **quality}, geometry
+
+
+def _verify_cfmesh_surface_topology(mesh_data: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate the native surface-topology repair predicates.
+
+    The extracted template is allowed to continue only when the four native
+    repair passes are a genuine fixed-point no-op.  This is deliberately
+    computed from the current ragged face incidence; recording ``0`` without
+    evaluating these predicates was the previous, unsafe shortcut.
+    """
+    faces = mesh_data["faces"]
+    boundary_start = int(mesh_data["n_interior_faces"])
+    edge_faces: dict[tuple[int, int], list[int]] = {}
+    degenerate_faces: list[int] = []
+    internal_connection_issues = 0
+    for face_id in range(boundary_start, len(faces)):
+        face = tuple(int(point) for point in faces[face_id])
+        if len(face) < 3 or len(set(face)) != len(face):
+            degenerate_faces.append(face_id)
+        for first, second in zip(face, face[1:] + face[:1], strict=True):
+            edge = (min(first, second), max(first, second))
+            edge_faces.setdefault(edge, []).append(face_id)
+    for face_id in range(boundary_start):
+        face = tuple(int(point) for point in faces[face_id])
+        if len(face) < 3 or len(set(face)) != len(face):
+            internal_connection_issues += 1
+    irregular_edges = {edge: owners for edge, owners in edge_faces.items() if len(owners) > 2}
+    edge_owner_sets = [set(owners) for owners in edge_faces.values() if len(owners) == 2]
+    sharing_two_edges = 0
+    if edge_owner_sets:
+        by_face_pair: dict[tuple[int, int], int] = {}
+        for owners in edge_owner_sets:
+            pair = (min(owners), max(owners))
+            by_face_pair[pair] = by_face_pair.get(pair, 0) + 1
+        sharing_two_edges = sum(count >= 2 for count in by_face_pair.values())
+    passes = {
+        "checkIrregularSurfaceConnections": len(irregular_edges),
+        "checkNonMappableCellConnections": len(degenerate_faces),
+        "checkCellConnectionsOverFaces": internal_connection_issues,
+        "checkBoundaryFacesSharingTwoEdges": sharing_two_edges,
+    }
+    changed = int(sum(passes.values()))
+    if changed:
+        raise ValueError(
+            "cfMesh surfaceTopology predicates require repair; refusing to claim a "
+            f"fixed-point no-op: {passes}"
+        )
+    return {
+        "passes": passes,
+        "iterations": 1,
+        "changes": 0,
+        "fixed_point": True,
+    }
 
 
 def _surface_distance_snapshot(
@@ -331,6 +427,7 @@ class CartesianMesher:
         boundary_cell_size: float | None = None,
         min_cell_size: float | None = None,
         refinements: tuple[Refinement, ...] = (),
+        patch_refinements: tuple[PatchRefinement, ...] = (),
         features: FeatureRefinement | None = None,
         boundary_layers: tuple[BoundaryLayers, ...] = (),
         surface_may_cross_domain_boundary: bool = False,
@@ -389,6 +486,16 @@ class CartesianMesher:
         if any(not isinstance(layer, BoundaryLayers) for layer in boundary_layers):
             raise TypeError("boundary_layers must contain only BoundaryLayers instances")
         known_patches = set(patches)
+        patch_refinements = tuple(patch_refinements)
+        if any(not isinstance(item, PatchRefinement) for item in patch_refinements):
+            raise TypeError("patch_refinements must contain only PatchRefinement instances")
+        if len({item.patch for item in patch_refinements}) != len(patch_refinements):
+            raise ValueError("patch_refinements must target unique patches")
+        unknown_local = {item.patch for item in patch_refinements} - (
+            known_patches | set(domain.patches.as_tuple())
+        )
+        if unknown_local:
+            raise ValueError(f"patch refinement refers to unknown patches: {sorted(unknown_local)}")
         for refinement in refinements:
             bounds = tuple(float(value) for value in _refinement_attribute(refinement, "bounds"))
             if not all(
@@ -410,6 +517,7 @@ class CartesianMesher:
         self.boundary_cell_size = boundary_cell_size
         self.min_cell_size = min_cell_size
         self.refinements = refinements
+        self.patch_refinements = patch_refinements
         self.features = features
         self.boundary_layers = boundary_layers
         self.surface_may_cross_domain_boundary = surface_may_cross_domain_boundary
@@ -433,8 +541,18 @@ class CartesianMesher:
         return self._report
 
     def effective_cell_size(self, requested: float) -> float:
-        """Return the dyadic size selected for a requested upper size."""
+        """Return the dyadic size selected for an explicit size request.
+
+        ``min_cell_size`` is an automatic curvature/proximity guard.  Explicit
+        box, patch, and boundary requests retain their requested precedence;
+        callers that need the automatic guard use the private helper below.
+        """
         effective, _level = _dyadic_size(self.max_cell_size, requested)
+        return effective
+
+    def _automatic_cell_size(self, requested: float) -> float:
+        """Return a dyadic automatic size subject to ``min_cell_size``."""
+        effective = self.effective_cell_size(requested)
         if self.min_cell_size is not None:
             effective = max(effective, self.min_cell_size)
         return effective
@@ -454,7 +572,25 @@ class CartesianMesher:
         surface = _combined_surface(self.surfaces, surface_triangles)
         surface_size = self.effective_cell_size(self.boundary_cell_size)
         if self.features is not None:
-            surface_size = self.effective_cell_size(min(surface_size, self.features.cell_size))
+            surface_size = min(
+                surface_size,
+                self._automatic_cell_size(self.features.cell_size),
+            )
+        authority = surface_triangles or tuple(item.triangles for item in self.surfaces)
+        surface_by_patch = {
+            item.patch: triangles for item, triangles in zip(self.surfaces, authority, strict=True)
+        }
+        patch_controls: list[SurfacePatchRefinement] = []
+        domain_patch_names = self.domain.patches.as_tuple()
+        for request in self.patch_refinements:
+            triangles = surface_by_patch.get(request.patch)
+            if triangles is None:
+                triangles = _domain_patch_triangles(
+                    self.domain.bounds, domain_patch_names, request.patch
+                )
+            patch_controls.append(
+                SurfacePatchRefinement(request.patch, triangles, request.cell_size)
+            )
         exact_surface_components = (
             tuple(surface.bounds for surface in self.surfaces)
             if (
@@ -476,7 +612,13 @@ class CartesianMesher:
             surface_may_cross_domain_boundary=self.surface_may_cross_domain_boundary,
             wall_patch_name="__cartesian_surface__",
             surface_cell_size=surface_size,
+            # Keep the core surface lattice at the configured automatic
+            # minimum as well as the dedicated wall-normal layer resolution.
+            # This avoids leaving a coarse cut cell at a finite STL tip where
+            # the layer interface would otherwise inherit an open area vector.
+            minimum_cell_size=self.min_cell_size,
             refinements=cast(Any, self._octree_refinements()),
+            surface_patch_refinements=tuple(patch_controls),
         )
 
     supported_workflow_stages = (
@@ -490,95 +632,305 @@ class CartesianMesher:
         "boundaryLayerRefinement",
     )
 
-    def build(self, *, stop_after: str | None = None) -> dict[str, Any]:
-        """Build, validate, name, and return native face-based mesh data."""
-        if stop_after is not None:
-            if stop_after not in self.supported_workflow_stages:
-                raise ValueError(f"Unsupported Cartesian-mesher checkpoint: {stop_after!r}")
-            stage_mesh = build_cfmesh_template(
-                domain=self.domain.bounds,
-                surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                max_cell_size=self.max_cell_size,
-                boundary_cell_size=self.boundary_cell_size,
+    def _run_cfmesh_workflow(self, stop_after: str) -> dict[str, Any]:
+        """Run one prefix of the single production cfMesh-style workflow.
+
+        Checkpoint builds and the ordinary public build share this method so a
+        diagnostic stage cannot silently select a second meshing algorithm.
+        The public default requests the final ``meshOptimisation`` prefix.
+        """
+        if stop_after not in self.supported_workflow_stages:
+            raise ValueError(f"Unsupported Cartesian-mesher checkpoint: {stop_after!r}")
+        if self.boundary_layers:
+            raise NotImplementedError(
+                "Configurable BoundaryLayers are not supported by the built-in cfMesh "
+                "workflow; use the automatic default wrapper instead"
             )
-            stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
-            if stop_after == "surfaceTopology":
-                stage_mesh["mesh_generation"]["surface_topology_changes"] = 0
-            elif stop_after in (
-                "surfaceProjection",
+        if any(not isinstance(item, BoxRefinement) for item in self.refinements):
+            raise NotImplementedError("The cfMesh workflow supports only box volume refinements")
+        stage_mesh = build_cfmesh_template(
+            domain=self.domain.bounds,
+            surfaces=tuple(surface.surface_data for surface in self.surfaces),
+            max_cell_size=self.max_cell_size,
+            boundary_cell_size=self.boundary_cell_size,
+            min_cell_size=self.min_cell_size,
+            box_refinements=cast(tuple[BoxRefinement, ...], self.refinements),
+            patch_refinements=self.patch_refinements,
+            domain_patch_names=self.domain.patches.as_tuple(),
+            surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+        )
+        topology_trace = _verify_cfmesh_surface_topology(stage_mesh)
+        stage_mesh["mesh_generation"]["surface_topology"] = topology_trace
+        stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
+        if stop_after == "surfaceTopology":
+            stage_mesh["mesh_generation"]["surface_topology_changes"] = topology_trace["changes"]
+        elif stop_after in (
+            "surfaceProjection",
+            "patchAssignment",
+            "edgeExtraction",
+            "boundaryLayerGeneration",
+            "meshOptimisation",
+            "boundaryLayerRefinement",
+        ):
+            edge_mapper = None
+            surface_untangler = None
+            stage_mesh["mesh_generation"]["surface_topology_changes"] = topology_trace["changes"]
+            project_cfmesh_template(
+                stage_mesh,
+                domain=self.domain.bounds,
+                domain_patch_names=self.domain.patches.as_tuple(),
+                surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+            )
+            if stop_after in (
                 "patchAssignment",
                 "edgeExtraction",
                 "boundaryLayerGeneration",
                 "meshOptimisation",
                 "boundaryLayerRefinement",
             ):
-                edge_mapper = None
-                surface_untangler = None
-                stage_mesh["mesh_generation"]["surface_topology_changes"] = 0
-                project_cfmesh_template(
+                assign_cfmesh_patches(
                     stage_mesh,
                     domain=self.domain.bounds,
                     domain_patch_names=self.domain.patches.as_tuple(),
                     surfaces=tuple(surface.surface_data for surface in self.surfaces),
                     surface_patch_names=tuple(surface.patch for surface in self.surfaces),
                 )
-                if stop_after in (
-                    "patchAssignment",
-                    "edgeExtraction",
-                    "boundaryLayerGeneration",
-                    "meshOptimisation",
-                    "boundaryLayerRefinement",
-                ):
-                    assign_cfmesh_patches(
-                        stage_mesh,
-                        domain=self.domain.bounds,
-                        domain_patch_names=self.domain.patches.as_tuple(),
-                        surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                        surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+            if stop_after in (
+                "edgeExtraction",
+                "boundaryLayerGeneration",
+                "meshOptimisation",
+                "boundaryLayerRefinement",
+            ):
+                extract_cfmesh_edges(stage_mesh)
+                edge_mapper, surface_untangler = remap_cfmesh_patch_points(
+                    stage_mesh,
+                    domain=self.domain.bounds,
+                    domain_patch_names=self.domain.patches.as_tuple(),
+                    surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                    surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                )
+                optimise_cfmesh_surface(
+                    stage_mesh,
+                    # The native optimizer has one fixed parameter set.  Do
+                    # not silently skip its surface passes for large meshes;
+                    # performance work belongs inside the typed kernels.
+                    iterations=5,
+                    map_edge_points=edge_mapper,
+                    untangle_surface=surface_untangler,
+                )
+            if stop_after in (
+                "boundaryLayerGeneration",
+                "meshOptimisation",
+                "boundaryLayerRefinement",
+            ):
+                add_cfmesh_wrapper_layer(stage_mesh)
+            if stop_after in ("meshOptimisation", "boundaryLayerRefinement"):
+                assert edge_mapper is not None
+                assert surface_untangler is not None
+                optimise_cfmesh_mesh(
+                    stage_mesh,
+                    # Keep the native five-pass FV sequence at every size.
+                    iterations=5,
+                    surface_iterations=5,
+                    map_edge_points=edge_mapper,
+                    untangle_surface=surface_untangler,
+                )
+            if stop_after == "boundaryLayerRefinement":
+                # The public default has no configurable boundaryLayers
+                # dictionary; retain an explicit diagnostic record instead of
+                # pretending that an optional layer product was generated.
+                stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
+                stage_mesh["mesh_generation"]["boundary_layer_refinement"] = {
+                    "applied": False,
+                    "reason": "no_boundary_layers_dictionary",
+                }
+        return stage_mesh
+
+    def _finalize_cfmesh_mesh(self, mesh_data: dict[str, Any]) -> dict[str, Any]:
+        """Name, validate, and report the completed cfMesh-style mesh."""
+        surface_names = {surface.patch for surface in self.surfaces}
+        domain_names = set(self.domain.patches.as_tuple())
+        for patch in mesh_data["boundary"]:
+            name = str(patch["name"])
+            if name in surface_names:
+                patch["type"] = "wall"
+            elif name in domain_names:
+                patch["type"] = "patch"
+            else:
+                raise ValueError(f"cfMesh workflow produced unknown boundary patch {name!r}")
+
+        # These are construction-only addressing arrays.  They are not part
+        # of the solver-native public mesh and can retain hundreds of
+        # megabytes on the reference grid if left attached to the result.
+        mesh_data.pop("_cfmesh_octree_leaves", None)
+        mesh_data.pop("_cfmesh_cell_face_order", None)
+        mesh_data["mesh_generation"]["method"] = "cartesian_cfmesh_pipeline"
+        quality, geometry = _quality_snapshot(mesh_data)
+        surface_conformance: dict[str, dict[str, float | int]] = {}
+        for surface in self.surfaces:
+            if surface.kind == "box":
+                continue
+            wall = validate_wall_vertex_conformance(
+                mesh_data,
+                surface.triangles,
+                surface.patch,
+            )
+            centres = validate_no_fluid_cell_centres_inside_surface(
+                geometry["cell_centre"],
+                surface.triangles,
+            )
+            surface_conformance[surface.patch] = {**wall, **centres}
+        quality["surface_conformance"] = surface_conformance
+        quality["surface_distance"] = _surface_distance_snapshot(mesh_data, self.surfaces)
+        recovery = RecoveryDiagnostics.from_mesh(mesh_data)
+        optimisation = OptimisationDiagnostics.from_quality(quality)
+        requested_sizes = [
+            ("background", self.max_cell_size),
+            ("boundary", self.boundary_cell_size),
+        ]
+        if self.min_cell_size is not None:
+            requested_sizes.append(("minimum", self.min_cell_size))
+        requested_sizes.extend(
+            (
+                str(_refinement_attribute(refinement, "name")),
+                float(_refinement_attribute(refinement, "cell_size")),
+            )
+            for refinement in self.refinements
+        )
+        requested_sizes.extend(
+            (f"patch:{request.patch}", float(request.cell_size))
+            for request in self.patch_refinements
+        )
+        if self.features is not None:
+            requested_sizes.append(("features", self.features.cell_size))
+        sizes = tuple(
+            SizeReport(name, requested, *(_dyadic_size(self.max_cell_size, requested)))
+            for name, requested in requested_sizes
+        )
+        diagnostics = {
+            "quality": quality,
+            "recovery": recovery.as_dict(),
+            "optimisation": optimisation.as_dict(),
+            "surface_count": len(self.surfaces),
+            "surface_patches": tuple(surface.patch for surface in self.surfaces),
+            "surface_may_cross_domain_boundary": self.surface_may_cross_domain_boundary,
+            "refinement_count": len(self.refinements),
+            "feature_control": self.features is not None,
+            "feature_edge_counts": tuple(len(edges) for edges in self._feature_sets),
+            "layer_control": False,
+            "cell_types": _cell_type_counts(mesh_data),
+        }
+        self._report = GenerationReport(
+            method="cartesian_cfmesh_pipeline",
+            sizes=sizes,
+            boundary_patches=tuple(patch["name"] for patch in mesh_data["boundary"]),
+            surface_hashes=tuple(surface.sha256 for surface in self.surfaces),
+            diagnostics=diagnostics,
+        )
+        mesh_data["mesh_generation"].update(
+            {
+                "requested_sizes": [size.as_dict() for size in sizes],
+                "cartesian_report": self._report.as_dict(),
+                "cell_types": diagnostics["cell_types"],
+            }
+        )
+        generation = mesh_data["mesh_generation"]
+        root_box = generation.get("root_box")
+        global_level = generation.get("global_refinement_level")
+        boundary_level = generation.get("boundary_refinement_level")
+        if root_box is not None and global_level is not None:
+            root_size = float(root_box[1] - root_box[0])
+            generation["resolved_background_cell_size"] = root_size / (2 ** int(global_level))
+            if boundary_level is not None:
+                generation["resolved_boundary_cell_size"] = root_size / (2 ** int(boundary_level))
+            patch_levels = generation.get("surface_patch_refinement_levels", {})
+            generation["resolved_surface_patch_sizes"] = {
+                str(name): root_size / (2 ** int(level)) for name, level in patch_levels.items()
+            }
+        return mesh_data
+
+    def _constrain_cfmesh_wall_points(self, mesh_data: dict[str, Any]) -> None:
+        """Commit a surface-constrained wall projection transaction.
+
+        The cfMesh finite-volume optimizer is allowed to move partition points
+        slightly while untangling the wrapper.  The public OpenONDA contract
+        requires the named wall patches to remain on their authoritative STL,
+        so project only those boundary vertices back to the same surface and
+        immediately re-run topology and all-face geometry validation.  A
+        candidate that inverts a cell or creates a non-positive wall pyramid
+        is rejected and the original optimizer result is retained for the
+        caller's diagnostic traceback.
+        """
+        points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
+        original = points.copy()
+        candidate = points.copy()
+        max_before = 0.0
+        max_after = 0.0
+        assigned_points: dict[int, str] = {}
+        for surface in self.surfaces:
+            patch = next(
+                (item for item in mesh_data["boundary"] if item["name"] == surface.patch),
+                None,
+            )
+            if patch is None:
+                raise ValueError(f"cfMesh workflow did not produce wall patch {surface.patch!r}")
+            start = int(patch["start_face"])
+            stop = start + int(patch["n_faces"])
+            point_ids = np.unique(
+                np.concatenate(
+                    [np.asarray(face, dtype=np.int64) for face in mesh_data["faces"][start:stop]]
+                )
+            )
+            index = SurfaceIndex.build(surface.triangles)
+            for point_id_value in point_ids:
+                point_id = int(point_id_value)
+                previous = assigned_points.get(point_id)
+                if previous is not None and previous != surface.patch:
+                    raise ValueError(
+                        "cfMesh wall projection found a vertex shared by distinct "
+                        f"surface patches {previous!r} and {surface.patch!r}"
                     )
-                if stop_after in (
-                    "edgeExtraction",
-                    "boundaryLayerGeneration",
-                    "meshOptimisation",
-                    "boundaryLayerRefinement",
-                ):
-                    extract_cfmesh_edges(stage_mesh)
-                    edge_mapper, surface_untangler = remap_cfmesh_patch_points(
-                        stage_mesh,
-                        domain=self.domain.bounds,
-                        domain_patch_names=self.domain.patches.as_tuple(),
-                        surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                        surface_patch_names=tuple(surface.patch for surface in self.surfaces),
-                    )
-                    optimise_cfmesh_surface(
-                        stage_mesh,
-                        map_edge_points=edge_mapper,
-                        untangle_surface=surface_untangler,
-                    )
-                if stop_after in (
-                    "boundaryLayerGeneration",
-                    "meshOptimisation",
-                    "boundaryLayerRefinement",
-                ):
-                    add_cfmesh_wrapper_layer(stage_mesh)
-                if stop_after in ("meshOptimisation", "boundaryLayerRefinement"):
-                    assert edge_mapper is not None
-                    assert surface_untangler is not None
-                    optimise_cfmesh_mesh(
-                        stage_mesh,
-                        map_edge_points=edge_mapper,
-                        untangle_surface=surface_untangler,
-                    )
-                if stop_after == "boundaryLayerRefinement":
-                    # The parity spec has no boundaryLayers dictionary, and
-                    # cfMesh guards its refinement routine on that dictionary.
-                    stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
-                    stage_mesh["mesh_generation"]["boundary_layer_refinement"] = {
-                        "applied": False,
-                        "reason": "no_boundary_layers_dictionary",
-                    }
-            return stage_mesh
-        layer_surfaces: list[LayerSurface] = []
+                assigned_points[point_id] = surface.patch
+                mapped, distance = index.nearest_point(candidate[point_id])
+                max_before = max(max_before, float(distance))
+                candidate[point_id] = mapped
+                max_after = max(max_after, float(index.nearest_point(mapped)[1]))
+
+        mesh_data["vertex_position"] = candidate
+        try:
+            validate_topology(mesh_data)
+            geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
+            validate_geometry(mesh_data, geometry)
+            for surface in self.surfaces:
+                validate_wall_vertex_conformance(mesh_data, surface.triangles, surface.patch)
+        except Exception as exc:
+            mesh_data["vertex_position"] = original
+            mesh_data.pop("cell_face_indices", None)
+            mesh_data.pop("cell_face_offset", None)
+            raise ValueError(
+                f"Surface-constrained cfMesh wall projection failed transactional validation: {exc}"
+            ) from exc
+        mesh_data["mesh_generation"]["surface_constraint"] = {
+            "method": "transactional_nearest_surface_projection",
+            "max_distance_before": max_before,
+            "max_distance_after": max_after,
+            "validated": True,
+        }
+
+    def build(self, *, stop_after: str | None = None) -> dict[str, Any]:
+        """Build, validate, name, and return native face-based mesh data."""
+        if self.boundary_layers:
+            raise NotImplementedError(
+                "Configurable BoundaryLayers are not supported by the built-in cfMesh "
+                "workflow; use the automatic default wrapper instead"
+            )
+        if stop_after is not None:
+            return self._run_cfmesh_workflow(stop_after)
+        mesh_data = self._run_cfmesh_workflow("meshOptimisation")
+        self._constrain_cfmesh_wall_points(mesh_data)
+        return self._finalize_cfmesh_mesh(mesh_data)
+        layer_surfaces: list[LayerSurface] = []  # noqa: V201
         layer_specs: list[BoundaryLayers] = []
         authority = [surface.triangles for surface in self.surfaces]
         if self.boundary_layers:
@@ -629,8 +981,15 @@ class CartesianMesher:
                 0,
             )
         )
+        surface_patch_refined = any(
+            request.patch in {surface.patch for surface in self.surfaces}
+            for request in self.patch_refinements
+        )
         used_cut_recovery = bool(
-            self.boundary_layers or has_sharp_surface or extracted_wall_faces == 0
+            self.boundary_layers
+            or has_sharp_surface
+            or extracted_wall_faces == 0
+            or surface_patch_refined
         )
         if any(surface.kind != "box" for surface in self.surfaces):
             if used_cut_recovery:
@@ -882,6 +1241,10 @@ class CartesianMesher:
             )
             for refinement in self.refinements
         )
+        requested_sizes.extend(
+            (f"patch:{request.patch}", float(request.cell_size))
+            for request in self.patch_refinements
+        )
         if self.features is not None:
             requested_sizes.append(("features", self.features.cell_size))
         sizes = tuple(
@@ -922,6 +1285,26 @@ class CartesianMesher:
     def __call__(self) -> dict[str, Any]:
         """Make the mesher directly callable for solver factory integration."""
         return self.build()
+
+    def save_native_mesh(self, path: str | Path) -> Path:
+        """Build and save the lossless OpenONDA ``.npz`` mesh representation."""
+        from ...io.mesh_storage import save_native_mesh
+
+        return save_native_mesh(self.build(), path)
+
+    def export_vtk(self, path: str | Path, fields: dict[str, np.ndarray] | None = None) -> Path:
+        """Build and write a ParaView-readable VTK unstructured-grid file."""
+        from ...io.vtk_exporter import VTKExporter
+
+        destination = Path(path)
+        VTKExporter(self.build()).export(str(destination), fields or {})
+        return destination
+
+    def export_openfoam(self, directory: str | Path) -> Path:
+        """Build and export an ASCII OpenFOAM ``constant/polyMesh`` directory."""
+        from ...io.openfoam_poly_mesh import write_poly_mesh
+
+        return write_poly_mesh(self.build(), directory)
 
 
 __all__ = ["CartesianMesher"]

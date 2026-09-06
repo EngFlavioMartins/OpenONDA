@@ -19,31 +19,33 @@ from typing import Any
 
 import numpy as np
 
-from .cfmesh_surface_optimisation import inverted_cfmesh_boundary_points
+from .cfmesh_surface_optimisation import (
+    _dot,
+    _face_area_vector,
+    _mag_squared,
+    inverted_cfmesh_boundary_points,
+)
 
 _VSMALL = 1.0e-300
 
 
 def _area_vector(coordinates: np.ndarray) -> np.ndarray:
-    centre = coordinates.mean(axis=0)
-    return 0.5 * np.cross(
-        coordinates - centre,
-        np.roll(coordinates, -1, axis=0) - centre,
-    ).sum(axis=0)
+    return _face_area_vector(coordinates)
 
 
-def _distance_to_segment(point: np.ndarray, first: np.ndarray, second: np.ndarray) -> float:
+def _distance_to_line(point: np.ndarray, first: np.ndarray, second: np.ndarray) -> float:
+    """cfMesh's non-clamped distanceOfPointFromTheEdge helper."""
     edge = second - first
-    denominator = float(np.dot(edge, edge))
-    if denominator <= _VSMALL:
-        return float(np.linalg.norm(point - first))
-    parameter = float(np.dot(point - first, edge) / denominator)
-    parameter = min(1.0, max(0.0, parameter))
-    return float(np.linalg.norm(point - (first + parameter * edge)))
+    length = float(np.sqrt(_mag_squared(edge)))
+    if length < 1.0e-150:
+        nearest = first
+    else:
+        nearest = first + (edge / (length * length)) * float(_dot(edge, point - first))
+    return float(np.sqrt(_mag_squared(nearest - point)))
 
 
 def _normalised(vector: np.ndarray, *, context: str) -> np.ndarray:
-    magnitude = float(np.linalg.norm(vector))
+    magnitude = float(np.sqrt(_mag_squared(vector)))
     if magnitude <= _VSMALL:
         raise ValueError(f"cfMesh wrapper has a zero normal at {context}")
     return vector / magnitude
@@ -261,6 +263,7 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
         for face_id in range(n_internal, len(source_faces))
     }
     penetration: dict[tuple[int, int], np.ndarray] = {}
+    displaced_points: dict[tuple[int, int], np.ndarray] = {}
     for point_id in sorted(point_patches):
         keys = tuple(sorted(point_keys[point_id]))
         raw_patches = point_patches[point_id]
@@ -275,7 +278,7 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
                 )
                 normal = _normalised(normal, context=f"point {point_id}, key {key}")
                 distance = 0.5 * min(
-                    float(np.linalg.norm(source_points[neighbour] - point))
+                    float(np.sqrt(_mag_squared(source_points[neighbour] - point)))
                     for neighbour in point_neighbours[point_id]
                 )
             elif len(other_patches) == 1:
@@ -296,29 +299,30 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
                     np.zeros(3, dtype=np.float64),
                 )
                 other_normal = _normalised(other_normal, context=f"point {point_id}, other patch")
-                normal -= float(np.dot(normal, other_normal)) * other_normal
+                normal -= float(_dot(normal, other_normal)) * other_normal
                 normal = _normalised(normal, context=f"edge point {point_id}, key {key}")
                 candidates = [
-                    0.5 * abs(float(np.dot(source_points[neighbour] - point, normal)))
+                    0.5 * abs(float(_dot(source_points[neighbour] - point, normal)))
                     for neighbour in point_neighbours[point_id]
                     if key not in point_keys[neighbour]
                 ]
                 if not candidates:
-                    raise ValueError(
-                        f"cfMesh wrapper cannot find an off-patch neighbour for point {point_id}"
-                    )
+                    # A clipped surface meeting a domain span can have a
+                    # point whose complete one-ring is already in the same
+                    # patch key.  The native closed-surface path normally
+                    # supplies an off-patch neighbour here; retain the
+                    # geometric normal and use the local projected edge
+                    # scale for this explicit span-intersection case.
+                    candidates = [
+                        0.5 * abs(float(_dot(source_points[neighbour] - point, normal)))
+                        for neighbour in point_neighbours[point_id]
+                    ]
+                    if not candidates or max(candidates) <= _VSMALL:
+                        candidates = [
+                            0.5 * float(np.sqrt(_mag_squared(source_points[neighbour] - point)))
+                            for neighbour in point_neighbours[point_id]
+                        ]
                 distance = min(candidates)
-                for face_id in point_faces[point_id]:
-                    if face_patch[face_id] not in other_patches:
-                        continue
-                    face = source_faces[face_id]
-                    position = int(np.flatnonzero(face == point_id)[0])
-                    limit = _distance_to_segment(
-                        point,
-                        source_points[int(face[(position - 1) % len(face)])],
-                        source_points[int(face[(position + 1) % len(face)])],
-                    )
-                    distance = min(distance, 0.9 * limit)
             else:
                 other_vertex = next(
                     (
@@ -333,9 +337,24 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
                         f"cfMesh wrapper cannot find a corner edge for point {point_id}"
                     )
                 direction = point - source_points[other_vertex]
-                distance = 0.5 * float(np.linalg.norm(direction)) + _VSMALL
+                distance = 0.5 * float(np.sqrt(_mag_squared(direction))) + _VSMALL
                 normal = direction / (2.0 * distance)
-            penetration[(point_id, key)] = -max(distance, _VSMALL) * normal
+            if other_patches:
+                for face_id in point_faces[point_id]:
+                    if face_patch[face_id] not in other_patches:
+                        continue
+                    face = source_faces[face_id]
+                    position = int(np.flatnonzero(face == point_id)[0])
+                    limit = _distance_to_line(
+                        point,
+                        source_points[int(face[(position - 1) % len(face)])],
+                        source_points[int(face[(position + 1) % len(face)])],
+                    )
+                    if limit < distance:
+                        distance = 0.9 * limit
+            displaced = point - max(distance, _VSMALL) * normal
+            displaced_points[(point_id, key)] = displaced
+            penetration[(point_id, key)] = displaced - point
 
     # cfMesh stores the fully displaced position at the original point label;
     # every proper subset, including the unchanged surface position, gets a
@@ -346,16 +365,20 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
         keys = tuple(sorted(point_keys[point_id]))
         full = frozenset(keys)
         base = source_points[point_id]
-        all_points[point_id] = base + sum(
-            (penetration[(point_id, key)] for key in keys),
-            np.zeros(3, dtype=np.float64),
+        full_position = base.copy()
+        for key in keys:
+            full_position += penetration[(point_id, key)]
+        all_points[point_id] = (
+            displaced_points[(point_id, keys[0])] if len(keys) == 1 else full_position
         )
         state_id[(point_id, full)] = point_id
         for subset in _proper_subsets(keys):
-            coordinate = base + sum(
-                (penetration[(point_id, key)] for key in subset),
-                np.zeros(3, dtype=np.float64),
-            )
+            coordinate = base.copy()
+            for key in keys:
+                if key in subset:
+                    coordinate += penetration[(point_id, key)]
+            if len(subset) == 1:
+                coordinate = displaced_points[(point_id, next(iter(subset)))]
             state_id[(point_id, subset)] = len(all_points)
             all_points.append(coordinate)
     points = np.ascontiguousarray(all_points, dtype=np.float64)
@@ -401,7 +424,14 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
         source_cell_for_new.append(int(source_owners[face_id]))
 
     feature_edges = 0
-    for (start_point, end_point), attached_faces in edge_faces.items():
+    for (start_point, end_point), attached_faces in sorted(edge_faces.items()):
+        # meshSurfaceEngine creates lexicographically ordered endpoint pairs
+        # and puts the face owning that directed edge first.
+        first_face, second_face = attached_faces
+        second = source_faces[second_face]
+        position = int(np.flatnonzero(second == start_point)[0])
+        if int(second[(position + 1) % len(second)]) == end_point:
+            attached_faces = [second_face, first_face]
         patch_i = face_patch[attached_faces[0]]
         patch_j = face_patch[attached_faces[1]]
         key_i = patch_key[patch_i]
@@ -583,7 +613,19 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
             ordered_faces.append(source_faces[interface_cells[local_cell][0]])
         ordered_faces.extend(face for face, _boundary_patch in entries)
         cfmesh_cell_face_order.append(
-            [face_by_signature[tuple(sorted(map(int, face)))] for face in ordered_faces]
+            [
+                face_id
+                for face in ordered_faces
+                for face_id in (face_by_signature[tuple(sorted(map(int, face)))],)
+                if face_id < len(internal_faces)
+            ]
+        )
+        # Native replaceBoundary appends these in the new-boundary input
+        # order (cell construction order), not the later patch-grouped order.
+        cfmesh_cell_face_order[-1].extend(
+            face_by_signature[tuple(sorted(map(int, face)))]
+            for face, boundary_patch in entries
+            if boundary_patch is not None
         )
     mesh_data.update(
         {

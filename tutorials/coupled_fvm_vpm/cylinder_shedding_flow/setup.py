@@ -46,12 +46,11 @@ LINE_INTERVAL_TIME = 0.1
 SLICE_INTERVAL_TIME = 0.5
 FIELD_INTERVAL_TIME = 2.5
 
-# Medium adaptive FVM mesh. D/32 is the next exact dyadic level below the
-# former D/16 coarse mesh; the wall-normal resolution follows the same
-# generic patch-normal layer policy as the standalone reference-flow study.
+# Medium adaptive FVM mesh. The built-in mesher supplies cfMesh's automatic
+# wrapper; configurable user-designed inflation layers are intentionally not
+# part of this tutorial contract.
 FVM_BACKGROUND_CELL_SIZE = 0.5
 FVM_SURFACE_CELL_SIZE = 1.0 / 32.0
-FVM_FIRST_WALL_CELL_HEIGHT = FVM_SURFACE_CELL_SIZE / 32.0
 VPM_PARTICLE_SPACING = 1.0 / 16.0
 SAMPLE_SPACING = 1.0 / 16.0
 VPM_PARTICLE_LIMIT = 750_000
@@ -80,14 +79,7 @@ FVM_MESH = msh.CartesianMesher(
     max_cell_size=FVM_BACKGROUND_CELL_SIZE,
     boundary_cell_size=FVM_SURFACE_CELL_SIZE,
     min_cell_size=FVM_SURFACE_CELL_SIZE,
-    boundary_layers=(
-        msh.BoundaryLayers(
-            patches=("cylinder",),
-            layers=8,
-            first_cell_height=FVM_FIRST_WALL_CELL_HEIGHT,
-            growth_ratio=1.22,
-        ),
-    ),
+    boundary_layers=(),
 )
 
 FVM_FORCE_SCHEDULE = fvm.RunSchedule(

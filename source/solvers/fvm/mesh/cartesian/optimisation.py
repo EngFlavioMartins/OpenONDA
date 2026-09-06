@@ -73,15 +73,65 @@ def agglomerate_small_cut_cells(
         start = int(patch["start_face"])
         stop = start + int(patch["n_faces"])
         wall_cells.update(map(int, np.asarray(mesh_data["owners"])[start:stop]))
+    # A projected triangulated wall can leave a vanishingly small internal
+    # perimeter face where two wall-adjacent cut cells meet.  Such a face is a
+    # legitimate topological connection, but its centre-to-centre direction is
+    # nearly tangent to its normal and it dominates the non-orthogonality
+    # metric.  Treat the incident wall cells as transactional agglomeration
+    # candidates; this is the local wrapper optimisation used by the final
+    # quality stage, not a global smoothing or a geometry-specific exception.
+    owners = np.asarray(mesh_data["owners"], dtype=np.int64)
+    neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
+    internal = int(mesh_data["n_interior_faces"])
+    face_area = np.asarray(geometry["face_area"], dtype=np.float64)
+    face_normal = np.asarray(geometry["face_area_vector"], dtype=np.float64)
+    cell_centres = np.asarray(geometry["cell_centre"], dtype=np.float64)
+    cell_scale = np.maximum(np.asarray(sizes, dtype=np.float64), np.finfo(np.float64).tiny)
+    connection = cell_centres[neighbours] - cell_centres[owners[:internal]]
+    connection_norm = np.linalg.norm(connection, axis=1)
+    normal_norm = np.linalg.norm(face_normal[:internal], axis=1)
+    cosine = np.abs(
+        np.einsum("ij,ij->i", face_normal[:internal], connection)
+        / np.maximum(normal_norm * connection_norm, np.finfo(np.float64).tiny)
+    )
+    local_face_scale = np.minimum(cell_scale[owners[:internal]], cell_scale[neighbours])
+    small_bad_face = (cosine < np.cos(np.deg2rad(80.0))) & (
+        face_area[:internal] < 0.05 * local_face_scale**2
+    )
+    bad_faces = np.flatnonzero(small_bad_face)
+    closure = np.zeros((len(volumes), 3), dtype=np.float64)
+    np.add.at(closure, owners, face_normal)
+    np.add.at(closure, neighbours, -face_normal[:internal])
+    closure_error = np.linalg.norm(closure, axis=1) / np.maximum(
+        volumes ** (2.0 / 3.0),
+        np.finfo(np.float64).tiny,
+    )
+    quality_candidate_cells: set[int] = set(map(int, np.flatnonzero(closure_error > 1.0e-10)))
+    for face_id in bad_faces:
+        owner = int(owners[face_id])
+        neighbour = int(neighbours[face_id])
+        # A tiny, strongly non-orthogonal perimeter face can occur at a sharp
+        # STL tip without either incident cell still owning a wall polygon
+        # after recovery.  Keep both cells in the local optimisation pool;
+        # restricting this to the wall-cell set leaves the same invalid pair
+        # behind in boundary-layer cores.
+        quality_candidate_cells.update((owner, neighbour))
+        if owner in wall_cells or neighbour in wall_cells:
+            wall_cells.update((owner, neighbour))
     fractions = volumes / np.maximum(sizes**3, np.finfo(np.float64).tiny)
     inside_surface = np.zeros(len(volumes), dtype=bool)
     for index in surface_indices:
         inside_surface |= index.is_inside(np.asarray(geometry["cell_centre"]))
+    candidate_pool = wall_cells | quality_candidate_cells
     candidates = np.asarray(
         sorted(
             cell
-            for cell in wall_cells
-            if fractions[cell] < minimum_volume_fraction or inside_surface[cell]
+            for cell in candidate_pool
+            if (
+                fractions[cell] < minimum_volume_fraction
+                or inside_surface[cell]
+                or cell in quality_candidate_cells
+            )
         ),
         dtype=np.int64,
     )
@@ -194,39 +244,16 @@ def agglomerate_small_cut_cells(
     mesh_data.setdefault("mesh_generation", {})["cut_cell_agglomeration"] = {
         "merged_cells": merged,
         "minimum_volume_fraction": minimum_volume_fraction,
+        "small_bad_internal_faces": int(len(bad_faces)),
+        "closure_bad_cells": int(np.count_nonzero(closure_error > 1.0e-10)),
         "minimum_fraction_before": float(fractions[candidates].min()),
         "inside_centres_before": int(np.count_nonzero(inside_surface[candidates])),
     }
-    oriented_faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
-    for _iteration in range(4):
-        geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
-        area = np.asarray(geometry["face_area_vector"])
-        face_centre = np.asarray(geometry["face_centre"])
-        cell_centre = np.asarray(geometry["cell_centre"])
-        direction = np.empty_like(area)
-        direction[: mesh_data["n_interior_faces"]] = (
-            cell_centre[mesh_data["neighbours"]]
-            - cell_centre[mesh_data["owners"][: mesh_data["n_interior_faces"]]]
-        )
-        direction[mesh_data["n_interior_faces"] :] = (
-            face_centre[mesh_data["n_interior_faces"] :]
-            - cell_centre[mesh_data["owners"][mesh_data["n_interior_faces"] :]]
-        )
-        reverse = np.flatnonzero(np.einsum("ij,ij->i", area, direction) < 0.0)
-        if not len(reverse):
-            break
-        for face_id in reverse:
-            oriented_faces[int(face_id)] = oriented_faces[int(face_id)][::-1].copy()
-        widths = {len(face) for face in oriented_faces}
-        mesh_data["faces"] = (
-            np.ascontiguousarray(oriented_faces, dtype=np.int32)
-            if len(widths) == 1
-            else oriented_faces
-        )
-        mesh_data.pop("cell_face_indices", None)
-        mesh_data.pop("cell_face_offset", None)
-    else:
-        raise ValueError("Agglomerated cut-cell face orientation did not converge")
+    # Face winding is already conservative before agglomeration.  Mapping a
+    # cut-cell union to a centroid is not a valid orientation test for a
+    # concave polyhedron, so do not mutate its boundary vectors here.  The
+    # mapped owner/neighbour arrays preserve each surviving face's original
+    # outward orientation.
     return mesh_data
 
 

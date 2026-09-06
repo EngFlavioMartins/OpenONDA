@@ -39,7 +39,7 @@ def main() -> None:
             "o-",
             color="#1769aa",
             linewidth=1.8,
-            label="r=1.5 production grids",
+            label="r=2 production grids",
         )
         convergence = report["grid_convergence"][metric]
         extrapolated = convergence["richardson_extrapolated_value"]

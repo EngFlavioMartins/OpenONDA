@@ -532,6 +532,14 @@ def recover_cut_cells(
         neighbour = int(neighbours[face_id]) if face_id < n_internal else -1
         incident = [owner] + ([neighbour] if neighbour >= 0 else [])
         fragments = [polygon for cell_id in incident for polygon in cut_fragments.get(cell_id, ())]
+        if fragments:
+            # The two cells incident to a Cartesian face can contribute
+            # different clipped pieces of the same STL facet (and its
+            # diagonal).  Merge that local union before constructing the
+            # planar fluid polygon; otherwise the diagonal intersection
+            # points become artificial constraints and adjacent spanwise
+            # faces acquire slightly different fluid areas.
+            fragments = _merge_coplanar_surface_fragments(fragments, tolerance)
         original = points[np.asarray(source_face, dtype=np.int64)]
         polygons = (
             _face_fluid_polygons(original, fragments, surface_indices, tolerance)
@@ -655,45 +663,13 @@ def recover_cut_cells(
         "cut_cells": len(cut_fragments),
         "wall_fragments": int(sum(len(value) for value in cut_fragments.values())),
     }
-    # Native validation defines orientation against face-pyramid cell
-    # centroids.  Concave cut cells (for example an inner toroidal wall) can
-    # place that centroid on a different side than a vertex-average estimate.
-    # Use the same bounded face geometry here and converge the orientation
-    # transaction before the mesh is allowed to leave this stage.
-    from ..geometry import compute_mesh_geometry
-
-    orientation_history: list[tuple[int, ...]] = []
-    for _iteration in range(4):
-        geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
-        area = np.asarray(geometry["face_area_vector"], dtype=np.float64)
-        face_centre = np.asarray(geometry["face_centre"], dtype=np.float64)
-        cell_centre = np.asarray(geometry["cell_centre"], dtype=np.float64)
-        direction = np.empty_like(area)
-        n_internal_faces = int(mesh_data["n_interior_faces"])
-        direction[:n_internal_faces] = (
-            cell_centre[mesh_data["neighbours"]]
-            - cell_centre[mesh_data["owners"][:n_internal_faces]]
-        )
-        direction[n_internal_faces:] = (
-            face_centre[n_internal_faces:] - cell_centre[mesh_data["owners"][n_internal_faces:]]
-        )
-        reversed_ids = np.flatnonzero(np.einsum("ij,ij->i", area, direction) < 0.0)
-        orientation_history.append(tuple(map(int, reversed_ids)))
-        if not len(reversed_ids):
-            break
-        for face_id in reversed_ids:
-            rebuilt_faces[int(face_id)] = rebuilt_faces[int(face_id)][::-1].copy()
-        widths = {len(face) for face in rebuilt_faces}
-        mesh_data["faces"] = (
-            np.ascontiguousarray(rebuilt_faces, dtype=np.int32)
-            if len(widths) == 1
-            else rebuilt_faces
-        )
-    else:
-        raise ValueError(
-            "Cut-cell face orientation did not converge: "
-            f"reversed_faces_per_iteration={orientation_history}"
-        )
+    # The recovery stage already orients Cartesian fragments from their source
+    # face and wall fragments from the authoritative STL winding.  Reorienting
+    # a curved wall from a cut-cell centroid is unsafe: the centroid can lie on
+    # the wrong side of a sharp or concave fragment and silently inverts one
+    # facet, breaking exact area-vector closure.  Keep those transactional
+    # orientations intact; later validation checks the resulting topology and
+    # conservative geometry.
     return mesh_data
 
 

@@ -13,11 +13,11 @@ Run the complete study from `reference_flow/` with:
 ./allrun.sh
 ```
 
-The four wall spacings are D/12, D/24, D/36, and D/54. The three production
-grids use a constant refinement ratio of 1.5. The background, wake, near-body,
-and wall sizes all scale with the requested `dx`; consequently, the dyadic
-Cartesian octree cannot collapse two requested study grids onto the same
-effective resolution.
+The preflight wall spacing is D/12. The three production grids request D/40,
+D/80, and D/160. Their resolved background and wall sizes are dyadic and use a
+constant refinement ratio of 2. The background, wake, near-body, and wall sizes
+all scale with the requested `dx`; the postprocessor records the realized
+sizes and rejects duplicate effective grids before computing GCI.
 
 Each generated solver mesh is stored automatically in two forms:
 

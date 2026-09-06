@@ -1,2 +1,0 @@
-PASS  surfaceProjection
-Topology and geometry parity checks passed.

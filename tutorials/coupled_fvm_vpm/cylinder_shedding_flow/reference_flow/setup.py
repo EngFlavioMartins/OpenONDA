@@ -2,17 +2,24 @@
 """Body-fitted Re=150 cylinder reference used by the grid study.
 
 Example:
-    python -u setup.py --dx 0.0417 \
+    python -u setup.py --dx 0.025 \
         --case-name coarse
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
 
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
+
+try:
+    from .canonical_surface import DOMAIN, prepare_canonical_surfaces
+except ImportError:  # Direct ``python setup.py`` execution.
+    from canonical_surface import DOMAIN, prepare_canonical_surfaces
 
 CASE_DIR = Path(__file__).resolve().parent
 CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_long.stl"
@@ -22,7 +29,6 @@ DIAMETER = 1.0
 REYNOLDS_NUMBER = 150.0
 FREESTREAM_VELOCITY = [1.0, 0.0, 0.0]
 KINEMATIC_VISCOSITY = 1.0 / REYNOLDS_NUMBER
-DOMAIN = (-8.0, 20.0, -8.0, 8.0, -0.6, 0.6)
 CYLINDER_LENGTH = DOMAIN[5] - DOMAIN[4]
 
 # ---- Time and output -----------------------------------------------------
@@ -47,29 +53,43 @@ def parse_arguments() -> argparse.Namespace:
 
 def grid_mesh(dx: float) -> msh.CartesianMesher:
     """Return a declarative grid-study mesh at requested wall size ``dx``."""
-    # Keep every Cartesian level geometrically similar across the r=1.5 study.
+    # Keep every Cartesian level geometrically similar across the dyadic r=2 study.
     background_size = 8.0 * dx
+    canonical = prepare_canonical_surfaces(
+        CYLINDER_STL,
+        CASE_DIR / "mesh_evidence" / "canonical_inputs",
+    )
     return msh.CartesianMesher(
         domain=msh.BoxDomain(
             bounds=DOMAIN,
             patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
         ),
-        surfaces=(msh.STLSurface(CYLINDER_STL, patch="cylinder"),),
+        # The wall is the clipped source representation shared with the native
+        # oracle.  The span annuli remain native outer-domain geometry; no
+        # artificial cylinder end-cap is introduced.
+        surfaces=(msh.STLSurface(canonical["wall_path"], patch="cylinder", allow_open=True),),
         max_cell_size=background_size,
-        boundary_cell_size=dx,
-        min_cell_size=dx,
+        # Keep the six outer planes at the background scale.  The named
+        # cylinder patch carries the requested wall size, avoiding a dense
+        # fine shell around the entire 28D x 16D domain.
+        boundary_cell_size=background_size,
+        min_cell_size=None,
         refinements=(
             msh.BoxRefinement(
                 name="near_body",
                 bounds=(-2.0, 6.0, -2.0, 2.0, DOMAIN[4], DOMAIN[5]),
-                cell_size=2.0 * dx,
+                # Keep the requested level at 2*dx under cfMesh's strict
+                # object-size conversion; an exact binary equality would
+                # intentionally select the next finer level.
+                cell_size=2.0 * dx * (1.0 + 1.0e-12),
             ),
             msh.BoxRefinement(
                 name="wake",
                 bounds=(-4.0, 12.0, -4.0, 4.0, DOMAIN[4], DOMAIN[5]),
-                cell_size=4.0 * dx,
+                cell_size=4.0 * dx * (1.0 + 1.0e-12),
             ),
         ),
+        patch_refinements=(msh.PatchRefinement("cylinder", dx),),
         # Resolve the no-slip wall at the requested isotropic size.  An empty
         # explicit layer list selects cfMesh's default single surface wrapper;
         # the optimizer distributes its motion through nearby Cartesian rings.
@@ -252,12 +272,34 @@ def main() -> None:
     arguments = parse_arguments()
     solution_dir = CASE_DIR / "solution" / arguments.case_name
     samples_dir = CASE_DIR / "samples" / arguments.case_name
+    mesh_file = solution_dir / "mesh.npz"
+    mesh_source: str | Path | msh.CartesianMesher
+    if mesh_file.is_file():
+        manifest_file = solution_dir / "mesh_manifest.json"
+        if not manifest_file.is_file():
+            raise RuntimeError(
+                f"Saved mesh {mesh_file} has no mesh_manifest.json; refusing stale reuse"
+            )
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        source_hash = hashlib.sha256(CYLINDER_STL.read_bytes()).hexdigest()
+        if (
+            manifest.get("case") != arguments.case_name
+            or float(manifest.get("requested_dx", -1.0)) != float(arguments.dx)
+            or manifest.get("source_stl_sha256") != source_hash
+        ):
+            raise RuntimeError(
+                f"Saved mesh manifest {manifest_file} does not match case={arguments.case_name!r} "
+                f"dx={arguments.dx!r} and the frozen source STL"
+            )
+        mesh_source = mesh_file
+    else:
+        mesh_source = grid_mesh(arguments.dx)
     solver = fvm.create_fvm_solver(
         solver_setup(arguments.case_name, arguments.dx),
         case_dir=CASE_DIR,
         solution_dir=solution_dir,
         samples_dir=samples_dir,
-        mesh=grid_mesh(arguments.dx),
+        mesh=mesh_source,
     )
     try:
         solver.write_run_manifest()

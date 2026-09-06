@@ -110,7 +110,7 @@ def test_cartesian_build_preserves_declared_patch_names_and_reports_effective_si
 
 
 @pytest.mark.parametrize("fixture_name", ("ellipsoid", "rotated_box", "finite_naca_wing"))
-def test_curved_boundary_layers_build_on_non_planar_surfaces(tmp_path: Path, fixture_name: str):
+def test_configurable_boundary_layers_are_rejected(tmp_path: Path, fixture_name: str):
     fixtures = make_acceptance_fixtures(tmp_path)
     surface = msh.STLSurface(fixtures[fixture_name].paths[0], patch="body")
     mesher = msh.CartesianMesher(
@@ -121,12 +121,8 @@ def test_curved_boundary_layers_build_on_non_planar_surfaces(tmp_path: Path, fix
         min_cell_size=0.125,
         boundary_layers=(msh.BoundaryLayers(("body",), 2, 0.02, 1.1),),
     )
-    mesh = mesher.build()
-    validate_topology(mesh)
-    validate_geometry(mesh, compute_mesh_geometry(mesh, compute_lsq=False))
-    assert "body" in {patch["name"] for patch in mesh["boundary"]}
-    labels = np.asarray(mesh["boundary_layer_index"])
-    assert np.count_nonzero(labels >= 0) > 0
+    with pytest.raises(NotImplementedError, match="Configurable BoundaryLayers"):
+        mesher.build()
 
 
 def test_surface_index_and_features_are_deterministic_for_smooth_and_sharp_inputs(

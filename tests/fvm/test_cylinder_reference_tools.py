@@ -48,13 +48,38 @@ def test_grid_study_force_report_uses_one_common_statistics_window(tmp_path, mon
         )
     (tmp_path / "solution").mkdir()
     monkeypatch.setattr(postprocess, "CASE_DIR", tmp_path)
+    realized_background = {
+        "very_coarse": 0.4,
+        "coarse": 0.2,
+        "medium": 0.1,
+        "fine": 0.05,
+    }
+    realized_wall = {
+        "very_coarse": 1.0 / 30.0,
+        "coarse": 0.025,
+        "medium": 0.0125,
+        "fine": 0.00625,
+    }
+    monkeypatch.setattr(
+        postprocess,
+        "mesh_evidence",
+        lambda case: {
+            "case": case,
+            "path": str(tmp_path / "solution" / case / "mesh.npz"),
+            "identity_sha256": f"synthetic-{case}",
+            "n_cells": 100,
+            "n_faces": 200,
+            "resolved_background": realized_background[case],
+            "resolved_wall": realized_wall[case],
+        },
+    )
 
     postprocess.main()
 
     report = json.loads((tmp_path / "solution" / "grid_study.json").read_text())
     assert report["common_window"] == {"start": 30.0, "end": 60.0}
     assert report["production_cases"] == ["coarse", "medium", "fine"]
-    assert report["refinement_ratio"] == 1.5
+    assert report["refinement_ratio"] == 2.0
     np.testing.assert_allclose(report["cases"][-1]["mean_cd"], 1.3, atol=1.0e-12)
     np.testing.assert_allclose(report["cases"][-1]["strouhal"], 0.2, atol=2.0e-3)
     assert len(report["comparisons"]) == 3
@@ -66,10 +91,10 @@ def test_grid_study_uses_reasonable_monotone_wall_spacings():
     spacing = np.asarray([dx for _case, dx in postprocess.CASES])
 
     assert names == ["very_coarse", "coarse", "medium", "fine"]
-    np.testing.assert_allclose(spacing, [1 / 12, 1 / 24, 1 / 36, 1 / 54])
+    np.testing.assert_allclose(spacing, [1 / 12, 1 / 40, 1 / 80, 1 / 160])
     assert np.all(np.diff(spacing) < 0.0)
     production = np.asarray([dx for _case, dx in postprocess.PRODUCTION_CASES])
-    np.testing.assert_allclose(production[:-1] / production[1:], 1.5)
+    np.testing.assert_allclose(production[:-1] / production[1:], 2.0)
 
 
 def test_grid_study_preserves_the_refinement_ratio_at_every_octree_level():

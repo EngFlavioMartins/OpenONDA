@@ -1,1 +1,0 @@
-"""Vortex-particle-method studies."""

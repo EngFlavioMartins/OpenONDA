@@ -931,11 +931,11 @@ def insert_surface_layers(
                 upper = rings[layer_index + 1]
                 entries: list[tuple[np.ndarray, str]] = [
                     (
-                        lower[::-1].copy(),
+                        lower.copy(),
                         "wall" if layer_index == 0 else "internal",
                     ),
                     (
-                        upper.copy(),
+                        upper[::-1].copy(),
                         "interface" if layer_index == spec.layers - 1 else "internal",
                     ),
                 ]
@@ -1051,6 +1051,38 @@ def insert_surface_layers(
     bounds = np.asarray(domain_bounds, dtype=np.float64)
     all_points = np.asarray(registry.points, dtype=np.float64)
 
+    # Every layer cell is assembled from a collection of polygons that may
+    # have come from several clipped STL fragments.  Use an orientation-
+    # independent reference point for each cell while assigning faces.  The
+    # old implementation selected the first winding found for a shared face
+    # and tried to repair it later, which could orient both sides of a radial
+    # face outwards from the same cell and violate discrete area closure.
+    layer_cell_reference = np.empty((len(layer_cells), 3), dtype=np.float64)
+    for local_cell, entries in enumerate(layer_cells):
+        vertex_ids = np.unique(
+            np.concatenate([np.asarray(face, dtype=np.int64) for face, _role in entries])
+        )
+        layer_cell_reference[local_cell] = all_points[vertex_ids].mean(axis=0)
+
+    def outward_layer_face(face: np.ndarray, local_cell: int) -> np.ndarray:
+        """Return ``face`` with its area vector outward from ``local_cell``."""
+        face_array = np.asarray(face, dtype=np.int32)
+        coordinates = all_points[face_array]
+        area_vector = _area_vector(coordinates)
+        direction = coordinates.mean(axis=0) - layer_cell_reference[local_cell]
+        if float(np.dot(area_vector, direction)) < 0.0:
+            return face_array[::-1].copy()
+        return face_array
+
+    def owner_to_neighbour_layer_face(face: np.ndarray, owner: int, neighbour: int) -> np.ndarray:
+        """Orient a shared layer face from its owner cell to its neighbour."""
+        face_array = np.asarray(face, dtype=np.int32)
+        area_vector = _area_vector(all_points[face_array])
+        direction = layer_cell_reference[neighbour] - layer_cell_reference[owner]
+        if float(np.dot(area_vector, direction)) < 0.0:
+            return face_array[::-1].copy()
+        return face_array
+
     def side_patch(face: np.ndarray) -> str:
         coordinates = all_points[np.asarray(face, dtype=np.int64)]
         for side, patch_name in enumerate(domain_patch_names):
@@ -1068,7 +1100,13 @@ def insert_surface_layers(
             continue
         if len(record_entries) == 2:
             first, second = record_entries
-            layer_internal_faces.append(first[0])
+            # Orient shared faces from the first cell to the second.  A
+            # centroid-to-face test is ambiguous for the very thin quads at
+            # finite tips; the cell-to-cell reference direction is stable and
+            # also matches the owner/neighbour convention used by FVM.
+            layer_internal_faces.append(
+                owner_to_neighbour_layer_face(first[0], first[1], second[1])
+            )
             layer_internal_owners.append(first[1] + layer_offset)
             layer_internal_neighbours.append(second[1] + layer_offset)
             continue
@@ -1081,6 +1119,7 @@ def insert_surface_layers(
                 raise ValueError("Boundary-layer interface contains a duplicate column")
             interface_neighbours[signature] = owner
         elif role == "wall":
+            face = outward_layer_face(face, local_cell)
             centre = all_points[np.asarray(face, dtype=np.int64)].mean(axis=0)
             patch_name = min(
                 surface_by_patch,
@@ -1089,6 +1128,7 @@ def insert_surface_layers(
             wall_faces[patch_name].append(face)
             wall_owners[patch_name].append(owner)
         else:
+            face = outward_layer_face(face, local_cell)
             patch_name = side_patch(face)
             side_faces.setdefault(patch_name, []).append(face)
             side_owners.setdefault(patch_name, []).append(owner)
@@ -1219,121 +1259,11 @@ def insert_surface_layers(
             }
             for patch in surface_by_patch
         },
+        # These faces are inherited from the recovered Cartesian wall.  Their
+        # divergence-theorem winding is retained for conservative closure, so
+        # validation can distinguish them from ordinary owner/neighbour faces.
+        "core_interface_start": int(core_internal + len(layer_internal_faces)),
     }
-    # Do not use signed-volume centroids to establish the initial face
-    # orientation: those centroids themselves depend on already-consistent
-    # face winding and can make sharp layer cells oscillate indefinitely.
-    # A mean of incident face centres is orientation-independent and lies
-    # inside every convex layer prism.  Retain the validated geometric
-    # centroids for the unchanged Cartesian core cells.
-    geometry = compute_mesh_geometry(result, compute_lsq=False)
-    area = np.asarray(geometry["face_area_vector"])
-    face_centre = np.asarray(geometry["face_centre"])
-    reference_centre = np.zeros((int(result["n_cells"]), 3), dtype=np.float64)
-    reference_count = np.zeros(int(result["n_cells"]), dtype=np.int64)
-    np.add.at(reference_centre, result["owners"], face_centre)
-    np.add.at(reference_count, result["owners"], 1)
-    np.add.at(reference_centre, result["neighbours"], face_centre[:n_internal])
-    np.add.at(reference_count, result["neighbours"], 1)
-    reference_centre /= reference_count[:, None]
-    core_geometry = compute_mesh_geometry(core, compute_lsq=False)
-    reference_centre[: int(core["n_cells"])] = core_geometry["cell_centre"]
-
-    orientation_history: list[int] = []
-    for _iteration in range(2):
-        direction = np.empty_like(area)
-        direction[:n_internal] = (
-            reference_centre[result["neighbours"]] - reference_centre[result["owners"][:n_internal]]
-        )
-        direction[n_internal:] = (
-            face_centre[n_internal:] - reference_centre[result["owners"][n_internal:]]
-        )
-        reverse = np.flatnonzero(np.einsum("ij,ij->i", area, direction) < 0.0)
-        orientation_history.append(len(reverse))
-        if not len(reverse):
-            break
-        for face_id in reverse:
-            combined_faces[int(face_id)] = combined_faces[int(face_id)][::-1].copy()
-        result["faces"] = (
-            np.ascontiguousarray(combined_faces, dtype=np.int32)
-            if len(widths) == 1
-            else combined_faces
-        )
-        geometry = compute_mesh_geometry(result, compute_lsq=False)
-        area = np.asarray(geometry["face_area_vector"])
-        face_centre = np.asarray(geometry["face_centre"])
-    else:
-        last_reverse = reverse
-        cell_centre = np.asarray(geometry["cell_centre"])
-        closure = np.zeros((result["n_cells"], 3), dtype=np.float64)
-        np.add.at(closure, result["owners"], area)
-        np.add.at(
-            closure,
-            result["neighbours"],
-            -area[:n_internal],
-        )
-        layer_internal_start = core_internal
-        interface_start = core_internal + len(layer_internal_faces)
-        reverse_patches: dict[str, int] = {
-            "core_internal": int(np.count_nonzero(last_reverse < layer_internal_start)),
-            "layer_internal": int(
-                np.count_nonzero(
-                    (last_reverse >= layer_internal_start) & (last_reverse < interface_start)
-                )
-            ),
-            "core_layer_interface": int(
-                np.count_nonzero((last_reverse >= interface_start) & (last_reverse < n_internal))
-            ),
-        }
-        for patch in boundary:
-            start = int(patch["start_face"])
-            stop = start + int(patch["n_faces"])
-            reverse_patches[str(patch["name"])] = int(
-                np.count_nonzero((last_reverse >= start) & (last_reverse < stop))
-            )
-        entities = [
-            {
-                "face": int(face_id),
-                "owner": int(result["owners"][face_id]),
-                "neighbour": (int(result["neighbours"][face_id]) if face_id < n_internal else None),
-                "orientation_dot": float(np.dot(area[face_id], direction[face_id])),
-                "face_centre": tuple(map(float, face_centre[face_id])),
-                "owner_centre": tuple(map(float, cell_centre[int(result["owners"][face_id])])),
-                "neighbour_centre": (
-                    tuple(
-                        map(
-                            float,
-                            cell_centre[int(result["neighbours"][face_id])],
-                        )
-                    )
-                    if face_id < n_internal
-                    else None
-                ),
-                "owner_volume": float(geometry["cell_volume"][int(result["owners"][face_id])]),
-                "neighbour_volume": (
-                    float(geometry["cell_volume"][int(result["neighbours"][face_id])])
-                    if face_id < n_internal
-                    else None
-                ),
-                "owner_closure": tuple(map(float, closure[int(result["owners"][face_id])])),
-                "neighbour_closure": (
-                    tuple(
-                        map(
-                            float,
-                            closure[int(result["neighbours"][face_id])],
-                        )
-                    )
-                    if face_id < n_internal
-                    else None
-                ),
-            }
-            for face_id in last_reverse[:16]
-        ]
-        raise ValueError(
-            "Boundary-layer face orientation did not converge: "
-            f"reversed_per_iteration={orientation_history}, last_by_patch={reverse_patches}, "
-            f"entities={entities}"
-        )
     return result
 
 

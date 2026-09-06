@@ -1,2 +1,0 @@
-PASS  edgeExtraction
-Topology and geometry parity checks passed.
