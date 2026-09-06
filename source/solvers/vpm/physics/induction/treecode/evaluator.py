@@ -2,6 +2,7 @@
 
 from typing import Self
 
+import numpy as np
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
@@ -36,6 +37,7 @@ class TreecodeInduction:
     supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "CUDA", "METAL"})
     supports_gradient = True
     supports_variable_core_radius = True
+    supports_target_fields = True
     # The LBVH fields are intentionally f32 to keep the device workspace
     # bounded; reject a nominal f64 case at the immutable configuration edge.
     supports_f64 = False
@@ -157,6 +159,52 @@ class TreecodeInduction:
             self.diagnostics["hierarchical_strength_rates"] += 1
         else:
             self.physics._zero_vec3_field(vortex_strength_rate_out, count)
+
+    def evaluate_targets(
+        self,
+        *,
+        target_position,
+        source_position,
+        source_vortex_strength,
+        source_core_radius,
+        target_velocity,
+        target_velocity_gradient,
+        target_count: int,
+        source_count: int,
+        include_freestream: bool,
+        background_velocity,
+    ) -> None:
+        """Evaluate target fields with the same LBVH operator as RK stages."""
+        if self.physics is None:
+            raise RuntimeError("TreecodeInduction must be bound before target evaluation")
+        target_count = int(target_count)
+        source_count = int(source_count)
+        tree = self.physics._get_or_create_treecode(max(target_count, source_count), self.theta)
+        tree.build(source_position, source_vortex_strength, source_core_radius, source_count)
+        self.physics._target_tree_key = None
+        target_np = self.physics._download_vector_field(target_position, target_count)
+        background_np = None
+        if include_freestream:
+            background_np = np.asarray(
+                [
+                    background_velocity[None][0],
+                    background_velocity[None][1],
+                    background_velocity[None][2],
+                ],
+                dtype=np.float32,
+            )
+        if target_velocity is not None and target_velocity_gradient is not None:
+            velocity, gradient = tree.compute_target_velocity_and_gradients(
+                target_np, background_np
+            )
+            self.physics._upload_vector_array(velocity, target_velocity, target_count)
+            self.physics._upload_matrix_array(gradient, target_velocity_gradient, target_count)
+        elif target_velocity is not None:
+            velocity = tree.compute_target_velocity(target_np, background_np)
+            self.physics._upload_vector_array(velocity, target_velocity, target_count)
+        elif target_velocity_gradient is not None:
+            gradient = tree.compute_target_velocity_gradient(target_np)
+            self.physics._upload_matrix_array(gradient, target_velocity_gradient, target_count)
 
 
 __all__ = ["TreecodeInduction"]

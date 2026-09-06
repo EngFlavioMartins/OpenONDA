@@ -89,22 +89,24 @@ Only the TRANSPOSED form conserves total particle vortex strength Σα exactly �
 - **[Durante2024]** Durante, D. et al. (2024). **[local]**
   `docs/literature/durante2024.pdf`, eq. 14–15.
   Diffused Vortex Hydrodynamics truncation parameter β ≈ 0.077 and the fixed
-  viscous step Δt_d = β R_d²/(4ν).
+  viscous step Δt_d = β R_d²/(4ν), under the matched-step assumptions of that
+  method.  Production DVH uses the accepted physical interval and computes the
+  heat width 4ν_effΔt; this fixed-step relation remains a reference estimate,
+  not a hidden solver clock.
   → `physics/diffusion.py:_DVH_BETA`
 
 - **[Rossi2005]** Rossi, L. F. (2005). Achieving high-order convergence rates
   with deforming basis functions. *SIAM J. Sci. Comput.* 26(3), 885–906.
   Background for particle regeneration in DVH.
 
-> **RESOLVED 2026-08-07.** The Winckelmans core-spreading constant
-> was `dσ²/dt = (256/45)ν`, which the author confirmed was **hand-calibrated**, with no
-> derivation. It is now the derived `4ν` (= 6/m₂, m₂ = 3/2). Three standard matching
-> principles give 4ν (second moment), 9.625ν (enstrophy dissipation), 11ν
-> (L²/Galerkin) and 14ν (origin curvature); none is 256/45 ≈ 5.689ν, and all give
-> exactly 4ν for the Gaussian.  The value is also published, with this kernel and
-> σ convention, as eq. (13) of Martins, van Zuijlen & Simão Ferreira,
-> *Toward Meshless Turbulent Flow Simulation*, arXiv:2601.06942 (2026).
-> **The change is result-affecting: dσ²/dt drops 29.7 %.**
+> **RESOLVED 2026-08-07.** The Winckelmans core-spreading constant is the
+> derived `4ν` (= 6/m₂, m₂ = 3/2) for the normalized second-moment model used
+> here.  The often-copied `256/45ν` value is not the value specified by eq. 13
+> of the cited paper; that equation gives `256/45` for a different convention.
+> Three other matching principles give 9.625ν (enstrophy dissipation), 11ν
+> (L²/Galerkin), and 14ν (origin curvature), so the choice must be stated as a
+> model assumption rather than attributed to that citation.  The change is
+> result-affecting: dσ²/dt drops 29.7 %.
 > See `docs/reviews/2026-08-vpm-audit.md` finding N-4.
 
 ## LES / subgrid modelling

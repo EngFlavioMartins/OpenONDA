@@ -776,6 +776,7 @@ class FMMInduction:
     supports_gradient = True
     supports_variable_core_radius = True
     supports_f64 = False
+    supports_target_fields = True
     device_resident = True
     strength_rate_mode: StrengthRateMode = "HIERARCHICAL_GRADIENT"
 
@@ -887,6 +888,52 @@ class FMMInduction:
             self.diagnostics.last_downward_pass_seconds = phase["downward"]
             self.diagnostics.last_near_field_seconds = phase["near_field"]
             self.diagnostics.last_strength_rate_seconds = phase["strength_rate"]
+
+    def evaluate_targets(
+        self,
+        *,
+        target_position,
+        source_position,
+        source_vortex_strength,
+        source_core_radius,
+        target_velocity,
+        target_velocity_gradient,
+        target_count: int,
+        source_count: int,
+        include_freestream: bool,
+        background_velocity,
+    ) -> None:
+        """Evaluate arbitrary target fields through the FMM backend boundary.
+
+        The production FMM workspace currently has a particle-target pass but
+        no dual-tree arbitrary-target pass.  Keep that limitation explicit at
+        the backend boundary and use the shared regularized target kernels as
+        a bounded correctness fallback; PhysicsBase no longer silently
+        bypasses the selected induction method.
+        """
+        if self.physics is None:
+            raise RuntimeError("FMMInduction must be bound before target evaluation")
+        if target_velocity is not None:
+            self.physics.compute_target_velocity_kernel(
+                target_position,
+                source_position,
+                source_vortex_strength,
+                source_core_radius,
+                target_velocity,
+                background_velocity if include_freestream else self.physics._zero_velocity,
+                int(target_count),
+                int(source_count),
+            )
+        if target_velocity_gradient is not None:
+            self.physics.compute_target_velocity_gradient_kernel(
+                target_position,
+                source_position,
+                source_vortex_strength,
+                source_core_radius,
+                target_velocity_gradient,
+                int(target_count),
+                int(source_count),
+            )
 
     def _estimate_memory_bytes(self) -> int:
         return self.estimated_workspace_bytes(self.max_n_particles)

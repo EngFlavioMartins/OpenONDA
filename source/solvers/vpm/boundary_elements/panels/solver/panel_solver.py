@@ -1421,6 +1421,49 @@ class PanelSolver:
 
         return velocity
 
+    def compute_induced_velocity_gradient(
+        self, points: np.ndarray, time: float | None = None
+    ) -> np.ndarray:
+        """Evaluate the target Jacobian of the panel velocity operator.
+
+        The centered difference deliberately calls :meth:`compute_induced_velocity`
+        rather than duplicating the source-panel formulas. This keeps the
+        stretching field consistent with the selected direct/far-field panel
+        velocity path, including the current solved strengths and body state.
+        ``time`` is accepted for the stage-provider protocol; panel strengths
+        are the already-solved accepted-step field and are not re-solved for a
+        temporary RK stage.
+        """
+        del time
+        points = np.asarray(points)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError("points must have shape (N, 3)")
+        count = len(points)
+        if count == 0:
+            return np.zeros((0, 3, 3), dtype=np.float64)
+        self._ensure_initialized()
+        if self.lattice is None or self.lattice.n_panels == 0:
+            return np.zeros((count, 3, 3), dtype=np.result_type(points, np.float64))
+
+        dtype = np.float32 if self.float_dtype == "f32" else np.float64
+        points = np.asarray(points, dtype=dtype)
+        # Resolve a geometry-scaled probe from the active panel edge lengths.
+        # It is small enough for the smooth regularized field, but not below
+        # the working precision near the body.
+        vertices = self.lattice.vertex_position.to_numpy()[: self.lattice.n_panels]
+        edge_lengths = np.linalg.norm(vertices[:, 1:] - vertices[:, :1], axis=-1).reshape(-1)
+        positive_edges = edge_lengths[edge_lengths > 0.0]
+        geometry_scale = float(np.min(positive_edges)) if len(positive_edges) else 1.0
+        step = max(float(np.finfo(dtype).eps * geometry_scale * 64.0), 1.0e-5 * geometry_scale)
+        gradient = np.empty((count, 3, 3), dtype=np.float64)
+        for axis in range(3):
+            offset = np.zeros(3, dtype=dtype)
+            offset[axis] = step
+            plus = self.compute_induced_velocity(points + offset).astype(np.float64, copy=False)
+            minus = self.compute_induced_velocity(points - offset).astype(np.float64, copy=False)
+            gradient[:, :, axis] = (plus - minus) / (2.0 * step)
+        return gradient
+
     def advance(
         self,
         particles: "Particles | None" = None,

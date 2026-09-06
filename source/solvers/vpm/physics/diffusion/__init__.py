@@ -14,9 +14,9 @@ DVH and GBD are driven from ``grid.py`` (``grid_based_diffusion`` /
 the time-step algorithm lives in ``core/evolution.py``.
 """
 
+from ...config.constants import _DVH_BETA
 from .core_spreading import apply_core_spreading
 from .grid import (
-    _DVH_BETA,
     _GRID_TRANSFER_CHUNK,
     _M4_SCATTER_BATCH_SIZE,
     _REGEN_RADIUS_RATIO,

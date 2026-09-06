@@ -42,6 +42,11 @@ _GBD_MOMENT_CHUNK_SIZE = 65536
 _GBD_MOMENT_RCOND = 1.0e-12
 _GBD_MOMENT_CONDITION_LIMIT = 1.0e12
 _GBD_MOMENT_RESIDUAL_LIMIT = 1.0e-5
+# If the complete post-diffusion field has one vortex-vector direction, the
+# pruning closure must stay in that physical subspace.  A fully vector-valued
+# nine-moment solve can otherwise satisfy the same global moments by inventing
+# transverse strength components.
+_GBD_DIRECTION_SUBSPACE_TOLERANCE = 1.0e-12
 # A deficient support normally needs at most three replacements.  Limit the
 # cap-full search to a small weakest-node frontier so each candidate is judged
 # with fixed 9x9 algebra instead of an O(N_retained) trial cloud.
@@ -152,6 +157,65 @@ def _gbd_moment_gram(
     return gram, length_scale, weights
 
 
+def _gbd_rank_one_direction(*vortex_strengths: np.ndarray) -> np.ndarray | None:
+    """Return the shared vortex-vector direction of a rank-one field, if any."""
+    covariance = np.zeros((3, 3), dtype=np.float64)
+    for vortex_strength in vortex_strengths:
+        strength = np.asarray(vortex_strength, dtype=np.float64)
+        covariance += strength.T @ strength
+    if not np.all(np.isfinite(covariance)):
+        return None
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    total_energy = float(eigenvalues.sum(dtype=np.float64))
+    if total_energy <= 0.0:
+        return None
+    transverse_fraction = max(0.0, total_energy - float(eigenvalues[-1])) / total_energy
+    if transverse_fraction > _GBD_DIRECTION_SUBSPACE_TOLERANCE:
+        return None
+    return eigenvectors[:, -1]
+
+
+def _gbd_directional_moment_gram(
+    position: np.ndarray,
+    vortex_strength: np.ndarray,
+    particle_spacing: float,
+    direction: np.ndarray,
+) -> tuple[np.ndarray, float, np.ndarray]:
+    """Build the moment Gram matrix for corrections parallel to ``direction``."""
+    weight_magnitude = np.linalg.norm(vortex_strength, axis=1)
+    weight_sum = float(weight_magnitude.sum(dtype=np.float64))
+    if not np.isfinite(weight_sum) or weight_sum <= 0.0:
+        raise RuntimeError("GBD directional moment support has no finite retained strength")
+    weights = weight_magnitude / weight_sum
+    length_scale = max(
+        float(
+            np.sqrt(
+                np.sum(
+                    weights
+                    * np.einsum(
+                        "ij,ij->i",
+                        position,
+                        position,
+                    )
+                )
+            )
+        ),
+        float(particle_spacing),
+    )
+    gram = np.zeros((9, 9), dtype=np.float64)
+    for start in range(0, len(position), _GBD_MOMENT_CHUNK_SIZE):
+        stop = min(start + _GBD_MOMENT_CHUNK_SIZE, len(position))
+        rows = _gbd_moment_constraint_rows(position[start:stop] / length_scale)
+        projected_rows = np.einsum("ijk,k->ij", rows, direction)
+        gram += np.einsum(
+            "i,ij,ik->jk",
+            weights[start:stop],
+            projected_rows,
+            projected_rows,
+        )
+    return gram, length_scale, weights
+
+
 def _gbd_moment_gram_quality(gram: np.ndarray) -> tuple[int, float]:
     """Return numerical rank and condition under the production closure limits."""
     if not np.all(np.isfinite(gram)):
@@ -163,8 +227,8 @@ def _gbd_moment_gram_quality(gram: np.ndarray) -> tuple[int, float]:
     rank = int(np.count_nonzero(singular_values > cutoff))
     condition = (
         float("inf")
-        if singular_values[-1] <= 0.0
-        else float(singular_values[0] / singular_values[-1])
+        if rank == 0 or singular_values[rank - 1] <= 0.0
+        else float(singular_values[0] / singular_values[rank - 1])
     )
     return rank, condition
 
@@ -221,7 +285,7 @@ def _dvh_scatter_numba(
     """DVH heat-kernel scatter (Durante et al. 2024, Eqs. 17-19), JIT-compiled.
 
     For each particle ``p`` at ``pos[p]`` with vortex strength ``vortex_strength[p]`` and
-    Gaussian width ``widths[p]`` (= β·R_d²·q_p), spread its vortex strength to the
+    Gaussian width ``widths[p]`` (= 4·nu_eff·Δt), spread its vortex strength to the
     grid nodes within the diffusive radius R_d using the exact heat-kernel
     weight ``exp(-r²/width_p)``.  Shepard normalisation (the per-particle
     ``/w_sum``) conserves each particle's total vortex strength exactly; the node
@@ -238,6 +302,18 @@ def _dvh_scatter_numba(
         py = pos[p, 1]
         pz = pos[p, 2]
         width = widths[p]
+
+        # Zero viscosity is the no-spread limit.  Avoid division by zero and
+        # preserve the particle circulation at its nearest active node.
+        if not np.isfinite(width) or width <= 0.0:
+            ii = int(np.rint((px - gmin[0]) / particle_spacing))
+            jj = int(np.rint((py - gmin[1]) / particle_spacing))
+            kk = int(np.rint((pz - gmin[2]) / particle_spacing))
+            if 0 <= ii < nx and 0 <= jj < ny and 0 <= kk < nz:
+                grid_out[ii, jj, kk, 0] += vortex_strength[p, 0]
+                grid_out[ii, jj, kk, 1] += vortex_strength[p, 1]
+                grid_out[ii, jj, kk, 2] += vortex_strength[p, 2]
+            continue
 
         # Index bounds of the bounding box within R_d of particle p.
         i_lo = max(0, int(np.floor((px - R_d - gmin[0]) / particle_spacing)))
@@ -489,7 +565,12 @@ class _GridDiffusionMixin:
         return lo.astype(np.float32), (nx, ny, nz)
 
     def _lattice_aligned_bounds(
-        self, pos: np.ndarray, particle_spacing: float, padding: float
+        self,
+        pos: np.ndarray,
+        particle_spacing: float,
+        padding: float,
+        *,
+        include_halo_sources: bool = False,
     ) -> tuple[np.ndarray, tuple[int, int, int]]:
         """Active sub-box covering the cloud, with the origin on the fixed lattice.
 
@@ -497,11 +578,13 @@ class _GridDiffusionMixin:
         ``_fixed_grid_min`` by a whole number of cells, so every node keeps the
         position it would have on the full pre-allocated grid; only the extent
         shrinks to the occupied region.  Clamped to stay inside the allocation.
+        DVH includes sources in the allocation's padding halo: regenerated
+        particles there still require their complete heat-kernel support.
         """
         anchor = np.asarray(self._fixed_grid_min, dtype=np.float64).reshape(3)
         cap = np.asarray(self._max_grid_dims, dtype=np.int64)
         finite = np.isfinite(pos).all(axis=1)
-        if self._grid_domain_bounds is not None:
+        if self._grid_domain_bounds is not None and not include_halo_sources:
             bounds = self._grid_domain_bounds
             finite &= (
                 (pos[:, 0] >= bounds[0])
@@ -901,6 +984,7 @@ class _GridDiffusionMixin:
         ny: int,
         nz: int,
         mapping: _NearestNodeMapping | None = None,
+        fill_empty: bool = False,
     ) -> np.ndarray:
         """Scatter zone IDs — thin wrapper around _scatter_id_field (default_id=3)."""
         return self._scatter_id_field(
@@ -927,6 +1011,7 @@ class _GridDiffusionMixin:
         ny: int,
         nz: int,
         mapping: _NearestNodeMapping | None = None,
+        fill_empty: bool = False,
     ) -> np.ndarray:
         """Scatter a per-particle scalar to grid nodes (|Γ|-weighted average).
 
@@ -934,7 +1019,8 @@ class _GridDiffusionMixin:
         the scalar over particles whose nearest node it is — mirroring
         ``_scatter_id_field``'s nearest-node winner scheme, but averaging a
         scalar instead of taking the dominant ID.  Nodes with no contributing
-        particle get 0.0.
+        particle get 0.0 unless ``fill_empty`` is true, in which case the
+        nearest populated node's value is propagated.
 
         Used to carry ν_t (Bug B) and ν_eff (Bug A) from the pre-regen
         particle cloud onto the diffusion grid so that regenerated particles
@@ -960,6 +1046,15 @@ class _GridDiffusionMixin:
         nz_mask = weight_flat > 0.0
         out_flat = out.ravel()
         out_flat[nz_mask] = (accum_flat[nz_mask] / weight_flat[nz_mask]).astype(np.float32)
+        if fill_empty and np.any(nz_mask) and np.any(~nz_mask):
+            from scipy.spatial import cKDTree
+
+            populated_linear = np.flatnonzero(nz_mask)
+            empty_linear = np.flatnonzero(~nz_mask)
+            populated = np.column_stack(np.unravel_index(populated_linear, (nx, ny, nz)))
+            empty = np.column_stack(np.unravel_index(empty_linear, (nx, ny, nz)))
+            _, nearest = cKDTree(populated, compact_nodes=False).query(empty)
+            out_flat[empty_linear] = out_flat[populated_linear[nearest]]
         return out
 
     def _select_diffusion_threshold(
@@ -1076,8 +1171,14 @@ class _GridDiffusionMixin:
         if flat_labels is not None:
             unique_labels = np.unique(flat_labels[nonzero_flat])
             retained_labels = flat_labels[retained_flat]
+
+            def minimum_group_support(label: int) -> int:
+                group_nonzero = nonzero_flat[flat_labels[nonzero_flat] == label]
+                return 6 if _gbd_rank_one_direction(flat_grid[group_nonzero]) is not None else 4
+
             preserve_groups = len(unique_labels) > 1 and all(
-                np.count_nonzero(retained_labels == label) >= 4 for label in unique_labels
+                np.count_nonzero(retained_labels == label) >= minimum_group_support(int(label))
+                for label in unique_labels
             )
 
         selected = retained_flat.tolist()
@@ -1097,14 +1198,6 @@ class _GridDiffusionMixin:
             ).astype(np.float64)
             strength = flat_grid[selected_flat].astype(np.float64)
             return position, strength
-
-        def support_quality(selected_flat: np.ndarray) -> tuple[int, float]:
-            position, strength = support_geometry(selected_flat)
-            return _gbd_moment_support_quality(
-                position,
-                strength,
-                particle_spacing,
-            )
 
         def quality_improves(
             trial_rank: int,
@@ -1135,8 +1228,48 @@ class _GridDiffusionMixin:
             if len(scoped_candidates) == 0:
                 return
 
+            scoped_nonzero = nonzero_flat
+            if label is not None and flat_labels is not None:
+                scoped_nonzero = scoped_nonzero[flat_labels[scoped_nonzero] == label]
+            direction = _gbd_rank_one_direction(flat_grid[scoped_nonzero])
+            # A scalar strength correction along one fixed 3-D direction has
+            # at most six independent moment modes: one circulation, two
+            # linear-impulse, and three angular-impulse modes.  Degenerate
+            # physical geometries can carry fewer, so measure the rank of the
+            # complete unpruned support rather than requiring nonexistent
+            # modes from the retained subset.
+            target_rank = 9
+            if direction is not None:
+                complete_position, complete_strength = support_geometry(scoped_nonzero)
+                complete_gram, _complete_scale, _complete_weights = _gbd_directional_moment_gram(
+                    complete_position,
+                    complete_strength,
+                    particle_spacing,
+                    direction,
+                )
+                target_rank, _complete_condition = _gbd_moment_gram_quality(complete_gram)
+
+            def support_gram(
+                selected_flat: np.ndarray,
+            ) -> tuple[np.ndarray, float, np.ndarray]:
+                position, strength = support_geometry(selected_flat)
+                if direction is not None:
+                    return _gbd_directional_moment_gram(
+                        position,
+                        strength,
+                        particle_spacing,
+                        direction,
+                    )
+                return _gbd_moment_gram(position, strength, particle_spacing)
+
+            def support_quality(selected_flat: np.ndarray) -> tuple[int, float]:
+                if len(selected_flat) < 4:
+                    return 0, float("inf")
+                gram, _length_scale, _weights = support_gram(selected_flat)
+                return _gbd_moment_gram_quality(gram)
+
             rank, condition = support_quality(scope_selection())
-            if rank == 9 and condition <= _GBD_MOMENT_CONDITION_LIMIT:
+            if rank == target_rank and condition <= _GBD_MOMENT_CONDITION_LIMIT:
                 return
 
             candidate_order = np.argsort(
@@ -1155,7 +1288,7 @@ class _GridDiffusionMixin:
                 selected_set.add(candidate_int)
                 introduced.add(candidate_int)
                 rank, condition = support_quality(scope_selection())
-                if rank == 9 and condition <= _GBD_MOMENT_CONDITION_LIMIT:
+                if rank == target_rank and condition <= _GBD_MOMENT_CONDITION_LIMIT:
                     return
             else:
                 # Every nonzero node in this scope is now retained, so there is
@@ -1172,13 +1305,9 @@ class _GridDiffusionMixin:
                 if len(scoped_flat) < 4:
                     break
                 position, strength = support_geometry(scoped_flat)
-                gram, length_scale, _weights = _gbd_moment_gram(
-                    position,
-                    strength,
-                    particle_spacing,
-                )
+                gram, length_scale, _weights = support_gram(scoped_flat)
                 rank, condition = _gbd_moment_gram_quality(gram)
-                if rank == 9 and condition <= _GBD_MOMENT_CONDITION_LIMIT:
+                if rank == target_rank and condition <= _GBD_MOMENT_CONDITION_LIMIT:
                     return
                 raw_gram = gram * float(np.linalg.norm(strength, axis=1).sum(dtype=np.float64))
 
@@ -1192,12 +1321,25 @@ class _GridDiffusionMixin:
                 replacement_rows = _gbd_moment_constraint_rows(
                     position[weakest_order] / length_scale
                 )
-                replacement_contributions = np.einsum(
-                    "i,ijk,ilk->ijl",
-                    np.linalg.norm(strength[weakest_order], axis=1),
-                    replacement_rows,
-                    replacement_rows,
-                )
+                if direction is not None:
+                    replacement_rows = np.einsum(
+                        "ijk,k->ij",
+                        replacement_rows,
+                        direction,
+                    )
+                    replacement_contributions = np.einsum(
+                        "i,ij,ik->ijk",
+                        np.linalg.norm(strength[weakest_order], axis=1),
+                        replacement_rows,
+                        replacement_rows,
+                    )
+                else:
+                    replacement_contributions = np.einsum(
+                        "i,ijk,ilk->ijl",
+                        np.linalg.norm(strength[weakest_order], axis=1),
+                        replacement_rows,
+                        replacement_rows,
+                    )
 
                 accepted = False
                 for candidate in scoped_candidates:
@@ -1216,9 +1358,16 @@ class _GridDiffusionMixin:
                     candidate_rows = _gbd_moment_constraint_rows(
                         candidate_position[None, :] / length_scale
                     )[0]
-                    candidate_contribution = flat_magnitude[candidate_int] * (
-                        candidate_rows @ candidate_rows.T
-                    )
+                    if direction is not None:
+                        candidate_rows = candidate_rows @ direction
+                        candidate_contribution = flat_magnitude[candidate_int] * np.outer(
+                            candidate_rows,
+                            candidate_rows,
+                        )
+                    else:
+                        candidate_contribution = flat_magnitude[candidate_int] * (
+                            candidate_rows @ candidate_rows.T
+                        )
 
                     improving_replacements: list[int] = []
                     for local_index, removed_contribution in enumerate(replacement_contributions):
@@ -1265,12 +1414,12 @@ class _GridDiffusionMixin:
                         break
                 if not accepted:
                     break
-                if rank == 9 and condition <= _GBD_MOMENT_CONDITION_LIMIT:
+                if rank == target_rank and condition <= _GBD_MOMENT_CONDITION_LIMIT:
                     return
             scope_name = "the complete cloud" if label is None else f"group {label!r}"
             raise RuntimeError(
                 "GBD moment recovery cannot form full-rank support within the "
-                f"regeneration cap for {scope_name}: rank={rank}/9, "
+                f"regeneration cap for {scope_name}: rank={rank}/{target_rank}, "
                 f"condition={condition:.6e}, retained={len(selected):,}, cap={cap:,}"
             )
 
@@ -1547,11 +1696,23 @@ class _GridDiffusionMixin:
                     f"for {scope}; got {len(survivor_position)}"
                 )
 
-            gram, length_scale, weights = _gbd_moment_gram(
-                survivor_position,
+            direction = _gbd_rank_one_direction(
                 survivor_vortex_strength,
-                particle_spacing,
+                removed_vortex_strength,
             )
+            if direction is not None:
+                gram, length_scale, weights = _gbd_directional_moment_gram(
+                    survivor_position,
+                    survivor_vortex_strength,
+                    particle_spacing,
+                    direction,
+                )
+            else:
+                gram, length_scale, weights = _gbd_moment_gram(
+                    survivor_position,
+                    survivor_vortex_strength,
+                    particle_spacing,
+                )
             right_hand_side = np.concatenate(
                 (
                     residuals[0],
@@ -1561,6 +1722,46 @@ class _GridDiffusionMixin:
             )
             if not np.all(np.isfinite(gram)) or not np.all(np.isfinite(right_hand_side)):
                 raise RuntimeError(f"GBD moment recovery formed non-finite constraints for {scope}")
+
+            if direction is not None:
+                multipliers, _residual, rank, singular_values = np.linalg.lstsq(
+                    gram,
+                    right_hand_side,
+                    rcond=_GBD_MOMENT_RCOND,
+                )
+                condition = (
+                    float("inf")
+                    if rank == 0 or singular_values[rank - 1] <= 0.0
+                    else float(singular_values[0] / singular_values[rank - 1])
+                )
+                if not np.isfinite(condition) or condition > _GBD_MOMENT_CONDITION_LIMIT:
+                    raise RuntimeError(
+                        "GBD directional moment recovery constraints are ill-conditioned "
+                        f"for {scope}: rank={rank}, condition={condition:.6e}, "
+                        f"limit={_GBD_MOMENT_CONDITION_LIMIT:.6e}"
+                    )
+                if not np.all(np.isfinite(multipliers)):
+                    raise RuntimeError(
+                        f"GBD directional moment recovery produced non-finite multipliers "
+                        f"for {scope}"
+                    )
+
+                recovered = corrected.copy()
+                for start in range(0, len(survivor_position), _GBD_MOMENT_CHUNK_SIZE):
+                    stop = min(start + _GBD_MOMENT_CHUNK_SIZE, len(survivor_position))
+                    rows = _gbd_moment_constraint_rows(survivor_position[start:stop] / length_scale)
+                    projected_rows = np.einsum("ijk,k->ij", rows, direction)
+                    scalar_correction = weights[start:stop] * (projected_rows @ multipliers)
+                    recovered[start:stop] += scalar_correction[:, None] * direction
+                return validate(
+                    survivor_position,
+                    survivor_vortex_strength,
+                    removed_position,
+                    removed_vortex_strength,
+                    recovered,
+                    scope=scope,
+                    record_diagnostics=record_diagnostics,
+                )
 
             multipliers, _residual, rank, singular_values = np.linalg.lstsq(
                 gram,
@@ -1670,12 +1871,17 @@ class _GridDiffusionMixin:
         zone_winner_grid: np.ndarray,
         group_winner_grid: np.ndarray,
         eddy_viscosity_grid: np.ndarray | None = None,
+        regenerated_core_radius: float | None = None,
     ) -> dict:
         """Assemble the new-particle dict from the diffused grid (3-D)."""
         M = len(ix)
         # 3-D cell particle_volume: particle_spacing³
         vol = float(particle_spacing) ** 3
-        r = float(self.core_radius_ratio) * float(particle_spacing)
+        r = (
+            float(self.core_radius_ratio) * float(particle_spacing)
+            if regenerated_core_radius is None
+            else float(regenerated_core_radius)
+        )
         new_pos = np.stack(
             [
                 grid_min_np[0] + ix * particle_spacing,
@@ -1964,6 +2170,7 @@ class _GridDiffusionMixin:
                 ny,
                 nz,
                 mapping=node_mapping,
+                fill_empty=True,
             )
         self._last_gbd_diffusion_substeps, _max_diffusion_number = self._advance_gbd_laplacian(
             nx=nx,
@@ -2002,6 +2209,7 @@ class _GridDiffusionMixin:
             ny,
             nz,
             mapping=node_mapping,
+            fill_empty=True,
         )
 
         # -- Threshold pruning (CPU — read diffused grid back once) ------------
@@ -2250,33 +2458,59 @@ class _GridDiffusionMixin:
         grid_min_np : (3,) float      Grid origin (minimum corner position).
         particle_spacing : float                     Grid spacing [m].
         kinematic_viscosity : float                    Kinematic viscosity [m²/s].
-        time_step_size : float                    Time step [s] (unused — diffusive width set by R_d and β).
+        time_step_size : float                    Matched physical diffusion interval [s].
         nx, ny, nz : int              Active grid extents.
         rd_ratio : float              R_d / particle_spacing compact-support radius ratio.
                                       Default 4.0 (optimal, Durante 2024 Sec. 4.2).
         effective_viscosity_np : (N,) float array or None
-                                      Per-particle effective viscosity (e.g.
-                                      kinematic_viscosity + eddy_viscosity from an LES model).  When given,
-                                      each particle's Gaussian width is scaled
-                                      by q_j = effective_viscosity_j/kinematic_viscosity — the exact split-step
-                                      heat kernel for that particle's viscosity.
-        q_max : float                 Cap on the width ratio q_j.  The compact
-                                      support stays at R_d, so a wide Gaussian
-                                      is truncated: its tail beyond R_d carries
-                                      ~exp(−1/(β·q)) of the weight (≈4 % at
-                                      q = 4, β = 0.077).  Shepard normalization
-                                      keeps Γ conserved, but the *shape* error
-                                      grows with q — hence the cap.
+                                      Effective viscosity values used for contract
+                                      validation. DVH currently accepts only a
+                                      spatially uniform field (e.g. molecular
+                                      viscosity without a varying LES contribution).
+        q_max : float                 Deprecated compatibility argument.  The
+                                      physical width is no longer capped.
         """
-        R_d = rd_ratio * particle_spacing
-        # Durante 2024, Eq. 15: β = 4nu·Δt_d / R_d² ≈ 0.077.
-        # The diffusive timestep Δt_d is NOT the advection step; it is derived
-        # from β so that the Gaussian is calibrated to spread meaningfully
-        # across all ~270 nodes within R_d.  Using the advection Δt_a here
-        # would make 4nu·Δt_a << particle_spacing² → exp(-particle_spacing²/(4nu·Δt_a)) ≈ 0 → no diffusion.
-        diffusion_variance = _DVH_BETA * R_d * R_d  # = β·R_d² (≡ 4ν·Δt_d)
-        R_d_sq = R_d * R_d
         N = len(pos_np)
+
+        if effective_viscosity_np is None:
+            viscosity_per_particle = np.full(N, float(kinematic_viscosity), dtype=np.float64)
+        else:
+            viscosity_per_particle = np.asarray(effective_viscosity_np, dtype=np.float64).reshape(
+                -1
+            )
+            if viscosity_per_particle.shape != (N,):
+                raise ValueError("DVH effective_viscosity_np must contain one value per particle")
+        if not np.all(np.isfinite(viscosity_per_particle)) or np.any(viscosity_per_particle < 0.0):
+            raise ValueError("DVH effective viscosity must be finite and non-negative")
+        if N:
+            scale = max(float(np.max(np.abs(viscosity_per_particle))), np.finfo(np.float32).tiny)
+            tolerance = 8.0 * np.finfo(np.float32).eps * scale
+            if float(np.ptp(viscosity_per_particle)) > tolerance:
+                raise ValueError(
+                    "DVH requires spatially uniform effective viscosity; "
+                    "use GBD for variable-viscosity diffusion"
+                )
+            resolved_width = _DVH_BETA * (float(rd_ratio) * float(particle_spacing)) ** 2
+            positive_viscosity = viscosity_per_particle > 0.0
+            resolution_tolerance = (
+                64.0
+                * np.finfo(np.float32).eps
+                * max(
+                    resolved_width,
+                    float(np.max(4.0 * viscosity_per_particle * float(time_step_size))),
+                )
+            )
+            if np.any(
+                positive_viscosity
+                & (
+                    4.0 * viscosity_per_particle * float(time_step_size) + resolution_tolerance
+                    < resolved_width
+                )
+            ):
+                raise ValueError(
+                    "DVH diffusion interval is unresolved on the configured lattice; "
+                    "accumulate accepted steps or increase time_step_size/viscosity"
+                )
 
         # Always leave the grid in a fully-defined state (zeros where no
         # particle deposits), so callers can read it back without a prior fill.
@@ -2284,28 +2518,19 @@ class _GridDiffusionMixin:
         if N == 0:
             return
 
-        # Per-particle Gaussian width β·R_d²·q_j.  q_j = ν_eff_j/ν scales the
-        # heat-kernel width to that particle's effective viscosity (the
-        # mechanism by which an LES sub-grid ν_t acts in DVH), clipped at q_max
-        # so the compact support stays at R_d.
-        widths = np.full(N, diffusion_variance, dtype=np.float64)
-        if effective_viscosity_np is not None and kinematic_viscosity > 0.0:
-            q = np.clip(
-                np.asarray(effective_viscosity_np, dtype=np.float64) / kinematic_viscosity,
-                1.0,
-                q_max,
-            )
-            widths *= q
-            n_clipped = int(
-                np.count_nonzero(np.asarray(effective_viscosity_np) / kinematic_viscosity > q_max)
-            )
-            if n_clipped > 0:
-                self._event_observer.record(
-                    "discrete vortex heat method width cap",
-                    ("particles clipped", f"{n_clipped:,}"),
-                    ("particles", f"{N:,}"),
-                    ("q, max", f"{q_max:.1f}"),
-                )
+        del q_max  # retained for compatibility with old callers
+        widths = 4.0 * np.maximum(viscosity_per_particle, 0.0) * float(time_step_size)
+        widths[~np.isfinite(widths)] = 0.0
+
+        # Keep the configured support radius as a floor, but enlarge it when
+        # the requested physical interval would otherwise truncate the heat
+        # kernel.  R_d is a support/performance choice; it no longer defines
+        # the variance.  The 3.6 factor retains approximately the historical
+        # beta≈0.077 tail level.
+        base_radius = float(rd_ratio * particle_spacing)
+        max_heat_radius = 3.6 * float(np.sqrt(np.max(widths))) if N else 0.0
+        R_d = max(base_radius, max_heat_radius)
+        R_d_sq = R_d * R_d
 
         # Numba-compiled heat-kernel scatter.  This is the exact f64 algorithm
         # of the former ``for j in range(N)`` Python loop (same formulas, same
@@ -2354,8 +2579,12 @@ class _GridDiffusionMixin:
         2. Threshold pruning: discard nodes whose |Γ| is below the threshold.
         3. Spawn new particles at surviving grid nodes.
 
-        No finite-difference solve or CFL constraint is involved — diffusion
-        is encoded directly in the Gaussian scatter weights.
+        No finite-difference solve is involved — diffusion is encoded directly
+        in the Gaussian scatter weights. The finite-lattice scatter, support
+        truncation, and optional pruning are a remap approximation, not an
+        exact continuum heat solve. The supported remap contract requires a
+        uniform effective viscosity and an accepted interval resolved by the
+        configured lattice; callers must accumulate smaller intervals first.
         """
         N = particles.n_particles_total
         if N == 0 or time_step_size == 0.0:
@@ -2370,26 +2599,81 @@ class _GridDiffusionMixin:
         pos_np = particles.position_cpu()
         vortex_strength = particles.vortex_strength_cpu()
 
+        if effective_viscosity is None:
+            dvh_viscosity_np = np.full(N, float(kinematic_viscosity), dtype=np.float64)
+        else:
+            dvh_viscosity_np = np.asarray(effective_viscosity, dtype=np.float64).reshape(-1)
+            if dvh_viscosity_np.shape != (N,):
+                raise ValueError("DVH effective viscosity must contain one value per particle")
+        if not np.all(np.isfinite(dvh_viscosity_np)) or np.any(dvh_viscosity_np < 0.0):
+            raise ValueError("DVH effective viscosity must be finite and non-negative")
+        # A zero-width heat transfer is the identity operator. Return before
+        # projecting onto the diffusion lattice; nearest-node remapping would
+        # otherwise move off-lattice particles even though no diffusion is
+        # physically active.
+        if not np.any(dvh_viscosity_np > 0.0):
+            return None
+        viscosity_scale = max(float(np.max(np.abs(dvh_viscosity_np))), np.finfo(np.float32).tiny)
+        viscosity_tolerance = 8.0 * np.finfo(np.float32).eps * viscosity_scale
+        if float(np.ptp(dvh_viscosity_np)) > viscosity_tolerance:
+            raise ValueError(
+                "DVH requires spatially uniform effective viscosity; "
+                "use GBD for variable-viscosity diffusion"
+            )
+        support_radius = max(
+            float(rd_ratio) * float(particle_spacing),
+            3.6 * float(np.sqrt(np.max(4.0 * dvh_viscosity_np * float(time_step_size)))),
+        )
+
         # -- LES: per-particle ν_t to carry through regen (Bug B) -------------
         eddy_viscosity_np = particles.eddy_viscosity_cpu()
 
         # -- Grid setup --------------------------------------------------------
+        heat_padding = max(float(domain_padding), support_radius / float(particle_spacing) + 1.0)
         if self._fixed_grid_min is not None and self._max_grid_dims is not None:
             grid_min_np, (nx, ny, nz) = self._lattice_aligned_bounds(
-                pos_np, particle_spacing, domain_padding
+                pos_np, particle_spacing, heat_padding, include_halo_sources=True
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         else:
             grid_min_np, (nx, ny, nz) = self._compute_grid_bounds(
                 pos_np,
                 particle_spacing,
-                domain_padding,
+                heat_padding,
                 half_cell_offset=False,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
+        grid_max_np = grid_min_np + np.asarray((nx - 1, ny - 1, nz - 1), dtype=np.float64) * float(
+            particle_spacing
+        )
+        finite_position = np.isfinite(pos_np).all(axis=1)
+        if np.any(finite_position):
+            selected_position = pos_np[finite_position]
+            if np.any(selected_position.min(axis=0) - support_radius < grid_min_np) or np.any(
+                selected_position.max(axis=0) + support_radius > grid_max_np
+            ):
+                raise RuntimeError(
+                    "DVH heat support exceeds the allocated diffusion grid; "
+                    "increase domain padding/bounds or reduce the diffusion interval"
+                )
         node_mapping = _nearest_node_mapping(
             pos_np, vortex_strength, grid_min_np, particle_spacing, nx, ny, nz
         )
+
+        # The supported heat-transfer contract assumes a uniform incoming blob
+        # basis. Preserve that basis through the finite-lattice remap instead
+        # of replacing every source with the unrelated default 2.5h core.
+        core_radius_np = particles.core_radius_cpu(use_cache=False)[:N].astype(np.float64)
+        if not np.all(np.isfinite(core_radius_np)) or np.any(core_radius_np <= 0.0):
+            raise ValueError("DVH requires finite, positive incoming core radii")
+        core_radius_scale = max(float(np.max(np.abs(core_radius_np))), np.finfo(np.float32).tiny)
+        core_radius_tolerance = 8.0 * np.finfo(np.float32).eps * core_radius_scale
+        if float(np.ptp(core_radius_np)) > core_radius_tolerance:
+            raise ValueError(
+                "DVH currently requires a uniform incoming core radius; "
+                "use GBD for mixed-core diffusion"
+            )
+        regenerated_core_radius = float(np.mean(core_radius_np))
 
         # -- DVH heat-kernel scatter (Durante 2024, Eqs. 17-19) ---------------
         # (the scatter zeroes the grid internally before depositing)
@@ -2404,7 +2688,7 @@ class _GridDiffusionMixin:
             ny,
             nz,
             rd_ratio,
-            effective_viscosity_np=effective_viscosity,
+            effective_viscosity_np=dvh_viscosity_np,
         )
         self._prepare_body_mask_current_grid(grid_min_np, particle_spacing, nx, ny, nz)
         self._apply_body_mask_current_grid(nx, ny, nz)
@@ -2420,9 +2704,12 @@ class _GridDiffusionMixin:
             ny,
             nz,
             mapping=node_mapping,
+            fill_empty=True,
         )
         # ν_t scatter (Bug B): |Γ|-weighted average onto the grid so regenerated
-        # particles inherit the pre-regen turbulent viscosity.
+        # particles inherit the pre-regen turbulent viscosity.  Fill empty
+        # nodes from the nearest populated value so variable diffusion does not
+        # create artificial zero-viscosity islands.
         eddy_viscosity_grid = self._scatter_scalar_weighted(
             pos_np,
             vortex_strength,
@@ -2433,6 +2720,7 @@ class _GridDiffusionMixin:
             ny,
             nz,
             mapping=node_mapping,
+            fill_empty=True,
         )
 
         # -- Threshold pruning -------------------------------------------------
@@ -2522,6 +2810,7 @@ class _GridDiffusionMixin:
             zone_winner_grid,
             group_winner_grid,
             eddy_viscosity_grid=eddy_viscosity_grid,
+            regenerated_core_radius=regenerated_core_radius,
         )
 
     def grid_based_diffusion(
@@ -2539,13 +2828,18 @@ class _GridDiffusionMixin:
     ) -> dict[str, np.ndarray] | None:
         """DVH (Durante 2024) diffusion step with particle regeneration.
 
-        Spreads each particle's vortex strength to nearby grid nodes via the exact
+        Spreads each particle's vortex strength to nearby grid nodes via the
         Gaussian heat-kernel Green's function, then replaces all particles with
-        surviving grid nodes.  No finite-difference solve or CFL constraint.
+        surviving grid nodes. No finite-difference solve is used.
 
-        With ``effective_viscosity`` (per-particle effective viscosity, e.g. kinematic_viscosity + eddy_viscosity from
-        an LES model), each particle's heat-kernel width is scaled by
-        effective_viscosity/kinematic_viscosity — the exact per-particle split-step Green's function.
+        The supported contract is intentionally narrower than a general
+        variable-coefficient diffusion operator: the effective viscosity must
+        be spatially uniform, the accepted interval must be resolved by the
+        configured lattice, and the incoming core radius must be finite,
+        positive, and uniform. Smaller accepted intervals are accumulated by
+        the solver before this remap is called. The incoming core radius is
+        preserved on regenerated particles so remapping is not mistaken for
+        physical diffusion.
         """
         return self._grid_based_diffusion_impl(
             particles,
@@ -2664,6 +2958,28 @@ class _GridDiffusionMixin:
             laplacian = xp + xm + yp + ym + zp + zm - 6.0 * centre
             dst[i, j, k] = centre + alpha * laplacian
 
+    @ti.func
+    def _variable_diffusion_face_flux(
+        self,
+        src: ti.template(),
+        effective_viscosity_grid: ti.template(),
+        body_mask: ti.template(),
+        i: ti.i32,
+        j: ti.i32,
+        k: ti.i32,
+        ni: ti.i32,
+        nj: ti.i32,
+        nk: ti.i32,
+    ) -> ti.math.vec3:
+        """Return the conservative flux through one grid face."""
+        flux = ti.Vector.zero(ti.f32, 3)
+        if (ni != i or nj != j or nk != k) and body_mask[ni, nj, nk] == 0:
+            nu_face = 0.5 * (
+                effective_viscosity_grid[i, j, k] + effective_viscosity_grid[ni, nj, nk]
+            )
+            flux = nu_face * (src[ni, nj, nk] - src[i, j, k])
+        return flux
+
     @ti.kernel
     def _laplacian_step_variable_gpu_kernel(
         self,
@@ -2677,14 +2993,12 @@ class _GridDiffusionMixin:
         ny: ti.i32,
         nz: ti.i32,
     ):
-        """GPU 7-point explicit Laplacian with a per-node ν_eff.
+        """Advance the conservative variable-viscosity heat operator.
 
-        Computes dst = src + α_node·∇²src where
-        α_node = ν_eff_grid[i,j,k]·dt/particle_spacing²  (ν + ν_t from the SGS model).
-
-        The ∇ν·∇ω cross-term of the full ∇·(ν_eff∇ω) operator is neglected
-        (standard approximation for explicit grid VPM+LES).  Neumann BC and
-        active-sub-particle_volume behaviour match ``_laplacian_step_gpu_kernel``.
+        Face-centered arithmetic averages discretize
+        ``div(nu_eff * grad(omega))``.  The same face flux is used with the
+        opposite sign by the neighboring cell, so total vortex strength is
+        conserved under the zero-flux outer/body boundary conditions.
         """
         h_sq = particle_spacing * particle_spacing
         for i, j, k in ti.ndrange(nx, ny, nz):
@@ -2698,16 +3012,27 @@ class _GridDiffusionMixin:
             km = ti.max(k - 1, 0)
             kp = ti.min(k + 1, nz - 1)
 
-            centre = src[i, j, k]
-            xp = centre if body_mask[ip, j, k] != 0 else src[ip, j, k]
-            xm = centre if body_mask[im, j, k] != 0 else src[im, j, k]
-            yp = centre if body_mask[i, jp, k] != 0 else src[i, jp, k]
-            ym = centre if body_mask[i, jm, k] != 0 else src[i, jm, k]
-            zp = centre if body_mask[i, j, kp] != 0 else src[i, j, kp]
-            zm = centre if body_mask[i, j, km] != 0 else src[i, j, km]
-            laplacian = xp + xm + yp + ym + zp + zm - 6.0 * centre
-            alpha_node = effective_viscosity_grid[i, j, k] * time_step_size / h_sq
-            dst[i, j, k] = src[i, j, k] + alpha_node * laplacian
+            flux = (
+                self._variable_diffusion_face_flux(
+                    src, effective_viscosity_grid, body_mask, i, j, k, ip, j, k
+                )
+                + self._variable_diffusion_face_flux(
+                    src, effective_viscosity_grid, body_mask, i, j, k, im, j, k
+                )
+                + self._variable_diffusion_face_flux(
+                    src, effective_viscosity_grid, body_mask, i, j, k, i, jp, k
+                )
+                + self._variable_diffusion_face_flux(
+                    src, effective_viscosity_grid, body_mask, i, j, k, i, jm, k
+                )
+                + self._variable_diffusion_face_flux(
+                    src, effective_viscosity_grid, body_mask, i, j, k, i, j, kp
+                )
+                + self._variable_diffusion_face_flux(
+                    src, effective_viscosity_grid, body_mask, i, j, k, i, j, km
+                )
+            )
+            dst[i, j, k] = src[i, j, k] + time_step_size * flux / h_sq
 
     @ti.kernel
     def _fill_box_body_mask_kernel(

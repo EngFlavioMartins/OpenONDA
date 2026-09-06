@@ -172,7 +172,7 @@ class EvolutionStepper:
 
         target_step = self.solver.step + 1
         target_time = round(self.solver.time + self.time_step_size, 12)
-        Logging.time_step(target_step, target_time, self.profiler.wall_time)
+        Logging.begin_step(target_step)
 
         self.stabilization.begin_step(
             step=self.solver.step,
@@ -249,6 +249,13 @@ class EvolutionStepper:
         self._commit_accepted_step()
         self.profiler.report_step()
         self.solver.wall_time = self.profiler.wall_time
+        Logging.time_step(
+            self.solver.step,
+            self.solver.time,
+            self.solver.wall_time,
+            total_steps=getattr(self.solver, "_run_final_step", None),
+            n_particles=self.particles.n_particles_total,
+        )
 
     def _apply_pending_particle_regeneration(self) -> None:
         """Regenerate externally modified GBD particles without advancing time."""
@@ -318,6 +325,14 @@ class EvolutionStepper:
                 strength_rate_enabled=False,
             ),
         )
+        # External stage providers may add a non-uniform velocity gradient.
+        # Rebuild the LES/stabilization strain tensor from the final combined
+        # Jacobian rather than trusting a backend-private scratch field.
+        self.particles._compute_strain_rate_tensor(
+            self.particles.velocity_gradient,
+            self.particles.strain_rate,
+            count,
+        )
 
     def _update_les_state(self, time_step_size: float | None = None) -> None:
         """Update LES viscosity from the current strain-rate field."""
@@ -341,11 +356,17 @@ class EvolutionStepper:
 
     def _validate_axisymmetric_orbits(self) -> None:
         """Reject malformed orbit IDs before applying rotational stage averages."""
-        if self.axisymmetric_axis < 0 or self._axisymmetric_orbits_validated:
+        if self.axisymmetric_axis < 0 or getattr(
+            self.solver, "_axisymmetric_orbits_validated", False
+        ):
             return
-        position = self.particle_position.astype(np.float64)
-        orbit_id = self.particle_zone_id.astype(np.int64)
-        group_id = self.particle_group_id.astype(np.int64)
+        # Read the particle owner directly.  The stepper intentionally exposes
+        # no forwarding view of all solver fields; using the old forwarding
+        # properties here made standalone stepper validation inspect a wrong
+        # owner and allowed malformed orbits through.
+        position = self.particles.position_cpu(use_cache=False).astype(np.float64)
+        orbit_id = self.particles.zone_id_cpu(use_cache=False).astype(np.int64)
+        group_id = self.particles.group_id_cpu(use_cache=False).astype(np.int64)
         count = len(position)
         if count == 0:
             return
@@ -405,6 +426,10 @@ class EvolutionStepper:
             right_hand_side=self.solver.stage_rhs,
         )
         ti.sync()
+        # RK writes source fields directly on the device.  Invalidate cached
+        # host snapshots/tree keys before any post-RK consumer can inspect the
+        # new state; the end-of-step touch remains a harmless final publication.
+        self.particles.touch_state()
 
     def _apply_coupled_update(
         self,
@@ -446,19 +471,19 @@ class EvolutionStepper:
             )
         elif self.viscous_scheme in ("DVH", "GBD"):
             # DVH fires only when its fixed diffusion increment has accumulated.
+            # This is an operator-splitting approximation: intermediate accepted
+            # states lag in diffusion time, and reducing RK dt at fixed h and
+            # resolved interval does not remove that lag by itself.
             diffusion_time_step_size = time_step_size
             if self.viscous_scheme == "DVH" and self.solver._n_steps_per_dvh_diffusion > 1:
-                self.solver._n_steps_since_dvh_diffusion += 1
-                if (
-                    self.solver._n_steps_since_dvh_diffusion
-                    < self.solver._n_steps_per_dvh_diffusion
-                ):
+                pending_steps = self.solver._n_steps_since_dvh_diffusion + 1
+                if pending_steps < self.solver._n_steps_per_dvh_diffusion:
+                    self.solver._n_steps_since_dvh_diffusion = pending_steps
                     return
-                self.solver._n_steps_since_dvh_diffusion = 0
                 # The heat-kernel width is 4*kinematic_viscosity*dt_d. Passing one macro-step
                 # here after waiting several steps under-diffuses by exactly
                 # _n_steps_per_dvh_diffusion. Apply the full accumulated interval.
-                diffusion_time_step_size = time_step_size * self.solver._n_steps_per_dvh_diffusion
+                diffusion_time_step_size = time_step_size * pending_steps
             new_p = self._apply_grid_diffusion(self._viscous_config, diffusion_time_step_size)
             if new_p is not None:
                 M = len(new_p["position"])
@@ -501,6 +526,11 @@ class EvolutionStepper:
                     report_removal=False,
                 )
                 # Velocity is intentionally left stale; it is recomputed before the next consumer.
+            if self.viscous_scheme == "DVH":
+                # Commit the accepted-step counter only after validation and
+                # regeneration succeed; a failed transfer must not discard
+                # the accumulated physical interval.
+                self.solver._n_steps_since_dvh_diffusion = 0
         ti.sync()
 
     def _apply_grid_diffusion(self, vc, time_step_size: float):
@@ -515,12 +545,14 @@ class EvolutionStepper:
                 else 0.0
             )
         if self.viscous_scheme == "DVH":
-            # LES uses per-particle effective viscosity for the heat-kernel width.
-            effective_viscosity = None
-            if self.flow_model == "LES":
-                N = self.particles.n_particles_total
-                if N > 0:
-                    effective_viscosity = self.particles.effective_viscosity_cpu()
+            # DVH currently has a scalar, source-independent heat-kernel
+            # contract. Pass the actual effective-viscosity field so both
+            # molecular and LES-induced spatial variation is validated rather
+            # than silently replaced by its mean.
+            N = self.particles.n_particles_total
+            effective_viscosity = (
+                self.particles.effective_viscosity_cpu()[:N].copy() if N > 0 else None
+            )
             return self.physics.grid_based_diffusion(
                 self.particles,
                 time_step_size=time_step_size,

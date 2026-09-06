@@ -63,7 +63,7 @@ def _make_solver(case_dir: Path, scheme: str):
             numerics=Numerics(
                 time_step_size=DT,
                 compute_device="CPU",
-                precision="f64",
+                precision="f32" if scheme in {"DVH", "GBD"} else "f64",
                 max_n_particles=4096,
                 domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
                 induction=DirectInduction(),

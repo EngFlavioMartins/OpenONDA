@@ -141,6 +141,11 @@ class PressurePhysics(PhysicsBase):
         # Stretching rate temporary field (dα/dt for each particle)
         self.dalpha_dt_field = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))
 
+        # Material derivative of each particle's core radius.  The temporal
+        # pressure term must include both strength evolution and the changing
+        # regularization width (and the latter depends on the selected kernel).
+        self.core_radius_rate_field = ti.field(dtype=self.accumulator_dtype, shape=(size,))
+
         # Target fields for pressure gradient at arbitrary points
         self.target_pressure_gradient = ti.Vector.field(
             3, dtype=self.accumulator_dtype, shape=(size,)
@@ -182,6 +187,10 @@ class PressurePhysics(PhysicsBase):
         velocity_previous: np.ndarray | None = None,
         time_step_size: float | None = None,
         return_velocity: bool = False,
+        external_velocity_fn=None,
+        external_velocity_gradient_fn=None,
+        external_velocity_time_derivative_fn=None,
+        external_time: float = 0.0,
     ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         """
         Compute pressure gradient at arbitrary target position.
@@ -238,6 +247,18 @@ class PressurePhysics(PhysicsBase):
             particles, target_position
         ).reshape(M, 3, 3)
 
+        external_velocity, external_gradient, external_time_rate = self._evaluate_external_field(
+            target_position,
+            external_time,
+            external_velocity_fn,
+            external_velocity_gradient_fn,
+            external_velocity_time_derivative_fn,
+        )
+        if external_velocity is not None:
+            target_velocity = target_velocity + external_velocity
+        if external_gradient is not None:
+            target_velocity_gradient = target_velocity_gradient + external_gradient
+
         # STEP 3: Compute advective term (u·∇)u at target
         # (u·∇)u_a = u_b * ∂u_a/∂x_b = u_b * velocity_gradient[a,b]
         advective = np.einsum("mb,mab->ma", target_velocity, target_velocity_gradient)
@@ -254,6 +275,8 @@ class PressurePhysics(PhysicsBase):
             time_step_size,
             include_freestream,
         )
+        if include_temporal and external_time_rate is not None:
+            temporal = temporal + external_time_rate
 
         # STEP 5: Compute viscous term kinematic_viscosity∇²u (finite differences)
         if include_viscous and kinematic_viscosity > 0:
@@ -288,6 +311,11 @@ class PressurePhysics(PhysicsBase):
         velocity_previous: np.ndarray | None = None,
         time_step_size: float | None = None,
         return_velocity: bool = False,
+        external_velocity_fn=None,
+        external_velocity_gradient_fn=None,
+        external_velocity_time_derivative_fn=None,
+        external_time: float = 0.0,
+        core_radius_rate: np.ndarray | None = None,
     ) -> dict | tuple[dict, np.ndarray]:
         """
         Compute pressure gradient and its individual components at target position.
@@ -308,6 +336,11 @@ class PressurePhysics(PhysicsBase):
             velocity_previous: Previous velocity field for Eulerian method (M, 3)
             time_step_size: Time step for Eulerian method
             return_velocity: If True, also return the internally computed target_velocity.
+            core_radius_rate: Optional accepted-state material rate ``dσ/dt``.  When
+                omitted, the selected kernel's core-spreading model is used;
+                callers using a non-core-spreading diffusion scheme should pass
+                zeros because their width changes are discrete remaps rather
+                than a smooth material derivative.
 
         Returns:
             If return_velocity is False (default):
@@ -343,6 +376,18 @@ class PressurePhysics(PhysicsBase):
             particles, target_position
         ).reshape(M, 3, 3)
 
+        external_velocity, external_gradient, external_time_rate = self._evaluate_external_field(
+            target_position,
+            external_time,
+            external_velocity_fn,
+            external_velocity_gradient_fn,
+            external_velocity_time_derivative_fn,
+        )
+        if external_velocity is not None:
+            target_velocity = target_velocity + external_velocity
+        if external_gradient is not None:
+            target_velocity_gradient = target_velocity_gradient + external_gradient
+
         # Advective term: (u·∇)u
         advective = np.einsum("mb,mab->ma", target_velocity, target_velocity_gradient)
 
@@ -356,8 +401,13 @@ class PressurePhysics(PhysicsBase):
                 temporal = (target_velocity - velocity_previous) / time_step_size
             else:
                 temporal = self._compute_temporal_term_with_particles(
-                    particles, target_position, include_freestream
+                    particles,
+                    target_position,
+                    include_freestream,
+                    core_radius_rate=core_radius_rate,
                 )
+            if external_time_rate is not None:
+                temporal = temporal + external_time_rate
         else:
             temporal = np.zeros((M, 3), dtype=np.float64)
 
@@ -451,6 +501,9 @@ class PressurePhysics(PhysicsBase):
         theta: float = 0.5,
         freestream_velocity: np.ndarray | None = None,
         body_fn=None,
+        body_gradient_fn=None,
+        body_time_derivative_fn=None,
+        external_time: float = 0.0,
     ) -> dict | tuple[dict, np.ndarray]:
         """
         Compute pressure-gradient terms at target points using a Barnes-Hut treecode.
@@ -480,6 +533,9 @@ class PressurePhysics(PhysicsBase):
             freestream_velocity: Freestream velocity [3] used when there are no
                 particles
             body_fn: Callable(position) -> velocity for body-induced velocity
+            body_gradient_fn: Optional Jacobian callback with the same inputs
+            body_time_derivative_fn: Optional explicit time derivative callback
+            external_time: Physical time passed to external callbacks
 
         Returns:
             dict with keys ``pressure_gradient``, ``convective``, ``viscous``, ``temporal``, or
@@ -515,21 +571,34 @@ class PressurePhysics(PhysicsBase):
             particles, points, theta=float(theta)
         ).reshape(count, 3, 3)
         if body_fn is not None:
-            velocity_samples += np.asarray(body_fn(targets), dtype=velocity_samples.dtype).reshape(
-                velocity_samples.shape
-            )
+            velocity_samples += np.asarray(
+                _call_pressure_callback(body_fn, targets, external_time),
+                dtype=velocity_samples.dtype,
+            ).reshape(velocity_samples.shape)
             velocity = velocity_samples[:count]
-            gradient_h = (
-                float(particle_spacing)
-                if particle_spacing is not None
-                else (float(np.mean(particles.core_radius_cpu())) if N > 0 else 0.05)
-            )
-            for axis in range(3):
-                offset = np.zeros(3, dtype=np.float64)
-                offset[axis] = gradient_h
-                plus = np.asarray(body_fn(points + offset), dtype=np.float64)
-                minus = np.asarray(body_fn(points - offset), dtype=np.float64)
-                gradient[:, :, axis] += (plus - minus) / (2.0 * gradient_h)
+            if body_gradient_fn is None:
+                gradient_h = (
+                    float(particle_spacing)
+                    if particle_spacing is not None
+                    else (float(np.mean(particles.core_radius_cpu())) if N > 0 else 0.05)
+                )
+                for axis in range(3):
+                    offset = np.zeros(3, dtype=np.float64)
+                    offset[axis] = gradient_h
+                    plus = np.asarray(
+                        _call_pressure_callback(body_fn, points + offset, external_time),
+                        dtype=np.float64,
+                    )
+                    minus = np.asarray(
+                        _call_pressure_callback(body_fn, points - offset, external_time),
+                        dtype=np.float64,
+                    )
+                    gradient[:, :, axis] += (plus - minus) / (2.0 * gradient_h)
+            else:
+                gradient += np.asarray(
+                    _call_pressure_callback(body_gradient_fn, points, external_time),
+                    dtype=np.float64,
+                ).reshape(count, 3, 3)
         advective = np.einsum("mb,mab->ma", velocity, gradient)
         temporal = np.zeros_like(velocity)
         if include_temporal:
@@ -538,6 +607,11 @@ class PressurePhysics(PhysicsBase):
                     "Treecode pressure gradients require velocity_previous and time_step_size"
                 )
             temporal = (velocity - velocity_previous) / float(time_step_size)
+            if body_time_derivative_fn is not None:
+                temporal += np.asarray(
+                    _call_pressure_callback(body_time_derivative_fn, points, external_time),
+                    dtype=np.float64,
+                ).reshape(count, 3)
         viscous = np.zeros_like(velocity)
         if include_viscous and kinematic_viscosity > 0.0:
             plus = velocity_samples[count : 4 * count].reshape(3, count, 3)
@@ -555,6 +629,55 @@ class PressurePhysics(PhysicsBase):
         }
         return (result, velocity) if return_velocity else result
 
+    def _evaluate_external_field(
+        self,
+        target_position: np.ndarray,
+        external_time: float,
+        velocity_fn,
+        gradient_fn,
+        time_derivative_fn,
+    ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+        """Evaluate optional non-uniform external velocity terms for pressure.
+
+        A velocity-only callback is differentiated with the same centered
+        finite-difference convention used by the hierarchical pressure path.
+        Explicit time dependence is separate so a stationary body field is not
+        accidentally treated as a temporal acceleration.
+        """
+        points = np.asarray(target_position, dtype=np.float64).reshape(-1, 3)
+        count = len(points)
+        if velocity_fn is None and gradient_fn is None and time_derivative_fn is None:
+            return None, None, None
+
+        velocity = None
+        if velocity_fn is not None:
+            velocity = _call_pressure_callback(velocity_fn, points, external_time)
+            velocity = np.asarray(velocity, dtype=np.float64).reshape(count, 3)
+            if not np.all(np.isfinite(velocity)):
+                raise ValueError("external velocity callback returned non-finite values")
+
+        if gradient_fn is None and velocity_fn is not None:
+            gradient = _finite_difference_external_gradient(velocity_fn, points, external_time)
+        elif gradient_fn is None:
+            gradient = None
+        else:
+            gradient = np.asarray(
+                _call_pressure_callback(gradient_fn, points, external_time), dtype=np.float64
+            ).reshape(count, 3, 3)
+        if gradient is not None and not np.all(np.isfinite(gradient)):
+            raise ValueError("external velocity gradient callback returned non-finite values")
+
+        time_rate = None
+        if time_derivative_fn is not None:
+            time_rate = np.asarray(
+                _call_pressure_callback(time_derivative_fn, points, external_time), dtype=np.float64
+            ).reshape(count, 3)
+            if not np.all(np.isfinite(time_rate)):
+                raise ValueError(
+                    "external velocity time-derivative callback returned non-finite values"
+                )
+        return velocity, gradient, time_rate
+
     # TEMPORAL TERM COMPUTATION (Analytical VPM formulation)
 
     def _resolve_temporal_term(
@@ -568,6 +691,7 @@ class PressurePhysics(PhysicsBase):
         velocity_previous: np.ndarray | None,
         time_step_size: float | None,
         include_freestream: bool,
+        core_radius_rate: np.ndarray | None = None,
     ) -> np.ndarray:
         """Select and compute the temporal term ∂u/∂t."""
         if not include_temporal:
@@ -579,11 +703,18 @@ class PressurePhysics(PhysicsBase):
                 )
             return (target_velocity - velocity_previous) / time_step_size
         return self._compute_temporal_term_with_particles(
-            particles, target_position, include_freestream
+            particles,
+            target_position,
+            include_freestream,
+            core_radius_rate=core_radius_rate,
         )
 
     def _compute_temporal_term_with_particles(
-        self, particles, target_position: np.ndarray, include_freestream: bool
+        self,
+        particles,
+        target_position: np.ndarray,
+        include_freestream: bool,
+        core_radius_rate: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Compute ∂u/∂t using particle container directly (GPU-accelerated).
@@ -616,6 +747,23 @@ class PressurePhysics(PhysicsBase):
         self._compute_stretching_rate_kernel(
             particles.vortex_strength, particles.velocity_gradient, self.dalpha_dt_field, N
         )
+        if core_radius_rate is None:
+            self._compute_core_radius_rate_kernel(
+                particles.core_radius,
+                particles.effective_viscosity,
+                particles.velocity_gradient,
+                self.core_radius_rate_field,
+                self._kernel_functions["diffusivity_constant_"],
+                self._kernel_functions["volume_correction_constant_"],
+                N,
+            )
+        else:
+            rate = np.asarray(core_radius_rate, dtype=np.float64).reshape(-1)
+            if rate.shape != (N,) or not np.all(np.isfinite(rate)):
+                raise ValueError(
+                    "core_radius_rate must be a finite array with one value per particle"
+                )
+            self._upload_scalar_array(rate, self.core_radius_rate_field, N)
 
         # Compute temporal term on GPU
         self._compute_temporal_term_kernel_direct(
@@ -625,7 +773,10 @@ class PressurePhysics(PhysicsBase):
             particles.vortex_strength,
             particles.core_radius,
             self.dalpha_dt_field,
+            self.core_radius_rate_field,
             self.temporal_term_field,
+            self._kernel_functions["q_"],
+            self._kernel_functions["zeta_"],
             M,
             N,
         )
@@ -661,6 +812,35 @@ class PressurePhysics(PhysicsBase):
             dalpha_dt_out[i] = dalpha
 
     @ti.kernel
+    def _compute_core_radius_rate_kernel(
+        self,
+        core_radius: ti.template(),  # type: ignore
+        effective_viscosity: ti.template(),  # type: ignore
+        velocity_gradient: ti.template(),  # type: ignore
+        core_radius_rate_out: ti.template(),  # type: ignore
+        diffusivity_constant: ti.template(),  # type: ignore
+        volume_correction_constant: ti.template(),  # type: ignore
+        N: ti.i32,  # type: ignore
+    ):
+        """Compute ``dσ/dt`` for the active particle kernel.
+
+        Core spreading gives ``d(σ²)/dt = C_ν ν_eff`` and particle-volume
+        evolution contributes ``C_V σ tr(∇u)``.  Keeping these terms here
+        prevents the pressure temporal derivative from silently reverting to
+        the old Gaussian-only, fixed-width model.
+        """
+        for i in range(N):
+            sigma = core_radius[i]
+            safe_sigma = ti.max(sigma, 1e-12)
+            trace = (
+                velocity_gradient[i][0, 0] + velocity_gradient[i][1, 1] + velocity_gradient[i][2, 2]
+            )
+            core_radius_rate_out[i] = (
+                diffusivity_constant() * effective_viscosity[i] / (2.0 * safe_sigma)
+                + volume_correction_constant() * sigma * trace
+            )
+
+    @ti.kernel
     def _compute_temporal_term_kernel_direct(
         self,
         target_position: ti.template(),  # type: ignore
@@ -669,7 +849,10 @@ class PressurePhysics(PhysicsBase):
         vortex_strength: ti.template(),  # type: ignore
         core_radius: ti.template(),  # type: ignore
         dalpha_dt: ti.template(),  # type: ignore
+        core_radius_rate: ti.template(),  # type: ignore
         du_dt_out: ti.template(),  # type: ignore
+        q_kernel: ti.template(),  # type: ignore
+        zeta_kernel: ti.template(),  # type: ignore
         M: ti.i32,  # type: ignore
         N: ti.i32,  # type: ignore
     ):
@@ -682,10 +865,6 @@ class PressurePhysics(PhysicsBase):
         Complexity: O(M×N) on GPU (parallel over M targets)
         """
         # Constants
-        ONE_OVER_FOUR_PI = 0.0795774715
-        TWO_OVER_SQRT_PI = 1.1283791671
-        ONE_OVER_PI_15 = 0.179587122125
-        MIN_RHO = 0.5
         EPS = 1e-10
 
         for m in range(M):
@@ -697,20 +876,15 @@ class PressurePhysics(PhysicsBase):
                 r_mag = r_vec.norm()
                 sigma = core_radius[i]
 
-                if r_mag > EPS:
+                if r_mag > EPS and sigma > EPS:
                     normalized_distance = r_mag / sigma
 
-                    if normalized_distance > MIN_RHO:
-                        # Compute kernel values
-                        # q(normalized_distance) = [erf(normalized_distance) - (2/√π) * normalized_distance * exp(-normalized_distance²)] / (4π)
-                        erf_val = self._erf_approx(normalized_distance)
-                        exp_val = ti.exp(-normalized_distance * normalized_distance)
-                        q_val = (
-                            erf_val - TWO_OVER_SQRT_PI * normalized_distance * exp_val
-                        ) * ONE_OVER_FOUR_PI
-
-                        # zeta(normalized_distance) = exp(-normalized_distance²) / π^1.5
-                        zeta_val = ONE_OVER_PI_15 * exp_val
+                    if normalized_distance > 0.0:
+                        # Use the selected particle kernel and its stable
+                        # small-radius implementation, rather than a
+                        # hard-coded Gaussian with an arbitrary rho cutoff.
+                        q_val = q_kernel(normalized_distance)
+                        zeta_val = zeta_kernel(normalized_distance)
 
                         r_mag_cubed = r_mag * r_mag * r_mag
                         r_mag_fifth = r_mag_cubed * r_mag * r_mag
@@ -770,6 +944,17 @@ class PressurePhysics(PhysicsBase):
                         # ---------------------------------------------------------
                         r_cross_dalpha = r_vec.cross(dalpha_i)
                         du_dt -= (q_val / r_mag_cubed) * r_cross_dalpha
+
+                        # Width evolution: u = -q(r/σ) (r×Γ)/r³, so
+                        # ∂u/∂σ = q'(rho) (r×Γ)/(σ² r²), with
+                        # q'(rho) = rho² zeta(rho).
+                        q_prime = normalized_distance * normalized_distance * zeta_val
+                        du_dt += (
+                            q_prime
+                            * core_radius_rate[i]
+                            / (sigma * sigma * r_mag * r_mag)
+                            * r_cross_vortex_strength
+                        )
 
             du_dt_out[m] = du_dt
 
@@ -872,3 +1057,32 @@ class PressurePhysics(PhysicsBase):
         laplacian += (u_zp - 2 * centre_velocity + u_zm) / particle_spacing_sq
 
         return kinematic_viscosity * laplacian
+
+
+def _call_pressure_callback(callback, points: np.ndarray, time: float):
+    """Call a pressure callback accepting either ``(points)`` or ``(points,time)``."""
+    try:
+        return callback(points, time)
+    except TypeError:
+        return callback(points)
+
+
+def _finite_difference_external_gradient(callback, points: np.ndarray, time: float) -> np.ndarray:
+    """Return ``∂u_i/∂x_j`` for a velocity-only pressure callback."""
+    points = np.asarray(points, dtype=np.float64)
+    scale = max(1.0, float(np.max(np.abs(points))) if points.size else 0.0)
+    step = max(1.0e-7, 1.0e-5 * scale)
+    gradient = np.empty((len(points), 3, 3), dtype=np.float64)
+    for axis in range(3):
+        offset = np.zeros(3, dtype=np.float64)
+        offset[axis] = step
+        plus = np.asarray(
+            _call_pressure_callback(callback, points + offset, time), dtype=np.float64
+        )
+        minus = np.asarray(
+            _call_pressure_callback(callback, points - offset, time), dtype=np.float64
+        )
+        gradient[:, :, axis] = (plus.reshape(len(points), 3) - minus.reshape(len(points), 3)) / (
+            2.0 * step
+        )
+    return gradient

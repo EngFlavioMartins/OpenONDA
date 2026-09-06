@@ -24,9 +24,6 @@ class ViscousConfig:
 
     scheme: Literal["CS", "RWM", "NONE", "DVH", "GBD"] = "CS"
 
-    rwm_noise_amplitude: float = 1.0
-    """Multiplier applied to Random-Walk Brownian displacement."""
-
     core_radius_ratio: float = 2.5
     """Regenerated-particle core radius divided by regeneration-grid spacing."""
 
@@ -75,8 +72,6 @@ class ViscousConfig:
             raise ValueError(f"Invalid viscous scheme: {self.scheme!r}")
         object.__setattr__(self, "scheme", scheme)
 
-        if self.rwm_noise_amplitude < 0.0 or not math.isfinite(self.rwm_noise_amplitude):
-            raise ValueError("rwm_noise_amplitude must be finite and non-negative")
         if self.core_radius_ratio <= 0.0 or not math.isfinite(self.core_radius_ratio):
             raise ValueError("core_radius_ratio must be finite and positive")
 

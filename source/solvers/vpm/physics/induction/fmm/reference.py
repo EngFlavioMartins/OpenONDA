@@ -36,6 +36,7 @@ class HostFMMReference:
     )
     supports_gradient = True
     supports_variable_core_radius = True
+    supports_target_fields = True
     supports_f64 = True
     # This reference implementation stages the active prefix through
     # reusable host buffers. It is not a device-resident production backend.
@@ -150,6 +151,74 @@ class HostFMMReference:
             self._write_vector(vortex_strength_rate_out, rate_np)
         else:
             self.physics._zero_vec3_field(vortex_strength_rate_out, count)
+
+    def evaluate_targets(
+        self,
+        *,
+        target_position,
+        source_position,
+        source_vortex_strength,
+        source_core_radius,
+        target_velocity,
+        target_velocity_gradient,
+        target_count: int,
+        source_count: int,
+        include_freestream: bool,
+        background_velocity,
+    ) -> None:
+        """Evaluate arbitrary targets with the reference kernel contract."""
+        if self.physics is None:
+            raise RuntimeError("HostFMMReference must be bound before target evaluation")
+        targets = self.physics._download_vector_field(target_position, int(target_count))
+        sources = self.physics._download_vector_field(source_position, int(source_count))
+        strengths = self.physics._download_vector_field(source_vortex_strength, int(source_count))
+        radii = self.physics._download_scalar_field(source_core_radius, int(source_count))
+        displacement = targets[:, None, :] - sources[None, :, :]
+        radius = np.linalg.norm(displacement, axis=-1)
+        safe_radius = np.where(radius > 0.0, radius, 1.0)
+        rho = np.divide(
+            radius, radii[None, :], out=np.zeros_like(radius), where=radii[None, :] > 0.0
+        )
+        q_value = self.kernel.q(rho)
+        scale = np.divide(q_value, safe_radius**3, out=np.zeros_like(radius), where=radius > 0.0)
+        velocity = np.sum(scale[..., None] * np.cross(strengths[None, :, :], displacement), axis=1)
+        if include_freestream:
+            velocity += np.asarray(
+                [
+                    background_velocity[None][0],
+                    background_velocity[None][1],
+                    background_velocity[None][2],
+                ],
+                dtype=velocity.dtype,
+            )
+        if target_velocity is not None:
+            self.physics._upload_vector_array(velocity, target_velocity, int(target_count))
+        if target_velocity_gradient is not None:
+            zeta_value = self.kernel.zeta(rho)
+            q_prime = rho * rho * zeta_value
+            derivative = np.divide(
+                q_prime / radii[None, :],
+                safe_radius**3,
+                out=np.zeros_like(radius),
+                where=(radius > 0.0) & (radii[None, :] > 0.0),
+            ) - np.divide(
+                3.0 * q_value,
+                safe_radius**4,
+                out=np.zeros_like(radius),
+                where=radius > 0.0,
+            )
+            gradient = np.zeros((int(target_count), 3, 3), dtype=np.float64)
+            for row in range(3):
+                for column in range(3):
+                    gradient[:, row, column] = np.sum(
+                        strengths[None, :, row]
+                        * (
+                            (1.0 if row == column else 0.0) * scale
+                            + derivative * displacement[:, :, row] * displacement[:, :, column]
+                        ),
+                        axis=1,
+                    )
+            self.physics._upload_matrix_array(gradient, target_velocity_gradient, int(target_count))
 
     def _upward_pass(self) -> dict[int, dict[str, np.ndarray]]:
         """Build P2M moments at leaves and translate them through M2M."""

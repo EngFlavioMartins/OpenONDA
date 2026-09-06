@@ -9,7 +9,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from datetime import datetime
-import getpass
 
 # Expose a standard-library logger for external modules that import `logger` from
 # this module (e.g., `from ..io.logging import logger`). Use a NullHandler by
@@ -17,7 +16,6 @@ import getpass
 import logging as _stdio_logging
 import os
 import platform
-import socket
 from typing import Any
 
 import numpy as np
@@ -92,88 +90,15 @@ class _TeeLogStream(_LineBufferedLogStream):
 
 
 def print_openonda_header(precision="f32"):
-    """
-    Print the OpenONDA solver header.
-
-    Args:
-        precision: Floating-point precision - 'f32' or 'f64'
-    """
-    now = datetime.now()
-    date_str = now.strftime("%b %d %Y")
-    time_str = now.strftime("%H:%M:%S")
-
-    try:
-        hostname = socket.gethostname()
-    except Exception:
-        hostname = "unknown"
-
-    try:
-        username = getpass.getuser()
-    except Exception:
-        username = "unknown"
-
-    # Get Python and platform info
-    python_version = platform.python_version()
-    system_info = f"{platform.system()}; python={python_version}; arch={platform.machine()}"
-
-    # Get hardware device name if available
-    device_name = getattr(constants_module, "TAICHI_DEVICE_NAME", None)
-    if device_name:
-        system_info += f";device={device_name}"
-
-    # Process ID
-    # Process ID
-    pid = os.getpid()
-
-    width = 91
-
-    s = "\n/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /\n"
-    s += "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * \n"
-    s += "   ░██████                                      ░██████   ░███    ░██ ░███████      ░███    \n"
-    s += "  ░██   ░██                                    ░██   ░██  ░████   ░██ ░██   ░██    ░██░██   \n"
-    s += " ░██     ░██ ░████████   ░███████  ░████████  ░██     ░██ ░██░██  ░██ ░██    ░██  ░██  ░██  \n"
-    s += " ░██     ░██ ░██    ░██ ░██    ░██ ░██    ░██ ░██     ░██ ░██ ░██ ░██ ░██    ░██ ░█████████ \n"
-    s += " ░██     ░██ ░██    ░██ ░█████████ ░██    ░██ ░██     ░██ ░██  ░██░██ ░██    ░██ ░██    ░██ \n"
-    s += "  ░██   ░██  ░███   ░██ ░██        ░██    ░██  ░██   ░██  ░██   ░████ ░██   ░██  ░██    ░██ \n"
-    s += "   ░██████   ░██░█████   ░███████  ░██    ░██   ░██████   ░██    ░███ ░███████   ░██    ░██ \n"
-    s += "             ░██                                                                            \n"
-    s += "             ░██                                                                            \n"
-    s += "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * \n"
-    s += "| O pen       | " + "".ljust(width - 16) + "|\n"
-    s += (
-        "| O perator   | "
-        + "OpenONDA: Operator for Numerical Design & Aerodynamics.".ljust(width - 16)
-        + "|\n"
+    """Print a small, searchable run identity instead of a decorative banner."""
+    backend = getattr(constants_module, "TAICHI_BACKEND", "UNKNOWN")
+    print(
+        f"OpenONDA {__version__} | VPM | {backend}/{precision} | "
+        f"{datetime.now():%Y-%m-%d %H:%M:%S}\n"
+        f"  {platform.system()} {platform.machine()} | "
+        f"Python {platform.python_version()} | Taichi {ti.__version__}",
+        flush=True,
     )
-    s += "| N umer.     | " + f"Version: {__version__}".ljust(width - 16) + "|\n"
-    s += (
-        "| D esign     | "
-        + "Website: https://github.com/EngFlavioMartins".ljust(width - 16)
-        + "|\n"
-    )
-    s += "| A erodyn.   | " + "VPM Solver: Vortex Particle Method".ljust(width - 16) + "|\n"
-    s += "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * \n"
-    s += "/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /\n"
-
-    rows: list[log_style.Row] = [
-        ("build", f"OpenONDA {__version__}, Taichi {ti.__version__}"),
-        ("platform", system_info),
-        ("backend", str(getattr(constants_module, "TAICHI_BACKEND", "UNKNOWN"))),
-    ]
-    if precision is not None:
-        rows.append(("precision", precision))
-    rows.extend(
-        (
-            ("executable", "VPM solver"),
-            ("started", f"{date_str} {time_str}"),
-            ("host", hostname),
-            ("user", username),
-            ("process", str(pid)),
-        )
-    )
-    s += log_style.section("run", rows)
-
-    print(s)
 
 
 class _ActiveOutputRedirection:
@@ -242,6 +167,11 @@ class Logging:
     _routine_messages_enabled = True
     _active_step: int | None = None
     _last_block_section: str | None = None
+    _last_progress_wall: float | None = None
+    _progress_interval_seconds = 30.0
+    _record_name_width = 11
+    _detail_name_width = 13
+    _event_detail_name_width = 26
 
     @staticmethod
     def set_routine_messages_enabled(enabled: bool) -> None:
@@ -268,20 +198,82 @@ class Logging:
     @staticmethod
     def info(text: str, *, flush: bool = False) -> None:
         """Emit an informational event in the current solver block."""
-        Logging._block_rows("EVENTS", [(text, "")], flush=flush)
+        Logging.message(f"{'Event':<{Logging._record_name_width}} | {text}", flush=flush)
 
     @staticmethod
     def warning(text: str, *, flush: bool = False) -> None:
         """Emit a VPM warning even when routine output is suppressed."""
-        Logging._block_rows("WARNINGS", [(text, "")], flush=flush, force=True)
+        context = "" if Logging._active_step is None else f" | step {Logging._active_step}"
+        print(f"{'Warning':<{Logging._record_name_width}}{context} | {text}", flush=True)
 
     @staticmethod
-    def time_step(step: int, flow_time: float, wall_time: float) -> None:
-        """Open a time-step block before its numerical work begins."""
+    def _status_line(
+        name: str,
+        step: int,
+        flow_time: float,
+        *,
+        total_steps: int | None,
+        n_particles: int | None,
+        wall_time: float | None = None,
+    ) -> str:
+        """Format progress and diagnostics headers with stable columns."""
+        step_text = f"{step:,}" if total_steps is None else f"{step:,}/{total_steps:,}"
+        elapsed = ""
+        if wall_time is not None:
+            elapsed = f" | elapsed={log_style.elapsed_time(wall_time)}"
+        particle_text = "-" if n_particles is None else f"{n_particles:,}"
+        return (
+            f"{name:<{Logging._record_name_width}} | step={step_text:>11} | "
+            f"t={flow_time:>10.4f} s{elapsed} | N={particle_text:>9}"
+        )
+
+    @staticmethod
+    def _compact_record(name: str, topic: str, rows: tuple[log_style.Row, ...]) -> str:
+        """Format an event or warning as a short aligned record."""
+        lines = [f"{name:<{Logging._record_name_width}} | {topic}"]
+        for row in rows:
+            label, value = str(row[0]), str(row[1])
+            unit = f" {row[2]}" if len(row) > 2 and row[2] else ""
+            lines.append(f"  {label:<{Logging._event_detail_name_width}} | {value:>12}{unit}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def begin_step(step: int) -> None:
+        """Set event context without printing an unaccepted physical state."""
         Logging.set_routine_messages_enabled(True)
         Logging._active_step = int(step)
         Logging._last_block_section = None
-        Logging.message(log_style.step_header(step, flow_time, wall_time), flush=True)
+
+    @staticmethod
+    def time_step(
+        step: int,
+        flow_time: float,
+        wall_time: float,
+        *,
+        total_steps: int | None = None,
+        n_particles: int | None = None,
+    ) -> None:
+        """Report accepted progress at most every 30 wall seconds, plus endpoints."""
+        previous = Logging._last_progress_wall
+        final = total_steps is not None and step == total_steps
+        if (
+            previous is not None
+            and wall_time - previous < Logging._progress_interval_seconds
+            and not final
+        ):
+            return
+        Logging._last_progress_wall = float(wall_time)
+        Logging.message(
+            Logging._status_line(
+                "Progress",
+                step,
+                flow_time,
+                total_steps=total_steps,
+                n_particles=n_particles,
+                wall_time=wall_time,
+            ),
+            flush=True,
+        )
 
     @staticmethod
     def _block_rows(
@@ -321,106 +313,120 @@ class Logging:
     @staticmethod
     def record(topic: str, *rows: log_style.Row, flush: bool = False) -> None:
         """Emit one time-dependent event without repeating static model details."""
-        Logging._block_rows("EVENTS", Logging._event_rows(topic, rows), flush=flush)
+        Logging.message(Logging._compact_record("Event", topic, rows), flush=flush)
 
     @staticmethod
     def warning_record(topic: str, *rows: log_style.Row, flush: bool = True) -> None:
         """Emit a VPM warning record that survives routine-message suppression."""
-        Logging._block_rows(
-            "WARNINGS",
-            Logging._event_rows(topic, rows),
-            flush=flush,
-            force=True,
-        )
+        del flush
+        print(Logging._compact_record("Warning", topic, rows), flush=True)
 
     @staticmethod
     def flow_diagnostics(system):
-        """Append scheduled physical quantities to the current time-step block."""
-        n_particles_total = getattr(getattr(system, "particles", None), "n_particles_total", None)
-        rows: list[log_style.Row] = [
-            ("Particle system", ""),
-            (
-                "  Number of particles",
-                f"{int(n_particles_total):,}" if n_particles_total is not None else "n/a",
+        """Print already-computed diagnostics only when their sampler is due."""
+
+        def quantity(value):
+            return f"{value: .4e}" if np.isfinite(value) else " unavailable"
+
+        def vector(values):
+            return "[" + ", ".join(f"{value: .3e}" for value in values) + "]"
+
+        step = int(getattr(system, "step", 0))
+        flow_time = float(getattr(system, "time", 0.0))
+        count = int(system.particles.n_particles_total)
+        lines = [
+            Logging._status_line(
+                "Diagnostics",
+                step,
+                flow_time,
+                total_steps=getattr(system, "_run_final_step", None),
+                n_particles=count,
+                wall_time=getattr(system, "wall_time", None),
             ),
-            ("Vortex strength", ""),
-            (
-                "  Sum of particle magnitudes",
-                f"{system.vortex_strength_magnitude_sum:.3e}",
-                "m^3/s",
-            ),
-            (
-                "  Net vector",
-                "[" + ", ".join(f"{value:.3e}" for value in system.net_vortex_strength) + "]",
-                "m^3/s",
-            ),
-            ("Impulse", ""),
-            (
-                "  Linear vector",
-                "[" + ", ".join(f"{value:.6e}" for value in system.total_linear_impulse) + "]",
-                "m^4/s",
-            ),
-            (
-                "  Angular vector",
-                "[" + ", ".join(f"{value:.6e}" for value in system.total_angular_impulse) + "]",
-                "m^5/s",
-            ),
-            ("Energy", ""),
-            ("  Kinetic energy", f"{system.total_kinetic_energy:.3e}", "J"),
-            (
-                "  Viscous contribution to dE/dt",
-                f"{system.viscous_kinetic_energy_rate:.3e}",
-                "J/s",
-            ),
-            ("  Total dE/dt", f"{system.kinetic_energy_rate:.3e}", "J/s"),
-            ("Other integral quantities", ""),
-            ("  Enstrophy", f"{system.total_enstrophy:.3e}", "m^3/s^2"),
-            ("  Helicity", f"{system.total_helicity:.3e}", "m^2/s^2"),
+            f"  {'Energy':<{Logging._detail_name_width}} | "
+            f"E={quantity(system.total_kinetic_energy)} J   "
+            f"dE/dt={quantity(system.kinetic_energy_rate)} J/s   "
+            f"viscous={quantity(system.viscous_kinetic_energy_rate)} J/s",
+            f"  {'Strength':<{Logging._detail_name_width}} | "
+            f"sum|alpha|={quantity(system.vortex_strength_magnitude_sum)}   "
+            f"net={vector(system.net_vortex_strength)} m^3/s",
+            f"  {'Impulse':<{Logging._detail_name_width}} | "
+            f"linear ={vector(system.total_linear_impulse)} m^4/s",
+            f"  {'':<{Logging._detail_name_width}} | "
+            f"angular={vector(system.total_angular_impulse)} m^5/s",
+            f"  {'Field norms':<{Logging._detail_name_width}} | "
+            f"enstrophy={quantity(system.total_enstrophy)} m^3/s^2   "
+            f"helicity={quantity(system.total_helicity)} m^2/s^2",
         ]
-
-        section_title = (
-            "INITIAL FLOW QUANTITIES" if int(getattr(system, "step", 0)) == 0 else "FLOW QUANTITIES"
-        )
-        Logging.section(section_title, *rows, flush=True)
-
-        try:
-            vortex_centroid = getattr(system, "vortex_centroid", None)
-            geometry: list[log_style.Row] = []
-            if vortex_centroid is not None:
-                geometry.extend(
-                    (
-                        ("All particles", ""),
-                        (
-                            "  Centroid",
-                            "[" + ", ".join(f"{value:.3e}" for value in vortex_centroid) + "]",
-                            "m",
-                        ),
-                    )
+        centroid = getattr(system, "vortex_centroid", None)
+        if centroid is not None:
+            lines.append(f"  {'Centroid':<{Logging._detail_name_width}} | {vector(centroid)} m")
+        groups = getattr(system, "vortex_centroids_by_group", {})
+        if len(groups) > 1:
+            for group, centroid in groups.items():
+                lines.append(
+                    f"  {f'Group {group}':<{Logging._detail_name_width}} | {vector(centroid)} m"
                 )
-            for group, centroid in system.vortex_centroids_by_group.items():
-                geometry.extend(
-                    (
-                        (f"Particle group {group}", ""),
-                        (
-                            "  Centroid",
-                            "[" + ", ".join(f"{value:.3e}" for value in centroid) + "]",
-                            "m",
-                        ),
-                    )
-                )
-            if geometry:
-                title = (
-                    "INITIAL VORTEX POSITION"
-                    if int(getattr(system, "step", 0)) == 0
-                    else "VORTEX POSITION"
-                )
-                Logging.section(title, *geometry, flush=True)
-        except Exception:
-            pass
-
-        # Log VLM forces if VLM solver is present
-        if hasattr(system, "vlm_solver") and system.vlm_solver is not None:
+        Logging.message("\n".join(lines), flush=True)
+        # Scheduled diagnostics are themselves a heartbeat. No extra progress
+        # line is needed immediately afterward, including in fast simulations.
+        if hasattr(system, "wall_time"):
+            Logging._last_progress_wall = float(system.wall_time)
+        if getattr(system, "vlm_solver", None) is not None:
             Logging.vlm_forces(system)
+
+    @staticmethod
+    def startup(system) -> None:
+        """Show the run essentials; retain full configuration in the owned log."""
+        Logging.message(
+            f"{'Solver':<{Logging._record_name_width}} | {system.viscous_scheme} | "
+            f"{type(system.induction).__name__.removesuffix('Induction')} | "
+            f"{system.integrator.name} | {system.compute_device}/{system.precision}\n"
+            f"  {'Time step':<{Logging._detail_name_width}} | "
+            f"dt={system.time_step_size:.6g} s | steps={system.case.run.steps:,}\n"
+            f"  {'Particles':<{Logging._detail_name_width}} | "
+            f"capacity={system.setup.max_n_particles:,} | kernel={system.particle_kernel}\n"
+            f"  {'Log':<{Logging._detail_name_width}} | {system._log_path / 'vpm.log'}",
+            flush=True,
+        )
+        schedules = []
+        for sampler in system.case.samplers.samples:
+            schedule = getattr(sampler, "schedule", None)
+            interval = getattr(schedule, "interval", None)
+            if interval is not None:
+                unit = "s" if type(schedule).__name__ == "EveryTime" else "steps"
+                cadence = f"every {interval} {unit}"
+            elif getattr(schedule, "is_final_only", False):
+                cadence = "final only"
+            else:
+                cadence = "configured schedule"
+            schedules.append(f"{type(sampler).__name__.removesuffix('Sampler')}: {cadence}")
+        if schedules:
+            Logging.message(
+                f"  {'Output':<{Logging._detail_name_width}} | " + "; ".join(schedules),
+                flush=True,
+            )
+        if _ACTIVE_OUTPUT_REDIRECTION is not None:
+            _ACTIVE_OUTPUT_REDIRECTION.file_handle.write(Logging.solver_info(system) + "\n")
+            _ACTIVE_OUTPUT_REDIRECTION.file_handle.flush()
+
+    @staticmethod
+    def run_finished(system, status: str, failure=None) -> None:
+        """Keep terminal status visible, even after suppressed routine output."""
+        particles = getattr(system, "particles", None)
+        print(
+            Logging._status_line(
+                status.capitalize(),
+                system.step,
+                system.time,
+                total_steps=getattr(system, "_run_final_step", None),
+                n_particles=getattr(particles, "n_particles_total", None),
+                wall_time=getattr(system, "wall_time", 0.0),
+            ),
+            flush=True,
+        )
+        if failure is not None:
+            print(f"  {type(failure).__name__}: {failure}", flush=True)
 
     @staticmethod
     def _format_solver_config(system) -> list:
@@ -984,6 +990,7 @@ class Logging:
         Logging.set_routine_messages_enabled(True)
         Logging._active_step = None
         Logging._last_block_section = None
+        Logging._last_progress_wall = None
 
         if _ACTIVE_OUTPUT_REDIRECTION is not None:
             _ACTIVE_OUTPUT_REDIRECTION.restore()

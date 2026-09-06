@@ -95,7 +95,7 @@ def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
     assert setup.VPM_CASE.numerics.viscous.scheme == "GBD"
 
 
-@pytest.mark.parametrize("scheme", ["CS", "RWM", "DVH", "GBD", "NONE"])
+@pytest.mark.parametrize("scheme", ["CS", "GBD", "NONE"])
 def test_cube_flow_viscous_config_factory_builds_each_supported_scheme(scheme):
     setup = _load_setup(CASE_DIR / "setup.py", f"cube_flow_viscous_{scheme.lower()}")
     viscous = setup.make_vpm_viscous_config(scheme)
@@ -107,6 +107,23 @@ def test_cube_flow_viscous_config_factory_builds_each_supported_scheme(scheme):
         assert viscous.kinematic_viscosity == pytest.approx(setup.KINEMATIC_VISCOSITY)
     # Construction itself is the sole validation boundary.
     replace(setup.VPM_CASE.numerics, viscous=viscous)
+
+
+def test_cube_flow_viscous_config_factory_rejects_rwm_for_les():
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_flow_viscous_rwm_rejected")
+
+    with pytest.raises(ValueError, match="RWM.*cube-flow LES.*GBD"):
+        setup.make_vpm_viscous_config("RWM")
+
+
+def test_cube_flow_viscous_config_factory_rejects_dvh_for_les():
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_flow_viscous_dvh_rejected")
+
+    with pytest.raises(ValueError, match="DVH.*GBD.*LES"):
+        replace(
+            setup.VPM_CASE.numerics,
+            viscous=setup.make_vpm_viscous_config("DVH"),
+        )
 
 
 @pytest.mark.parametrize("scheme", ["CS", "RWM", "DVH", "NONE"])

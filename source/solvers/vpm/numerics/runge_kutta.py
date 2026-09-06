@@ -120,6 +120,13 @@ class RungeKutta:
         self.stage_strength_rate = [
             ti.Vector.field(3, dtype=dtype, shape=(self.max_n_particles,)) for _ in range(4)
         ]
+        # Keep a per-stage Jacobian workspace even when the caller does not
+        # request a persistent diagnostic gradient. Coupled providers such as
+        # velocity overrides still need the incoming Jacobian to transform a
+        # complete RHS consistently.
+        self.stage_velocity_gradient = ti.Matrix.field(
+            3, 3, dtype=dtype, shape=(self.max_n_particles,)
+        )
         scalar_dtype = ti.f64 if dtype == ti.f64 else ti.f32
         self._construct_stage_kernel = _make_construct_stage_kernel(scalar_dtype)
         self._combine_kernel = _make_combine_kernel(scalar_dtype)
@@ -201,10 +208,18 @@ class RungeKutta:
                 count=count,
                 time=float(time + self.tableau.c[stage] * time_step_size),
             )
+            needs_gradient = velocity_gradient_out is not None or bool(
+                getattr(right_hand_side, "requires_velocity_gradient", False)
+            )
+            stage_gradient = (
+                velocity_gradient_out
+                if velocity_gradient_out is not None
+                else (self.stage_velocity_gradient if needs_gradient else None)
+            )
             stage_rates = StageRates(
                 velocity=self.stage_velocity[stage],
                 vortex_strength_rate=self.stage_strength_rate[stage],
-                velocity_gradient=velocity_gradient_out,
+                velocity_gradient=stage_gradient,
             )
             right_hand_side.evaluate(stage_state, stage_state.time, stage_rates)
 

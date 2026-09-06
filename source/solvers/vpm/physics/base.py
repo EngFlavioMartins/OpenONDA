@@ -106,6 +106,12 @@ class PhysicsBase:
         self.treecode_sort_particle_targets = False
         self.treecode_traversal_block_dim = 128
 
+        # The solver binds the selected induction backend here after all
+        # device fields are initialized.  Target queries use this same
+        # contract when available; standalone PhysicsEngine users retain the
+        # direct-kernel fallback below.
+        self.induction = None
+
         # Reuse the stage-1 LBVH topology across later coupled stages when the
         # low-level evaluator can safely refit it. A full rebuild remains the
         # fallback whenever the supplied stage state changes incompatibly.
@@ -173,64 +179,15 @@ class PhysicsBase:
         - Intermediate velocity/vorticity storage
         - Strength rate computations
         """
-        # Position/velocity temporaries for coupled stages and field queries
-        self.pos_temp = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-        self.pos_temp2 = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-        self.vel_temp = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-        self.vel_temp2 = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-
-        # Strength temporaries for diffusion and auxiliary operators
-        self.str_temp = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-        self.str_temp2 = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-
-        # Strength rate temporaries for RK integration
+        # One shared strength-rate destination is required by the stage RHS.
+        # The old second position/velocity/strength buffers were never read;
+        # allocating them at the default 500k-particle capacity consumed tens
+        # of megabytes before an induction backend had allocated anything.
         self.dstr_dt_temp = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-        self.dstr_dt_temp2 = ti.Vector.field(
-            3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
-        )
-        self.dstr_dt_temp3 = ti.Vector.field(
             3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
         )
         # Mark initial size
         self._temp_field_size = self.max_n_particles
-
-    @ti.kernel
-    def _zero_temp_fields_kernel(self, N: ti.i32):
-        for i in range(N):
-            self.pos_temp[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.pos_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.vel_temp[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.vel_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.str_temp[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.str_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.dstr_dt_temp[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.dstr_dt_temp2[i] = ti.Vector([0.0, 0.0, 0.0])
-            self.dstr_dt_temp3[i] = ti.Vector([0.0, 0.0, 0.0])
-
-    def _zero_temp_fields(self, N: int | None = None):
-        """Zero the temporaries over the active range only.
-
-        ``field.fill(0)`` covers the whole startup allocation (``max_n_particles``),
-        which is 9 vec3 fields — 54 MB of writes at the 500k default — regardless
-        of how many particles exist.  Only entries below N are ever read back.
-        """
-        count = self._temp_field_size if N is None else min(int(N), self._temp_field_size)
-        if count > 0:
-            self._zero_temp_fields_kernel(count)
 
     def _resize_temp_fields(self, N: int):
         """Validate that a particle operation fits the startup allocation."""
@@ -1086,6 +1043,32 @@ class PhysicsBase:
                 result += bg
             return result
 
+        # Route arbitrary target fields through the selected induction
+        # backend.  This matters for FMM: the old path silently launched the
+        # direct Taichi M×N kernel even when particle advection used FMM.
+        target_backend = getattr(self, "induction", None)
+        if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
+            self._resize_target_fields(M)
+            self._upload_vector_array(target_position, self.target_position, M)
+            target_backend.evaluate_targets(
+                target_position=self.target_position,
+                source_position=particles.position,
+                source_vortex_strength=particles.vortex_strength,
+                source_core_radius=particles.core_radius,
+                target_velocity=self.target_velocity,
+                target_velocity_gradient=None,
+                target_count=M,
+                source_count=N,
+                include_freestream=include_freestream,
+                background_velocity=(
+                    particles.velocity_background if include_freestream else self._zero_velocity
+                ),
+            )
+            if target_velocity is not None:
+                self._copy_vec3(self.target_velocity, target_velocity, M)
+                return None
+            return self.extract_target_velocity(M)
+
         # Target evaluation must honor the same velocity method selected for
         # particle advection.  Falling through to the direct M-by-N kernel
         # here made coupled boundary queries launch almost one billion pair
@@ -1147,6 +1130,26 @@ class PhysicsBase:
                     target_velocity[i] = freestream_velocity
                 return None
             return np.tile(freestream_velocity, (M, 1))
+
+        target_backend = getattr(self, "induction", None)
+        if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
+            self._resize_target_fields(M)
+            out_field = target_velocity if target_velocity is not None else self.target_velocity
+            target_backend.evaluate_targets(
+                target_position=target_position,
+                source_position=particles.position,
+                source_vortex_strength=particles.vortex_strength,
+                source_core_radius=particles.core_radius,
+                target_velocity=out_field,
+                target_velocity_gradient=None,
+                target_count=M,
+                source_count=N,
+                include_freestream=include_freestream,
+                background_velocity=background_velocity,
+            )
+            if target_velocity is None:
+                return self._download_vector_field(out_field, M)
+            return None
 
         out_field = target_velocity if target_velocity is not None else self.target_velocity
         if target_velocity is None:
@@ -1420,6 +1423,25 @@ class PhysicsBase:
 
         if N == 0 or M == 0:
             return np.zeros((M, 9), dtype=self.np_dtype)
+
+        target_backend = getattr(self, "induction", None)
+        if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
+            self._resize_target_fields(M)
+            self._upload_vector_array(target_position, self.target_position, M)
+            target_backend.evaluate_targets(
+                target_position=self.target_position,
+                source_position=particles.position,
+                source_vortex_strength=particles.vortex_strength,
+                source_core_radius=particles.core_radius,
+                target_velocity=None,
+                target_velocity_gradient=self.target_velocity_gradient,
+                target_count=M,
+                source_count=N,
+                include_freestream=False,
+                background_velocity=self._zero_velocity,
+            )
+            grads = self._download_matrix_field(self.target_velocity_gradient, M)
+            return grads.reshape(M, 9)
 
         # Resize target fields if needed
         self._resize_target_fields(M)

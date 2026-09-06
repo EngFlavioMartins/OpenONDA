@@ -117,7 +117,7 @@ The following are separately reported:
 3. circulation captured by the projection grid;
 4. difference between the first half of the ensemble and the full ensemble.
 
-The certification gates require at least four unique seeds, no identical
+The result checks require at least four unique seeds, no identical
 nonzero-time trajectories, at least 99.5% projected absolute circulation, and
 relative field standard error below 7.5%. Eight members are the default pilot.
 If a physics case fails that precision gate, add independent seeds only to
@@ -152,7 +152,7 @@ for DVH and GBD, whose regenerated grids can exceed the direct-integral limit.
 
 Raw, independently seeded member backups and flow integrals are retained as
 distinct flat cases `{physics}_rwm_<nnn>` under `solution/` and `samples/`.
-Canonical ensemble means are written under `samples/{vortex,dipole,merging}_rwm/`,
+Ensemble means are written under `samples/{vortex,dipole,merging}_rwm/`,
 alongside:
 
 - `run_metadata.json`: seeds, estimator, confidence level, and definitions;
@@ -163,7 +163,7 @@ alongside:
 
 Seeded RWM ensembles must use CPU, CUDA, or Vulkan with the current Taichi
 runtime. Metal is rejected because that backend does not accept the requested
-random seed, so independent reproducible members cannot be certified.
+random seed, so independent reproducible members cannot be checked.
 
 ## Primary sources
 

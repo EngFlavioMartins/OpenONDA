@@ -67,7 +67,7 @@ class CouplingStepper:
 
                 solver.add_vortex_particles(
                     position=position,
-                    velocity=np.zeros((n, 3), dtype=self.np_dtype),
+                    velocity=np.zeros((n, 3), dtype=solver.np_dtype),
                     vortex_strength=vortex_strength,
                     core_radius=core_radius,
                     particle_volume=particle_volume,

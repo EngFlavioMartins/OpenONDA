@@ -115,7 +115,19 @@ Tutorial source and compact input assets are copied below the workspace's
 `tutorials/` directory. Results stay in that workspace; OpenONDA never writes
 inside `site-packages`. Plotting uses the packaged OpenONDA font and
 automatically falls back to Matplotlib math text when a system LaTeX installation
-is unavailable.
+is unavailable. The launchers locate their workspace themselves and use the
+same Python interpreter as the `openonda` command, so they need no manual
+`PYTHONPATH` or path edits. To run a launcher directly, activate the environment
+where OpenONDA is installed and invoke it from any directory, for example:
+
+```bash
+./lamb-oseen-study/tutorials/vpm/lamb_oseen_vortex/allplot.sh
+```
+
+The Lamb–Oseen campaign uses RK2, direct induction for its small CS/RWM clouds,
+and the portable treecode for growing DVH/GBD clouds. It runs ten RWM members
+and checks energy, `dE/dt`, field diagnostics, GBD moment closure, and every
+PNG/PDF comparison.
 
 Public docstrings are also available from any directory, and the wheel ships
 `py.typed` so editors and language servers can expose type information:

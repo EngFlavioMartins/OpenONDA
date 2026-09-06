@@ -7,6 +7,7 @@ import pytest
 import taichi as ti
 
 from source.solvers.vpm.config.case import Numerics
+from source.solvers.vpm.config.viscous import ViscousConfig
 from source.solvers.vpm.kernels.base import make_device_vortex_kernels, make_vortex_kernel
 from source.solvers.vpm.physics.induction.direct import DirectInduction
 from source.solvers.vpm.physics.induction.fmm import FMMInduction
@@ -36,7 +37,17 @@ class _DeviceKernelSampler:
 @pytest.mark.parametrize("induction_type", (DirectInduction, FMMInduction))
 def test_direct_and_fmm_advertise_every_supported_kernel(name, induction_type):
     """Construction rejects no member of the shared radial-kernel family."""
-    numerics = Numerics(particle_kernel=name, induction=induction_type(), verbose=False)
+    viscous = (
+        ViscousConfig(scheme="DVH")
+        if name in {"HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"}
+        else ViscousConfig(scheme="CS")
+    )
+    numerics = Numerics(
+        particle_kernel=name,
+        induction=induction_type(),
+        viscous=viscous,
+        verbose=False,
+    )
     assert numerics.particle_kernel == name
 
 

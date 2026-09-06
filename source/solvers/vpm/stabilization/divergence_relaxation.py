@@ -122,6 +122,7 @@ class GaussianParticleGridOperator:
         *,
         spacing: float,
         support_radius_multiplier: float = 4.0,
+        max_core_radius_spread: float = 0.25,
         max_grid_nodes: int = 8_000_000,
     ) -> None:
         position = np.asarray(position, dtype=np.float64)
@@ -139,6 +140,15 @@ class GaussianParticleGridOperator:
             raise ValueError("support_radius_multiplier must be at least three")
         core_radius_scale = max(float(core_radius.mean()), np.finfo(float).tiny)
         self.core_radius_spread = float(np.ptp(core_radius)) / core_radius_scale
+        if not np.isfinite(max_core_radius_spread) or max_core_radius_spread < 0.0:
+            raise ValueError("max_core_radius_spread must be finite and non-negative")
+        if self.core_radius_spread > max_core_radius_spread:
+            raise DivergenceRelaxationError(
+                "divergence relaxation uses one Gaussian reconstruction width, but the "
+                f"active core-radius spread is {self.core_radius_spread:.3g} > "
+                f"the admissible {max_core_radius_spread:.3g}",
+                gate="heterogeneous core width",
+            )
 
         weight_sum = float(vortex_strength_weight.sum(dtype=np.float64))
         self.smoothing_radius = (

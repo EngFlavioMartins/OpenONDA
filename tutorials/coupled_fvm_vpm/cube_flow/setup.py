@@ -287,10 +287,7 @@ def make_vpm_viscous_config(scheme: str) -> vpm.ViscousConfig:
             **common,
         )
     if name == "RWM":
-        return vpm.ViscousConfig.rwm(
-            kinematic_viscosity=KINEMATIC_VISCOSITY,
-            **common,
-        )
+        raise ValueError("RWM is not supported by the cube-flow LES configuration; use GBD instead")
     if name == "DVH":
         return vpm.ViscousConfig.dvh(
             padding=5.0,

@@ -162,7 +162,7 @@ def test_too_few_survivors_fail_instead_of_silently_discarding_moments():
         )
 
 
-def test_one_threshold_survivor_is_minimally_augmented_to_full_rank():
+def test_one_direction_survivor_is_augmented_for_directional_moment_rank():
     shape = (5, 5, 5)
     grid_min = np.full(3, -0.2)
     particle_spacing = 0.1
@@ -195,13 +195,13 @@ def test_one_threshold_survivor_is_minimally_augmented_to_full_rank():
             iz,
             grid_min,
             particle_spacing,
-            cap=4,
+            cap=6,
             labels=np.zeros(shape, dtype=np.int32),
         )
     )
 
-    assert added == 3
-    assert len(augmented_ix) == 4
+    assert added == 5
+    assert len(augmented_ix) == 6
     assert not preserve_groups
     np.testing.assert_array_equal(
         np.stack((augmented_ix, augmented_iy, augmented_iz), axis=1)[0],
@@ -218,6 +218,12 @@ def test_one_threshold_survivor_is_minimally_augmented_to_full_rank():
         particle_spacing,
         diagnostics=diagnostics,
     )
+    residual = corrected.astype(np.float64) - (
+        corrected.astype(np.float64) @ direction.astype(np.float64)
+    )[:, None] * direction.astype(np.float64)[None, :] / float(
+        direction.astype(np.float64) @ direction.astype(np.float64)
+    )
+    assert np.linalg.norm(residual) < 1.0e-7
     for expected, actual in zip(
         _moments(grid, grid_min, particle_spacing),
         _retained_moments(
@@ -304,6 +310,9 @@ def test_cap_full_rank_deficient_support_swaps_weakest_without_exceeding_cap():
         strict=True,
     ):
         grid[index] = amplitude * direction
+    # This test exercises the general vector-valued support exchange.  The
+    # separate axial tests cover the direction-preserving closure.
+    grid[2, 3, 2, 1] += 0.1
     magnitude = np.linalg.norm(grid, axis=-1)
     ix, iy, iz = np.where(magnitude >= 0.7 * float(np.linalg.norm(direction)))
     assert len(ix) == 4
@@ -365,6 +374,10 @@ def test_cap_full_support_exchange_stays_within_each_vortex_group():
         grid[index] = amplitude * direction
     right_candidate = (6, 3, 2)
     grid[right_candidate] = 0.5 * direction
+    # Keep this as a genuinely vector-valued per-group support test.  Rank-one
+    # groups use the separate six-mode directional closure.
+    grid[1, 1, 1, 0] += 0.1
+    grid[6, 3, 2, 1] += 0.1
     magnitude = np.linalg.norm(grid, axis=-1)
     ix, iy, iz = np.where(magnitude >= 0.55 * float(np.linalg.norm(direction)))
     labels = np.where(np.indices(shape)[0] < 5, 0, 1).astype(np.int32)
@@ -605,6 +618,7 @@ def test_prune_recovery_preserves_each_vortex_group_when_both_survive():
         particle_spacing,
         labels=labels,
     )
+    np.testing.assert_array_equal(corrected[:, :2], 0.0)
     survivor_labels = labels[ix, iy, iz]
     for label in (0, 1):
         selected = survivor_labels == label

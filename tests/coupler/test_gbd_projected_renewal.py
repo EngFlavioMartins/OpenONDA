@@ -249,7 +249,7 @@ def _make_gbd_vpm(
             numerics=Numerics(
                 time_step_size=time_step_size,
                 compute_device="CPU",
-                precision="f64",
+                precision="f32",
                 max_n_particles=capacity,
                 domain_bounds=(-2.0, 2.0, -2.0, 2.0, -2.0, 2.0),
                 freestream_velocity=(1.0, 0.0, 0.0),
@@ -349,7 +349,9 @@ def test_production_transfer_uses_post_gbd_geometry_and_preserves_outer_tail(tmp
         renewal_vorticity_error_limit=1.0e-7,
         renewal_velocity_error_limit=1.0e-7,
         renewal_gaussian_tail_cutoff=1.0e-10,
-        renewal_solver_tolerance=1.0e-12,
+        # GBD is intentionally stored in f32; use a solver tolerance that is
+        # meaningful for the migrated fixture's storage precision.
+        renewal_solver_tolerance=1.0e-8,
     )
     transfer = _make_production_transfer(
         setup,
@@ -389,7 +391,9 @@ def test_production_transfer_uses_post_gbd_geometry_and_preserves_outer_tail(tmp
     assert result.projection_vorticity_relative_error < 1.0e-7
     assert result.projection_velocity_relative_error is not None
     assert result.projection_velocity_relative_error < 1.0e-7
-    np.testing.assert_array_equal(after.vortex_strength[-1], preserved_strength[0])
+    np.testing.assert_allclose(
+        after.vortex_strength[-1], preserved_strength[0], rtol=0.0, atol=1.0e-11
+    )
     assert _relative_error(after.vortex_strength, before.vortex_strength) < 1.0e-8
     assert not solver._is_particle_regeneration_pending
     solver.reset_gpu()
@@ -434,7 +438,7 @@ def test_production_transfer_injects_oblique_vorticity_and_releases_it_to_vpm(tm
         renewal_vorticity_error_limit=5.0e-3,
         renewal_velocity_error_limit=1.0e-3,
         renewal_gaussian_tail_cutoff=1.0e-10,
-        renewal_solver_tolerance=1.0e-12,
+        renewal_solver_tolerance=1.0e-8,
     )
     transfer = _make_production_transfer(
         setup,

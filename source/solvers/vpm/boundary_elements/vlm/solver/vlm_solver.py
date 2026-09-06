@@ -23,6 +23,7 @@ from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
 from ..kernels.collision import detect_surface_collisions_kernel
 from .influence import (
+    add_induced_velocity_and_gradient_at_targets,
     add_induced_velocity_at_targets,
     apply_circulation_smoothing,
     compute_aerodynamic_influence_coefficient_matrix,
@@ -1033,6 +1034,25 @@ class VLMSolver:
             self.lattice.circulation,
             int(count),
             int(self.lattice.n_panels),
+        )
+
+    def add_stage_velocity_and_gradient(
+        self, target_position, target_velocity, target_gradient, count: int, stage_time: float
+    ) -> None:
+        """Accumulate stage velocity and the Jacobian of the same VLM field."""
+        del stage_time
+        if not self._solved or self.lattice is None or count <= 0:
+            return
+        chord = max(float(self._minimum_panel_chord()), 1.0e-6)
+        add_induced_velocity_and_gradient_at_targets(
+            target_position,
+            target_velocity,
+            target_gradient,
+            self.lattice.vortex_point_position,
+            self.lattice.circulation,
+            int(count),
+            int(self.lattice.n_panels),
+            max(1.0e-7, 1.0e-4 * chord),
         )
 
     def compute_postprocess(

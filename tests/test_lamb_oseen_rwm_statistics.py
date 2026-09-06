@@ -106,6 +106,20 @@ def test_dynamic_fourier_energy_rate_is_not_reported_as_a_time_derivative(tmp_pa
     assert data["viscous_kinetic_energy_rate"][1] == -0.17
 
 
+def test_energy_audit_reports_an_unrun_ensemble_instead_of_crashing(tmp_path):
+    diagnostics = _load("postprocess")
+
+    audit = diagnostics.energy_balance_audit(tmp_path, schemes=("rwm",))
+
+    assert set(audit["runs"]) == {
+        "vortex_rwm",
+        "dipole_rwm",
+        "merging_rwm",
+    }
+    assert all(run["status"] == "missing" for run in audit["runs"].values())
+    assert all(run["comparable_samples"] == 0 for run in audit["runs"].values())
+
+
 def test_merging_separation_reference_uses_original_figure_four_samples():
     diagnostics = _load("postprocess")
     dimensional = np.loadtxt(

@@ -244,6 +244,63 @@ def add_induced_velocity_at_targets(
         target_velocity[i] += induced
 
 
+@ti.kernel
+def add_induced_velocity_and_gradient_at_targets(
+    target_position: ti.template(),
+    target_velocity: ti.template(),
+    target_gradient: ti.template(),
+    vortex_point_position: ti.template(),
+    circulation: ti.template(),
+    n_targets: ti.i32,
+    n_panels: ti.i32,
+    finite_difference_step: ti.f32,
+):
+    """Accumulate VLM velocity and its stage-consistent target Jacobian.
+
+    The ring kernel is the authoritative VLM velocity operator.  Centered
+    differences reuse that same operator at temporary stage positions, so the
+    stretching field cannot drift from the velocity field used for advection.
+    ``target_gradient[i,j]`` is ``∂u_i/∂x_j``.
+    """
+    for i in range(n_targets):
+        target = target_position[i]
+        # Derive temporaries from the destination fields so f64 VPM
+        # accumulators do not silently force this contribution through f32.
+        induced = target * 0.0
+        for panel in range(n_panels):
+            induced += vortex_ring_velocity(
+                target,
+                vortex_point_position[panel, ti.i32(0)],
+                vortex_point_position[panel, ti.i32(1)],
+                vortex_point_position[panel, ti.i32(2)],
+                vortex_point_position[panel, ti.i32(3)],
+                circulation[panel],
+                VLM_EPSILON,
+            )
+        gradient = target_gradient[i] * 0.0
+        for column in ti.static(range(3)):
+            offset = target * 0.0
+            offset[column] = finite_difference_step
+            plus = target * 0.0
+            minus = target * 0.0
+            for panel in range(n_panels):
+                v1 = vortex_point_position[panel, ti.i32(0)]
+                v2 = vortex_point_position[panel, ti.i32(1)]
+                v3 = vortex_point_position[panel, ti.i32(2)]
+                v4 = vortex_point_position[panel, ti.i32(3)]
+                plus += vortex_ring_velocity(
+                    target + offset, v1, v2, v3, v4, circulation[panel], VLM_EPSILON
+                )
+                minus += vortex_ring_velocity(
+                    target - offset, v1, v2, v3, v4, circulation[panel], VLM_EPSILON
+                )
+            derivative = (plus - minus) / (2.0 * finite_difference_step)
+            for row in ti.static(range(3)):
+                gradient[row, column] = derivative[row]
+        target_velocity[i] += induced
+        target_gradient[i] = gradient
+
+
 @ti.func
 def _bound_panel_pair_velocity(
     i: int,

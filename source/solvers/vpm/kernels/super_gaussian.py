@@ -27,6 +27,11 @@ def create_super_gaussian_kernels(dtype=ti.f32):
         Dictionary with keys: 'q_', 'zeta_', 'g_', 'diffusivity_constant_'
     """
 
+    # The closed form for q subtracts two O(rho) terms.  This crossover keeps
+    # the f32 implementation in its series regime until the cancellation has
+    # fallen below the requested precision.
+    SERIES_CROSSOVER = 0.5
+
     @ti.func
     def err_func(x):
         # Abramowitz & Stegun constants
@@ -55,11 +60,29 @@ def create_super_gaussian_kernels(dtype=ti.f32):
     @ti.func
     def q_(density: ti.template()) -> ti.template():  # type: ignore
         result = 0.0
-        if density < 1e-4:
+        if density < SERIES_CROSSOVER:
             rho_sq = density * density
-            result = SQRT_2_OVER_PI * (
-                (5.0 / 6.0) * density * rho_sq - (7.0 / 20.0) * density * rho_sq * rho_sq
+            polynomial = 5.0 / 6.0 + rho_sq * (
+                -7.0 / 20.0
+                + rho_sq
+                * (
+                    9.0 / 112.0
+                    + rho_sq
+                    * (
+                        -11.0 / 864.0
+                        + rho_sq
+                        * (
+                            13.0 / 8448.0
+                            + rho_sq
+                            * (
+                                -1.0 / 6656.0
+                                + rho_sq * (17.0 / 1382400.0 + rho_sq * (-19.0 / 109670400.0))
+                            )
+                        )
+                    )
+                )
             )
+            result = SQRT_2_OVER_PI * density * rho_sq * polynomial
         else:
             err_term = err_func(density * ONE_OVER_SQRT2)
             exp_term = SQRT_2_OVER_PI * density * ti.exp(-density * density / 2.0)
@@ -70,8 +93,36 @@ def create_super_gaussian_kernels(dtype=ti.f32):
     @ti.func
     def g_(density: ti.template()) -> ti.template():  # type: ignore
         result = 0.0
-        if density < 1e-4:
-            result = 1.5 * SQRT_2_OVER_PI - (5.0 / 12.0) * SQRT_2_OVER_PI * density**2
+        if density < SERIES_CROSSOVER:
+            d2 = density * density
+            result = SQRT_2_OVER_PI * (
+                1.5
+                + d2
+                * (
+                    -5.0 / 12.0
+                    + d2
+                    * (
+                        7.0 / 80.0
+                        + d2
+                        * (
+                            -3.0 / 224.0
+                            + d2
+                            * (
+                                11.0 / 6912.0
+                                + d2
+                                * (
+                                    -13.0 / 84480.0
+                                    + d2
+                                    * (
+                                        1.0 / 79872.0
+                                        + d2 * (-17.0 / 19353600.0 + d2 * (19.0 / 1754726400.0))
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
         else:
             safe_density = ti.max(density, 1e-12)
             erf_term = err_func(density * ONE_OVER_SQRT2) / safe_density

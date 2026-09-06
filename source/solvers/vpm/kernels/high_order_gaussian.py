@@ -35,6 +35,11 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
 
     ONE_OVER_PI_15 = 0.179587122125
     TWO_OVER_SQRT_PI = 1.1283791671
+    # The closed form subtracts two O(rho) terms.  The f32 error crossover is
+    # much larger than 1e-4; keep a convergent odd-power series through rho^17
+    # and use it for both f32 and f64.  The omitted next term is below 1e-7 of
+    # the retained bracket at rho=0.5.
+    SERIES_CROSSOVER = 0.5
 
     @ti.func
     def err_func(x):
@@ -63,14 +68,33 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
     @ti.func
     def q_(density: ti.template()) -> ti.template():  # type: ignore
         # q(ρ) = [erf(ρ) + (2/√π) ρ (ρ²−1) exp(−ρ²)] / (4π)
-        # Small-ρ Taylor fallback to avoid catastrophic cancellation:
-        #   ≈ (2/√π) [ (5/3) ρ³ − (7/5) ρ⁵ ] / (4π)
+        # Small-ρ Taylor fallback to avoid catastrophic cancellation.  For
+        # k>=1, the coefficient of rho^(2k+1) in the bracket is
+        # (-1)^(k-1)(2k+3)/((k-1)!(2k+1)).
         rho_sq = density * density
         res = 0.0
-        if density < 1e-4:
-            series = TWO_OVER_SQRT_PI * (
-                (5.0 / 3.0) * density * rho_sq - (7.0 / 5.0) * density * rho_sq * rho_sq
+        if density < SERIES_CROSSOVER:
+            polynomial = 5.0 / 3.0 + rho_sq * (
+                -7.0 / 5.0
+                + rho_sq
+                * (
+                    9.0 / 14.0
+                    + rho_sq
+                    * (
+                        -11.0 / 54.0
+                        + rho_sq
+                        * (
+                            13.0 / 264.0
+                            + rho_sq
+                            * (
+                                -1.0 / 104.0
+                                + rho_sq * (17.0 / 10800.0 + rho_sq * (-19.0 / 85680.0))
+                            )
+                        )
+                    )
+                )
             )
+            series = TWO_OVER_SQRT_PI * density * rho_sq * polynomial
             res = series * ONE_OVER_FOUR_PI
         else:
             erf_term = err_func(density)
@@ -84,8 +108,36 @@ def create_high_order_gaussian_kernels(dtype=ti.f32):
         # g(ρ) = [erf(ρ)/ρ + exp(-ρ²)/sqrt(pi)]/(4π).
         # This extra Gaussian term is required by the corrected q kernel.
         res = 0.0
-        if density < 1e-4:
-            res = 1.5 * TWO_OVER_SQRT_PI - (5.0 / 6.0) * TWO_OVER_SQRT_PI * density**2
+        if density < SERIES_CROSSOVER:
+            d2 = density * density
+            res = TWO_OVER_SQRT_PI * (
+                1.5
+                + d2
+                * (
+                    -5.0 / 6.0
+                    + d2
+                    * (
+                        7.0 / 20.0
+                        + d2
+                        * (
+                            -3.0 / 28.0
+                            + d2
+                            * (
+                                11.0 / 432.0
+                                + d2
+                                * (
+                                    -13.0 / 2640.0
+                                    + d2
+                                    * (
+                                        1.0 / 1248.0
+                                        + d2 * (-17.0 / 151200.0 + d2 * (19.0 / 1370880.0))
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
         else:
             safe_density = ti.max(density, 1e-12)
             res = err_func(density) / safe_density + 0.5 * TWO_OVER_SQRT_PI * ti.exp(

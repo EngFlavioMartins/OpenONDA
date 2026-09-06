@@ -83,8 +83,7 @@ def test_failed_physical_phase_does_not_commit_solver_clock(capsys):
 
     assert (solver.step, solver.time) == (4, 0.4)
     header = capsys.readouterr().out
-    assert "VPM TIME STEP 5" in header
-    assert "FLOW TIME 5.000000e-01 s" in header
+    assert "Progress | step 5" not in header
 
 
 def test_failed_physical_phase_makes_solver_terminally_invalid():

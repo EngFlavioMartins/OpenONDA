@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Single post-processing authority for the Lamb--Oseen VPM tutorial.
+"""Post-processing for the Lamb--Oseen VPM tutorial.
 
 This module owns sampled-field reading, physical feature definitions, RWM
 ensemble reconstruction and uncertainty, theory/reference transformations,
-plot-ready data preparation, certification, and provenance.  Plot scripts are
+and plot-ready data preparation. Plot scripts are
 deliberately presentation-only.
 
   * vortex centres   — geometric centres of the connected areas enclosed by
@@ -14,7 +14,7 @@ deliberately presentation-only.
   * vortex_separation and orbital angle (dipole/merging pair).
 
 Run ``postprocess.py --extract-fields`` to rebuild deterministic feature CSVs,
-or use the other command-line modes for RWM aggregation and certification.
+or use the other command-line modes for RWM aggregation and result checks.
 """
 
 from __future__ import annotations
@@ -76,6 +76,17 @@ SEPARATION = 1.0
 COLUMN_LENGTH = 40.0 * CORE_RADIUS  # mirrors setup.py::COLUMN_LENGTH
 FIELD_SPACING = 0.15 * CORE_RADIUS  # mirrors setup.py::FIELD_SPACING
 TOTAL_TIME = 30.0  # fallback reference time [s] when no run data is available
+SPACING = 0.60 * CORE_RADIUS
+TIME_STEP_SIZE = 0.291 / 9.0
+CONFIGURED_TOTAL_TIME = 103.0 * 0.291
+MAX_PARTICLES = 400_000
+RWM_ENSEMBLE_SIZE = 10
+COMPUTE_METHOD = {
+    "CS": "DIRECT",
+    "RWM": "DIRECT",
+    "DVH": "TREECODE",
+    "GBD": "TREECODE",
+}
 
 VTS_STEP_RE = re.compile(r"_(\d+)\.vts$")
 
@@ -740,7 +751,7 @@ def _find_cases(samples_dir: Path) -> dict[str, list[Path]]:
 
 
 def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> None:
-    """Write ``<case>/field_diagnostics.csv`` for every sampled case (or just ``case``)."""
+    """Write diagnostics for every sampled directory, optionally by physical case."""
     samples_dir = Path(samples_dir)
     if not samples_dir.is_dir():
         print(f"  [field] no samples directory: {samples_dir}")
@@ -748,7 +759,9 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
 
     cases = _find_cases(samples_dir)
     if case is not None:
-        cases = {name: vts for name, vts in cases.items() if name == case}
+        cases = {
+            name: vts for name, vts in cases.items() if name == case or name.startswith(f"{case}_")
+        }
     if not cases:
         print(f"  [field] no *_zq_*.vts planes under {samples_dir}")
         return
@@ -1254,12 +1267,16 @@ def load_merging_references(core_radius: float, vortex_separation: float) -> dic
 
 def _reportable_energy_rate_mask(data_frame: pd.DataFrame) -> np.ndarray:
     """Identify finite dE/dt samples with a documented energy definition."""
+    finite = (
+        np.isfinite(data_frame["kinetic_energy_rate"].to_numpy(float))
+        if "kinetic_energy_rate" in data_frame
+        else np.zeros(len(data_frame), dtype=bool)
+    )
     if "kinetic_energy_rate_source" in data_frame:
         source = data_frame["kinetic_energy_rate_source"].astype(str).to_numpy()
-        return np.asarray([not value.startswith("undefined_") for value in source])
-    if "kinetic_energy_rate" in data_frame:
-        return np.isfinite(data_frame["kinetic_energy_rate"].to_numpy(float))
-    return np.ones(len(data_frame), dtype=bool)
+        documented = np.asarray([not value.startswith("undefined_") for value in source])
+        return finite & documented
+    return finite
 
 
 def read_flow_integrals(csv_path: Path) -> dict | None:
@@ -1280,7 +1297,13 @@ def read_flow_integrals(csv_path: Path) -> dict | None:
         "kinetic_energy_rate": kinetic_energy_rate,
         "viscous_kinetic_energy_rate": data_frame["viscous_kinetic_energy_rate"].to_numpy(float),
     }
-    for measure in ("kinetic_energy_rate", "viscous_kinetic_energy_rate"):
+    if "total_kinetic_energy" in data_frame:
+        data["total_kinetic_energy"] = data_frame["total_kinetic_energy"].to_numpy(float)
+    for measure in (
+        "total_kinetic_energy",
+        "kinetic_energy_rate",
+        "viscous_kinetic_energy_rate",
+    ):
         for bound in ("lower", "upper"):
             column = f"{measure}_ci_{bound}"
             if column in data_frame:
@@ -1314,7 +1337,14 @@ def prepend_initial_point(
     initial_power = -n_vortices * circulation**2 * column_length / (8.0 * np.pi * t0)
     output = {key: np.insert(values, 0, 0.0) for key, values in data.items()}
     for key in output:
-        output[key][0] = 0.0 if key == "time" else initial_power
+        if key == "time":
+            output[key][0] = 0.0
+        elif key.startswith("total_kinetic_energy"):
+            # No finite-domain analytic E(0) is used by this tutorial. Extend
+            # the first measured energy to t=0 only for visual continuity.
+            output[key][0] = data[key][0]
+        else:
+            output[key][0] = initial_power
     return output
 
 
@@ -1428,17 +1458,6 @@ def surface_plot_tiles(
             f"{max(selected_times):.3g}s)"
         )
     return tiles, comparison_time
-
-
-from tutorials.vpm.lamb_oseen_vortex.setup import (
-    COLUMN_LENGTH,
-    CORE_RADIUS,
-    FIELD_SPACING,
-    MAX_PARTICLES,
-    SPACING,
-    TIME_STEP_SIZE,
-    TOTAL_TIME as CONFIGURED_TOTAL_TIME,
-)
 
 
 STEP_RE = re.compile(r"_(\d{6})\.h5$")
@@ -1576,7 +1595,7 @@ def _deposit_circulation_cic(
     position: np.ndarray,
     circulation_per_length: np.ndarray,
 ) -> tuple[np.ndarray, float]:
-    """Conservative cloud-in-cell deposition on the canonical uniform grid."""
+    """Conservative cloud-in-cell deposition on the shared uniform grid."""
     x_axis = np.asarray(x[:, 0], dtype=float)
     y_axis = np.asarray(y[0, :], dtype=float)
     dx = float(np.median(np.diff(x_axis)))
@@ -2064,7 +2083,8 @@ def aggregate_rwm_ensemble(
 
 
 EXPECTED_END_TIME = CONFIGURED_TOTAL_TIME
-EXPECTED_DT = 0.291 / 9.0
+EXPECTED_DT = TIME_STEP_SIZE
+INITIAL_PARTICLE_COUNT = {"vortex": 2077, "dipole": 3618, "merging": 3618}
 
 
 # =============================================================
@@ -2396,13 +2416,45 @@ def energy_balance_audit(
     samples_dir: Path = SAMPLES_DIR,
     schemes: tuple[str, ...] = SCHEMES,
 ) -> dict:
-    """Audit all finite, continuity-preserving energy-rate samples."""
+    """Check every finite energy-rate sample and its recorded source."""
     runs = {}
     for case_id in CASES:
         for scheme in schemes:
             name = f"{case_id}_{scheme}"
             path = samples_dir / name / "flow_integrals.csv"
-            frame = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["time"])
+            try:
+                frame = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["time"])
+            except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
+                runs[name] = {
+                    "status": "missing" if not path.is_file() else "unreadable",
+                    "reason": str(exc),
+                    "total_rate_samples": 0,
+                    "comparable_samples": 0,
+                    "raw_positive_samples": 0,
+                    "comparable_positive_samples": 0,
+                    "all_positive_samples_outside_reportable_definition": False,
+                    "relative_rms_balance_residual": None,
+                    "comparable_end_time": None,
+                }
+                continue
+            required = {
+                "time",
+                "kinetic_energy_rate",
+                "viscous_kinetic_energy_rate",
+            }
+            if not required.issubset(frame.columns):
+                runs[name] = {
+                    "status": "unreadable",
+                    "reason": f"missing columns {sorted(required - set(frame.columns))}",
+                    "total_rate_samples": 0,
+                    "comparable_samples": 0,
+                    "raw_positive_samples": 0,
+                    "comparable_positive_samples": 0,
+                    "all_positive_samples_outside_reportable_definition": False,
+                    "relative_rms_balance_residual": None,
+                    "comparable_end_time": None,
+                }
+                continue
             reportable = _reportable_energy_rate_mask(frame)
             energy_rate = frame["kinetic_energy_rate"].to_numpy(float)
             viscous_rate = frame["viscous_kinetic_energy_rate"].to_numpy(float)
@@ -2411,8 +2463,11 @@ def energy_balance_audit(
             raw_positive = nonzero & (energy_rate > 1.0e-7)
             comparable_positive = comparable & (energy_rate > 1.0e-7)
             residual = energy_rate[comparable] - viscous_rate[comparable]
-            denominator = float(np.sqrt(np.mean(viscous_rate[comparable] ** 2)))
+            denominator = (
+                float(np.sqrt(np.mean(viscous_rate[comparable] ** 2))) if comparable.any() else 0.0
+            )
             runs[name] = {
+                "status": "available",
                 "total_rate_samples": int(nonzero.sum()),
                 "comparable_samples": int(comparable.sum()),
                 "raw_positive_samples": int(raw_positive.sum()),
@@ -2431,11 +2486,12 @@ def energy_balance_audit(
             }
     return {
         "finite_difference_definition": (
-            "backward difference of consecutive continuity-preserving unbounded "
-            "kinetic-energy integrals"
+            "backward difference of consecutive same-grid unbounded kinetic-energy "
+            "integrals, plus one labelled viscous estimate when Fourier tracking starts"
         ),
         "large_cloud_mode": (
-            "phase-locked Fourier grid with direct/Fourier and grid-growth continuity calibration"
+            "phase-locked Fourier grid; same-grid backward differences bridge grid growth, "
+            "with an explicitly labelled viscous estimate for the first Fourier transition"
         ),
         "runs": runs,
     }
@@ -2454,6 +2510,16 @@ def _solver_log_record(path: Path) -> dict | None:
             flags=re.MULTILINE | re.IGNORECASE,
         )
     ]
+    if not cumulative:
+        wall_clock = re.findall(
+            r"WALL TIME\s+(\d+):(\d+):([0-9.]+)",
+            text,
+            flags=re.IGNORECASE,
+        )
+        cumulative = [
+            3600.0 * int(hours) + 60.0 * int(minutes) + float(seconds)
+            for hours, minutes, seconds in wall_clock
+        ]
     if not cumulative:
         return None
 
@@ -2475,14 +2541,14 @@ def runtime_audit(solution_dir: Path = SOLUTION_DIR) -> dict:
     for case_id in CASES:
         for scheme in ("cs", "gbd", "dvh"):
             name = f"{case_id}_{scheme}"
-            record = _solver_log_record(solution_dir / name / f"vpm_{name}.log")
+            record = _solver_log_record(solution_dir / name / "vpm.log")
             if record is not None:
                 runs[name] = record
 
         name = f"{case_id}_rwm"
         member_records = [
             record
-            for path in sorted((solution_dir).glob(f"{name}_*/vpm_*.log"))
+            for path in sorted(solution_dir.glob(f"{name}_[0-9][0-9][0-9]/vpm.log"))
             if (record := _solver_log_record(path)) is not None
         ]
         if member_records:
@@ -2509,17 +2575,45 @@ def runtime_audit(solution_dir: Path = SOLUTION_DIR) -> dict:
         ),
         "cross_scheme_wall_time_comparable": len(environments) == 1,
         "comparison_note": (
-            "CS, GBD, and DVH are mutually comparable on the recorded Metal host; "
-            "RWM was run on a different CPU host and may only be compared by member "
-            "and ensemble cost within that environment."
+            "Wall times are comparable only when every recorded run has the same backend and host."
         ),
         "runs": runs,
     }
 
 
-def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
+def _gbd_moment_recovery_failures(cases: tuple[str, ...]) -> list[str]:
+    """Verify that every GBD log records successful pruning closure."""
     failures: list[str] = []
-    for physics_id in CASES:
+    residual_limit = 1.0e-5
+    for physics_id in cases:
+        name = f"{physics_id}_gbd"
+        path = SOLUTION_DIR / name / "vpm.log"
+        try:
+            log = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            failures.append(f"{name}: missing GBD recovery log ({error})")
+            continue
+        residuals = np.asarray(
+            [float(value) for value in re.findall(r"net residual, after\s+([0-9.eE+-]+)", log)],
+            dtype=float,
+        )
+        if residuals.size == 0:
+            failures.append(f"{name}: no GBD moment-recovery closure was recorded")
+        elif not np.isfinite(residuals).all() or float(residuals.max()) > residual_limit:
+            failures.append(
+                f"{name}: GBD recovery residual exceeds {residual_limit:.1e} "
+                f"(maximum {float(np.nanmax(residuals)):.3e})"
+            )
+    return failures
+
+
+def validate(
+    pre_plot: bool,
+    schemes: tuple[str, ...] = SCHEMES,
+    cases: tuple[str, ...] = CASES,
+) -> int:
+    failures: list[str] = []
+    for physics_id in cases:
         for scheme in schemes:
             name = f"{physics_id}_{scheme}"
             folder = SAMPLES_DIR / name
@@ -2534,6 +2628,24 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                 continue
             if metadata.get("status") != "complete" or metadata.get("completed") is not True:
                 failures.append(f"{name}: metadata is not complete")
+            expected_backend = COMPUTE_METHOD[scheme.upper()]
+            if metadata.get("induction_backend") != expected_backend:
+                failures.append(
+                    f"{name}: induction backend {metadata.get('induction_backend')!r}, "
+                    f"expected {expected_backend}"
+                )
+            if metadata.get("integrator") != "RK2":
+                failures.append(f"{name}: integrator is not RK2")
+            if not np.isclose(
+                float(metadata.get("particle_spacing", np.nan)),
+                SPACING,
+                rtol=0.0,
+                atol=np.finfo(float).eps,
+            ):
+                failures.append(f"{name}: particle spacing does not match the case setup")
+            expected_initial = INITIAL_PARTICLE_COUNT[physics_id]
+            if int(metadata.get("initial_n_particles_total", -1)) != expected_initial:
+                failures.append(f"{name}: initial particle count is not {expected_initial}")
             final_time = float(metadata.get("final_time", np.nan))
             if final_time < EXPECTED_END_TIME - EXPECTED_DT:
                 failures.append(
@@ -2565,6 +2677,15 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
                         continue
                     if not np.isfinite(integrals[column].to_numpy(float)).all():
                         failures.append(f"{name}: non-finite values in {column}")
+                if "kinetic_energy_rate_source" not in integrals:
+                    failures.append(f"{name}: flow-integral history has no dE/dt source")
+                else:
+                    rate_sources = integrals["kinetic_energy_rate_source"].astype(str)
+                    if (
+                        rate_sources.str.startswith("undefined_").any()
+                        or rate_sources.isin(("", "nan", "unknown")).any()
+                    ):
+                        failures.append(f"{name}: undefined dE/dt source")
                 for column in ("kinetic_energy_rate", "viscous_kinetic_energy_rate"):
                     if column not in integrals:
                         continue
@@ -2607,7 +2728,11 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
             if scheme == "rwm":
                 ensemble_size = int(metadata.get("ensemble_size", 0))
                 seeds = metadata.get("random_seeds", [])
-                if ensemble_size < 4 or len(set(seeds)) != ensemble_size:
+                if (
+                    ensemble_size != RWM_ENSEMBLE_SIZE
+                    or len(seeds) != ensemble_size
+                    or len(set(seeds)) != ensemble_size
+                ):
                     failures.append(f"{name}: invalid or non-independent RWM ensemble metadata")
                 if metadata.get("statistical_estimator") != (
                     "fixed_time_seed_ensemble_mean_of_column_projected_fields"
@@ -2652,38 +2777,47 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
             if not list(folder.glob("*_zq.pvd")):
                 failures.append(f"{name}: missing sampled surface-field PVD")
 
-    normalization, normalization_failures = merging_normalization_audit(SAMPLES_DIR, schemes)
-    failures.extend(normalization_failures)
-    for scheme, values in normalization["runs"].items():
-        print(
-            f"merging_{scheme}: Re_Gamma={values['circulation_reynolds_number']:.6g}, "
-            f"a_c0/b0={values['initial_velocity_core_to_separation_ratio']:.6g}, "
-            f"t(3)={values['physical_time_at_normalized_3']:.6g}s, "
-            f"coverage={values['available_normalized_horizon']:.6g}"
-        )
-        for feature, agreement in values["reference_agreement"].items():
-            print(
-                f"  {feature}: RMSE/reference-range="
-                f"{agreement['rmse_over_reference_range']:.3%}, "
-                f"bias={agreement['mean_bias']:.6g}"
-            )
+    if "gbd" in schemes:
+        failures.extend(_gbd_moment_recovery_failures(cases))
 
-    try:
-        errors = _single_vortex_errors(schemes)
-    except (OSError, ValueError, KeyError, RuntimeError) as error:
-        failures.append(f"single-vortex analytic comparison failed: {error}")
-    else:
-        for scheme, (velocity, vorticity, gradient) in errors.items():
-            if scheme not in schemes:
-                continue
-            print(
-                f"vortex_{scheme}: analytic relative L2 "
-                f"velocity={velocity:.3%}, vorticity={vorticity:.3%}, gradient={gradient:.3%}"
-            )
-            if scheme in {"cs", "rwm"} and max(velocity, vorticity, gradient) > 0.20:
-                failures.append(f"vortex_{scheme}: analytic profile error exceeds 20%")
-            if scheme != "cs" and max(velocity, vorticity, gradient) > 2.0:
-                failures.append(f"vortex_{scheme}: analytic profile error exceeds 200%")
+    if "merging" in cases:
+        _, normalization_failures = merging_normalization_audit(SAMPLES_DIR, schemes)
+        failures.extend(normalization_failures)
+
+    if "vortex" in cases:
+        try:
+            vortex_audit = single_vortex_error_audit(SAMPLES_DIR, schemes)
+        except (OSError, ValueError, KeyError, RuntimeError) as error:
+            failures.append(f"single-vortex analytic comparison failed: {error}")
+        else:
+            for scheme, values in vortex_audit["runs"].items():
+                if scheme not in schemes:
+                    continue
+                velocity = values["relative_l2_velocity"]
+                vorticity = values["relative_l2_vorticity"]
+                gradient = values["relative_l2_velocity_gradient"]
+                if scheme in {"cs", "rwm"} and max(velocity, vorticity, gradient) > 0.20:
+                    failures.append(f"vortex_{scheme}: analytic profile error exceeds 20%")
+                if scheme in {"dvh", "gbd"} and max(velocity, vorticity, gradient) > 0.50:
+                    failures.append(f"vortex_{scheme}: analytic profile error exceeds 50%")
+                if values["core_radius_relative_rmse"] > 0.20:
+                    failures.append(f"vortex_{scheme}: analytic core-growth RMSE exceeds 20%")
+                if abs(values["core_radius_final_relative_error"]) > 0.25:
+                    failures.append(
+                        f"vortex_{scheme}: final analytic core-radius error exceeds 25%"
+                    )
+
+    if "dipole" in cases:
+        try:
+            dipole_audit = dipole_error_audit(SAMPLES_DIR, schemes)
+        except (OSError, ValueError, KeyError, RuntimeError) as error:
+            failures.append(f"dipole comparison failed: {error}")
+        else:
+            for scheme, values in dipole_audit["runs"].items():
+                if values["trajectory_rmse_over_reference_range"] > 0.50:
+                    failures.append(f"dipole_{scheme}: trajectory error exceeds 50%")
+                if abs(values["end_core_radius_relative_to_isolated_exact"]) > 0.35:
+                    failures.append(f"dipole_{scheme}: final core-radius error exceeds 35%")
 
     if not pre_plot:
         for fig_name in (
@@ -2693,14 +2827,14 @@ def validate(pre_plot: bool, schemes: tuple[str, ...] = SCHEMES) -> int:
             "vortex_surface_fields",
             "lamboseen_energy",
         ):
-            figure = FIGURES_DIR / f"{fig_name}.png"
-            if not figure.is_file() or figure.stat().st_size == 0:
-                failures.append(f"missing or empty figure {figure.name}")
+            for suffix in ("png", "pdf"):
+                figure = FIGURES_DIR / f"{fig_name}.{suffix}"
+                if not figure.is_file() or figure.stat().st_size == 0:
+                    failures.append(f"missing or empty figure {figure.name}")
 
     if failures:
         print("\n".join(f"[FAIL] {failure}" for failure in failures))
         return 1
-    print("[OK] lamb_oseen_vortex certification passed")
     return 0
 
 
@@ -2829,8 +2963,9 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
     return {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "plotting_notes": (
-            "Figures plot every scientifically reportable sample; undefined rates from "
-            "changing Fourier audit boxes are retained in raw archives but not plotted."
+            "Figures plot every available sample. Kinetic energy and dE/dt remain finite "
+            "through direct/Fourier switches and Fourier-grid growth; each transition "
+            "records its rate source in flow_integrals.csv."
         ),
         "runs": runs,
         "normalization_audit": normalization,
@@ -2872,13 +3007,30 @@ def main() -> int:
         help="extract deterministic field features from all sampled VTS planes",
     )
     parser.add_argument("--samples-dir", type=Path, default=SAMPLES_DIR)
-    parser.add_argument("--case", default=None, help="limit --extract-fields to one case")
+    parser.add_argument(
+        "--case",
+        choices=CASES,
+        default=None,
+        help="limit --extract-fields to one physical case",
+    )
     parser.add_argument("--pre-plot", action="store_true", help="skip figure existence checks")
+    parser.add_argument(
+        "--validate-case",
+        choices=CASES,
+        default=None,
+        help="check one completed physical comparison before continuing",
+    )
     parser.add_argument("--manifest", action="store_true", help="write JSON status manifest")
     parser.add_argument(
         "--aggregate-rwm",
         action="store_true",
-        help="build canonical mean fields and uncertainty from raw RWM ensemble backups",
+        help="build mean fields and uncertainty from raw RWM ensemble backups",
+    )
+    parser.add_argument(
+        "--aggregate-rwm-case",
+        choices=CASES,
+        default=None,
+        help="aggregate one completed RWM ensemble immediately",
     )
     parser.add_argument(
         "--expected-rwm-members",
@@ -2896,7 +3048,7 @@ def main() -> int:
     parser.add_argument(
         "--rwm-only",
         action="store_true",
-        help="certify only the RWM products (useful when deterministic baselines are archival)",
+        help="check only the RWM products",
     )
     args = parser.parse_args()
     if args.extract_fields:
@@ -2911,13 +3063,30 @@ def main() -> int:
         }
         aggregate_rwm_ensemble(
             CASE_DIR / "solution",
-            SAMPLES_DIR,
+            args.samples_dir,
             expected_members=expected_by_case,
+        )
+        return 0
+    if args.aggregate_rwm_case is not None:
+        case_expected = getattr(
+            args,
+            f"expected_rwm_{args.aggregate_rwm_case}_members",
+        )
+        aggregate_case(
+            CASE_DIR / "solution",
+            args.samples_dir,
+            args.aggregate_rwm_case,
+            case_expected if case_expected is not None else args.expected_rwm_members,
         )
         return 0
     if args.manifest:
         return write_manifest()
-    return validate(pre_plot=args.pre_plot, schemes=("rwm",) if args.rwm_only else SCHEMES)
+    cases = (args.validate_case,) if args.validate_case is not None else CASES
+    return validate(
+        pre_plot=args.pre_plot,
+        schemes=("rwm",) if args.rwm_only else SCHEMES,
+        cases=cases,
+    )
 
 
 if __name__ == "__main__":

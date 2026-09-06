@@ -62,7 +62,7 @@ _PRESSURE_HIERARCHICAL_OPENING = 0.3
 
 
 class VelocityOverride(Protocol):
-    """Callable that selects the advection velocity at one RK stage."""
+    """Callable that replaces the complete particle RHS velocity at one RK stage."""
 
     def __call__(
         self, position: FloatArray, stage_time: float, induced_velocity: FloatArray
@@ -113,7 +113,7 @@ class VPMSolver:
         self._init_solvers(final_setup)
         self.output_manager = OutputManager(self, case.samplers)
         Logging.set_routine_messages_enabled(True)
-        Logging.message(Logging.solver_info(self), flush=True)
+        Logging.startup(self)
         self._configuration_logged = True
         # Declarative or externally supplied initial particles are populated
         # after construction.  Keep those setup mutations out of the runtime
@@ -150,9 +150,6 @@ class VPMSolver:
         )
         self._axisymmetric_orbits_validated = False
 
-        # DVH uses a fixed heat-kernel increment Δt_d = β R_d² / (4ν).
-        import math as _math
-
         self._dvh_time_step_size_info: str | None = None
         self._gbd_time_step_size_info: str | None = None
         self._rwm_time_step_size_info: str | None = None
@@ -186,45 +183,27 @@ class VPMSolver:
                 f"molecular explicit stage limit = {max_time_step_size:.4e} s."
             )
 
-        # Match the user step to an integer subdivision of the DVH increment.
+        # DVH's compact heat support is a resolved transfer only when
+        # beta*R_d²/(4*nu) has elapsed.  Accumulate smaller accepted steps and
+        # apply the full physical interval once the lattice can represent it;
+        # direct diffusion calls validate the same contract.
         self._n_steps_per_dvh_diffusion: int = 1
         self._n_steps_since_dvh_diffusion: int = 0
-        if vc.scheme == "DVH" and vc.kinematic_viscosity is not None and vc.kinematic_viscosity > 0:
-            from ..physics.diffusion import _DVH_BETA
-
-            diffusion_time_step_size_raw = vc.dvh_required_time_step_size()
-            # Avoid noisy floating-point time values.
-            magnitude = _math.floor(_math.log10(abs(diffusion_time_step_size_raw)))
-            diffusion_time_step_size = round(diffusion_time_step_size_raw, -magnitude + 2)
-            user_time_step_size = self.time_step_size
-            n_sub = (
-                max(1, int(round(diffusion_time_step_size / user_time_step_size)))
-                if user_time_step_size > 0
-                else 1
+        if (
+            vc.scheme == "DVH"
+            and vc.dvh_grid_spacing is not None
+            and vc.kinematic_viscosity is not None
+            and vc.kinematic_viscosity > 0.0
+        ):
+            required_time_step_size = vc.dvh_required_time_step_size()
+            self._n_steps_per_dvh_diffusion = max(
+                1,
+                int(np.ceil(required_time_step_size / self.time_step_size)),
             )
-            substep_size = diffusion_time_step_size / n_sub
-            if abs(user_time_step_size - substep_size) > 1e-6 * max(
-                user_time_step_size, substep_size
-            ):
-                Logging.record(
-                    "discrete vortex heat method, time step pinned",
-                    ("time step, requested", f"{user_time_step_size:.4e}", "s"),
-                    ("time step, applied", f"{substep_size:.4e}", "s"),
-                    ("diffusion interval", f"{diffusion_time_step_size:.4e}", "s"),
-                    ("steps per diffusion", f"{n_sub:,}"),
-                    ("beta", f"{_DVH_BETA:g}"),
-                    (
-                        "support radius",
-                        f"{vc.dvh_support_radius_ratio * vc.dvh_grid_spacing:.4e}",
-                        "m",
-                    ),
-                )
-                self.time_step_size = substep_size
-            self._n_steps_per_dvh_diffusion = n_sub
             self._dvh_time_step_size_info = (
-                f"DVH fires every {n_sub} step(s) (time_step_size = "
-                f"Δt_d/{n_sub} = {substep_size:.4e} s, "
-                f"Δt_d = β·R_d²/(4nu) = {diffusion_time_step_size:.4e} s)."
+                "DVH resolved interval = "
+                f"{required_time_step_size:.4e} s; smaller accepted steps "
+                f"accumulate in groups of {self._n_steps_per_dvh_diffusion}."
             )
 
         self.integrator_tableau = final_setup.integrator
@@ -303,6 +282,11 @@ class VPMSolver:
                 self.physics,
                 kernel=make_vortex_kernel(self.particle_kernel),
             )
+        # Target diagnostics and coupling queries must use the same selected
+        # induction contract as RK particle stages.  PhysicsBase keeps a
+        # direct fallback for standalone users, but a solver-owned backend is
+        # authoritative here (including FMM).
+        self.physics.induction = self.induction
         if hasattr(self.induction, "estimated_workspace_bytes"):
             self.fmm_workspace_bytes = self.induction.estimated_workspace_bytes(max_p)
         else:
@@ -513,6 +497,13 @@ class VPMSolver:
                     self.physics.body_velocity_field = (
                         self.panel_solver.accumulate_induced_velocity_on_field
                     )
+                    # The device velocity hook and host target-query path use
+                    # the same panel operator. Its centered Jacobian supplies
+                    # the external stretching contribution without adding a
+                    # second panel velocity to the RK stage.
+                    self.physics.body_velocity_gradient = (
+                        self.panel_solver.compute_induced_velocity_gradient
+                    )
                     # Target-query diagnostics still use _body_induced_fn, but
                     # the stage provider must not add the same panel velocity a
                     # second time through its host callback.
@@ -520,6 +511,7 @@ class VPMSolver:
                 else:
                     self.physics.body_velocity = None
                     self.physics.body_velocity_field = None
+                    self.physics.body_velocity_gradient = None
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize panel solver: {e}") from e
 
@@ -542,7 +534,7 @@ class VPMSolver:
                 # Construct the immutable provider tuple only after optional
                 # solvers have initialized. VLM is first so the axisymmetric
                 # provider, when present, remains the final projection.
-                self._stage_providers.insert(0, VLMStageContribution(self.vlm_solver))
+                self._stage_providers.insert(0, VLMStageContribution(self.vlm_solver, self.physics))
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize VLM solver: {e}") from e
 
@@ -650,6 +642,7 @@ class VPMSolver:
         if self._run_started:
             raise RuntimeError("VPMSolver.run() may be called only once")
         self._run_started = True
+        self._run_final_step = self.step + self.case.run.steps
         status = "failed"
         failure: BaseException | None = None
         try:
@@ -674,6 +667,7 @@ class VPMSolver:
             self.restart_state.time = self.time
             self.restart_state.step = self.step
             self._write_run_manifest(status, failure)
+            Logging.run_finished(self, status, failure)
             self.close()
 
     def _build_initial_conditions(self) -> None:
@@ -1130,18 +1124,29 @@ class VPMSolver:
     def set_body_induced_velocity(
         self,
         fn: Callable[[np.ndarray, float], np.ndarray] | None,
+        gradient_fn: Callable[[np.ndarray, float], np.ndarray] | None = None,
+        time_derivative_fn: Callable[[np.ndarray, float], np.ndarray] | None = None,
     ) -> None:
         """Set the optional stage-aware boundary-element velocity callback.
 
         The callback must map ``(stage_position, stage_time)`` to an ``(N, 3)``
-        velocity array. Pass ``None`` to disable body induction. Target-query
-        diagnostics invoke the same callback at the solver's accepted time.
+        velocity array. ``gradient_fn`` is optional and maps the same inputs to
+        ``J[i,j] = ∂u_i/∂x_j``. When omitted, the stage provider uses a centered
+        finite difference of ``fn`` so the non-uniform field still contributes
+        the transposed stretching rate ``J.T @ Γ``. Pass ``None`` to disable
+        body induction. ``time_derivative_fn`` optionally maps the same inputs
+        to ``∂u/∂t`` for pressure diagnostics. Target-query diagnostics invoke
+        the callbacks at the solver's accepted time.
         """
         self._body_induced_fn = fn
+        self._pressure_body_induced_fn = fn
+        self._pressure_body_induced_time_derivative_fn = time_derivative_fn
         self.physics.body_velocity = fn
+        self.physics.body_velocity_gradient = gradient_fn
         if fn is None:
             # Never leave the device hook installed for a disabled body.
             self.physics.body_velocity_field = None
+            self.physics.body_velocity_gradient_field = None
 
     def refresh_boundary_element_solution(self) -> None:
         """Make a synchronized panel solution consistent with current particles.
@@ -1339,14 +1344,37 @@ class VPMSolver:
                 max_n_particles=int(self.setup.max_n_particles),
                 accumulator_dtype=self.accumulator_dtype,
             )
+        body_fn = None
+        body_gradient_fn = None
+        body_time_derivative_fn = None
+        if include_body:
+            body_fn = getattr(self, "_pressure_body_induced_fn", self._body_induced_fn)
+            body_gradient_fn = getattr(self.physics, "body_velocity_gradient", None)
+            body_time_derivative_fn = getattr(
+                self, "_pressure_body_induced_time_derivative_fn", None
+            )
+        # Pressure's analytical temporal term reads the accepted particle
+        # velocity, velocity gradient, and width-rate fields.  Those are
+        # derived state, so a deferred-output advance may leave them stale
+        # until another diagnostic refreshes them.  Refresh the complete
+        # stage contract here, including external/body contributions, so the
+        # pressure result is independent of diagnostic call order.
+        if self.particles.n_particles_total > 0:
+            self.stepper._update_velocity_and_gradients()
+
+        # Only Core Spreading has a smooth material core-width derivative.
+        # RWM/DVH/GBD keep the width fixed between discrete diffusion/remap
+        # events; feeding their molecular viscosity into the analytical
+        # pressure term would invent a Gaussian width rate that their accepted
+        # state did not take.
+        pressure_core_radius_rate = None
+        if self.viscous_scheme != "CS" and self.particles.n_particles_total > 0:
+            pressure_core_radius_rate = np.zeros(
+                self.particles.n_particles_total,
+                dtype=np.float64,
+            )
+
         if temporal_method == "eulerian":
-            body_fn = None
-            if include_body:
-                body_fn = getattr(
-                    self,
-                    "_pressure_body_induced_fn",
-                    self._body_induced_fn,
-                )
             return self._pressure_physics.compute_target_pressure_gradient_hierarchical(
                 self.particles,
                 evaluation_position,
@@ -1363,10 +1391,11 @@ class VPMSolver:
                 theta=_PRESSURE_HIERARCHICAL_OPENING,
                 freestream_velocity=self.freestream_velocity,
                 body_fn=body_fn,
+                body_gradient_fn=body_gradient_fn,
+                body_time_derivative_fn=body_time_derivative_fn,
+                external_time=float(self.time),
             )
 
-        if self.particles.n_particles_total > 0:
-            self.physics.compute_velocity_gradients(self.particles)
         return self._pressure_physics.compute_target_pressure_gradient_components(
             self.particles,
             evaluation_position,
@@ -1380,6 +1409,11 @@ class VPMSolver:
             velocity_previous=velocity_previous,
             time_step_size=time_step_size,
             return_velocity=return_velocity,
+            external_velocity_fn=body_fn,
+            external_velocity_gradient_fn=body_gradient_fn,
+            external_velocity_time_derivative_fn=body_time_derivative_fn,
+            external_time=float(self.time),
+            core_radius_rate=pressure_core_radius_rate,
         )
 
     # Diagnostics
@@ -1743,13 +1777,24 @@ class VPMSolver:
 
         self.particles.set_freestream_velocity(velocity_arr)
 
-    def set_velocity_override(self, fn: VelocityOverride | VelocityOverrideBlender | None) -> None:
-        """Set an optional advection-velocity callback evaluated at each RK stage.
+    def set_velocity_override(
+        self,
+        fn: VelocityOverride | VelocityOverrideBlender | None,
+        gradient_fn: Callable[[np.ndarray, float, np.ndarray], np.ndarray] | None = None,
+    ) -> None:
+        """Set an optional complete velocity replacement evaluated at each RK stage.
 
         The callback receives particle position and Biot–Savart velocity and returns
-        the velocity used for advection. It does not alter the stretching gradient.
+        the velocity used for advection. A plain callback replaces both the
+        self-induced velocity and stretching RHS; ``gradient_fn`` may return its
+        Jacobian using ``(position, stage_time, current_velocity)``. When omitted,
+        the replacement callback is differentiated with a centered probe while
+        holding its induced-velocity argument fixed. Objects exposing
+        ``blend_into`` remain additive/blended and their gradient is treated as
+        the gradient of the added contribution.
         """
         self.physics.velocity_override = fn
+        self.physics.velocity_override_gradient = gradient_fn
 
     # Particle control
 

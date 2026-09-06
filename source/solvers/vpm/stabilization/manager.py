@@ -559,6 +559,14 @@ class StabilizationManager:
             constrained_divergence_relaxation,
         )
 
+        particle_kernel = str(getattr(ctx.physics, "particle_kernel", "GAUSSIAN")).upper()
+        if particle_kernel != "GAUSSIAN":
+            raise DivergenceRelaxationError(
+                "divergence relaxation currently implements the Gaussian blob/grid "
+                f"operator only, not particle_kernel={particle_kernel}",
+                gate="kernel compatibility",
+            )
+
         if self.reference_moments is None:
             raise DivergenceRelaxationError(
                 "divergence relaxation requires captured reference moments"

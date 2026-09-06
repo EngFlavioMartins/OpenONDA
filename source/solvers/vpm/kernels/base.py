@@ -17,9 +17,13 @@ class RadialVortexKernel:
     """Numerical contract for an isotropic regularized Biot--Savart kernel.
 
     ``q`` includes the ``1/(4π)`` Biot--Savart constant and ``zeta`` is the
-    normalized radial vorticity profile.  All induction backends consume this
-    object for host-side near/far decisions; the existing Taichi factories are
-    still used for device kernels by the direct and Barnes--Hut paths.
+    normalized radial vorticity profile.  Particle-to-particle operators use
+    the symmetric pair radius ``(σ_target + σ_source)/2``.  Arbitrary target
+    field evaluation is a source-field operator and uses the source radius
+    only; this distinction is intentional and is shared by direct, treecode,
+    and FMM target paths.  All induction backends consume this object for
+    host-side near/far decisions; the existing Taichi factories are still used
+    for device kernels by the direct and Barnes--Hut paths.
     """
 
     name: str
@@ -238,9 +242,27 @@ def _winckelmans_zeta(rho):
 
 def _high_order_q(rho):
     rho = np.asarray(rho, dtype=np.float64)
-    return (_erf(rho) + 2.0 / math.sqrt(math.pi) * rho * (rho * rho - 1.0) * np.exp(-rho * rho)) / (
+    d2 = rho * rho
+    closed = (_erf(rho) + 2.0 / math.sqrt(math.pi) * rho * (d2 - 1.0) * np.exp(-d2)) / (
         4.0 * math.pi
     )
+    series = (
+        2.0
+        / math.sqrt(math.pi)
+        * rho
+        * d2
+        * (
+            5.0 / 3.0
+            + d2
+            * (
+                -7.0 / 5.0
+                + d2
+                * (9.0 / 14.0 + d2 * (-11.0 / 54.0 + d2 * (13.0 / 264.0 + d2 * (-1.0 / 104.0))))
+            )
+        )
+        / (4.0 * math.pi)
+    )
+    return np.where(rho < 0.5, series, closed)
 
 
 def _high_order_zeta(rho):
@@ -250,10 +272,27 @@ def _high_order_zeta(rho):
 
 def _super_gaussian_q(rho):
     rho = np.asarray(rho, dtype=np.float64)
-    return (
+    d2 = rho * rho
+    closed = (
         _erf(rho / math.sqrt(2.0))
-        - math.sqrt(2.0 / math.pi) * rho * (1.0 - rho * rho / 2.0) * np.exp(-rho * rho / 2.0)
+        - math.sqrt(2.0 / math.pi) * rho * (1.0 - d2 / 2.0) * np.exp(-d2 / 2.0)
     ) / (4.0 * math.pi)
+    series = (
+        math.sqrt(2.0 / math.pi)
+        * rho
+        * d2
+        * (
+            5.0 / 6.0
+            + d2
+            * (
+                -7.0 / 20.0
+                + d2
+                * (9.0 / 112.0 + d2 * (-11.0 / 864.0 + d2 * (13.0 / 8448.0 + d2 * (-1.0 / 6656.0))))
+            )
+        )
+        / (4.0 * math.pi)
+    )
+    return np.where(rho < 0.5, series, closed)
 
 
 def _super_gaussian_zeta(rho):

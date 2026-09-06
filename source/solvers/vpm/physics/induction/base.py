@@ -41,6 +41,7 @@ class InductionMethod(Protocol):
     supports_gradient: ClassVar[bool]
     supports_variable_core_radius: ClassVar[bool]
     supports_f64: ClassVar[bool]
+    supports_target_fields: ClassVar[bool]
     device_resident: ClassVar[bool]
     strength_rate_mode: ClassVar[StrengthRateMode]
 
@@ -61,6 +62,22 @@ class InductionMethod(Protocol):
         stage_time: float = 0.0,
     ) -> None:
         """Write velocity, strength rate, and optionally gradient to outputs."""
+
+    def evaluate_targets(
+        self,
+        *,
+        target_position: Any,
+        source_position: Any,
+        source_vortex_strength: Any,
+        source_core_radius: Any,
+        target_velocity: Any | None,
+        target_velocity_gradient: Any | None,
+        target_count: int,
+        source_count: int,
+        include_freestream: bool,
+        background_velocity: Any,
+    ) -> None:
+        """Write arbitrary target velocity and/or gradient fields."""
 
 
 __all__ = ["InductionMethod", "StageRates", "StageState", "StrengthRateMode"]

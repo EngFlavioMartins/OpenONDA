@@ -4,12 +4,14 @@
 Reads flow-integral CSV files (``samples/flow_integrals.csv``) exported by
 the VPM solver when logging is active.
 
-Plots one panel for each physics case: single vortex, vortex dipole, and
-co-rotating merger.
+Plots one column for each physics case: single vortex, vortex dipole, and
+co-rotating merger. The upper row shows total kinetic energy and the lower row
+shows its rate.
 
 Continuous lines show the enstrophy-based sink -2νZ. Sparse filled circles
-show finite-difference dE/dt from the direct or continuity-preserving Fourier
-energy diagnostic. Colours are consistent per scheme across all three panels.
+show dE/dt from direct/Fourier energy differences, including the explicitly
+labelled finite transition estimate when the scalable diagnostic first takes
+over. Colours are consistent per scheme across all three panels.
 
 Saves: figures/lamboseen_energy.png
 """
@@ -63,32 +65,44 @@ else:
 
 
 def plot_case_panel(
-    ax,
+    energy_ax,
+    rate_ax,
     samples_dir: Path,
     case_prefix: str,
     title: str,
     n_vortices: int,
     style_map: dict,
     tau_scale: float,
+    energy_ref: float,
     p_ref: float,
     circulation: float,
     t0: float,
     column_length: float,
 ) -> float:
-    ax.set_title(title)
+    energy_ax.set_title(title)
     latest_tau = 0.0
     for scheme in SCHEME_DRAW_ORDER:
         csv_path = samples_dir / f"{case_prefix}_{scheme}" / "flow_integrals.csv"
         data = read_flow_integrals(csv_path)
-        if data is None:
+        if data is None or "total_kinetic_energy" not in data:
             continue
         data = prepend_initial_point(data, circulation, t0, n_vortices, column_length)
         st = style_map[scheme]
         tau = data["time"] * tau_scale
+        energy = data["total_kinetic_energy"] / (n_vortices * energy_ref)
         energy_rate = data["kinetic_energy_rate"] / p_ref
         enstrophy_rate = data["viscous_kinetic_energy_rate"] / p_ref
 
-        ax.plot(
+        energy_ax.plot(
+            tau,
+            energy,
+            color=st["color"],
+            linestyle="-",
+            linewidth=1.0,
+            alpha=0.90,
+            zorder=scheme_zorder(scheme),
+        )
+        rate_ax.plot(
             tau,
             enstrophy_rate,
             color=st["color"],
@@ -98,6 +112,19 @@ def plot_case_panel(
             zorder=scheme_zorder(scheme),
         )
         if scheme == "rwm":
+            if "total_kinetic_energy_ci_lower" in data and "total_kinetic_energy_ci_upper" in data:
+                lower = data["total_kinetic_energy_ci_lower"] / (n_vortices * energy_ref)
+                upper = data["total_kinetic_energy_ci_upper"] / (n_vortices * energy_ref)
+                finite_interval = np.isfinite(lower) & np.isfinite(upper)
+                energy_ax.fill_between(
+                    tau[finite_interval],
+                    lower[finite_interval],
+                    upper[finite_interval],
+                    color=st["color"],
+                    alpha=0.10,
+                    linewidth=0,
+                    zorder=scheme_zorder(scheme) - 1,
+                )
             for measure in ("kinetic_energy_rate", "viscous_kinetic_energy_rate"):
                 lower_key = f"{measure}_ci_lower"
                 upper_key = f"{measure}_ci_upper"
@@ -106,7 +133,7 @@ def plot_case_panel(
                 lower = data[lower_key] / p_ref
                 upper = data[upper_key] / p_ref
                 finite_interval = np.isfinite(lower) & np.isfinite(upper)
-                ax.fill_between(
+                rate_ax.fill_between(
                     tau[finite_interval],
                     lower[finite_interval],
                     upper[finite_interval],
@@ -121,7 +148,7 @@ def plot_case_panel(
         marker_indices = finite_energy[::marker_stride]
         if finite_energy.size and marker_indices[-1] != finite_energy[-1]:
             marker_indices = np.append(marker_indices, finite_energy[-1])
-        ax.plot(
+        rate_ax.plot(
             tau[marker_indices],
             energy_rate[marker_indices],
             color=st["color"],
@@ -158,19 +185,29 @@ def plot_energy_enstrophy(args) -> int:
     # flow_integrals.csv contains 3-D totals.  The Lamb-Oseen dissipation
     # formula and its natural scale are per unit length, so both must carry L.
     p_ref = run_kinematic_viscosity * run_circulation**2 * column_length / (a0**2)
-    fig, axes = plt.subplots(1, 3, figsize=figure_size("trajectory"), sharey=True)
-    fig.subplots_adjust(wspace=0.09, top=0.92, bottom=0.32, left=0.14, right=0.86)
+    energy_ref = run_circulation**2 * column_length
+    base_width, base_height = figure_size("trajectory")
+    fig, axes = plt.subplots(
+        2,
+        3,
+        figsize=(base_width, 1.75 * base_height),
+        sharex="col",
+        sharey="row",
+    )
+    fig.subplots_adjust(wspace=0.09, hspace=0.12, top=0.94, bottom=0.20, left=0.14, right=0.86)
 
     plotted = False
-    for ax, (case_prefix, title, n_vortices) in zip(axes, ENERGY_CASES):
+    for column, (case_prefix, title, n_vortices) in enumerate(ENERGY_CASES):
         latest_tau = plot_case_panel(
-            ax,
+            axes[0, column],
+            axes[1, column],
             samples_dir,
             case_prefix,
             title,
             n_vortices,
             style_map,
             tau_scale,
+            energy_ref,
             p_ref,
             run_circulation,
             run_t0,
@@ -178,7 +215,7 @@ def plot_energy_enstrophy(args) -> int:
         )
         plotted |= latest_tau > 0.0
 
-        ax.set_xlabel(r"$\nu t / a_{c,0}^2$")
+        axes[1, column].set_xlabel(r"$\nu t / a_{c,0}^2$")
 
     if not plotted:
         plt.close(fig)
@@ -186,13 +223,14 @@ def plot_energy_enstrophy(args) -> int:
         print("  [energy] no sampled flow integrals; figure not generated")
         return 0
 
-    axes[0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 L / a_{c,0}^2)$")
-    axes[0].set_ylim([-5e-1, -5e-3])
+    axes[0, 0].set_ylabel(r"$E / (N_v\Gamma^2 L)$")
+    axes[1, 0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 L / a_{c,0}^2)$")
+    axes[1, 0].set_ylim([-5e-1, -5e-3])
 
-    # sharey=True links the y-axes, so the scale and limits propagate.
-    for ax in axes:
+    # sharey="row" links the three rate panels.
+    for ax in axes[1, :]:
         ax.set_yscale("symlog", linthresh=0.01)
-    for ax in axes:
+    for ax in axes[1, :]:
         ax.axhspan(0.0, 1e-1, color=colors["background_light"], linewidth=0, zorder=0)
 
     available_schemes = [

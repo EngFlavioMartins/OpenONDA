@@ -385,10 +385,13 @@ class Particles:
 
     @ti.kernel
     def _compute_strain_rate_tensor(
-        self, velocity_gradient: ti.template(), strain_rate: ti.template()
+        self,
+        velocity_gradient: ti.template(),
+        strain_rate: ti.template(),
+        count: ti.i32,
     ):  # type: ignore
         """Compute strain rate tensor from velocity gradient tensor."""
-        for i in range(velocity_gradient.shape[0]):
+        for i in range(count):
             for j in ti.static(range(3)):
                 for k in ti.static(range(3)):
                     strain_rate[i][j, k] = 0.5 * (

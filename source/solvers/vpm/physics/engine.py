@@ -37,8 +37,11 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         # External stage providers may use either a device callback or a host
         # callback.  They are consumed by StageRHS, never by the RK engine.
         self.velocity_override = None
+        self.velocity_override_gradient = None
         self.body_velocity = None
+        self.body_velocity_gradient = None
         self.body_velocity_field = None
+        self.body_velocity_gradient_field = None
 
         self._diffusion = _DiffusionHandler(self)
 

@@ -7,6 +7,7 @@ import argparse
 
 from tutorials.vpm.lamb_oseen_vortex.setup import (
     MERGING_SAMPLE_INTERVAL_STEPS,
+    RWM_ENSEMBLE_SIZE,
     SAMPLE_INTERVAL_TIME,
     TIME_STEP_SIZE,
     run_case,
@@ -23,9 +24,8 @@ def field_interval_steps(case: str) -> int:
 
 def run_ensemble(
     case: str,
-    number_of_realizations: int,
+    number_of_realizations: int = RWM_ENSEMBLE_SIZE,
     first_random_seed: int = 42000,
-    induction_method: str = "DIRECT",
 ) -> None:
     """Advance independent random walks of the same initial vortex field."""
     if number_of_realizations < 4:
@@ -35,8 +35,9 @@ def run_ensemble(
         random_seed = first_random_seed + realization
         name = f"{case}_rwm_{realization:03d}"
         print(
-            f"===== {name}: realization "
-            f"{realization + 1}/{number_of_realizations}, seed {random_seed} ====="
+            f"[RWM] {case} | realization "
+            f"{realization + 1}/{number_of_realizations} | seed={random_seed}",
+            flush=True,
         )
         run_case(
             case,
@@ -45,7 +46,6 @@ def run_ensemble(
             random_seed=random_seed,
             surfaces=False,
             backup_steps=field_interval_steps(case),
-            induction_method=induction_method,
         )
 
 
@@ -55,16 +55,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--number-of-realizations",
         type=int,
-        required=True,
-        help="number of independent random-seed realizations",
+        default=RWM_ENSEMBLE_SIZE,
+        help=f"number of independent random-seed realizations (default: {RWM_ENSEMBLE_SIZE})",
     )
     parser.add_argument("--first-random-seed", type=int, default=42000)
-    parser.add_argument(
-        "--induction",
-        choices=("DIRECT", "TREECODE", "FMM"),
-        default="DIRECT",
-        help="particle-induction backend used by every ensemble member",
-    )
     return parser.parse_args()
 
 
@@ -74,7 +68,6 @@ def main() -> int:
         args.case,
         args.number_of_realizations,
         args.first_random_seed,
-        args.induction,
     )
     return 0
 

@@ -240,6 +240,47 @@ def _make_target_source_velocity_kernel(q_):
     return compute_target_source_velocity_kernel
 
 
+def _make_target_source_velocity_gradient_kernel(q_, zeta_):
+    """Create the Jacobian kernel for radial source-particle induction."""
+
+    @ti.kernel
+    def compute_target_source_velocity_gradient_kernel(
+        target_position: ti.template(),
+        source_position: ti.template(),
+        source_strength: ti.template(),
+        source_core_radius: ti.template(),
+        target_velocity_gradient: ti.template(),
+        n_targets: ti.i32,
+        n_sources: ti.i32,
+    ):  # type: ignore
+        for i in range(n_targets):
+            # Derive the accumulator type from the destination field so the
+            # gradient path does not silently demote f64 VPM runs to f32.
+            gradient = target_velocity_gradient[i] * 0.0
+            target_pos = target_position[i]
+            for j in range(n_sources):
+                r_vec = target_pos - source_position[j]
+                r_sq = r_vec.dot(r_vec)
+                r_mag = ti.sqrt(r_sq)
+                if r_mag > 1e-10:
+                    sigma = source_core_radius[j]
+                    rho = r_mag / sigma
+                    q_val = q_(rho)
+                    zeta_val = zeta_(rho)
+                    q_prime = rho * rho * zeta_val
+                    a = q_val / (r_mag * r_mag * r_mag)
+                    da_over_r = q_prime / (sigma * r_mag**4) - 3.0 * q_val / r_mag**5
+                    for row in ti.static(range(3)):
+                        for column in ti.static(range(3)):
+                            identity = 1.0 if row == column else 0.0
+                            gradient[row, column] += source_strength[j][row] * (
+                                identity * a + da_over_r * r_vec[row] * r_vec[column]
+                            )
+            target_velocity_gradient[i] = gradient
+
+    return compute_target_source_velocity_gradient_kernel
+
+
 def _make_target_vorticity_kernel(zeta_):
     """Mini-factory: creates compute_target_vorticity_kernel capturing zeta_."""
 
@@ -592,17 +633,18 @@ def _create_gradient_kernels(kernel_functions):
                     sigma = 0.5 * (radii_i + core_radius[j])
                     r_sigma = r_mag / sigma
 
-                    if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        q_val = q_(r_sigma)
-                        zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
-                        r_cb = r_sq * r_mag  # r³ = r² · r
+                    # The regularized gradient has a nonzero algebraic far
+                    # field.  Do not replace it with a dimensionless cutoff;
+                    # this direct path must represent the same operator as
+                    # the error-controlled tree/FMM backends.
+                    q_val = q_(r_sigma)
+                    zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
+                    r_cb = r_sq * r_mag  # r³ = r² · r
 
-                        term1 = q_val / r_cb
-                        term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
+                    term1 = q_val / r_cb
+                    term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
 
-                        gradu += term1 * skew(str_j) + term2 * (
-                            (r_ij.cross(str_j)).outer_product(r_ij)
-                        )
+                    gradu += term1 * skew(str_j) + term2 * ((r_ij.cross(str_j)).outer_product(r_ij))
 
             velocity_gradient[i] = gradu
 
@@ -644,14 +686,11 @@ def _create_gradient_kernels(kernel_functions):
                     r_sigma = r_mag / sigma
                     q_val = q_(r_sigma)
                     vel += q_val * (r_ij.cross(str_j)) / (r_sq * r_mag)
-                    if r_sigma < DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
-                        r_cb = r_sq * r_mag
-                        term1 = q_val / r_cb
-                        term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
-                        gradu += term1 * skew(str_j) + term2 * (
-                            (r_ij.cross(str_j)).outer_product(r_ij)
-                        )
+                    zeta_val = zeta_(r_sigma) / (sigma * sigma * sigma)
+                    r_cb = r_sq * r_mag
+                    term1 = q_val / r_cb
+                    term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
+                    gradu += term1 * skew(str_j) + term2 * ((r_ij.cross(str_j)).outer_product(r_ij))
             velocity[i] = -vel + freestream_vec
             velocity_gradient[i] = gradu
             strain_rate[i] = 0.5 * (gradu + gradu.transpose())
@@ -842,6 +881,9 @@ def _create_target_eval_kernels(kernel_functions):
     return {
         "compute_target_velocity_kernel": _make_target_velocity_kernel(q_),
         "compute_target_source_velocity_kernel": _make_target_source_velocity_kernel(q_),
+        "compute_target_source_velocity_gradient_kernel": _make_target_source_velocity_gradient_kernel(
+            q_, zeta_
+        ),
         "compute_target_vorticity_kernel": _make_target_vorticity_kernel(zeta_),
         "compute_target_velocity_gradient_kernel": compute_target_velocity_gradient_kernel,
     }

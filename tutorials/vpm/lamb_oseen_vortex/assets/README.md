@@ -1,5 +1,38 @@
 # Lamb–Oseen vortex
 
+## Console output
+
+The campaign labels the start and completion of each physical case, method,
+RWM aggregation, and validation phase. A failure prints the active phase and
+preserves the command's exit status; later cases do not run.
+
+Each solver prints its method, backend, integrator, timestep, particle capacity,
+output schedule and log path once. Accepted-step progress shows the step count,
+flow time, elapsed time and current particle count at roughly 30-second
+intervals, checked at step boundaries. Scheduled diagnostics also count as
+progress updates. The final accepted step and run outcome remain visible.
+
+Energy, strength, impulse, enstrophy, helicity and centroids are printed only
+when the existing flow-integral sampler is due. Warnings are immediate. The
+full configuration remains in each case's `vpm.log`, while CSV and field-output
+schedules are unchanged. No extra physics evaluations are performed for the
+progress display.
+
+## Diffusion workspace
+
+The finite vortex columns diffuse along their axes as well as radially.
+`setup.py` reserves a cumulative heat-kernel margin of
+`3.6 * sqrt(4 * viscosity * TOTAL_TIME)` beyond the initial support when
+sizing the solver domain. DVH's per-transfer grid padding is additional
+workspace, not a substitute for that physical spread. The field-sampling
+window is configured separately.
+
+On GPU the diffusion grid is allocated once. DVH checks that every source's
+heat support fits, including sources regenerated into the padding halo;
+an insufficient allocation raises an error rather than truncating diffusion.
+Changing the duration, spacing or domain therefore requires checking repeated
+diffusion events, not only the first event.
+
 ## Post-processing the Random Walk Method
 
 The Random Walk Method (RWM) represents viscous diffusion by giving every

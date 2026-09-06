@@ -21,7 +21,6 @@ from .events import NullPhysicsEventObserver, PhysicsEventObserver
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 _DIRECT_INTEGRAL_PARTICLE_LIMIT = 10_000
-_FOURIER_WARMUP_PARTICLE_LIMIT = 7_500
 _FOURIER_GRID_EXTRA_CELLS = 8
 _FOURIER_GRID_MIN_SLACK = 4
 
@@ -75,6 +74,9 @@ class ParticleFieldEvaluation:
         # a tight grid at every output makes the same particle field acquire a
         # different energy solely because the FFT box moved or changed shape.
         self._fourier_grid = None
+        # Kept as a compatibility attribute for callers that inspected the
+        # former transition calibrator. Fourier diagnostics are raw spectral
+        # measurements; no persistent direct-energy offset is applied.
         self._fourier_energy_offset = 0.0
 
         # Define Taichi kernels
@@ -204,6 +206,8 @@ class ParticleFieldEvaluation:
 
         # Get angular impulse correction constant from kernel
         angular_correction_func = kernel_dict["angular_impulse_correction_constant_"]
+        use_physical_gaussian_energy = self.particle_kernel == "GAUSSIAN"
+        gaussian_tensor_origin = 1.0 / (np.pi**1.5)
 
         @ti.kernel
         def compute_flow_integrals_kernel(
@@ -334,13 +338,108 @@ class ParticleFieldEvaluation:
                         r_sigma_e = r_mag / sigma_e
                         zeta_val = zeta_(r_sigma_e) / sigma_e**3
                         g_val = g_(r_sigma_e) / sigma_e
+                        q_val = q_(r_sigma_e)
 
                         # Accumulate pairwise contributions (explicit cast avoids
                         # implicit f32↔f64 promotion warnings from Taichi JIT)
                         _acc = self.accumulator_dtype
-                        local_energy += ti.cast(g_val * str_j.dot(str_i) * 0.5, _acc)
+                        if ti.static(use_physical_gaussian_energy):
+                            # For Gaussian blobs, kinetic energy is the norm of
+                            # the induced velocity, not the scalar inverse-
+                            # Laplacian form 1/2*omega·psi. The latter also
+                            # counts the longitudinal part of an individual
+                            # nonsolenoidal blob and is 50% too large for one
+                            # isolated particle. This is the exact Gaussian
+                            # transverse Green tensor convolution.
+                            rho_sq = r_sigma_e * r_sigma_e
+                            tensor_isotropic = gaussian_tensor_origin / (3.0 * sigma_e)
+                            tensor_radial = ti.cast(0.0, _acc)
+                            if r_sigma_e < 0.5:
+                                tensor_isotropic = (
+                                    gaussian_tensor_origin
+                                    / sigma_e
+                                    * (
+                                        1.0 / 3.0
+                                        + rho_sq
+                                        * (
+                                            -2.0 / 15.0
+                                            + rho_sq
+                                            * (
+                                                3.0 / 70.0
+                                                + rho_sq
+                                                * (
+                                                    -2.0 / 189.0
+                                                    + rho_sq
+                                                    * (
+                                                        5.0 / 2376.0
+                                                        + rho_sq
+                                                        * (
+                                                            -1.0 / 2860.0
+                                                            + rho_sq
+                                                            * (
+                                                                7.0 / 140400.0
+                                                                - 4307.0 / 691891200.0 * rho_sq
+                                                            )
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                                tensor_radial = (
+                                    gaussian_tensor_origin
+                                    / (sigma_e**3)
+                                    * (
+                                        1.0 / 15.0
+                                        + rho_sq
+                                        * (
+                                            -1.0 / 35.0
+                                            + rho_sq
+                                            * (
+                                                1.0 / 126.0
+                                                + rho_sq
+                                                * (
+                                                    -1.0 / 594.0
+                                                    + rho_sq
+                                                    * (
+                                                        1.0 / 3432.0
+                                                        + rho_sq
+                                                        * (
+                                                            -1.0 / 23400.0
+                                                            + 3769.0 / 691891200.0 * rho_sq
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            else:
+                                g_dimensionless = g_val * sigma_e
+                                zeta_dimensionless = zeta_val * sigma_e**3
+                                tensor_aux = (2.0 * rho_sq - 1.0) * g_dimensionless
+                                tensor_aux += 0.5 * zeta_dimensionless
+                                tensor_aux /= 4.0 * rho_sq
+                                tensor_isotropic = (g_dimensionless - tensor_aux) / sigma_e
+                                tensor_radial = (
+                                    -g_dimensionless / rho_sq + 3.0 * tensor_aux / rho_sq
+                                ) / (sigma_e * sigma_e * sigma_e)
+                            dot_ij = str_i.dot(str_j)
+                            radial_i = str_i.dot(r_ij)
+                            radial_j = str_j.dot(r_ij)
+                            local_energy += ti.cast(
+                                0.5
+                                * (tensor_isotropic * dot_ij + tensor_radial * radial_i * radial_j),
+                                _acc,
+                            )
+                        else:
+                            # Non-Gaussian kernels do not expose an exact
+                            # transverse pair convolution; retain their
+                            # historical regularized potential diagnostic
+                            # instead of applying the Gaussian identity.
+                            local_energy += ti.cast(g_val * str_j.dot(str_i) * 0.5, _acc)
                         if r_mag > EPSILON:
-                            q_val = q_(r_sigma_e)
                             local_helicity += ti.cast(
                                 q_val * r_ij.dot(str_i.cross(str_j)) / r_mag**3,
                                 _acc,
@@ -363,7 +462,88 @@ class ParticleFieldEvaluation:
                         local_enstrophy_test += ti.cast(zeta_test * str_i.dot(str_j), _acc)
                         pair_nu = ti.cast(0.5 * (viscosities_eff[i] + viscosities_eff[j]), _acc)
                         local_enstrophy += pair_enstrophy
-                        local_dissipation -= pair_nu * pair_enstrophy
+                        if ti.static(use_physical_gaussian_energy):
+                            # Viscous kinetic-energy loss uses the projected
+                            # vorticity norm |P omega|², not the norm of the
+                            # nonsolenoidal blob field itself. This is the
+                            # Gaussian pair convolution of P = I - kk/k² and
+                            # remains consistent with the transverse energy
+                            # tensor above.
+                            rho_sq = r_sigma_e * r_sigma_e
+                            diss_isotropic = gaussian_tensor_origin / (sigma_e**3) * (2.0 / 3.0)
+                            diss_radial = ti.cast(0.0, _acc)
+                            if r_sigma_e < 0.5:
+                                diss_isotropic = (
+                                    gaussian_tensor_origin
+                                    / (sigma_e**3)
+                                    * (
+                                        2.0 / 3.0
+                                        + rho_sq
+                                        * (
+                                            -4.0 / 5.0
+                                            + rho_sq
+                                            * (
+                                                3.0 / 7.0
+                                                + rho_sq
+                                                * (
+                                                    -4.0 / 27.0
+                                                    + rho_sq
+                                                    * (
+                                                        5.0 / 132.0
+                                                        + rho_sq
+                                                        * (
+                                                            -1.0 / 130.0
+                                                            + rho_sq
+                                                            * (7.0 / 5400.0 - 1.0 / 5355.0 * rho_sq)
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                                diss_radial = (
+                                    gaussian_tensor_origin
+                                    / (sigma_e**5)
+                                    * (
+                                        2.0 / 5.0
+                                        + rho_sq
+                                        * (
+                                            -2.0 / 7.0
+                                            + rho_sq
+                                            * (
+                                                1.0 / 9.0
+                                                + rho_sq
+                                                * (
+                                                    -1.0 / 33.0
+                                                    + rho_sq
+                                                    * (
+                                                        1.0 / 156.0
+                                                        + rho_sq
+                                                        * (-1.0 / 900.0 + 1.0 / 6120.0 * rho_sq)
+                                                    )
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            else:
+                                zeta_dimensionless = zeta_val * sigma_e**3
+                                diss_isotropic = (
+                                    zeta_dimensionless - q_val / rho_sq / r_sigma_e
+                                ) / (sigma_e**3)
+                                diss_radial = (
+                                    -zeta_dimensionless + 3.0 * q_val / (rho_sq * r_sigma_e)
+                                ) / (sigma_e**5 * rho_sq)
+                            radial_i = str_i.dot(r_ij)
+                            radial_j = str_j.dot(r_ij)
+                            projected_enstrophy = (
+                                diss_isotropic * str_i.dot(str_j)
+                                + diss_radial * radial_i * radial_j
+                            )
+                            local_dissipation -= pair_nu * projected_enstrophy
+                        else:
+                            local_dissipation -= pair_nu * pair_enstrophy
 
                 # Atomic accumulation of local sums
                 ti.atomic_add(results[None].total_kinetic_energy, local_energy)
@@ -375,8 +555,11 @@ class ParticleFieldEvaluation:
         # Store kernel as instance method
         self.compute_flow_integrals_kernel = compute_flow_integrals_kernel
 
-    def _define_kinetic_energy_kernel(self, g_):
+    def _define_kinetic_energy_kernel(self, g_, zeta_):
         """Define and store the kinetic energy kernel using the provided g_sigma function."""
+
+        use_physical_gaussian_energy = self.particle_kernel == "GAUSSIAN"
+        gaussian_tensor_origin = 1.0 / (np.pi**1.5)
 
         @ti.kernel
         def compute_particles_kinetic_energy_kernel(
@@ -405,8 +588,92 @@ class ParticleFieldEvaluation:
                     if r_sigma <= DEFAULT_CUTOFF_RADIUS_FACTOR:
                         # Convolved pair width — see compute_flow_integrals_kernel.
                         sigma_e = ti.sqrt(core_radius[i] * core_radius[i] + radii_j * radii_j)
-                        g_val = g_(r_mag / sigma_e) / sigma_e
-                        energy_sum += g_val * str_j.dot(str_i) * 0.5
+                        r_sigma_e = r_mag / sigma_e
+                        g_val = g_(r_sigma_e) / sigma_e
+                        if ti.static(use_physical_gaussian_energy):
+                            rho_sq = r_sigma_e * r_sigma_e
+                            tensor_isotropic = gaussian_tensor_origin / (3.0 * sigma_e)
+                            tensor_radial = 0.0
+                            if r_sigma_e < 0.5:
+                                tensor_isotropic = (
+                                    gaussian_tensor_origin
+                                    / sigma_e
+                                    * (
+                                        1.0 / 3.0
+                                        + rho_sq
+                                        * (
+                                            -2.0 / 15.0
+                                            + rho_sq
+                                            * (
+                                                3.0 / 70.0
+                                                + rho_sq
+                                                * (
+                                                    -2.0 / 189.0
+                                                    + rho_sq
+                                                    * (
+                                                        5.0 / 2376.0
+                                                        + rho_sq
+                                                        * (
+                                                            -1.0 / 2860.0
+                                                            + rho_sq
+                                                            * (
+                                                                7.0 / 140400.0
+                                                                - 4307.0 / 691891200.0 * rho_sq
+                                                            )
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                                tensor_radial = (
+                                    gaussian_tensor_origin
+                                    / (sigma_e**3)
+                                    * (
+                                        1.0 / 15.0
+                                        + rho_sq
+                                        * (
+                                            -1.0 / 35.0
+                                            + rho_sq
+                                            * (
+                                                1.0 / 126.0
+                                                + rho_sq
+                                                * (
+                                                    -1.0 / 594.0
+                                                    + rho_sq
+                                                    * (
+                                                        1.0 / 3432.0
+                                                        + rho_sq
+                                                        * (
+                                                            -1.0 / 23400.0
+                                                            + 3769.0 / 691891200.0 * rho_sq
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            else:
+                                zeta_val = zeta_(r_sigma_e) / sigma_e**3
+                                g_dimensionless = g_val * sigma_e
+                                zeta_dimensionless = zeta_val * sigma_e**3
+                                tensor_aux = (2.0 * rho_sq - 1.0) * g_dimensionless
+                                tensor_aux += 0.5 * zeta_dimensionless
+                                tensor_aux /= 4.0 * rho_sq
+                                tensor_isotropic = (g_dimensionless - tensor_aux) / sigma_e
+                                tensor_radial = (
+                                    -g_dimensionless / rho_sq + 3.0 * tensor_aux / rho_sq
+                                ) / (sigma_e * sigma_e * sigma_e)
+                            radial_i = str_i.dot(r_ij)
+                            radial_j = str_j.dot(r_ij)
+                            energy_sum += 0.5 * (
+                                tensor_isotropic * str_j.dot(str_i)
+                                + tensor_radial * radial_i * radial_j
+                            )
+                        else:
+                            energy_sum += g_val * str_j.dot(str_i) * 0.5
 
                 particle_kinetic_energy[i] = energy_sum
 
@@ -517,7 +784,9 @@ class ParticleFieldEvaluation:
 
     def _define_per_particle_kernels(self, kernel_functions):
         """Define kernels for computing per-particle diagnostics."""
-        self._define_kinetic_energy_kernel(kernel_functions["g_sigma"])
+        self._define_kinetic_energy_kernel(
+            kernel_functions["g_sigma"], kernel_functions["zeta_sigma"]
+        )
         self._define_helicity_kernel(kernel_functions["q_sigma"])
         self._define_enstrophy_kernel(kernel_functions["zeta_sigma"])
         self._define_vorticity_reconstruction_kernel(kernel_functions["zeta_sigma"])
@@ -723,16 +992,6 @@ class ParticleFieldEvaluation:
         if record_history:
             self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
 
-        # Prime the scalable energy definition before the direct O(N^2)
-        # crossover.  Calibrating both definitions on the same particle state
-        # makes the first Fourier sample continuous with the direct history.
-        if (
-            record_history
-            and self.particle_kernel == "GAUSSIAN"
-            and N >= _FOURIER_WARMUP_PARTICLE_LIMIT
-        ):
-            self._prime_fourier_energy_tracker(particles, total_kinetic_energy)
-
         # Compute kinetic energy dissipation rate using finite differences
         dE_dt = self._compute_energy_dissipation_rate()
 
@@ -764,41 +1023,56 @@ class ParticleFieldEvaluation:
         particle_volume = particles.particle_volume_cpu().astype(np.float64)
         effective_viscosity = particles.effective_viscosity_cpu().astype(np.float64)
         saved_grid = self._fourier_grid
-        saved_offset = self._fourier_energy_offset
-        spectral, continuity_preserved = self._fourier_integrals_on_persistent_grid(
-            position,
-            vortex_strength,
-            core_radius,
-            particle_volume,
-            effective_viscosity,
+        spectral, continuity_preserved, transition_spectral = (
+            self._fourier_integrals_on_persistent_grid(
+                position,
+                vortex_strength,
+                core_radius,
+                particle_volume,
+                effective_viscosity,
+            )
         )
-        evaluated_offset = self._fourier_energy_offset
         if not record_history:
             # Trial diagnostics used by regularisation must not alter the
             # accepted time-history definition.
             self._fourier_grid = saved_grid
-            self._fourier_energy_offset = saved_offset
         if spectral.viscous_kinetic_energy_rate is None:
             raise RuntimeError("Fourier flow diagnostics did not compute viscous dissipation")
 
-        rate_source = "fourier_energy_backward_difference"
-        if record_history and not continuity_preserved and self._energy_history:
-            # This is only needed if a cloud grows farther between output
-            # samples than the reserved grid margin.  Anchor the new energy
-            # definition with the physical viscous rate for that one interval;
-            # subsequent samples again use measured backward differences.
-            previous_time, previous_energy, _ = self._energy_history[-1]
-            interval = time - previous_time
-            if interval > 0.0:
-                target_energy = previous_energy + spectral.viscous_kinetic_energy_rate * interval
-                self._fourier_energy_offset = target_energy - spectral.total_kinetic_energy
-                evaluated_offset = self._fourier_energy_offset
-                rate_source = "fourier_transition_viscous_rate"
-
-        total_kinetic_energy = spectral.total_kinetic_energy + evaluated_offset
+        total_kinetic_energy = spectral.total_kinetic_energy
         if record_history:
-            self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
-        dE_dt = self._compute_energy_dissipation_rate()
+            if continuity_preserved:
+                self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
+                dE_dt = self._compute_energy_dissipation_rate()
+                rate_source = "fourier_energy_backward_difference"
+            else:
+                # On grid growth, ``transition_spectral`` is the present cloud
+                # evaluated on the old lattice. Compare it with the preceding
+                # old-lattice sample, then seed history with the raw new-grid
+                # energy so the following interval is continuous again.
+                bridged_rate = (
+                    self._energy_rate_to(time, transition_spectral.total_kinetic_energy)
+                    if transition_spectral is not None
+                    else None
+                )
+                if bridged_rate is None or not np.isfinite(bridged_rate):
+                    # The first direct-to-Fourier switch has no spectral
+                    # predecessor. The Fourier enstrophy integral provides a
+                    # finite, physically defined transition estimate; its
+                    # The source label remains explicit in the CSV.
+                    dE_dt = float(spectral.viscous_kinetic_energy_rate)
+                    rate_source = "fourier_transition_viscous_rate"
+                else:
+                    dE_dt = bridged_rate
+                    rate_source = "fourier_grid_transition_backward_difference"
+                self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
+        else:
+            # Trial diagnostics must not alter either accepted history or the
+            # persistent grid. Return the latest accepted derivative.
+            dE_dt = self._compute_energy_dissipation_rate()
+            rate_source = "accepted_history_unchanged"
+        if not np.isfinite(dE_dt):
+            raise RuntimeError("Fourier flow diagnostics produced a non-finite kinetic-energy rate")
         total = vortex_strength.sum(axis=0, dtype=np.float64)
         impulse = 0.5 * np.cross(position, vortex_strength).sum(axis=0, dtype=np.float64)
         angular = np.cross(position, np.cross(position, vortex_strength)).sum(
@@ -812,27 +1086,12 @@ class ParticleFieldEvaluation:
             "viscous_kinetic_energy_rate": spectral.viscous_kinetic_energy_rate,
             "kinetic_energy_rate": dE_dt,
             "kinetic_energy_rate_source": rate_source,
+            "energy_measurement": "unbounded_energy",
             "vortex_strength_magnitude_sum": float(np.linalg.norm(vortex_strength, axis=1).sum()),
             "net_vortex_strength": total,
             "linear_impulse": impulse,
             "angular_impulse": angular,
         }
-
-    def _prime_fourier_energy_tracker(self, particles, direct_energy: float) -> None:
-        """Align the scalable energy definition with a simultaneous direct value."""
-        position = particles.position_cpu().astype(np.float64)
-        vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
-        core_radius = particles.core_radius_cpu().astype(np.float64)
-        particle_volume = particles.particle_volume_cpu().astype(np.float64)
-        effective_viscosity = particles.effective_viscosity_cpu().astype(np.float64)
-        spectral, _ = self._fourier_integrals_on_persistent_grid(
-            position,
-            vortex_strength,
-            core_radius,
-            particle_volume,
-            effective_viscosity,
-        )
-        self._fourier_energy_offset = direct_energy - spectral.total_kinetic_energy
 
     @staticmethod
     def _fit_fourier_grid(position, spacing: float, shape=None, vortex_strength=None):
@@ -892,7 +1151,7 @@ class ParticleFieldEvaluation:
                 effective_viscosity=effective_viscosity,
                 grid=self._fourier_grid,
             )
-            return spectral, False
+            return spectral, False, None
 
         old_grid = self._fourier_grid
         required = _grid_for_particles(position, old_grid.spacing)
@@ -923,7 +1182,7 @@ class ParticleFieldEvaluation:
                 grid=old_grid,
             )
             if not needs_growth:
-                return old_spectral, True
+                return old_spectral, True, None
 
         grown_shape = np.maximum(
             required_shape + _FOURIER_GRID_EXTRA_CELLS,
@@ -945,11 +1204,12 @@ class ParticleFieldEvaluation:
         )
         self._fourier_grid = new_grid
         if old_spectral is None:
-            return new_spectral, False
+            return new_spectral, False, None
 
-        corrected_old_energy = old_spectral.total_kinetic_energy + self._fourier_energy_offset
-        self._fourier_energy_offset = corrected_old_energy - new_spectral.total_kinetic_energy
-        return new_spectral, True
+        # A resized lattice has a different quadrature error. Return the
+        # simultaneous old-grid measurement as a one-interval derivative
+        # bridge; the reported energy itself remains the raw new-grid value.
+        return new_spectral, False, old_spectral
 
     def compute_particles_kinetic_energy(self, particles) -> np.ndarray:
         """
@@ -1145,6 +1405,16 @@ class ParticleFieldEvaluation:
         if interval <= 0.0:
             return 0.0
         return float((current_energy - previous_energy) / interval)
+
+    def _energy_rate_to(self, time: float, energy: float) -> float | None:
+        """Compare ``energy`` with the latest compatible accepted sample."""
+        if not self._energy_history:
+            return None
+        previous_time, previous_energy, previous_measurement = self._energy_history[-1]
+        interval = time - previous_time
+        if previous_measurement != "unbounded_energy" or interval <= 0.0:
+            return None
+        return float((energy - previous_energy) / interval)
 
     def _get_zero_results(self) -> dict:
         """Return dictionary of zero values for empty particle system."""

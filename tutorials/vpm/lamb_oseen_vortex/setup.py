@@ -1,20 +1,11 @@
 #!/usr/bin/env python3
-"""Lamb--Oseen vortex benchmark: single vortex, vortex dipole, and merging pair.
+"""Run a Lamb--Oseen vortex, dipole, or merging pair.
 
-The Lamb--Oseen vortex is an exact solution of the two-dimensional
-Navier--Stokes equations for an isolated vortex, so the computed flow can be
-compared directly with the analytic profile.  This script runs the chosen
-benchmark case (single vortex, vortex dipole, or merging vortex pair) with the
-chosen diffusion scheme and stores the snapshots under ``solution`` while the
-sampled z=L/4 velocity/vorticity fields and flow integrals are written under
-``samples``.
+Examples::
 
-The user-facing entry point accepts the physical case, viscous scheme, and an
-optional induction method::
-
-    python -m tutorials.vpm.lamb_oseen_vortex.setup vortex CS DIRECT
-    python -m tutorials.vpm.lamb_oseen_vortex.setup dipole DVH TREECODE
-    python -m tutorials.vpm.lamb_oseen_vortex.setup merging GBD TREECODE
+    python -m tutorials.vpm.lamb_oseen_vortex.setup vortex CS
+    python -m tutorials.vpm.lamb_oseen_vortex.setup dipole DVH
+    python -m tutorials.vpm.lamb_oseen_vortex.setup merging GBD
 """
 
 from __future__ import annotations
@@ -39,9 +30,9 @@ SEPARATION = 1.0  # distance between the two vortex centres [m]
 COLUMN_LENGTH = 40.0 * CORE_RADIUS  # finite vortex column length along z [m]
 
 # ---- Numerical setup shared by every viscous scheme ----------------------
-SPACING = 0.45 * CORE_RADIUS  # particle spacing in every direction (controls resolution)
+SPACING = 0.60 * CORE_RADIUS  # 2k--4k initial particles
 CORE_RADIUS_RATIO = 1.2  # DVH/GBD core radius ratio for regeneration
-PARTICLE_RADIUS = CORE_RADIUS_RATIO * SPACING  # vortex particle core radius (1.5× spacing)
+PARTICLE_RADIUS = CORE_RADIUS_RATIO * SPACING  # vortex particle core radius (1.2× spacing)
 FIELD_SPACING = 0.15 * CORE_RADIUS  # sampling field resolution for surface output
 TIME_STEP_SIZE = 0.291 / 9.0  # Δt [s]
 TOTAL_TIME = 103.0 * 0.291  # total simulation time [s]
@@ -52,7 +43,15 @@ INITIAL_STRENGTH_CUTOFF = 1e-4  # discard particles with Γ < x% of peak
 MAX_PARTICLES = 400_000  # particle-container capacity (largest DVH/GBD population)
 
 VISCOUS_SCHEMES = ("CS", "DVH", "GBD")
-INDUCTION_METHODS = ("DIRECT", "TREECODE", "FMM")
+ALL_VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
+RWM_ENSEMBLE_SIZE = 10
+
+COMPUTE_METHOD = {
+    "CS": "DIRECT",
+    "RWM": "DIRECT",
+    "DVH": "TREECODE",
+    "GBD": "TREECODE",
+}
 
 # ---- Physical case definitions -------------------------------------------
 PHYSICS_CIRCULATIONS = {
@@ -63,6 +62,7 @@ PHYSICS_CIRCULATIONS = {
 
 
 def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> vpm.ViscousConfig:
+    scheme = scheme.upper()
     if scheme == "CS":
         return vpm.ViscousConfig.cs(
             kinematic_viscosity=kinematic_viscosity,
@@ -84,27 +84,70 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             max_nodes=MAX_PARTICLES,
             core_radius_ratio=CORE_RADIUS_RATIO,
         )
-    return vpm.ViscousConfig.gbd(
-        particle_spacing=spacing,
-        padding=5,
-        kinematic_viscosity=kinematic_viscosity,
-        threshold=1e-4,
-        threshold_mode="budget",
-        max_nodes=MAX_PARTICLES,
-        core_radius_ratio=CORE_RADIUS_RATIO,
+    if scheme == "GBD":
+        return vpm.ViscousConfig.gbd(
+            particle_spacing=spacing,
+            padding=5,
+            kinematic_viscosity=kinematic_viscosity,
+            threshold=1e-4,
+            threshold_mode="budget",
+            max_nodes=MAX_PARTICLES,
+            core_radius_ratio=CORE_RADIUS_RATIO,
+        )
+    raise ValueError(f"Unknown viscous scheme {scheme!r}; expected one of {ALL_VISCOUS_SCHEMES}")
+
+
+def induction_config(scheme: str):
+    methods = {
+        "DIRECT": vpm.DirectInduction,
+        "TREECODE": vpm.TreecodeInduction,
+        "FMM": vpm.FMMInduction,
+    }
+    return methods[COMPUTE_METHOD[scheme.upper()]]()
+
+
+def _initial_conditions(physics: str, kinematic_viscosity: float):
+    """Build the shared initial-condition descriptions and their geometry."""
+    circulations = PHYSICS_CIRCULATIONS[physics]
+    y_positions = (0.0,) if physics == "vortex" else (SEPARATION / 2, -SEPARATION / 2)
+    initial_half_width = max(abs(y) for y in y_positions) + 7.0 * CORE_RADIUS
+    column_half_length = COLUMN_LENGTH / 2.0
+    initial_bounds = [
+        -initial_half_width,
+        initial_half_width,
+        -initial_half_width,
+        initial_half_width,
+        -column_half_length,
+        column_half_length,
+    ]
+    distribution = vpm.TriangularPrismDistribution(
+        bounds=(
+            (initial_bounds[0], initial_bounds[1]),
+            (initial_bounds[2], initial_bounds[3]),
+            (initial_bounds[4], initial_bounds[5]),
+        ),
+        spacing=SPACING,
+        core_radius_ratio=PARTICLE_RADIUS / SPACING,
     )
-
-
-def induction_config(method: str):
-    """Construct the explicitly selected particle-induction backend."""
-    method = method.upper()
-    if method == "DIRECT":
-        return vpm.DirectInduction()
-    if method == "TREECODE":
-        return vpm.TreecodeInduction()
-    if method == "FMM":
-        return vpm.FMMInduction()
-    raise ValueError(f"Unknown induction method {method!r}; expected one of {INDUCTION_METHODS}")
+    conditions = tuple(
+        vpm.VortexFilament(
+            kinematic_viscosity=kinematic_viscosity,
+            centre=(0.0, y_position, 0.0),
+            direction=(0.0, 0.0, 1.0),
+            circulation=circulation,
+            vortex_core_radius=GAUSSIAN_CORE_RADIUS,
+            distribution=distribution,
+            group_id=group_id,
+            core_compensation=vpm.ParticleCoreCompensation(),
+            tail_minimum_relative_strength=INITIAL_STRENGTH_CUTOFF,
+            tail_circulation_per_length=circulation,
+            tail_represented_length=COLUMN_LENGTH,
+        )
+        for group_id, (circulation, y_position) in enumerate(
+            zip(circulations, y_positions, strict=True)
+        )
+    )
+    return conditions, circulations, y_positions, initial_half_width, column_half_length
 
 
 def write_run_metadata(
@@ -119,13 +162,12 @@ def write_run_metadata(
     field_spacing: float,
     n_steps: int,
     random_seed: int,
+    initial_n_particles_total: int,
     solver,
 ) -> None:
-    """
-    This is for post-processing
-    """
+    """Write the information used by the plotting scripts."""
     metadata = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "complete",
         "completed": True,
         "case": physics,
@@ -150,8 +192,10 @@ def write_run_metadata(
         "total_time": float(TOTAL_TIME),
         "end_time": float(TOTAL_TIME),
         "number_of_steps": int(n_steps),
-        "integrator": "SSPRK3",
-        "induction_backend": type(solver.induction).__name__,
+        "integrator": solver.integrator_tableau.name,
+        "integrator_order": int(solver.integrator_tableau.order),
+        "integrator_stages": int(solver.integrator_tableau.stages),
+        "induction_backend": solver.induction.method,
         "strength_rate_formulation": solver.induction.strength_rate_mode,
         "particle_kernel": "GAUSSIAN",
         "diffusion_scheme": scheme,
@@ -160,7 +204,8 @@ def write_run_metadata(
         "write_precision": "f32",
         "random_seed": int(random_seed),
         "final_time": float(solver.time),
-        "initial_n_particles_total": int(getattr(solver.particles, "n_particles_total", 0)),
+        "initial_n_particles_total": int(initial_n_particles_total),
+        "final_n_particles_total": int(getattr(solver.particles, "n_particles_total", 0)),
     }
     destination = TUTORIAL_DIR / "samples" / sample_directory / "run_metadata.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -178,21 +223,14 @@ def run_case(
     surfaces: bool = True,
     backup_steps: int | None = None,
     compute_device: str = "AUTO",
-    induction_method: str | None = None,
 ) -> None:
     scheme = scheme.upper()
-    induction_method = (
-        ("DIRECT" if scheme in {"CS", "RWM"} else "TREECODE")
-        if induction_method is None
-        else induction_method.upper()
-    )
     case_name = name or f"{physics}_{scheme.lower()}"
-    circulations = PHYSICS_CIRCULATIONS[physics]
-
     # ---- Derived physical quantities ----
     spacing = SPACING
-    particle_core_radius = 1.5 * spacing
+    particle_core_radius = PARTICLE_RADIUS
     field_spacing = FIELD_SPACING
+    circulations = PHYSICS_CIRCULATIONS[physics]
     circulation = abs(circulations[0])
     kinematic_viscosity = circulation / CIRCULATION_REYNOLDS_NUMBER  # ν = |Γ|/Re_Γ
     viscous = viscous_config(scheme, kinematic_viscosity, spacing)
@@ -204,9 +242,14 @@ def run_case(
     field_interval_steps = MERGING_SAMPLE_INTERVAL_STEPS if physics == "merging" else sample_steps
 
     # ---- Initial vortex geometry ----
-    y_positions = (0.0,) if physics == "vortex" else (SEPARATION / 2, -SEPARATION / 2)
-    initial_half_width = max(abs(y) for y in y_positions) + 7.0 * CORE_RADIUS
-    column_half_length = COLUMN_LENGTH / 2.0
+    (
+        initial_conditions,
+        circulations,
+        y_positions,
+        initial_half_width,
+        column_half_length,
+    ) = _initial_conditions(physics, kinematic_viscosity)
+    initial_n_particles_total = sum(len(condition.build()) for condition in initial_conditions)
 
     # ---- Domain sizing (must contain vortex at t=end_time) ----
     final_core_radius = BETA_RMAX * np.sqrt(
@@ -218,13 +261,19 @@ def run_case(
     lateral_half_width = (
         initial_half_width if physics == "vortex" else max(abs(y) for y in y_positions) + padding
     )
+    # The finite column diffuses axially as well as radially. Reserve the
+    # cumulative heat-kernel envelope over the full run, using the same 3.6
+    # support factor as DVH. Per-event grid padding is additional workspace;
+    # it must not be the only space available for physical diffusion.
+    diffusion_padding = 3.6 * np.sqrt(4.0 * kinematic_viscosity * TOTAL_TIME)
+    lateral_half_width = max(lateral_half_width, initial_half_width + diffusion_padding)
     field_padding = 0.0 if physics == "vortex" else 3.0 * final_core_radius
     field_lateral_half_width = (
         initial_half_width
         if physics == "vortex"
         else max(abs(y) for y in y_positions) + field_padding
     )
-    axial_half_length = column_half_length + padding
+    axial_half_length = column_half_length + max(padding, diffusion_padding)
     downstream_length = (
         8.0 * SEPARATION if physics == "dipole" else 0.0
     )  # dipole advects downstream
@@ -243,25 +292,7 @@ def run_case(
         -field_lateral_half_width,
         field_lateral_half_width,
     ]
-    initial_bounds = [
-        -initial_half_width,
-        initial_half_width,
-        -initial_half_width,
-        initial_half_width,
-        -column_half_length,
-        column_half_length,
-    ]
-    # ---- Particle distribution and field sampler ----
-    distribution = vpm.TriangularPrismDistribution(
-        bounds=(
-            (initial_bounds[0], initial_bounds[1]),
-            (initial_bounds[2], initial_bounds[3]),
-            (initial_bounds[4], initial_bounds[5]),
-        ),
-        spacing=spacing,
-        core_radius_ratio=particle_core_radius / spacing,
-    )
-
+    # ---- Field samplers ---------------------------------------------------
     sample_plane_fraction = 0.25  # sample at z = L/4
     samplers = [vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(field_interval_steps))]
     if surfaces:
@@ -280,30 +311,14 @@ def run_case(
     sample_directory = case_name
     solution_directory = Path("solution") / case_name
 
-    initial_conditions = tuple(
-        vpm.VortexFilament(
-            kinematic_viscosity=kinematic_viscosity,
-            centre=(0.0, y_position, 0.0),
-            direction=(0.0, 0.0, 1.0),
-            circulation=circ,
-            vortex_core_radius=GAUSSIAN_CORE_RADIUS,
-            distribution=distribution,
-            group_id=group_id,
-            core_compensation=vpm.ParticleCoreCompensation(),
-            tail_minimum_relative_strength=INITIAL_STRENGTH_CUTOFF,
-            tail_circulation_per_length=circ,
-            tail_represented_length=COLUMN_LENGTH,
-        )
-        for group_id, (circ, y_position) in enumerate(zip(circulations, y_positions, strict=True))
-    )
     n_steps = round(TOTAL_TIME / TIME_STEP_SIZE)
 
     case = vpm.VPMCase(
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             viscous=viscous,
-            integrator=vpm.SSPRK3(),
-            induction=induction_config(induction_method),
+            integrator=vpm.RK2(),
+            induction=induction_config(scheme),
             particle_kernel="GAUSSIAN",
             write_precision="f32",
             precision="f32",
@@ -337,6 +352,7 @@ def run_case(
         field_spacing=field_spacing,
         n_steps=n_steps,
         random_seed=random_seed,
+        initial_n_particles_total=initial_n_particles_total,
         solver=solver,
     )
 
@@ -345,13 +361,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case", choices=tuple(PHYSICS_CIRCULATIONS))
     parser.add_argument("viscous_scheme", choices=VISCOUS_SCHEMES)
-    parser.add_argument("induction_method", nargs="?", choices=INDUCTION_METHODS)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    run_case(args.case, args.viscous_scheme, induction_method=args.induction_method)
+    run_case(args.case, args.viscous_scheme)
     return 0
 
 

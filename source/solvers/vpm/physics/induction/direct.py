@@ -29,6 +29,7 @@ class DirectInduction:
     supports_f64 = True
     device_resident = True
     strength_rate_mode = "PAIRWISE_TRANSPOSED"
+    supports_target_fields = True
 
     def __init__(self) -> None:
         self.method = "DIRECT"
@@ -123,6 +124,45 @@ class DirectInduction:
                 velocity_gradient_out,
                 self._strain_rate,
                 count,
+            )
+
+    def evaluate_targets(
+        self,
+        *,
+        target_position,
+        source_position,
+        source_vortex_strength,
+        source_core_radius,
+        target_velocity,
+        target_velocity_gradient,
+        target_count: int,
+        source_count: int,
+        include_freestream: bool,
+        background_velocity,
+    ) -> None:
+        """Evaluate arbitrary targets through the direct backend contract."""
+        if self.physics is None:
+            raise RuntimeError("DirectInduction must be bound before target evaluation")
+        if target_velocity is not None:
+            self.physics.compute_target_velocity_kernel(
+                target_position,
+                source_position,
+                source_vortex_strength,
+                source_core_radius,
+                target_velocity,
+                background_velocity if include_freestream else self.physics._zero_velocity,
+                int(target_count),
+                int(source_count),
+            )
+        if target_velocity_gradient is not None:
+            self.physics.compute_target_velocity_gradient_kernel(
+                target_position,
+                source_position,
+                source_vortex_strength,
+                source_core_radius,
+                target_velocity_gradient,
+                int(target_count),
+                int(source_count),
             )
 
 

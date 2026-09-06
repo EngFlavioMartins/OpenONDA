@@ -124,6 +124,7 @@ class TaichiTreecode:
         self.node_net_vortex_strength = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_com = ti.Vector.field(3, dtype=ti.f32, shape=max_nodes)
         self.node_avg_radius = ti.field(dtype=ti.f32, shape=max_nodes)
+        self.node_min_radius = ti.field(dtype=ti.f32, shape=max_nodes)
         self.node_max_radius = ti.field(dtype=ti.f32, shape=max_nodes)
         # Higher-order moments are sized by the requested order: at the default
         # order 1 they would otherwise cost 36 + 108 bytes/node (144 MB at 1e6
@@ -795,6 +796,7 @@ class TaichiTreecode:
                 self.node_centre[0] = self.position[0]
                 self.node_half_size[0] = 0.0
                 self.node_avg_radius[0] = self.core_radius[0]
+                self.node_min_radius[0] = self.core_radius[0]
                 self.node_max_radius[0] = self.core_radius[0]
                 self.node_left[0] = -1
                 self.node_right[0] = -1
@@ -922,6 +924,7 @@ class TaichiTreecode:
             p = self.sorted_indices[j]
             self.node_net_vortex_strength[j] = self.vortex_strength[p]
             self.node_avg_radius[j] = self.core_radius[p]
+            self.node_min_radius[j] = self.core_radius[p]
             self.node_max_radius[j] = self.core_radius[p]
             self.node_com[j] = self.position[p]
             if self.multipole_order[None] >= 2:
@@ -1048,6 +1051,9 @@ class TaichiTreecode:
                 self.node_avg_radius[left] * count_l + self.node_avg_radius[right] * count_r
             ) / total_count
             self.node_avg_radius[idx] = average_core_radius
+            self.node_min_radius[idx] = ti.min(
+                self.node_min_radius[left], self.node_min_radius[right]
+            )
             self.node_max_radius[idx] = ti.max(
                 self.node_max_radius[left], self.node_max_radius[right]
             )
@@ -1384,7 +1390,6 @@ class TaichiTreecode:
         target_pos: ti.template(),
         target_rad: ti.f32,
         self_idx: int,
-        max_r_sigma: ti.f32,
     ) -> ti.Matrix:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         start = self.node_particle_start[node]
@@ -1397,16 +1402,31 @@ class TaichiTreecode:
                 if r_mag_j > 1e-10:
                     sigma = 0.5 * (target_rad + self.core_radius[j])
                     r_sigma = r_mag_j / sigma
-                    if r_sigma < max_r_sigma:
-                        q_val = self.q_kernel(r_sigma)
-                        zeta_val = self.zeta_kernel(r_sigma) / sigma**3
-                        term1 = q_val / r_mag_j**3
-                        term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
-                        cross_j = r_vec_j.cross(self.vortex_strength[j])
-                        gradu += term1 * self.skew(
-                            self.vortex_strength[j]
-                        ) + term2 * cross_j.outer_product(r_vec_j)
+                    q_val = self.q_kernel(r_sigma)
+                    zeta_val = self.zeta_kernel(r_sigma) / sigma**3
+                    term1 = q_val / r_mag_j**3
+                    term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
+                    cross_j = r_vec_j.cross(self.vortex_strength[j])
+                    gradu += term1 * self.skew(
+                        self.vortex_strength[j]
+                    ) + term2 * cross_j.outer_product(r_vec_j)
         return gradu
+
+    @ti.func
+    def _node_core_is_homogeneous(self, node: ti.i32) -> ti.i32:
+        """Return whether one node radius is a safe source regularization."""
+        average = self.node_avg_radius[node]
+        minimum = self.node_min_radius[node]
+        maximum = self.node_max_radius[node]
+        net_strength = self.node_net_vortex_strength[node]
+        # The far evaluator has one regularization radius and a monopole
+        # moment.  Descend whenever either assumption is not conservative:
+        # mixed-radius sources do not share the same operator, and a cancelled
+        # monopole cannot represent the nonzero near/far field of its sources.
+        radius_scale = ti.max(average, 1e-12)
+        radius_spread = maximum - minimum
+        nearly_cancelled = net_strength.dot(net_strength) <= 1e-24
+        return 1 if radius_spread <= 1e-5 * radius_scale and not nearly_cancelled else 0
 
     @ti.func
     def _target_leaf_gradient_sum(self, node: int, target_pos: ti.template()) -> ti.Matrix:
@@ -1475,7 +1495,11 @@ class TaichiTreecode:
             r_sq = r_vec.dot(r_vec)
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
-            if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+            if (
+                r_mag > 1e-8
+                and (node_size * node_size / r_sq) < theta_sq
+                and self._node_core_is_homogeneous(node) != 0
+            ):
                 sigma = 0.5 * (target_rad + self.node_avg_radius[node])
                 vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
@@ -1489,7 +1513,6 @@ class TaichiTreecode:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         target_pos = self.position[i]
         target_rad = self.core_radius[i]
-        MAX_R_SIGMA = ti.cast(15.0, ti.f32)
         root = self._root[None]
         self.traversal_stack[i, 0] = root
         stack_ptr = 1
@@ -1503,13 +1526,15 @@ class TaichiTreecode:
             r_sq = r_vec.dot(r_vec)
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
-            if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+            if (
+                r_mag > 1e-8
+                and (node_size * node_size / r_sq) < theta_sq
+                and self._node_core_is_homogeneous(node) != 0
+            ):
                 sigma = 0.5 * (target_rad + self.node_avg_radius[node])
-                r_sigma = r_mag / sigma
-                if r_sigma < MAX_R_SIGMA:
-                    gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
+                gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
-                gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i, MAX_R_SIGMA)
+                gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i)
             else:
                 stack_ptr = self._push_children_particle(i, node, stack_ptr)
         return gradu
@@ -1531,7 +1556,11 @@ class TaichiTreecode:
             r_sq = r_vec.dot(r_vec)
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
-            if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+            if (
+                r_mag > 1e-8
+                and (node_size * node_size / r_sq) < theta_sq
+                and self._node_core_is_homogeneous(node) != 0
+            ):
                 sigma = self.node_avg_radius[node]
                 vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
@@ -1557,7 +1586,11 @@ class TaichiTreecode:
             r_sq = r_vec.dot(r_vec)
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
-            if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+            if (
+                r_mag > 1e-8
+                and (node_size * node_size / r_sq) < theta_sq
+                and self._node_core_is_homogeneous(node) != 0
+            ):
                 sigma = self.node_avg_radius[node]
                 gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
@@ -1617,7 +1650,6 @@ class TaichiTreecode:
         the output is bit-identical to the two separate kernels.
         """
         n_nodes = self.n_nodes[None]
-        MAX_R_SIGMA = ti.cast(15.0, ti.f32)
         freestream_velocity = self.freestream_velocity[None]
         root = self._root[None]
         if ti.static(self.traversal_block_dim > 0):
@@ -1643,16 +1675,18 @@ class TaichiTreecode:
                 r_sq = r_vec.dot(r_vec)
                 r_mag = ti.sqrt(r_sq)
                 node_size = 2.0 * self.node_half_size[node]
-                if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                if (
+                    r_mag > 1e-8
+                    and (node_size * node_size / r_sq) < theta_sq
+                    and self._node_core_is_homogeneous(node) != 0
+                ):
                     # Far field: one node, both fields share sigma / r_sigma / q.
                     sigma = 0.5 * (target_rad + self.node_avg_radius[node])
-                    r_sigma = r_mag / sigma
                     vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
-                    if r_sigma < MAX_R_SIGMA:
-                        gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
+                    gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
                 elif self.node_is_leaf[node] == 1:
                     vel += self._leaf_velocity_sum(node, target_pos, target_rad, i)
-                    gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i, MAX_R_SIGMA)
+                    gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i)
                 else:
                     stack_ptr = self._push_children_particle(i, node, stack_ptr)
             self.velocity[i] = vel + freestream_velocity
@@ -1810,7 +1844,11 @@ class TaichiTreecode:
                 r_sq = r_vec.dot(r_vec)
                 r_mag = ti.sqrt(r_sq)
                 node_size = 2.0 * self.node_half_size[node]
-                if r_mag > 1e-8 and (node_size * node_size / r_sq) < theta_sq:
+                if (
+                    r_mag > 1e-8
+                    and (node_size * node_size / r_sq) < theta_sq
+                    and self._node_core_is_homogeneous(node) != 0
+                ):
                     sigma = self.node_avg_radius[node]
                     velocity += self._far_velocity_node(node, r_vec, r_mag, sigma)
                     gradient += self._far_gradient_node(node, r_vec, r_mag, sigma)

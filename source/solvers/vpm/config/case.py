@@ -106,6 +106,21 @@ class Numerics:
                 f"{type(self.induction).__name__} does not support particle_kernel={kernel}; "
                 f"supported kernels: {sorted(supported_kernels)}"
             )
+        if self.viscous.scheme == "CS" and kernel in {"HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"}:
+            raise ValueError(
+                "Core Spreading requires a kernel with a positive normalized second moment; "
+                f"{kernel} cancels that moment, so use GAUSSIAN/WINCKELMANS or DVH/GBD."
+            )
+        if self.viscous.scheme == "RWM" and self.turbulence.flow_model == "LES":
+            raise ValueError(
+                "RWM is restricted to spatially uniform effective viscosity; "
+                "use GBD for LES variable-viscosity diffusion."
+            )
+        if self.viscous.scheme == "DVH" and self.turbulence.flow_model == "LES":
+            raise ValueError(
+                "DVH requires spatially uniform effective viscosity; "
+                "use GBD for LES variable-viscosity diffusion."
+            )
         device = self.compute_device.upper()
         supported_devices = getattr(self.induction, "supported_devices", None)
         if supported_devices is not None and device not in supported_devices:
@@ -117,6 +132,11 @@ class Numerics:
         object.__setattr__(self, "precision", self.precision.lower())
         if self.precision == "f64" and not getattr(self.induction, "supports_f64", True):
             raise ValueError(f"{type(self.induction).__name__} does not support precision='f64'")
+        if self.precision == "f64" and self.viscous.scheme in {"DVH", "GBD"}:
+            raise ValueError(
+                f"viscous scheme {self.viscous.scheme} uses an f32 diffusion grid; "
+                "select precision='f32' or use CS/RWM for a nominal f64 case"
+            )
         if len(self.freestream_velocity) != 3:
             raise ValueError("freestream_velocity must contain three components")
         object.__setattr__(
