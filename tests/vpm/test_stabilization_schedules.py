@@ -134,6 +134,8 @@ def test_regularization_event_limit_stops_the_schedule(monkeypatch):
         state=SimpleNamespace(step=10, domain_bounds_enforced=False),
     )
     manager.regularization_events = 0
+    manager.regularization_energy_transfer = 0.0
+    manager.regularization_enstrophy_transfer = 0.0
     manager.measure = lambda: object()
     manager.accept = lambda *args, **kwargs: None
 
@@ -141,7 +143,9 @@ def test_regularization_event_limit_stops_the_schedule(monkeypatch):
 
     def regularize(context, active_config):
         calls.append((context, active_config))
-        return SimpleNamespace(detail="accepted")
+        return SimpleNamespace(
+            detail="accepted", total_kinetic_energy_transfer=-0.2, total_enstrophy_transfer=-0.5
+        )
 
     monkeypatch.setattr(
         "source.solvers.vpm.stabilization.regularization.regularize",
@@ -154,6 +158,8 @@ def test_regularization_event_limit_stops_the_schedule(monkeypatch):
 
     assert len(calls) == 2
     assert manager.regularization_events == 2
+    assert manager.regularization_energy_transfer == pytest.approx(-0.4)
+    assert manager.regularization_enstrophy_transfer == pytest.approx(-1.0)
 
 
 def test_regularization_can_be_triggered_only_by_core_radius():

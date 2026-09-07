@@ -54,6 +54,48 @@ def test_widnall_disturbance_rejects_invalid_mode():
         WidnallDisturbance.single_mode(amplitude=0.05, mode=0)
 
 
+@pytest.mark.parametrize("axis_name", ["x", "y", "z"])
+def test_axial_seed_moves_support_and_preserves_tangent_circulation(axis_name):
+    from dataclasses import replace
+
+    axis = np.eye(3)["xyz".index(axis_name)]
+    reference = np.array([0.0, 1.0, 0.0]) if axis_name == "x" else np.array([1.0, 0.0, 0.0])
+    first = np.cross(axis, reference)
+    second = np.cross(axis, first)
+    geometry = ToroidalDistribution(
+        ring_radius=1.0, tube_radius=0.2, spacing=0.08, core_radius_ratio=0.5, axis=axis_name
+    )
+    model = VortexRing(
+        radius=1.0,
+        vortex_core_radius=0.1,
+        circulation=np.pi,
+        kinematic_viscosity=0.001,
+        axis=tuple(axis),
+        distribution=geometry,
+    )
+    plain = model.build()
+    seed = WidnallDisturbance.single_mode(amplitude=0.05, mode=3, phase=0.37, direction="axial")
+    moved = replace(
+        model, disturbance=seed, distribution=replace(geometry, disturbance=seed)
+    ).build()
+    phi = np.arctan2(plain.position @ second, plain.position @ first)
+    displacement = 0.05 * np.sin(3 * phi + 0.37)
+    np.testing.assert_allclose(
+        moved.position, plain.position + displacement[:, None] * axis, atol=1e-15
+    )
+    np.testing.assert_array_equal(moved.particle_volume, plain.particle_volume)
+    radius = np.linalg.norm(np.cross(axis, plain.position), axis=1)
+    tangent = np.cross(axis, plain.position) / radius[:, None]
+    original_tangent = np.einsum("ij,ij->i", plain.vortex_strength, tangent)
+    actual_tangent = np.einsum("ij,ij->i", moved.vortex_strength, tangent)
+    np.testing.assert_allclose(actual_tangent, original_tangent, atol=1e-15)
+    np.testing.assert_allclose(
+        moved.vortex_strength @ axis,
+        original_tangent * 0.15 * np.cos(3 * phi + 0.37) / radius,
+        atol=1e-15,
+    )
+
+
 def test_every_distribution_uses_the_requested_sigma_over_h():
     distributions = (
         NoisyRectangularDistribution(

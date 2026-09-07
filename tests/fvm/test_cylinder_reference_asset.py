@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 import numpy as np
 
@@ -10,13 +11,13 @@ from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow import setu
 
 
 def test_tracked_cylinder_surface_crosses_span_with_caps_outside_domain():
-    assert setup.CYLINDER_STL.name == "cylinder_long.stl"
-    assert setup.CYLINDER_STL.is_file()
+    cylinder_stl = Path(setup.__file__).resolve().parent.parent / "assets/cylinder_long.stl"
+    assert cylinder_stl.is_file()
 
     vertices = np.asarray(
         [
             [float(value) for value in line.split()[1:]]
-            for line in setup.CYLINDER_STL.read_text(encoding="ascii").splitlines()
+            for line in cylinder_stl.read_text(encoding="ascii").splitlines()
             if line.lstrip().startswith("vertex ")
         ]
     )
@@ -27,11 +28,11 @@ def test_tracked_cylinder_surface_crosses_span_with_caps_outside_domain():
     np.testing.assert_allclose(np.abs(vertices[~side_vertices, 2]), 6.0, atol=0.0)
     assert vertices[:, 2].min() == -6.0
     assert vertices[:, 2].max() == 6.0
-    assert vertices[:, 2].min() < setup.DOMAIN[4]
-    assert vertices[:, 2].max() > setup.DOMAIN[5]
+    assert vertices[:, 2].min() < -0.5
+    assert vertices[:, 2].max() > 0.5
     cap_triangles = np.ptp(triangles[:, :, 2], axis=1) == 0.0
     assert np.any(cap_triangles)
     np.testing.assert_allclose(np.abs(triangles[cap_triangles, :, 2]), 6.0, atol=0.0)
 
-    grid_source = inspect.getsource(setup.grid_mesh)
-    assert "surface_may_cross_domain_boundary=True" in grid_source
+    creator_source = inspect.getsource(setup.create_solver)
+    assert "surface_may_cross_domain_boundary=True" in creator_source

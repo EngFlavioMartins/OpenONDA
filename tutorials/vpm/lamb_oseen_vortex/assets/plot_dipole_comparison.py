@@ -77,8 +77,8 @@ def plot_dipole_case(args) -> int:
     colors, theme = load_theme()
     style_map = build_style_map(colors)
 
-    fig, axes = plt.subplots(1, 2, figsize=figure_size("trajectory"))
-    fig.subplots_adjust(wspace=0.20, bottom=0.27, top=0.92, left=0.08, right=0.92)
+    fig, axes = plt.subplots(1, 2, figsize=(125 / 25.4, 85 / 25.4))
+    fig.subplots_adjust(wspace=0.30, bottom=0.40, top=0.92, left=0.12, right=0.92)
 
     plotted_schemes = []
     for scheme in SCHEME_DRAW_ORDER:
@@ -157,15 +157,15 @@ def plot_dipole_case(args) -> int:
         runtime["column_length"],
     )
     reference_options = dict(theme.REFERENCE_STYLE)
-    reference_options.update(label=r"$\int_0^t U_b\,dt'$", zorder=100)
+    reference_options.update(label=r"$\int_0^t U_b\,\mathrm{d}t'$", zorder=100)
     axes[0].plot(tau_ref, x_ref / a0, **reference_options)
 
     axes[0].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[0].set_ylabel(r"$x_c / a_{c,0}$")
-    axes[0].set_title("Core trajectory over time")
+    axes[0].set_title("Core trajectory")
     axes[1].set_xlabel(r"$\nu t / a_{c,0}^2$")
     axes[1].set_ylabel(r"$a_c / a_{c,0}$")
-    axes[1].set_title(r"Core radius over time")
+    axes[1].set_title(r"Core radius")
 
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:
@@ -173,7 +173,7 @@ def plot_dipole_case(args) -> int:
             handles,
             labels,
             loc="lower center",
-            ncol=len(handles),
+            ncol=3,
             bbox_to_anchor=(0.5, 0.00),
         )
     save_fig(fig, out, args.dpi)

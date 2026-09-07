@@ -422,3 +422,23 @@ def save_fig(
     fig.savefig(out, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches=bbox_inches)
     plt.close(fig)
     print(f"  Saved: {out}")
+
+
+THESIS_FONT_SIZE_PT = 10.95  # \normalsize in the thesis's 11pt class
+
+def set_thesis_style():
+    """Use the thesis body fonts at final physical size; never silently substitute."""
+    if not all(shutil.which(tool) for tool in ("latex", "dvipng")):
+        raise RuntimeError("Thesis plots require LaTeX, dvipng and newpxtext/newpxmath on PATH.")
+    set_style()
+    plt.rcParams.update({
+        "text.usetex": True,
+        "text.latex.preamble": r"\usepackage[T1]{fontenc}\usepackage{newpxtext}\usepackage{amsmath}\usepackage{newpxmath}",
+        "font.family": "serif",
+        "font.serif": ["Palatino"],
+        **{key: THESIS_FONT_SIZE_PT for key in (
+            "font.size", "axes.labelsize", "axes.titlesize", "figure.titlesize",
+            "legend.fontsize", "legend.title_fontsize", "xtick.labelsize", "ytick.labelsize")},
+        "savefig.bbox": "standard",
+        "savefig.pad_inches": 0.0,
+    })

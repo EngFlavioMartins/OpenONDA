@@ -27,6 +27,7 @@ from tutorials.vpm.vortex_ring.assets.ring_metrics import (
     saffman_speed,
     saffman_valid_time_limit,
     save_fig,
+    with_sample_gaps,
 )
 
 
@@ -43,10 +44,10 @@ def main() -> None:
     fig, (ax, comparison) = plt.subplots(
         1,
         2,
-        figsize=figure_size("wide_short"),
-        gridspec_kw={"width_ratios": (1.35, 1.0)},
+        figsize=(125 / 25.4, 90 / 25.4),
+        gridspec_kw={"width_ratios": (1.0, 1.0)},
     )
-    fig.subplots_adjust(wspace=0.40, left=0.10, right=0.97, top=0.88, bottom=0.20)
+    fig.subplots_adjust(wspace=0.55, left=0.12, right=0.97, top=0.88, bottom=0.38)
     curves = []
     plotted_values = []
 
@@ -68,8 +69,7 @@ def main() -> None:
             "mew": st["markeredgewidth"],
         }
         ax.plot(
-            nondimensional_time,
-            nondimensional_velocity,
+            *with_sample_gaps(nondimensional_time, nondimensional_velocity),
             ms=st["markersize"],
             markevery=n_skip,
             label=label,
@@ -89,7 +89,7 @@ def main() -> None:
         saffman_nondimensional_velocity,
         **reference_style(),
         zorder=5,
-        label=r"Saffman ($a/R\leq0.30$)",
+        label=r"Saffman--Archer",
     )
     plotted_values.append(saffman_nondimensional_velocity)
 
@@ -108,16 +108,18 @@ def main() -> None:
         )
     comparison.axhline(0.0, color="0.45", linewidth=0.8, linestyle=":")
     comparison.set_xlim(0.0, theory_end)
-    comparison.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
-    comparison.set_ylabel(r"Relative error, $(U-U_{\rm S})/U_{\rm S}$ [\%]")
-    comparison.set_title(r"Thin-core error")
+    comparison.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
+    comparison.set_ylabel(r"$(U_{\rm ring}-U_{\rm S})/U_{\rm S}$ [\%]")
+    comparison.set_title(r"(b) Speed difference")
     if relative_errors:
-        maximum_error = max(2.0, 110.0 * max(np.max(np.abs(error)) for error in relative_errors))
-        comparison.set_ylim(-maximum_error, maximum_error)
+        lower = min(0.0, 100.0 * min(float(np.min(error)) for error in relative_errors))
+        upper = max(0.0, 100.0 * max(float(np.max(error)) for error in relative_errors))
+        padding = max(0.5, 0.10 * (upper - lower))
+        comparison.set_ylim(lower - padding, upper + padding)
 
-    ax.set_title(r"Self-induced speed")
-    ax.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
-    ax.set_ylabel(r"Self-induced speed, $U_{\rm ring}/U_{\rm ref,0}$")
+    ax.set_title(r"(a) Self-induced speed")
+    ax.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
+    ax.set_ylabel(r" $U_{\rm ring}/U_{\rm ref,0}$")
     if plotted_values:
         lower = min(float(np.min(values)) for values in plotted_values)
         upper = max(float(np.max(values)) for values in plotted_values)
@@ -125,7 +127,13 @@ def main() -> None:
         ax.set_ylim(lower - padding, upper + padding)
     if curves:
         ax.set_xlim(0.0, 1.01 * max(float(time[-1]) for time, _, _ in curves))
-    ax.legend(ncol=1, loc="upper right")
+    fig.legend(
+        *ax.get_legend_handles_labels(),
+        ncol=2,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.01),
+        fontsize=10.95,
+    )
     save_fig(fig, figs / "vortex_ring_motion.png", dpi=args.dpi, figure_format=args.format)
 
 

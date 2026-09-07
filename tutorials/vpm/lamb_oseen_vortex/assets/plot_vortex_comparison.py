@@ -86,7 +86,7 @@ def plot_vortex_case(args) -> int:
     gc_ref = uc_ref / ac0
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.19, left=0.12, right=0.88)
+    fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.24, left=0.12, right=0.88)
 
     time_scale = run_kinematic_viscosity / ac0**2
     comparison_time = latest_common_time(samples_dir)

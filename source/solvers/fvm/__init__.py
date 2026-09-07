@@ -25,6 +25,7 @@ from .config import (
 from .core.solver import FVMSolver
 from .core.state import FieldState
 from .factory import create_fvm_solver
+from .grid_study import analyse_grid_study, update_grid_study
 from .sampling.fields import LineSampler, SurfaceSampler
 from .sampling.forces import (
     ForceSampler,
@@ -66,7 +67,9 @@ __all__ = [
     "YPlusSampler",
     "__version__",
     "create_fvm_solver",
+    "analyse_grid_study",
     "equation_solver",
     "io",
     "mesher",
+    "update_grid_study",
 ]

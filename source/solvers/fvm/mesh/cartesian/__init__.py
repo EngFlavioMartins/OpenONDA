@@ -17,6 +17,7 @@ from .config import (
     SphereRefinement,
     STLSurface,
 )
+from .extrusion import ExtrudedCartesianMesher
 from .mesher import CartesianMesher
 from .report import GenerationReport, SizeReport
 
@@ -51,6 +52,7 @@ __all__ = [
     "BoxPatches",
     "BoxRefinement",
     "CartesianMesher",
+    "ExtrudedCartesianMesher",
     "CompositeSizeField",
     "ConeRefinement",
     "FeatureRefinement",

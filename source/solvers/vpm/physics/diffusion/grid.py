@@ -253,8 +253,9 @@ def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
     """Vectorized 1D M4' (Monaghan 1985) interpolation kernel.
 
     Support: [-2, 2].  Satisfies partition of unity and reproduces
-    quadratic polynomials exactly → O(particle_spacing⁴) remeshing error (3rd-order
-    convergence), compared to CIC's O(particle_spacing²).
+    quadratic polynomials exactly: third-order local remapping accuracy,
+    compared to CIC's second-order accuracy. Repeated remapping can accumulate
+    dispersive and dissipative error even though low moments are preserved.
 
     The kernel has negative lobes in (1, 2), which is essential for
     anti-aliasing and high-order accuracy.
@@ -266,6 +267,23 @@ def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
     w[m1] = 1.0 - 2.5 * q[m1] ** 2 + 1.5 * q[m1] ** 3
     w[m2] = 0.5 * (2.0 - q[m2]) ** 2 * (1.0 - q[m2])
     return w
+
+
+def _lagrange6_weights(fraction: np.ndarray) -> np.ndarray:
+    """Six cardinal weights on offsets -2,...,3; reproduce degrees 0--5.
+
+    This is the local degree-five Lagrange interpolant, not Monaghan's M6
+    kernel. Signed lobes preserve moments; positivity is not guaranteed.
+    """
+    fraction = np.asarray(fraction, dtype=float)
+    nodes = np.arange(-2, 4)
+    return np.stack(
+        [
+            np.prod(np.stack([(fraction - k) / (j - k) for k in nodes if j != k]), axis=0)
+            for j in nodes
+        ],
+        axis=-1,
+    )
 
 
 @njit(cache=True, fastmath=False)
@@ -1037,6 +1055,18 @@ class _GridDiffusionMixin:
         w = mapping.vortex_strength_weight
         lin = mapping.linear_index
         s = np.ascontiguousarray(scalar_np[mapping.valid], dtype=np.float64)
+
+        # Uniform viscosity (including zero eddy viscosity) needs no nearest-
+        # neighbour search over the empty grid. Preserve the zero-weight and
+        # out-of-domain behavior of the general weighted scatter.
+        populated = w > 0.0
+        if len(s) and np.all(s == s[0]):
+            if np.any(populated):
+                if fill_empty:
+                    out.fill(s[0])
+                else:
+                    out.ravel()[np.unique(lin[populated])] = s[0]
+            return out
 
         weight_flat = np.zeros(nx * ny * nz, dtype=np.float64)
         accum_flat = np.zeros(nx * ny * nz, dtype=np.float64)
@@ -2059,12 +2089,13 @@ class _GridDiffusionMixin:
         regen_threshold_mode: str = "budget",
         effective_viscosity: np.ndarray | None = None,
         max_nodes: int | None = None,
+        remeshing_kernel: str = "M4_PRIME",
     ) -> dict[str, np.ndarray] | None:
         """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
 
         Algorithm
         ---------
-        1. M4' scatter: particle vortex strength → grid (GPU Taichi kernel).
+        1. M4' or six-point Lagrange scatter: vortex strength → grid.
         2. Explicit Laplacian: stable forward-Euler substeps of kinematic_viscosity∇²ω
            (GPU Taichi kernel).
            When ``effective_viscosity`` (per-particle ν+ν_t) is given, the Laplacian uses a
@@ -2085,6 +2116,10 @@ class _GridDiffusionMixin:
         # operation. A completed Laplacian below replaces this with the exact
         # runtime stage count used by the current regeneration.
         self._last_gbd_diffusion_substeps = 1
+        if remeshing_kernel not in {"M4_PRIME", "LAGRANGE6"}:
+            raise ValueError("unsupported GBD remeshing kernel")
+        if remeshing_kernel == "LAGRANGE6" and domain_padding < 4:
+            raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
         self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
         N = particles.n_particles_total
         if N == 0:
@@ -2130,9 +2165,15 @@ class _GridDiffusionMixin:
         # -- M4' scatter (GPU) -------------------------------------------------
         self._zero_grid_kernel(self._current_grid, nx, ny, nz)
         gmin = grid_min_np.astype(float)
-        for start in range(0, N, _M4_SCATTER_BATCH_SIZE):
-            count = min(_M4_SCATTER_BATCH_SIZE, N - start)
-            self._m4_scatter_gpu_kernel(
+        scatter = (
+            self._m4_scatter_gpu_kernel
+            if remeshing_kernel == "M4_PRIME"
+            else self._lagrange6_scatter_gpu_kernel
+        )
+        batch_size = _M4_SCATTER_BATCH_SIZE if remeshing_kernel == "M4_PRIME" else 1024
+        for start in range(0, N, batch_size):
+            count = min(batch_size, N - start)
+            scatter(
                 particles.position,
                 particles.vortex_strength,
                 self._current_grid,
@@ -2397,10 +2438,11 @@ class _GridDiffusionMixin:
         regen_threshold_mode: str = "budget",
         effective_viscosity: np.ndarray | None = None,
         max_nodes: int | None = None,
+        remeshing_kernel: str = "M4_PRIME",
     ) -> dict[str, np.ndarray] | None:
         """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
 
-        CIC scatter → explicit 7-point Laplacian → threshold pruning → spawn.
+        Moment-preserving scatter → explicit 7-point Laplacian → pruning → spawn.
 
         When ``effective_viscosity`` (per-particle ν+ν_t) is given, the Laplacian uses a
         per-node coefficient so the SGS eddy viscosity acts; otherwise
@@ -2417,6 +2459,7 @@ class _GridDiffusionMixin:
             regen_threshold_mode,
             effective_viscosity=effective_viscosity,
             max_nodes=max_nodes,
+            remeshing_kernel=remeshing_kernel,
         )
 
     def _dvh_scatter_vortex_strength(
@@ -2856,6 +2899,51 @@ class _GridDiffusionMixin:
 
     # ---- Taichi Kernels ----
 
+    @ti.func
+    def _lagrange6_weights_ti(self, fraction: ti.f32):
+        weights = ti.Vector.zero(ti.f32, 6)
+        for j in ti.static(range(6)):
+            value = 1.0
+            for k in ti.static(range(6)):
+                if ti.static(j != k):
+                    value *= (fraction - ti.cast(k - 2, ti.f32)) / ti.cast(j - k, ti.f32)
+            weights[j] = value
+        return weights
+
+    @ti.kernel
+    def _lagrange6_scatter_gpu_kernel(
+        self,
+        position: ti.template(),
+        vortex_strength: ti.template(),
+        grid: ti.template(),
+        gmin_x: ti.f32,
+        gmin_y: ti.f32,
+        gmin_z: ti.f32,
+        particle_spacing: ti.f32,
+        nx: ti.i32,
+        ny: ti.i32,
+        nz: ti.i32,
+        start_particle: ti.i32,
+        count: ti.i32,
+    ):
+        """Six-point tensor-product Lagrange scatter, with bounded dispatches."""
+        for local_particle in range(count):
+            p = start_particle + local_particle
+            scaled = (position[p] - ti.Vector([gmin_x, gmin_y, gmin_z])) / particle_spacing
+            base = ti.cast(ti.floor(scaled), ti.i32)
+            fraction = scaled - ti.cast(base, ti.f32)
+            wx = self._lagrange6_weights_ti(fraction[0])
+            wy = self._lagrange6_weights_ti(fraction[1])
+            wz = self._lagrange6_weights_ti(fraction[2])
+            for di, dj, dk in ti.ndrange(6, 6, 6):
+                i, j, k = base[0] + di - 2, base[1] + dj - 2, base[2] + dk - 2
+                if 0 <= i < nx and 0 <= j < ny and 0 <= k < nz:
+                    weight = wx[di] * wy[dj] * wz[dk]
+                    for component in ti.static(range(3)):
+                        ti.atomic_add(
+                            grid[i, j, k][component], weight * vortex_strength[p][component]
+                        )
+
     @ti.kernel
     def _m4_scatter_gpu_kernel(
         self,
@@ -2878,7 +2966,7 @@ class _GridDiffusionMixin:
         data transfer for the scatter itself.  Atomic adds ensure correctness
         when multiple particles contribute to the same grid node.
 
-        Accuracy: same O(particle_spacing⁴) remeshing error as the CPU M4' scatter.
+        Accuracy: same quadratic moment reproduction as the CPU M4' scatter.
         """
         for local_particle in range(count):
             p = start_particle + local_particle

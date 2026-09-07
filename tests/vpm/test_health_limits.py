@@ -1,5 +1,7 @@
 """Accepted-step health-limit regression tests."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -14,6 +16,33 @@ from source.solvers.vpm.config.health import (
     ParticleStrengthLimit,
     accepted_step_health,
 )
+
+
+def test_misalignment_uses_current_curl_independently_of_backup_vorticity():
+    from source.solvers.vpm.core.solver import VPMSolver
+
+    gradient = np.zeros((8, 3, 3))
+    gradient[:, 2, 1] = 2.0  # curl(u) points along x
+    state = SimpleNamespace(
+        particles=SimpleNamespace(
+            n_particles_total=8,
+            velocity_gradient_cpu=lambda **_: gradient,
+        ),
+        particle_position=np.column_stack((np.arange(8), np.zeros((8, 2)))),
+        particle_vortex_strength=np.tile([1.0, 0.0, 0.0], (8, 1)),
+        particle_core_radius=np.ones(8),
+        particle_vorticity=np.tile([0.0, 1.0, 0.0], (8, 1)),
+    )
+    VPMSolver._update_discretization_health(state)
+    assert state._discretization_health["vortex_strength_misalignment_degrees"] == 0.0
+    # A stored backup field may change arbitrarily without changing this check.
+    state.particle_vorticity[:] = np.nan
+    VPMSolver._update_discretization_health(state)
+    assert state._discretization_health["vortex_strength_misalignment_degrees"] == 0.0
+    gradient[:] = 0.0
+    gradient[:, 0, 2] = 2.0  # current curl turns toward y
+    VPMSolver._update_discretization_health(state)
+    assert state._discretization_health["vortex_strength_misalignment_degrees"] == 90.0
 
 
 def _state(**overrides):

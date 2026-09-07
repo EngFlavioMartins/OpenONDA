@@ -167,7 +167,7 @@ def load_stability_results(samples_dir: Path = SAMPLES_DIR) -> tuple[dict, ...]:
 def load_theme() -> tuple[dict[str, str], object | None]:
     """Load the OpenONDA matplotlib theme. Returns (COLORS dict, theme module)."""
     theme = _theme()
-    theme.set_style()
+    theme.set_thesis_style()
     return dict(theme.COLORS), theme
 
 
@@ -476,10 +476,18 @@ def load_sampled_ring_speed(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
     time = data[_sample_time_column(data)].to_numpy(float)
     position = data["vortex_centroid_x"].to_numpy(float)
     speed = np.empty_like(position)
-    for index in range(len(time)):
-        lower = max(0, index - 2)
-        upper = min(len(time), index + 3)
-        speed[index] = np.polyfit(time[lower:upper], position[lower:upper], 1)[0]
+    boundaries = np.r_[
+        0, np.flatnonzero(np.diff(time) > 1.5 * np.median(np.diff(time))) + 1, len(time)
+    ]
+    for first, last in zip(boundaries[:-1], boundaries[1:]):
+        for index in range(first, last):
+            lower = max(first, index - 2)
+            upper = min(last, index + 3)
+            speed[index] = (
+                np.polyfit(time[lower:upper], position[lower:upper], 1)[0]
+                if upper - lower >= 2
+                else np.nan
+            )
     keep = time > 0.0
     return time[keep] / REFERENCE_TIME, speed[keep] / REFERENCE_VELOCITY
 
@@ -492,31 +500,19 @@ def saffman_valid_time_limit(maximum_core_ratio: float = SAFFMAN_MAX_CORE_RATIO)
 
 
 def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Return the tube-circulation estimate after its initialization transient.
+    """Return tube circulation relative to the saved unevolved state.
 
-    The sampler writes an unevolved row at ``t=0``.  The first two evolved
-    samples still contain the short adjustment of the discretized toroidal
-    field.  They are omitted, and the third evolved sample defines both the
-    start of the plotted record and ``circulation_tube,0``.  With the fixed
-    sampling interval this reference is step 15, ``t=0.3 s``
-    (``t Gamma/R0^2=0.942``).
+    Retain initialization and the full adjustment history. Subscript zero
+    consequently has the same meaning for scalar and vector diagnostics.
     """
     data = load_sampled_ring_data(csv_path)
     if data is None:
         return np.array([]), np.array([])
     time = data[_sample_time_column(data)].to_numpy(float)
     circulation = data["tube_circulation"].to_numpy(float)
-    valid = np.isfinite(time) & (time > 0.0) & np.isfinite(circulation) & (circulation > 0.0)
-    if not valid.any():
-        return np.array([]), np.array([])
-    time = time[valid]
-    circulation = circulation[valid]
-    reference_index = min(CIRCULATION_RELAXATION_SAMPLES - 1, len(time) - 1)
-    time = time[reference_index:]
-    circulation = circulation[reference_index:]
-    normalized = circulation / circulation[0]
-    keep = np.isfinite(normalized) & (normalized > 0.0)
-    return time[keep] / REFERENCE_TIME, normalized[keep]
+    if time[0] != 0.0 or not np.isfinite(circulation[0]) or circulation[0] <= 0:
+        raise ValueError(f"Initial tube-circulation sample required: {csv_path}")
+    return time / REFERENCE_TIME, circulation / circulation[0]
 
 
 def load_sampled_vector_circulation_error(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -550,3 +546,15 @@ def saffman_speed(t_arr: np.ndarray, k_nu: float = 4.0) -> np.ndarray:
     eps = a_t / RING_RADIUS
     C = 0.558 + 1.12 * eps**2 + 5.0 * eps**4
     return RING_CIRCULATION / (4.0 * np.pi * RING_RADIUS) * (np.log(8.0 / eps) - C)
+
+
+def with_sample_gaps(time, *values):
+    """Break lines across missing sampler events without inventing measurements."""
+    time = np.asarray(time, dtype=float)
+    if len(time) < 3:
+        return (time, *values)
+    gaps = np.flatnonzero(np.diff(time) > 1.5 * np.median(np.diff(time))) + 1
+    return (
+        np.insert(time, gaps, np.nan),
+        *(np.insert(np.asarray(value, dtype=float), gaps, np.nan) for value in values),
+    )

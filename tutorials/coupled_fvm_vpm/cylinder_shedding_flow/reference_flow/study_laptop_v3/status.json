@@ -1,9 +1,0 @@
-{
-  "status": "failed",
-  "phase": "mesh",
-  "case": "fine",
-  "pid": 17939,
-  "updated_at": 1788776954.666314,
-  "error": "CalledProcessError: Command '['/opt/anaconda3/envs/OpenONDA/bin/python', '/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/mesh.py', '--case', 'fine', '--output-dir', '/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop_v3/meshes/fine', '--backup-dir', '/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop_v3/solution/fine']' returned non-zero exit status 1.",
-  "selected_mesh": null
-}

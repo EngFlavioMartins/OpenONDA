@@ -39,6 +39,7 @@ class StabilizationConfig:
     regularization_start_step: int = 0
     regularization_grid_spacing: float | None = None
     regularization_tail_budget: float = 3.0e-3
+    regularization_solenoidal_remesh: bool = False
     regularization_max_particles: int | None = None
     regularization_capacity_max_particles: int | None = None
     regularization_max_events: int | None = None
@@ -262,6 +263,7 @@ class StabilizationConfig:
         capacity_max_n_particles: int | None = None,
         max_events: int | None = None,
         tail_budget: float = 3.0e-3,
+        solenoidal_remesh: bool = False,
         total_kinetic_energy_dissipation_limit: float = 0.15,
         total_enstrophy_dissipation_limit: float = 0.15,
         divergence_trigger: float | None = 0.04,
@@ -286,6 +288,7 @@ class StabilizationConfig:
             regularization_capacity_max_particles=capacity_max_n_particles,
             regularization_max_events=max_events,
             regularization_tail_budget=tail_budget,
+            regularization_solenoidal_remesh=solenoidal_remesh,
             regularization_total_kinetic_energy_dissipation_limit=(
                 total_kinetic_energy_dissipation_limit
             ),

@@ -197,7 +197,10 @@ class ExtrudedCartesianMesher:
         # Select the planar interior before the unrelated end-rim correction.
         raw = self.source.build(stop_after="meshOptimisation")
         dx = min(item.cell_size for item in self.source.patch_refinements)
-        coordinate = 0.17320508075688773 * dx
+        # Stay inside a finest-size slab, clear of its central wrapper
+        # transition. Near a transition, a planar cut can graze a sliver
+        # even though the original three-dimensional cell is well shaped.
+        coordinate = 0.75 * dx
         result = extrude_mesh_section(
             raw,
             coordinate=coordinate,
@@ -206,16 +209,23 @@ class ExtrudedCartesianMesher:
             surfaces=self.source.surfaces,
         )
         generation = result["mesh_generation"]
+        native = raw["mesh_generation"]
+        root_size = native["root_box"][1] - native["root_box"][0]
+        background = root_size / 2 ** native["global_refinement_level"]
+        boundary = root_size / 2 ** native["boundary_refinement_level"]
+        patch_sizes = {
+            name: root_size / 2**level
+            for name, level in native["surface_patch_refinement_levels"].items()
+        }
+        if not np.isclose(background, self.max_cell_size, rtol=1e-12, atol=0):
+            raise ValueError("Source mesh changed the requested background spacing")
         sizes = [("background", self.max_cell_size), ("boundary", self.source.boundary_cell_size)]
         sizes += [(item.name, item.cell_size) for item in self.source.refinements]
         sizes += [("patch:" + item.patch, item.cell_size) for item in self.source.patch_refinements]
         generation.update(
-            resolved_background_cell_size=self.max_cell_size,
-            resolved_boundary_cell_size=self.source.boundary_cell_size,
-            resolved_surface_patch_sizes={
-                item.patch: self.effective_cell_size(item.cell_size)
-                for item in self.source.patch_refinements
-            },
+            resolved_background_cell_size=background,
+            resolved_boundary_cell_size=boundary,
+            resolved_surface_patch_sizes=patch_sizes,
             requested_sizes=[
                 {"name": name, "requested": size, "effective": self.effective_cell_size(size)}
                 for name, size in sizes

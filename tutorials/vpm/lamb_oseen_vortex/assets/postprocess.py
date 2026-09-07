@@ -865,7 +865,7 @@ def _theme():
 def load_theme() -> tuple[dict[str, str], object | None]:
     """Load the OpenONDA matplotlib theme and return (COLORS dict, theme module)."""
     theme = _theme()
-    theme.set_style()
+    theme.set_thesis_style()
     return dict(theme.COLORS), theme
 
 

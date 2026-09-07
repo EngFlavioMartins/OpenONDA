@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-python setup.py
+cd "$(dirname "$0")"
+export PYTHONDONTWRITEBYTECODE=1
+"${PYTHON:-python}" -u setup.py --name coarse --dx 0.125
+"${PYTHON:-python}" -u setup.py --name medium --dx 0.0625
+"${PYTHON:-python}" -u setup.py --name fine --dx 0.03125

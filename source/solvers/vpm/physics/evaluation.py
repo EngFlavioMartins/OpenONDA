@@ -1083,6 +1083,12 @@ class ParticleFieldEvaluation:
             # persistent grid. Return the latest accepted derivative.
             dE_dt = self._compute_energy_dissipation_rate()
             rate_source = "accepted_history_unchanged"
+            if not np.isfinite(dE_dt):
+                # A trial may follow the first sample on a new measurement
+                # definition. Its quadratic integrals are valid even though
+                # that accepted history does not yet define a derivative.
+                dE_dt = float(spectral.viscous_kinetic_energy_rate)
+                rate_source = "trial_viscous_rate"
         if not np.isfinite(dE_dt):
             raise RuntimeError("Fourier flow diagnostics produced a non-finite kinetic-energy rate")
         total = vortex_strength.sum(axis=0, dtype=np.float64)

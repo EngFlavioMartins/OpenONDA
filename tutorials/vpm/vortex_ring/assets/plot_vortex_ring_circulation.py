@@ -19,6 +19,7 @@ from tutorials.vpm.vortex_ring.assets.ring_metrics import (
     load_theme,
     plot_variants,
     save_fig,
+    with_sample_gaps,
 )
 
 
@@ -44,11 +45,23 @@ def main() -> None:
 
     load_theme()
 
-    fig, (ax_tube, ax_sum) = plt.subplots(1, 2, figsize=figure_size("wide_short"), sharex=True)
-    fig.subplots_adjust(wspace=0.48, left=0.12, right=0.97, top=0.88, bottom=0.28)
+    fig = plt.figure(figsize=(125 / 25.4, 132 / 25.4))
+    grid = fig.add_gridspec(2, 2, height_ratios=(1.25, 1.0))
+    ax_tube = fig.add_subplot(grid[0, 0])
+    ax_sum = fig.add_subplot(grid[0, 1])
+    fig.subplots_adjust(wspace=0.55, hspace=0.70, left=0.15, right=0.97, top=0.93, bottom=0.25)
     legend_handles = []
     legend_labels = []
 
+    zoom = fig.add_subplot(grid[1, :])
+    zoom.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
+    zoom.set_ylabel(r"$\Gamma_{\rm tube}/\Gamma_{\rm tube,0}$")
+    zoom.set_xlim(0, 190)
+    zoom.set_ylim(0.995, 1.0005)
+    zoom.set_xticks([0, 190])
+    zoom.set_yticks([0.996, 1.000])
+    zoom.tick_params(pad=3)
+    zoom.set_title("(a) Detail: transposed runs", pad=6)
     n_skip = 14  # plot every n-th marker
 
     ax_sum.set_yscale("log")
@@ -64,18 +77,22 @@ def main() -> None:
             continue
         t_sum, sum_err = load_sampled_vector_circulation_error(csv_path)
         label = VARIANT_LABEL[variant]
-        (line,) = ax_tube.plot(t, c, label=label, **line_style(st, n_skip))
+        (line,) = ax_tube.plot(*with_sample_gaps(t, c), label=label, **line_style(st, n_skip))
+        if variant in ("dns_transposed", "les_transposed"):
+            zoom.plot(*with_sample_gaps(t, c), **line_style(st, n_skip, 1.5))
         circulation_values.append(c)
         maximum_time = max(maximum_time, float(t[-1]))
         if t_sum.size:
-            ax_sum.semilogy(t_sum, sum_err, label=label, **line_style(st, n_skip))
+            ax_sum.semilogy(
+                *with_sample_gaps(t_sum, sum_err), label=label, **line_style(st, n_skip)
+            )
             drift_values.append(sum_err)
             maximum_time = max(maximum_time, float(t_sum[-1]))
         legend_handles.append(line)
         legend_labels.append(label)
 
     for ax in (ax_tube, ax_sum):
-        ax.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
+        ax.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
         ax.set_xlim(0.0, 1.01 * maximum_time)
 
     if circulation_values:
@@ -88,13 +105,10 @@ def main() -> None:
         upper = max(float(values.max()) for values in drift_values)
         ax_sum.set_ylim(0.7 * lower, 1.4 * upper)
 
-    ax_tube.set_title(r"Tube-circulation estimate")
+    ax_tube.set_title(r"(a) Tube circulation")
     ax_tube.set_ylabel(r"$\Gamma_{\rm tube}/\Gamma_{\rm tube,0}$")
-    ax_sum.set_title(r"Total-strength-vector drift")
-    ax_sum.set_ylabel(
-        r"$\|\sum_p\boldsymbol{\alpha}_p-\sum_p\boldsymbol{\alpha}_{p,0}\|"
-        r"\,/\,\sum_p|\boldsymbol{\alpha}_{p,0}|$"
-    )
+    ax_sum.set_title(r"(b) Vector drift")
+    ax_sum.set_ylabel(r"$e_{\Gamma}$")
 
     fig.legend(
         legend_handles,

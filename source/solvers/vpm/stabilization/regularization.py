@@ -40,6 +40,29 @@ if TYPE_CHECKING:
 ENSTROPHY_RESTORATION_TOLERANCE = 1.0e-4  # float32 reduction roundoff scale
 
 
+def _transfer_integrals(position, strength, core_radius, volume, grid) -> dict:
+    """Measure every side of a remap on the same periodic quadratic form.
+
+    Particle count must not switch a transfer audit between unbounded direct
+    energy and periodic FFT energy. Trial measurements never touch the solver's
+    accepted diagnostic history or its persistent grid.
+    """
+    from ..numerics.fourier_integrals import gaussian_fourier_integrals
+
+    result = gaussian_fourier_integrals(
+        position, strength, core_radius, volume, grid=grid, radius_expansion_order=6
+    )
+    for name, tolerance in (("total_kinetic_energy", 1e-3), ("total_enstrophy", 5e-3)):
+        value = getattr(result, name)
+        previous = getattr(result, "previous_order_" + name)
+        if not np.isfinite(value) or abs(value - previous) > tolerance * max(abs(value), 1e-30):
+            raise ValueError(f"remeshing {name} transfer audit has not converged in core expansion")
+    return {
+        name: getattr(result, name)
+        for name in ("total_kinetic_energy", "total_enstrophy", "total_helicity")
+    }
+
+
 @dataclass(frozen=True)
 class RegularizationOutcome:
     """What one accepted regularization event did, in one line of numbers."""
@@ -49,6 +72,8 @@ class RegularizationOutcome:
     total_kinetic_energy_change_relative: float
     total_enstrophy_change_relative: float
     projected: bool
+    total_kinetic_energy_transfer: float
+    total_enstrophy_transfer: float
 
     @property
     def detail(self) -> str:
@@ -146,11 +171,6 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         return
 
     before_moments = gaussian_particle_moments(position, vortex_strength, core_radius)
-    before_integrals = ctx.field_diagnostics.compute_flow_integrals(
-        particles,
-        ctx.state.time,
-        record_history=False,
-    )
     old_state = {
         "position": position.astype(ctx.np_dtype),
         "velocity": particles.velocity_cpu().astype(ctx.np_dtype),
@@ -166,34 +186,30 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     vortex_strength_removed_before = ctx.state.vortex_strength_removed.copy()
     mean_kinematic_viscosity = float(kinematic_viscosity.mean())
     projection_only = max_particles is not None and len(position) > max_particles
-    if projection_only:
-        proposal = old_state.copy()
-    else:
-        proposal = ctx.physics.grid_based_diffusion(
-            particles,
-            time_step_size=ctx.state.time_step_size,
-            particle_spacing=spacing,
-            kinematic_viscosity=mean_kinematic_viscosity,
-            domain_padding=4.0,
-            regen_threshold=cfg.regularization_tail_budget,
-            regen_threshold_mode="budget",
-            rd_ratio=4.0,
-            effective_viscosity=None,
-            max_nodes=max_particles,
-        )
-    if proposal is None:
-        raise RuntimeError("conservative regularization produced no particle field")
     configured_core_radius = (
         cfg.regularization_capacity_core_radius
         if at_capacity and cfg.regularization_capacity_core_radius is not None
         else cfg.regularization_core_radius
     )
-    if configured_core_radius is not None:
-        proposal["core_radius"] = np.full(
-            len(proposal["position"]),
-            configured_core_radius,
-            dtype=ctx.np_dtype,
+    if projection_only:
+        proposal = old_state.copy()
+    else:
+        from .remeshing import gaussian_core_remesh
+
+        # DVH advances diffusion and requires equal source cores. Calling it
+        # here double-counted viscosity and rejected the variable cores made
+        # by CS+LES. Reset the representation using Gaussian variance instead.
+        proposal = gaussian_core_remesh(
+            particles,
+            spacing=spacing,
+            core_radius=(configured_core_radius or float(np.min(core_radius))),
+            tail_budget=cfg.regularization_tail_budget,
+            max_particles=max_particles,
+            solenoidal=cfg.regularization_solenoidal_remesh,
         )
+    if proposal is None:
+        raise RuntimeError("conservative regularization produced no particle field")
+    # A projection-only event must retain the original widths as well.
 
     new_position = np.asarray(proposal["position"], dtype=np.float64)
     proposed_vortex_strength = np.asarray(proposal["vortex_strength"], dtype=np.float64)
@@ -214,6 +230,18 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     new_group_id = np.asarray(
         proposal.get("group_id", np.zeros(count, dtype=np.int32)), dtype=np.int32
     )
+    from ..numerics.fourier_integrals import _grid_for_particles
+
+    audit_grid = _grid_for_particles(
+        np.vstack((position, new_position)),
+        spacing,
+        padding=max(3, int(np.ceil(3 * float(core_radius.max()) / spacing))),
+    )
+    if np.prod(audit_grid.shape, dtype=np.int64) * 8 > 16_000_000:
+        raise ValueError("remeshing transfer audit exceeds 16 million padded grid nodes")
+    before_integrals = _transfer_integrals(
+        position, vortex_strength, core_radius, particle_volume, audit_grid
+    )
 
     def upload_and_integrate(vortex_strength: np.ndarray) -> tuple[np.ndarray, dict]:
         uploaded_vortex_strength = np.asarray(vortex_strength, dtype=ctx.np_dtype)
@@ -228,10 +256,12 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
             zone_id=new_zone_id,
             group_id=new_group_id,
         )
-        integrals = ctx.field_diagnostics.compute_flow_integrals(
-            particles,
-            ctx.state.time,
-            record_history=False,
+        integrals = _transfer_integrals(
+            particles.position_cpu(),
+            particles.vortex_strength_cpu(),
+            particles.core_radius_cpu(),
+            particles.particle_volume_cpu(),
+            audit_grid,
         )
         return uploaded_vortex_strength, integrals
 
@@ -526,5 +556,9 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         particles_after=len(new_position),
         total_kinetic_energy_change_relative=total_kinetic_energy_change_relative,
         total_enstrophy_change_relative=total_enstrophy_change_relative,
-        projected=projection_result is not None,
+        projected=projection_result is not None
+        or (cfg.regularization_solenoidal_remesh and not projection_only),
+        total_kinetic_energy_transfer=energy_transfer,
+        total_enstrophy_transfer=float(after_integrals["total_enstrophy"])
+        - float(before_integrals["total_enstrophy"]),
     )

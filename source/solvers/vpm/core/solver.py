@@ -885,11 +885,23 @@ class VPMSolver:
         if self.particles.n_particles_total == 0:
             self._discretization_health = {}
             return
+        # The stored particle vorticity is only reconstructed for backups and
+        # initially contains alpha/V. It is not an accepted-step field. Use
+        # curl(u) from the freshly evaluated Jacobian, as the P-relaxation
+        # operator does; otherwise the health stop depends on backup cadence.
+        gradient = self.particles.velocity_gradient_cpu(use_cache=False)
+        vorticity = np.column_stack(
+            (
+                gradient[:, 2, 1] - gradient[:, 1, 2],
+                gradient[:, 0, 2] - gradient[:, 2, 0],
+                gradient[:, 1, 0] - gradient[:, 0, 1],
+            )
+        )
         self._discretization_health = discretization_health(
             self.particle_position,
             self.particle_vortex_strength,
             self.particle_core_radius,
-            vorticity=self.particle_vorticity,
+            vorticity=vorticity,
         )
 
     def _record_vortex_centroid_history(self) -> None:
@@ -989,10 +1001,12 @@ class VPMSolver:
     @property
     def total_linear_impulse(self) -> np.ndarray:
         """Return the current linear impulse, recomputed from the active particle field."""
-        integrals = self.field_diagnostics.compute_flow_integrals(
-            self.particles, self.time, record_history=False
-        )
-        return integrals.get("linear_impulse", np.array([0.0, 0.0, 0.0]))
+        # This linear moment needs neither a quadratic field integral nor an
+        # energy-history derivative (which may be undefined at a grid switch).
+        return 0.5 * np.cross(
+            self.particle_position.astype(np.float64),
+            self.particle_vortex_strength.astype(np.float64),
+        ).sum(axis=0, dtype=np.float64)
 
     @property
     def total_angular_impulse(self) -> np.ndarray:

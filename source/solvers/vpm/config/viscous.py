@@ -54,6 +54,9 @@ class ViscousConfig:
     gbd_max_nodes: int | None = None
     """Optional cap on surviving GBD grid nodes."""
 
+    gbd_remeshing_kernel: str = "M4_PRIME"
+    """Scatter kernel: M4_PRIME or experimental six-point LAGRANGE6."""
+
     dvh_support_radius_ratio: int = 4
     """DVH compact-support radius ``R_d / h``; allowed values are 3, 4, and 5."""
 
@@ -94,6 +97,10 @@ class ViscousConfig:
             raise ValueError(f"dvh_threshold_mode must be one of {sorted(_THRESHOLD_MODES)}")
         if self.gbd_threshold_mode not in _THRESHOLD_MODES:
             raise ValueError(f"gbd_threshold_mode must be one of {sorted(_THRESHOLD_MODES)}")
+        if self.gbd_remeshing_kernel not in {"M4_PRIME", "LAGRANGE6"}:
+            raise ValueError("gbd_remeshing_kernel must be M4_PRIME or LAGRANGE6")
+        if self.gbd_remeshing_kernel == "LAGRANGE6" and self.gbd_domain_padding < 4:
+            raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
         if self.gbd_max_nodes is not None and self.gbd_max_nodes < 1:
             raise ValueError("gbd_max_nodes must be positive when set")
         if self.dvh_max_nodes is not None and self.dvh_max_nodes < 1:
@@ -201,6 +208,7 @@ class ViscousConfig:
         kinematic_viscosity: float | None = None,
         max_nodes: int | None = None,
         core_radius_ratio: float = 2.5,
+        remeshing_kernel: str = "M4_PRIME",
     ) -> ViscousConfig:
         """Return Grid-Based Diffusion configuration."""
         return ViscousConfig(
@@ -212,5 +220,6 @@ class ViscousConfig:
             gbd_threshold_mode=threshold_mode,
             kinematic_viscosity=kinematic_viscosity,
             gbd_max_nodes=max_nodes,
+            gbd_remeshing_kernel=remeshing_kernel,
             core_radius_ratio=core_radius_ratio,
         )

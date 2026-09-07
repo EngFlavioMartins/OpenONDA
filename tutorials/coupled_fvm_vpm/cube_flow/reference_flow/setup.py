@@ -1,190 +1,179 @@
-"""Fully meshed FVM-LES reference for flow past a cube at Re = 1000.
-
-The adaptive mesh and equilibrium Smagorinsky model match the coupled case.
+#!/usr/bin/env python3
+"""Body-fitted cube flow at Re=1000.
 
 Usage:
-    python reference_flow_setup.py
+    python -u setup.py --name DIRECTORY_NAME --dx WALL_CELL_SIZE
+
+Example:
+    python -u setup.py --name coarse --dx 0.125
 """
 
-from __future__ import annotations
-
+import argparse
 from pathlib import Path
-
-import numpy as np
 
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
-CASE_DIR = Path(__file__).resolve().parent
-CUBE_STL = CASE_DIR / "assets" / "cube.stl"
 
-# Physical problem
-CUBE_SIDE = 1.0
-FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)
-DENSITY = 1.0
-REYNOLDS = 1000.0
-KINEMATIC_VISCOSITY = float(np.linalg.norm(FREESTREAM_VELOCITY)) * CUBE_SIDE / REYNOLDS
-SMAGORINSKY_CK = 0.094
-SMAGORINSKY_CE = 1.048
-INITIAL_VELOCITY = (1.0, 0.0, 0.0)
-FVM_TIME_STEP_SIZE = 0.01
-MAX_FVM_TIME_STEP_SIZE = 4.0 * FVM_TIME_STEP_SIZE
-MAX_COURANT_NUMBER = 0.9
-END_TIME = 20.0
-FVM_CORES = 4
-FVM_DOMAIN = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
-WAKE_BOX = (-1.25, 4.25, -1.25, 1.25, -1.25, 1.25)
-DOWNSTREAM_WAKE_BOX = (-1.5, 10.0, -1.5, 1.5, -1.5, 1.5)
-DEFAULT_SURFACE_CELL_SIZE = 0.015625
-DEFAULT_BACKGROUND_CELL_SIZE = 0.5
-SURFACE_CELL_SIZE = DEFAULT_SURFACE_CELL_SIZE
-BACKGROUND_CELL_SIZE = DEFAULT_BACKGROUND_CELL_SIZE
-SAMPLE_SPACING = 0.04
-OFFAXIS_Y = 0.75 * CUBE_SIDE
-WAKE_SLICE_BOUNDS = (0.0, 5.0, -1.5, 1.5)
-
-SAMPLING_INTERVAL_TIME = 0.050
-BACKUP_INTERVAL_TIME = 1.0
-SAMPLE_SCHEDULE = fvm.RunSchedule(every_time=SAMPLING_INTERVAL_TIME)
-
-SAMPLERS = (
-    fvm.ForceSampler(
-        patch_names=["cube"],
-        reference_velocity=float(np.linalg.norm(FREESTREAM_VELOCITY)),
-        reference_area=CUBE_SIDE**2,
-        reference_length=CUBE_SIDE,
-        moment_centre=[0.0, 0.0, 0.0],
-        schedule=SAMPLE_SCHEDULE,
-    ),
-    fvm.LineSampler(
-        start=[FVM_DOMAIN[0], 0.0, 0.0],
-        end=[FVM_DOMAIN[1], 0.0, 0.0],
-        spacing=SAMPLE_SPACING,
-        file_name="centreline",
-        schedule=SAMPLE_SCHEDULE,
-    ),
-    fvm.LineSampler(
-        start=[FVM_DOMAIN[0], OFFAXIS_Y, 0.0],
-        end=[FVM_DOMAIN[1], OFFAXIS_Y, 0.0],
-        spacing=SAMPLE_SPACING,
-        file_name="offaxis_y075",
-        schedule=SAMPLE_SCHEDULE,
-    ),
-    fvm.SurfaceSampler(
-        point=[0.0, 0.0, 0.0],
-        normal=[0, 0, 1],
-        bounds=[FVM_DOMAIN[0], FVM_DOMAIN[1], FVM_DOMAIN[2], FVM_DOMAIN[3]],
-        spacing=SAMPLE_SPACING,
-        schedule=SAMPLE_SCHEDULE,
-        file_name="slice_z0",
-    ),
-    fvm.SurfaceSampler(
-        point=[0.0, 0.0, 0.0],
-        normal=[0, 0, 1],
-        bounds=WAKE_SLICE_BOUNDS,
-        spacing=SAMPLE_SPACING,
-        schedule=SAMPLE_SCHEDULE,
-        file_name="wake_slice_z0",
-    ),
-)
-
-FVM_MESH = msh.CartesianMesher(
-    domain=msh.BoxDomain(
-        bounds=FVM_DOMAIN,
-        patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
-    ),
-    surfaces=(msh.STLSurface(CUBE_STL, patch="cube"),),
-    max_cell_size=BACKGROUND_CELL_SIZE,
-    boundary_cell_size=SURFACE_CELL_SIZE,
-    min_cell_size=SURFACE_CELL_SIZE,
-    refinements=(
-        msh.BoxRefinement("wakeBox", WAKE_BOX, SURFACE_CELL_SIZE * 2),
-        msh.BoxRefinement("downstreamWakeBox", DOWNSTREAM_WAKE_BOX, SURFACE_CELL_SIZE * 4),
-    ),
-)
-
-FVM_SETUP = fvm.FVMSetup(
-    case_name="reference_flow",
-    cores=FVM_CORES,
-    execution=fvm.ComputeConfig(operator_backend="numba"),
-    output=fvm.OutputConfig(
-        format="vtk_xml",
-        data_location="cell",
-        encoding="appended",
-        compression="lz4",
-        precision="f32",
-        asynchronous=True,
-        ghost_layers=0,
-    ),
-    logging=fvm.LoggingConfig(schedule=fvm.RunSchedule(every_time=0.25)),
-    backup=fvm.BackupConfig(
-        schedule=fvm.RunSchedule(every_time=BACKUP_INTERVAL_TIME),
-        write_at_end=True,
-    ),
-    time=fvm.TimeConfig(
-        time_step_size=FVM_TIME_STEP_SIZE,
-        start_time=0.0,
-        end_time=END_TIME,
-        output_schedule=fvm.RunSchedule(every_time=BACKUP_INTERVAL_TIME),
-        adjustment=fvm.MaximumCourantTimeStep(
-            maximum=MAX_COURANT_NUMBER,
-            maximum_time_step_size=MAX_FVM_TIME_STEP_SIZE,
+def create_solver(directory_name: str, dx: float):
+    case_dir = Path(__file__).resolve().parent
+    domain = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
+    velocity = [1.0, 0.0, 0.0]
+    patches = msh.BoxPatches(
+        xmin="inlet",
+        xmax="outlet",
+        ymin="ymin",
+        ymax="ymax",
+        zmin="zmin",
+        zmax="zmax",
+    )
+    mesh = msh.CartesianMesher(
+        domain=msh.BoxDomain(bounds=domain, patches=patches),
+        surfaces=(msh.STLSurface(case_dir.parent / "assets/cube.stl", patch="cube"),),
+        max_cell_size=0.5,
+        refinements=(
+            # cfMesh treats box cell sizes as strict upper bounds.
+            msh.BoxRefinement(
+                "nearBody",
+                (-1.5, 2.5, -1.5, 1.5, -1.5, 1.5),
+                3.0 * dx,
+            ),
+            msh.BoxRefinement(
+                "wake",
+                (0.0, 8.0, -2.0, 2.0, -2.0, 2.0),
+                6.0 * dx,
+            ),
         ),
-    ),
-    schemes=fvm.DiscretizationConfig(
-        # Match the coupled reference-flow discretisation exactly.
-        convection_scheme="linearUpwind",
-        gradient_scheme="gauss",
-        time_scheme="backward",
-    ),
-    linear=fvm.LinearSolverConfig(
-        linear_solver="bicgstab",
-        pressure_solver="amg",
-        pressure_tolerance=1e-6,
-        pressure_relative_tolerance=0.01,
-        pressure_final_relative_tolerance=0.0,
-        momentum_tolerance=1e-6,
-        momentum_relative_tolerance=0.1,
-        momentum_final_relative_tolerance=0.0,
-        momentum_max_iterations=2000,
-        ilu_drop_tolerance=1e-4,
-        ilu_fill_factor=10.0,
-        ilu_reuse_tolerance=0.05,
-    ),
-    pimple=fvm.PimpleControl(
-        n_correctors=2,
-        n_outer_correctors=2,
-        n_orthogonal_correctors=1,
-        velocity_relaxation=0.7,
-        pressure_relaxation=0.3,
-    ),
-    samplers=SAMPLERS,
-    transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-    turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(
-        subgrid_kinetic_energy_coefficient=SMAGORINSKY_CK,
-        subgrid_dissipation_coefficient=SMAGORINSKY_CE,
-    ),
-    boundaries=[
-        fvm.BoundaryConfig.inlet("inlet", list(FREESTREAM_VELOCITY)),
-        fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
-        fvm.BoundaryConfig.slip("ymin"),
-        fvm.BoundaryConfig.slip("ymax"),
-        fvm.BoundaryConfig.slip("zmin"),
-        fvm.BoundaryConfig.slip("zmax"),
-        fvm.BoundaryConfig.wall("cube"),
-    ],
-    initial_velocity=list(INITIAL_VELOCITY),
-    initial_kinematic_pressure=0.0,
-)
+        patch_refinements=(msh.PatchRefinement("cube", dx),),
+    )
 
-
-def main() -> None:
-    fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
-    try:
-        fvm_solver.run()
-    finally:
-        fvm_solver.close()
+    force_schedule = fvm.RunSchedule(every_time=0.05)
+    line_schedule = fvm.RunSchedule(every_time=0.25)
+    sample_spacing = min(0.125, 2.0 * dx)
+    solver_setup = fvm.FVMSetup(
+        case_name=directory_name,
+        cores=4,
+        mesh=fvm.MeshQualityConfig(
+            max_non_orthogonality_deg=70.0,
+            max_skewness=1.0,
+        ),
+        execution=fvm.ComputeConfig(operator_backend="numba"),
+        output=fvm.OutputConfig(
+            compression="lz4",
+            asynchronous=False,
+            ghost_layers=0,
+        ),
+        logging=fvm.LoggingConfig(schedule=fvm.RunSchedule(every_time=0.25)),
+        acceptance=fvm.RunAcceptanceLimits(
+            max_continuity_error_warning=1.0e-4,
+            max_continuity_error_abort=1.0e-2,
+            max_equation_residual_warning=1.0e-4,
+            max_equation_residual_abort=1.0e-2,
+            max_courant_number_warning=0.9,
+            max_courant_number_abort=1.5,
+            max_velocity_magnitude_warning=4.0,
+            max_velocity_magnitude_abort=6.0,
+        ),
+        backup=fvm.BackupConfig(
+            schedule=fvm.RunSchedule(every_time=1.0),
+            write_at_end=True,
+        ),
+        time=fvm.TimeConfig(
+            time_step_size=0.01,
+            end_time=20.0,
+            output_schedule=fvm.RunSchedule(every_time=1.0),
+            adjustment=fvm.MaximumCourantTimeStep(
+                maximum=0.9,
+                maximum_time_step_size=0.04,
+            ),
+        ),
+        schemes=fvm.DiscretizationConfig(
+            convection_scheme="linearUpwind",
+            gradient_scheme="gauss",
+            time_scheme="backward",
+        ),
+        linear=fvm.LinearSolverConfig(
+            pressure_solver="amg",
+            pressure_tolerance=1.0e-6,
+            pressure_relative_tolerance=0.01,
+            momentum_tolerance=1.0e-6,
+            momentum_relative_tolerance=0.1,
+            momentum_max_iterations=2000,
+        ),
+        pimple=fvm.PimpleControl(
+            n_outer_correctors=2,
+            n_orthogonal_correctors=1,
+            velocity_relaxation=0.7,
+            pressure_relaxation=0.3,
+        ),
+        samplers=(
+            fvm.ForceSampler(
+                patch_names=["cube"],
+                reference_velocity=1.0,
+                reference_area=1.0,
+                reference_length=1.0,
+                schedule=force_schedule,
+            ),
+            fvm.LineSampler(
+                start=[domain[0], 0.0, 0.0],
+                end=[domain[1], 0.0, 0.0],
+                spacing=sample_spacing,
+                k=12,
+                reconstruction="affine",
+                file_name="centreline",
+                schedule=line_schedule,
+            ),
+            fvm.LineSampler(
+                start=[domain[0], 0.75, 0.0],
+                end=[domain[1], 0.75, 0.0],
+                spacing=sample_spacing,
+                k=12,
+                reconstruction="affine",
+                file_name="offaxis_y075",
+                schedule=line_schedule,
+            ),
+        ),
+        transport=fvm.TransportConfig(
+            density=1.0,
+            kinematic_viscosity=1.0 / 1000.0,
+        ),
+        turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(
+            subgrid_kinetic_energy_coefficient=0.094,
+            subgrid_dissipation_coefficient=1.048,
+        ),
+        boundaries=[
+            fvm.BoundaryConfig.inlet("inlet", velocity),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
+            fvm.BoundaryConfig.slip("ymin"),
+            fvm.BoundaryConfig.slip("ymax"),
+            fvm.BoundaryConfig.slip("zmin"),
+            fvm.BoundaryConfig.slip("zmax"),
+            fvm.BoundaryConfig.wall("cube"),
+        ],
+        initial_velocity=velocity,
+    )
+    return fvm.create_fvm_solver(
+        solver_setup,
+        case_dir=case_dir,
+        solution_dir=case_dir / "solution" / directory_name,
+        samples_dir=case_dir / "samples" / directory_name,
+        mesh=mesh,
+    )
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--name", required=True)
+    parser.add_argument("--dx", required=True, type=float)
+    arguments = parser.parse_args()
+    solver = create_solver(arguments.name, arguments.dx)
+    try:
+        solver.write_run_manifest()
+        solver.run()
+        fvm.update_grid_study(
+            solver,
+            arguments.dx,
+            profiles=("centreline", "offaxis_y075"),
+        )
+    finally:
+        solver.close()

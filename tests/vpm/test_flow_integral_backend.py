@@ -136,3 +136,21 @@ def test_energy_derivatives_never_compare_periodic_and_unbounded_definitions(pre
     assert result["kinetic_energy_rate"] == -2.0
     assert result["kinetic_energy_rate_source"] == "fourier_transition_viscous_rate"
     assert evaluator._energy_history[-1] == (0.5, 10.0, current)
+    history = list(evaluator._energy_history)
+    trial = evaluator._compute_fourier_flow_integrals(_FourierParticleCloud(), 0.5, False)
+    assert trial["total_kinetic_energy"] == 10.0
+    assert trial["kinetic_energy_rate"] == -2.0
+    assert trial["kinetic_energy_rate_source"] == "trial_viscous_rate"
+    assert evaluator._energy_history == history
+
+
+def test_live_linear_impulse_does_not_require_energy_history_or_quadratic_diagnostics():
+    from source.solvers.vpm.core.solver import VPMSolver
+
+    state = SimpleNamespace(
+        particle_position=np.array([[2.0, 0.0, 0.0], [-2.0, 0.0, 0.0]]),
+        particle_vortex_strength=np.array([[0.0, 3.0, 0.0], [0.0, -3.0, 0.0]]),
+    )
+    np.testing.assert_array_equal(VPMSolver.total_linear_impulse.fget(state), [0.0, 0.0, 6.0])
+    state.particle_vortex_strength *= 2
+    np.testing.assert_array_equal(VPMSolver.total_linear_impulse.fget(state), [0.0, 0.0, 12.0])

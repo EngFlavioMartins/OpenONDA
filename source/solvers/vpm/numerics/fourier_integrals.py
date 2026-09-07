@@ -108,9 +108,9 @@ def _wave_numbers(
         2.0 * np.pi * fft.fftfreq(shape[1], d=spacing),
         2.0 * np.pi * fft.rfftfreq(shape[2], d=spacing),
     ]
-    for axis, size in enumerate(shape):
-        if size % 2 == 0:
-            frequencies[axis][size // 2] = 0.0
+    # These are physical wave numbers for Gaussian filtering and quadratic
+    # integrals, not a real-grid first-derivative stencil. Zeroing Nyquist here
+    # makes high-frequency aliases look like k=0 and leaves them unsmoothed.
     kx = frequencies[0][:, None, None]
     ky = frequencies[1][None, :, None]
     kz = frequencies[2][None, None, :]

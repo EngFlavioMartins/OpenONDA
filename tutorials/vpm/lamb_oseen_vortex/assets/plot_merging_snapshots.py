@@ -35,19 +35,10 @@ from tutorials.vpm.lamb_oseen_vortex import setup
 
 _initial_conditions = setup._initial_conditions
 
-plt.rcParams.update(
-    {
-        "text.usetex": True,
-        "text.latex.preamble": r"\usepackage{newpxtext}\usepackage{newpxmath}",
-        "font.family": "serif",
-        "font.size": 10,
-        "axes.labelsize": 10,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-        "axes.linewidth": 0.45,
-        "pdf.compression": 9,
-    }
-)
+from tutorials.vpm.lamb_oseen_vortex.assets.postprocess import load_theme
+
+load_theme()
+plt.rcParams.update({"axes.linewidth": 0.45, "pdf.compression": 9})
 
 
 @njit(parallel=True, cache=True)
@@ -365,7 +356,7 @@ def main():
                 r"$\omega_z/\omega_{c,0}$",
                 "both",
             ),
-            ([0.89, 0.17, 0.023, 0.20], "plasma", norms[1], r"$|\boldsymbol{u}|/U_{c,0}$", "max"),
+            ([0.89, 0.17, 0.023, 0.20], "plasma", norms[1], r"$|\mathbf{u}|/U_{c,0}$", "max"),
         ]:
             cax = fig.add_axes(box)
             cb = fig.colorbar(
@@ -376,7 +367,7 @@ def main():
                 extend=extension,
             )
             cb.ax.tick_params(width=0.4, length=2, pad=2)
-            cb.ax.set_title(label, fontsize=10, pad=7)
+            cb.ax.set_title(label, fontsize=10.95, pad=7)
         tau = t * viscosity / a0**2
         time_relation = "=" if t == 0.0 else r"\approx"
         fig.text(
@@ -385,7 +376,7 @@ def main():
             rf"$\nu t/a_{{c,0}}^2{time_relation}{tau:.2g}$",
             ha="right",
             va="bottom",
-            fontsize=10,
+            fontsize=10.95,
         )
         for fmt in ["pdf", "png"] if args.format == "both" else [args.format]:
             output = (args.output_dir / name).with_suffix("." + fmt)

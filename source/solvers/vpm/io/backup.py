@@ -35,6 +35,8 @@ _COMPRESSION = {
 _STABILIZATION_DIAGNOSTIC_NAMES = (
     "n_stabilization_events",
     "n_regularization_events",
+    "regularization_cumulative_total_kinetic_energy_transfer",
+    "regularization_cumulative_total_enstrophy_transfer",
     "last_stabilization_mechanism",
     "stabilization_vortex_strength_error",
     "stabilization_vortex_strength_growth",
@@ -138,6 +140,14 @@ def _configuration_mismatches(
         paths: list[str] = []
         for key in sorted(set(expected) | set(found)):
             child_path = f"{path}.{key}" if path else key
+            if (
+                child_path == "stabilization.regularization_solenoidal_remesh"
+                and key not in found
+                and expected.get(key) is False
+            ):
+                # Pre-projection checkpoints had no switch; their behavior is
+                # exactly the new disabled default. Enabling it still differs.
+                continue
             if key not in expected or key not in found:
                 paths.append(child_path)
             else:

@@ -833,3 +833,36 @@ def test_production_gbd_writes_recovery_before_building_particle_arrays(monkeypa
         is None
     )
     assert harness.last_gbd_moment_recovery == harness._empty_gbd_moment_recovery()
+
+
+@pytest.mark.parametrize("value", [0.0, 0.001])
+@pytest.mark.parametrize("fill_empty", [False, True])
+def test_uniform_scalar_scatter_avoids_tree_and_respects_zero_weights(
+    monkeypatch, value, fill_empty
+):
+    def forbidden_tree(*args, **kwargs):
+        raise AssertionError("a uniform scalar needs no nearest-neighbour tree")
+
+    monkeypatch.setattr(scipy.spatial, "cKDTree", forbidden_tree)
+    position = np.array([[1.0, 1.0, 1.0], [2.0, 2.0, 2.0], [-1.0, 0.0, 0.0]])
+    strength = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    scalar = np.full(3, value)
+    field = _GridDiffusionMixin._scatter_scalar_weighted(
+        None, position, strength, scalar, np.zeros(3), 1.0, 4, 4, 4, fill_empty=fill_empty
+    )
+    expected = np.full((4, 4, 4), value if fill_empty else 0.0, dtype=np.float32)
+    expected[1, 1, 1] = value
+    np.testing.assert_array_equal(field, expected)
+    empty = _GridDiffusionMixin._scatter_scalar_weighted(
+        None,
+        position,
+        np.zeros_like(strength),
+        scalar,
+        np.zeros(3),
+        1.0,
+        4,
+        4,
+        4,
+        fill_empty=fill_empty,
+    )
+    np.testing.assert_array_equal(empty, np.zeros_like(expected))

@@ -1,0 +1,7 @@
+{
+  "error": "RuntimeError: regularization changed enstrophy by -5.428e-02, outside its declared non-injecting interval",
+  "planned_steps": 400,
+  "status": "failed",
+  "step": 9,
+  "time": 0.070187329908
+}

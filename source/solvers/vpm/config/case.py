@@ -100,6 +100,15 @@ class Numerics:
         if kernel not in valid_kernels:
             raise ValueError(f"particle_kernel must be one of {sorted(valid_kernels)}")
         object.__setattr__(self, "particle_kernel", kernel)
+        if kernel != "GAUSSIAN" and (
+            self.stabilization.regularization_interval_steps > 0
+            or self.stabilization.divergence_relaxation.enabled
+        ):
+            raise ValueError(
+                "Conservative regularization and divergence relaxation currently "
+                "require GAUSSIAN particles; their reconstruction and invariants "
+                "must not be applied to another kernel."
+            )
         supported_kernels = getattr(self.induction, "supported_kernels", None)
         if supported_kernels is not None and kernel not in supported_kernels:
             raise ValueError(

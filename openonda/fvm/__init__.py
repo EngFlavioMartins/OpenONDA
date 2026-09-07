@@ -38,7 +38,9 @@ from source.solvers.fvm import (
     TransportConfig,
     TurbulenceConfig,
     YPlusSampler,
+    analyse_grid_study,
     create_fvm_solver,
+    update_grid_study,
 )
 from source.solvers.fvm.fields.diagnostics import (
     compute_continuity_error,
@@ -79,6 +81,8 @@ __all__ = [
     "compute_continuity_error",
     "compute_enstrophy",
     "compute_kinetic_energy",
+    "analyse_grid_study",
     "create_fvm_solver",
     "mesher",
+    "update_grid_study",
 ]

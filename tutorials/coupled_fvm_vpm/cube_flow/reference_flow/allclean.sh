@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-rm -rf solution samples figures
+cd "$(dirname "$0")"
+rm -rf solution samples __pycache__

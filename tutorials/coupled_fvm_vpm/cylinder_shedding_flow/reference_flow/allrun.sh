@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Qualified spatial + temporal + iterative study, then statistics and plots.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-
-export MPLBACKEND=Agg
-export NUMBA_NUM_THREADS="${NUMBA_NUM_THREADS:-6}"
-exec "${PYTHON:-python}" -u study.py "$@"
+export PYTHONDONTWRITEBYTECODE=1
+"${PYTHON:-python}" -u setup.py --name coarse --dx 0.125
+"${PYTHON:-python}" -u setup.py --name medium --dx 0.0625
+"${PYTHON:-python}" -u setup.py --name fine --dx 0.03125

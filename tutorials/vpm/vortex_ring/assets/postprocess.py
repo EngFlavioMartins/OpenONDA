@@ -27,6 +27,8 @@ from tutorials.vpm.vortex_ring.assets.ring_metrics import (
     VARIANT_LABEL,
     load_ring_data,
     load_ring_speed,
+    load_sampled_ring_speed,
+    load_sampled_ring_data,
     plot_variants,
     saffman_valid_time_limit,
     saffman_speed,
@@ -249,26 +251,27 @@ def validate(pre_plot: bool) -> int:
             failures.append(f"{name}: unreadable or non-finite snapshots")
             continue
         if len(entries) >= 2:
-            radii = np.array([entry["major_radius"] for entry in entries])
-            impulse = np.array([entry["linear_impulse_magnitude"] for entry in entries])
-            circulation = np.array([entry["tube_circulation"] for entry in entries])
+            samples = load_sampled_ring_data(SAMPLES_DIR / name / "ring_diagnostics.csv")
+            radii = samples["major_radius"].to_numpy()
+            impulse = samples["linear_impulse_magnitude"].to_numpy()
+            circulation = samples["tube_circulation"].to_numpy()
             radius_drift = float(np.max(np.abs(radii / radii[0] - 1.0)))
             impulse_drift = float(np.max(np.abs(impulse / impulse[0] - 1.0)))
             circulation_drift = float(np.max(np.abs(circulation / circulation[0] - 1.0)))
-            time, velocity = load_ring_speed(files)
+            time, velocity = load_sampled_ring_speed(SAMPLES_DIR / name / "ring_diagnostics.csv")
             valid_theory = time * REFERENCE_TIME <= saffman_valid_time_limit()
             comparison_time = time[valid_theory]
             comparison_velocity = velocity[valid_theory]
             reference = saffman_speed(comparison_time * REFERENCE_TIME) / REFERENCE_VELOCITY
             relative_rmse = float(
-                np.sqrt(np.mean((comparison_velocity - reference) ** 2)) / np.mean(reference)
+                np.sqrt(np.mean(((comparison_velocity - reference) / reference) ** 2))
             )
             status = metadata["status"]
             print(
                 f"{name}: status={status}, step={metadata['completed_steps']}, "
-                f"dR={radius_drift:.3%}, "
-                f"d|I|={impulse_drift:.3%}, dcirculation={circulation_drift:.3%}, "
-                f"speed RMSE={relative_rmse:.3%}"
+                f"max |dR|={100 * radius_drift:.2g}%, "
+                f"max |dI|={100 * impulse_drift:.2g}%, max |dGamma_tube|={100 * circulation_drift:.2g}%, "
+                f"relative speed RMS={100 * relative_rmse:.2g}% (sample histories, initial references)"
             )
         else:
             print(
@@ -350,8 +353,11 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "runs": runs,
         "stability_ranking": [name for _, name in ranked],
-        "longest_sustained_variant": ranked[0][1] if ranked else None,
-        "figures": sorted(path.name for path in figures_dir.glob("*.png")),
+        "longest_sustained_variant": ranked[0][1]
+        if len(ranked) == 1 or (len(ranked) > 1 and ranked[0][0] > ranked[1][0])
+        else None,
+        "longest_sustained_variants": [name for time, name in ranked if time == ranked[0][0]],
+        "figures": sorted(path.name for path in figures_dir.glob("*.pdf")),
     }
 
 

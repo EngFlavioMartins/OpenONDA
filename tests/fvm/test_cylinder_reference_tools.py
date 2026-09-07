@@ -1,144 +1,79 @@
-"""Regression tests for the minimal cylinder grid-study interface."""
+"""Declarative interface checks for the cylinder reference case."""
 
-from __future__ import annotations
-
-import csv
-import inspect
-import json
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
-from source.solvers.fvm.factory import create_fvm_solver
+import openonda.fvm.mesher as msh
 from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow import setup
-from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow.assets import (
-    postprocess,
-)
 
 
-def write_force_history(path, time, drag, lift) -> None:
-    path.parent.mkdir(parents=True)
-    with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(
-            stream,
-            fieldnames=("time", "patch", "drag_coefficient", "lift_coefficient"),
-        )
-        writer.writeheader()
-        writer.writerows(
-            {
-                "time": sample_time,
-                "patch": "cylinder",
-                "drag_coefficient": cd,
-                "lift_coefficient": cl,
-            }
-            for sample_time, cd, cl in zip(time, drag, lift, strict=True)
-        )
+def capture_case(monkeypatch, name="coarse", dx=0.125):
+    captured = {}
+
+    def create(solver_setup, **kwargs):
+        captured.update(setup=solver_setup, **kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(setup.fvm, "create_fvm_solver", create)
+    setup.create_solver(name, dx)
+    return captured
 
 
-def test_grid_study_force_report_uses_one_common_statistics_window(tmp_path, monkeypatch):
-    time = np.arange(0.0, 60.0 + 1.0e-12, 0.02)
-    omega = 2.0 * np.pi * 0.2
-    for number, (case, _dx) in enumerate(postprocess.CASES, start=1):
-        drag = 1.3 + (0.03 / number) * np.cos(2.0 * omega * time)
-        lift = (0.4 / number) * np.sin(omega * time)
-        write_force_history(
-            tmp_path / "samples" / case / "forces_history.csv",
-            time,
-            drag,
-            lift,
-        )
-    (tmp_path / "solution").mkdir()
-    monkeypatch.setattr(postprocess, "CASE_DIR", tmp_path)
-    realized_background = {
-        "very_coarse": 0.4,
-        **{name: 8 * dx for name, dx in postprocess.PRODUCTION_CASES},
-    }
-    realized_wall = {
-        "very_coarse": 1.0 / 30.0,
-        **dict(postprocess.PRODUCTION_CASES),
-    }
-    monkeypatch.setattr(
-        postprocess,
-        "mesh_evidence",
-        lambda case: {
-            "case": case,
-            "path": str(tmp_path / "solution" / case / "mesh.npz"),
-            "identity_sha256": f"synthetic-{case}",
-            "n_cells": 100,
-            "n_faces": 200,
-            "resolved_background": realized_background[case],
-            "resolved_wall": realized_wall[case],
-        },
+def test_single_creator_declares_cfmesh_inputs_and_output_directories(monkeypatch):
+    case = capture_case(monkeypatch)
+    mesh = case["mesh"]
+
+    assert isinstance(mesh, msh.ExtrudedCartesianMesher)
+    assert isinstance(mesh.source, msh.CartesianMesher)
+    case_dir = Path(setup.__file__).resolve().parent
+    assert mesh.source.surfaces[0].path == (case_dir.parent / "assets/cylinder_long.stl").resolve()
+    assert mesh.source.surface_may_cross_domain_boundary
+    assert mesh.domain.bounds == (-8.0, 24.0, -10.0, 10.0, -0.5, 0.5)
+    assert mesh.source.domain.patches.as_tuple() == (
+        "inlet",
+        "outlet",
+        "ymin",
+        "ymax",
+        "zmin",
+        "zmax",
     )
-
-    postprocess.main()
-
-    report = json.loads((tmp_path / "solution" / "grid_study.json").read_text())
-    assert report["common_window"] == {"start": 30.0, "end": 60.0}
-    assert report["production_cases"] == ["coarse", "medium", "fine"]
-    assert report["refinement_ratio"] == 2.0
-    np.testing.assert_allclose(report["cases"][-1]["mean_cd"], 1.3, atol=1.0e-12)
-    np.testing.assert_allclose(report["cases"][-1]["strouhal"], 0.2, atol=2.0e-3)
-    assert len(report["comparisons"]) == 3
-    assert report["grid_convergence"]["mean_cd"]["status"] == "differences_unresolved"
-    assert not report["grid_independent"]
-
-
-def test_grid_study_uses_reasonable_monotone_wall_spacings():
-    names = [case for case, _dx in postprocess.CASES]
-    spacing = np.asarray([dx for _case, dx in postprocess.CASES])
-
-    assert names == ["very_coarse", "coarse", "medium", "fine"]
-    np.testing.assert_allclose(spacing, [1 / 4, 1 / 8, 1 / 16, 1 / 32])
-    assert np.all(np.diff(spacing) < 0.0)
-    production = np.asarray([dx for _case, dx in postprocess.PRODUCTION_CASES])
-    np.testing.assert_allclose(production[:-1] / production[1:], 2.0)
-
-
-def test_grid_study_preserves_the_refinement_ratio_at_every_octree_level():
-    meshers = [setup.grid_mesh(dx) for _case, dx in postprocess.PRODUCTION_CASES]
-
-    np.testing.assert_allclose(
-        [mesher.max_cell_size for mesher in meshers],
-        [0.25, 0.25, 0.25],
-    )
-    for mesher, (_case, dx) in zip(meshers, postprocess.PRODUCTION_CASES, strict=True):
-        assert mesher.boundary_layers == ()
-        assert mesher.effective_cell_size(dx) == dx
-        assert mesher.effective_cell_size(2.0 * dx) == 2.0 * dx
-        assert mesher.effective_cell_size(4.0 * dx) == min(4.0 * dx, mesher.max_cell_size)
-
-
-def test_thin_span_background_cap_remains_dyadic():
-    assert setup.background_cell_size(1.0 / 8.0) == 1.0 / 4.0
-    assert setup.background_cell_size(1.0 / 16.0) == 1.0 / 4.0
-    assert setup.background_cell_size(1.0 / 32.0) == 1.0 / 4.0
-    assert setup.background_cell_size(1.0 / 32.0, domain=(-8, 24, -10, 10, -0.375, 0.375)) == 0.25
-
-
-def test_richardson_gci_recovers_second_order_limit():
-    exact = 1.25
-    records = [
-        {"case": case, "dx": dx, "mean_cd": exact + 2.0 * dx**2}
-        for case, dx in postprocess.PRODUCTION_CASES
+    assert [item.name for item in mesh.source.refinements] == [
+        "nearBody",
+        "nearWake",
+        "wake",
     ]
+    np.testing.assert_allclose(
+        [item.cell_size for item in mesh.source.refinements],
+        [0.375, 0.375, 0.75],
+    )
+    np.testing.assert_allclose(
+        [mesh.effective_cell_size(item.cell_size) for item in mesh.source.refinements],
+        [0.25, 0.25, 0.5],
+    )
+    assert mesh.source.max_cell_size == 1.0
+    assert mesh.source.patch_refinements == (msh.PatchRefinement("cylinder", 0.125),)
+    assert mesh.levels == (-0.5, 0.0, 0.5)
+    assert case["solution_dir"] == case_dir / "solution/coarse"
+    assert case["samples_dir"] == case_dir / "samples/coarse"
 
-    result = postprocess.richardson_gci(records, "mean_cd", tolerance_percent=1.0)
 
-    assert result["status"] == "monotone_estimate"
-    np.testing.assert_allclose(result["observed_order"], 2.0, atol=1.0e-12)
-    np.testing.assert_allclose(result["richardson_extrapolated_value"], exact, atol=1.0e-12)
-    assert result["passed"]
+def test_creator_sets_the_solver_and_boundary_contract(monkeypatch):
+    case = capture_case(monkeypatch, "medium", 0.0625)
+    config = case["setup"]
 
-
-def test_fvm_solver_api_owns_named_solution_and_sample_directories():
-    parameters = inspect.signature(create_fvm_solver).parameters
-
-    assert "solution_dir" in parameters
-    assert "samples_dir" in parameters
-
-
-def test_reference_grid_disables_the_unstable_extra_nonorthogonal_sweep():
-    controls = setup.solver_setup("qualification", 1.0 / 36.0).pimple
-
-    assert controls.n_correctors == 2
-    assert controls.n_orthogonal_correctors == 0
+    assert config.case_name == "medium"
+    assert config.mesh.max_non_orthogonality_deg == 70.0
+    assert config.mesh.max_skewness == 1.0
+    assert config.mesh.max_lsq_condition == 9.0
+    assert config.pimple.n_orthogonal_correctors == 0
+    assert [boundary.name for boundary in config.boundaries] == [
+        "inlet",
+        "outlet",
+        "ymin",
+        "ymax",
+        "zmin",
+        "zmax",
+        "cylinder",
+    ]

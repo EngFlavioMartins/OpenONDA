@@ -10,8 +10,9 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
-from ring_metrics import (
+from .ring_metrics import (
     ASSETS_DIR,
+    FIGURES_DIR,
     FAMILIES,
     FAMILY_FILE_STEMS,
     FAMILY_LABELS,
@@ -115,7 +116,7 @@ def main() -> None:
 
         save_fig(
             fig,
-            Path("figures") / f"{FAMILY_FILE_STEMS[family]}_trajectory.png",
+            FIGURES_DIR / f"{FAMILY_FILE_STEMS[family]}_trajectory.png",
             dpi=args.dpi,
             figure_format=args.format,
         )

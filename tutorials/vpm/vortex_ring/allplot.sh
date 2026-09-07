@@ -29,6 +29,12 @@ for figure_format in png pdf; do
     "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_circulation" --format "${figure_format}"
     "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_stability" --format "${figure_format}"
 done
+if (( STRICT )); then
+    "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_scenes"
+else
+    "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_scenes" --available
+fi
+"${PYTHON_BIN}" -m "${MODULE}.assets.summarize_ring_results"
 "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" --manifest
 if (( STRICT )); then
     "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess"

@@ -183,17 +183,22 @@ class StabilizationOperators:
     ) -> dict[str, float]:
         """Rotate every strength toward the vorticity direction it induces.
 
+        ``factor`` is the dimensionless blend f*dt in Winckelmans (1995),
+        equation 11, adapting Pedrizzetti (1992) to regularized particles.
+        Holding a physical frequency fixed requires scaling it with dt.
+        The optional magnitude renormalization is an additional adaptation.
+
         The vorticity is taken as the curl of ``particles.velocity_gradient``,
         so this must be called while that gradient still describes the state
-        being relaxed.  Each strength moves along the short arc between
-        ``alpha_p`` and ``omega(x_p)``, which bounds the correction by the
-        misalignment itself; with ``preserve_vortex_strength_magnitude`` the rotation is exact
-        and no particle strength is created or destroyed.
+        being relaxed. The blend points between ``alpha_p`` and ``omega(x_p)``;
+        it is not a constant-fraction angular rotation. With
+        ``preserve_vortex_strength_magnitude``, a nonzero blend is normalized
+        back to the original magnitude. Exactly opposing vectors at factor
+        0.5 have a zero blend and no defined normalization direction.
 
         Vector vortex strength, linear impulse, and angular impulse are *not*
-        preserved by the rotation.  The returned statistics report the angle
-        that was removed and the strength that the uncorrected form would have
-        dissipated; they are audit output and take no part in the update.
+        preserved by the rotation. The statistics report the pre-blend angle
+        and actual magnitude change; they are audit output only.
         """
         count = len(particles)
         self._pedrizzetti_misalignment_sum.fill(0.0)
@@ -216,6 +221,9 @@ class StabilizationOperators:
             count,
         )
         ti.sync()
+        # Publish the device mutation before moment restoration, event audits,
+        # or the next induction stage can reuse a cached source snapshot/tree.
+        particles.touch_state()
         strength_before = float(self._pedrizzetti_strength_before[None])
         strength_after = float(self._pedrizzetti_strength_after[None])
         return {

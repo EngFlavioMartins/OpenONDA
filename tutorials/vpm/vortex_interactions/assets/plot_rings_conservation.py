@@ -27,7 +27,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ring_metrics import (
+from .ring_metrics import (
+    FIGURES_DIR,
     FAMILIES,
     FAMILY_FILE_STEMS,
     FAMILY_LABELS,
@@ -134,7 +135,7 @@ def main() -> None:
 
         save_fig(
             fig,
-            Path("figures") / f"{FAMILY_FILE_STEMS[family]}_conservation.png",
+            FIGURES_DIR / f"{FAMILY_FILE_STEMS[family]}_conservation.png",
             dpi=args.dpi,
             figure_format=args.format,
         )

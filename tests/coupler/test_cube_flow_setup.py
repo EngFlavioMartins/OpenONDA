@@ -389,18 +389,28 @@ def test_cube_reference_gate_uses_spatial_mean_profile_error(tmp_path, monkeypat
         )
 
 
-def test_reference_flow_uses_the_same_sampling_and_backup_cadence():
+def test_reference_flow_declares_its_sampling_and_backup_cadence(monkeypatch):
     coupled = _load_setup(CASE_DIR / "setup.py", "coupled_flow_reference_test")
     reference = _load_setup(
         CASE_DIR / "reference_flow" / "setup.py",
         "reference_flow_setup_test",
     )
+    captured = {}
 
-    assert pytest.approx(coupled.FVM_TIME_STEP_SIZE) == reference.FVM_TIME_STEP_SIZE
-    assert pytest.approx(0.050) == reference.SAMPLING_INTERVAL_TIME
-    assert all(
-        sampler.schedule.every_time == reference.SAMPLING_INTERVAL_TIME
-        for sampler in reference.SAMPLERS
-    )
-    assert reference.FVM_SETUP.time.output_schedule.every_time == reference.BACKUP_INTERVAL_TIME
-    assert reference.FVM_SETUP.backup.schedule.every_time == reference.BACKUP_INTERVAL_TIME
+    def create(config, **_kwargs):
+        captured["config"] = config
+        return object()
+
+    monkeypatch.setattr(reference.fvm, "create_fvm_solver", create)
+    reference.create_solver("coarse", 0.125)
+    config = captured["config"]
+
+    assert config.time.time_step_size == pytest.approx(coupled.FVM_TIME_STEP_SIZE)
+    schedules = {sampler.name: sampler.schedule.every_time for sampler in config.samplers}
+    assert schedules == {
+        "forces_history": 0.05,
+        "centreline": 0.25,
+        "offaxis_y075": 0.25,
+    }
+    assert config.time.output_schedule.every_time == 1.0
+    assert config.backup.schedule.every_time == 1.0

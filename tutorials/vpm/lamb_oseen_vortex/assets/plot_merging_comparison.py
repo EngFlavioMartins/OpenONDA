@@ -68,7 +68,7 @@ def plot_merging_case(args) -> int:
     b0 = runtime["vortex_separation"]
 
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
-    fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.19, left=0.10, right=0.90)
+    fig.subplots_adjust(hspace=0.09, top=0.95, bottom=0.24, left=0.14, right=0.90)
 
     plotted_schemes = []
     for scheme in SCHEME_DRAW_ORDER:
@@ -128,7 +128,7 @@ def plot_merging_case(args) -> int:
         "linestyle": "-",
         "linewidth": 1.0,
         "zorder": 100,
-        "label": r"Cerretelli \& Williamson (2003)",
+        "label": r"Experiment",
     }
     references = load_merging_references(a0, b0)
     for axis, name in (

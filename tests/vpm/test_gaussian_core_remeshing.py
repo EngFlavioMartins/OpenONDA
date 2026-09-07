@@ -1,0 +1,140 @@
+"""Field-level qualification of core reset, independently of its moment gates."""
+
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+from source.solvers.vpm.stabilization.remeshing import gaussian_core_remesh
+
+
+def test_grid_projection_removes_gradient_preserves_solenoidal_field_and_mean():
+    from source.solvers.vpm.stabilization.remeshing import project_grid_strength
+
+    n = 16
+    x = np.arange(n) * 2 * np.pi / n
+    field = np.zeros((n, n, n, 3))
+    field[..., 0] = np.cos(x)[:, None, None] + 0.3
+    field[..., 1] = np.sin(x)[:, None, None]
+    projected = project_grid_strength(field, 2 * np.pi / n)
+    np.testing.assert_allclose(projected[..., 0], 0.3, atol=1e-14)
+    np.testing.assert_allclose(projected[..., 1], field[..., 1], atol=1e-14)
+    np.testing.assert_allclose(projected[..., 2], 0, atol=1e-14)
+
+
+def test_old_checkpoint_default_remains_compatible_but_cannot_enable_projection():
+    from source.solvers.vpm.io.backup import _configuration_mismatches
+
+    old = {"stabilization": {}}
+    expected = {"stabilization": {"regularization_solenoidal_remesh": False}}
+    assert _configuration_mismatches(expected, old) == []
+    expected["stabilization"]["regularization_solenoidal_remesh"] = True
+    assert _configuration_mismatches(expected, old) == [
+        "stabilization.regularization_solenoidal_remesh"
+    ]
+
+
+def _particles():
+    arrays = {
+        "position": np.array([[-0.11, 0.03, 0.02], [0.13, -0.04, 0.01]]),
+        "vortex_strength": np.array([[0.3, -0.1, 1.0], [-0.3, 0.1, -0.8]]),
+        "core_radius": np.array([0.14, 0.18]),
+        "kinematic_viscosity": np.array([0.001, 0.001]),
+        "eddy_viscosity": np.array([0.0, 0.003]),
+        "group_id": np.array([0, 1]),
+        "zone_id": np.array([0, 0]),
+    }
+    return arrays, SimpleNamespace(
+        **{name + "_cpu": lambda values=values: values.copy() for name, values in arrays.items()}
+    )
+
+
+def _field(points, arrays):
+    d = points[:, None, :] - arrays["position"][None, :, :]
+    sigma = arrays["core_radius"]
+    weight = np.exp(-np.sum(d * d, axis=2) / sigma**2) / (np.pi**1.5 * sigma**3)
+    return weight @ arrays["vortex_strength"]
+
+
+def test_variable_core_reset_preserves_resolved_gaussian_field_and_second_moments():
+    source, particles = _particles()
+    remapped = gaussian_core_remesh(
+        particles, spacing=0.035, core_radius=0.07, tail_budget=1e-6, max_particles=100000
+    )
+    points = np.random.default_rng(15).uniform(-0.25, 0.25, (80, 3))
+    error = np.linalg.norm(_field(points, remapped) - _field(points, source)) / np.linalg.norm(
+        _field(points, source)
+    )
+    assert error < 0.003
+    # Crossing the 10,000-particle diagnostic threshold must not change the
+    # quadratic form used to decide whether this representation change passes.
+    from source.solvers.vpm.numerics.fourier_integrals import _grid_for_particles
+    from source.solvers.vpm.stabilization.regularization import _transfer_integrals
+
+    grid = _grid_for_particles(np.vstack((source["position"], remapped["position"])), 0.035)
+    before = _transfer_integrals(
+        source["position"], source["vortex_strength"], source["core_radius"], np.ones(2), grid
+    )
+    after = _transfer_integrals(
+        remapped["position"],
+        remapped["vortex_strength"],
+        remapped["core_radius"],
+        remapped["particle_volume"],
+        grid,
+    )
+    assert len(remapped["position"]) > 10_000
+    for quantity in ("total_kinetic_energy", "total_enstrophy"):
+        assert abs(after[quantity] / before[quantity] - 1) < 0.005
+    pruning_bound = 1e-6 * np.linalg.norm(source["vortex_strength"], axis=1).sum()
+    np.testing.assert_allclose(
+        remapped["vortex_strength"].sum(axis=0),
+        source["vortex_strength"].sum(axis=0),
+        atol=pruning_bound,
+    )
+    # Gaussian second moment in one coordinate is sigma²/2. No nu*dt term.
+    for axis in range(3):
+        before = (source["position"][:, axis] ** 2 + source["core_radius"] ** 2 / 2) @ source[
+            "vortex_strength"
+        ]
+        after = (remapped["position"][:, axis] ** 2 + remapped["core_radius"] ** 2 / 2) @ remapped[
+            "vortex_strength"
+        ]
+        np.testing.assert_allclose(after, before, atol=2e-6)
+
+
+def test_capacity_does_not_silently_override_the_tail_budget():
+    _, particles = _particles()
+    with pytest.raises(ValueError, match="capacity is 10"):
+        gaussian_core_remesh(
+            particles, spacing=0.04, core_radius=0.07, tail_budget=1e-3, max_particles=10
+        )
+
+
+def test_core_enlargement_requires_explicit_filtering_instead_of_negative_variance():
+    _, particles = _particles()
+    with pytest.raises(ValueError, match="cannot enlarge"):
+        gaussian_core_remesh(
+            particles, spacing=0.04, core_radius=0.2, tail_budget=1e-3, max_particles=1000
+        )
+
+
+def test_reset_to_the_configured_core_accepts_float32_storage_roundoff():
+    _, particles = _particles()
+    particles.core_radius_cpu = lambda: np.full(2, 0.08, dtype=np.float32)
+    remapped = gaussian_core_remesh(
+        particles, spacing=0.04, core_radius=0.08, tail_budget=1e-4, max_particles=1000
+    )
+    np.testing.assert_array_equal(remapped["core_radius"], 0.08)
+
+
+def test_gaussian_reconstruction_is_not_silently_used_for_other_kernels():
+    from source.solvers.vpm.config.case import Numerics
+    from source.solvers.vpm.config.stabilization import StabilizationConfig
+
+    with pytest.raises(ValueError, match="require GAUSSIAN"):
+        Numerics(
+            particle_kernel="WINCKELMANS",
+            stabilization=StabilizationConfig(
+                regularization_interval_steps=10, regularization_grid_spacing=0.1
+            ),
+        )

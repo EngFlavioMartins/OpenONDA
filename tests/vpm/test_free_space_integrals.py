@@ -65,3 +65,19 @@ def test_free_space_mode_rejects_variable_core_radii():
             effective_viscosity=np.full(2, 0.01),
             free_space=True,
         )
+
+
+def test_periodic_gaussian_enstrophy_filters_nyquist_modes():
+    sigma = 0.08
+    strength = np.array([[0.3, -0.4, 0.7]])
+    result = gaussian_fourier_integrals(
+        np.zeros((1, 3)),
+        strength,
+        np.array([sigma]),
+        np.array([0.04**3]),
+        grid=CartesianGrid(np.full(3, -0.4), 0.04, (21, 21, 21)),
+    )
+    exact = np.sum(strength**2) / ((2 * np.pi) ** 1.5 * sigma**3)
+    # Periodic images are >20 core radii away; Gaussian tails at Nyquist
+    # also lie below this tolerance for sigma/h=2.
+    assert result.total_enstrophy == pytest.approx(exact, rel=1e-7)

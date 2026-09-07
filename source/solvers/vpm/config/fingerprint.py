@@ -27,6 +27,7 @@ def _canonical_value(value: Any) -> Any:
             "theta",
             "tolerance",
             "multipole_order",
+            "stretching_scheme",
             "sort_particle_targets",
             "traversal_block_dim",
         ):

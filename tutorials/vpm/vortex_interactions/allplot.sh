@@ -1,29 +1,47 @@
 #!/usr/bin/env bash
-# Plot the four leapfrogging particle-stabilization cases.
-#
-# Usage:
-#   ./allplot.sh        PNG figures (default)
-#   ./allplot.sh pdf    PDF figures
+# Plot every available vortex-interaction stabilization result.
 set -euo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+cd "${REPO_ROOT}"
+MODULE="tutorials.vpm.vortex_interactions.assets"
+PYTHON_BIN="${OPENONDA_PYTHON:-python}"
 
-format="${1:-png}"
-case "$format" in
-    png|pdf) ;;
-    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
+export MPLCONFIGDIR="${MPLCONFIGDIR:-${SCRIPT_DIR}/.cache/matplotlib}"
+mkdir -p "${MPLCONFIGDIR}" "${SCRIPT_DIR}/figures"
+
+STRICT=0
+case "${1:-}" in
+    "") ;;
+    --strict) STRICT=1 ;;
+    *) printf 'Usage: %s [--strict]\n' "$0" >&2; exit 2 ;;
 esac
 
-mkdir -p figures
-python_bin="${OPENONDA_PYTHON:-python}"
+shopt -s nullglob
+SAMPLE_FILES=("${SCRIPT_DIR}"/samples/*/flow_integrals.csv)
+shopt -u nullglob
+if (( ${#SAMPLE_FILES[@]} == 0 )); then
+    if (( STRICT )); then
+        "${PYTHON_BIN}" -m "${MODULE}.validate_stabilization_suite" --strict
+    else
+        "${PYTHON_BIN}" -m "${MODULE}.validate_stabilization_suite"
+    fi
+    exit $?
+fi
 
-plot() {
-    "$python_bin" "$@" --format "$format"
-}
+for figure_format in png pdf; do
+    "${PYTHON_BIN}" -m "${MODULE}.plot_rings_circulation" --format "${figure_format}"
+    "${PYTHON_BIN}" -m "${MODULE}.plot_rings_conservation" --format "${figure_format}"
+    "${PYTHON_BIN}" -m "${MODULE}.plot_rings_energy" --format "${figure_format}"
+    "${PYTHON_BIN}" -m "${MODULE}.plot_rings_energy_budget" --format "${figure_format}"
+    "${PYTHON_BIN}" -m "${MODULE}.plot_rings_resolution" --format "${figure_format}"
+    "${PYTHON_BIN}" -m "${MODULE}.plot_rings_stability" --format "${figure_format}"
+    "${PYTHON_BIN}" -m "${MODULE}.plot_rings_trajectory" --format "${figure_format}"
+done
 
-plot assets/plot_rings_circulation.py
-plot assets/plot_rings_conservation.py
-plot assets/plot_rings_energy.py
-plot assets/plot_rings_resolution.py
-plot assets/plot_rings_stability.py
-plot assets/plot_rings_trajectory.py
+if (( STRICT )); then
+    "${PYTHON_BIN}" -m "${MODULE}.validate_stabilization_suite" --strict
+else
+    "${PYTHON_BIN}" -m "${MODULE}.validate_stabilization_suite"
+fi

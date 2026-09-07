@@ -1,0 +1,7 @@
+{
+  "error": "RuntimeError: Sampler 'flow_integrals' failed at step 100, time 0.7798592212: Fourier flow diagnostics produced a non-finite kinetic-energy rate",
+  "planned_steps": 400,
+  "status": "failed",
+  "step": 100,
+  "time": 0.7798592212
+}

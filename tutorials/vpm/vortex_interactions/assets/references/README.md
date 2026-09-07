@@ -16,7 +16,12 @@ align those positions with the present centres at `x/R0 = -0.5` and `0.5`.
 Only the arbitrary axial origin is changed.
 
 The source case has `Re_Gamma = 3000`, `a0/R0 = 0.1`, and `h0/R0 = 1`, which
-match the present leapfrogging geometry. The present initialization also uses
-the single disturbance reported for the LBM comparison: amplitude
-`epsilon/R0 = 0.05` and azimuthal mode `n = 8`. The disturbance phase is
-arbitrary under rotation and is fixed to zero in `interactions_setup.py`.
+match the present leapfrogging geometry. However, the paper explicitly excludes
+flow instability from the subsequent parametric calculations (pages 2–3),
+including the Fig. 5 trajectory. Its amplitude `epsilon/R0 = 0.05`, mode `n = 8`
+perturbation belongs to the separate Fig. 3 validation example at `Re = 3415`
+and is described as a displacement in the axial z direction. This tutorial
+uses a radial disturbance. Therefore Fig. 5 is an unperturbed kinematic
+reference, not a matched validation of the tutorial's instability or breakdown.
+Use `study.py --amplitude 0` for a closer initial-condition comparison, retaining
+the distinction between LES and the reference's resolved viscous calculation.

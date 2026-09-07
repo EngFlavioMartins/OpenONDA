@@ -55,7 +55,7 @@ def radius_rmse(diagnostics: pd.DataFrame, reference: pd.DataFrame) -> list[floa
 
 
 def main() -> None:
-    case_name = sys.argv[1] if len(sys.argv) > 1 else "leapfrog_les"
+    case_name = sys.argv[1] if len(sys.argv) > 1 else "baseline"
     diagnostics_path = CASE_DIR / "samples" / case_name / "ring_diagnostics.csv"
     integrals_path = CASE_DIR / "samples" / case_name / "flow_integrals.csv"
     diagnostics = pd.read_csv(diagnostics_path)

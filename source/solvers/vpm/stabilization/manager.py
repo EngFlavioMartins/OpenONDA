@@ -144,6 +144,8 @@ class StabilizationManager:
         )
         self.events = 0
         self.regularization_events = 0
+        self.regularization_energy_transfer = 0.0
+        self.regularization_enstrophy_transfer = 0.0
         # A readable placeholder rather than "": the record goes to CSV, and an
         # empty field reads back as a missing value.
         self.last_mechanism = "none"
@@ -240,6 +242,8 @@ class StabilizationManager:
         return {
             "n_stabilization_events": self.events,
             "n_regularization_events": self.regularization_events,
+            "regularization_cumulative_total_kinetic_energy_transfer": self.regularization_energy_transfer,
+            "regularization_cumulative_total_enstrophy_transfer": self.regularization_enstrophy_transfer,
             "last_stabilization_mechanism": self.last_mechanism,
             "stabilization_vortex_strength_error": self.last_vortex_strength_error,
             "stabilization_vortex_strength_growth": self.last_strength_growth,
@@ -263,6 +267,14 @@ class StabilizationManager:
             )
         )
         for key, attribute in (
+            (
+                "regularization_cumulative_total_kinetic_energy_transfer",
+                "regularization_energy_transfer",
+            ),
+            (
+                "regularization_cumulative_total_enstrophy_transfer",
+                "regularization_enstrophy_transfer",
+            ),
             ("stabilization_vortex_strength_error", "last_vortex_strength_error"),
             ("stabilization_vortex_strength_growth", "last_strength_growth"),
             ("stabilization_vorticity_growth", "last_vorticity_growth"),
@@ -271,6 +283,21 @@ class StabilizationManager:
         ):
             if key in values:
                 setattr(self, attribute, float(values[key]))
+        if self.regularization_events:
+            for key, attribute in (
+                (
+                    "regularization_cumulative_total_kinetic_energy_transfer",
+                    "regularization_energy_transfer",
+                ),
+                (
+                    "regularization_cumulative_total_enstrophy_transfer",
+                    "regularization_enstrophy_transfer",
+                ),
+            ):
+                if key not in values:
+                    # An older checkpoint may contain events without their
+                    # transfer ledger. Unknown prior loss is not zero loss.
+                    setattr(self, attribute, float("nan"))
 
     def active_mechanisms(self) -> tuple[str, ...]:
         """Names of the mechanisms this configuration switches on."""
@@ -468,7 +495,7 @@ class StabilizationManager:
             before,
             conserves_vortex_strength=reference_vortex_strength is not None,
             detail=(
-                f"f={cfg.pedrizzetti_relaxation_factor:.3f}, "
+                f"blend={cfg.pedrizzetti_relaxation_factor:.6g}, "
                 f"misalignment={statistics['pedrizzetti_misalignment_deg']:.2f} deg, "
                 f"moment correction={correction_relative:.2e}"
             ),
@@ -642,6 +669,8 @@ class StabilizationManager:
         outcome = regularize(self.ctx, cfg)
         if outcome is None:
             return
+        self.regularization_energy_transfer += outcome.total_kinetic_energy_transfer
+        self.regularization_enstrophy_transfer += outcome.total_enstrophy_transfer
         # Conservative regularization rebuilds a cloud on its own lattice, so
         # it invalidates any prior grid-regeneration bounds guarantee.
         self.ctx.state.domain_bounds_enforced = False

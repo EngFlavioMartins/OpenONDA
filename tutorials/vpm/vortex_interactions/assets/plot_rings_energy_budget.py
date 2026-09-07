@@ -25,7 +25,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ring_metrics import (
+from .ring_metrics import (
+    FIGURES_DIR,
     RING_CIRCULATION,
     RING_RADIUS,
     REFERENCE_TIME,
@@ -383,7 +384,7 @@ def main() -> None:
     args = parser.parse_args()
 
     solution_dir = Path(args.solution_dir)
-    figures_dir = Path("figures")
+    figures_dir = FIGURES_DIR
 
     all_series: list[pd.DataFrame] = []
     rows: list[dict] = []

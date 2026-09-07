@@ -1973,7 +1973,10 @@ class SIMPLESolver:
         self.last_outer_diagnostics = ()
         # Momentum and pressure are sequential and share one static-topology
         # workspace. Its CSR values are overwritten between equations.
-        self._momentum_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(mesh_data)
+        self._momentum_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(
+            mesh_data,
+            include_boundaries=mesh_data["n_faces"] > mesh_data["n_interior_faces"],
+        )
         self._pressure_matrix_workspace = self._momentum_matrix_workspace
         self._pressure_boundary_layout = build_pressure_boundary_layout(
             boundaries,

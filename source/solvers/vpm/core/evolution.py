@@ -582,4 +582,5 @@ class EvolutionStepper:
                 regen_threshold_mode=vc.gbd_threshold_mode,
                 effective_viscosity=effective_viscosity,
                 max_nodes=getattr(vc, "gbd_max_nodes", None),
+                remeshing_kernel=vc.gbd_remeshing_kernel,
             )

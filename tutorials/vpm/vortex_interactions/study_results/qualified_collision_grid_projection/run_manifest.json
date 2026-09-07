@@ -1,0 +1,7 @@
+{
+  "error": "ValueError: Gaussian remeshing requires 122760 particles for tail budget 0.01; capacity is 120000",
+  "planned_steps": 400,
+  "status": "failed",
+  "step": 79,
+  "time": 0.616088784748
+}

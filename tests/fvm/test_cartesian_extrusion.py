@@ -11,7 +11,10 @@ from source.solvers.fvm.mesh.validation import validate_geometry, validate_topol
 
 def test_section_extrusion_conserves_volume_and_shared_faces():
     source = structured_box(3, 2, 4, lx=3, ly=2, lz=4)
-    domain = BoxDomain(bounds=(0, 3, 0, 2, -0.5, 0.5), patches=BoxPatches())
+    domain = BoxDomain(
+        bounds=(0, 3, 0, 2, -0.5, 0.5),
+        patches=BoxPatches("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
+    )
     mesh = extrude_mesh_section(source, coordinate=1.3, levels=(-0.5, 0, 0.5), domain=domain)
     assert mesh["n_cells"] == 12
     assert mesh["n_interior_faces"] == 20
@@ -29,6 +32,9 @@ def test_section_extrusion_conserves_volume_and_shared_faces():
 @pytest.mark.parametrize("levels", [(-0.5, -0.5, 0.5), (-0.5, -0.6, 0.5), (-0.5, 0.4)])
 def test_invalid_extrusion_levels_are_rejected(levels):
     source = structured_box(1, 1, 1)
-    domain = BoxDomain(bounds=(0, 1, 0, 1, -0.5, 0.5))
+    domain = BoxDomain(
+        bounds=(0, 1, 0, 1, -0.5, 0.5),
+        patches=BoxPatches("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
+    )
     with pytest.raises(ValueError, match="levels"):
         extrude_mesh_section(source, coordinate=0.4, levels=levels, domain=domain)

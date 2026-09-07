@@ -1,9 +1,0 @@
-{
-  "status": "failed",
-  "phase": "mesh",
-  "case": "coarse",
-  "pid": 16220,
-  "updated_at": 1788775822.247634,
-  "error": "RuntimeError: Independent checkMesh is unavailable; activate OpenFOAM first",
-  "selected_mesh": null
-}

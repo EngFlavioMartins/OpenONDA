@@ -10,6 +10,7 @@ Saves: figures/vortex_ring_energy.png
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 from tutorials.vpm.vortex_ring.assets.ring_metrics import (
     FIGURES_DIR,
@@ -23,6 +24,7 @@ from tutorials.vpm.vortex_ring.assets.ring_metrics import (
     load_theme,
     plot_variants,
     save_fig,
+    with_sample_gaps,
 )
 
 
@@ -48,13 +50,14 @@ def main() -> None:
 
     load_theme()
 
-    fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=figure_size("wide_short"), sharex=True)
-    fig.subplots_adjust(wspace=0.50, left=0.14, right=0.87, top=0.92, bottom=0.29)
+    fig, (ax_de, ax_nuens) = plt.subplots(1, 2, figsize=(125 / 25.4, 95 / 25.4), sharex=True)
+    fig.subplots_adjust(wspace=0.60, left=0.15, right=0.98, top=0.90, bottom=0.32)
     legend_handles = []
     legend_labels = []
     n_skip = 14  # plot every n-th marker
 
     plotted_values = []
+    signed_rates = False
     maximum_time = 0.0
 
     # -- Energy diagnostics — all available variants -------------------------
@@ -74,17 +77,16 @@ def main() -> None:
         label = VARIANT_LABEL[variant]
         print(f"  {variant}: {csv_path}")
         t = times / REFERENCE_TIME
-        resolved_valid = resolved_dissipation > 0.0
-        modeled_valid = modeled_dissipation > 0.0
+        signed_rates |= bool(np.any(resolved_dissipation <= 0) or np.any(modeled_dissipation <= 0))
+        resolved_valid = np.isfinite(resolved_dissipation)
+        modeled_valid = np.isfinite(modeled_dissipation)
         (line,) = ax_de.plot(
-            t[resolved_valid],
-            resolved_dissipation[resolved_valid],
+            *with_sample_gaps(t, np.where(resolved_valid, resolved_dissipation, np.nan)),
             label=label,
             **line_style(st, n_skip),
         )
         ax_nuens.plot(
-            t[modeled_valid],
-            modeled_dissipation[modeled_valid],
+            *with_sample_gaps(t, np.where(modeled_valid, modeled_dissipation, np.nan)),
             label=label,
             **line_style(st, n_skip),
         )
@@ -96,20 +98,24 @@ def main() -> None:
         legend_labels.append(label)
 
     for ax in (ax_de, ax_nuens):
-        ax.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
-        ax.set_yscale("log")
+        ax.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
+        ax.set_yscale("symlog", linthresh=1e-5) if signed_rates else ax.set_yscale("log")
+        if signed_rates:
+            ax.axhline(0, color="0.45", linewidth=0.8, linestyle=":")
         ax.set_xlim(0.0, 1.01 * maximum_time)
     finite_values = [values for values in plotted_values if values.size]
     if finite_values:
         lower = min(float(values.min()) for values in finite_values)
         upper = max(float(values.max()) for values in finite_values)
         for ax in (ax_de, ax_nuens):
-            ax.set_ylim(0.8 * lower, 1.25 * upper)
+            ax.set_ylim(
+                lower - 0.1 * (upper - lower), upper + 0.1 * (upper - lower)
+            ) if signed_rates else ax.set_ylim(0.8 * lower, 1.25 * upper)
 
-    ax_de.set_title(r"Resolved dissipation rate")
-    ax_de.set_ylabel(r"$-(\Delta E_h/\Delta t)\,/\,(\Gamma^3/R_0)$")
-    ax_nuens.set_title(r"Modeled viscous dissipation")
-    ax_nuens.set_ylabel(r"$-(\mathrm{d}E_h/\mathrm{d}t)_{\nu}\,/\,(\Gamma^3/R_0)$")
+    ax_de.set_title(r"(a) Resolved loss")
+    ax_de.set_ylabel(r"$-(\Delta E_h/\Delta t_s)\,/\,(\Gamma_0^3/R_0)$")
+    ax_nuens.set_title(r"(b) Viscous loss")
+    ax_nuens.set_ylabel(r"$-(\mathrm{d}E_h/\mathrm{d}t)_{\nu}\,/\,(\Gamma_0^3/R_0)$")
     fig.legend(
         legend_handles,
         legend_labels,

@@ -73,12 +73,16 @@ class VortexRing:
         )
         if self.disturbance is None:
             centreline_radius, slope = np.full(len(geometry), radius), np.zeros(len(geometry))
+            axial_shift, axial_slope = np.zeros(len(geometry)), np.zeros(len(geometry))
         else:
             centreline_radius, slope = self.disturbance.centreline(azimuth, radius)
+            axial_shift, axial_slope = self.disturbance.axial_centreline(azimuth, radius)
         magnitude = (
             circulation
             / (np.pi * core_squared)
-            * np.exp(-((radial - centreline_radius) ** 2 + axial**2) / core_squared)
+            * np.exp(
+                -((radial - centreline_radius) ** 2 + (axial - axial_shift) ** 2) / core_squared
+            )
         )
         cosine, sine = np.cos(azimuth), np.sin(azimuth)
         tangent, radial_direction = (
@@ -88,8 +92,12 @@ class VortexRing:
         away = radial > np.finfo(float).eps
         radial_vorticity = np.zeros(len(geometry))
         radial_vorticity[away] = magnitude[away] * slope[away] / radial[away]
+        axial_vorticity = np.zeros(len(geometry))
+        axial_vorticity[away] = magnitude[away] * axial_slope[away] / radial[away]
         strength = (
-            magnitude[:, None] * tangent + radial_vorticity[:, None] * radial_direction
+            magnitude[:, None] * tangent
+            + radial_vorticity[:, None] * radial_direction
+            + axial_vorticity[:, None] * axis
         ) * geometry.particle_volume[:, None]
         represented = np.sum(
             np.einsum("ij,ij->i", strength[away], tangent[away]) / radial[away]

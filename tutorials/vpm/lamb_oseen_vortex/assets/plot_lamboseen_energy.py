@@ -9,7 +9,7 @@ co-rotating merger. The upper row shows total kinetic energy and the lower row
 shows its rate.
 
 Continuous lines show the enstrophy-based sink -2νZ. Sparse filled circles
-show dE/dt from direct/Fourier energy differences, including the explicitly
+show \mathrm{d}E/\mathrm{d}t from direct/Fourier energy differences, including the explicitly
 labelled finite transition estimate when the scalable diagnostic first takes
 over. Colours are consistent per scheme across all three panels.
 
@@ -170,7 +170,7 @@ def plot_energy_enstrophy(args) -> int:
 
     colors, theme = load_theme()
     if theme is not None and hasattr(theme, "set_style"):
-        theme.set_style()
+        theme.set_thesis_style()
     style_map = build_style_map(colors)
     runtime = resolve_runtime_physics(
         samples_dir, args.circulation, args.kinematic_viscosity, args.b0, args.a0_over_b0
@@ -194,7 +194,7 @@ def plot_energy_enstrophy(args) -> int:
         sharex="col",
         sharey="row",
     )
-    fig.subplots_adjust(wspace=0.09, hspace=0.12, top=0.94, bottom=0.20, left=0.14, right=0.86)
+    fig.subplots_adjust(wspace=0.09, hspace=0.12, top=0.94, bottom=0.25, left=0.14, right=0.86)
 
     plotted = False
     for column, (case_prefix, title, n_vortices) in enumerate(ENERGY_CASES):
@@ -224,7 +224,7 @@ def plot_energy_enstrophy(args) -> int:
         return 0
 
     axes[0, 0].set_ylabel(r"$E / (N_v\Gamma_{c,0}^2 L)$")
-    axes[1, 0].set_ylabel(r"$(dE/dt) / (\nu\Gamma_{c,0}^2 L / a_{c,0}^2)$")
+    axes[1, 0].set_ylabel(r"$(\mathrm{d}E/\mathrm{d}t) / (\nu\Gamma_{c,0}^2 L / a_{c,0}^2)$")
     # Include zero: a sampled RWM rate interval crosses it in the merger.
     axes[1, 0].set_ylim([-5e-1, 2e-3])
 
@@ -265,7 +265,7 @@ def plot_energy_enstrophy(args) -> int:
             marker="o",
             markersize=4,
             mfc=colors["reference"],
-            label=r"$dE/dt$",
+            label=r"$\mathrm{d}E/\mathrm{d}t$",
         )
     )
     handles.append(
@@ -292,7 +292,7 @@ def plot_energy_enstrophy(args) -> int:
 
 
 def main() -> int:
-    p = build_arg_parser("Energy balance: dE/dt")
+    p = build_arg_parser("Energy balance: \mathrm{d}E/\mathrm{d}t")
     return plot_energy_enstrophy(p.parse_args())
 
 

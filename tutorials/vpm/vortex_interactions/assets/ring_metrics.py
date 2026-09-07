@@ -10,9 +10,10 @@ import numpy as np
 import pandas as pd
 
 ASSETS_DIR = Path(__file__).resolve().parent
-SCRIPT_DIR = ASSETS_DIR.parent
-SOLUTION_DIR = SCRIPT_DIR / "solution"
-THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
+CASE_DIR = ASSETS_DIR.parent
+SAMPLES_DIR = CASE_DIR / "samples"
+FIGURES_DIR = CASE_DIR / "figures"
+THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 RING_RADIUS = 1.0
 RING_CIRCULATION = np.pi
@@ -20,17 +21,15 @@ REFERENCE_TIME = RING_RADIUS**2 / RING_CIRCULATION
 FAMILIES = ("leapfrog",)
 FAMILY_LABELS = {"leapfrog": "Leapfrogging"}
 FAMILY_FILE_STEMS = {"leapfrog": "leapfrogging"}
-INTENDED_CASE_ORDER = {
-    name: order
-    for order, name in enumerate(
-        (
-            "leapfrog_les",
-            "leapfrog_les_splitting",
-            "leapfrog_les_remeshing",
-            "leapfrog_les_splitting_remeshing",
-        )
-    )
-}
+CASES = (
+    "baseline",
+    "stretching_viscosity",
+    "pedrizzetti",
+    "splitting",
+    "divergence_relaxation",
+    "remeshing",
+)
+INTENDED_CASE_ORDER = {name: order for order, name in enumerate(CASES)}
 
 _THEME_MODULE = None
 
@@ -107,24 +106,18 @@ def secondary_line_style() -> dict:
 
 
 def build_arg_parser(description: str):
-    """Build the argument parser shared by all plot scripts."""
+    """Build the minimal argument parser shared by the figures."""
     import argparse
 
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument(
-        "--solution-dir",
-        default=str(SOLUTION_DIR),
-        help="Root solution directory.",
-    )
     parser.add_argument("--format", choices=_theme().EXPORT_FORMATS, default="png")
-    parser.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
+    parser.set_defaults(solution_dir=str(SAMPLES_DIR), dpi=_theme().DEFAULT_DPI)
     return parser
 
 
 def _case_parts(name: str) -> tuple[str, str]:
-    """Split ``<family>_<variant>`` into its two parts."""
-    family, _, variant = name.partition("_")
-    return family, variant
+    """Return the common flow family and the varied stabilization method."""
+    return "leapfrog", name
 
 
 def case_style(name: str) -> dict:
@@ -132,21 +125,31 @@ def case_style(name: str) -> dict:
     theme = _theme()
     _, variant = _case_parts(name)
     styles = {
-        "les": {"label": "LES", "color": theme.COLORS["TUDcyan"], "marker": "s"},
-        "les_splitting": {
-            "label": "LES + splitting",
-            "color": theme.COLORS["VPMpurple"],
+        "baseline": {"label": "Baseline", "color": theme.PALETTE["dark"], "marker": "o"},
+        "stretching_viscosity": {
+            "label": "Stretching viscosity",
+            "color": theme.PALETTE["teal"],
+            "marker": "s",
+        },
+        "pedrizzetti": {
+            "label": "Pedrizzetti relaxation",
+            "color": theme.PALETTE["purple"],
             "marker": "D",
         },
-        "les_remeshing": {
-            "label": "LES + remeshing",
-            "color": theme.COLORS["AccentGreen"],
+        "splitting": {
+            "label": "Filament refinement",
+            "color": theme.PALETTE["orange"],
             "marker": "^",
         },
-        "les_splitting_remeshing": {
-            "label": "LES + splitting + remeshing",
-            "color": theme.COLORS["TUDdark"],
-            "marker": "o",
+        "divergence_relaxation": {
+            "label": "Divergence relaxation",
+            "color": theme.PALETTE["green"],
+            "marker": "v",
+        },
+        "remeshing": {
+            "label": "Conservative regularization",
+            "color": theme.PALETTE["red"],
+            "marker": "P",
         },
     }
     style = styles[variant]
@@ -161,22 +164,20 @@ def case_style(name: str) -> dict:
     }
 
 
-def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
+def discover_cases(solution_dir=SAMPLES_DIR, family: str | None = None) -> list[Path]:
     """Return available cases in plotting order."""
-    solution = Path(solution_dir)
-    if not solution.is_dir():
+    samples = Path(solution_dir)
+    if not samples.is_dir():
         return []
     cases = []
     intended = INTENDED_CASE_ORDER
-    for case_dir in solution.iterdir():
+    for case_dir in samples.iterdir():
         if not case_dir.is_dir() or case_dir.name not in intended:
             continue
         case_family, _ = _case_parts(case_dir.name)
         if family and case_family != family:
             continue
-        if (case_dir / "run_manifest.json").exists() or (
-            _samples_dir(case_dir) / "flow_integrals.csv"
-        ).exists():
+        if (case_dir / "run_metadata.json").exists() or (case_dir / "flow_integrals.csv").exists():
             cases.append(case_dir)
     return sorted(cases, key=lambda path: intended[path.name])
 
@@ -184,7 +185,9 @@ def discover_cases(solution_dir, family: str | None = None) -> list[Path]:
 def _samples_dir(case_dir: str | Path) -> Path:
     """Return the sample directory for one case."""
     case = Path(case_dir)
-    return case.parent.parent / "samples" / case.name
+    if case.parent.name == "samples":
+        return case
+    return CASE_DIR / "samples" / case.name
 
 
 def _trim_to_last_monotone_segment(df: pd.DataFrame, time_column: str) -> pd.DataFrame:
@@ -203,11 +206,11 @@ def _trim_to_last_monotone_segment(df: pd.DataFrame, time_column: str) -> pd.Dat
 
 def _merge_backup_restarts(df: pd.DataFrame, case_dir: str | Path) -> pd.DataFrame:
     """Merge identical backup continuations while keeping their latest samples."""
-    manifest_path = Path(case_dir) / "run_manifest.json"
+    manifest_path = _samples_dir(case_dir) / "run_metadata.json"
     if "step" not in df.columns or not manifest_path.is_file():
         return df
     manifest = json.loads(manifest_path.read_text())
-    if "restart_from" not in manifest:
+    if manifest.get("status") == "running":
         return df
     return (
         df.sort_values("step", kind="stable")

@@ -106,6 +106,9 @@ def _write_rwm_process_result(case_directory: str, output_file: str) -> None:
 
 def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
     solver = _solver(tmp_path / "writer")
+    solver.stabilization.regularization_events = 1
+    solver.stabilization.regularization_energy_transfer = -0.12
+    solver.stabilization.regularization_enstrophy_transfer = -0.34
     solver.add_vortex_particles(
         position=np.array([[0.0, 0.0, 0.0], [0.11, 0.0, 0.0]], dtype=np.float32),
         velocity=np.zeros((2, 3), dtype=np.float32),
@@ -148,9 +151,19 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
         atol=4.0e-5,
     )
     assert np.isfinite(restored.particles.velocity_gradient_cpu()).all()
+    assert restored.stabilization.regularization_energy_transfer == pytest.approx(-0.12)
+    assert restored.stabilization.regularization_enstrophy_transfer == pytest.approx(-0.34)
 
     ring_data = _load_ring_metrics().load_ring_data([f"{backup}.h5"])
     assert len(ring_data[0]) == 1
+    # Old checkpoints stored event counts without the transfer ledger.
+    with h5py.File(f"{backup}.h5", "r+") as archive:
+        del archive["solver"].attrs["regularization_cumulative_total_kinetic_energy_transfer"]
+        del archive["solver"].attrs["regularization_cumulative_total_enstrophy_transfer"]
+    with contextlib.redirect_stdout(io.StringIO()):
+        restored.load_backup(str(backup))
+    assert np.isnan(restored.stabilization.regularization_energy_transfer)
+    assert np.isnan(restored.stabilization.regularization_enstrophy_transfer)
 
 
 def test_vpm_restart_preserves_compute_precision_and_freestream(tmp_path):

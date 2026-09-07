@@ -8,6 +8,7 @@ from typing import Literal
 import numpy as np
 
 from ..data import ParticleDistribution
+from ..disturbances import WidnallDisturbance
 from ._common import validate_spacing
 
 Axis = Literal["x", "y", "z"]
@@ -28,6 +29,7 @@ class ToroidalDistribution:
     core_radius_ratio: float
     centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
     axis: Axis = "x"
+    disturbance: WidnallDisturbance | None = None
 
     def build(self) -> ParticleDistribution:
         """Build immutable toroidal geometry and curved-cell quadrature."""
@@ -72,6 +74,23 @@ class ToroidalDistribution:
             np.repeat(offsets[:, 0], azimuth_count),
             np.repeat(self.ring_radius + offsets[:, 1], azimuth_count),
         )
+        if self.disturbance is not None:
+            # Use the same transverse basis as VortexRing's field attribution.
+            # The geometry's azimuthal zero differs from that basis.
+            field_azimuth = np.tile(
+                azimuth + {"x": -np.pi / 2, "y": np.pi, "z": -np.pi / 2}[self.axis],
+                len(offsets),
+            )
+            # Follow the prescribed centreline so a truncated tube does not
+            # lose different Gaussian tails at different azimuths. The map
+            # r -> r + delta(theta) has cylindrical Jacobian r_new/r_old;
+            # using the new radial coordinate in the weights below includes it.
+            shifted_radius, _ = self.disturbance.centreline(field_azimuth, self.ring_radius)
+            radial = radial + (shifted_radius - self.ring_radius)
+            axial_shift, _ = self.disturbance.axial_centreline(field_azimuth, self.ring_radius)
+            axial = axial + axial_shift
+            if np.any(radial <= 0):
+                raise ValueError("disturbed toroidal tube crosses its axis")
         local = np.empty((len(axial), 3), dtype=float)
         if self.axis == "x":
             local[:, 0], local[:, 1], local[:, 2] = axial, radial * cosine, radial * sine

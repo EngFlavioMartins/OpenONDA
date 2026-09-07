@@ -13,6 +13,7 @@ from tutorials.vpm.vortex_ring.assets.ring_metrics import (
     load_stability_results,
     load_theme,
     save_fig,
+    with_sample_gaps,
 )
 
 
@@ -24,7 +25,7 @@ def main() -> None:
         raise SystemExit("No vortex-ring results are available")
 
     fig, ax = plt.subplots(figsize=figure_size("wide_short"))
-    fig.subplots_adjust(left=0.24, right=0.95, top=0.80, bottom=0.31)
+    fig.subplots_adjust(left=0.32, right=0.96, top=0.84, bottom=0.37)
 
     times = [result["normalized_time"] for result in results]
     positions = list(range(len(results)))
@@ -49,19 +50,19 @@ def main() -> None:
             linestyle="none",
         )
         ax.annotate(
-            f"{time:.2f}",
+            f"{float(format(time, '.2g')):g}",
             (time, position),
             xytext=(6, 0),
             textcoords="offset points",
             va="center",
-            fontsize=8,
+            fontsize=10.95,
         )
 
     ax.set_yticks(positions, [VARIANT_LABEL[result["variant"]] for result in results])
     ax.invert_yaxis()
     ax.set_xlim(0.0, max(times) * 1.18 if max(times) > 0.0 else 1.0)
-    ax.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
-    ax.set_title("Vortex-field resolution limit")
+    ax.set_xlabel(r"$t\,\Gamma_0/R_0^2$")
+    ax.set_title("Time reached")
     ax.grid(axis="y", visible=False)
     fig.legend(
         handles=(
@@ -69,8 +70,8 @@ def main() -> None:
             Line2D([], [], marker=">", linestyle="none", color="0.25", label="End time"),
             Line2D([], [], marker="o", linestyle="none", color="0.25", label="Running"),
         ),
-        ncol=3,
-        fontsize=8,
+        ncol=2,
+        fontsize=10.95,
         loc="lower center",
         bbox_to_anchor=(0.5, 0.02),
     )

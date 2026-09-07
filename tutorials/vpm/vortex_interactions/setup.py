@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""FMM particle-stabilization comparison for two leapfrogging vortex rings.
+"""Compare VPM stabilization methods for two leapfrogging vortex rings.
 
-The device-resident FMM computes the self-induced field while SSPRK3 advances
-position and vortex strength from common temporary stages. Direct induction
-remains the exact small-cloud reference backend.
-
-Usage:
-    python setup.py --case leapfrog_les_splitting_remeshing
+Every case uses the same transposed LES formulation and SSPRK3 update. The
+only changed quantity is the stabilization method selected by the case name.
+Crossing a resolution limit ends that case normally so the comparison can
+continue.
 """
 
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 from functools import cache
+import json
 from pathlib import Path
+import tempfile
 
 import numpy as np
 
@@ -22,69 +23,91 @@ from openonda.vpm import Backup, Samplers
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
 
-# ---- Cheng, Lou & Lim (2015) leapfrogging reference -----------------------
-RING_RADIUS = 1.0  # R0 [m]
-RING_CIRCULATION = np.pi  # Gamma0 [m^2/s]
-REYNOLDS_NUMBER = 3000.0  # Re_Gamma = Gamma0/nu
-CORE_RADIUS = 0.1 * RING_RADIUS  # a0/R0 = 0.1 [m]
-RING_SEPARATION = 1.0 * RING_RADIUS  # h0/R0 = 1
+# ---- Physics ---------------------------------------------------------------
+RING_RADIUS = 1.0  # ring major radius [m]
+RING_CIRCULATION = np.pi  # circulation of each ring [m²/s]
+REYNOLDS_NUMBER = 3000.0  # Re = Gamma/nu
+CORE_RADIUS = 0.1 * RING_RADIUS  # physical Gaussian core radius [m]
+RING_SEPARATION = 1.0 * RING_RADIUS  # initial axial separation [m]
 KINEMATIC_VISCOSITY = RING_CIRCULATION / REYNOLDS_NUMBER
-DISTURBANCE_AMPLITUDE = 0.05 * RING_RADIUS
+DISTURBANCE_AMPLITUDE = 0.05  # fraction of ring radius
 DISTURBANCE_MODE = 8
-DISTURBANCE_PHASE = 0.0
 
-# ---- VPM discretization ----------------------------------------------------
+# ---- Numerics --------------------------------------------------------------
 PARTICLE_SPACING = 0.035 * RING_RADIUS
 PARTICLE_CORE_RADIUS = 2.0 * PARTICLE_SPACING
-WEAK_PARTICLE_PERCENT = 5.0
+# Circulation normalization amplifies a truncated Gaussian. A 5% tail cut
+# produced a 6--7% peak excess on the study lattice; retain the physical tail.
+TOROIDAL_TAIL_FRACTION = 1.0e-4
 TIME_STEP_SIZE = 20.0 * PARTICLE_SPACING**2 / RING_CIRCULATION
-NUMBER_OF_STEPS = 1200
-DIAGNOSTIC_INTERVAL_STEPS = 5
+N_STEPS = 1200
+SAMPLE_INTERVAL_STEPS = 5
 BACKUP_INTERVAL_STEPS = 50
-MAXIMUM_PARTICLES = 120_000
-# The historical 0.15 value limited internal coupled substeps; it is not a
-# calibrated rejection threshold for the complete accepted macro-step.
-MAX_LAGRANGIAN_CFL: float | None = None
-
-# ---- Common LES closure and independently varied stabilization ------------
+MAX_N_PARTICLES = 120_000
 SMAGORINSKY_COEFFICIENT = 0.20
+RANDOM_SEED = 42
 
-# Split when |alpha_p| exceeds twice the largest initial |alpha_p|.
+MAX_LAGRANGIAN_CFL = 1.0
+MAX_VORTICITY_DIVERGENCE = 0.12
+MAX_VORTEX_MISALIGNMENT = 25.0
+
+# ---- Stabilization ---------------------------------------------------------
+STRETCHING_VISCOSITY_COEFFICIENT = 0.5
+PEDRIZZETTI_FACTOR = 0.3
+PEDRIZZETTI_INTERVAL_STEPS = 1
 SPLITTING_STRENGTH_FACTOR = 2.0
 SPLITTING_INTERVAL_STEPS = 1
 SPLITTING_OFFSET_FRACTION = 0.25
-
-# Gaussian CS gives sigma^2(t) = sigma_0^2 + 4 nu t. The first time at which
-# sigma = 2 sigma_0 is 3 sigma_0^2/(4 nu)
+DIVERGENCE_RELAXATION_INTERVAL_STEPS = 25
 REMESH_CORE_RADIUS_FACTOR = 2.0
 REMESH_CORE_RADIUS_TRIGGER = REMESH_CORE_RADIUS_FACTOR * PARTICLE_CORE_RADIUS
 REMESH_INTERVAL_STEPS = round(
     3.0 * PARTICLE_CORE_RADIUS**2 / (4.0 * KINEMATIC_VISCOSITY * TIME_STEP_SIZE)
 )
-REMESH_GRID_SPACING = PARTICLE_SPACING
 REMESH_TAIL_BUDGET = 1.0e-3
 
-CASES = {
-    "leapfrog_les": (False, False),
-    "leapfrog_les_splitting": (True, False),
-    "leapfrog_les_remeshing": (False, True),
-    "leapfrog_les_splitting_remeshing": (True, True),
+CASES = (
+    "baseline",
+    "stretching_viscosity",
+    "pedrizzetti",
+    "splitting",
+    "divergence_relaxation",
+    "remeshing",
+)
+CASE_LABELS = {
+    "baseline": "Baseline",
+    "stretching_viscosity": "Stretching viscosity",
+    "pedrizzetti": "Pedrizzetti relaxation",
+    "splitting": "Filament refinement",
+    "divergence_relaxation": "Divergence relaxation",
+    "remeshing": "Conservative regularization",
 }
+RUN_METADATA_SCHEMA_VERSION = 2
 
 
-def create_ring(centre_x: float, group_id: int | None = None) -> vpm.VortexRing:
-    """Build one declarative disturbed Gaussian-ring condition."""
-    centre = np.array([centre_x, 0.0, 0.0])
-    axial_extent = CORE_RADIUS + PARTICLE_CORE_RADIUS
-    radial_extent = RING_RADIUS + 2.0 * CORE_RADIUS
-    distribution = vpm.RectangularDistribution(
-        bounds=(
-            (centre_x - axial_extent, centre_x + axial_extent),
-            (-radial_extent, radial_extent),
-            (-radial_extent, radial_extent),
-        ),
+class FlowIntegralsSampler(vpm.FlowIntegralsSampler):
+    """Write the initial state as well as the regular diagnostic cadence."""
+
+    initial = True
+
+
+class RingDiagnosticsSampler(vpm.RingDiagnosticsSampler):
+    """Write the initial ring geometry as well as the regular cadence."""
+
+    initial = True
+
+
+def create_ring(centre_x: float, group_id: int) -> vpm.VortexRing:
+    """Build one disturbed Gaussian vortex ring."""
+    represented_core_sq = CORE_RADIUS**2 - PARTICLE_CORE_RADIUS**2
+    tube_radius = np.sqrt(represented_core_sq) * np.sqrt(-np.log(TOROIDAL_TAIL_FRACTION))
+    centre = (centre_x, 0.0, 0.0)
+    distribution = vpm.ToroidalDistribution(
+        ring_radius=RING_RADIUS,
+        tube_radius=tube_radius,
         spacing=PARTICLE_SPACING,
         core_radius_ratio=PARTICLE_CORE_RADIUS / PARTICLE_SPACING,
+        centre=centre,
     )
     return vpm.VortexRing(
         kinematic_viscosity=KINEMATIC_VISCOSITY,
@@ -93,9 +116,8 @@ def create_ring(centre_x: float, group_id: int | None = None) -> vpm.VortexRing:
         circulation=RING_CIRCULATION,
         vortex_core_radius=CORE_RADIUS,
         disturbance=vpm.WidnallDisturbance.single_mode(
-            amplitude=DISTURBANCE_AMPLITUDE / RING_RADIUS,
+            amplitude=DISTURBANCE_AMPLITUDE,
             mode=DISTURBANCE_MODE,
-            phase=DISTURBANCE_PHASE,
         ),
         core_compensation=vpm.ParticleCoreCompensation(),
         distribution=distribution,
@@ -105,65 +127,90 @@ def create_ring(centre_x: float, group_id: int | None = None) -> vpm.VortexRing:
 
 @cache
 def initial_peak_strength() -> float:
-    """Return the maximum strength magnitude in the original particle cloud."""
-    particles = create_ring(-0.5 * RING_SEPARATION).build()
+    """Return the largest initial particle strength."""
+    particles = create_ring(-0.5 * RING_SEPARATION, 0).build()
     return float(np.linalg.norm(particles.vortex_strength, axis=1).max())
 
 
 def stabilization(case_name: str) -> vpm.StabilizationConfig:
-    """Arm the requested splitting and core-growth remeshing mechanisms."""
-    has_splitting, has_remeshing = CASES[case_name]
-    filament_refinement = (
-        vpm.FilamentRefinementConfig.adaptive(
-            interval_steps=SPLITTING_INTERVAL_STEPS,
-            max_vortex_strength_factor=np.inf,
-            max_absolute_vortex_strength=(SPLITTING_STRENGTH_FACTOR * initial_peak_strength()),
-            offset_fraction=SPLITTING_OFFSET_FRACTION,
-            max_n_particles=MAXIMUM_PARTICLES,
+    """Return the one stabilization method selected for this case."""
+    if case_name == "baseline":
+        return vpm.StabilizationConfig.disabled()
+    if case_name == "stretching_viscosity":
+        return vpm.StabilizationConfig.stretching_viscosity(
+            coefficient=STRETCHING_VISCOSITY_COEFFICIENT
         )
-        if has_splitting
-        else vpm.FilamentRefinementConfig.disabled()
-    )
-    return vpm.StabilizationConfig(
-        filament_refinement=filament_refinement,
-        regularization_interval_steps=(REMESH_INTERVAL_STEPS if has_remeshing else 0),
-        regularization_start_step=(REMESH_INTERVAL_STEPS if has_remeshing else 0),
-        regularization_grid_spacing=(REMESH_GRID_SPACING if has_remeshing else None),
-        regularization_tail_budget=REMESH_TAIL_BUDGET,
-        regularization_max_particles=(MAXIMUM_PARTICLES if has_remeshing else None),
-        regularization_divergence_trigger=None,
-        regularization_misalignment_trigger=None,
-        regularization_core_radius_trigger=(REMESH_CORE_RADIUS_TRIGGER if has_remeshing else None),
-        regularization_core_radius=(PARTICLE_CORE_RADIUS if has_remeshing else None),
-    )
+    if case_name == "pedrizzetti":
+        return vpm.StabilizationConfig.pedrizzetti_relaxation(
+            factor=PEDRIZZETTI_FACTOR,
+            interval_steps=PEDRIZZETTI_INTERVAL_STEPS,
+        )
+    if case_name == "splitting":
+        return vpm.StabilizationConfig(
+            filament_refinement=vpm.FilamentRefinementConfig.adaptive(
+                interval_steps=SPLITTING_INTERVAL_STEPS,
+                max_vortex_strength_factor=np.inf,
+                max_absolute_vortex_strength=(SPLITTING_STRENGTH_FACTOR * initial_peak_strength()),
+                offset_fraction=SPLITTING_OFFSET_FRACTION,
+                max_n_particles=MAX_N_PARTICLES,
+            )
+        )
+    if case_name == "divergence_relaxation":
+        return vpm.StabilizationConfig(
+            divergence_relaxation=vpm.DivergenceRelaxationConfig.constrained(
+                interval_steps=DIVERGENCE_RELAXATION_INTERVAL_STEPS,
+                start_step=DIVERGENCE_RELAXATION_INTERVAL_STEPS,
+                grid_spacing=PARTICLE_SPACING,
+            )
+        )
+    if case_name == "remeshing":
+        return vpm.StabilizationConfig(
+            regularization_interval_steps=REMESH_INTERVAL_STEPS,
+            regularization_start_step=REMESH_INTERVAL_STEPS,
+            regularization_grid_spacing=PARTICLE_SPACING,
+            regularization_tail_budget=REMESH_TAIL_BUDGET,
+            regularization_max_particles=MAX_N_PARTICLES,
+            regularization_divergence_trigger=None,
+            regularization_misalignment_trigger=None,
+            regularization_core_radius_trigger=REMESH_CORE_RADIUS_TRIGGER,
+            regularization_core_radius=PARTICLE_CORE_RADIUS,
+        )
+    raise ValueError(f"Unknown case {case_name!r}; expected one of {CASES}")
 
 
-def build_case(case_name: str) -> vpm.VPMCase:
-    """Build one of the four declarative stabilization comparisons."""
+def build_case(
+    case_name: str,
+    *,
+    n_steps: int = N_STEPS,
+    compute_device: str = "AUTO",
+) -> vpm.VPMCase:
+    """Build one LES and transposed-stretching comparison case."""
+    if case_name not in CASES:
+        raise ValueError(f"Unknown case {case_name!r}; expected one of {CASES}")
     initial_conditions = tuple(
-        create_ring(centre_x, group_id=group_id)
+        create_ring(centre_x, group_id)
         for group_id, centre_x in enumerate((-0.5 * RING_SEPARATION, 0.5 * RING_SEPARATION))
     )
     return vpm.VPMCase(
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="VULKAN",
+            compute_device=compute_device,
             integrator=vpm.SSPRK3(),
-            viscous=vpm.ViscousConfig.cs(
-                kinematic_viscosity=KINEMATIC_VISCOSITY,
-                particle_spacing=PARTICLE_SPACING,
-            ),
+            induction=vpm.TreecodeInduction(stretching_scheme="TRANSPOSED"),
+            viscous=vpm.ViscousConfig.cs(),
             turbulence=vpm.TurbulenceConfig.les_smagorinsky(
-                smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT,
+                smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT
             ),
             stabilization=stabilization(case_name),
-            health_limits=vpm.HealthLimits(
-                lagrangian_cfl=vpm.LagrangianCFLLimit(maximum=MAX_LAGRANGIAN_CFL)
-            ),
-            induction=vpm.FMMInduction(),
             particle_kernel="GAUSSIAN",
             write_precision="f32",
-            max_n_particles=MAXIMUM_PARTICLES,
+            max_n_particles=MAX_N_PARTICLES,
+            random_seed=RANDOM_SEED,
+            health_limits=vpm.HealthLimits(
+                lagrangian_cfl=vpm.LagrangianCFLLimit(maximum=MAX_LAGRANGIAN_CFL),
+                divergence=vpm.DivergenceLimit(maximum=MAX_VORTICITY_DIVERGENCE),
+                misalignment=vpm.MisalignmentLimit(maximum_degrees=MAX_VORTEX_MISALIGNMENT),
+            ),
         ),
         initial_conditions=initial_conditions,
         backup=Backup(
@@ -173,35 +220,189 @@ def build_case(case_name: str) -> vpm.VPMCase:
         ),
         samplers=Samplers(
             samples=(
-                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(DIAGNOSTIC_INTERVAL_STEPS)),
-                vpm.RingDiagnosticsSampler(schedule=vpm.EverySteps(DIAGNOSTIC_INTERVAL_STEPS)),
+                FlowIntegralsSampler(schedule=vpm.EverySteps(SAMPLE_INTERVAL_STEPS)),
+                RingDiagnosticsSampler(schedule=vpm.EverySteps(SAMPLE_INTERVAL_STEPS)),
             ),
             directory=case_name,
         ),
-        run=vpm.RunPlan(steps=NUMBER_OF_STEPS),
-        initial_weak_particle_percent=WEAK_PARTICLE_PERCENT,
+        run=vpm.RunPlan(
+            steps=n_steps,
+            final_backup=False,
+            health_limit_action="STOP",
+        ),
         directory=TUTORIAL_DIR,
     )
 
 
-def run_case(case_name: str) -> None:
-    """Run one case and retain its terminal manifest beside its backups."""
+def _metadata(case_name: str, n_steps: int, initial_particles: int) -> dict:
+    """Return the fixed settings recorded with one result."""
+    return {
+        "schema_version": RUN_METADATA_SCHEMA_VERSION,
+        "case": case_name,
+        "label": CASE_LABELS[case_name],
+        "status": "running",
+        "requested_steps": n_steps,
+        "completed_steps": 0,
+        "final_time": 0.0,
+        "time_step_size": TIME_STEP_SIZE,
+        "integrator": "SSPRK3",
+        "induction_backend": "TREECODE",
+        "stretching_scheme": "TRANSPOSED",
+        "turbulence_model": "LES_SMAGORINSKY",
+        "smagorinsky_coefficient": SMAGORINSKY_COEFFICIENT,
+        "viscous_scheme": "CS",
+        "stabilization": case_name,
+        "stabilization_config": asdict(stabilization(case_name)),
+        "particle_spacing": PARTICLE_SPACING,
+        "particle_core_radius": PARTICLE_CORE_RADIUS,
+        "ring_radius": RING_RADIUS,
+        "ring_circulation": RING_CIRCULATION,
+        "core_radius": CORE_RADIUS,
+        "ring_separation": RING_SEPARATION,
+        "reynolds_number": REYNOLDS_NUMBER,
+        "disturbance_amplitude": DISTURBANCE_AMPLITUDE,
+        "disturbance_mode": DISTURBANCE_MODE,
+        "initial_n_particles_total": initial_particles,
+        "final_n_particles_total": initial_particles,
+        "maximum_lagrangian_cfl": MAX_LAGRANGIAN_CFL,
+        "maximum_vorticity_divergence_error": MAX_VORTICITY_DIVERGENCE,
+        "maximum_vortex_misalignment_degrees": MAX_VORTEX_MISALIGNMENT,
+        "health_limit_action": "STOP",
+        "termination_reason": None,
+    }
+
+
+def _write_metadata(metadata: dict) -> None:
+    path = TUTORIAL_DIR / "samples" / metadata["case"] / "run_metadata.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def result_exists(case_name: str, n_steps: int) -> bool:
+    """Return whether a compatible terminal result is already available."""
+    try:
+        path = TUTORIAL_DIR / "samples" / case_name / "run_metadata.json"
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+        expected = _metadata(
+            case_name,
+            n_steps,
+            int(metadata["initial_n_particles_total"]),
+        )
+        for key in (
+            "schema_version",
+            "case",
+            "requested_steps",
+            "time_step_size",
+            "integrator",
+            "induction_backend",
+            "stretching_scheme",
+            "turbulence_model",
+            "smagorinsky_coefficient",
+            "viscous_scheme",
+            "stabilization",
+            "stabilization_config",
+            "particle_spacing",
+            "particle_core_radius",
+            "ring_radius",
+            "ring_circulation",
+            "core_radius",
+            "ring_separation",
+            "reynolds_number",
+            "disturbance_amplitude",
+            "disturbance_mode",
+            "maximum_lagrangian_cfl",
+            "maximum_vorticity_divergence_error",
+            "maximum_vortex_misalignment_degrees",
+            "health_limit_action",
+        ):
+            if metadata.get(key) != expected[key]:
+                return False
+        completed_steps = int(metadata["completed_steps"])
+        if metadata.get("status") == "horizon_reached":
+            return completed_steps == n_steps
+        return metadata.get("status") == "resolution_lost" and 0 <= completed_steps < n_steps
+    except (KeyError, OSError, TypeError, ValueError):
+        return False
+
+
+def run_case(
+    case_name: str,
+    *,
+    n_steps: int = N_STEPS,
+    resume: bool = False,
+    compute_device: str = "AUTO",
+) -> None:
+    """Run one stabilization case and retain all available diagnostics."""
+    if case_name not in CASES:
+        raise ValueError(f"Unknown case {case_name!r}; expected one of {CASES}")
+    if n_steps < 0:
+        raise ValueError("n_steps must be non-negative")
+    if resume and result_exists(case_name, n_steps):
+        print(f"[resume] {case_name}: reusing existing result", flush=True)
+        return
+
+    previous = [TUTORIAL_DIR / kind / case_name for kind in ("samples", "solution")]
+    if any(path.exists() for path in previous):
+        archive_root = TUTORIAL_DIR / "solution" / ".previous_runs"
+        archive_root.mkdir(parents=True, exist_ok=True)
+        archive = Path(tempfile.mkdtemp(prefix=f"{case_name}-", dir=archive_root))
+        for path in previous:
+            if path.exists():
+                path.rename(archive / path.parent.name)
+        print(f"[resume] {case_name}: moved old results to {archive}", flush=True)
+
+    case = build_case(case_name, n_steps=n_steps, compute_device=compute_device)
+    initial_particles = sum(len(condition.build()) for condition in case.initial_conditions)
+    metadata = _metadata(case_name, n_steps, initial_particles)
+    _write_metadata(metadata)
+
+    solver = None
+    error = None
     root_manifest = TUTORIAL_DIR / "run_manifest.json"
-    case_manifest = TUTORIAL_DIR / "solution" / case_name / "run_manifest.json"
     root_manifest.unlink(missing_ok=True)
     try:
-        vpm.VPMSolver(build_case(case_name)).run()
+        solver = vpm.VPMSolver(case)
+        solver.run()
+    except BaseException as exc:
+        error = exc
+        raise
     finally:
         if root_manifest.is_file():
-            case_manifest.parent.mkdir(parents=True, exist_ok=True)
-            root_manifest.replace(case_manifest)
+            destination = TUTORIAL_DIR / "solution" / case_name / "run_manifest.json"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            root_manifest.replace(destination)
+        failure = error if solver is None else (solver.run_failure or error)
+        status = "failed" if solver is None else solver.run_status
+        metadata.update(
+            status="horizon_reached" if status == "completed" else status,
+            completed_steps=0 if solver is None else int(solver.step),
+            final_time=0.0 if solver is None else float(solver.time),
+            final_n_particles_total=(
+                initial_particles if solver is None else int(solver.particles.n_particles_total)
+            ),
+            active_stabilization=(
+                [] if solver is None else list(solver.stabilization.active_mechanisms())
+            ),
+            termination_reason=(
+                None if failure is None else f"{type(failure).__name__}: {failure}"
+            ),
+        )
+        _write_metadata(metadata)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("case", choices=CASES)
+    parser.add_argument("--steps", type=int, default=N_STEPS)
+    parser.add_argument("--resume", action="store_true")
+    return parser.parse_args()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", required=True, choices=tuple(CASES))
-    arguments = parser.parse_args()
-    run_case(arguments.case)
+    args = parse_args()
+    run_case(args.case, n_steps=args.steps, resume=args.resume)
     return 0
 
 

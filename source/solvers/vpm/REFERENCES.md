@@ -151,6 +151,34 @@ Only the TRANSPOSED form conserves total particle vortex strength Σα exactly �
 
 ## Divergence control and stabilization
 
+- **[vR2011]** van Rees, W. M., Leonard, A., Pullin, D. I. & Koumoutsakos,
+  P. (2011). A comparison of vortex and pseudo-spectral methods for the
+  simulation of periodic vortical flows at high Reynolds numbers. J. Comput.
+  Phys. 230, 2794–2805. https://doi.org/10.1016/j.jcp.2010.11.031
+  Section 2.1 combines remeshing with spectral solenoidal reprojection.
+  The padded Gaussian grid projection here is an experimental adaptation;
+  it retains treecode evolution and has not qualified collision breakdown.
+  → `stabilization/remeshing.py:project_grid_strength`
+
+- **[W1995]** Winckelmans, G. S. (1995). Some progress in large-eddy
+  simulation using the 3-D vortex particle method. CTR Annual Research
+  Briefs, 391–415. Eq. 11 gives regularized P-relaxation with factor f*dt;
+  eq. 12 describes W-relaxation. The magnitude renormalization and nine-moment
+  restoration in OpenONDA are additional adaptations.
+  https://ntrs.nasa.gov/api/citations/19960022324/downloads/19960022324.pdf
+  → `stabilization/operators.py`, `stabilization/divergence_relaxation.py`
+
+- **[Rossi1996]** Rossi, L. F. (1996). Resurrecting core spreading vortex
+  methods: a new scheme that is both deterministic and convergent. SIAM J.
+  Sci. Comput. 17(2), 370–397. https://doi.org/10.1137/S1064827593254397
+  Core-size control is essential for consistent long-time core spreading.
+  OpenONDA filament refinement leaves sigma unchanged and is not this method.
+  The Gaussian core remap uses a separate convolution/redistribution approach.
+  → `stabilization/filament_refinement.py`, `stabilization/remeshing.py`
+
+The integration and publication audit, including diagnostic cache corrections,
+is recorded in `docs/reviews/2026-09-vpm-stabilization.md`.
+
 - **[WL1993]**, **[CK2000 §5.3]** — the discrete vorticity field is not
   solenoidal and stretching amplifies its divergent part; this motivates the
   projection.
