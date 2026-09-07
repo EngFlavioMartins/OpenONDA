@@ -278,7 +278,7 @@ def test_volume_optimisation_sequence_matches_native(native_volume_pass):
 
 
 @pytest.mark.parametrize("iterations", [0, 1])
-def test_boundary_volume_uses_native_iteration_count(iterations):
+def test_boundary_volume_uses_pinned_native_iteration_count(iterations):
     path = Path(__file__).parent / "fixtures" / "cfmesh_boundary_volume_pass.npz"
     with np.load(path, allow_pickle=False) as data:
         point_tets = [[] for _ in data["initial_points"]]
@@ -299,11 +299,6 @@ def test_boundary_volume_uses_native_iteration_count(iterations):
         if iterations == 0:
             np.testing.assert_array_equal(part.points, data["initial_points"])
         else:
-            # The native boundary routine explicitly requests the machine's
-            # CPU count, overriding OMP_NUM_THREADS. Auxiliary cell/face-centre
-            # refreshes race, but cannot feed back into its single pass. Compare
-            # every point transferred to the original mesh, not these discarded
-            # intermediate centres.
             originals = part.node_to_original >= 0
             np.testing.assert_allclose(
                 part.points[originals], data["after_volume"][originals], rtol=0.0, atol=1.0e-12

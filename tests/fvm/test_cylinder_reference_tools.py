@@ -99,13 +99,20 @@ def test_grid_study_preserves_the_refinement_ratio_at_every_octree_level():
 
     np.testing.assert_allclose(
         [mesher.max_cell_size for mesher in meshers],
-        8.0 * np.asarray([dx for _case, dx in postprocess.PRODUCTION_CASES]),
+        [0.25, 0.25, 0.25],
     )
     for mesher, (_case, dx) in zip(meshers, postprocess.PRODUCTION_CASES, strict=True):
         assert mesher.boundary_layers == ()
         assert mesher.effective_cell_size(dx) == dx
         assert mesher.effective_cell_size(2.0 * dx) == 2.0 * dx
-        assert mesher.effective_cell_size(4.0 * dx) == 4.0 * dx
+        assert mesher.effective_cell_size(4.0 * dx) == min(4.0 * dx, mesher.max_cell_size)
+
+
+def test_thin_span_background_cap_remains_dyadic():
+    assert setup.background_cell_size(1.0 / 8.0) == 1.0 / 4.0
+    assert setup.background_cell_size(1.0 / 16.0) == 1.0 / 4.0
+    assert setup.background_cell_size(1.0 / 32.0) == 1.0 / 4.0
+    assert setup.background_cell_size(1.0 / 32.0, domain=(-8, 24, -10, 10, -0.375, 0.375)) == 0.25
 
 
 def test_richardson_gci_recovers_second_order_limit():

@@ -15,10 +15,10 @@ import time
 
 try:
     from .canonical_surface import DOMAIN, prepare_canonical_surfaces
-    from .case_definition import GRIDS
+    from .case_definition import GRIDS, domain_for
 except ImportError:
     from canonical_surface import DOMAIN, prepare_canonical_surfaces
-    from case_definition import GRIDS
+    from case_definition import GRIDS, domain_for
 
 ROOT = Path(__file__).resolve().parents[4]
 if str(ROOT) not in sys.path:
@@ -30,6 +30,16 @@ EXECUTABLE = Path(
 )
 LAUNCHER = Path("/Applications/OpenFOAM-v2412.app/Contents/Resources/etc/openfoam")
 CHECKMESH = Path("/Volumes/OpenFOAM-v2412/platforms/darwin64ClangDPInt32Opt/bin/checkMesh")
+WORKFLOW_STAGES = (
+    "templateGeneration",
+    "surfaceTopology",
+    "surfaceProjection",
+    "patchAssignment",
+    "edgeExtraction",
+    "boundaryLayerGeneration",
+    "meshOptimisation",
+    "boundaryLayerRefinement",
+)
 
 
 def _sha256(path: Path) -> str:
@@ -48,7 +58,7 @@ def _foam_header(name: str, location: str) -> str:
     )
 
 
-def _mesh_dict() -> str:
+def _mesh_dict(*, dx: float | None = None, domain=DOMAIN, stop_after: str | None = None) -> str:
     text = (
         _foam_header("meshDict", "system")
         + """surfaceFile "constant/triSurface/native_geometry.stl";
@@ -101,15 +111,20 @@ renameBoundary
 """
     )
 
-    dx = GRIDS["fine"]
-    return (
+    dx = GRIDS["fine"] if dx is None else float(dx)
+    text = (
         text.replace("maxCellSize 0.2;", f"maxCellSize {8 * dx:.17g};")
         .replace("boundaryCellSize 0.2;", f"boundaryCellSize {8 * dx:.17g};")
         .replace("cellSize 0.025;", f"cellSize {dx:.17g};")
         .replace("cellSize 0.05000000000005;", f"cellSize {2 * dx * (1 + 1e-12):.17g};")
         .replace("cellSize 0.1000000000001;", f"cellSize {4 * dx * (1 + 1e-12):.17g};")
-        .replace("lengthZ 1.2;", f"lengthZ {DOMAIN[5] - DOMAIN[4]:.17g};")
+        .replace("lengthZ 1.2;", f"lengthZ {domain[5] - domain[4]:.17g};")
     )
+    if stop_after is not None:
+        if stop_after not in WORKFLOW_STAGES:
+            raise ValueError(f"Unknown native cfMesh workflow stage: {stop_after!r}")
+        text += f"\nworkflowControls\n{{\n    stopAfter {stop_after};\n}}\n"
+    return text
 
 
 def _control_dict() -> str:
@@ -132,13 +147,24 @@ runTimeModifiable false;
     )
 
 
-def _run_one(case: Path, *, repeat: int) -> dict[str, object]:
+def _run_one(
+    case: Path,
+    *,
+    repeat: int,
+    dx: float | None = None,
+    domain=DOMAIN,
+    stop_after: str | None = None,
+) -> dict[str, object]:
+    case = case.resolve()
+    dx = GRIDS["fine"] if dx is None else float(dx)
     tri_surface = case / "constant" / "triSurface"
     tri_surface.mkdir(parents=True, exist_ok=True)
-    canonical = prepare_canonical_surfaces(SOURCE_STL, tri_surface)
+    canonical = prepare_canonical_surfaces(SOURCE_STL, tri_surface, domain=domain)
     system = case / "system"
     system.mkdir(parents=True, exist_ok=True)
-    (system / "meshDict").write_text(_mesh_dict(), encoding="ascii")
+    (system / "meshDict").write_text(
+        _mesh_dict(dx=dx, domain=domain, stop_after=stop_after), encoding="ascii"
+    )
     (system / "controlDict").write_text(_control_dict(), encoding="ascii")
     # checkMesh constructs an fvMesh, which reads these even for a mesh-only
     # case. They do not change cartesianMesh's meshing dictionary.
@@ -208,11 +234,13 @@ def _run_one(case: Path, *, repeat: int) -> dict[str, object]:
         "executable": {"path": str(EXECUTABLE), "sha256": _sha256(EXECUTABLE)},
         "launcher": {"path": str(LAUNCHER), "sha256": _sha256(LAUNCHER)},
         "source_revision": "3ff8555514827646c34cacfe5f0f691e49cdbc96",
-        "domain": DOMAIN,
+        "stop_after": stop_after,
+        "production_quality_required": stop_after is None,
+        "domain": domain,
         "controls": {
-            "maxCellSize": 8 * GRIDS["fine"],
-            "boundaryCellSize": 8 * GRIDS["fine"],
-            "cylinder": GRIDS["fine"],
+            "maxCellSize": 8 * dx,
+            "boundaryCellSize": 8 * dx,
+            "cylinder": dx,
         },
         "log": str(log),
         "mesh_present": (poly_mesh / "points").is_file(),
@@ -229,7 +257,7 @@ def _run_one(case: Path, *, repeat: int) -> dict[str, object]:
     )
     if result.returncode != 0 or not metadata["mesh_present"]:
         raise RuntimeError(f"Native cartesianMesh failed; inspect {log}")
-    if not checkmesh_record.get("passed", False):
+    if stop_after is None and not checkmesh_record.get("passed", False):
         raise RuntimeError(
             f"Native mesh quality was not accepted; inspect {case / 'checkMesh.log'}"
         )
@@ -244,13 +272,23 @@ def main() -> None:
         default=Path(__file__).resolve().parent / "mesh_evidence" / "native-d40-20260906",
     )
     parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--grid", choices=tuple(GRIDS), default="fine")
+    parser.add_argument("--stop-after", choices=WORKFLOW_STAGES)
     arguments = parser.parse_args()
     if arguments.output.exists() and any(arguments.output.iterdir()):
         raise FileExistsError(f"Refusing to overwrite native evidence: {arguments.output}")
     arguments.output.mkdir(parents=True, exist_ok=True)
     records = []
     for repeat in range(1, arguments.repeats + 1):
-        records.append(_run_one(arguments.output / f"repeat-{repeat}", repeat=repeat))
+        records.append(
+            _run_one(
+                arguments.output / f"repeat-{repeat}",
+                repeat=repeat,
+                dx=GRIDS[arguments.grid],
+                domain=domain_for(arguments.grid),
+                stop_after=arguments.stop_after,
+            )
+        )
     (arguments.output / "run_summary.json").write_text(
         json.dumps(records, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
     )

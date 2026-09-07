@@ -165,7 +165,7 @@ def test_run_matrix_separates_time_and_iteration():
         ] == [0.001, 0.0005, 0.00025]
     controls = study.flow_setup(runs[0], config())
     assert controls.time.adjustment is None
-    assert controls.mesh.max_lsq_condition == 9  # No hidden quality waiver.
+    assert controls.mesh.max_lsq_condition == 25  # Measured full-box QR-stencil margin.
     assert controls.cores == 1
 
 
@@ -173,6 +173,23 @@ def test_resource_gate_prevents_accidental_fine_launch():
     assert study.resource_check(50000, config()) < 2.5
     with pytest.raises(RuntimeError, match="Resource gate"):
         study.resource_check(33506176, config())
+
+
+def test_checkmesh_exception_is_limited_to_measured_concave_transitions():
+    required = "\n".join(
+        (
+            "Topological cell zip-up check OK.",
+            "Cell volumes OK.",
+            "Face pyramids OK.",
+            "Face interpolation weight check OK.",
+            "Cell determinant check OK.",
+        )
+    )
+    accepted = required + "\n ***Concave cells found, number of cells: 8\nFailed 1 mesh checks."
+    assert study._checkmesh_verdict(accepted, 0) == (True, 8)
+    assert study._checkmesh_verdict(accepted.replace(": 8", ": 9"), 0) == (False, 0)
+    assert study._checkmesh_verdict(accepted + "\n ***Zero-area faces found", 0) == (False, 0)
+    assert study._checkmesh_verdict(accepted, 1) == (False, 0)
 
 
 def test_laptop_estimates_fit_budget_and_cover_measured_domain_probe():

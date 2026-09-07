@@ -503,13 +503,15 @@ def validate_single_fluid_component(mesh_data) -> dict[str, int]:
     return {"fluid_components": 1, "fluid_cells": n_cells}
 
 
-def validate_vtk_cell_intersections(dataset) -> dict[str, int]:
+def validate_vtk_cell_intersections(dataset, *, maximum_intersections: int = 0) -> dict[str, int]:
     """Reject intersecting VTK cells and report other validator classifications.
 
     VTK's validity state is a bit mask.  Concave cut cells can legitimately be
     reported as non-convex, so this gate rejects the two geometric
     intersection bits while the native face-pyramid checks above establish
     finite-volume orientation and star-shapedness about the cell centres.
+    ``maximum_intersections`` is used only for transactional no-regression
+    comparisons; production admission retains the default of zero.
     """
     try:
         import vtk
@@ -525,14 +527,16 @@ def validate_vtk_cell_intersections(dataset) -> dict[str, int]:
         raise MeshValidationError("VTK cell validator did not return ValidityState")
     states = np.asarray(vtk_to_numpy(state_array), dtype=np.int64)
     intersecting = np.flatnonzero(states & 0b000110)
-    if intersecting.size:
+    if maximum_intersections < 0:
+        raise MeshValidationError("maximum_intersections must not be negative")
+    if intersecting.size > maximum_intersections:
         examples = ", ".join(map(str, intersecting[:8]))
         raise MeshValidationError(
             f"Mesh contains {len(intersecting)} intersecting VTK cells; first ids: {examples}"
         )
     return {
         "cell_count": int(len(states)),
-        "intersecting_cells": 0,
+        "intersecting_cells": int(len(intersecting)),
         "nonconvex_cells": int(np.count_nonzero(states & 0b010000)),
         "incorrectly_oriented_vtk_cells": int(np.count_nonzero(states & 0b100000)),
     }

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import hashlib
 import math
 from pathlib import Path
@@ -20,6 +21,7 @@ from ..validation import (
     validate_no_fluid_cell_centres_inside_surface,
     validate_single_fluid_component,
     validate_topology,
+    validate_vtk_cell_intersections,
     validate_wall_vertex_conformance,
 )
 from .boundary_layers import (
@@ -760,11 +762,33 @@ class CartesianMesher:
             else:
                 raise ValueError(f"cfMesh workflow produced unknown boundary patch {name!r}")
 
+        # Template generation deliberately removes leaves carrying boundary
+        # surface data.  A background size that consumes a thin domain can
+        # otherwise erase an entire outer plane while still leaving a locally
+        # refined island that looks like a mesh.  Never publish that truncated
+        # topology as the requested BoxDomain.
+        patch_by_name = {str(patch["name"]): patch for patch in mesh_data["boundary"]}
+        missing_domain = [
+            name
+            for name in self.domain.patches.as_tuple()
+            if name not in patch_by_name or int(patch_by_name[name]["n_faces"]) == 0
+        ]
+        if missing_domain:
+            spans = [
+                self.domain.bounds[2 * axis + 1] - self.domain.bounds[2 * axis] for axis in range(3)
+            ]
+            raise ValueError(
+                "cfMesh template did not preserve the complete BoxDomain; empty outer "
+                f"patches: {missing_domain}. Reduce max_cell_size relative to the "
+                f"thinnest domain span ({min(spans):g})."
+            )
+
         # These are construction-only addressing arrays.  They are not part
         # of the solver-native public mesh and can retain hundreds of
         # megabytes on the reference grid if left attached to the result.
         mesh_data.pop("_cfmesh_octree_leaves", None)
         mesh_data.pop("_cfmesh_cell_face_order", None)
+        mesh_data.pop("_cfmesh_boundary_column_inner", None)
         mesh_data["mesh_generation"]["method"] = "cartesian_cfmesh_pipeline"
         quality, geometry = _quality_snapshot(mesh_data)
         surface_conformance: dict[str, dict[str, float | int]] = {}
@@ -856,9 +880,10 @@ class CartesianMesher:
         The cfMesh finite-volume optimizer is allowed to move partition points
         slightly while untangling the wrapper.  The public OpenONDA contract
         requires the named wall patches to remain on their authoritative STL,
-        so project only those boundary vertices back to the same surface and
-        immediately re-run topology and all-face geometry validation.  A
-        candidate that inverts a cell or creates a non-positive wall pyramid
+        so project those boundary vertices back to the same surface while
+        translating each first inner wrapper point by the identical correction.
+        Topology and all-face geometry validation are then repeated immediately.
+        A candidate that inverts a cell or creates a non-positive wall pyramid
         is rejected and the original optimizer result is retained for the
         caller's diagnostic traceback.
         """
@@ -867,7 +892,82 @@ class CartesianMesher:
         candidate = points.copy()
         max_before = 0.0
         max_after = 0.0
+        max_inner_displacement = 0.0
         assigned_points: dict[int, str] = {}
+        inner_displacements: dict[int, list[np.ndarray]] = {}
+        boundary_columns: list[tuple[int, int, np.ndarray, dict[int, int]]] = []
+        constrained_outer_ids: set[int] = set()
+        column_maps = mesh_data.get("_cfmesh_boundary_column_inner", {})
+
+        # The volume optimizer is also allowed to drift outer box points.
+        # Restore every named domain plane before treating curved STL walls;
+        # edge/corner points naturally accumulate one orthogonal constraint
+        # per incident box patch.  A merged patch name no longer retains an
+        # unambiguous side-level topology after cfMesh patch assignment.  In
+        # that conventional farfield configuration, preserve the valid native
+        # outer wrapper rather than stretching it to six independently named
+        # planes; the surface-wall constraint remains exact.
+        domain_points: list[tuple[int, float, np.ndarray, dict[int, int]]] = []
+        declared_patches = self.domain.patches.as_tuple()
+        constrain_domain_planes = len(set(declared_patches)) == len(declared_patches)
+        for patch_name in dict.fromkeys(declared_patches):
+            patch = next(
+                (item for item in mesh_data["boundary"] if item["name"] == patch_name),
+                None,
+            )
+            if patch is None or int(patch["n_faces"]) == 0:
+                raise ValueError(f"cfMesh workflow did not create domain patch {patch_name!r}")
+            start = int(patch["start_face"])
+            stop = start + int(patch["n_faces"])
+            column_map = column_maps.get(patch_name)
+            if column_map is None:
+                raise ValueError(
+                    f"cfMesh wrapper has no boundary-column mapping for {patch_name!r}"
+                )
+            point_ids = np.unique(
+                np.concatenate(
+                    [np.asarray(mesh_data["faces"][face]) for face in range(start, stop)]
+                )
+            )
+            boundary_columns.append((start, stop, point_ids, column_map))
+            constrained_outer_ids.update(map(int, point_ids))
+            if not constrain_domain_planes:
+                continue
+            matching_sides = [
+                side for side, name in enumerate(declared_patches) if name == patch_name
+            ]
+            side_points: dict[int, set[int]] = {side: set() for side in matching_sides}
+            for face_id in range(start, stop):
+                face_ids = np.asarray(mesh_data["faces"][face_id], dtype=np.int64)
+                centre = candidate[face_ids].mean(axis=0)
+                side = min(
+                    matching_sides,
+                    key=lambda item: abs(centre[item // 2] - float(self.domain.bounds[item])),
+                )
+                side_points[side].update(map(int, face_ids))
+            for side, ids in side_points.items():
+                if not ids:
+                    raise ValueError(
+                        f"cfMesh workflow did not create side {side} of domain patch {patch_name!r}"
+                    )
+                axis = side // 2
+                bound = float(self.domain.bounds[side])
+                side_ids = np.fromiter(sorted(ids), dtype=np.int64)
+                domain_points.append((axis, bound, side_ids, column_map))
+                for point_id_value in side_ids:
+                    point_id = int(point_id_value)
+                    mapped = candidate[point_id].copy()
+                    mapped[axis] = bound
+                    displacement = mapped - candidate[point_id]
+                    candidate[point_id] = mapped
+                    inner_id = column_map.get(point_id)
+                    if inner_id is None:
+                        raise ValueError(
+                            "cfMesh wrapper has no inner column point for domain vertex "
+                            f"{point_id} on patch {patch_name!r}"
+                        )
+                    inner_displacements.setdefault(int(inner_id), []).append(displacement)
+
         for surface in self.surfaces:
             patch = next(
                 (item for item in mesh_data["boundary"] if item["name"] == surface.patch),
@@ -883,6 +983,13 @@ class CartesianMesher:
                 )
             )
             index = SurfaceIndex.build(surface.triangles)
+            column_map = column_maps.get(surface.patch)
+            if column_map is None:
+                raise ValueError(
+                    f"cfMesh wrapper has no boundary-column mapping for {surface.patch!r}"
+                )
+            boundary_columns.append((start, stop, point_ids, column_map))
+            constrained_outer_ids.update(map(int, point_ids))
             for point_id_value in point_ids:
                 point_id = int(point_id_value)
                 previous = assigned_points.get(point_id)
@@ -894,16 +1001,150 @@ class CartesianMesher:
                 assigned_points[point_id] = surface.patch
                 mapped, distance = index.nearest_point(candidate[point_id])
                 max_before = max(max_before, float(distance))
+                displacement = mapped - candidate[point_id]
                 candidate[point_id] = mapped
+                inner_id = column_map.get(point_id)
+                if inner_id is None:
+                    raise ValueError(
+                        "cfMesh wrapper has no inner column point for wall vertex "
+                        f"{point_id} on patch {surface.patch!r}"
+                    )
+                inner_displacements.setdefault(int(inner_id), []).append(displacement)
                 max_after = max(max_after, float(index.nearest_point(mapped)[1]))
 
-        mesh_data["vertex_position"] = candidate
+        # Curved surfaces can share rim vertices with an outer plane.  Apply
+        # the compatible planar component last and propagate that final small
+        # correction into its own wrapper column as well.
+        for axis, bound, point_ids, column_map in domain_points:
+            for point_id_value in point_ids:
+                point_id = int(point_id_value)
+                displacement = np.zeros(3, dtype=np.float64)
+                displacement[axis] = bound - candidate[point_id, axis]
+                candidate[point_id, axis] = bound
+                inner_id = column_map[point_id]
+                inner_displacements.setdefault(int(inner_id), []).append(displacement)
+
+        # Move the first inner point with its wall partner.  Full translation
+        # is preferred (and is required by the thin reference cylinder), but
+        # a complex generic surface can share several competing column
+        # requests.  Backtrack only the inner translation while retaining the
+        # exact outer surface/box constraints.
+        outer_candidate = candidate.copy()
+        mean_inner_displacements = {
+            inner_id: np.asarray(displacements, dtype=np.float64).mean(axis=0)
+            for inner_id, displacements in inner_displacements.items()
+        }
+        for displacement in mean_inner_displacements.values():
+            max_inner_displacement = max(
+                max_inner_displacement, float(np.linalg.norm(displacement))
+            )
+
         try:
-            validate_topology(mesh_data)
-            geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
-            validate_geometry(mesh_data, geometry)
+            column_translation_relaxation: float | None = None
+            column_validation_error: Exception | None = None
+            for translation_relaxation in (1.0, 0.75, 0.5, 0.25, 0.125, 0.0):
+                trial = outer_candidate.copy()
+                for inner_id, displacement in mean_inner_displacements.items():
+                    trial[inner_id] += translation_relaxation * displacement
+                mesh_data["vertex_position"] = trial
+                try:
+                    validate_topology(mesh_data)
+                    base_geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
+                    validate_geometry(mesh_data, base_geometry)
+                except Exception as exc:
+                    column_validation_error = exc
+                    continue
+                column_translation_relaxation = translation_relaxation
+                candidate = trial
+                break
+            if column_translation_relaxation is None:
+                assert column_validation_error is not None
+                raise column_validation_error
+
+            # Restore the wrapper's original wall-normal intent.  Native
+            # cfMesh creates each outer/inner pair normal to the pre-optimized
+            # patch, but its later independent surface and volume smoothers can
+            # skew those two rings.  Re-align the first inner ring to the final
+            # constrained wall normals, accepting the largest transactional
+            # relaxation that preserves all positive-volume/face checks.
+            target_requests: dict[int, list[np.ndarray]] = {}
+            face_area_vectors = np.asarray(base_geometry["face_area_vector"])
+            for start, stop, _point_ids, column_map in boundary_columns:
+                for face_id in range(start, stop):
+                    normal = face_area_vectors[face_id]
+                    magnitude = float(np.linalg.norm(normal))
+                    if magnitude <= np.finfo(np.float64).tiny:
+                        continue
+                    direction = normal / magnitude
+                    outer_ids = tuple(map(int, mesh_data["faces"][face_id]))
+                    inner_ids = tuple(int(column_map[outer_id]) for outer_id in outer_ids)
+                    columns = np.asarray(
+                        [
+                            candidate[inner_id] - candidate[outer_id]
+                            for outer_id, inner_id in zip(outer_ids, inner_ids, strict=True)
+                        ]
+                    )
+                    mean_column = columns.mean(axis=0)
+                    if float(np.dot(mean_column, direction)) < 0.0:
+                        direction = -direction
+                    thickness = float(np.median(np.linalg.norm(columns, axis=1)))
+                    if thickness <= np.finfo(np.float64).tiny:
+                        continue
+                    for outer_id, inner_id in zip(outer_ids, inner_ids, strict=True):
+                        target_requests.setdefault(inner_id, []).append(
+                            candidate[outer_id] + thickness * direction
+                        )
+
+            targets = {
+                inner_id: np.asarray(requests, dtype=np.float64).mean(axis=0)
+                for inner_id, requests in target_requests.items()
+                if inner_id not in constrained_outer_ids
+            }
+            accepted_relaxation: float | None = None
+            validation_error: Exception | None = None
+            from ...io.vtk_exporter import VTKExporter
+
+            baseline_vtk = validate_vtk_cell_intersections(
+                VTKExporter(mesh_data)._grid,
+                maximum_intersections=int(mesh_data["n_cells"]),
+            )
+            baseline_intersections = int(baseline_vtk["intersecting_cells"])
+            for relaxation in (1.0, 0.75, 0.5, 0.25, 0.125, 0.0):
+                trial = candidate.copy()
+                for inner_id, target in targets.items():
+                    trial[inner_id] += relaxation * (target - candidate[inner_id])
+                mesh_data["vertex_position"] = trial
+                try:
+                    geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
+                    validate_geometry(mesh_data, geometry)
+                    # Positive face-pyramid volumes do not detect every
+                    # self-intersecting polyhedron created at multi-patch
+                    # wrapper corners.  Do not let straightening introduce
+                    # any beyond the pre-straightening baseline; reference-flow
+                    # publication separately retains the strict zero limit.
+                    validate_vtk_cell_intersections(
+                        VTKExporter(mesh_data)._grid,
+                        maximum_intersections=baseline_intersections,
+                    )
+                except Exception as exc:
+                    validation_error = exc
+                    continue
+                accepted_relaxation = relaxation
+                candidate = trial
+                break
+            if accepted_relaxation is None:
+                assert validation_error is not None
+                raise validation_error
             for surface in self.surfaces:
                 validate_wall_vertex_conformance(mesh_data, surface.triangles, surface.patch)
+            for axis, bound, point_ids, _column_map in domain_points:
+                if not np.allclose(
+                    candidate[point_ids, axis],
+                    bound,
+                    rtol=0.0,
+                    atol=max(abs(bound), 1.0) * 1.0e-12,
+                ):
+                    raise ValueError("cfMesh outer-domain plane constraint was not preserved")
         except Exception as exc:
             mesh_data["vertex_position"] = original
             mesh_data.pop("cell_face_indices", None)
@@ -912,22 +1153,45 @@ class CartesianMesher:
                 f"Surface-constrained cfMesh wall projection failed transactional validation: {exc}"
             ) from exc
         mesh_data["mesh_generation"]["surface_constraint"] = {
-            "method": "transactional_nearest_surface_projection",
+            "method": "transactional_column_preserving_surface_projection",
             "max_distance_before": max_before,
             "max_distance_after": max_after,
+            "moved_inner_points": len(inner_displacements),
+            "max_inner_displacement": max_inner_displacement,
+            "column_translation_relaxation": column_translation_relaxation,
+            "straightened_inner_points": len(targets),
+            "straightening_relaxation": accepted_relaxation,
+            "outer_domain_planes_constrained": constrain_domain_planes,
+            "baseline_intersecting_vtk_cells": baseline_intersections,
             "validated": True,
         }
 
-    def build(self, *, stop_after: str | None = None) -> dict[str, Any]:
-        """Build, validate, name, and return native face-based mesh data."""
+    def build(
+        self,
+        *,
+        stop_after: str | None = None,
+        on_generated: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        """Build, validate, name, and return native face-based mesh data.
+
+        ``on_generated`` receives the completed native workflow mesh before
+        OpenONDA's stricter final wall-conformance transaction.  It is intended
+        for durable diagnostics: a rejected projection must not make the
+        generated grid disappear.
+        """
         if self.boundary_layers:
             raise NotImplementedError(
                 "Configurable BoundaryLayers are not supported by the built-in cfMesh "
                 "workflow; use the automatic default wrapper instead"
             )
         if stop_after is not None:
-            return self._run_cfmesh_workflow(stop_after)
+            mesh_data = self._run_cfmesh_workflow(stop_after)
+            if on_generated is not None:
+                on_generated(mesh_data)
+            return mesh_data
         mesh_data = self._run_cfmesh_workflow("meshOptimisation")
+        if on_generated is not None:
+            on_generated(mesh_data)
         self._constrain_cfmesh_wall_points(mesh_data)
         return self._finalize_cfmesh_mesh(mesh_data)
         layer_surfaces: list[LayerSurface] = []  # noqa: V201

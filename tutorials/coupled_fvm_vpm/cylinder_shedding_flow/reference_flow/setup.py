@@ -56,10 +56,27 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def background_cell_size(dx: float, *, domain=DOMAIN) -> float:
+    """Return a dyadic background size that preserves the complete thin box.
+
+    The cfMesh template removes one surface-data leaf at each outer boundary.
+    At least one intervening leaf must therefore remain across the thinnest
+    dimension.  Halving from the conventional ``8*dx`` keeps every study mesh
+    on the same dyadic hierarchy while preventing a thin span from silently
+    erasing the far field.
+    """
+    span = min(domain[1] - domain[0], domain[3] - domain[2], domain[5] - domain[4])
+    size = 8.0 * dx
+    while size > span / 3.0 * (1.0 + 1.0e-12):
+        size *= 0.5
+    return size
+
+
 def grid_mesh(dx: float, *, domain=DOMAIN) -> msh.CartesianMesher:
     """Return a declarative grid-study mesh at requested wall size ``dx``."""
-    # Local transitions stay dyadic; inter-grid refinement is r=1.5.
-    background_size = 8.0 * dx
+    # Local transitions and the background cap stay dyadic; inter-grid wall
+    # refinement is r=2.
+    background_size = background_cell_size(dx, domain=domain)
     canonical = prepare_canonical_surfaces(
         CYLINDER_STL,
         CASE_DIR
@@ -190,14 +207,14 @@ def solver_setup(case_name: str, dx: float) -> fvm.FVMSetup:
         case_name=case_name,
         cores=NUMBER_OF_CORES,
         mesh=fvm.MeshQualityConfig(
-            # At D/12 the wrapped/castellated mesh measures 84.04 degrees at
-            # its single worst transition, 0.664 maximum skewness, and has no
-            # inverted owner or neighbour face pyramids.  The smoothed wrapper
-            # has maximum LSQ condition 8.402.  Keep narrow margins around the
-            # measured results.
+            # The complete-box D/8 mesh measures 58.81 degrees and 0.971
+            # maximum skewness, with no inverted pyramids or VTK intersections.
+            # Its 64 worst transition tetrahedra remain rank-3 QR stencils and
+            # peak at LSQ condition 18.49.  Retain a measured margin without
+            # allowing rank deficiency or the solver's SVD fallback.
             max_non_orthogonality_deg=86.0,
             max_skewness=1.0,
-            max_lsq_condition=9.0,
+            max_lsq_condition=25.0,
         ),
         execution=fvm.ComputeConfig(operator_backend="numba"),
         output=fvm.OutputConfig(

@@ -5,4 +5,5 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 export MPLBACKEND=Agg
+export NUMBA_NUM_THREADS="${NUMBA_NUM_THREADS:-6}"
 exec "${PYTHON:-python}" -u study.py "$@"

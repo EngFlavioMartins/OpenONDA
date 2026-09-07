@@ -27,6 +27,7 @@ from source.solvers.fvm.mesh.validation import (
     validate_geometry,
     validate_single_fluid_component,
     validate_topology,
+    validate_vtk_cell_intersections,
 )
 
 try:
@@ -100,16 +101,24 @@ def _build(case: str, destination: Path, *, backup_dir: Path | None = None) -> N
     )
     mesher = grid_mesh(dx, domain=domain)
     print(f"[mesh] case={case} stage=build dx={dx:.17g}", flush=True)
-    mesh = mesher.build()
-    # A rejected mesh must remain visible without acquiring an accepted manifest.
     backup_dir = backup_dir or destination.with_name(destination.name + "-generated")
     backup_dir.mkdir(parents=True, exist_ok=True)
     (backup_dir / "mesh_backup.json").write_text(
         json.dumps({"case": case, "status": "generated_not_qualified"}) + "\n"
     )
     solver_config = solver_setup(case, dx)
-    _save_generated_mesh(mesh, backup_dir, solver_config.output)
+
+    def save_before_admission(generated: dict[str, Any]) -> None:
+        _save_generated_mesh(generated, backup_dir, solver_config.output)
+
+    # Persist the workflow output before the stricter wall projection and
+    # quality admission.  This also retains a ParaView-readable mesh when
+    # either of those transactions rejects the candidate.
+    mesh = mesher.build(on_generated=save_before_admission)
     elapsed = time.perf_counter() - started
+    constrained_backup = backup_dir / "constrained"
+    constrained_backup.mkdir(parents=True, exist_ok=True)
+    _save_generated_mesh(mesh, constrained_backup, solver_config.output)
     print(
         f"[mesh] case={case} stage=validation cells={mesh['n_cells']} "
         f"faces={mesh['n_faces']} elapsed={elapsed:.3f}s",
@@ -123,6 +132,7 @@ def _build(case: str, destination: Path, *, backup_dir: Path | None = None) -> N
     quality.update(validate_cell_area_closure(mesh, geometry))
     quality.update(validate_single_fluid_component(mesh))
     enforce_quality_thresholds(quality, solver_config.mesh)
+    quality.update(validate_vtk_cell_intersections(VTKExporter(mesh)._grid))
     (backup_dir / "mesh_backup.json").write_text(
         json.dumps({"case": case, "status": "production_geometry_passed_independent_check_pending"})
         + "\n"
@@ -143,7 +153,12 @@ def _build(case: str, destination: Path, *, backup_dir: Path | None = None) -> N
         )
         report = {
             "case": case,
-            "requested": {"dx": dx, "background": 8.0 * dx, "cylinder": dx, "domain": domain},
+            "requested": {
+                "dx": dx,
+                "background": mesher.max_cell_size,
+                "cylinder": dx,
+                "domain": domain,
+            },
             "canonical_inputs": _jsonable(canonical),
             "mesh_generation": _jsonable(mesh.get("mesh_generation", {})),
             "counts": {

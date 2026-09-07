@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from numba import njit
+from numba import njit, prange
 from numba.extending import register_jitable
 import numpy as np
 
@@ -626,7 +626,7 @@ def _simplex_triangles(part: _PartTetMesh, node_id: int) -> np.ndarray:
     return np.asarray(triangles, dtype=np.int32)
 
 
-@njit(cache=True, fastmath=False)
+@njit(cache=True, fastmath=False, parallel=True)
 def _optimise_part_nodes_kernel(
     points: np.ndarray,
     tets: np.ndarray,
@@ -637,7 +637,10 @@ def _optimise_part_nodes_kernel(
 ) -> np.ndarray:
     """Apply serial volume-point updates without Python per-node allocations."""
     updates = np.empty((len(node_ids), 3), dtype=np.float64)
-    for local_node in range(len(node_ids)):
+    # Every target is evaluated against the same immutable point snapshot and
+    # committed only after this kernel returns.  This is the native OpenMP
+    # point loop expressed with Numba's deterministic independent iterations.
+    for local_node in prange(len(node_ids)):
         node_id = int(node_ids[local_node])
         first = int(tet_offsets[local_node])
         stop = int(tet_offsets[local_node + 1])
@@ -1072,11 +1075,11 @@ def _optimise_part_volume(part: _PartTetMesh, iterations: int = 10) -> None:
 
 
 def _optimise_part_boundary_volume(part: _PartTetMesh, *, iterations: int) -> None:
-    """Apply the unconstrained boundary passes used by the native workflow.
+    """Apply the unconstrained boundary passes used by the pinned native workflow.
 
-    cfMesh calls optimiseBoundaryVolumeOptimizer(true/false). Its first
-    parameter is a label iteration count, not the nonShrinking flag: these
-    calls mean one/zero iterations with nonShrinking left false.
+    The pinned cfMesh revision declares ``(nIterations=3, nonShrinking=false)``
+    but calls this routine with one boolean positional argument.  Therefore its
+    two calls mean one/zero iterations with ``nonShrinking`` left false.
     """
     for _iteration in range(iterations):
         positions = _optimise_part_nodes(part, part.boundary_nodes, tolerance=1.0e-5)

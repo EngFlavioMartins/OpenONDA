@@ -386,12 +386,22 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
     def state(point_id: int, retained: Iterable[int]) -> int:
         return state_id[(point_id, frozenset(retained))]
 
+    state_source = {
+        output_point: (source_point, retained)
+        for (source_point, retained), output_point in state_id.items()
+    }
+
     # Each record is (face vertices, output boundary patch or None). Faces
     # marked None must pair with another newly created cell face.
     new_cells: list[list[tuple[np.ndarray, int | None]]] = []
     interface_cells: list[tuple[int, int]] = []
     source_cell_for_new: list[int] = []
     layer_outer_signatures: set[tuple[int, ...]] = set()
+    # Preserve cfMesh's point-column correspondence.  The boundary face and
+    # its core interface are created from the same ordered source face, so
+    # every outer wall point has an unambiguous inner partner for that patch.
+    # OpenONDA uses this only for its stricter post-native wall constraint.
+    boundary_column_inner: list[dict[int, int]] = [{} for _patch in patches]
     for face_id in range(n_internal, len(source_faces)):
         face = source_faces[face_id]
         patch_id = face_patch[face_id]
@@ -400,6 +410,12 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
         interface_cells.append((face_id, cell_id))
         full_states = [state(int(point), point_keys[int(point)]) for point in face]
         outer_states = [state(int(point), point_keys[int(point)] - {key}) for point in face]
+        for outer_state, full_state in zip(outer_states, full_states, strict=True):
+            previous = boundary_column_inner[patch_id].setdefault(outer_state, full_state)
+            if previous != full_state:
+                raise ValueError(
+                    "cfMesh wrapper produced an inconsistent boundary-column point mapping"
+                )
         entries: list[tuple[np.ndarray, int | None]] = [
             (np.asarray(outer_states, dtype=np.int32), patch_id)
         ]
@@ -567,6 +583,28 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
         else:
             raise ValueError(f"cfMesh wrapper produced a non-manifold face: {signature}")
 
+    # Edge and corner cells introduce additional outer states that do not
+    # occur on the one-cell-per-face records above.  Complete every patch's
+    # outer-to-inner column mapping by restoring that patch key in the subset
+    # lattice.  This is also a direct executable check of the lattice topology.
+    for patch_id, patch_faces in enumerate(boundary_faces):
+        key = patch_key[patch_id]
+        mapping = boundary_column_inner[patch_id]
+        for face in patch_faces:
+            for outer_value in face:
+                outer = int(outer_value)
+                source_point, retained = state_source[outer]
+                if key in retained:
+                    raise ValueError(
+                        "cfMesh wrapper boundary point unexpectedly retains its patch key"
+                    )
+                inner = state(source_point, retained | {key})
+                previous = mapping.setdefault(outer, inner)
+                if previous != inner:
+                    raise ValueError(
+                        "cfMesh wrapper produced an inconsistent boundary-column point mapping"
+                    )
+
     combined_faces = internal_faces.copy()
     combined_owners = internal_owners.copy()
     combined_neighbours = internal_neighbours.copy()
@@ -652,6 +690,10 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
                 )
             ),
             "_cfmesh_cell_face_order": cfmesh_cell_face_order,
+            "_cfmesh_boundary_column_inner": {
+                str(patch["name"]): mapping
+                for patch, mapping in zip(patches, boundary_column_inner, strict=True)
+            },
         }
     )
     for stale in (
