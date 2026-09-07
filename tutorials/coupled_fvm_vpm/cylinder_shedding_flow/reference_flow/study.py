@@ -221,6 +221,19 @@ def independent_check(directory):
     from source.solvers.fvm.io.openfoam_poly_mesh import write_poly_mesh
 
     executable = native.CHECKMESH if native.CHECKMESH.is_file() else shutil.which("checkMesh")
+    if not executable and native.LAUNCHER.is_file():
+        # The macOS OpenFOAM app mounts its runtime volume lazily.  Activating
+        # the checker through the launcher makes the pinned absolute binary
+        # visible without depending on an interactive shell startup file.
+        activation = subprocess.run(
+            [str(native.LAUNCHER), "checkMesh", "-help"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        if activation.returncode == 0 and native.CHECKMESH.is_file():
+            executable = native.CHECKMESH
     if not executable:
         raise RuntimeError("Independent checkMesh is unavailable; activate OpenFOAM first")
     executable = Path(executable).resolve()

@@ -455,6 +455,36 @@ def test_independent_checker_requires_explicit_pass(
     assert json.loads((tmp_path / "independent_check.json").read_text())["passed"] is accepted
 
 
+def test_independent_checker_activates_lazy_macos_runtime(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from source.solvers.fvm.io.mesh_storage import save_native_mesh
+    from source.solvers.fvm.mesh.cartesian import structured_box
+
+    save_native_mesh(structured_box(2, 2, 2), tmp_path / "mesh.npz")
+    launcher = tmp_path / "openfoam"
+    launcher.write_text("synthetic launcher identity")
+    executable = tmp_path / "mounted" / "checkMesh"
+    monkeypatch.setattr(study.native, "CHECKMESH", executable)
+    monkeypatch.setattr(study.native, "LAUNCHER", launcher)
+    monkeypatch.setattr(study.shutil, "which", lambda _: None)
+    commands = []
+
+    def check(command, **kwargs):
+        commands.append(command)
+        if command[-1] == "-help" and "stdout" not in kwargs:
+            executable.parent.mkdir()
+            executable.write_text("synthetic checker identity")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        kwargs["stdout"].write("Mesh OK.\n")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(study.subprocess, "run", check)
+    assert study.independent_check(tmp_path)["passed"]
+    assert commands[0] == [str(launcher), "checkMesh", "-help"]
+    assert commands[1][0:2] == [str(launcher), str(executable.resolve())]
+
+
 def test_concurrent_campaign_is_rejected(tmp_path):
     import fcntl
 
