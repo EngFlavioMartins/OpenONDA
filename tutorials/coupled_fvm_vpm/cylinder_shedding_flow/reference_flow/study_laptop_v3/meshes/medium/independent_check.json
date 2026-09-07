@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "accepted_concave_cells": 0,
+  "mesh_sha256": "be7ae13e6d78ec56415b20c06ef2347eb1b39cdf2bb5899a140f55adf6305ee1",
+  "checker_sha256": "3e8d52eae31741a6fda3f5e400dfbc1958525b6d16263287bf209889d2fdea36",
+  "command": [
+    "/Applications/OpenFOAM-v2412.app/Contents/Resources/etc/openfoam",
+    "/Volumes/OpenFOAM-v2412/platforms/darwin64ClangDPInt32Opt/bin/checkMesh",
+    "-case",
+    "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop_v3/meshes/medium/openfoam_check",
+    "-allTopology",
+    "-allGeometry"
+  ],
+  "return_code": 0,
+  "log_sha256": "c374048f9f275a871534acae0d171e613987abc1ae360ed5f2d38db37f69510a"
+}

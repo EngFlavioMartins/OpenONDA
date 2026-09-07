@@ -223,15 +223,15 @@ def plot_energy_enstrophy(args) -> int:
         print("  [energy] no sampled flow integrals; figure not generated")
         return 0
 
-    axes[0, 0].set_ylabel(r"$E / (N_v\Gamma^2 L)$")
-    axes[1, 0].set_ylabel(r"$(dE/dt) / (\nu\Gamma^2 L / a_{c,0}^2)$")
-    axes[1, 0].set_ylim([-5e-1, -5e-3])
+    axes[0, 0].set_ylabel(r"$E / (N_v\Gamma_{c,0}^2 L)$")
+    axes[1, 0].set_ylabel(r"$(dE/dt) / (\nu\Gamma_{c,0}^2 L / a_{c,0}^2)$")
+    # Include zero: a sampled RWM rate interval crosses it in the merger.
+    axes[1, 0].set_ylim([-5e-1, 2e-3])
 
     # sharey="row" links the three rate panels.
     for ax in axes[1, :]:
         ax.set_yscale("symlog", linthresh=0.01)
-    for ax in axes[1, :]:
-        ax.axhspan(0.0, 1e-1, color=colors["background_light"], linewidth=0, zorder=0)
+        ax.axhline(0.0, color=colors["reference"], linestyle=":", linewidth=0.6)
 
     available_schemes = [
         scheme
@@ -276,7 +276,7 @@ def plot_energy_enstrophy(args) -> int:
             linestyle="-",
             marker="None",
             linewidth=1.0,
-            label=r"$-2\nu Z$",
+            label=r"$-2\nu Z_s$",
         )
     )
     fig.legend(

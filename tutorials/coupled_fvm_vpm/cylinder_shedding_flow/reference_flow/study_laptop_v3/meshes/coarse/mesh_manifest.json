@@ -1,0 +1,51 @@
+{
+  "case": "coarse",
+  "code_files": {
+    "canonical_surface": "d72917bbf518bab1ce63fe51dd2d71818001e94ee82e8077ccab5afbce6e6ff4",
+    "case_definition": "9f9915e4b5f686863e7b6c4db0d1ff7dd32c0299b9260b53f1acf667b057a261",
+    "mesh_entry": "d3e881a21ba8249e03f0dac937410bac6a88952be20d72eb4a7e25e9d2f91c5d",
+    "mesher": "07c04fe648c94e0edef03647077e1bc122acb1f301249153f3d8c7ed186943d5",
+    "setup": "cacf87dcc535e8d4b6381e8400c9f518d8f99e37ef6e92651df87a34b83908b1",
+    "source/solvers/fvm/mesh/cartesian/__init__.py": "d520631d36f7b4c396d57eb14f946127c9016303eacf4d582f10eb6cb358d6bb",
+    "source/solvers/fvm/mesh/cartesian/boundary_layers.py": "a37b16bf8e5e5c6ba994f9c57e89f0ae11ba30d437f444576bb3fb473c51e3a2",
+    "source/solvers/fvm/mesh/cartesian/cfmesh_automatic_refinement.py": "5cb378fd2423343ccd8eed9bc9663a1e579527919363123011e0537a7c158522",
+    "source/solvers/fvm/mesh/cartesian/cfmesh_boundary_layer.py": "1feca5e7273a562e65d5dcaa85b5e632b3ac2f1f1ea9bbe27d65de4d6748be52",
+    "source/solvers/fvm/mesh/cartesian/cfmesh_edge_extraction.py": "2ef8988adfe99bac8ad528af0e7608c4a40d4a188b188abba0cf3bc5bd006405",
+    "source/solvers/fvm/mesh/cartesian/cfmesh_mesh_optimisation.py": "c5bb7cd2b19c9d0c73647820d14a50e770b0d1d0250d7654782dfebd6b120569",
+    "source/solvers/fvm/mesh/cartesian/cfmesh_octree.py": "68466f08502ee31da72936236691277235b98f46ffd2df77668d092b3db7fd37",
+    "source/solvers/fvm/mesh/cartesian/cfmesh_surface_optimisation.py": "d4ef4140b6d816e18d757c86424b9180997919330afea2c855b4c21a97cef1f4",
+    "source/solvers/fvm/mesh/cartesian/cfmesh_template.py": "539f1f12416dbb40a14f4dcd92a426bd72471c5be8ad5ffe4da4e5a0ceb30bc8",
+    "source/solvers/fvm/mesh/cartesian/cfmesh_volume_optimisation.py": "d96f7f75a13182842d188356616f7880378f6d9301cca69772332cb9b9c81527",
+    "source/solvers/fvm/mesh/cartesian/config.py": "178bef6f7596a2262f8baf9dd7852fad079c31be9e0d3d0caa80465721d85007",
+    "source/solvers/fvm/mesh/cartesian/extraction.py": "753457d8c202199ef2437dfcf7129e2b61e511a276c36afcdd9774937951ed38",
+    "source/solvers/fvm/mesh/cartesian/features.py": "d1afd642d0e6d4ee6ae5f5e77357282315bcfadb462f6b6ddfb6d4ce524cc98c",
+    "source/solvers/fvm/mesh/cartesian/mesher.py": "07c04fe648c94e0edef03647077e1bc122acb1f301249153f3d8c7ed186943d5",
+    "source/solvers/fvm/mesh/cartesian/native_mesh.py": "f7543898f202f61c6b756a835eee46cddc64e1c9f30a2a35df7b5efe48a84cdc",
+    "source/solvers/fvm/mesh/cartesian/octree.py": "6e45aab62b60634b604170a0262a46c5be25423c735cc4d44e8d3a2293759662",
+    "source/solvers/fvm/mesh/cartesian/optimisation.py": "a1e2aa3dad631782ef21cf6f16938f9dc55dd3aaeb5227c417c4582fc90430eb",
+    "source/solvers/fvm/mesh/cartesian/report.py": "a346361c1106c7d9217af895ad55af27fbf18873e7856014791248011bd12472",
+    "source/solvers/fvm/mesh/cartesian/size_field.py": "6e9dd79533973fef9bd4d693e6cddbca1f96273a191240374acf526c4334cf81",
+    "source/solvers/fvm/mesh/cartesian/surface.py": "77a831f10064a89917b8bbb834884b7228981c81218913bc88ed8e126dfaec05",
+    "source/solvers/fvm/mesh/cartesian/surface_recovery.py": "42d15fe46ee7744975f30e3ef97d039b36b435784e6aa128ed06c64139479ef9"
+  },
+  "domain": [
+    -8.0,
+    24.0,
+    -10.0,
+    10.0,
+    -0.5,
+    0.5
+  ],
+  "elapsed_seconds": 153.85219687500012,
+  "format": "openonda.cylinder_mesh_manifest.v1",
+  "mesh_identity": "61c3f41038a8e9c4a4a81fd6d1335e529861cfeed724c5acbd52c77174c18965",
+  "output_sha256": {
+    "mesh.npz": "c2c82691a4ecd8a2a651deed9b70780cff883bbeef50920f6dd8b0985036893e",
+    "mesh.vtu": "a7a84aede1ad0b8f92db0f8e33f41a55dfa7e563e8f3f5fcbe04ddff9ed5ea43",
+    "mesh_report.json": "a4d1615bf397a27bade022d4227c838787bccff0a6c66ebd41f3f956efa444cf"
+  },
+  "peak_rss_bytes": 1044365312,
+  "requested_dx": 0.125,
+  "source_stl": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/assets/cylinder_long.stl",
+  "source_stl_sha256": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3"
+}

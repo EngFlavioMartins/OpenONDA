@@ -11,7 +11,7 @@ Saves: figures/vortex_ring_motion.png
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ring_metrics import (
+from tutorials.vpm.vortex_ring.assets.ring_metrics import (
     FIGURES_DIR,
     SAMPLES_DIR,
     REFERENCE_TIME,
@@ -22,22 +22,12 @@ from ring_metrics import (
     figure_size,
     load_sampled_ring_speed,
     load_theme,
+    plot_variants,
     reference_style,
     saffman_speed,
+    saffman_valid_time_limit,
     save_fig,
 )
-
-ZOOM_END = 3.2
-ZOOM_BOX = (0.10, 0.10, 0.24, 0.40)
-ZOOM_MARKER_SIZE = 2.0
-
-
-def zoom_axes(ax, ylim: tuple[float, float]):
-    """Attach an early-time zoom inset to the bottom-right corner of ``ax``."""
-    inset = ax.inset_axes(ZOOM_BOX)
-    inset.set_xlim(0.0, ZOOM_END)
-    inset.set_ylim(*ylim)
-    return inset
 
 
 def main() -> None:
@@ -47,17 +37,22 @@ def main() -> None:
     figs = FIGURES_DIR
     figs.mkdir(parents=True, exist_ok=True)
     n_skip = 7  # plot every n-th marker
-    plot_end = 185
 
     load_theme()
 
-    fig, ax = plt.subplots(figsize=figure_size("single_tall"))
-    fig.subplots_adjust(wspace=0.10, hspace=0.10, left=0.10, right=0.90, top=0.92, bottom=0.13)
-
-    zoom = zoom_axes(ax, ylim=(0.90, 1.00))
+    fig, (ax, comparison) = plt.subplots(
+        1,
+        2,
+        figsize=figure_size("wide_short"),
+        gridspec_kw={"width_ratios": (1.35, 1.0)},
+    )
+    fig.subplots_adjust(wspace=0.40, left=0.10, right=0.97, top=0.88, bottom=0.20)
+    curves = []
+    plotted_values = []
 
     # -- Ring speed — all available variants ---------------------------------
-    for variant, st in VARIANT_STYLE.items():
+    for variant in plot_variants():
+        st = VARIANT_STYLE[variant]
         csv_path = SAMPLES_DIR / variant / "ring_diagnostics.csv"
         nondimensional_time, nondimensional_velocity = load_sampled_ring_speed(csv_path)
         if nondimensional_time.size == 0:
@@ -80,16 +75,13 @@ def main() -> None:
             label=label,
             **line_kwargs,
         )
-        zoom.plot(
-            nondimensional_time,
-            nondimensional_velocity,
-            ms=ZOOM_MARKER_SIZE,
-            markevery=1,
-            **line_kwargs,
-        )
+        curves.append((nondimensional_time, nondimensional_velocity, line_kwargs))
+        plotted_values.append(nondimensional_velocity)
 
-    # -- Analytical Saffman solution ------------------------------------------
-    t_phys = np.linspace(0.0, plot_end * REFERENCE_TIME, 500)
+    # -- Analytical Saffman solution in its thin-core range ------------------
+    theory_end_physical = saffman_valid_time_limit()
+    theory_end = theory_end_physical / REFERENCE_TIME
+    t_phys = np.linspace(0.0, theory_end_physical, 300)
     saffman_nondimensional_velocity = saffman_speed(t_phys) / REFERENCE_VELOCITY
     saffman_t = t_phys / REFERENCE_TIME
     ax.plot(
@@ -97,17 +89,43 @@ def main() -> None:
         saffman_nondimensional_velocity,
         **reference_style(),
         zorder=5,
-        label="Saffman (analytical)",
+        label=r"Saffman ($a/R\leq0.30$)",
     )
-    zoom.plot(saffman_t, saffman_nondimensional_velocity, **reference_style(), zorder=5)
+    plotted_values.append(saffman_nondimensional_velocity)
 
-    ax.set_title(r"Self-induced speed versus time")
+    relative_errors = []
+    for nondimensional_time, nondimensional_velocity, line_kwargs in curves:
+        valid = nondimensional_time <= theory_end
+        reference = saffman_speed(nondimensional_time[valid] * REFERENCE_TIME) / REFERENCE_VELOCITY
+        relative_error = (nondimensional_velocity[valid] - reference) / reference
+        relative_errors.append(relative_error)
+        comparison.plot(
+            nondimensional_time[valid],
+            100.0 * relative_error,
+            markevery=n_skip,
+            ms=2.0,
+            **line_kwargs,
+        )
+    comparison.axhline(0.0, color="0.45", linewidth=0.8, linestyle=":")
+    comparison.set_xlim(0.0, theory_end)
+    comparison.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
+    comparison.set_ylabel(r"Relative error, $(U-U_{\rm S})/U_{\rm S}$ [\%]")
+    comparison.set_title(r"Thin-core error")
+    if relative_errors:
+        maximum_error = max(2.0, 110.0 * max(np.max(np.abs(error)) for error in relative_errors))
+        comparison.set_ylim(-maximum_error, maximum_error)
+
+    ax.set_title(r"Self-induced speed")
     ax.set_xlabel(r"Normalized time, $t\,\Gamma/R_0^2$")
     ax.set_ylabel(r"Self-induced speed, $U_{\rm ring}/U_{\rm ref,0}$")
-    ax.set_ylim(0.25, 1.0)
-    ax.set_xlim(0, plot_end)
-    zoom.set_xticks([0, 1, 2, 3])
-    ax.legend(ncol=1, loc="best")
+    if plotted_values:
+        lower = min(float(np.min(values)) for values in plotted_values)
+        upper = max(float(np.max(values)) for values in plotted_values)
+        padding = 0.04 * (upper - lower)
+        ax.set_ylim(lower - padding, upper + padding)
+    if curves:
+        ax.set_xlim(0.0, 1.01 * max(float(time[-1]) for time, _, _ in curves))
+    ax.legend(ncol=1, loc="upper right")
     save_fig(fig, figs / "vortex_ring_motion.png", dpi=args.dpi, figure_format=args.format)
 
 

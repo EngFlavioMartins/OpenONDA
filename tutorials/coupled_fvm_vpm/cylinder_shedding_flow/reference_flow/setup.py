@@ -18,13 +18,23 @@ import openonda.fvm.mesher as msh
 
 try:
     from .canonical_surface import DOMAIN, prepare_canonical_surfaces
-    from .case_definition import domain_for
+    from .case_definition import (
+        domain_for,
+        construction_domain,
+        extrusion_levels,
+        REFINEMENT_REGIONS,
+    )
 except ImportError:  # Direct ``python setup.py`` execution.
     from canonical_surface import (
         DOMAIN,
         prepare_canonical_surfaces,
     )  # pyrefly: ignore [missing-import]
-    from case_definition import domain_for  # pyrefly: ignore [missing-import]
+    from case_definition import (
+        domain_for,
+        construction_domain,
+        extrusion_levels,
+        REFINEMENT_REGIONS,
+    )  # pyrefly: ignore [missing-import]
 
 CASE_DIR = Path(__file__).resolve().parent
 CYLINDER_STL = CASE_DIR.parent / "assets" / "cylinder_long.stl"
@@ -57,73 +67,47 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def background_cell_size(dx: float, *, domain=DOMAIN) -> float:
-    """Return a dyadic background size that preserves the complete thin box.
-
-    The cfMesh template removes one surface-data leaf at each outer boundary.
-    At least one intervening leaf must therefore remain across the thinnest
-    dimension.  Halving from the conventional ``8*dx`` keeps every study mesh
-    on the same dyadic hierarchy while preventing a thin span from silently
-    erasing the far field.
-    """
-    span = min(domain[1] - domain[0], domain[3] - domain[2], domain[5] - domain[4])
-    size = 8.0 * dx
-    while size > span / 3.0 * (1.0 + 1.0e-12):
-        size *= 0.5
-    return size
+    """Scale the far field with every other spacing in the study family."""
+    return 8.0 * dx
 
 
-def grid_mesh(dx: float, *, domain=DOMAIN) -> msh.CartesianMesher:
-    """Return a declarative grid-study mesh at requested wall size ``dx``."""
-    # Local transitions and the background cap stay dyadic; inter-grid wall
-    # refinement is r=2.
+def grid_mesh(dx: float, *, domain=DOMAIN):
+    """Extrude a cfMesh section for the span-invariant Re=150 experiment."""
+    from source.solvers.fvm.mesh.cartesian.extrusion import ExtrudedCartesianMesher
+
     background_size = background_cell_size(dx, domain=domain)
+    source_domain = construction_domain(dx, domain)
     canonical = prepare_canonical_surfaces(
         CYLINDER_STL,
         CASE_DIR
         / "mesh_evidence"
-        / "laptop_inputs"
-        / hashlib.sha256(repr(domain).encode()).hexdigest()[:12],
-        domain=domain,
+        / "extruded_inputs"
+        / hashlib.sha256(repr(source_domain).encode()).hexdigest()[:12],
+        domain=source_domain,
     )
-    return msh.CartesianMesher(
-        domain=msh.BoxDomain(
-            bounds=domain,
-            patches=msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax"),
-        ),
-        # The wall is the clipped source representation shared with the native
-        # oracle.  The span annuli remain native outer-domain geometry; no
-        # artificial cylinder end-cap is introduced.
+    patches = msh.BoxPatches("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
+    source = msh.CartesianMesher(
+        domain=msh.BoxDomain(bounds=source_domain, patches=patches),
         surfaces=(msh.STLSurface(str(canonical["wall_path"]), patch="cylinder", allow_open=True),),
         max_cell_size=background_size,
-        # Keep the six outer planes at the background scale.  The named
-        # cylinder patch carries the requested wall size, avoiding a dense
-        # fine shell around the entire 28D x 16D domain.
         boundary_cell_size=background_size,
         min_cell_size=None,
-        refinements=(
+        refinements=tuple(
             msh.BoxRefinement(
-                name="near_body",
-                bounds=(-2.0, 6.0, -2.0, 2.0, domain[4], domain[5]),
-                # Keep the requested level at 2*dx under cfMesh's strict
-                # object-size conversion; an exact binary equality would
-                # intentionally select the next finer level.
-                cell_size=2.0 * dx * (1.0 + 1.0e-12),
-            ),
-            msh.BoxRefinement(
-                name="wake",
-                bounds=(-4.0, 12.0, -4.0, 4.0, domain[4], domain[5]),
-                cell_size=4.0 * dx * (1.0 + 1.0e-12),
-            ),
+                name=name,
+                bounds=(*bounds, source_domain[4], source_domain[5]),
+                cell_size=factor * dx * (1.0 + 1.0e-12),
+            )
+            for name, bounds, factor in REFINEMENT_REGIONS
         ),
         patch_refinements=(msh.PatchRefinement("cylinder", dx),),
-        # Resolve the no-slip wall at the requested isotropic size.  An empty
-        # explicit layer list selects cfMesh's default single surface wrapper;
-        # the optimizer distributes its motion through nearby Cartesian rings.
         boundary_layers=(),
-        # The body is deliberately longer than the finite reference span, so
-        # the generic surface/domain intersection keeps it continuous through
-        # both spanwise boundaries.
         surface_may_cross_domain_boundary=True,
+    )
+    return ExtrudedCartesianMesher(
+        source=source,
+        domain=msh.BoxDomain(bounds=domain, patches=patches),
+        levels=extrusion_levels(dx, domain),
     )
 
 

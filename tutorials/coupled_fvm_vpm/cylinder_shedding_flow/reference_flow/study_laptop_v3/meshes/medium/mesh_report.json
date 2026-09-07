@@ -1,0 +1,482 @@
+{
+  "canonical_inputs": {
+    "native_path": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop_v3/meshes/canonical_inputs/medium/native_geometry.stl",
+    "native_sha256": "2b953b223003074f8dbe321e5a9ec19f6d3a33e6a8cd6024f6305fe1fa5081eb",
+    "source_sha256": "ee241f6c06c1723eeebf44d6e5f3eaf5b4c7f372b23d357bc4a588b095b74cc3",
+    "wall_path": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/study_laptop_v3/meshes/canonical_inputs/medium/cylinder_fluid_wall.stl",
+    "wall_sha256": "448a2e41fe49213bd13177cee86540b288d0b9a1dc2c531ae76068953dbaab86",
+    "wall_triangles": 768
+  },
+  "case": "medium",
+  "counts": {
+    "cells": 63232,
+    "faces": 205028,
+    "interior_faces": 176380,
+    "points": 78856
+  },
+  "elapsed_seconds": 206.5024228330003,
+  "mesh_generation": {
+    "automatic_refinement": {},
+    "boundary_refinement_level": 8,
+    "cartesian_report": {
+      "boundary_patches": [
+        "cylinder",
+        "inlet",
+        "outlet",
+        "ymax",
+        "ymin",
+        "zmax",
+        "zmin"
+      ],
+      "diagnostics": {
+        "cell_types": {
+          "boundary_layer_cells": 27664,
+          "hexahedra": 61840,
+          "polyhedra": 1392
+        },
+        "feature_control": false,
+        "feature_edge_counts": [],
+        "layer_control": false,
+        "optimisation": {
+          "max_aspect_ratio": 4.441694126130592,
+          "max_non_orthogonality_deg": 56.20313222524665,
+          "max_skewness": 0.9358251848480035
+        },
+        "quality": {
+          "cells_with_unclosed_edges": 0,
+          "fluid_cells": 63232,
+          "fluid_components": 1,
+          "inverted_neighbour_face_pyramids": 0,
+          "inverted_owner_face_pyramids": 0,
+          "max_adjacent_cell_size_ratio": 2.0,
+          "max_adjacent_volume_scale_ratio": 2.877974161501081,
+          "max_aspect_ratio": 4.441694126130592,
+          "max_lsq_condition": null,
+          "max_non_orthogonality_deg": 56.20313222524665,
+          "max_normalized_area_closure_error": 1.3424746683862375e-16,
+          "max_skewness": 0.9358251848480035,
+          "max_skewness_context": {
+            "face": 93996,
+            "face_centre": [
+              -0.07233621636868932,
+              -0.5422086182792591,
+              0.41986516720283007
+            ],
+            "face_points": [
+              [
+                -0.053703375906247484,
+                -0.5470172771625027,
+                0.38957429409560435
+              ],
+              [
+                -0.10471622875625682,
+                -0.5336622206762566,
+                0.4247717783603715
+              ],
+              [
+                -0.05858904444356365,
+                -0.5459463569990178,
+                0.44524942915251436
+              ]
+            ],
+            "neighbour": 35431,
+            "neighbour_centre": [
+              -0.08336262348989747,
+              -0.5358647271196781,
+              0.4195649931918246
+            ],
+            "neighbour_layer": -1,
+            "owner": 35430,
+            "owner_centre": [
+              -0.09378178637858925,
+              -0.5467475434475099,
+              0.42024858691836453
+            ],
+            "owner_layer": -1,
+            "vertices": 3
+          },
+          "max_skewness_face": 93996,
+          "max_volume": 0.02197511583210353,
+          "mean_non_orthogonality_deg": 0.8881651085222126,
+          "min_face_area": 0.0002872560266969255,
+          "min_neighbour_face_pyramid_cosine": 0.26017221421477094,
+          "min_owner_face_pyramid_cosine": 0.3287449290347819,
+          "min_volume": 4.722040081533075e-06,
+          "n_boundary_patches": 7,
+          "n_cells": 63232,
+          "n_faces": 205028,
+          "n_internal_faces": 176380,
+          "n_points": 78856,
+          "out_of_bounds_interpolation_weights": 0,
+          "p99_internal_face_skewness": 0.20788050644585343,
+          "p99_non_orthogonality_deg": 18.08338074767944,
+          "patch_areas": {
+            "cylinder": 3.1399760290860104,
+            "inlet": 20.0,
+            "outlet": 20.0,
+            "ymax": 32.0,
+            "ymin": 32.0,
+            "zmax": 639.2159110888075,
+            "zmin": 639.2159111676095
+          },
+          "rank_deficient_lsq_cells": 0,
+          "surface_conformance": {
+            "cylinder": {
+              "cell_count": 63232,
+              "inside_count": 0,
+              "max_vertex_distance": 6.784601085940393e-14,
+              "mean_vertex_distance": 7.451948321062318e-16,
+              "tolerance": 1e-08,
+              "vertex_count": 1224
+            }
+          },
+          "surface_distance": {
+            "cylinder": {
+              "max": 6.784601085940393e-14,
+              "mean": 7.451948321062318e-16
+            }
+          },
+          "svd_lsq_cells": 0,
+          "unclosed_cell_edges": 0
+        },
+        "recovery": {
+          "accepted": 26808,
+          "attempted": 26808,
+          "partial_accepted": 0,
+          "rejected": 0
+        },
+        "refinement_count": 2,
+        "surface_count": 1,
+        "surface_may_cross_domain_boundary": true,
+        "surface_patches": [
+          "cylinder"
+        ]
+      },
+      "method": "cartesian_cfmesh_pipeline",
+      "sizes": [
+        {
+          "effective": 0.25,
+          "level": 0,
+          "name": "background",
+          "requested": 0.25
+        },
+        {
+          "effective": 0.25,
+          "level": 0,
+          "name": "boundary",
+          "requested": 0.25
+        },
+        {
+          "effective": 0.125,
+          "level": 1,
+          "name": "near_body",
+          "requested": 0.125000000000125
+        },
+        {
+          "effective": 0.25,
+          "level": 0,
+          "name": "wake",
+          "requested": 0.25000000000025
+        },
+        {
+          "effective": 0.0625,
+          "level": 2,
+          "name": "patch:cylinder",
+          "requested": 0.0625
+        }
+      ],
+      "surface_hashes": [
+        "448a2e41fe49213bd13177cee86540b288d0b9a1dc2c531ae76068953dbaab86"
+      ]
+    },
+    "cell_types": {
+      "boundary_layer_cells": 27664,
+      "hexahedra": 61840,
+      "polyhedra": 1392
+    },
+    "cfmesh_edge_extraction": {
+      "decomposed_cells": 40,
+      "replacement_pyramids": 280,
+      "split_boundary_faces": 40,
+      "split_internal_faces": 0
+    },
+    "cfmesh_mesh_optimisation": {
+      "bad_face_ids_after_laplacian": [],
+      "bad_faces_after_laplacian": 0,
+      "bad_faces_after_optimize_fv": 0,
+      "boundary_layer_optimisation": "skipped_no_boundary_layers_dictionary",
+      "final_bad_face_ids": [],
+      "final_bad_faces": 0,
+      "final_boundary_bad_face_trace": [],
+      "final_internal_bad_face_trace": [
+        0
+      ],
+      "final_low_quality_face_ids": [],
+      "final_low_quality_faces": 0,
+      "laplacian_pc_iterations": 5,
+      "low_quality_face_trace": [
+        0
+      ],
+      "low_quality_faces_after_optimisation": 0,
+      "optimize_fv_boundary_bad_face_trace": [],
+      "optimize_fv_internal_bad_face_trace": [
+        0
+      ],
+      "smooth_inside_points": 50088
+    },
+    "cfmesh_patch_remapping": {
+      "corner_points": 8,
+      "edge_points": 956,
+      "mapped_points": 26808,
+      "partition_points": 25844
+    },
+    "cfmesh_wrapper_layer": {
+      "concave_patch_pairs": [],
+      "core_points": 50088,
+      "corner_cells": 8,
+      "edge_cells": 968,
+      "face_cells": 26688,
+      "new_cells": 27664,
+      "new_points": 28768,
+      "patch_keys": {
+        "cylinder": 0,
+        "inlet": 1,
+        "outlet": 2,
+        "ymax": 3,
+        "ymin": 4,
+        "zmax": 5,
+        "zmin": 6
+      }
+    },
+    "coarse_faces_with_hanging_perimeter_points": 1296,
+    "finest_cell_size": 0.0625,
+    "global_refinement_level": 8,
+    "method": "cartesian_cfmesh_pipeline",
+    "near_data_coarse_leaves_refined": 1732,
+    "octree_boundary_face_order_entries": 26648,
+    "ordered_boundary_faces": 26648,
+    "patch_assignment": {
+      "geometry_patch_changes": 16,
+      "geometry_patch_history": [
+        [
+          2165,
+          2189,
+          2487,
+          2494,
+          3697,
+          3710,
+          6473,
+          6482,
+          9000,
+          9013,
+          10140,
+          10145,
+          19371,
+          19379,
+          20943,
+          20963
+        ]
+      ],
+      "initial_patch_counts": {
+        "cylinder": 1024,
+        "inlet": 156,
+        "outlet": 156,
+        "ymax": 252,
+        "ymin": 252,
+        "zmax": 12404,
+        "zmin": 12404
+      },
+      "inverted_point_counts": [
+        40,
+        0
+      ],
+      "normal_alignment_changes": 0,
+      "normal_alignment_history": [
+        []
+      ],
+      "normal_alignment_patch_counts": {
+        "cylinder": 1024,
+        "inlet": 156,
+        "outlet": 156,
+        "ymax": 252,
+        "ymin": 252,
+        "zmax": 12404,
+        "zmin": 12404
+      },
+      "patch_names": [
+        "cylinder",
+        "inlet",
+        "outlet",
+        "ymax",
+        "ymin",
+        "zmax",
+        "zmin"
+      ],
+      "untangling_iteration_counts": [
+        [
+          40,
+          40,
+          40,
+          0
+        ]
+      ]
+    },
+    "requested_sizes": [
+      {
+        "effective": 0.25,
+        "level": 0,
+        "name": "background",
+        "requested": 0.25
+      },
+      {
+        "effective": 0.25,
+        "level": 0,
+        "name": "boundary",
+        "requested": 0.25
+      },
+      {
+        "effective": 0.125,
+        "level": 1,
+        "name": "near_body",
+        "requested": 0.125000000000125
+      },
+      {
+        "effective": 0.25,
+        "level": 0,
+        "name": "wake",
+        "requested": 0.25000000000025
+      },
+      {
+        "effective": 0.0625,
+        "level": 2,
+        "name": "patch:cylinder",
+        "requested": 0.0625
+      }
+    ],
+    "resolved_background_cell_size": 0.25,
+    "resolved_boundary_cell_size": 0.25,
+    "resolved_surface_patch_sizes": {
+      "cylinder": 0.0625
+    },
+    "root_box": [
+      -24.0,
+      40.0,
+      -32.0,
+      32.0,
+      -32.0,
+      32.0
+    ],
+    "surface_constraint": {
+      "baseline_intersecting_vtk_cells": 0,
+      "column_translation_relaxation": 1.0,
+      "max_distance_after": 6.784601085940393e-14,
+      "max_distance_before": 0.0005021996861289286,
+      "max_inner_displacement": 0.0005021996861289286,
+      "method": "transactional_column_preserving_surface_projection",
+      "moved_inner_points": 28768,
+      "outer_domain_planes_constrained": true,
+      "straightened_inner_points": 26808,
+      "straightening_relaxation": 0.75,
+      "validated": true
+    },
+    "surface_optimisation": {
+      "corner_points": 8,
+      "edge_points": 980,
+      "iterations": 5,
+      "partition_points": 27780,
+      "untangling_iteration_counts": [
+        0
+      ]
+    },
+    "surface_patch_refinement_levels": {
+      "cylinder": 10
+    },
+    "surface_projection": {
+      "accepted_points": 26808,
+      "attempted_points": 26808,
+      "mapping_method": "batched_surface_index_nearest_points",
+      "patch_names": [
+        "cylinder",
+        "inlet",
+        "outlet",
+        "ymax",
+        "ymin",
+        "zmax",
+        "zmin"
+      ],
+      "pre_map_iterations": 1,
+      "untangling": {
+        "additional_layers": 2,
+        "initial_inverted_points": 1296,
+        "iterations": 1,
+        "moved_points": 3160,
+        "remaining_inverted_points": 0
+      }
+    },
+    "surface_topology": {
+      "changes": 0,
+      "fixed_point": true,
+      "iterations": 1,
+      "passes": {
+        "checkBoundaryFacesSharingTwoEdges": 0,
+        "checkCellConnectionsOverFaces": 0,
+        "checkIrregularSurfaceConnections": 0,
+        "checkNonMappableCellConnections": 0
+      }
+    },
+    "surface_topology_changes": 0,
+    "workflow_checkpoint": "meshOptimisation"
+  },
+  "mesh_identity": "703618219fd553950a07a8407617aea3daf573bcd3b680168e6cb0b657e4dd08",
+  "quality": {
+    "cell_count": 63232,
+    "fluid_cells": 63232,
+    "fluid_components": 1,
+    "incorrectly_oriented_vtk_cells": 31,
+    "intersecting_cells": 0,
+    "inverted_neighbour_face_pyramids": 0,
+    "inverted_owner_face_pyramids": 0,
+    "max_adjacent_cell_size_ratio": 2.0,
+    "max_adjacent_volume_scale_ratio": 2.877974161501081,
+    "max_aspect_ratio": 4.441694126130592,
+    "max_lsq_condition": 16.495547949441736,
+    "max_non_orthogonality_deg": 56.20313222524665,
+    "max_normalized_area_closure_error": 1.3424746683862375e-16,
+    "max_skewness": 0.9358251848480035,
+    "max_skewness_face": 93996,
+    "max_volume": 0.02197511583210353,
+    "mean_non_orthogonality_deg": 0.8881651085222126,
+    "min_face_area": 0.0002872560266969255,
+    "min_neighbour_face_pyramid_cosine": 0.26017221421477094,
+    "min_owner_face_pyramid_cosine": 0.3287449290347819,
+    "min_volume": 4.722040081533075e-06,
+    "nonconvex_cells": 8728,
+    "out_of_bounds_interpolation_weights": 0,
+    "p99_internal_face_skewness": 0.20788050644585343,
+    "p99_non_orthogonality_deg": 18.08338074767944,
+    "rank_deficient_lsq_cells": 0,
+    "svd_lsq_cells": 0
+  },
+  "requested": {
+    "background": 0.25,
+    "cylinder": 0.0625,
+    "domain": [
+      -8.0,
+      24.0,
+      -10.0,
+      10.0,
+      -0.5,
+      0.5
+    ],
+    "dx": 0.0625
+  },
+  "topology": {
+    "cells_with_unclosed_edges": 0,
+    "n_boundary_patches": 7,
+    "n_cells": 63232,
+    "n_faces": 205028,
+    "n_internal_faces": 176380,
+    "n_points": 78856,
+    "unclosed_cell_edges": 0
+  }
+}

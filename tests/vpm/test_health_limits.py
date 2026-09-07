@@ -46,14 +46,16 @@ def _check(limits=HealthLimits(), previous=None, **overrides):
 def test_health_limits_enforce_finite_state_and_cfl_after_field_refresh():
     gradient = np.zeros((1, 3, 3))
     gradient[0, 0, 0] = 5.0
-    with pytest.raises(HealthError, match="Lagrangian CFL number 0.5"):
+    with pytest.raises(HealthError, match="Lagrangian CFL number 0.5") as cfl_error:
         _check(
             HealthLimits(lagrangian_cfl=LagrangianCFLLimit(maximum=0.4)),
             velocity_gradient=gradient,
         )
+    assert cfl_error.value.restartable
 
-    with pytest.raises(HealthError, match="core_radius"):
+    with pytest.raises(HealthError, match="core_radius") as finite_state_error:
         _check(core_radius=np.array([np.nan]))
+    assert not finite_state_error.value.restartable
 
 
 def test_health_limits_accept_an_empty_particle_state():

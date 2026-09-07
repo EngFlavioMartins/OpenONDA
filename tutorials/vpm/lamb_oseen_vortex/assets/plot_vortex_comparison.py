@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Lamb-Oseen single vortex — radial profile comparison.
+"""Lamb-Oseen single vortex — centreline profile comparison.
 
-Reads the last z=L/4 surface-field snapshot from each viscous scheme,
+Reads the last cross-sectional field from each viscous scheme
+(z=L/4 for deterministic schemes, column projection for RWM),
 slices the grid row nearest y=0, and plots:
-  - azimuthal velocity  uθ / U_{c,0}
+  - signed y-velocity  uy / U_{c,0}
   - z-vorticity         ωz / ω_{c,0}
   - velocity gradient   (∂uy/∂x) · a_{c,0} / U_{c,0}
 
@@ -87,6 +88,7 @@ def plot_vortex_case(args) -> int:
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=figure_size("stacked_tall"))
     fig.subplots_adjust(hspace=0.12, top=0.95, bottom=0.19, left=0.12, right=0.88)
 
+    time_scale = run_kinematic_viscosity / ac0**2
     comparison_time = latest_common_time(samples_dir)
     scheme_data: list[tuple[str, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     for scheme in SCHEMES:
@@ -136,12 +138,15 @@ def plot_vortex_case(args) -> int:
         )
         print(
             f"  [vortex] plotting {len(scheme_data)}/{len(SCHEMES)} methods "
-            f"at common t={elapsed_time:.3g}s "
-            f"(selected samples {min(sample_times):.3g}–{max(sample_times):.3g}s)"
+            f"at common nu*t/a_c0^2={elapsed_time * time_scale:.2g} "
+            f"(selected samples {min(sample_times) * time_scale:.2g}–"
+            f"{max(sample_times) * time_scale:.2g})"
         )
     else:
         elapsed_time = TOTAL_TIME
-        print(f"  [vortex] no sampled profiles; plotting reference only at t={elapsed_time:.3g}s")
+        print(
+            f"  [vortex] no sampled profiles; reference only at nu*t/a_c0^2={elapsed_time * time_scale:.2g}"
+        )
 
     r_line = np.linspace(-10.0 * ac0, 10.0 * ac0, 400)
     ref_kw = {"color": colors["reference"], "lw": 1.1, "zorder": 100, "linestyle": "-"}
@@ -153,12 +158,12 @@ def plot_vortex_case(args) -> int:
     axes[2].plot(r_line / ac0, tg / gc_ref, **ref_kw)
 
     axes[0].set_title(r"Single vortex characteristics")
-    axes[0].set_ylabel(r"$u_\theta / U_{c,0}$")
+    axes[0].set_ylabel(r"$u_y / U_{c,0}$")
     axes[0].set_xlim([-5.5, 5.5])
 
     axes[1].set_ylabel(r"$\omega_z / \omega_{c,0}$")
 
-    axes[2].set_xlabel(r"$r / a_{c,0}$")
+    axes[2].set_xlabel(r"$x / a_{c,0}$")
     axes[2].set_ylabel(r"$(\partial u_y / \partial x)\,a_{c,0} / U_{c,0}$")
 
     handles, labels = axes[0].get_legend_handles_labels()
@@ -172,7 +177,7 @@ def plot_vortex_case(args) -> int:
 
 
 def main() -> int:
-    p = build_arg_parser("Lamb-Oseen single-vortex radial profile comparison.")
+    p = build_arg_parser("Lamb-Oseen single-vortex centreline profile comparison.")
     return plot_vortex_case(p.parse_args())
 
 

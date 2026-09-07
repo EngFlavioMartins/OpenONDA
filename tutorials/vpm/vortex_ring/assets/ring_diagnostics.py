@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import csv
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import numpy as np
 
@@ -42,6 +44,30 @@ MODE_CSV_COLUMNS = (
 )
 
 
+def _append_rows(
+    path: Path, columns: tuple[str, ...], rows: list[list[object]], time: float
+) -> None:
+    """Atomically append one scheduled event without admitting duplicate time."""
+    existing: list[list[str]] = []
+    if path.exists() and path.stat().st_size:
+        with path.open(newline="", encoding="utf-8") as stream:
+            reader = csv.reader(stream)
+            next(reader, None)
+            existing = [row for row in reader if row]
+        if existing and float(existing[-1][0]) >= time:
+            raise ValueError("CSV event is duplicate or nonmonotonic during resume")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        "w", newline="", encoding="utf-8", dir=path.parent, delete=False
+    ) as stream:
+        temporary = Path(stream.name)
+        writer = csv.writer(stream, lineterminator="\n")
+        writer.writerow(columns)
+        writer.writerows(existing)
+        writer.writerows(rows)
+    os.replace(temporary, path)
+
+
 def vortex_ring_mode_sampler(*, reference_radius: float, schedule) -> RingModeDiagnosticsSampler:
     """Build this tutorial's fixed-resolution Widnall-mode diagnostic.
 
@@ -62,32 +88,28 @@ class RingDiagnosticsSampler:
     """Sample ring motion and vortex strength without writing a particle backup."""
 
     file_name = "ring_diagnostics"
+    initial = True
 
     def __init__(self, *, schedule=None) -> None:
         self.schedule = schedule
 
-    def save_csv(
-        self,
-        solver,
-        path: Path,
-        *,
-        time: float,
-        step: int | None,
-    ) -> None:
+    def write(self, context) -> None:
+        """Write one scheduled ring diagnostic sample."""
+        solver = context.solver
         position = np.asarray(solver.particle_position, dtype=np.float64)
         vortex_strength = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         particle_group_id = np.asarray(solver.particle_group_id, dtype=np.int32)
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_header = not path.exists() or path.stat().st_size == 0
-        with path.open("a", newline="", encoding="utf-8") as stream:
-            writer = csv.writer(stream, lineterminator="\n")
-            if write_header:
-                writer.writerow(CSV_COLUMNS)
-            for group_id in np.unique(particle_group_id):
-                selected = particle_group_id == group_id
-                row = self._sample_group(position[selected], vortex_strength[selected])
-                writer.writerow([time, step, int(group_id), *row])
+        rows = []
+        for group_id in np.unique(particle_group_id):
+            selected = particle_group_id == group_id
+            row = self._sample_group(position[selected], vortex_strength[selected])
+            rows.append([context.time, context.step, int(group_id), *row])
+        _append_rows(
+            context.output_directory / f"{self.file_name}.csv",
+            CSV_COLUMNS,
+            rows,
+            context.time,
+        )
 
     @staticmethod
     def _sample_group(
@@ -152,6 +174,7 @@ class RingModeDiagnosticsSampler:
     """
 
     file_name = "ring_modes"
+    initial = True
 
     def __init__(
         self,
@@ -174,29 +197,23 @@ class RingModeDiagnosticsSampler:
         self.reference_radius = reference_radius
         self.transverse_origin = transverse_origin
 
-    def save_csv(
-        self,
-        solver,
-        path: Path,
-        *,
-        time: float,
-        step: int | None,
-    ) -> None:
+    def write(self, context) -> None:
+        """Write one scheduled Widnall-mode sample."""
+        solver = context.solver
         position = np.asarray(solver.particle_position, dtype=np.float64)
         vortex_strength = np.asarray(solver.particle_vortex_strength, dtype=np.float64)
         particle_group_id = np.asarray(solver.particle_group_id, dtype=np.int32)
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_header = not path.exists() or path.stat().st_size == 0
-        with path.open("a", newline="", encoding="utf-8") as stream:
-            writer = csv.writer(stream, lineterminator="\n")
-            if write_header:
-                writer.writerow(MODE_CSV_COLUMNS)
-            for group_id in np.unique(particle_group_id):
-                selected = particle_group_id == group_id
-                rows = self._sample_group(position[selected], vortex_strength[selected])
-                for row in rows:
-                    writer.writerow([time, step, int(group_id), *row])
+        rows = []
+        for group_id in np.unique(particle_group_id):
+            selected = particle_group_id == group_id
+            sampled_rows = self._sample_group(position[selected], vortex_strength[selected])
+            rows.extend([context.time, context.step, int(group_id), *row] for row in sampled_rows)
+        _append_rows(
+            context.output_directory / f"{self.file_name}.csv",
+            MODE_CSV_COLUMNS,
+            rows,
+            context.time,
+        )
 
     def _sample_group(
         self,

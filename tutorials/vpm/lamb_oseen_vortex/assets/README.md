@@ -68,3 +68,9 @@ marker, the interval is simply smaller than that marker at the plotted scale.
 
 The complete definitions and implementation choices are documented in
 [rwm_statistical_methodology.md](references/rwm_statistical_methodology.md).
+
+Simulation times displayed by the plotting scripts use `nu*t/a_c0^2`
+with two significant digits; the sample files and calculations retain the
+recorded physical times at full precision. Step 918 (the common profile
+sample) and step 927 (the final particle state) both round to 3.6. Solver
+wall-clock cost is a separate quantity reported in seconds.

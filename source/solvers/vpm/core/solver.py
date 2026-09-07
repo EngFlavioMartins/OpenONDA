@@ -25,7 +25,7 @@ from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
 from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
 from ..config.case import Numerics, RestartState, VPMCase
 from ..config.constants import MAX_N_PARTICLES, MAX_SOURCES
-from ..config.health import HealthSnapshot, accepted_step_health
+from ..config.health import HealthError, HealthSnapshot, accepted_step_health
 from ..config.stabilization import StabilizationConfig
 from ..config.state import set_flow_model
 from ..coupling import CouplingStepper
@@ -104,6 +104,8 @@ class VPMSolver:
         self._initial_conditions_built = False
         self._run_started = False
         self._run_finished = False
+        self.run_status = "not_started"
+        self.run_failure: BaseException | None = None
         self._evolution_failure: BaseException | None = None
         self._configuration_logged = False
         final_setup = self._init_setup(case)
@@ -651,19 +653,38 @@ class VPMSolver:
             if self.case.run.initial_samples:
                 self._refresh_diagnostics_for_output()
                 self.output_manager.dispatch(OutputEvent.INITIAL)
+            health_limit_failure = None
             for _ in range(self.case.run.steps):
-                self.advance()
+                try:
+                    self.advance()
+                except HealthError as exc:
+                    if self.case.run.health_limit_action == "RAISE" or not exc.restartable:
+                        raise
+                    health_limit_failure = exc
+                    break
             self._refresh_diagnostics_for_output()
-            self.output_manager.dispatch(OutputEvent.FINAL)
+            if health_limit_failure is None:
+                self.output_manager.dispatch(OutputEvent.FINAL)
+            else:
+                # A health limit describes the last usable accepted state. It
+                # is part of the scientific result, so persist every sampler
+                # once even when its regular cadence is not due at this step.
+                self.output_manager.write_all(OutputEvent.FINAL)
             if self.case.run.final_backup:
                 self.save_backup()
-            status = "completed"
+            if health_limit_failure is None:
+                status = "completed"
+            else:
+                status = "resolution_lost"
+                failure = health_limit_failure
         except BaseException as exc:
             failure = exc
             self.output_manager.dispatch(OutputEvent.FAILED)
             raise
         finally:
             self._run_finished = status == "completed"
+            self.run_status = status
+            self.run_failure = failure
             self.restart_state.time = self.time
             self.restart_state.step = self.step
             self._write_run_manifest(status, failure)

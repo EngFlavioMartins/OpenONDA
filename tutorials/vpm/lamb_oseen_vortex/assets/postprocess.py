@@ -890,8 +890,9 @@ def save_fig(fig, path: Path, dpi: int) -> None:
 
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    # Save PDF first so constrained-layout figures match a PDF-only export.
     outputs = (
-        (out.with_suffix(".png"), out.with_suffix(".pdf")) if out.suffix == ".both" else (out,)
+        (out.with_suffix(".pdf"), out.with_suffix(".png")) if out.suffix == ".both" else (out,)
     )
     for output in outputs:
         fig.savefig(output, dpi=dpi, bbox_inches=None)
@@ -1395,6 +1396,7 @@ def surface_plot_tiles(
     core_radius: float,
     velocity_scale: float,
     vorticity_scale: float,
+    kinematic_viscosity: float,
 ) -> tuple[list[dict], float | None]:
     """Return normalized, seam-free quadrant tiles at one common physical time."""
     comparison_time = latest_common_time(samples_dir, "vortex")
@@ -1452,10 +1454,12 @@ def surface_plot_tiles(
         selected_times.append(selected_time)
         tiles.append({"scheme": scheme, "quadrant": quadrant, "x": grid_x, "y": grid_y, **tiled})
     if selected_times:
+        time_scale = kinematic_viscosity / core_radius**2
         print(
             f"  [surface] plotting {len(tiles)}/{len(SCHEMES)} methods at common "
-            f"t={comparison_time:.3g}s (selected samples {min(selected_times):.3g}-"
-            f"{max(selected_times):.3g}s)"
+            f"nu*t/a_c0^2={comparison_time * time_scale:.2g} "
+            f"(selected samples {min(selected_times) * time_scale:.2g}-"
+            f"{max(selected_times) * time_scale:.2g})"
         )
     return tiles, comparison_time
 
@@ -2832,6 +2836,8 @@ def validate(
             "merging_comparison",
             "vortex_surface_fields",
             "lamboseen_energy",
+            "mergingRenderT0",
+            "mergingRenderFinal",
         ):
             for suffix in ("png", "pdf"):
                 figure = FIGURES_DIR / f"{fig_name}.{suffix}"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import os
 from pathlib import Path
@@ -19,6 +20,17 @@ from openonda.tutorials import (
 )
 
 
+def _import_repository_tutorial(name: str):
+    """Import a tutorial module outside pytest's ``tests/tutorials`` namespace."""
+    existing = sys.modules.get("tutorials")
+    if existing is not None and getattr(existing, "__file__", None) is None:
+        del sys.modules["tutorials"]
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    return importlib.import_module(name)
+
+
 def _load_lamb_oseen_setup():
     path = Path("tutorials/vpm/lamb_oseen_vortex/setup.py")
     spec = importlib.util.spec_from_file_location("lamb_oseen_setup", path)
@@ -26,6 +38,10 @@ def _load_lamb_oseen_setup():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_vortex_ring_setup():
+    return _import_repository_tutorial("tutorials.vpm.vortex_ring.setup")
 
 
 def test_catalog_has_every_maintained_launcher() -> None:
@@ -82,6 +98,31 @@ def test_materialized_lamb_oseen_case_is_self_contained(tmp_path: Path) -> None:
     allplot = (case_path / "allplot.sh").read_text(encoding="utf-8")
     assert "MPLCONFIGDIR:-${SCRIPT_DIR}/.cache/matplotlib" in allplot
     assert allplot.rstrip().endswith('"${PYTHON_BIN}" -m "${MODULE}.assets.postprocess"')
+
+
+def test_materialized_vortex_ring_case_uses_module_launchers(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    case_path = materialize_tutorial("vpm/vortex-ring", workspace)
+
+    for launcher in (case_path / "allrun.sh", case_path / "allplot.sh"):
+        contents = launcher.read_text(encoding="utf-8")
+        assert 'PYTHON_BIN="${OPENONDA_PYTHON:-python}"' in contents
+        assert '"${PYTHON_BIN}" -' in contents
+        assert '-m "${MODULE}' in contents
+
+    allrun = (case_path / "allrun.sh").read_text(encoding="utf-8")
+    assert "dns_direct" in allrun
+    assert "dns_transposed" in allrun
+    assert "dns_mixed" in allrun
+    assert "les_transposed" in allrun
+    assert "--steps" in allrun
+    assert '"${SCRIPT_DIR}/allplot.sh" --strict' in allrun
+
+    allplot = (case_path / "allplot.sh").read_text(encoding="utf-8")
+    assert "MPLCONFIGDIR:-${SCRIPT_DIR}/.cache/matplotlib" in allplot
+    assert "STRICT=0" in allplot
+    assert '"${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_stability"' in allplot
+    assert allplot.rstrip().endswith("fi")
 
 
 def test_materializer_never_overwrites_existing_case(tmp_path: Path) -> None:
@@ -164,6 +205,48 @@ def test_lamb_oseen_numerical_setup() -> None:
     assert setup.induction_config("RWM").method == "DIRECT"
     assert setup.induction_config("DVH").method == "TREECODE"
     assert setup.induction_config("GBD").method == "TREECODE"
+
+
+@pytest.mark.parametrize(
+    ("variant", "turbulence", "stretching_scheme"),
+    (
+        ("dns_direct", "DNS", "DIRECT"),
+        ("dns_transposed", "DNS", "TRANSPOSED"),
+        ("dns_mixed", "DNS", "MIXED"),
+        ("les_transposed", "LES_SMAGORINSKY", "TRANSPOSED"),
+    ),
+)
+def test_vortex_ring_uses_selected_stretching_formulation(
+    variant, turbulence, stretching_scheme, monkeypatch, tmp_path
+):
+    setup = _load_vortex_ring_setup()
+    monkeypatch.setattr(setup, "TUTORIAL_DIR", tmp_path)
+    captured = []
+
+    class CaseCapturedError(Exception):
+        pass
+
+    def capture(case):
+        captured.append(case)
+        raise CaseCapturedError
+
+    monkeypatch.setattr(setup.vpm, "VPMSolver", capture)
+    with pytest.raises(CaseCapturedError):
+        setup.run_case(variant, n_steps=10)
+
+    case = captured[0]
+    induction = case.numerics.induction
+    assert induction.method == "TREECODE"
+    assert induction.strength_rate_mode == "HIERARCHICAL_GRADIENT"
+    assert induction.stretching_scheme == stretching_scheme
+    assert case.numerics.turbulence.model == turbulence
+    assert case.numerics.stabilization.regularization_interval_steps == 0
+    assert case.numerics.health_limits.lagrangian_cfl.maximum == 1.0
+    assert case.numerics.health_limits.divergence.maximum == 0.12
+    assert case.numerics.health_limits.misalignment.maximum_degrees == 25.0
+    assert case.run.health_limit_action == "STOP"
+    assert not case.run.final_backup
+    assert setup.DEFAULT_WIDNALL_AMPLITUDE == 0.005
 
 
 @pytest.mark.parametrize("physics", ["vortex", "dipole", "merging"])

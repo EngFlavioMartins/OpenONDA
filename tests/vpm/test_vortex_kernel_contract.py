@@ -12,6 +12,10 @@ from source.solvers.vpm.kernels.base import make_device_vortex_kernels, make_vor
 from source.solvers.vpm.physics.induction.direct import DirectInduction
 from source.solvers.vpm.physics.induction.fmm import FMMInduction
 from source.solvers.vpm.physics.induction.treecode import TreecodeInduction
+from source.solvers.vpm.physics.induction.treecode.evaluator import (
+    _STRETCHING_MODES,
+    _rate_from_gradient,
+)
 
 KERNELS = ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS")
 
@@ -148,11 +152,54 @@ def test_induction_backends_declare_strength_rate_semantics_explicitly():
 
     assert direct.strength_rate_mode == "PAIRWISE_TRANSPOSED"
     assert treecode.strength_rate_mode == "HIERARCHICAL_GRADIENT"
+    assert treecode.stretching_scheme == "TRANSPOSED"
     assert fmm.strength_rate_mode == "HIERARCHICAL_GRADIENT"
     assert treecode.diagnostics["strength_rate_mode"] == "HIERARCHICAL_GRADIENT"
     assert fmm.diagnostics.strength_rate_mode == "HIERARCHICAL_GRADIENT"
 
 
-@pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
+@pytest.mark.parametrize("induction_type", (DirectInduction, FMMInduction))
 def test_public_induction_constructors_expose_no_tuning_arguments(induction_type):
     assert not inspect.signature(induction_type).parameters
+
+
+@pytest.mark.parametrize("scheme", ("DIRECT", "TRANSPOSED", "MIXED"))
+def test_treecode_exposes_the_three_physical_stretching_contractions(scheme):
+    induction = TreecodeInduction(stretching_scheme=scheme.lower())
+
+    assert induction.stretching_scheme == scheme
+    assert induction.build().stretching_scheme == scheme
+    assert induction.diagnostics["stretching_scheme"] == scheme
+
+
+def test_treecode_rejects_an_unknown_stretching_contraction():
+    with pytest.raises(ValueError, match="stretching_scheme"):
+        TreecodeInduction(stretching_scheme="rotated")
+
+
+@pytest.mark.parametrize("scheme", ("DIRECT", "TRANSPOSED", "MIXED"))
+def test_treecode_stretching_schemes_apply_the_declared_tensor_contraction(scheme):
+    if ti.lang.impl.get_runtime().prog is None:
+        ti.init(arch=ti.cpu, offline_cache=False, cpu_max_num_threads=2)
+
+    gradient_array = np.array(
+        [[[1.0, 2.0, -1.0], [4.0, -2.0, 3.0], [0.5, 1.5, 2.0]]],
+        dtype=np.float32,
+    )
+    strength_array = np.array([[0.25, -0.5, 2.0]], dtype=np.float32)
+    gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=1)
+    strength = ti.Vector.field(3, dtype=ti.f32, shape=1)
+    output = ti.Vector.field(3, dtype=ti.f32, shape=1)
+    gradient.from_numpy(gradient_array)
+    strength.from_numpy(strength_array)
+
+    _rate_from_gradient(gradient, strength, output, _STRETCHING_MODES[scheme], 1)
+
+    matrix = gradient_array[0]
+    vector = strength_array[0]
+    expected = {
+        "DIRECT": matrix @ vector,
+        "TRANSPOSED": matrix.T @ vector,
+        "MIXED": 0.5 * (matrix + matrix.T) @ vector,
+    }[scheme]
+    np.testing.assert_allclose(output.to_numpy()[0], expected, rtol=1.0e-6, atol=1.0e-6)

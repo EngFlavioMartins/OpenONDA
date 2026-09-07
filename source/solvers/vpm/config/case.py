@@ -172,19 +172,29 @@ class RunPlan:
     ``steps`` is required so a finite run cannot acquire an accidental default.
     ``initial_samples`` defaults to ``True`` because explicitly configured
     initial diagnostics are usually part of a reproducible case.  A final
-    backup defaults to ``True`` to preserve a restart point after successful
-    runs; it does not schedule scientific samplers.
+    backup defaults to ``True`` to preserve a restart point after completed or
+    deliberately stopped runs; it does not schedule scientific samplers.
+    ``health_limit_action``
+    controls an accepted state that crosses a configured health limit:
+    ``"RAISE"`` preserves the exception behavior, while ``"STOP"`` writes
+    terminal samples and a restart before returning with status
+    ``"resolution_lost"``.
     """
 
     steps: int
     initial_samples: bool = True
     final_backup: bool = True
+    health_limit_action: Literal["RAISE", "STOP"] = "RAISE"
 
     def __post_init__(self) -> None:
         if isinstance(self.steps, bool) or not isinstance(self.steps, int):
             raise TypeError("RunPlan.steps must be an integer")
         if self.steps < 0:
             raise ValueError("RunPlan.steps must be non-negative")
+        action = str(self.health_limit_action).upper()
+        if action not in {"RAISE", "STOP"}:
+            raise ValueError("RunPlan.health_limit_action must be 'RAISE' or 'STOP'")
+        object.__setattr__(self, "health_limit_action", action)
 
 
 @dataclass(slots=True)

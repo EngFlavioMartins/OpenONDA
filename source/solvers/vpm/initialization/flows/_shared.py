@@ -55,7 +55,7 @@ def constant_group_id(group_id: int | None, count: int) -> np.ndarray | None:
     """Return a validated constant int32 group field for a particle set."""
     if group_id is None:
         return None
-    if isinstance(group_id, bool) or not isinstance(group_id, (int, np.integer)):
+    if isinstance(group_id, bool) or not isinstance(group_id, int | np.integer):
         raise ValueError("group_id must be an integer")
     info = np.iinfo(np.int32)
     if group_id < info.min or group_id > info.max:

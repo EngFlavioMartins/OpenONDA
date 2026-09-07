@@ -414,9 +414,10 @@ class Logging:
     def run_finished(system, status: str, failure=None) -> None:
         """Keep terminal status visible, even after suppressed routine output."""
         particles = getattr(system, "particles", None)
+        label = "Stopped" if status == "resolution_lost" else status.capitalize()
         print(
             Logging._status_line(
-                status.capitalize(),
+                label,
                 system.step,
                 system.time,
                 total_steps=getattr(system, "_run_final_step", None),
@@ -425,7 +426,7 @@ class Logging:
             ),
             flush=True,
         )
-        if failure is not None:
+        if failure is not None and status != "resolution_lost":
             print(f"  {type(failure).__name__}: {failure}", flush=True)
 
     @staticmethod

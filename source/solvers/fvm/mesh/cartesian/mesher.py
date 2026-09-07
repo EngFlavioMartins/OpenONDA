@@ -1050,7 +1050,7 @@ class CartesianMesher:
                 try:
                     validate_topology(mesh_data)
                     base_geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
-                    validate_geometry(mesh_data, base_geometry)
+                    base_quality = validate_geometry(mesh_data, base_geometry)
                 except Exception as exc:
                     column_validation_error = exc
                     continue
@@ -1068,6 +1068,18 @@ class CartesianMesher:
             # constrained wall normals, accepting the largest transactional
             # relaxation that preserves all positive-volume/face checks.
             target_requests: dict[int, list[np.ndarray]] = {}
+            target_patches: dict[int, set[int]] = {}
+            # Edge extraction inserts small non-hex transition cells. Moving
+            # their shared vertices to suit a neighbouring wrapper column can
+            # flatten those cells while retaining positive total volumes.
+            # Their native optimization is authoritative; only the mandatory
+            # surface-conformance displacement above applies to those points.
+            offsets = mesh_data["cell_face_offset"]
+            face_indices = mesh_data["cell_face_indices"]
+            protected_points: set[int] = set()
+            for cell in np.flatnonzero(np.diff(offsets) != 6):
+                for face in face_indices[offsets[cell] : offsets[cell + 1]]:
+                    protected_points.update(map(int, mesh_data["faces"][face]))
             face_area_vectors = np.asarray(base_geometry["face_area_vector"])
             for start, stop, _point_ids, column_map in boundary_columns:
                 for face_id in range(start, stop):
@@ -1091,6 +1103,7 @@ class CartesianMesher:
                     if thickness <= np.finfo(np.float64).tiny:
                         continue
                     for outer_id, inner_id in zip(outer_ids, inner_ids, strict=True):
+                        target_patches.setdefault(inner_id, set()).add(start)
                         target_requests.setdefault(inner_id, []).append(
                             candidate[outer_id] + thickness * direction
                         )
@@ -1099,6 +1112,8 @@ class CartesianMesher:
                 inner_id: np.asarray(requests, dtype=np.float64).mean(axis=0)
                 for inner_id, requests in target_requests.items()
                 if inner_id not in constrained_outer_ids
+                and inner_id not in protected_points
+                and len(target_patches[inner_id]) == 1
             }
             accepted_relaxation: float | None = None
             validation_error: Exception | None = None
@@ -1116,7 +1131,9 @@ class CartesianMesher:
                 mesh_data["vertex_position"] = trial
                 try:
                     geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
-                    validate_geometry(mesh_data, geometry)
+                    trial_quality = validate_geometry(mesh_data, geometry)
+                    if trial_quality["max_skewness"] > max(1.0, base_quality["max_skewness"]):
+                        raise ValueError("Wrapper straightening worsens unacceptable skewness")
                     # Positive face-pyramid volumes do not detect every
                     # self-intersecting polyhedron created at multi-patch
                     # wrapper corners.  Do not let straightening introduce
@@ -1160,6 +1177,7 @@ class CartesianMesher:
             "max_inner_displacement": max_inner_displacement,
             "column_translation_relaxation": column_translation_relaxation,
             "straightened_inner_points": len(targets),
+            "protected_transition_points": len(protected_points),
             "straightening_relaxation": accepted_relaxation,
             "outer_domain_planes_constrained": constrain_domain_planes,
             "baseline_intersecting_vtk_cells": baseline_intersections,

@@ -215,9 +215,10 @@ VORTEX_RING_VARIANT_STYLE = {
     "dns_direct": {"color": COLORS["DNSblue"], "marker": "o", "linestyle": "--"},
     "dns_transposed": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
     "dns_mixed": {"color": PALETTE["orange"], "marker": "^", "linestyle": "--"},
-    "les_direct": {"color": PALETTE["dark"], "marker": "D", "linestyle": "-"},
     "les_transposed": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
-    "les_mixed": {"color": PALETTE["gray"], "marker": "p", "linestyle": "-"},
+    # Schema-2 compatibility while users replace the earlier two-case campaign.
+    "dns_treecode": {"color": COLORS["VPMpurple"], "marker": "s", "linestyle": "--"},
+    "les_treecode": {"color": COLORS["TUDcyan"], "marker": "v", "linestyle": "-"},
 }
 for _style in VORTEX_RING_VARIANT_STYLE.values():
     _style["linewidth"] = LINE_WIDTH
@@ -227,9 +228,9 @@ VORTEX_RING_VARIANT_LABEL = {
     "dns_direct": "DNS Direct",
     "dns_transposed": "DNS Transposed",
     "dns_mixed": "DNS Mixed",
-    "les_direct": "Direct + LES",
-    "les_transposed": "Transposed + LES",
-    "les_mixed": "Mixed + LES",
+    "les_transposed": "LES Transposed",
+    "dns_treecode": "DNS Transposed",
+    "les_treecode": "LES Transposed",
 }
 
 LAMB_OSEEN_SCHEME_STYLE = {

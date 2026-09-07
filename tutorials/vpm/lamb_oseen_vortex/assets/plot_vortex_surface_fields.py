@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""z = L/4 field comparison for the single Lamb-Oseen vortex.
+"""Cross-sectional field comparison for the single Lamb-Oseen vortex.
+
+Deterministic schemes sample z=L/4. RWM uses the ensemble-mean
+column projection, so the titles do not assign it a sampling plane.
 
 Each of the four viscous schemes (GBD, CS, RWM, DVH) contributes **one
 quadrant** of the plane.  The quadrants tile into a seamless image of
@@ -83,7 +86,9 @@ def plot_surface_fields(args) -> int:
     uc_ref = run_circulation / (2.0 * np.pi * ac0)
     wc_ref = run_circulation / (np.pi * ac0**2)
 
-    tiles, _ = surface_plot_tiles(samples_dir, _LAYOUT, ac0, uc_ref, wc_ref)
+    tiles, _ = surface_plot_tiles(
+        samples_dir, _LAYOUT, ac0, uc_ref, wc_ref, runtime["kinematic_viscosity"]
+    )
     if not tiles:
         out.unlink(missing_ok=True)
         print("  [surface] no sampled fields; figure not generated")
@@ -134,8 +139,8 @@ def plot_surface_fields(args) -> int:
         ax.set_xlabel(r"$x\,/\,a_{c,0}$")
         ax.set_ylabel(r"$y\,/\,a_{c,0}$")
 
-    ax_v.set_title(r"Velocity at $z=L/4$")
-    ax_w.set_title(r"Vorticity at $z=L/4$")
+    ax_v.set_title("Velocity magnitude")
+    ax_w.set_title("Axial vorticity")
 
     sm_v = ScalarMappable(cmap=v_cmap, norm=v_norm)
     sm_v.set_array([])
@@ -153,7 +158,7 @@ def plot_surface_fields(args) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    p = build_arg_parser("z=L/4 surface field tiled comparison.")
+    p = build_arg_parser("Cross-sectional surface field tiled comparison.")
     return p.parse_args()
 
 

@@ -4,6 +4,8 @@ vortex_ring plot scripts."""
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 from pathlib import Path
 
 import h5py
@@ -15,7 +17,7 @@ ASSETS_DIR = Path(__file__).resolve().parent  # …/assets/
 SCRIPT_DIR = ASSETS_DIR.parent  # …/vortex_ring/
 FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
-SAMPLES_DIR = SCRIPT_DIR / "samples"
+SAMPLES_DIR = Path(os.environ.get("OPENONDA_VORTEX_RING_SAMPLES_DIR", SCRIPT_DIR / "samples"))
 
 # -- Physical constants  (match ring_setup.py) --------------------------------
 RING_RADIUS = 1.0  # ring major radius [m]
@@ -31,6 +33,7 @@ _eps0 = CORE_RADIUS / RING_RADIUS
 _C0 = 0.558 + 1.12 * _eps0**2 + 5.0 * _eps0**4
 REFERENCE_VELOCITY = RING_CIRCULATION / (4.0 * np.pi * RING_RADIUS) * (np.log(8.0 / _eps0) - _C0)
 CIRCULATION_RELAXATION_SAMPLES = 3
+SAFFMAN_MAX_CORE_RATIO = 0.30
 
 # Reference energy & dissipation rate scales (per unit density)
 REFERENCE_KINETIC_ENERGY = (
@@ -58,6 +61,107 @@ def _theme():
 
 VARIANT_STYLE = _theme().VORTEX_RING_VARIANT_STYLE
 VARIANT_LABEL = _theme().VORTEX_RING_VARIANT_LABEL
+CURRENT_VARIANTS = ("dns_direct", "dns_transposed", "dns_mixed", "les_transposed")
+OLDER_VARIANTS = ("dns_treecode", "les_treecode")
+EXPECTED_STRETCHING_SCHEME = {
+    "dns_direct": "DIRECT",
+    "dns_transposed": "TRANSPOSED",
+    "dns_mixed": "MIXED",
+    "les_transposed": "TRANSPOSED",
+}
+
+
+def plot_variants(samples_dir: Path = SAMPLES_DIR) -> tuple[str, ...]:
+    """Return available results, including older two-case data when useful."""
+    current = set()
+    for variant in CURRENT_VARIANTS:
+        try:
+            metadata = json.loads(
+                (samples_dir / variant / "run_metadata.json").read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            continue
+        if (
+            metadata.get("schema_version") in {3, 4}
+            and metadata.get("variant") == variant
+            and metadata.get("stretching_scheme") == EXPECTED_STRETCHING_SCHEME[variant]
+        ):
+            current.add(variant)
+
+    older = set()
+    for variant in OLDER_VARIANTS:
+        try:
+            metadata = json.loads(
+                (samples_dir / variant / "run_metadata.json").read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            continue
+        if metadata.get("schema_version") == 2 and metadata.get("variant") == variant:
+            older.add(variant)
+
+    selected = []
+    substitutes = {
+        "dns_transposed": "dns_treecode",
+        "les_transposed": "les_treecode",
+    }
+    for variant in CURRENT_VARIANTS:
+        if variant in current:
+            selected.append(variant)
+        elif substitutes.get(variant) in older:
+            selected.append(substitutes[variant])
+    return tuple(selected)
+
+
+def load_stability_results(samples_dir: Path = SAMPLES_DIR) -> tuple[dict, ...]:
+    """Return finished or currently observed times for the four cases."""
+    results = []
+    finished_statuses = {
+        "horizon_reached",
+        "instability_detected",
+        # Read older local outputs while a new campaign replaces them.
+        "complete",
+        "resolution_lost",
+    }
+    for variant in plot_variants(samples_dir):
+        variant_dir = samples_dir / variant
+        try:
+            metadata = json.loads((variant_dir / "run_metadata.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            metadata = {}
+        status = str(metadata.get("status", "running"))
+        observed_step = None
+        observed_time = None
+        if status in finished_statuses:
+            try:
+                observed_step = int(metadata["completed_steps"])
+                observed_time = float(metadata["final_time"])
+            except (KeyError, TypeError, ValueError):
+                continue
+        else:
+            for csv_name in ("ring_diagnostics.csv", "flow_integrals.csv"):
+                try:
+                    samples = pd.read_csv(variant_dir / csv_name)
+                except (OSError, ValueError, pd.errors.ParserError):
+                    continue
+                if samples.empty or not {"step", "time"}.issubset(samples.columns):
+                    continue
+                latest = samples.loc[samples["step"].idxmax()]
+                step = int(latest["step"])
+                if observed_step is None or step > observed_step:
+                    observed_step = step
+                    observed_time = float(latest["time"])
+        if observed_step is None or observed_time is None:
+            continue
+        results.append(
+            {
+                "variant": variant,
+                "status": status,
+                "step": observed_step,
+                "time": observed_time,
+                "normalized_time": observed_time / REFERENCE_TIME,
+            }
+        )
+    return tuple(results)
 
 
 def load_theme() -> tuple[dict[str, str], object | None]:
@@ -114,26 +218,26 @@ def save_fig(
 
 
 def _backup_vortex_strength(handle: h5py.File) -> np.ndarray:
-    """Read canonical particle vortex strength."""
+    """Read particle vortex strength from a snapshot."""
     return handle["particles/vortex_strength"][:]
 
 
 def _backup_time(handle: h5py.File) -> float:
-    """Read canonical backup time."""
+    """Read the snapshot time."""
     return float(handle["solver"].attrs["time"])
 
 
 def _sample_time_column(data: pd.DataFrame) -> str:
-    """Return the canonical sample time column."""
+    """Return the sample time column."""
     if "time" not in data.columns:
-        raise KeyError("sample data requires canonical 'time' column")
+        raise KeyError("sample data requires a 'time' column")
     return "time"
 
 
 def _sample_step_column(data: pd.DataFrame) -> str:
-    """Return the canonical sample step column."""
+    """Return the sample step column."""
     if "step" not in data.columns:
-        raise KeyError("sample data requires canonical 'step' column")
+        raise KeyError("sample data requires a 'step' column")
     return "step"
 
 
@@ -380,14 +484,21 @@ def load_sampled_ring_speed(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
     return time[keep] / REFERENCE_TIME, speed[keep] / REFERENCE_VELOCITY
 
 
+def saffman_valid_time_limit(maximum_core_ratio: float = SAFFMAN_MAX_CORE_RATIO) -> float:
+    """Return the last physical time retained for the thin-core comparison."""
+    if not CORE_RADIUS / RING_RADIUS < maximum_core_ratio < 1.0:
+        raise ValueError("maximum_core_ratio must exceed the initial ratio and remain below one")
+    return ((maximum_core_ratio * RING_RADIUS) ** 2 - CORE_RADIUS**2) / (4.0 * KINEMATIC_VISCOSITY)
+
+
 def load_sampled_ring_circulation(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
     """Return the tube-circulation estimate after its initialization transient.
 
     The sampler writes an unevolved row at ``t=0``.  The first two evolved
     samples still contain the short adjustment of the discretized toroidal
     field.  They are omitted, and the third evolved sample defines both the
-    start of the plotted record and ``circulation_tube,0``.  With the canonical
-    cadence this reference is step 15, ``t=0.3 s``
+    start of the plotted record and ``circulation_tube,0``.  With the fixed
+    sampling interval this reference is step 15, ``t=0.3 s``
     (``t Gamma/R0^2=0.942``).
     """
     data = load_sampled_ring_data(csv_path)

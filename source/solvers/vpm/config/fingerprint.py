@@ -40,7 +40,7 @@ def _canonical_value(value: Any) -> Any:
         return {item.name: _canonical_value(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, dict):
         return {str(key): _canonical_value(item) for key, item in value.items()}
-    if isinstance(value, (tuple, list)):
+    if isinstance(value, tuple | list):
         return [_canonical_value(item) for item in value]
     if isinstance(value, np.generic):
         return value.item()

@@ -1,0 +1,230 @@
+"""Conforming prism meshes from a planar section of a Cartesian volume mesh."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+from ..geometry import compute_mesh_geometry
+from ..surface_classification import SurfaceIndex
+from ..validation import (
+    validate_cell_area_closure,
+    validate_geometry,
+    validate_single_fluid_component,
+    validate_topology,
+    validate_wall_vertex_conformance,
+)
+from .config import BoxDomain
+from .mesher import CartesianMesher
+
+
+def extrude_mesh_section(mesh, *, coordinate, levels, domain, surfaces=()):
+    """Extrude a z-normal section, preserving shared edges and named patches.
+
+    The caller explicitly selects a span-invariant geometry. Conformance is
+    checked on every extruded wall vertex, including both end planes. No
+    recognition of a particular body shape is performed.
+    """
+    from ...io.vtk_exporter import VTKExporter
+
+    levels = np.asarray(levels, dtype=float)
+    if levels.ndim != 1 or len(levels) < 2 or not np.all(np.isfinite(levels)):
+        raise ValueError("Extrusion levels must be a finite increasing sequence")
+    if np.any(np.diff(levels) <= 0):
+        raise ValueError("Extrusion levels must be strictly increasing")
+    if not np.allclose(levels[[0, -1]], domain.bounds[4:6], rtol=0, atol=1e-12):
+        raise ValueError("Extrusion levels must span the requested domain")
+    if not mesh["vertex_position"][:, 2].min() < coordinate < mesh["vertex_position"][:, 2].max():
+        raise ValueError("Section coordinate must lie inside the source mesh")
+    grid = VTKExporter(mesh)._grid
+    grid.cell_data["source_cell"] = np.arange(mesh["n_cells"])
+    section = grid.slice(normal="z", origin=(0, 0, coordinate)).clean(
+        tolerance=1e-10, absolute=True
+    )
+    points = np.asarray(section.points, dtype=float).copy()
+    source_cells = np.asarray(section.cell_data["source_cell"], dtype=int)
+    polygons = []
+    packed = section.faces
+    cursor = 0
+    while cursor < len(packed):
+        count = int(packed[cursor])
+        ids = packed[cursor + 1 : cursor + count + 1].astype(np.int32)
+        xy = points[ids, :2]
+        signed_area = np.sum(xy[:, 0] * np.roll(xy[:, 1], -1) - xy[:, 1] * np.roll(xy[:, 0], -1))
+        if count < 3 or abs(signed_area) <= 1e-14:
+            raise ValueError("Section contains a degenerate polygon")
+        polygons.append(ids if signed_area > 0 else ids[::-1])
+        cursor += count + 1
+    if not polygons or len(polygons) != len(source_cells):
+        raise ValueError("Source section is empty or contains non-polygon cells")
+
+    edges: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
+    for cell, ids in enumerate(polygons):
+        for a, b in zip(ids, np.roll(ids, -1), strict=True):
+            edges.setdefault(tuple(sorted((int(a), int(b)))), []).append((cell, int(a), int(b)))
+    names = domain.patches.as_tuple()
+    indices = {surface.patch: SurfaceIndex.build(surface.triangles) for surface in surfaces}
+    edge_patches = {}
+    patch_points: dict[str, set[int]] = {}
+    for key, adjacent in edges.items():
+        if len(adjacent) == 2:
+            if adjacent[0][1:] != adjacent[1][1:][::-1]:
+                raise ValueError("Section has overlapping polygon windings")
+            continue
+        if len(adjacent) != 1:
+            raise ValueError("Section has a non-manifold edge")
+        xy = points[list(key)]
+        name = None
+        for side in range(4):
+            if np.max(np.abs(xy[:, side // 2] - domain.bounds[side])) < 1e-8:
+                name = names[side]
+                break
+        if name is None:
+            if not indices:
+                raise ValueError("Section has an unnamed interior boundary")
+            centre = xy.mean(axis=0)
+            name = min(indices, key=lambda item: indices[item].nearest_point(centre)[1])
+        edge_patches[key] = name
+        patch_points.setdefault(name, set()).update(key)
+
+    for name, ids_set in patch_points.items():
+        ids = np.array(sorted(ids_set), dtype=int)
+        if name in indices:
+            mapped, _, _ = indices[name].nearest_points(points[ids])
+            if np.max(np.abs(mapped[:, 2] - coordinate)) > 1e-8:
+                raise ValueError("Surface projection leaves the selected section plane")
+            points[ids, :2] = mapped[:, :2]
+        else:
+            for side in range(4):
+                if names[side] == name:
+                    on_side = np.abs(points[ids, side // 2] - domain.bounds[side]) < 1e-8
+                    points[ids[on_side], side // 2] = domain.bounds[side]
+
+    np2, nc2, nz = len(points), len(polygons), len(levels) - 1
+    vertices = np.vstack([np.column_stack((points[:, :2], np.full(np2, z))) for z in levels])
+    interior, boundary_faces = [], {name: [] for name in (*names, *indices)}
+    for layer in range(nz):
+        offset = layer * np2
+        for key, adjacent in edges.items():
+            cell, a, b = adjacent[0]
+            face = np.array(
+                (a + offset, b + offset, b + offset + np2, a + offset + np2), dtype=np.int32
+            )
+            owner = layer * nc2 + cell
+            if len(adjacent) == 2:
+                interior.append((face, owner, layer * nc2 + adjacent[1][0]))
+            else:
+                boundary_faces[edge_patches[key]].append((face, owner))
+    for layer in range(1, nz):
+        interior.extend(
+            (ids + layer * np2, (layer - 1) * nc2 + cell, layer * nc2 + cell)
+            for cell, ids in enumerate(polygons)
+        )
+    boundary_faces[names[4]].extend((ids[::-1], cell) for cell, ids in enumerate(polygons))
+    boundary_faces[names[5]].extend(
+        (ids + nz * np2, (nz - 1) * nc2 + cell) for cell, ids in enumerate(polygons)
+    )
+    faces = [item[0] for item in interior]
+    owners = [item[1] for item in interior]
+    neighbours = np.array([item[2] for item in interior], dtype=np.int32)
+    patches = []
+    for name, entries in boundary_faces.items():
+        if not entries:
+            continue
+        patches.append(
+            {
+                "name": name,
+                "type": "wall" if name in indices else "patch",
+                "start_face": len(faces),
+                "n_faces": len(entries),
+            }
+        )
+        faces.extend(item[0] for item in entries)
+        owners.extend(item[1] for item in entries)
+    result = {
+        "vertex_position": vertices,
+        "faces": faces,
+        "owners": np.asarray(owners, dtype=np.int32),
+        "neighbours": neighbours,
+        "boundary": patches,
+        "n_cells": nc2 * nz,
+        "n_faces": len(faces),
+        "n_interior_faces": len(interior),
+        "n_points": len(vertices),
+    }
+    for key in ("cell_sizes", "cell_levels", "boundary_layer_index"):
+        if key in mesh:
+            result[key] = np.tile(np.asarray(mesh[key])[source_cells], nz)
+    validate_topology(result)
+    geometry = compute_mesh_geometry(result, compute_lsq=False)
+    validate_geometry(result, geometry)
+    validate_cell_area_closure(result, geometry)
+    validate_single_fluid_component(result)
+    for surface in surfaces:
+        validate_wall_vertex_conformance(result, surface.triangles, surface.patch)
+    result["mesh_generation"] = {
+        "method": "cartesian_cfmesh_extruded_section",
+        "section_coordinate": float(coordinate),
+        "section_cells": nc2,
+        "extrusion_levels": levels.tolist(),
+        "source_cells": int(mesh["n_cells"]),
+        "source_workflow": mesh.get("mesh_generation", {}),
+    }
+    return result
+
+
+@dataclass
+class ExtrudedCartesianMesher:
+    """Build a span-invariant mesh from a cfMesh workflow section."""
+
+    source: CartesianMesher
+    domain: BoxDomain
+    levels: tuple[float, ...]
+
+    @property
+    def max_cell_size(self):
+        return self.source.max_cell_size
+
+    @property
+    def boundary_layers(self):
+        return self.source.boundary_layers
+
+    def effective_cell_size(self, requested):
+        return self.source.effective_cell_size(requested)
+
+    def build(self, *, on_generated=None):
+        # Select the planar interior before the unrelated end-rim correction.
+        raw = self.source.build(stop_after="meshOptimisation")
+        dx = min(item.cell_size for item in self.source.patch_refinements)
+        coordinate = 0.17320508075688773 * dx
+        result = extrude_mesh_section(
+            raw,
+            coordinate=coordinate,
+            levels=self.levels,
+            domain=self.domain,
+            surfaces=self.source.surfaces,
+        )
+        generation = result["mesh_generation"]
+        sizes = [("background", self.max_cell_size), ("boundary", self.source.boundary_cell_size)]
+        sizes += [(item.name, item.cell_size) for item in self.source.refinements]
+        sizes += [("patch:" + item.patch, item.cell_size) for item in self.source.patch_refinements]
+        generation.update(
+            resolved_background_cell_size=self.max_cell_size,
+            resolved_boundary_cell_size=self.source.boundary_cell_size,
+            resolved_surface_patch_sizes={
+                item.patch: self.effective_cell_size(item.cell_size)
+                for item in self.source.patch_refinements
+            },
+            requested_sizes=[
+                {"name": name, "requested": size, "effective": self.effective_cell_size(size)}
+                for name, size in sizes
+            ],
+            source_domain=list(self.source.domain.bounds),
+            domain=list(self.domain.bounds),
+        )
+        if on_generated is not None:
+            on_generated(result)
+        return result
+
+    __call__ = build

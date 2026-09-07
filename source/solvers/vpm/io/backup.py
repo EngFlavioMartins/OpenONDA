@@ -893,10 +893,10 @@ class _BackupIO:
                     "n_particles_total",
                 ):
                     value = _read_attribute(solver_group, name)
-                    if not isinstance(value, (int, np.integer)) or int(value) < 0:
+                    if not isinstance(value, int | np.integer) or int(value) < 0:
                         invalid(f"solver attribute {name!r} must be a non-negative integer")
                 pending = _read_attribute(solver_group, "is_particle_regeneration_pending")
-                if not isinstance(pending, (bool, int, np.integer)) or int(pending) not in (0, 1):
+                if not isinstance(pending, bool | int | np.integer) or int(pending) not in (0, 1):
                     invalid("solver attribute 'is_particle_regeneration_pending' must be 0 or 1")
 
                 if "divergence_relaxation_reference_moments" in solver_group:

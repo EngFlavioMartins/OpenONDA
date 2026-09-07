@@ -162,6 +162,10 @@ def strain_increments(
 class HealthError(RuntimeError):
     """An accepted VPM particle state violates its declared health limits."""
 
+    def __init__(self, message: str, *, restartable: bool = True) -> None:
+        super().__init__(message)
+        self.restartable = bool(restartable)
+
 
 def accepted_step_health(
     *,
@@ -195,7 +199,8 @@ def accepted_step_health(
             invalid.append("particle_volume")
         if invalid:
             raise HealthError(
-                f"VPM accepted state at step {step} is invalid: " + ", ".join(sorted(set(invalid)))
+                f"VPM accepted state at step {step} is invalid: " + ", ".join(sorted(set(invalid))),
+                restartable=False,
             )
 
     if count:

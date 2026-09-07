@@ -11,15 +11,25 @@ _TREECODE_THETA = 0.1
 _TREECODE_MULTIPOLE_ORDER = 1
 _TREECODE_SORT_PARTICLE_TARGETS = False
 _TREECODE_TRAVERSAL_BLOCK_DIM = 128
+_STRETCHING_MODES = {"DIRECT": 0, "TRANSPOSED": 1, "MIXED": 2}
 
 
 @ti.kernel
 def _rate_from_gradient(
-    gradient: ti.template(), strength: ti.template(), output: ti.template(), count: ti.i32
+    gradient: ti.template(),
+    strength: ti.template(),
+    output: ti.template(),
+    stretching_mode: ti.i32,
+    count: ti.i32,
 ):
-    """Contract the hierarchical velocity gradient with Γᵀ for each target."""
+    """Contract the hierarchical velocity gradient using the selected scheme."""
     for i in range(count):
-        output[i] = gradient[i].transpose() @ strength[i]
+        if stretching_mode == 0:
+            output[i] = gradient[i] @ strength[i]
+        elif stretching_mode == 1:
+            output[i] = gradient[i].transpose() @ strength[i]
+        else:
+            output[i] = 0.5 * (gradient[i] + gradient[i].transpose()) @ strength[i]
 
 
 @ti.data_oriented
@@ -28,9 +38,10 @@ class TreecodeInduction:
 
     The LBVH workspace is rebuilt from every supplied stage state.  This keeps
     geometry and strength moments synchronized when an RK stage changes either
-    position or vortex strength.  The transposed rate is contracted from the
-    same hierarchical velocity gradient used for optional diagnostics; no
-    direct pairwise rate fallback is hidden behind the treecode interface.
+    position or vortex strength. The selected direct, transposed, or mixed
+    stretching rate is contracted from the same hierarchical velocity
+    gradient used for optional diagnostics; no direct pairwise rate fallback
+    is hidden behind the treecode interface.
     """
 
     supported_kernels = frozenset({"GAUSSIAN", "WINCKELMANS"})
@@ -44,8 +55,16 @@ class TreecodeInduction:
     device_resident = True
     strength_rate_mode = "HIERARCHICAL_GRADIENT"
 
-    def __init__(self) -> None:
+    def __init__(self, *, stretching_scheme: str = "TRANSPOSED") -> None:
+        stretching_scheme = str(stretching_scheme).upper()
+        if stretching_scheme not in _STRETCHING_MODES:
+            raise ValueError(
+                f"stretching_scheme must be one of {tuple(_STRETCHING_MODES)}; "
+                f"got {stretching_scheme!r}"
+            )
         self.method = "TREECODE"
+        self.stretching_scheme = stretching_scheme
+        self._stretching_mode = _STRETCHING_MODES[stretching_scheme]
         self.kernel = make_vortex_kernel("GAUSSIAN")
         self.physics = None
         self.theta = _TREECODE_THETA
@@ -55,6 +74,7 @@ class TreecodeInduction:
         self.max_n_particles = 1
         self.diagnostics = {
             "strength_rate_mode": self.strength_rate_mode,
+            "stretching_scheme": self.stretching_scheme,
             "stage_evaluations": 0,
             "gradient_evaluations": 0,
             "hierarchical_strength_rates": 0,
@@ -69,6 +89,7 @@ class TreecodeInduction:
         multipole_order: int = _TREECODE_MULTIPOLE_ORDER,
         sort_particle_targets: bool = _TREECODE_SORT_PARTICLE_TARGETS,
         traversal_block_dim: int = _TREECODE_TRAVERSAL_BLOCK_DIM,
+        stretching_scheme: str = "TRANSPOSED",
     ) -> Self:
         """Construct a non-public evaluator for controlled qualification studies."""
         if not 0.0 < float(theta) < 2.0:
@@ -77,7 +98,7 @@ class TreecodeInduction:
             raise ValueError("treecode multipole_order must be 1, 2, or 3")
         if int(traversal_block_dim) < 0:
             raise ValueError("treecode traversal_block_dim must be non-negative")
-        instance = cls()
+        instance = cls(stretching_scheme=stretching_scheme)
         instance.theta = float(theta)
         instance.multipole_order = int(multipole_order)
         instance.sort_particle_targets = bool(sort_particle_targets)
@@ -91,6 +112,7 @@ class TreecodeInduction:
             multipole_order=self.multipole_order,
             sort_particle_targets=self.sort_particle_targets,
             traversal_block_dim=self.traversal_block_dim,
+            stretching_scheme=self.stretching_scheme,
         )
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
@@ -154,7 +176,11 @@ class TreecodeInduction:
 
         if strength_rate_enabled:
             _rate_from_gradient(
-                tree.velocity_gradient, tree.vortex_strength, vortex_strength_rate_out, count
+                tree.velocity_gradient,
+                tree.vortex_strength,
+                vortex_strength_rate_out,
+                self._stretching_mode,
+                count,
             )
             self.diagnostics["hierarchical_strength_rates"] += 1
         else:

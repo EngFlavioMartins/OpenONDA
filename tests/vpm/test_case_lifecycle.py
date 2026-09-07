@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from openonda import vpm
+from source.solvers.vpm.config.health import HealthError
 from source.solvers.vpm.core.solver import VPMSolver
 from source.solvers.vpm.io.sampler import OutputEvent
 
@@ -157,6 +158,109 @@ def test_run_owns_the_complete_event_lifecycle() -> None:
         ("completed", None),
         "close",
     ]
+
+
+def test_run_plan_can_persist_and_return_from_a_resolution_limit(capsys) -> None:
+    events: list[object] = []
+
+    class Manager:
+        def dispatch(self, event: OutputEvent) -> None:
+            events.append(("dispatch", event))
+
+        def write_all(self, event: OutputEvent) -> None:
+            events.append(("write_all", event))
+
+    solver = object.__new__(VPMSolver)
+    solver.case = vpm.VPMCase(
+        numerics=vpm.Numerics(),
+        run=vpm.RunPlan(steps=4, health_limit_action="stop"),
+    )
+    solver.output_manager = Manager()
+    solver._run_started = False
+    solver._run_finished = False
+    solver.restart_state = vpm.RestartState()
+    solver.time = 0.0
+    solver.step = 0
+    solver._build_initial_conditions = lambda: events.append("build")
+    solver._refresh_diagnostics_for_output = lambda: events.append("diagnostics")
+
+    def advance() -> None:
+        events.append("advance")
+        solver.step += 1
+        solver.time += 0.1
+        if solver.step == 2:
+            raise HealthError("declared resolution limit")
+
+    solver.advance = advance
+    solver.save_backup = lambda: events.append("backup")
+    solver._write_run_manifest = lambda status, failure: events.append((status, failure))
+    solver.close = lambda: events.append("close")
+
+    VPMSolver.run(solver)
+
+    assert solver.run_status == "resolution_lost"
+    assert isinstance(solver.run_failure, HealthError)
+    assert solver.step == 2
+    assert events == [
+        "build",
+        "diagnostics",
+        ("dispatch", OutputEvent.INITIAL),
+        "advance",
+        "advance",
+        "diagnostics",
+        ("write_all", OutputEvent.FINAL),
+        "backup",
+        ("resolution_lost", solver.run_failure),
+        "close",
+    ]
+    terminal_output = capsys.readouterr().out
+    assert "Stopped" in terminal_output
+    assert "declared resolution limit" not in terminal_output
+
+
+def test_run_plan_does_not_persist_an_invalid_state_as_a_resolution_limit() -> None:
+    events: list[object] = []
+
+    class Manager:
+        def dispatch(self, event: OutputEvent) -> None:
+            events.append(("dispatch", event))
+
+        def write_all(self, event: OutputEvent) -> None:
+            events.append(("write_all", event))
+
+    solver = object.__new__(VPMSolver)
+    solver.case = vpm.VPMCase(
+        numerics=vpm.Numerics(),
+        run=vpm.RunPlan(steps=1, health_limit_action="STOP"),
+    )
+    solver.output_manager = Manager()
+    solver._run_started = False
+    solver._run_finished = False
+    solver.restart_state = vpm.RestartState()
+    solver.time = 0.1
+    solver.step = 1
+    solver._build_initial_conditions = lambda: events.append("build")
+    solver._refresh_diagnostics_for_output = lambda: events.append("diagnostics")
+    solver.advance = lambda: (_ for _ in ()).throw(
+        HealthError("non-finite accepted state", restartable=False)
+    )
+    solver.save_backup = lambda: events.append("backup")
+    solver._write_run_manifest = lambda status, failure: events.append((status, failure))
+    solver.close = lambda: events.append("close")
+
+    with pytest.raises(HealthError, match="non-finite accepted state"):
+        VPMSolver.run(solver)
+
+    assert solver.run_status == "failed"
+    assert isinstance(solver.run_failure, HealthError)
+    assert ("dispatch", OutputEvent.FAILED) in events
+    assert not any(event == "backup" for event in events)
+    assert not any(isinstance(event, tuple) and event[0] == "write_all" for event in events)
+
+
+def test_run_plan_rejects_an_unknown_health_limit_action() -> None:
+    with pytest.raises(ValueError, match="health_limit_action"):
+        vpm.RunPlan(steps=1, health_limit_action="continue")
 
 
 def test_initial_conditions_are_globally_pruned_once_after_assembly() -> None:

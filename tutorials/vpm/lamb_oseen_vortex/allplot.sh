@@ -9,7 +9,8 @@ MODULE="tutorials.vpm.lamb_oseen_vortex"
 PYTHON_BIN="${OPENONDA_PYTHON:-python}"
 
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${SCRIPT_DIR}/.cache/matplotlib}"
-mkdir -p "${MPLCONFIGDIR}" "${SCRIPT_DIR}/figures"
+export NUMBA_CACHE_DIR="${NUMBA_CACHE_DIR:-${SCRIPT_DIR}/.cache/numba}"
+mkdir -p "${MPLCONFIGDIR}" "${NUMBA_CACHE_DIR}" "${SCRIPT_DIR}/figures"
 
 "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" --extract-fields
 
@@ -18,6 +19,7 @@ mkdir -p "${MPLCONFIGDIR}" "${SCRIPT_DIR}/figures"
 "${PYTHON_BIN}" -m "${MODULE}.assets.plot_merging_comparison" --format both
 "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_surface_fields" --format both
 "${PYTHON_BIN}" -m "${MODULE}.assets.plot_lamboseen_energy" --format both
+"${PYTHON_BIN}" -m "${MODULE}.assets.plot_merging_snapshots" --format both
 
 "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" --manifest
 "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess"

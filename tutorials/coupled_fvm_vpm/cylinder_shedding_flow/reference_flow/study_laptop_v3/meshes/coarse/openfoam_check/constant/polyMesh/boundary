@@ -1,0 +1,55 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| OpenONDA native ASCII polyMesh boundary export                              |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       polyBoundaryMesh;
+    object      boundary;
+}
+7
+(
+cylinder
+{
+    type            wall;
+    nFaces          322;
+    startFace       115242;
+}
+inlet
+{
+    type            patch;
+    nFaces          320;
+    startFace       115564;
+}
+outlet
+{
+    type            patch;
+    nFaces          320;
+    startFace       115884;
+}
+ymax
+{
+    type            patch;
+    nFaces          512;
+    startFace       116204;
+}
+ymin
+{
+    type            patch;
+    nFaces          512;
+    startFace       116716;
+}
+zmax
+{
+    type            patch;
+    nFaces          10444;
+    startFace       117228;
+}
+zmin
+{
+    type            patch;
+    nFaces          10446;
+    startFace       127672;
+}
+)

@@ -29,6 +29,14 @@ To rebuild the figures from completed samples:
 /path/to/tutorials/vpm/lamb_oseen_vortex/allplot.sh
 ```
 
+This also creates `mergingRenderT0` and `mergingRenderFinal` in PDF and PNG
+formats from the initial conditions and the final GBD particle backup in
+`solution/merging_gbd/`. Keep that backup and its sample metadata when
+reproducing the sphere views. Their camera and field of view are shared;
+colour clipping and strength-based sphere sizes are normalised per frame.
+The lower-right label shows `nu t / a_c,0^2`. The CPU renderer requires
+Numba and TeX Live with NewPX/Pagella fonts and takes a few minutes.
+
 No `PYTHONPATH`, Matplotlib path, Taichi cache path, or repository working
 directory needs to be configured. Installed copies can also be managed with
 `openonda tutorial create`, `openonda tutorial run`, `openonda tutorial plot`,
