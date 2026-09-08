@@ -37,9 +37,7 @@ def create_solver(directory_name: str, dx: float):
     mesh = msh.ExtrudedCartesianMesher(
         source=msh.CartesianMesher(
             domain=msh.BoxDomain(bounds=source_domain, patches=patches),
-            surfaces=(
-                msh.STLSurface(case_dir.parent / "assets/cylinder_long.stl", patch="cylinder"),
-            ),
+            surfaces=(msh.STLSurface(case_dir / "assets/cylinder_long.stl", patch="cylinder"),),
             max_cell_size=background_size,
             refinements=(
                 # cfMesh treats box cell sizes as strict upper bounds.

@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Velocity-magnitude snapshot around the airfoil from the final VTU."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib
@@ -10,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     COLORMAPS,
     FIGURES_DIR,
     RE,

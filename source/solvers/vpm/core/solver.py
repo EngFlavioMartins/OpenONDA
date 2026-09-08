@@ -8,8 +8,9 @@ License: GPL-3.0-or-later
 """
 
 from collections.abc import Callable, Iterator
-import json
+from contextlib import suppress
 from pathlib import Path
+from time import perf_counter
 from typing import Protocol, TypeAlias
 
 import numpy as np
@@ -32,9 +33,11 @@ from ..coupling import CouplingStepper
 from ..diagnostics.resolution import discretization_health
 from ..io.backup import _BackupIO
 from ..io.logging import Logging, print_openonda_header
+from ..io.manifest import write_manifest
 from ..io.physics_events import LoggingPhysicsEventObserver
 from ..io.runtime_profiler import RuntimeProfiler
 from ..io.sampler import OutputEvent, OutputManager
+from ..io.sampling import resolve_samples_dir
 from ..io.solver_io import SolverIO
 from ..kernels.base import make_vortex_kernel
 from ..numerics.runge_kutta import RungeKutta
@@ -46,7 +49,11 @@ from ..physics.stage_rhs import (
     StageRHS,
     VLMStageContribution,
 )
-from ..runtime.backend import initialize_taichi_backend, reset_taichi_backend
+from ..runtime.backend import (
+    acquire_taichi_backend,
+    initialize_taichi_backend,
+    reset_taichi_backend,
+)
 from ..stabilization import StabilizationManager
 from ..stabilization.context import (
     SolverParticleMutations,
@@ -100,6 +107,13 @@ class VPMSolver:
             raise TypeError("VPMSolver requires a VPMCase construction object")
         self.case = case
         self.case_dir = Path(case.directory).resolve()
+        self._backend_claimed = False
+        acquire_taichi_backend(
+            self,
+            preferred_backend=case.numerics.compute_device,
+            precision=case.numerics.precision,
+        )
+        self._backend_claimed = True
         self.restart_state = RestartState()
         self._initial_conditions_built = False
         self._run_started = False
@@ -108,28 +122,63 @@ class VPMSolver:
         self.run_failure: BaseException | None = None
         self._evolution_failure: BaseException | None = None
         self._configuration_logged = False
-        final_setup = self._init_setup(case)
-        self._init_io_and_backend(final_setup, final_setup.debug_mode)
-        self._init_particles_and_physics(final_setup)
-        self._init_turbulence_and_adaptation(final_setup)
-        self._init_solvers(final_setup)
-        self.output_manager = OutputManager(self, case.samplers)
-        Logging.set_routine_messages_enabled(True)
-        Logging.startup(self)
-        self._configuration_logged = True
-        # Declarative or externally supplied initial particles are populated
-        # after construction.  Keep those setup mutations out of the runtime
-        # event stream; the first requested diagnostics describe their state.
-        Logging.set_routine_messages_enabled(False)
+        try:
+            self._prepare_output_directories(case)
+            final_setup = self._init_setup(case)
+            self._init_io_and_backend(final_setup, final_setup.debug_mode)
+            self._init_particles_and_physics(final_setup)
+            self._init_turbulence_and_adaptation(final_setup)
+            self._init_solvers(final_setup)
+            self.output_manager = OutputManager(self, case.samplers)
+            Logging.set_routine_messages_enabled(True)
+            Logging.startup(self)
+            self._configuration_logged = True
+            # Declarative or externally supplied initial particles are populated
+            # after construction.  Keep those setup mutations out of the runtime
+            # event stream; the first requested diagnostics describe their state.
+            Logging.set_routine_messages_enabled(False)
+        except BaseException:
+            self._cleanup_failed_construction()
+            raise
 
-    @staticmethod
-    def reset_gpu() -> None:
+    def _prepare_output_directories(self, case: VPMCase) -> None:
+        """Create configured solution and sample destinations before backend setup."""
+        backup_path = Path(case.backup.directory)
+        if not backup_path.is_absolute():
+            backup_path = self.case_dir / backup_path
+        self._backup_path = backup_path.resolve()
+
+        log_path = Path(case.backup.log_directory)
+        if not log_path.is_absolute():
+            log_path = self.case_dir / log_path
+        self._log_path = log_path.resolve()
+
+        self.samples_dir = resolve_samples_dir(self.case_dir, case.samplers.directory)
+        self._backup_path.mkdir(parents=True, exist_ok=True)
+        self._log_path.mkdir(parents=True, exist_ok=True)
+        self.samples_dir.mkdir(parents=True, exist_ok=True)
+
+    def reset_gpu(self=None) -> None:
         """Reset the Taichi runtime and release device allocations.
 
         Call before constructing a new solver when several VPM cases are run
-        sequentially in the same Python process.
+        sequentially in the same Python process.  When called through a live
+        solver instance, its ownership lease is released first; a shared
+        runtime is reset only when no compatible solver remains.
         """
-        reset_taichi_backend()
+        reset_taichi_backend(owner=self)
+
+    def _cleanup_failed_construction(self) -> None:
+        """Release every resource acquired before construction failed."""
+        restore = getattr(self, "_restore_output_streams", None)
+        if restore is not None:
+            with suppress(Exception):
+                restore()
+        if getattr(self, "_backend_claimed", False):
+            # Preserve the original construction exception if cleanup fails.
+            with suppress(Exception):
+                reset_taichi_backend(owner=self)
+            self._backend_claimed = False
 
     @staticmethod
     def synchronize() -> None:
@@ -221,17 +270,12 @@ class VPMSolver:
         # data; the preceding accepted snapshot is runtime state below.
         self.health_limits = final_setup.health_limits
         self.particle_kernel = final_setup.particle_kernel.upper()
-        backup_path = Path(case.backup.directory)
-        if not backup_path.is_absolute():
-            backup_path = self.case_dir / backup_path
-        self._backup_path = backup_path.resolve()
-        log_path = Path(case.backup.log_directory)
-        if not log_path.is_absolute():
-            log_path = self.case_dir / log_path
-        self._log_path = log_path.resolve()
-        self._backup_path.mkdir(parents=True, exist_ok=True)
-        self._log_path.mkdir(parents=True, exist_ok=True)
         return final_setup
+
+    def _sync_restart_state(self) -> None:
+        """Keep the mutable restart clock aligned with the accepted solver clock."""
+        self.restart_state.time = float(self.time)
+        self.restart_state.step = int(self.step)
 
     def _init_io_and_backend(self, final_setup: Numerics, debug_mode: bool) -> None:
         """Set up output redirection, IO, precision, splitter/remesher, Taichi backend."""
@@ -250,6 +294,11 @@ class VPMSolver:
             device_memory_fraction=getattr(final_setup, "device_memory_fraction", 0.5),
             random_seed=final_setup.random_seed,
         )
+        # Keep the resolved backend identity independent of the process-global
+        # Taichi constant.  ``close()`` releases that global runtime before a
+        # terminal manifest is written, so consulting the constant later can
+        # incorrectly report ``UNKNOWN`` for an otherwise reproducible run.
+        self._backend_name = str(self.compute_device)
         supported_devices = getattr(self.induction, "supported_devices", None)
         if supported_devices is not None and self.compute_device not in supported_devices:
             raise ValueError(
@@ -616,6 +665,8 @@ class VPMSolver:
                 "VPMSolver is terminally invalid after a failed physical step; "
                 "construct a new solver and load the last accepted backup"
             ) from self._evolution_failure
+        if not getattr(self, "_initial_conditions_built", True):
+            self._build_initial_conditions()
         self._log_configuration_once()
         try:
             self.stepper.advance(defer_output=defer_output)
@@ -625,6 +676,7 @@ class VPMSolver:
             # explicitly unusable instead of silently allowing continuation.
             self._evolution_failure = exc
             raise
+        self._sync_restart_state()
         if defer_output:
             return
         self._refresh_accepted_step_health()
@@ -647,6 +699,10 @@ class VPMSolver:
         self._run_final_step = self.step + self.case.run.steps
         status = "failed"
         failure: BaseException | None = None
+        limit = self.case.run.wall_time_limit_seconds
+        deadline = None if limit is None else perf_counter() + limit
+        budget_exhausted = False
+        primary_failure: BaseException | None = None
         try:
             self._build_initial_conditions()
             self._log_configuration_once()
@@ -655,6 +711,9 @@ class VPMSolver:
                 self.output_manager.dispatch(OutputEvent.INITIAL)
             health_limit_failure = None
             for _ in range(self.case.run.steps):
+                if deadline is not None and perf_counter() >= deadline:
+                    budget_exhausted = True
+                    break
                 try:
                     self.advance()
                 except HealthError as exc:
@@ -663,7 +722,9 @@ class VPMSolver:
                     health_limit_failure = exc
                     break
             self._refresh_diagnostics_for_output()
-            if health_limit_failure is None:
+            if budget_exhausted:
+                self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
+            elif health_limit_failure is None:
                 self.output_manager.dispatch(OutputEvent.FINAL)
             else:
                 # A health limit describes the last usable accepted state. It
@@ -672,24 +733,49 @@ class VPMSolver:
                 self.output_manager.write_all(OutputEvent.FINAL)
             if self.case.run.final_backup:
                 self.save_backup()
-            if health_limit_failure is None:
+            if budget_exhausted:
+                status = "wall_time_limit"
+            elif health_limit_failure is None:
                 status = "completed"
             else:
                 status = "resolution_lost"
                 failure = health_limit_failure
         except BaseException as exc:
             failure = exc
-            self.output_manager.dispatch(OutputEvent.FAILED)
-            raise
+            primary_failure = exc
+            try:
+                self.output_manager.dispatch(OutputEvent.FAILED)
+            except BaseException as failed_event_error:
+                # The numerical/evolution failure remains the diagnostic of
+                # record; a failed-event writer must not hide it.
+                if primary_failure is None:
+                    primary_failure = failed_event_error
         finally:
+            if primary_failure is not None:
+                status = "failed"
+                failure = primary_failure
             self._run_finished = status == "completed"
             self.run_status = status
             self.run_failure = failure
-            self.restart_state.time = self.time
-            self.restart_state.step = self.step
-            self._write_run_manifest(status, failure)
-            Logging.run_finished(self, status, failure)
-            self.close()
+            self._sync_restart_state()
+            for finalizer in (
+                # Each finalizer sees failures raised by earlier finalizers.
+                lambda: Logging.run_finished(self, self.run_status, self.run_failure),
+                lambda: self._write_run_manifest(self.run_status, self.run_failure),
+                self.close,
+            ):
+                try:
+                    finalizer()
+                except BaseException as finalizer_error:
+                    if primary_failure is None:
+                        primary_failure = finalizer_error
+                        failure = finalizer_error
+                        status = "failed"
+                        self.run_status = status
+                        self.run_failure = failure
+
+        if primary_failure is not None:
+            raise primary_failure.with_traceback(primary_failure.__traceback__)
 
     def _build_initial_conditions(self) -> None:
         """Build each declarative initial condition exactly once."""
@@ -713,28 +799,31 @@ class VPMSolver:
 
     def _write_run_manifest(self, status: str, failure: BaseException | None) -> None:
         """Atomically record the terminal lifecycle state for one case."""
-        destination = self.case_dir / "run_manifest.json"
-        temporary = destination.with_suffix(".json.tmp")
-        payload = {
-            "status": status,
-            "step": self.step,
-            "time": self.time,
-            "planned_steps": self.case.run.steps,
-            "error": None if failure is None else f"{type(failure).__name__}: {failure}",
-        }
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        temporary.replace(destination)
+        write_manifest(self, self.case_dir / "run_manifest.json", status=status, failure=failure)
 
     def close(self) -> None:
         """Release case-owned logging and Taichi resources exactly once."""
         if getattr(self, "_closed", False):
             return
-        self._closed = True
+        primary_failure: BaseException | None = None
         restore = getattr(self, "_restore_output_streams", None)
         if restore is not None:
-            restore()
-        reset_taichi_backend()
+            try:
+                restore()
+            except BaseException as error:
+                primary_failure = error
+        if getattr(self, "_backend_claimed", False):
+            try:
+                reset_taichi_backend(owner=self)
+                self._backend_claimed = False
+            except BaseException as error:
+                if primary_failure is None:
+                    primary_failure = error
+        if primary_failure is not None:
+            # Keep the close operation retryable when one independent cleanup
+            # action fails, while still attempting every owned resource.
+            raise primary_failure
+        self._closed = True
 
     def _refresh_particle_diagnostic_fields(self) -> None:
         """Refresh derived diagnostic fields without changing future evolution."""
@@ -1734,6 +1823,7 @@ class VPMSolver:
         """Restore numerical state from a path owned by an internal coordinator."""
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
         _BackupIO.load(self, path)
+        self._sync_restart_state()
         # A growth limit compares adjacent accepted states.  A loaded restart
         # begins a new in-memory history, so its first accepted state becomes
         # the baseline rather than being compared to a discarded cloud.
@@ -1745,6 +1835,7 @@ class VPMSolver:
 
     def save_backup(self) -> None:
         """Write one canonical backup to the configured backup directory."""
+        self._sync_restart_state()
         self._refresh_backup_particle_fields()
         _BackupIO.save(
             self,

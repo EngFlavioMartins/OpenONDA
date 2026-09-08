@@ -2,6 +2,13 @@
 """Surface pressure distribution -Cp(x/c) from solution/surface_cp.csv
 (written by airfoil_flow_setup.py at the end of the run)."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib
@@ -9,7 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     COLORS,
     FIGURES_DIR,
     RE,

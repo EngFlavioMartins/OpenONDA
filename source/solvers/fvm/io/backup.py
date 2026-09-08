@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import hashlib
 import json
 import os
@@ -14,6 +14,24 @@ import numpy as np
 from .storage import require_free_space
 
 FORMAT_VERSION = 10
+
+
+@dataclass(frozen=True)
+class RestartPayload:
+    """Fully validated restart data, detached from a live solver."""
+
+    fields: dict[str, np.ndarray]
+    eddy_viscosity: np.ndarray
+    time: float
+    step: int
+    n_committed_time_steps: int
+    time_step_size: float
+    accepted_time_step_size: float
+    previous_time_step_size: float
+    kinematic_viscosity: float
+    max_courant_number: float
+    n_consecutive_accepted_steps: dict[str, int]
+
 
 # Deflate finds almost nothing in raw float64: the mantissa bytes look like
 # noise. Two lossless transforms expose the structure that is really there.
@@ -108,18 +126,41 @@ def _hash(value) -> str:
     return digest.hexdigest()
 
 
-def _setup_dict(setup) -> dict:
+def _setup_dict(setup, *, numerical_only: bool = True) -> dict:
     from source.solvers.fvm.sampling.base import sampler_to_dict
 
     data = asdict(setup)
-    if getattr(setup, "samplers", ()):
+    if numerical_only:
+        # Output cadence, log policy, restart location and the requested
+        # horizon are lifecycle controls.  They may change when extending or
+        # relocating a run without changing the equations represented by a
+        # numerical restart.
+        data.pop("output", None)
+        data.pop("logging", None)
+        data.pop("backup", None)
+        data.pop("samplers", None)
+        time_data = dict(data.get("time") or {})
+        time_data.pop("end_time", None)
+        time_data.pop("output_schedule", None)
+        data["time"] = time_data
+    if not numerical_only and getattr(setup, "samplers", ()):
         data["samplers"] = [sampler_to_dict(sampler) for sampler in setup.samplers]
     return data
 
 
+def _solver_setup(solver):
+    """Return the detached setup snapshot admitted by the solver."""
+    return getattr(solver, "_resolved_setup", solver.setup)
+
+
 def config_hash(setup) -> str:
-    """Return a deterministic hash of the canonical FVM setup."""
-    return _hash(_setup_dict(setup))
+    """Return a deterministic hash of equation-affecting FVM controls."""
+    return _hash(_setup_dict(setup, numerical_only=True))
+
+
+def full_config_hash(setup) -> str:
+    """Return a hash including lifecycle/output policy for provenance."""
+    return _hash(_setup_dict(setup, numerical_only=False))
 
 
 def mesh_hash(mesh_data) -> str:
@@ -153,8 +194,13 @@ def save_backup(solver, path) -> Path:
 
     metadata = {
         "format_version": FORMAT_VERSION,
-        "config_hash": config_hash(solver.setup),
+        "config_hash": config_hash(_solver_setup(solver)),
         "mesh_hash": mesh_hash(solver.mesh_data),
+        "kinematic_viscosity": float(
+            getattr(
+                solver, "_kinematic_viscosity", _solver_setup(solver).transport.kinematic_viscosity
+            )
+        ),
     }
     arrays = {
         "metadata": np.asarray(json.dumps(metadata, sort_keys=True)),
@@ -210,7 +256,165 @@ def save_backup(solver, path) -> Path:
     return destination
 
 
-def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
+def _read_scalar(state: dict, name: str, *, kind: str):
+    """Read one scalar with an exact archive shape and numeric kind."""
+    value = np.asarray(state[name])
+    if value.shape != ():
+        raise ValueError(f"Backup field {name} must be a scalar; got shape {value.shape}")
+    if kind == "float":
+        if not np.issubdtype(value.dtype, np.floating):
+            raise ValueError(f"Backup field {name} must use a floating-point dtype")
+        scalar = float(value.item())
+        if not np.isfinite(scalar):
+            raise ValueError(f"Backup field {name} must be finite")
+        return scalar
+    if kind == "int":
+        if not np.issubdtype(value.dtype, np.integer):
+            raise ValueError(f"Backup field {name} must use an integer dtype")
+        return int(value.item())
+    raise AssertionError(f"unknown scalar kind {kind!r}")
+
+
+def stage_restart_payload(
+    solver,
+    state: dict,
+    *,
+    allow_config_change: bool = False,
+    kinematic_viscosity: float | None = None,
+) -> RestartPayload:
+    """Validate a decoded backup without mutating *solver*.
+
+    This is intentionally shared by serial and partitioned admission.  A
+    caller can collect validation errors from every rank before publishing any
+    fields, which makes restart rejection transactional at the solver boundary.
+    """
+    field_names = (
+        "velocity",
+        "kinematic_pressure",
+        "volumetric_face_flux",
+        "volumetric_face_flux_old",
+        "volumetric_face_flux_older",
+        "velocity_old",
+        "velocity_older",
+    )
+    fields: dict[str, np.ndarray] = {}
+    for field_name in field_names:
+        active = np.asarray(getattr(solver, field_name))
+        values = np.asarray(state[field_name])
+        if values.shape != active.shape:
+            raise ValueError(
+                f"Backup field {field_name} has shape {values.shape}; expected {active.shape}"
+            )
+        if values.dtype != np.dtype(np.float64):
+            raise ValueError(f"Backup field {field_name} must use float64; got {values.dtype}")
+        if not np.all(np.isfinite(values)):
+            raise ValueError(f"Backup field {field_name} contains non-finite values")
+        fields[field_name] = np.ascontiguousarray(values)
+
+    eddy_viscosity = np.asarray(state["eddy_viscosity"])
+    if eddy_viscosity.dtype != np.dtype(np.float64):
+        raise ValueError(f"Backup eddy viscosity must use float64; got {eddy_viscosity.dtype}")
+    if solver.turbulence is None:
+        if eddy_viscosity.size:
+            raise ValueError("Backup contains turbulence state for a laminar solver")
+    elif eddy_viscosity.shape != (solver.mesh_data["n_cells"],):
+        raise ValueError("Backup eddy-viscosity shape is incompatible with the mesh")
+    if eddy_viscosity.size and (
+        not np.all(np.isfinite(eddy_viscosity)) or np.any(eddy_viscosity < 0.0)
+    ):
+        raise ValueError("Backup eddy viscosity is invalid")
+
+    time = _read_scalar(state, "time", kind="float")
+    step = _read_scalar(state, "step", kind="int")
+    n_committed = _read_scalar(state, "n_committed_time_steps", kind="int")
+    time_step_size = _read_scalar(state, "time_step_size", kind="float")
+    accepted_time_step_size = _read_scalar(state, "accepted_time_step_size", kind="float")
+    previous_time_step_size = _read_scalar(state, "previous_time_step_size", kind="float")
+    max_courant_number = _read_scalar(state, "max_courant_number", kind="float")
+    if step < 0 or n_committed < 0:
+        raise ValueError("Backup step counters must be non-negative")
+    if step != n_committed:
+        raise ValueError(
+            "Backup step and n_committed_time_steps must describe the same accepted state"
+        )
+    if any(
+        value <= 0.0 for value in (time_step_size, accepted_time_step_size, previous_time_step_size)
+    ):
+        raise ValueError("Backup time-step sizes must be finite and positive")
+    if max_courant_number < 0.0:
+        raise ValueError("Backup max_courant_number must be finite and non-negative")
+
+    if kinematic_viscosity is None:
+        kinematic_viscosity = float(
+            getattr(
+                solver, "_kinematic_viscosity", _solver_setup(solver).transport.kinematic_viscosity
+            )
+        )
+    if not np.isfinite(kinematic_viscosity) or kinematic_viscosity <= 0.0:
+        raise ValueError("Restart molecular viscosity must be finite and positive")
+
+    start_time = float(solver._time_config.start_time)
+    if time < start_time - max(1.0e-12, abs(start_time) * 1.0e-12):
+        raise ValueError(f"Backup time {time} precedes the configured start time {start_time}")
+    if not allow_config_change:
+        end_time = float(solver._time_config.end_time)
+        if time > end_time + max(1.0e-12, abs(end_time) * 1.0e-12):
+            raise ValueError(f"Backup time {time} exceeds the configured end time {end_time}")
+
+    counter_values = np.asarray(state["n_consecutive_accepted_steps"])
+    names = sorted(solver._n_consecutive_accepted_steps)
+    if counter_values.shape != (len(names),):
+        raise ValueError("Backup acceptance-limit state is incompatible")
+    if not np.issubdtype(counter_values.dtype, np.integer):
+        raise ValueError("Backup acceptance counters must use an integer dtype")
+    counters = {name: int(value) for name, value in zip(names, counter_values, strict=True)}
+    if any(value < 0 for value in counters.values()):
+        raise ValueError("Backup acceptance counters must be non-negative")
+
+    return RestartPayload(
+        fields=fields,
+        eddy_viscosity=np.ascontiguousarray(eddy_viscosity),
+        time=time,
+        step=step,
+        n_committed_time_steps=n_committed,
+        time_step_size=time_step_size,
+        accepted_time_step_size=accepted_time_step_size,
+        previous_time_step_size=previous_time_step_size,
+        kinematic_viscosity=kinematic_viscosity,
+        max_courant_number=max_courant_number,
+        n_consecutive_accepted_steps=counters,
+    )
+
+
+def publish_restart_payload(solver, payload: RestartPayload) -> None:
+    """Publish a staged payload after all admission checks have succeeded."""
+    for name, values in payload.fields.items():
+        getattr(solver, name)[:] = values
+    solver.eddy_viscosity = (
+        None if not payload.eddy_viscosity.size else payload.eddy_viscosity.copy()
+    )
+    solver.time = payload.time
+    solver.step = payload.step
+    solver._n_committed_time_steps = payload.n_committed_time_steps
+    solver.time_step_size = payload.time_step_size
+    solver._accepted_time_step_size = payload.accepted_time_step_size
+    solver._previous_time_step_size = payload.previous_time_step_size
+    solver._kinematic_viscosity = payload.kinematic_viscosity
+    solver.max_courant_number = payload.max_courant_number
+    solver._n_consecutive_accepted_steps.update(payload.n_consecutive_accepted_steps)
+    solver._last_residuals = None
+    solver.last_diagnostics = None
+    solver._invalidate_derived_fields()
+    if hasattr(solver, "_publish_state"):
+        solver._publish_state()
+    if hasattr(solver, "_pending_step_size"):
+        solver._pending_step_size = None
+        solver._pending_acceptance_counters = None
+        solver._step_phase = "accepted"
+        solver._evolution_failure = None
+
+
+def _load_backup_local(solver, path, *, allow_config_change: bool = False) -> RestartPayload:
     """Validate and restore one canonical FVM backup."""
     source = Path(path)
     required = {
@@ -243,7 +447,12 @@ def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
             )
         metadata = json.loads(str(np.asarray(archive["metadata"]).item()))
         metadata_keys = set(metadata)
-        expected_metadata = {"format_version", "config_hash", "mesh_hash"}
+        expected_metadata = {
+            "format_version",
+            "config_hash",
+            "mesh_hash",
+            "kinematic_viscosity",
+        }
         if metadata_keys != expected_metadata:
             raise ValueError(
                 "Invalid FVM backup metadata; "
@@ -257,68 +466,95 @@ def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
             )
         if metadata.get("mesh_hash") != mesh_hash(solver.mesh_data):
             raise ValueError("FVM backup mesh hash does not match the active mesh")
-        if not allow_config_change and metadata.get("config_hash") != config_hash(solver.setup):
+        if not allow_config_change and metadata.get("config_hash") != config_hash(
+            _solver_setup(solver)
+        ):
             raise ValueError("FVM backup configuration hash does not match the active case")
+        archived_viscosity = metadata.get("kinematic_viscosity")
+        if (
+            isinstance(archived_viscosity, bool)
+            or not isinstance(archived_viscosity, int | float)
+            or not np.isfinite(float(archived_viscosity))
+            or float(archived_viscosity) <= 0.0
+        ):
+            raise ValueError("FVM backup molecular viscosity identity is invalid")
+        if not allow_config_change and not np.isclose(
+            float(archived_viscosity),
+            float(
+                getattr(
+                    solver,
+                    "_kinematic_viscosity",
+                    _solver_setup(solver).transport.kinematic_viscosity,
+                )
+            ),
+            rtol=0.0,
+            atol=1.0e-15,
+        ):
+            raise ValueError("FVM backup molecular viscosity does not match the active case")
         state = decode_state({name: np.array(archive[name], copy=True) for name in archive.files})
         state.pop("metadata", None)
 
     missing = sorted((required - {"metadata", "storage_layout"}) - set(state))
     if missing:
         raise ValueError("Incomplete FVM backup; missing: " + ", ".join(missing))
-
-    fields = {
-        "velocity": "velocity",
-        "kinematic_pressure": "kinematic_pressure",
-        "volumetric_face_flux": "volumetric_face_flux",
-        "volumetric_face_flux_old": "volumetric_face_flux_old",
-        "volumetric_face_flux_older": "volumetric_face_flux_older",
-        "velocity_old": "velocity_old",
-        "velocity_older": "velocity_older",
-    }
-    for field_name, attribute_name in fields.items():
-        active = np.asarray(getattr(solver, attribute_name))
-        values = state[field_name]
-        if values.shape != active.shape:
-            raise ValueError(
-                f"Backup field {field_name} has shape {values.shape}; expected {active.shape}"
-            )
-        if not np.all(np.isfinite(values)):
-            raise ValueError(f"Backup field {field_name} contains non-finite values")
-
-    eddy_viscosity = state["eddy_viscosity"]
-    if solver.turbulence is None and eddy_viscosity.size:
-        raise ValueError("Backup contains turbulence state for a laminar solver")
-    if solver.turbulence is not None and eddy_viscosity.shape != (solver.mesh_data["n_cells"],):
-        raise ValueError("Backup eddy-viscosity shape is incompatible with the mesh")
-    if eddy_viscosity.size and (
-        not np.all(np.isfinite(eddy_viscosity)) or np.any(eddy_viscosity < 0.0)
-    ):
-        raise ValueError("Backup eddy viscosity is invalid")
-
-    for name in (
-        "velocity",
-        "kinematic_pressure",
-        "volumetric_face_flux",
-        "volumetric_face_flux_old",
-        "volumetric_face_flux_older",
-        "velocity_old",
-        "velocity_older",
-    ):
-        getattr(solver, name)[:] = state[name]
-    solver.eddy_viscosity = None if not eddy_viscosity.size else eddy_viscosity
-    solver.time = float(state["time"])
-    solver.step = int(state["step"])
-    solver._n_committed_time_steps = int(state["n_committed_time_steps"])
-    solver.time_step_size = float(state["time_step_size"])
-    solver._accepted_time_step_size = float(state["accepted_time_step_size"])
-    solver._previous_time_step_size = float(state["previous_time_step_size"])
-    solver.max_courant_number = float(state["max_courant_number"])
-    acceptance_names = sorted(solver._n_consecutive_accepted_steps)
-    if state["n_consecutive_accepted_steps"].shape != (len(acceptance_names),):
-        raise ValueError("Backup acceptance-limit state is incompatible")
-    solver._n_consecutive_accepted_steps.update(
-        zip(acceptance_names, (int(v) for v in state["n_consecutive_accepted_steps"]), strict=True)
+    payload = stage_restart_payload(
+        solver,
+        state,
+        allow_config_change=allow_config_change,
+        kinematic_viscosity=float(metadata["kinematic_viscosity"]),
     )
-    solver._last_residuals = None
-    solver.last_diagnostics = None
-    solver._invalidate_derived_fields()
+
+    return payload
+
+
+def load_backup(solver, path, *, allow_config_change: bool = False) -> None:
+    """Collectively admit and publish one canonical FVM backup.
+
+    Replicated ranks stage independently, exchange only validation status, and
+    publish the payload only after every rank has accepted it.  This keeps a
+    corrupt or malformed archive from leaving peers at different clocks.
+    """
+    parallel = getattr(solver, "parallel", None)
+    payload: RestartPayload | None = None
+    local_error = None
+    try:
+        payload = _load_backup_local(
+            solver,
+            path,
+            allow_config_change=allow_config_change,
+        )
+    except BaseException as error:
+        local_error = {
+            "rank": int(getattr(parallel, "rank", 0)),
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+
+    if parallel is not None and parallel.is_parallel and not parallel.is_partitioned:
+        errors = parallel.comm.allgather(local_error)
+        failure = next((item for item in errors if item is not None), None)
+        if failure is not None:
+            raise RuntimeError(
+                "FVM restart admission failed on rank "
+                f"{failure['rank']} ({failure['type']}): {failure['message']}"
+            )
+        assert payload is not None
+        signatures = parallel.comm.allgather(
+            (
+                payload.time,
+                payload.step,
+                payload.time_step_size,
+                payload.accepted_time_step_size,
+                payload.previous_time_step_size,
+            )
+        )
+        if any(signature != signatures[0] for signature in signatures[1:]):
+            raise RuntimeError("FVM restart admission found inconsistent clocks across ranks")
+    elif local_error is not None:
+        raise RuntimeError(
+            f"FVM restart admission failed ({local_error['type']}): {local_error['message']}"
+        )
+
+    if payload is None:
+        raise RuntimeError("FVM restart admission produced no payload")
+    publish_restart_payload(solver, payload)

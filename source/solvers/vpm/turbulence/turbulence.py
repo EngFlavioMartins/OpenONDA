@@ -128,7 +128,6 @@ class ParticlesLES:
         eddy_viscosity: ti.template(),
         n_particles_total: ti.i32,
     ):
-        ti.loop_config(serialize=True)
         for i in range(n_particles_total):
-            minimum[None] = ti.min(minimum[None], eddy_viscosity[i])
-            maximum[None] = ti.max(maximum[None], eddy_viscosity[i])
+            ti.atomic_min(minimum[None], eddy_viscosity[i])
+            ti.atomic_max(maximum[None], eddy_viscosity[i])

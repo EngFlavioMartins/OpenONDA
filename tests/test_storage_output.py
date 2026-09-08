@@ -56,11 +56,7 @@ def _load_rotor_wake_plotter():
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, str(assets))
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.path.pop(0)
+    spec.loader.exec_module(module)
     return module
 
 

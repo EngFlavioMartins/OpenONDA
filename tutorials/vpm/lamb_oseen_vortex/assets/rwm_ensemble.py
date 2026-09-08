@@ -8,7 +8,13 @@ import math
 
 import pandas as pd
 
-from tutorials.vpm.lamb_oseen_vortex.setup import (
+if not __package__:
+    from openonda.tutorial_runner import case_package
+    from pathlib import Path as _CasePath
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+from ..setup import (
     MERGING_SAMPLE_INTERVAL_STEPS,
     RWM_ENSEMBLE_SIZE,
     SAMPLE_INTERVAL_TIME,

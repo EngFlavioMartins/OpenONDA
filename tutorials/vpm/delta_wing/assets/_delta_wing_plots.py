@@ -14,7 +14,6 @@ shedding cadence + wake-bounding adaptation and carries no physical insight.)
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 
@@ -25,15 +24,11 @@ import pandas as pd
 CASE_DIR = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = CASE_DIR / "samples" / "delta_wing"
 FIGURES_DIR = CASE_DIR / "figures"
-THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 
 def _load_theme() -> tuple[dict[str, str], object | None]:
-    if not THEME_PATH.exists():
-        raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
-    spec = importlib.util.spec_from_file_location("mpl_setup", THEME_PATH)
-    theme = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(theme)
+    from openonda import plotting as theme
+
     theme.set_style()
     return dict(theme.COLORS), theme
 

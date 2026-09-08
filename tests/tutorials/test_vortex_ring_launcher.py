@@ -91,28 +91,13 @@ def test_vortex_ring_plot_campaign_runs_all_modules_and_stops_on_failure(
 
     assert result.returncode == (29 if fail_pdf else 0)
     validation_argument = "" if strict else " --available"
-    assert (
-        f"-m tutorials.vpm.vortex_ring.assets.postprocess{validation_argument} --pre-plot"
-        in result.stdout
-    )
-    assert (
-        "-m tutorials.vpm.vortex_ring.assets.plot_vortex_ring_motion --format png" in result.stdout
-    )
-    assert (
-        "-m tutorials.vpm.vortex_ring.assets.plot_vortex_ring_energy --format pdf" in result.stdout
-    )
+    assert f"assets.postprocess{validation_argument} --pre-plot" in result.stdout
+    assert "assets.plot_vortex_ring_motion --format png" in result.stdout
+    assert "assets.plot_vortex_ring_energy --format pdf" in result.stdout
     if fail_pdf:
-        assert (
-            "-m tutorials.vpm.vortex_ring.assets.plot_vortex_ring_stability --format pdf"
-            not in result.stdout
-        )
-        assert "-m tutorials.vpm.vortex_ring.assets.postprocess --manifest" not in result.stdout
+        assert "assets.plot_vortex_ring_stability --format pdf" not in result.stdout
+        assert "assets.postprocess --manifest" not in result.stdout
     else:
-        assert (
-            "-m tutorials.vpm.vortex_ring.assets.plot_vortex_ring_stability --format pdf"
-            in result.stdout
-        )
-        assert "-m tutorials.vpm.vortex_ring.assets.postprocess --manifest" in result.stdout
-        assert result.stdout.rstrip().endswith(
-            f"-m tutorials.vpm.vortex_ring.assets.postprocess{validation_argument}"
-        )
+        assert "assets.plot_vortex_ring_stability --format pdf" in result.stdout
+        assert "assets.postprocess --manifest" in result.stdout
+        assert result.stdout.rstrip().endswith(f"assets.postprocess{validation_argument}")

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Passing Phase 1 tests for typed Cartesian-mesher configuration."""
+"""Typed Cartesian-mesher configuration and geometry independence."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def test_configuration_objects_are_frozen_and_validate_units():
         msh.LineRefinement("bad", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.1)
 
 
-def test_all_phase_one_volume_controls_combine_by_smallest_requested_size():
+def test_volume_controls_combine_by_smallest_requested_size():
     controls = (
         msh.BoxRefinement("box", (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0), 0.25),
         msh.SphereRefinement("sphere", (0.0, 0.0, 0.0), 0.5, 0.125),
@@ -66,22 +66,7 @@ def test_sphere_refinement_does_not_refine_disjoint_boxes_inside_its_aabb():
     assert not sphere.intersects_box(np.asarray((0.4, 0.4, 0.4)), np.asarray((0.5, 0.5, 0.5)))
 
 
-def test_cartesian_constructor_does_not_import_tutorial_configuration(tmp_path: Path):
-    surface = tmp_path / "surface.stl"
-    surface.write_text(
-        "solid body\n"
-        " facet normal 0 0 -1\n outer loop\n"
-        "  vertex -0.25 -0.25 -0.25\n  vertex 0.25 0.25 -0.25\n  vertex 0.25 -0.25 -0.25\n"
-        " endloop\n endfacet\n"
-        "endsolid body\n",
-        encoding="ascii",
-    )
-    # The intentionally malformed single-triangle file must fail in the
-    # typed surface object, before any tutorial or meshing engine is touched.
-    with pytest.raises(ValueError):
-        msh.STLSurface(surface, patch="body")
-
-
+@pytest.mark.slow
 def test_cartesian_build_preserves_declared_patch_names_and_reports_effective_sizes():
     surface = msh.STLSurface(
         REPOSITORY_ROOT / "tutorials/coupled_fvm_vpm/cube_flow/assets/cube.stl", patch="body"

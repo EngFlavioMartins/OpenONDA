@@ -6,13 +6,20 @@ the point where centreline u_x changes sign back to positive) is the second
 quality monitor for the steady Re = 30 case: reference L/D = 1.55-1.70
 (Constant et al. 2017, Table 2)."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     COLORS,
     D_REF,
     FIGURES_DIR,

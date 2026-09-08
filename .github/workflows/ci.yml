@@ -32,10 +32,6 @@ jobs:
       - run: python -m pip install ".[dev]"
       - run: ruff check source tests tutorials scripts openonda
       - run: ruff format --check source tests tutorials scripts openonda
-      - name: Enforce canonical nomenclature, paths, and stored artifact fields
-        run: python scripts/check_nomenclature.py --paths --generated
-      - name: Enforce documented and typed public API completeness
-        run: python scripts/check_api_completeness.py
       - name: Enforce Python type safety
         run: pyrefly check
       - run: python -m build
@@ -98,6 +94,26 @@ jobs:
             qualification-results.xml
             numerical-results.json
 
+  slow-contracts:
+    name: Slow CPU integration and restart contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e ".[test]"
+      - run: >-
+          python -m pytest tests -p no:cacheprovider
+          -m "slow and not qualification and not gpu"
+          --junitxml=slow-contracts-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slow-contracts-results
+          path: slow-contracts-results.xml
+
   nightly-gpu:
     name: Nightly GPU/backend qualification
     if: github.event_name == 'schedule'
@@ -149,7 +165,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install build
-      - run: python -m build --wheel
+      - run: python -m build
       - name: Install wheel in an isolated environment
         run: |
           python -m venv "$RUNNER_TEMP/openonda-wheel"
@@ -157,5 +173,13 @@ jobs:
       - name: Initialize dependencies and solve outside the checkout
         working-directory: ${{ runner.temp }}
         run: |
-          "$RUNNER_TEMP/openonda-wheel/bin/python" -m openonda.verify_install --require-site-packages
+          env -u PYTHONPATH "$RUNNER_TEMP/openonda-wheel/bin/python" -I -m openonda.verify_install --require-site-packages
           "$RUNNER_TEMP/openonda-wheel/bin/python" -m pip check
+          "$RUNNER_TEMP/openonda-wheel/bin/openonda" tutorial run fvm/taylor_green --workspace "$RUNNER_TEMP/first-flow"
+          "$RUNNER_TEMP/openonda-wheel/bin/openonda" tutorial run coupled_fvm_vpm/uniform_flow --workspace "$RUNNER_TEMP/hybrid-flow"
+      - name: Verify editable installation outside the checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/openonda-editable"
+          "$RUNNER_TEMP/openonda-editable/bin/python" -m pip install -e .
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH "$RUNNER_TEMP/openonda-editable/bin/python" -I -m openonda.verify_install

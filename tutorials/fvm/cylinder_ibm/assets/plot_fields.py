@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """Vorticity and velocity-magnitude snapshots with the IBM marker overlay."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     COLORS,
     COLORMAPS,
     FIGURES_DIR,

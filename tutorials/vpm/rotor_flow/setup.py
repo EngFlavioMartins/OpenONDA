@@ -12,6 +12,13 @@ Usage:
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[0]) + ""
+
+
 from pathlib import Path
 
 import numpy as np
@@ -140,7 +147,7 @@ def build_rotor_case(
     wake_spacing: float = FIXED_WAKE_SPACING,
 ) -> vpm.VPMCase:
     """Build the maintained three-blade rotor case for a requested run length."""
-    from assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
+    from .assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
 

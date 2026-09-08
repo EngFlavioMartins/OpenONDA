@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 
@@ -13,7 +12,6 @@ ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 SAMPLES_DIR = CASE_DIR / "samples"
 FIGURES_DIR = CASE_DIR / "figures"
-THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 RING_RADIUS = 1.0
 RING_CIRCULATION = np.pi
@@ -38,11 +36,8 @@ def _theme():
     """Return the shared OpenONDA Matplotlib theme."""
     global _THEME_MODULE
     if _THEME_MODULE is None:
-        if not THEME_PATH.exists():
-            raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
-        spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
+        from openonda import plotting as theme
+
         _THEME_MODULE = theme
     return _THEME_MODULE
 
@@ -50,7 +45,7 @@ def _theme():
 def load_theme() -> tuple[dict[str, str], object | None]:
     """Apply the shared OpenONDA Matplotlib style."""
     theme = _theme()
-    theme.set_style()
+    theme.set_thesis_style()
     return dict(theme.COLORS), theme
 
 

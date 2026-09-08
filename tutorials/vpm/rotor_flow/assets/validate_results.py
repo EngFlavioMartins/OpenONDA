@@ -15,6 +15,13 @@ Checks, in order of what they catch:
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import re
 import sys
 import argparse
@@ -24,9 +31,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     DENSITY,
     FREESTREAM_SPEED,
     N_BLADES,
@@ -52,8 +58,8 @@ def _bem_reference(
 ) -> tuple[float, float]:
     """Run BEM for the rotor_flow blade design and return (thrust_coefficient, power_coefficient)."""
     try:
-        from rotor_theory import solve_blade_element_momentum
-        from generate_openvsp_blade import RotorBladeDesign, design_schedule
+        from .rotor_theory import solve_blade_element_momentum
+        from .generate_openvsp_blade import RotorBladeDesign, design_schedule
     except Exception:
         return float("nan"), float("nan")
 
@@ -120,7 +126,7 @@ def _plane_drifts(
     try:
         import pyvista as pv
 
-        from plot_rotor_wake_planes import (
+        from .plot_rotor_wake_planes import (
             _discover_planes,
             _drift,
             _plane_files,

@@ -7,13 +7,20 @@ writes ``samples/exp_moving_aoa05/exp_moving_aoa05_downwash.csv``.
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import math
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from generate_surface import create_flat_plate, save_surface
+from .generate_surface import create_flat_plate, save_surface
 from openonda.vpm import (
     Backup,
     ForceConfig,
@@ -28,7 +35,7 @@ from openonda.vpm import (
     VLMSetup,
     VPMCase,
 )
-from theoretical_model import lifting_line_circulation
+from .theoretical_model import lifting_line_circulation
 
 
 TUTORIAL_DIR = Path(__file__).resolve().parent.parent

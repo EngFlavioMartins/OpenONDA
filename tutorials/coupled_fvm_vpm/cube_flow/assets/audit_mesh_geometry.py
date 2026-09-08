@@ -32,10 +32,10 @@ from pathlib import Path
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(CASE_DIR))
-sys.path.insert(0, str(CASE_DIR.parents[2]))  # source/ root for in-place runs
 
-import setup as cube_flow_setup  # noqa: E402  (geometry configuration)
+from openonda.tutorial_runner import load_case_module
+
+cube_flow_setup = load_case_module(CASE_DIR)
 
 
 def _boundary_face_area_vector(mesh_data) -> np.ndarray:

@@ -9,8 +9,6 @@ import sys
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(ROOT))
 
 from source.coupler.renewal_projection import (  # noqa: E402
     evaluate_sparse_gaussian_vorticity,

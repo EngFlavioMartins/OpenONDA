@@ -4,7 +4,14 @@ from pathlib import Path
 import json
 import numpy as np
 import pandas as pd
-from tutorials.vpm.vortex_ring.assets import ring_metrics as rm
+
+if not __package__:
+    from openonda.tutorial_runner import case_package
+    from pathlib import Path as _CasePath
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+from ..assets import ring_metrics as rm
 
 
 def summarize():

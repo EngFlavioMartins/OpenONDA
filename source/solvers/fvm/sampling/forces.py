@@ -62,10 +62,20 @@ FORCES_HEADER = [
 ]
 
 
+def _context_setup(context):
+    """Return the admitted setup used by live and offline sampling contexts."""
+    return getattr(context, "_resolved_setup", context.setup)
+
+
 def _context_transport(context):
     """Return ``(density, effective_kinematic_viscosity)`` for the sampled state."""
-    density = context.setup.transport.density
-    effective_kinematic_viscosity = context.setup.transport.kinematic_viscosity
+    setup = _context_setup(context)
+    density = setup.transport.density
+    effective_kinematic_viscosity = getattr(
+        context,
+        "_kinematic_viscosity",
+        setup.transport.kinematic_viscosity,
+    )
     eddy_viscosity = getattr(context, "eddy_viscosity", None)
     if eddy_viscosity is not None:
         effective_kinematic_viscosity = (
@@ -249,7 +259,11 @@ class YPlusSampler(Sampler):
         """Compute y+ statistics for the current state (collective)."""
         stats = diagnostics.compute_y_plus(
             context.velocity,
-            context.setup.transport.kinematic_viscosity,
+            getattr(
+                context,
+                "_kinematic_viscosity",
+                _context_setup(context).transport.kinematic_viscosity,
+            ),
             context.mesh_data,
             context.geo_data,
             context.boundaries,
@@ -332,7 +346,7 @@ class IBMForceSampler(Sampler):
                 "call FVMSolver.set_immersed_bodies(...) first"
             )
         return {
-            "forces": ibm.body_forces(density=context.setup.transport.density),
+            "forces": ibm.body_forces(density=_context_setup(context).transport.density),
             "slip_error": ibm.slip_error(context.velocity),
         }
 
@@ -342,13 +356,13 @@ class IBMForceSampler(Sampler):
         data: dict,
     ) -> dict[str, tuple[float, float]]:
         """Return per-body ``(Cd, Cl)`` pairs for logging."""
-        density = context.setup.transport.density
+        density = _context_setup(context).transport.density
         q = 0.5 * density * self.reference_velocity**2 * self.reference_area
         return {name: (float(F[0] / q), float(F[1] / q)) for name, F in data["forces"].items()}
 
     def write_csv(self, context: FVMSolver, samples_dir: str, data: dict) -> None:
         """Append one row per body to ``<samples_dir>/<name>.csv``."""
-        density = context.setup.transport.density
+        density = _context_setup(context).transport.density
         q = 0.5 * density * self.reference_velocity**2 * self.reference_area
         rows = []
         for name, F in data["forces"].items():

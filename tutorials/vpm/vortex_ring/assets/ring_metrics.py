@@ -3,7 +3,6 @@ vortex_ring plot scripts."""
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -42,7 +41,6 @@ REFERENCE_KINETIC_ENERGY = (
 P_REF = REFERENCE_KINETIC_ENERGY / REFERENCE_TIME  # [m⁵/s³]  dissipation rate scale = Γ³/R₀
 
 # -- Theme / plotting ---------------------------------------------------------
-THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 _THEME_MODULE = None
 
@@ -50,11 +48,8 @@ _THEME_MODULE = None
 def _theme():
     global _THEME_MODULE
     if _THEME_MODULE is None:
-        if not THEME_PATH.exists():
-            raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
-        spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
+        from openonda import plotting as theme
+
         _THEME_MODULE = theme
     return _THEME_MODULE
 

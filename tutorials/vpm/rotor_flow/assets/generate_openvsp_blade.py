@@ -80,13 +80,8 @@ def generate_rotorflow_openvsp_blade(
 def export_openvsp_blade(output_dir: Path, design: RotorBladeDesign) -> tuple[Path, Path, Path]:
     vsp, import_error = _try_import_openvsp()
     if vsp is None:
-        # Re-exec guard.  When openvsp cannot be imported we relaunch under the
-        # `openvsp-python` helper (which sets OPENVSP_ROOT/PYTHONPATH).  But if
-        # the import fails *again* inside that helper, relaunching would recurse
-        # forever — and because the helper prepends OpenVSP paths to PYTHONPATH
-        # on every level, the environment grows until execve aborts with
-        # OSError [Errno 7] "Argument list too long".  Detect the second failure
-        # via a sentinel and raise the real cause instead.
+        # A separate interpreter may own the OpenVSP Python ABI. Fail after
+        # one relaunch so an incompatible external API cannot recurse.
         if os.environ.get("_OPENONDA_OPENVSP_REEXEC") == "1":
             raise ImportError(
                 "OpenVSP Python API failed to import inside the openvsp-python helper: "
@@ -101,7 +96,7 @@ def export_openvsp_blade(output_dir: Path, design: RotorBladeDesign) -> tuple[Pa
         if command is None:
             raise ImportError(
                 "OpenVSP Python API is not importable and no `openvsp-python` helper was found. "
-                "Run `scripts/install/install_openvsp.sh` from the repository root."
+                "Install an ABI-compatible OpenVSP API or select its interpreter with OPENONDA_OPENVSP_PYTHON."
             )
         args = [
             *command,
@@ -313,8 +308,6 @@ def _try_import_openvsp() -> tuple[object | None, str]:
     (typically a Python-ABI mismatch in ``_vsp.so``) instead of silently
     re-launching the helper.
     """
-    assets_dir = Path(__file__).resolve().parent
-    sys.path = [entry for entry in sys.path if Path(entry or ".").resolve() != assets_dir]
     try:
         import openvsp as vsp
     except ImportError as exc:
@@ -329,9 +322,6 @@ def _openvsp_python_command() -> list[str] | None:
     candidates = [
         configured,
         shutil.which("openvsp-python"),
-        str(Path.home() / "anaconda3/envs/openonda-openvsp/bin/python"),
-        str(Path.home() / "miniforge3/envs/openonda-openvsp/bin/python"),
-        str(Path.home() / "mambaforge/envs/openonda-openvsp/bin/python"),
     ]
     for candidate in candidates:
         if candidate and Path(candidate).exists():
@@ -340,39 +330,8 @@ def _openvsp_python_command() -> list[str] | None:
 
 
 def _openvsp_subprocess_env() -> dict[str, str]:
-    env = os.environ.copy()
-    root = _openvsp_root()
-    if root is not None:
-        python_paths = [
-            root / "python/openvsp",
-            root / "python/degen_geom",
-            root / "python/openvsp_config",
-            root / "python/utilities",
-        ]
-        existing_pythonpath = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = os.pathsep.join(
-            [str(path) for path in python_paths if path.exists()]
-            + ([existing_pythonpath] if existing_pythonpath else [])
-        )
-        existing_ld_library_path = env.get("LD_LIBRARY_PATH")
-        env["LD_LIBRARY_PATH"] = os.pathsep.join(
-            [str(root / "lib")] + ([existing_ld_library_path] if existing_ld_library_path else [])
-        )
-    return env
-
-
-def _openvsp_root() -> Path | None:
-    candidates = [
-        os.environ.get("OPENVSP_ROOT"),
-        os.environ.get("OPENVSP_PATH"),
-        str(Path.home() / "OpenVSP-3.51.0"),
-    ]
-    for candidate in candidates:
-        if candidate:
-            path = Path(candidate)
-            if (path / "python/openvsp").exists():
-                return path
-    return None
+    """Use the environment of the user's configured OpenVSP interpreter."""
+    return os.environ.copy()
 
 
 def _parse_args() -> argparse.Namespace:

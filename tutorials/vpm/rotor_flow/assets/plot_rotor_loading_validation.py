@@ -15,6 +15,13 @@ Saves: ``figures/rotor_loading_validation.png``
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib
@@ -24,7 +31,7 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from _common import (
+from ._common import (
     build_arg_parser,
     build_rotor_style_map,
     FIGURES_DIR,
@@ -99,8 +106,8 @@ def plot_loading_validation(args) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     # -- BEM reference ---------------------------------------------------
-    from rotor_theory import solve_blade_element_momentum
-    from generate_openvsp_blade import RotorBladeDesign, design_schedule
+    from .rotor_theory import solve_blade_element_momentum
+    from .generate_openvsp_blade import RotorBladeDesign, design_schedule
 
     design = RotorBladeDesign(n_radial_stations=23, n_chordwise_stations=7)
     sched = design_schedule(design)

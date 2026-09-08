@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Run a Lamb--Oseen vortex, dipole, or merging pair.
 
-Examples::
+Examples (from this case directory)::
 
-    python -m tutorials.vpm.lamb_oseen_vortex.setup vortex CS
-    python -m tutorials.vpm.lamb_oseen_vortex.setup dipole DVH
-    python -m tutorials.vpm.lamb_oseen_vortex.setup merging GBD
+    python -m openonda.tutorial_runner . setup vortex CS
+    python -m openonda.tutorial_runner . setup dipole DVH
+    python -m openonda.tutorial_runner . setup merging GBD
 """
 
 from __future__ import annotations

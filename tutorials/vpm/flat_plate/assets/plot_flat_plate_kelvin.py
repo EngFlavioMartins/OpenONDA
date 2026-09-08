@@ -6,6 +6,13 @@ Output: figures/flat_plate_kelvin.png
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import argparse
 from pathlib import Path
 
@@ -16,7 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from _plot_theme import CASE_DIR, SAMPLES_DIR, color, cm, save_fig, export_formats
+from ._plot_theme import CASE_DIR, SAMPLES_DIR, color, cm, save_fig, export_formats
 
 
 CM = cm()

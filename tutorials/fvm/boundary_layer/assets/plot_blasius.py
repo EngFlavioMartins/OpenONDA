@@ -3,6 +3,13 @@
 solution.  Profiles from every station must collapse onto the single curve
 u/U = f'(eta) if the solver reproduces the laminar boundary layer."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib
@@ -11,7 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     COLORS,
     FIGURES_DIR,
     FREESTREAM_SPEED,

@@ -7,7 +7,7 @@ ENV_DIR="$REPO_ROOT/scripts/environment"
 ENV_NAME="${OPENONDA_CONDA_ENV:-OpenONDA}"
 ENV_FILE="$ENV_DIR/environment.yml"
 AUTO_YES=1
-EDITABLE=1
+EDITABLE=0
 
 usage() {
     printf '%s\n' \
@@ -16,6 +16,7 @@ usage() {
         "  -y, --yes       install Miniforge without prompting (the default)" \
         "  --prompt        ask before installing Miniforge if Conda is absent" \
         "  --parallel      install the MPI/PETSc environment" \
+        "  --dev          editable install with development tools" \
         "  --no-editable   install a fixed copy instead of linking the repository" \
         "  --name NAME     choose the Conda environment name" \
         "  -h, --help      show this help"
@@ -30,7 +31,7 @@ while (($#)); do
             if [[ "$ENV_NAME" == "OpenONDA" ]]; then ENV_NAME="OpenONDA-parallel"; fi
             ;;
         --no-editable) EDITABLE=0 ;;
-        --dev) ;;  # Retained for compatibility; editable is now the default.
+        --dev) EDITABLE=1 ;;
         --name)
             shift
             [[ $# -gt 0 ]] || { echo "--name requires a value" >&2; exit 2; }
@@ -130,7 +131,7 @@ if [[ $EDITABLE -eq 0 ]]; then VERIFY_ARGS+=(--require-site-packages); fi
 (
     cd "${TMPDIR:-/tmp}"
     # bash 3.2 treats an empty array as unset under "set -u".
-    PYTHONNOUSERSITE=1 "$ENV_PYTHON" -m openonda.verify_install ${VERIFY_ARGS[@]+"${VERIFY_ARGS[@]}"}
+    env -u PYTHONPATH "$ENV_PYTHON" -I -m openonda.verify_install ${VERIFY_ARGS[@]+"${VERIFY_ARGS[@]}"}
 )
 "$ENV_PYTHON" -m pip check
 

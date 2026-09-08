@@ -6,6 +6,7 @@ import errno
 import json
 import os
 from pathlib import Path
+import shutil
 import tempfile
 from typing import Any
 
@@ -60,18 +61,43 @@ class SolverIO:
         samples = Path(self.samples_dir)
         solution = Path(self.solution_dir)
 
-        # Every sampler CSV is rewound by its "time" column.
+        samplers = list(getattr(self.solver, "_samplers", ()) or ())
+        owned_stems = {
+            str(getattr(sampler, "file_name", None) or sampler.name)
+            for sampler in samplers
+            if getattr(sampler, "file_name", None) is not None or hasattr(sampler, "name")
+        }
+        # Every solver-owned sampler CSV is rewound by its "time" column.
+        # Unrecognised user files in the shared samples directory are never
+        # considered restart products.
         if samples.is_dir():
             for csv_path in samples.glob("*.csv"):
-                self._rewind_csv(csv_path, time)
+                if csv_path.stem in owned_stems:
+                    self._rewind_csv(csv_path, time)
             # Surface-sampler PVD indices: drop frames past the resume time so
             # a restarted live run or re-run PostProcess does not double-list
             # them (the per-step .vts files stay keyed by their own step).
             for pvd_path in samples.glob("*.pvd"):
-                self._rewind_pvd(pvd_path, time)
+                if pvd_path.stem in owned_stems:
+                    self._rewind_pvd(pvd_path, time)
 
         self._rewind_jsonl(solution / "diagnostics.jsonl", time)
         self._rewind_jsonl(solution / "performance.jsonl", time)
+        config = getattr(self.solver, "_resolved_setup", self.solver.setup)
+        self._rewind_pvd(solution / f"{config.case_name}.pvd", time)
+
+        # Reconcile in-memory indexes held by already-created writers.  The
+        # on-disk branch remains available for inspection; only the active
+        # collection is rewound.
+        manager = getattr(self.solver, "pvd_manager", None)
+        if manager is not None:
+            manager.rewind(time)
+        writer = getattr(self.solver, "_buffered_vtk_writer", None)
+        if writer is not None:
+            writer.rewind(time)
+        runtime = getattr(self.solver, "_sample_pvd_entries", None)
+        if runtime is not None:
+            runtime.clear()
 
     @staticmethod
     def _replace(path: Path, lines: list[str]) -> None:
@@ -79,6 +105,19 @@ class SolverIO:
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
                 stream.writelines(lines)
+            os.replace(temporary, path)
+        except BaseException:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+            raise
+
+    @classmethod
+    def _replace_csv(cls, path: Path, rows: list[list[str]]) -> None:
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerows(rows)
             os.replace(temporary, path)
         except BaseException:
             if os.path.exists(temporary):
@@ -104,22 +143,62 @@ class SolverIO:
             if row and float(row[time_column]) <= time + 1e-12:
                 kept.append(row)
         if len(kept) != len(rows):
-            cls._replace(path, [",".join(row) + "\n" for row in kept])
+            cls._replace_csv(path, kept)
 
     @classmethod
     def _rewind_pvd(cls, path: Path, time: float) -> None:
         if not path.exists():
             return
-        import re as _re
+        from xml.etree import ElementTree as XmlElementTree
 
-        text = path.read_text(encoding="utf-8")
-        kept = _re.sub(
-            r'<DataSet timestep="([^"]+)"[^>]*?/>',
-            lambda m: m.group(0) if float(m.group(1)) <= time + 1e-12 else "",
-            text,
+        from defusedxml import ElementTree as SafeElementTree
+
+        tree = SafeElementTree.parse(path)
+        collection = tree.find(".//Collection")
+        if collection is None:
+            return
+        datasets = list(collection)
+        kept = []
+        future = []
+        seen: set[str] = set()
+        for dataset in datasets:
+            if dataset.tag != "DataSet":
+                kept.append(dataset)
+                continue
+            try:
+                dataset_time = float(dataset.attrib["timestep"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(f"Invalid PVD dataset in {path}") from error
+            filename = dataset.attrib.get("file", "")
+            if dataset_time > time + 1.0e-12:
+                future.append(dataset)
+                continue
+            if filename in seen:
+                continue
+            seen.add(filename)
+            kept.append(dataset)
+        if not future and len(kept) == len(datasets):
+            return
+
+        # Preserve the superseded collection index before publishing the
+        # resumed branch.  Snapshot files themselves are intentionally left in
+        # place, so this operation is recoverable even without copying large
+        # VTU/VTS payloads.
+        branch_root = path.parent / "restart-branches"
+        branch_root.mkdir(parents=True, exist_ok=True)
+        branch = Path(tempfile.mkdtemp(prefix="before-", dir=branch_root))
+        shutil.copy2(path, branch / path.name)
+
+        collection.clear()
+        collection.extend(
+            sorted(
+                kept, key=lambda item: (float(item.attrib["timestep"]), item.attrib.get("file", ""))
+            )
         )
-        if kept != text:
-            cls._replace(path, [kept])
+        # defusedxml intentionally exposes parsing primitives only; use the
+        # standard library serializer on the already-sanitized element tree.
+        xml = XmlElementTree.tostring(tree.getroot(), encoding="unicode") + "\n"
+        cls._replace(path, [xml])
 
     @classmethod
     def _rewind_jsonl(cls, path: Path, time: float) -> None:

@@ -10,6 +10,9 @@ Run the complete three-grid study with:
 ./allrun.sh
 ```
 
+`allrun.sh` always removes previous `solution/` and `samples/` data first, then
+immediately recreates fresh empty output roots before launching the three cases.
+
 The script runs `coarse`, `medium`, and `fine` in sequence. Each name selects
 both output directories, so the coarse case writes fields and mesh files under
 `solution/coarse/` and samples under `samples/coarse/`. To run one case

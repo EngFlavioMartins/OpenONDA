@@ -77,6 +77,12 @@ class BufferedVTKWriter:
                 self._pending.result()
                 self._pending = None
 
+    def rewind(self, time: float) -> None:
+        """Flush pending output and reconcile the worker-owned PVD index."""
+        self.flush()
+        if self._pvd is not None:
+            self._pvd.rewind(time)
+
     def close(self) -> None:
         """Flush and stop the writer. This method is idempotent."""
         with self._lock:

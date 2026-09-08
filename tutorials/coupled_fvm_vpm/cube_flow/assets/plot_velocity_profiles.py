@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Publication-style velocity profiles and drag history."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 import argparse
 import sys
@@ -12,8 +19,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.gridspec import GridSpec  # noqa: E402
 import numpy as np  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _plotutil as util  # noqa: E402
+from . import _plotutil as util  # noqa: E402
 
 FIGURE_FORMAT = "png"
 FIGURE_DPI = util.FIGURE_DPI

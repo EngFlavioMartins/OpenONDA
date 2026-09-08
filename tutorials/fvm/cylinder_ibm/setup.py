@@ -8,11 +8,18 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[0]) + ""
+
+
 import os
 
 import numpy as np
 
-from assets.mesh_rectilinear import cylinder_ibm_mesh
+from .assets.mesh_rectilinear import cylinder_ibm_mesh
 import openonda.fvm as fvm
 
 # ---- Case definition -----------------------------------------------------

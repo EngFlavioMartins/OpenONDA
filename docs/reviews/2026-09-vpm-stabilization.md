@@ -1,5 +1,13 @@
 # VPM stabilization audit and interaction experiments
 
+> **Current scope (8 September):** resume the LES + SSPRK3 + transposed-stretching
+> pathway: qualify viscosity, run the baseline, then test stabilization against
+> its observed failure. The no-LES/RK4 campaign was abandoned and its raw data
+> removed; it did not validate an LBM match. See the
+> [current study status](2026-09-vpm-core-transport.md). Results below are the
+> historical stabilization audit, not certification of the current target.
+
+
 **Superseded recommendation:** see [the core-transport investigation](2026-09-vpm-core-transport.md). The baseline below demonstrated runtime, not the requested LBM agreement. The default launcher now tests physics controls.
 
 This audit concerns the classical Gaussian VPM with transposed stretching,

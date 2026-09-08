@@ -1,7 +1,6 @@
 import argparse
 import csv
 import glob
-import importlib.util
 import os
 from pathlib import Path
 
@@ -11,13 +10,11 @@ ASSETS_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = ASSETS_DIR.parent
 FIGURES_DIR = SCRIPT_DIR / "figures"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
-THEME_PATH = SCRIPT_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 
 def _load_theme():
-    spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
-    theme = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(theme)
+    from openonda import plotting as theme
+
     theme.set_style()
     return theme
 

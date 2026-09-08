@@ -391,13 +391,14 @@ class CouplerInterfaceMixin:
         value = float(delta)
         if not np.isfinite(value):
             raise ValueError("pressure shift must be finite")
-        # Shift owned cells *and* ghosts so halo exchanges stay consistent.
-        self.kinematic_pressure = np.asarray(self.kinematic_pressure, dtype=np.float64) + value
+        # Shift owned cells *and* ghosts in place.  Replacing the NumPy array
+        # would silently detach an already-issued FieldState view.
+        self.kinematic_pressure += value
         for boundary in self.boundaries:
             if boundary.get("kinematic_pressure_value_field") is not None:
-                boundary["kinematic_pressure_value_field"] = (
-                    np.asarray(boundary["kinematic_pressure_value_field"]) + value
-                )
+                boundary["kinematic_pressure_value_field"] += value
+        self._invalidate_derived_fields()
+        self._publish_state()
 
     def get_velocity_gradient_field(self):
         """Return the velocity gradient at cell centres with shape ``(nCells, 3, 3)``."""
@@ -608,7 +609,12 @@ class CouplerInterfaceMixin:
             raise ValueError(
                 f"Kinematic viscosity must be finite and positive; got {kinematic_viscosity!r}"
             )
-        self.setup.transport.kinematic_viscosity = kinematic_viscosity
+        if not hasattr(self, "_kinematic_viscosity"):
+            raise RuntimeError("FVM solver has no runtime viscosity state")
+        self._kinematic_viscosity = kinematic_viscosity
+        invalidate = getattr(self, "_invalidate_derived_fields", None)
+        if invalidate is not None:
+            invalidate()
 
     # ── setters: velocity boundary conditions ────────────────────────────────
     def set_dirichlet_velocity_boundary_condition_vec(self, prescribed_velocity, patch_name):
@@ -805,6 +811,8 @@ class CouplerInterfaceMixin:
         owners = self.mesh_data["owners"][start : start + nf]
         ghosts = n_cells + np.arange(start - n_interior, start - n_interior + nf)
         self.kinematic_pressure[ghosts] = self.kinematic_pressure[owners] + field
+        self._invalidate_derived_fields()
+        self._publish_state()
 
     def set_flux_consistent_pressure_boundary_condition(self, patch_name):
         """Pair a prescribed velocity flux with native ``fixedFluxPressure``."""
@@ -815,6 +823,9 @@ class CouplerInterfaceMixin:
         b.pop("fixed_flux_pressure_external", None)
         b.pop("fixed_flux_pressure_delta", None)
         b.pop("fixed_gradient_delta", None)
+        invalidate = getattr(self, "_invalidate_derived_fields", None)
+        if invalidate is not None:
+            invalidate()
 
     def set_neumann_pressure_boundary_condition(self, pressure_gradient, patch_name):
         """Impose a vector pressure gradient on a coupling patch."""
@@ -851,6 +862,8 @@ class CouplerInterfaceMixin:
         owners = self.mesh_data["owners"][start : start + nf]
         ghosts = n_cells + np.arange(start - n_interior, start - n_interior + nf)
         self.kinematic_pressure[ghosts] = self.kinematic_pressure[owners] + delta
+        self._invalidate_derived_fields()
+        self._publish_state()
 
     def set_external_face_flux_boundary_condition(self, volumetric_face_flux, patch_name):
         """Prescribe replayed volumetric fluxes on a boundary patch.
@@ -871,6 +884,9 @@ class CouplerInterfaceMixin:
                 f"Face fluxes for patch {patch_name!r} must be finite with shape ({b['n_faces']},)"
             )
         b["external_face_flux"] = field
+        invalidate = getattr(self, "_invalidate_derived_fields", None)
+        if invalidate is not None:
+            invalidate()
 
     # ── helper ───────────────────────────────────────────────────────────────
     def _write_patch_ghosts(self, boundary, field):
@@ -891,3 +907,5 @@ class CouplerInterfaceMixin:
         start, nf = boundary["start_face"], boundary["n_faces"]
         idx = n_elem + (start - n_int)
         self.velocity[idx : idx + nf] = field
+        self._invalidate_derived_fields()
+        self._publish_state()

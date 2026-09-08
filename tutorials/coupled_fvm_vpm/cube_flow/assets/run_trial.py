@@ -9,9 +9,10 @@ import sys
 
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(CASE_DIR))
 
-import setup as case  # noqa: E402
+from openonda.tutorial_runner import load_case_module
+
+case = load_case_module(CASE_DIR)
 
 TRANSFER_RESTART_ALLOWLIST = frozenset(
     {

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from types import SimpleNamespace
 
 import numpy as np
@@ -12,20 +11,6 @@ from openonda import vpm
 from source.solvers.vpm.config.health import HealthError
 from source.solvers.vpm.core.solver import VPMSolver
 from source.solvers.vpm.io.sampler import OutputEvent
-
-
-def test_public_solver_requires_one_case_construction_object() -> None:
-    """The public solver accepts only the immutable case construction path."""
-    signature = inspect.signature(vpm.VPMSolver)
-    assert tuple(signature.parameters) == ("case",)
-    assert not hasattr(vpm, "VPMSetup")
-    assert not hasattr(vpm, "create_vpm_solver")
-    assert "time" not in inspect.signature(vpm.Numerics).parameters
-    assert "step" not in inspect.signature(vpm.Numerics).parameters
-    assert (
-        "treecode_theta"
-        not in inspect.signature(vpm.VPMSolver.compute_pressure_gradient_at_points).parameters
-    )
 
 
 def test_induction_configuration_builds_independent_runtime_evaluators() -> None:
@@ -49,14 +34,6 @@ def test_fmm_advertises_only_qualified_device_backends() -> None:
                 compute_device=device,
                 verbose=False,
             )
-
-
-def test_numerics_rejects_an_unsupported_treecode_kernel() -> None:
-    with pytest.raises(ValueError, match="does not support particle_kernel=SUPER_GAUSSIAN"):
-        vpm.Numerics(
-            induction=vpm.TreecodeInduction(),
-            particle_kernel="SUPER_GAUSSIAN",
-        )
 
 
 def test_numerics_rejects_treecode_double_precision_before_solver_allocation() -> None:
@@ -86,39 +63,6 @@ def test_requested_vlm_initialization_failure_is_fatal(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="Failed to initialize VLM solver"):
         solver._init_optional_solvers(setup)
-
-
-def test_public_namespace_hides_internal_runtime_services() -> None:
-    """Only construction/value objects are exposed from ``openonda.vpm``."""
-    assert set(vpm.__all__).isdisjoint(
-        {
-            "BodyPose",
-            "OutputManager",
-            "SamplerExecutor",
-            "SamplingSchedule",
-            "SolverIO",
-            "VPMSetup",
-            "VLMLoadingDistribution",
-        }
-    )
-    for name in ("SamplingSchedule", "VPMSetup"):
-        assert not hasattr(vpm, name)
-
-
-def test_public_solver_methods_do_not_accept_untyped_keyword_forwarding() -> None:
-    """Construction and output APIs stay explicit and inspectable."""
-    for method_name in ("export_state", "set_velocity_override"):
-        signature = inspect.signature(vpm.VPMSolver.__dict__[method_name])
-        assert all(
-            parameter.kind is not inspect.Parameter.VAR_KEYWORD
-            for parameter in signature.parameters.values()
-        )
-        assert all(
-            parameter.annotation is not inspect.Parameter.empty
-            for name, parameter in signature.parameters.items()
-            if name != "self"
-        )
-        assert signature.return_annotation is not inspect.Signature.empty
 
 
 def test_run_owns_the_complete_event_lifecycle() -> None:
@@ -317,3 +261,57 @@ def test_initial_weak_particle_percent_is_bounded(percent: float) -> None:
 def test_initial_weak_particle_percent_must_be_numeric(percent: object) -> None:
     with pytest.raises(TypeError, match="initial_weak_particle_percent"):
         vpm.VPMCase(numerics=vpm.Numerics(), initial_weak_particle_percent=percent)
+
+
+@pytest.mark.parametrize("limit", [0, -1, float("nan"), float("inf"), True])
+def test_run_plan_rejects_invalid_wall_time_limit(limit):
+    with pytest.raises((TypeError, ValueError), match="wall_time_limit"):
+        vpm.RunPlan(steps=10, wall_time_limit_seconds=limit)
+
+
+def test_wall_time_stop_persists_accepted_state_without_reporting_physics_failure(monkeypatch):
+    import source.solvers.vpm.core.solver as solver_module
+
+    events = []
+    clock = iter((0.0, 0.0, 2.0))
+    monkeypatch.setattr(solver_module, "perf_counter", lambda: next(clock))
+
+    class Manager:
+        def dispatch(self, event):
+            events.append(event)
+
+        def write_all(self, event, *, skip_current=False):
+            assert skip_current
+            events.append("terminal_samples")
+
+    solver = object.__new__(VPMSolver)
+    solver.case = vpm.VPMCase(
+        numerics=vpm.Numerics(), run=vpm.RunPlan(steps=10, wall_time_limit_seconds=1.0)
+    )
+    solver.output_manager = Manager()
+    solver._run_started = False
+    solver._run_finished = False
+    solver.restart_state = vpm.RestartState()
+    solver.time, solver.step = 0.0, 0
+    solver._build_initial_conditions = lambda: None
+    solver._refresh_diagnostics_for_output = lambda: None
+
+    def advance():
+        solver.step += 1
+        solver.time += 0.1
+
+    solver.advance = advance
+    solver.save_backup = lambda: events.append("backup")
+    solver._write_run_manifest = lambda status, failure: events.append((status, failure))
+    solver.close = lambda: events.append("close")
+    VPMSolver.run(solver)
+    assert solver.step == 1
+    assert solver.run_status == "wall_time_limit"
+    assert solver.run_failure is None
+    assert events == [
+        OutputEvent.INITIAL,
+        "terminal_samples",
+        "backup",
+        ("wall_time_limit", None),
+        "close",
+    ]

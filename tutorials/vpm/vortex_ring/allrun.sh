@@ -3,9 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-cd "${REPO_ROOT}"
-MODULE="tutorials.vpm.vortex_ring"
+cd "${SCRIPT_DIR}"
 PYTHON_BIN="${OPENONDA_PYTHON:-python}"
 
 CACHE_PARENT="${TI_OFFLINE_CACHE_FILE_PATH:-${XDG_CACHE_HOME:-${SCRIPT_DIR}/.cache}/taichi}"
@@ -66,7 +64,7 @@ run_variant() {
     if [[ -n "${STEPS}" ]]; then
         arguments+=(--steps "${STEPS}")
     fi
-    run_phase "${label}" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${arguments[@]}"
+    run_phase "${label}" "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" setup "${arguments[@]}"
 }
 
 run_variant dns_direct "DNS Direct"

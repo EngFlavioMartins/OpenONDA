@@ -128,6 +128,8 @@ def test_solver_owns_named_solution_and_sample_directories(tmp_path):
             samples_dir=str(samples),
             mesh_data=structured_box(2, 2, 2),
         )
+        assert solution.is_dir()
+        assert samples.is_dir()
         solver.advance()
     solver.write_run_manifest()
     solver.close()
@@ -192,6 +194,34 @@ def test_solver_factory_builds_mesher_objects_and_persists_the_result(tmp_path):
 
     assert (solution / "mesh.npz").is_file()
     assert (solution / "mesh.vtu").is_file()
+
+
+def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_path):
+    solution = tmp_path / "solution" / "startup"
+    samples = tmp_path / "samples" / "startup"
+    observed = {}
+
+    class Mesher:
+        def build(self):
+            observed["solution_exists"] = solution.is_dir()
+            observed["samples_exists"] = samples.is_dir()
+            observed["log"] = (solution / "fvm.log").read_text(encoding="utf-8")
+            return structured_box(2, 2, 2)
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = create_fvm_solver(
+            _setup(),
+            case_dir=tmp_path,
+            solution_dir=solution,
+            samples_dir=samples,
+            mesh=Mesher(),
+        )
+    solver.close()
+
+    assert observed["solution_exists"]
+    assert observed["samples_exists"]
+    assert "FVM STARTUP" in observed["log"]
+    assert "materializing mesh" in observed["log"]
 
 
 @pytest.mark.parametrize("source_kind", ["dictionary", "file"])

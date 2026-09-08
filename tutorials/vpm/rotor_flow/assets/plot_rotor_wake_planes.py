@@ -16,6 +16,13 @@ Saves: figures/rotor_wake_planes.png
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import re
 from pathlib import Path
 
@@ -30,7 +37,7 @@ try:
 except Exception:  # pragma: no cover
     pv = None
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     build_arg_parser,
     build_rotor_style_map,
     DENSITY,
@@ -44,7 +51,7 @@ from _common import (  # noqa: E402
     SAMPLES_DIR,
     TIP_SPEED_RATIO,
 )
-from rotor_theory import axial_induction_factor_from_thrust_coefficient  # noqa: E402
+from .rotor_theory import axial_induction_factor_from_thrust_coefficient  # noqa: E402
 
 
 # ==============================================================================

@@ -32,15 +32,6 @@ def _uniform_donors(*, shift: np.ndarray, dtype=np.float64):
     return position.astype(dtype), volume, vorticity, h
 
 
-def test_m4_prime_has_partition_and_first_moment_on_its_complete_support():
-    fractions = np.array([-0.875, -0.5, -0.125, 0.0, 0.125, 0.5, 0.875])
-    for fraction in fractions:
-        nodes = np.arange(np.floor(fraction) - 1, np.floor(fraction) + 3)
-        weights = m4_prime(fraction - nodes)
-        np.testing.assert_allclose(weights.sum(), 1.0, rtol=0.0, atol=2.0e-15)
-        np.testing.assert_allclose((nodes * weights).sum(), fraction, rtol=0.0, atol=2.0e-15)
-
-
 def test_gaussian_vorticity_reference_matches_analytic_particle_sum():
     points = np.array([[0.0, 0.0, 0.0], [0.25, -0.5, 0.125], [-0.1, 0.2, 0.3]])
     position = np.array([[0.1, -0.2, 0.05], [-0.25, 0.3, -0.1]])

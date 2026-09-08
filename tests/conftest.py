@@ -16,7 +16,6 @@ import pytest
 
 QUALIFICATION_MODULES = frozenset(
     {
-        "test_cylinder_reference_tools.py",
         "test_cube_reference_grid_study.py",
         "test_flux_handoff_vpm_integration.py",
         "test_gbd_projected_renewal.py",

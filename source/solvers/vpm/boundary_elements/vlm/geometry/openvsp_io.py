@@ -327,8 +327,8 @@ def _export_openvsp_degengeom_external(
     if command is None:
         raise ImportError(
             "Direct .vsp3 import requires either an importable OpenVSP Python API "
-            "or an `openvsp-python` helper on PATH. Run "
-            "`scripts/install/install_openvsp.sh`, or export DegenGeom CSV from "
+            "or an `openvsp-python` helper on PATH. Set OPENONDA_OPENVSP_PYTHON "
+            "to a Python interpreter with the OpenVSP API, or export DegenGeom CSV from "
             "OpenVSP manually and call load_degengeom_csv(...)."
         )
 
@@ -359,9 +359,6 @@ def _openvsp_python_command() -> list[str] | None:
     candidates = [
         configured,
         shutil.which("openvsp-python"),
-        str(Path.home() / "anaconda3/envs/openonda-openvsp/bin/python"),
-        str(Path.home() / "miniforge3/envs/openonda-openvsp/bin/python"),
-        str(Path.home() / "mambaforge/envs/openonda-openvsp/bin/python"),
     ]
     for candidate in candidates:
         if candidate and Path(candidate).exists():
@@ -370,39 +367,8 @@ def _openvsp_python_command() -> list[str] | None:
 
 
 def _openvsp_subprocess_env() -> dict[str, str]:
-    env = os.environ.copy()
-    root = _openvsp_root()
-    if root is not None:
-        python_paths = [
-            root / "python/openvsp",
-            root / "python/degen_geom",
-            root / "python/openvsp_config",
-            root / "python/utilities",
-        ]
-        existing_pythonpath = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = os.pathsep.join(
-            [str(path) for path in python_paths if path.exists()]
-            + ([existing_pythonpath] if existing_pythonpath else [])
-        )
-        existing_ld_library_path = env.get("LD_LIBRARY_PATH")
-        env["LD_LIBRARY_PATH"] = os.pathsep.join(
-            [str(root / "lib")] + ([existing_ld_library_path] if existing_ld_library_path else [])
-        )
-    return env
-
-
-def _openvsp_root() -> Path | None:
-    candidates = [
-        os.environ.get("OPENVSP_ROOT"),
-        os.environ.get("OPENVSP_PATH"),
-        str(Path.home() / "OpenVSP-3.51.0"),
-    ]
-    for candidate in candidates:
-        if candidate:
-            path = Path(candidate)
-            if (path / "python/openvsp").exists():
-                return path
-    return None
+    """Use the configured external interpreter without rewriting import paths."""
+    return os.environ.copy()
 
 
 def _call_if_available(module: Any, name: str) -> None:

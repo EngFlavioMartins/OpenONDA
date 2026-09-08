@@ -11,6 +11,13 @@ from source.solvers.vpm.diagnostics.axisymmetric_field import (
     azimuthal_vorticity,
     azimuthal_circulation,
 )
+
+if not __package__:
+    from openonda.tutorial_runner import case_package
+    from pathlib import Path as _CasePath
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
 from .render_study import states
 from .. import setup
 

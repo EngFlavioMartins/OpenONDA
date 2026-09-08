@@ -74,7 +74,7 @@ def _raise_collective_backup_error(payload: dict[str, object]) -> None:
 
 def save_partitioned_solver_backup(solver, directory) -> Path:
     """Publish a complete backup without invalidating the prior generation."""
-    from .backup import config_hash
+    from .backup import _solver_setup, config_hash
 
     target = Path(directory)
     preparation_error = None
@@ -159,8 +159,15 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
         manifest = {
             "format_version": PARTITIONED_BACKUP_VERSION,
             "generation": generation,
-            "config_hash": config_hash(solver.setup),
+            "config_hash": config_hash(_solver_setup(solver)),
             "mesh_hash": solver.mesh_data["global_mesh_hash"],
+            "kinematic_viscosity": float(
+                getattr(
+                    solver,
+                    "_kinematic_viscosity",
+                    _solver_setup(solver).transport.kinematic_viscosity,
+                )
+            ),
             "n_global_cells": partition.n_global_cells,
             "n_ranks": partition.size,
             "files": files,
@@ -183,122 +190,155 @@ def save_partitioned_solver_backup(solver, directory) -> Path:
 
 
 def load_partitioned_solver_backup(solver, directory, *, allow_config_change: bool = False) -> None:
-    """Restore a complete backup for the same mesh and communicator size."""
-    from .backup import config_hash
+    """Collectively stage and restore a complete partitioned backup."""
+    from .backup import (
+        _solver_setup,
+        config_hash,
+        publish_restart_payload,
+        stage_restart_payload,
+    )
 
     target = Path(directory)
     manifest = None
+    manifest_error = None
     if solver.parallel.is_root:
-        manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+        try:
+            manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+        except Exception as error:
+            manifest_error = _error_payload(error, rank=solver.parallel.rank)
+    manifest_error = solver.parallel.bcast(manifest_error, root=0)
+    if manifest_error is not None:
+        _raise_collective_backup_error(manifest_error)
     manifest = solver.parallel.bcast(manifest, root=0)
-    expected_manifest_keys = {
-        "format_version",
-        "generation",
-        "config_hash",
-        "mesh_hash",
-        "n_global_cells",
-        "n_ranks",
-        "files",
-    }
-    if not isinstance(manifest, dict) or set(manifest) != expected_manifest_keys:
-        raise ValueError("Partitioned backup manifest has invalid fields")
-    version = manifest.get("format_version")
-    if version != PARTITIONED_BACKUP_VERSION:
-        raise ValueError("Unsupported partitioned FVM backup version")
-    if manifest.get("n_ranks") != solver.parallel.size:
-        raise ValueError("Partitioned backup communicator size does not match")
-    if manifest.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
-        raise ValueError("Partitioned backup mesh hash does not match")
-    if not allow_config_change and manifest.get("config_hash") != config_hash(solver.setup):
-        raise ValueError(
-            "Partitioned backup configuration hash does not match "
-            f"(allow_config_change={allow_config_change})"
+
+    local_error = None
+    payload = None
+    try:
+        expected_manifest_keys = {
+            "format_version",
+            "generation",
+            "config_hash",
+            "mesh_hash",
+            "kinematic_viscosity",
+            "n_global_cells",
+            "n_ranks",
+            "files",
+        }
+        if not isinstance(manifest, dict) or set(manifest) != expected_manifest_keys:
+            raise ValueError("Partitioned backup manifest has invalid fields")
+        if manifest.get("format_version") != PARTITIONED_BACKUP_VERSION:
+            raise ValueError("Unsupported partitioned FVM backup version")
+        if manifest.get("n_ranks") != solver.parallel.size:
+            raise ValueError("Partitioned backup communicator size does not match")
+        if manifest.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
+            raise ValueError("Partitioned backup mesh hash does not match")
+        if not allow_config_change and manifest.get("config_hash") != config_hash(
+            _solver_setup(solver)
+        ):
+            raise ValueError(
+                "Partitioned backup configuration hash does not match "
+                f"(allow_config_change={allow_config_change})"
+            )
+        archived_viscosity = manifest.get("kinematic_viscosity")
+        if (
+            isinstance(archived_viscosity, bool)
+            or not isinstance(archived_viscosity, int | float)
+            or not np.isfinite(float(archived_viscosity))
+            or float(archived_viscosity) <= 0.0
+        ):
+            raise ValueError("Partitioned backup molecular viscosity identity is invalid")
+        if not allow_config_change and not np.isclose(
+            float(archived_viscosity),
+            float(
+                getattr(
+                    solver,
+                    "_kinematic_viscosity",
+                    _solver_setup(solver).transport.kinematic_viscosity,
+                )
+            ),
+            rtol=0.0,
+            atol=1.0e-15,
+        ):
+            raise ValueError(
+                "Partitioned backup molecular viscosity does not match the active case"
+            )
+
+        files = manifest.get("files")
+        if not isinstance(files, list) or len(files) != solver.parallel.size:
+            raise ValueError("Partitioned backup file manifest is incomplete")
+        generation = manifest.get("generation")
+        expected_files = [
+            f"rank-{file_rank:05d}-{generation}.npz" for file_rank in range(solver.parallel.size)
+        ]
+        if not isinstance(generation, str) or not generation or files != expected_files:
+            raise ValueError("Partitioned backup contains mixed or invalid generations")
+
+        rank = solver.parallel.rank
+        rank_file = _resolve_backup_file(target, files[rank])
+        with np.load(rank_file, allow_pickle=False) as archive:
+            state = decode_state(
+                {name: np.array(archive[name], copy=True) for name in archive.files}
+            )
+        required_state = {
+            "global_cell_id",
+            "global_face_id",
+            "velocity",
+            "kinematic_pressure",
+            "volumetric_face_flux",
+            "volumetric_face_flux_old",
+            "volumetric_face_flux_older",
+            "velocity_old",
+            "velocity_older",
+            "eddy_viscosity",
+            "time",
+            "step",
+            "n_committed_time_steps",
+            "time_step_size",
+            "accepted_time_step_size",
+            "previous_time_step_size",
+            "max_courant_number",
+            "n_consecutive_accepted_steps",
+        }
+        state.pop("storage_layout", None)
+        unexpected = sorted(set(state) - required_state)
+        missing = sorted(required_state - set(state))
+        if missing or unexpected:
+            raise ValueError(
+                f"Invalid partitioned backup fields; missing={missing}, unexpected={unexpected}"
+            )
+
+        partition = solver.parallel.partition
+        if not np.array_equal(state.pop("global_cell_id"), partition.local_global_ids):
+            raise ValueError("Partitioned backup cell IDs do not match")
+        if not np.array_equal(state.pop("global_face_id"), solver.mesh_data["global_face_id"]):
+            raise ValueError("Partitioned backup face IDs do not match")
+        payload = stage_restart_payload(
+            solver,
+            state,
+            allow_config_change=allow_config_change,
+            kinematic_viscosity=float(manifest["kinematic_viscosity"]),
         )
+    except Exception as error:
+        local_error = _error_payload(error, rank=solver.parallel.rank)
 
-    files = manifest.get("files")
-    if not isinstance(files, list) or len(files) != solver.parallel.size:
-        raise ValueError("Partitioned backup file manifest is incomplete")
-    generation = manifest.get("generation")
-    expected_files = [
-        f"rank-{file_rank:05d}-{generation}.npz" for file_rank in range(solver.parallel.size)
-    ]
-    if not isinstance(generation, str) or not generation or files != expected_files:
-        raise ValueError("Partitioned backup contains mixed or invalid generations")
-
-    rank = solver.parallel.rank
-    rank_file = _resolve_backup_file(target, files[rank])
-    with np.load(rank_file, allow_pickle=False) as archive:
-        state = decode_state({name: np.array(archive[name], copy=True) for name in archive.files})
-    required_state = {
-        "global_cell_id",
-        "global_face_id",
-        "velocity",
-        "kinematic_pressure",
-        "volumetric_face_flux",
-        "volumetric_face_flux_old",
-        "volumetric_face_flux_older",
-        "velocity_old",
-        "velocity_older",
-        "eddy_viscosity",
-        "time",
-        "step",
-        "n_committed_time_steps",
-        "time_step_size",
-        "accepted_time_step_size",
-        "previous_time_step_size",
-        "max_courant_number",
-        "n_consecutive_accepted_steps",
-    }
-    state.pop("storage_layout", None)
-    unexpected = sorted(set(state) - required_state)
-    missing = sorted(required_state - set(state))
-    if missing or unexpected:
-        raise ValueError(
-            f"Invalid partitioned backup fields; missing={missing}, unexpected={unexpected}"
+    errors = solver.parallel.comm.allgather(local_error)
+    failure = next((error for error in errors if error is not None), None)
+    if failure is not None:
+        _raise_collective_backup_error(failure)
+    if payload is None:
+        raise RuntimeError("Partitioned restart admission produced no payload")
+    signatures = solver.parallel.comm.allgather(
+        (
+            payload.time,
+            payload.step,
+            payload.time_step_size,
+            payload.accepted_time_step_size,
+            payload.previous_time_step_size,
         )
-
-    partition = solver.parallel.partition
-    if not np.array_equal(state.pop("global_cell_id"), partition.local_global_ids):
-        raise ValueError("Partitioned backup cell IDs do not match")
-    if not np.array_equal(state.pop("global_face_id"), solver.mesh_data["global_face_id"]):
-        raise ValueError("Partitioned backup face IDs do not match")
-    for name in (
-        "velocity",
-        "kinematic_pressure",
-        "volumetric_face_flux",
-        "volumetric_face_flux_old",
-        "volumetric_face_flux_older",
-        "velocity_old",
-        "velocity_older",
-    ):
-        destination = np.asarray(getattr(solver, name))
-        if state[name].shape != destination.shape or not np.all(np.isfinite(state[name])):
-            raise ValueError(f"Partitioned backup field {name} is incompatible")
-        destination[:] = state[name]
-    eddy_viscosity = state["eddy_viscosity"]
-    if eddy_viscosity.size and (
-        eddy_viscosity.shape != (solver.mesh_data["n_cells"],)
-        or not np.all(np.isfinite(eddy_viscosity))
-        or np.any(eddy_viscosity < 0.0)
-    ):
-        raise ValueError("Partitioned backup turbulent viscosity is incompatible")
-    solver.eddy_viscosity = None if not eddy_viscosity.size else eddy_viscosity
-    solver.time = float(state["time"])
-    solver.time_step_size = float(state["time_step_size"])
-    solver._accepted_time_step_size = float(state["accepted_time_step_size"])
-    solver._previous_time_step_size = float(state["previous_time_step_size"])
-    solver.max_courant_number = float(state["max_courant_number"])
-    solver.step = int(state["step"])
-    solver._n_committed_time_steps = int(state["n_committed_time_steps"])
-    acceptance_names = sorted(solver._n_consecutive_accepted_steps)
-    if state["n_consecutive_accepted_steps"].shape != (len(acceptance_names),):
-        raise ValueError("Partitioned backup acceptance state is incompatible")
-    solver._n_consecutive_accepted_steps.update(
-        zip(acceptance_names, map(int, state["n_consecutive_accepted_steps"]), strict=True)
     )
-    solver._last_residuals = None
-    solver.last_diagnostics = None
-    solver._invalidate_derived_fields()
+    if any(signature != signatures[0] for signature in signatures[1:]):
+        raise RuntimeError("Partitioned restart admission found inconsistent clocks across ranks")
+    publish_restart_payload(solver, payload)
     solver.parallel.barrier()
 
 
@@ -399,104 +439,119 @@ def write_partition_vtu(
         raise ValueError("stem must be a non-empty filename component")
     output = output or OutputConfig()
     target = Path(directory)
-    target.mkdir(parents=True, exist_ok=True)
     n_owned = len(partition.owned_global_ids)
     local_count = len(partition.local_global_ids)
     local_fields = {}
-    for name, values in fields.items():
-        array = np.asarray(values)
-        if array.shape[0] != local_count:
-            raise ValueError(f"Field {name!r} does not match the local partition")
-        _field_components(array)
-        local_fields[name] = np.ascontiguousarray(array).copy()
+    piece_fields = {}
+    local_error = None
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        for name, values in fields.items():
+            array = np.asarray(values)
+            if array.ndim == 0 or array.shape[0] != local_count:
+                raise ValueError(f"Field {name!r} does not match the local partition")
+            _field_components(array)
+            local_fields[name] = np.ascontiguousarray(array).copy()
 
-    piece_name = f"{stem}-rank-{partition.rank:05d}.vtu"
-    if output.ghost_layers == 1:
-        if len(partition.ghost_global_ids):
-            for values in local_fields.values():
-                partition.exchange_halo(values, comm)
-        for name in list(local_fields):
-            local_fields[name] = cast_for_write(local_fields[name], output.precision)
-        piece_fields = dict(local_fields)
-        ghost_types = np.zeros(local_count, dtype=np.uint8)
-        # vtkDataSetAttributes::DUPLICATECELL marks overlap supplied only for
-        # parallel filters and prevents duplicate contributions.
-        ghost_types[n_owned:] = 1
-        piece_fields["vtkGhostType"] = ghost_types
-        piece_fields["global_cell_id"] = np.ascontiguousarray(
-            partition.local_global_ids,
-            dtype=np.int64,
-        )
-        visualization_mesh = mesh_data.get("_visualization_mesh")
-        if visualization_mesh is None:
-            if mesh_data["n_cells"] != local_count:
-                raise ValueError("Partitioned ghost output requires a visualization mesh")
-            visualization_mesh = mesh_data
-        point_fields = {
-            "global_point_id": np.ascontiguousarray(
-                visualization_mesh.get(
-                    "global_point_ids",
-                    np.arange(len(visualization_mesh["vertex_position"])),
-                ),
+        piece_name = f"{stem}-rank-{partition.rank:05d}.vtu"
+        if output.ghost_layers == 1:
+            if len(partition.ghost_global_ids):
+                for values in local_fields.values():
+                    partition.exchange_halo(values, comm)
+            for name in list(local_fields):
+                local_fields[name] = cast_for_write(local_fields[name], output.precision)
+            piece_fields = dict(local_fields)
+            ghost_types = np.zeros(local_count, dtype=np.uint8)
+            # vtkDataSetAttributes::DUPLICATECELL marks overlap supplied only
+            # for parallel filters and prevents duplicate contributions.
+            ghost_types[n_owned:] = 1
+            piece_fields["vtkGhostType"] = ghost_types
+            piece_fields["global_cell_id"] = np.ascontiguousarray(
+                partition.local_global_ids,
                 dtype=np.int64,
             )
-        }
-        writer = exporter or VTKExporter(visualization_mesh, output)
-        writer.export(
-            str(target / piece_name),
-            piece_fields,
-            point_fields=point_fields,
-        )
-    else:
-        piece_fields = {name: values[:n_owned] for name, values in local_fields.items()}
-        piece_fields["global_cell_id"] = np.ascontiguousarray(
-            partition.owned_global_ids,
-            dtype=np.int64,
-        )
-        if mesh_data["n_cells"] == partition.n_global_cells:
-            cell_ids = partition.owned_global_ids
+            visualization_mesh = mesh_data.get("_visualization_mesh")
+            if visualization_mesh is None:
+                if mesh_data["n_cells"] != local_count:
+                    raise ValueError("Partitioned ghost output requires a visualization mesh")
+                visualization_mesh = mesh_data
+            point_fields = {
+                "global_point_id": np.ascontiguousarray(
+                    visualization_mesh.get(
+                        "global_point_ids",
+                        np.arange(len(visualization_mesh["vertex_position"])),
+                    ),
+                    dtype=np.int64,
+                )
+            }
+            writer = exporter or VTKExporter(visualization_mesh, output)
+            writer.export(
+                str(target / piece_name),
+                piece_fields,
+                point_fields=point_fields,
+            )
         else:
-            cell_ids = np.arange(n_owned, dtype=np.int64)
-        export_mesh = mesh_data.get("_visualization_mesh", mesh_data)
-        writer = exporter or VTKExporter(export_mesh, output)
-        writer.export_cells(str(target / piece_name), cell_ids, piece_fields)
-    comm.Barrier()
+            piece_fields = {name: values[:n_owned] for name, values in local_fields.items()}
+            piece_fields["global_cell_id"] = np.ascontiguousarray(
+                partition.owned_global_ids,
+                dtype=np.int64,
+            )
+            if mesh_data["n_cells"] == partition.n_global_cells:
+                cell_ids = partition.owned_global_ids
+            else:
+                cell_ids = np.arange(n_owned, dtype=np.int64)
+            export_mesh = mesh_data.get("_visualization_mesh", mesh_data)
+            writer = exporter or VTKExporter(export_mesh, output)
+            writer.export_cells(str(target / piece_name), cell_ids, piece_fields)
+    except BaseException as error:
+        local_error = _error_payload(error, rank=partition.rank)
+
+    failures = comm.allgather(local_error)
+    failure = next((item for item in failures if item is not None), None)
+    if failure is not None:
+        _raise_collective_backup_error(failure)
 
     collection = target / f"{stem}.pvtu"
+    publication_error = None
     if partition.rank == 0:
-        lines = [
-            '<?xml version="1.0"?>',
-            '<VTKFile type="PUnstructuredGrid" version="0.1" byte_order="LittleEndian">',
-            f'  <PUnstructuredGrid GhostLevel="{output.ghost_layers}">',
-            "    <PCellData>",
-        ]
-        for name, values in piece_fields.items():
-            components = _field_components(values)
-            lines.append(
-                f'      <PDataArray type="{_vtk_xml_type(values)}" Name="{escape(name)}" '
-                f'NumberOfComponents="{components}"/>'
-            )
-        lines.append("    </PCellData>")
-        if output.ghost_layers == 1:
+        try:
+            lines = [
+                '<?xml version="1.0"?>',
+                '<VTKFile type="PUnstructuredGrid" version="0.1" byte_order="LittleEndian">',
+                f'  <PUnstructuredGrid GhostLevel="{output.ghost_layers}">',
+                "    <PCellData>",
+            ]
+            for name, values in piece_fields.items():
+                components = _field_components(values)
+                lines.append(
+                    f'      <PDataArray type="{_vtk_xml_type(values)}" Name="{escape(name)}" '
+                    f'NumberOfComponents="{components}"/>'
+                )
+            lines.append("    </PCellData>")
+            if output.ghost_layers == 1:
+                lines.extend(
+                    [
+                        "    <PPointData>",
+                        '      <PDataArray type="Int64" Name="global_point_id" NumberOfComponents="1"/>',
+                        "    </PPointData>",
+                    ]
+                )
             lines.extend(
                 [
-                    "    <PPointData>",
-                    '      <PDataArray type="Int64" Name="global_point_id" NumberOfComponents="1"/>',
-                    "    </PPointData>",
+                    "    <PPoints>",
+                    '      <PDataArray type="Float64" NumberOfComponents="3"/>',
+                    "    </PPoints>",
                 ]
             )
-        lines.extend(
-            [
-                "    <PPoints>",
-                '      <PDataArray type="Float64" NumberOfComponents="3"/>',
-                "    </PPoints>",
-            ]
-        )
-        lines.extend(
-            f'    <Piece Source="{escape(f"{stem}-rank-{rank:05d}.vtu", quote=True)}"/>'
-            for rank in range(partition.size)
-        )
-        lines.extend(["  </PUnstructuredGrid>", "</VTKFile>"])
-        atomic_write_text(collection, "\n".join(lines) + "\n")
-    comm.Barrier()
+            lines.extend(
+                f'    <Piece Source="{escape(f"{stem}-rank-{rank:05d}.vtu", quote=True)}"/>'
+                for rank in range(partition.size)
+            )
+            lines.extend(["  </PUnstructuredGrid>", "</VTKFile>"])
+            atomic_write_text(collection, "\n".join(lines) + "\n")
+        except BaseException as error:
+            publication_error = _error_payload(error, rank=partition.rank)
+    publication_error = comm.bcast(publication_error, root=0)
+    if publication_error is not None:
+        _raise_collective_backup_error(publication_error)
     return collection

@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-    "setuptools>=68.0",
+    "setuptools>=77.0",
     "wheel",
 ]
 build-backend = "setuptools.build_meta"
@@ -43,7 +43,6 @@ keywords = [
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "numpy>=1.26.0",
-    "numpy-stl>=3.2",
     "scipy>=1.11.0",
     "matplotlib>=3.8.0",
     "h5py>=3.10.0",
@@ -53,8 +52,6 @@ dependencies = [
     "defusedxml>=0.7.1",
     "taichi>=1.7.4,<1.8; platform_system!='Darwin' or platform_machine!='x86_64'",
     "taichi==1.7.1; platform_system=='Darwin' and platform_machine=='x86_64'",
-    "gmsh>=4.11.0; platform_system!='Darwin' or platform_machine!='x86_64'",
-    "gmsh>=4.11.0,<4.13; platform_system=='Darwin' and platform_machine=='x86_64'",
     "pyamg>=5.0.0",
     "pyvista>=0.43.0",
     "vtk>=9.3.0",
@@ -65,6 +62,14 @@ openonda = "openonda.cli:main"
 openonda-verify-install = "openonda.verify_install:main"
 
 [project.optional-dependencies]
+# External Gmsh input/generation and accelerated STL reading. Native meshers
+# and the built-in STL reader work without these packages.
+meshing = [
+    "gmsh>=4.11.0; platform_system!='Darwin' or platform_machine!='x86_64'",
+    "gmsh>=4.11.0,<4.13; platform_system=='Darwin' and platform_machine=='x86_64'",
+    "numpy-stl>=3.2",
+]
+
 # Minimal contract-test runner.
 test = [
     "pytest>=8.0.0",
@@ -96,14 +101,6 @@ dev = [
     "pygit2>=1.13.0",
 ]
 
-# Documentation building
-docs = [
-    "sphinx>=7.0.0",
-    "sphinx-rtd-theme>=2.0.0",
-    "myst-parser>=2.0.0",
-    "sphinx-autodoc-typehints>=2.0.0",
-]
-
 [tool.vulture]
 # Minimum confidence for reporting unused code (0-100).
 min_confidence = 80
@@ -121,13 +118,23 @@ version = {attr = "source.version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["openonda*", "source*", "tutorials*", "docs", "docs.themes"]
-exclude = ["tests*", "examples*"]
+include = ["openonda*", "source*", "tutorials*"]
+exclude = ["tests*", "examples*", "*.solution*", "*.samples*", "*.figures*", "*.study_results*", "*.animation*", "*.__pycache__*"]
+
+[tool.setuptools]
+include-package-data = false
 
 [tool.setuptools.package-data]
-"openonda" = ["py.typed"]
-"source" = ["py.typed"]
-"docs.themes" = ["DejaVuSerif.ttf"]
+"openonda" = ["py.typed", "_resources/*.ttf"]
+"source" = ["py.typed", "**/*.md", "**/*.json"]
+"tutorials" = ["**/*.sh", "**/*.md", "**/*.json", "**/*.csv", "**/*.stl", "**/*.vsp3"]
+
+[tool.setuptools.exclude-package-data]
+"*" = [
+    "**/solution/*", "**/solutions/*", "**/samples/*", "**/figures/*",
+    "**/study_results/*", "**/animation/*", "**/__pycache__/*",
+    "**/run_manifest.json", "**/paraview_state.py", "**/paraview_tracer.py",
+]
 
 # Development tools configuration
 [tool.ruff]
@@ -218,8 +225,7 @@ missing-argument = "ignore"
 # `pyrefly check` at the repo root type-checks the actively-maintained Python:
 # the FVM solver and the coupler. The VPM subtree is
 # intentionally excluded because its Taichi DSL is not statically typeable — the
-# same reason [tool.ty] / [tool.mypy] suppress it. See AGENTS.md for how agents
-# (Claude Code, Codex/ChatGPT) are expected to use this.
+# same reason [tool.ty] / [tool.mypy] suppress it.
 [tool.pyrefly]
 project-includes = [
     "source/solvers/fvm",

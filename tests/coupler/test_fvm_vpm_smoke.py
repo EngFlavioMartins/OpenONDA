@@ -122,7 +122,10 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     assert (sol / "fvm.log").exists()
     vpm_log = (sol / "vpm.log").read_text()
     assert "fvm      step" not in vpm_log
-    assert vpm_log.count("VPM TIME STEP 1") == 1
+    # VPM progress is a shared semantic record now; the former decorative
+    # ``VPM TIME STEP`` header was removed so coupled logs cannot be confused
+    # with FVM's accepted-step records.
+    assert vpm_log.count("Progress    | step=") == 1
     # The VPM startup report is written once, not repeated by the coupler.
     assert vpm_log.count("VPM SOLVER CONFIGURATION") == 1
     coupler_log = (sol / "coupler.log").read_text()

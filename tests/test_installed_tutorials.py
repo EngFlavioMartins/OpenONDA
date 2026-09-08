@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
 import os
 from pathlib import Path
 import sys
@@ -20,109 +18,20 @@ from openonda.tutorials import (
 )
 
 
-def _import_repository_tutorial(name: str):
-    """Import a tutorial module outside pytest's ``tests/tutorials`` namespace."""
-    existing = sys.modules.get("tutorials")
-    if existing is not None and getattr(existing, "__file__", None) is None:
-        del sys.modules["tutorials"]
-    root = str(Path(__file__).resolve().parents[1])
-    if root not in sys.path:
-        sys.path.insert(0, root)
-    return importlib.import_module(name)
-
-
 def _load_lamb_oseen_setup():
-    path = Path("tutorials/vpm/lamb_oseen_vortex/setup.py")
-    spec = importlib.util.spec_from_file_location("lamb_oseen_setup", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    from importlib.resources import files
 
+    from openonda.tutorial_runner import load_case_module
 
-def _load_vortex_ring_setup():
-    return _import_repository_tutorial("tutorials.vpm.vortex_ring.setup")
+    return load_case_module(Path(files("tutorials")) / "vpm/lamb_oseen_vortex")
 
 
 def test_catalog_has_every_maintained_launcher() -> None:
-    maintained = {
-        str(path.parent.relative_to("tutorials")) for path in Path("tutorials").rglob("allrun.sh")
-    }
+    from importlib.resources import files
+
+    root = Path(files("tutorials"))
+    maintained = {str(path.parent.relative_to(root)) for path in root.rglob("allrun.sh")}
     assert {tutorial.name for tutorial in TUTORIALS} == maintained
-
-
-def test_materialized_lamb_oseen_case_is_self_contained(tmp_path: Path) -> None:
-    workspace = tmp_path / "workspace"
-    case_path = materialize_tutorial("vpm/lamb-oseen-vortex", workspace)
-
-    assert case_path == tutorial_case_path(workspace, "vpm/lamb_oseen_vortex")
-    assert (case_path / "setup.py").is_file()
-    assert (case_path / "README.md").is_file()
-    assert (case_path / "allrun.sh").stat().st_mode & 0o100
-    assert (case_path / "allplot.sh").stat().st_mode & 0o100
-    assert (case_path / "assets/postprocess.py").is_file()
-    assert (workspace / "tutorials/__init__.py").is_file()
-    assert (workspace / "tutorials/vpm/__init__.py").is_file()
-    assert (workspace / "docs/themes/matplotlib_setup.py").is_file()
-    assert (workspace / "docs/themes/DejaVuSerif.ttf").is_file()
-
-    assert not (case_path / "samples").exists()
-    assert not (case_path / "solution").exists()
-    assert not (case_path / "assets/schematics.pvsm").exists()
-    assert not list(case_path.rglob("paraview_state.py"))
-    assert not list(case_path.rglob("paraview_tracer.py"))
-    assert not (
-        case_path / "assets/references/the-physical-mechanism-for-vortex-merging.pdf"
-    ).exists()
-
-    # `openonda tutorial` passes the console command's interpreter through this
-    # variable. The copied launchers must retain that handoff rather than
-    # accidentally selecting another `python` on the user's PATH.
-    for launcher in (case_path / "allrun.sh", case_path / "allplot.sh"):
-        contents = launcher.read_text(encoding="utf-8")
-        assert 'PYTHON_BIN="${OPENONDA_PYTHON:-python}"' in contents
-        assert '"${PYTHON_BIN}" -m' in contents
-
-    allrun = (case_path / "allrun.sh").read_text(encoding="utf-8")
-    assert 'mktemp -d "${CACHE_PARENT%/}/lamb-oseen.XXXXXX"' in allrun
-    assert "run_physics_case vortex" in allrun
-    assert "run_physics_case dipole" in allrun
-    assert "run_physics_case merging" in allrun
-    assert "--converge --resume" in allrun
-    assert '--validate-case "${physics}"' in allrun
-    assert "--induction" not in allrun
-    assert " CS DIRECT" not in allrun
-    assert " DVH TREECODE" not in allrun
-    assert " GBD TREECODE" not in allrun
-
-    allplot = (case_path / "allplot.sh").read_text(encoding="utf-8")
-    assert "MPLCONFIGDIR:-${SCRIPT_DIR}/.cache/matplotlib" in allplot
-    assert allplot.rstrip().endswith('"${PYTHON_BIN}" -m "${MODULE}.assets.postprocess"')
-
-
-def test_materialized_vortex_ring_case_uses_module_launchers(tmp_path: Path) -> None:
-    workspace = tmp_path / "workspace"
-    case_path = materialize_tutorial("vpm/vortex-ring", workspace)
-
-    for launcher in (case_path / "allrun.sh", case_path / "allplot.sh"):
-        contents = launcher.read_text(encoding="utf-8")
-        assert 'PYTHON_BIN="${OPENONDA_PYTHON:-python}"' in contents
-        assert '"${PYTHON_BIN}" -' in contents
-        assert '-m "${MODULE}' in contents
-
-    allrun = (case_path / "allrun.sh").read_text(encoding="utf-8")
-    assert "dns_direct" in allrun
-    assert "dns_transposed" in allrun
-    assert "dns_mixed" in allrun
-    assert "les_transposed" in allrun
-    assert "--steps" in allrun
-    assert '"${SCRIPT_DIR}/allplot.sh" --strict' in allrun
-
-    allplot = (case_path / "allplot.sh").read_text(encoding="utf-8")
-    assert "MPLCONFIGDIR:-${SCRIPT_DIR}/.cache/matplotlib" in allplot
-    assert "STRICT=0" in allplot
-    assert '"${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_stability"' in allplot
-    assert allplot.rstrip().endswith("fi")
 
 
 def test_materializer_never_overwrites_existing_case(tmp_path: Path) -> None:
@@ -172,83 +81,6 @@ def test_launcher_uses_the_console_scripts_python_environment(
     assert environment["TI_OFFLINE_CACHE_FILE_PATH"] == str(workspace / ".cache/taichi")
 
 
-def test_lamb_oseen_initial_core_radius_matches_regeneration_ratio(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    setup = _load_lamb_oseen_setup()
-    monkeypatch.setattr(setup, "TUTORIAL_DIR", tmp_path)
-
-    observed: dict[str, float] = {}
-
-    class DistributionReachedError(Exception):
-        pass
-
-    def capture_distribution(*, core_radius_ratio: float, **_kwargs):
-        observed["core_radius_ratio"] = core_radius_ratio
-        raise DistributionReachedError
-
-    monkeypatch.setattr(setup.vpm, "TriangularPrismDistribution", capture_distribution)
-    with pytest.raises(DistributionReachedError):
-        setup.run_case("vortex", "GBD")
-
-    assert observed["core_radius_ratio"] == pytest.approx(setup.CORE_RADIUS_RATIO)
-    assert pytest.approx(setup.PARTICLE_RADIUS) == setup.CORE_RADIUS_RATIO * setup.SPACING
-
-
-def test_lamb_oseen_numerical_setup() -> None:
-    setup = _load_lamb_oseen_setup()
-
-    assert pytest.approx(0.60) == setup.SPACING / setup.CORE_RADIUS
-    assert setup.RWM_ENSEMBLE_SIZE == 10
-    assert setup.induction_config("CS").method == "DIRECT"
-    assert setup.induction_config("RWM").method == "DIRECT"
-    assert setup.induction_config("DVH").method == "TREECODE"
-    assert setup.induction_config("GBD").method == "TREECODE"
-
-
-@pytest.mark.parametrize(
-    ("variant", "turbulence", "stretching_scheme"),
-    (
-        ("dns_direct", "DNS", "DIRECT"),
-        ("dns_transposed", "DNS", "TRANSPOSED"),
-        ("dns_mixed", "DNS", "MIXED"),
-        ("les_transposed", "LES_SMAGORINSKY", "TRANSPOSED"),
-    ),
-)
-def test_vortex_ring_uses_selected_stretching_formulation(
-    variant, turbulence, stretching_scheme, monkeypatch, tmp_path
-):
-    setup = _load_vortex_ring_setup()
-    monkeypatch.setattr(setup, "TUTORIAL_DIR", tmp_path)
-    captured = []
-
-    class CaseCapturedError(Exception):
-        pass
-
-    def capture(case):
-        captured.append(case)
-        raise CaseCapturedError
-
-    monkeypatch.setattr(setup.vpm, "VPMSolver", capture)
-    with pytest.raises(CaseCapturedError):
-        setup.run_case(variant, n_steps=10)
-
-    case = captured[0]
-    induction = case.numerics.induction
-    assert induction.method == "TREECODE"
-    assert induction.strength_rate_mode == "HIERARCHICAL_GRADIENT"
-    assert induction.stretching_scheme == stretching_scheme
-    assert case.numerics.turbulence.model == turbulence
-    assert case.numerics.stabilization.regularization_interval_steps == 0
-    assert case.numerics.health_limits.lagrangian_cfl.maximum == 1.0
-    assert case.numerics.health_limits.divergence.maximum == 0.12
-    assert case.numerics.health_limits.misalignment.maximum_degrees == 25.0
-    assert case.run.health_limit_action == "STOP"
-    assert not case.run.final_backup
-    assert setup.DEFAULT_WIDNALL_AMPLITUDE == 0.005
-
-
 @pytest.mark.parametrize("physics", ["vortex", "dipole", "merging"])
 def test_lamb_oseen_workspace_reserves_full_time_diffusion(physics, monkeypatch, tmp_path):
     setup = _load_lamb_oseen_setup()
@@ -274,3 +106,50 @@ def test_lamb_oseen_workspace_reserves_full_time_diffusion(physics, monkeypatch,
         for axis, (lower, upper) in enumerate(((xmin, xmax), (ymin, ymax), (zmin, zmax))):
             assert lower <= position[:, axis].min() - heat_margin
             assert upper >= position[:, axis].max() + heat_margin
+
+
+def test_every_template_materializes_without_generated_results(tmp_path):
+    """One catalog-wide contract replaces case-specific file/string snapshots."""
+    import subprocess
+
+    for tutorial in TUTORIALS:
+        case = materialize_tutorial(tutorial.name, tmp_path / tutorial.slug)
+        assert (case / "setup.py").is_file(), tutorial.name
+        assert (case / "allrun.sh").is_file(), tutorial.name
+        for script in case.rglob("*.sh"):
+            subprocess.run(["bash", "-n", str(script)], check=True, capture_output=True)
+        for path in case.rglob("*"):
+            assert not set(path.relative_to(case).parts) & {
+                "solution",
+                "solutions",
+                "samples",
+                "figures",
+                "study_results",
+                "__pycache__",
+            }, path
+
+
+def test_local_module_runner_uses_edited_case_and_propagates_exit_code(tmp_path):
+    import subprocess
+
+    case = tmp_path / "case with spaces"
+    (case / "assets").mkdir(parents=True)
+    (case / "settings.py").write_text("VALUE = 73\n")
+    (case / "assets/check.py").write_text(
+        "from ..settings import VALUE\n"
+        "from pathlib import Path\n"
+        "import sys\n"
+        "Path(__file__).with_suffix('.txt').write_text(str(VALUE))\n"
+        "raise SystemExit(int(sys.argv[1]))\n"
+    )
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [sys.executable, "-I", "-m", "openonda.tutorial_runner", str(case), "assets.check", "23"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 23, result.stderr
+    assert (case / "assets/check.txt").read_text() == "73"

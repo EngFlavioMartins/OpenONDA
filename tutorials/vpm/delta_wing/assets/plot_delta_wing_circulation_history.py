@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Plot ``delta_wing_circulation_history.png``."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import argparse
 
-from _delta_wing_plots import FIGURES_DIR, SAMPLES_DIR, _theme, plot_circulation
+from ._delta_wing_plots import FIGURES_DIR, SAMPLES_DIR, _theme, plot_circulation
 
 
 def main() -> None:

@@ -10,7 +10,13 @@ from ..fields.mixed_velocity_boundary import (
     update_normal_velocity_tangential_gradient_boundary,
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
-from ..solve.linear_interface import normalized_residual, solve_linear_system
+from ..solve.linear_interface import (
+    LINEAR_RESIDUAL_FLOOR,
+    LINEAR_VERIFICATION_FACTOR,
+    LinearSolveError,
+    normalized_residual_target,
+    solve_linear_system,
+)
 from . import convection, diffusion, matrix_assembly
 from .time_integration import backward_coefficients
 
@@ -633,7 +639,14 @@ def solve_momentum_predictor(
             source_relax = (1.0 - under_relaxation) * diag_new * velocity[:n_cells, i_comp]
             rhs_columns.append(b + source_relax)
         B = np.column_stack(rhs_columns)
-        X, shared_result = solve_linear_system(A_shared, B, method="spsolve", return_info=True)
+        X, shared_result = solve_linear_system(
+            A_shared,
+            B,
+            method="spsolve",
+            tol=solver_kwargs.get("momentum_tolerance", 1e-4),
+            rel_tol=solver_kwargs.get("momentum_relative_tolerance", 0.0),
+            return_info=True,
+        )
         if X.ndim == 1:
             X = X[:, np.newaxis]
 
@@ -644,14 +657,34 @@ def solve_momentum_predictor(
             x_initial = (
                 velocity_old[:n_cells, i_comp] if velocity_old is not None else np.zeros(n_cells)
             )
+            initial_residual, residual_target, norm_factor = normalized_residual_target(
+                A_shared,
+                b_relaxed,
+                x_initial,
+                solver_kwargs.get("momentum_tolerance", 1e-4),
+                solver_kwargs.get("momentum_relative_tolerance", 0.0),
+            )
+            final_residual = float(
+                np.linalg.norm(b_relaxed - A_shared @ X[:, i_comp]) / norm_factor
+            )
+            residual_limit = max(
+                LINEAR_VERIFICATION_FACTOR * residual_target,
+                LINEAR_RESIDUAL_FLOOR,
+            )
+            if not np.isfinite(final_residual) or final_residual > residual_limit:
+                raise LinearSolveError(
+                    f"SciPy spsolve returned component {comp_name} residual "
+                    f"{final_residual:.3e}, above the verified limit {residual_limit:.3e}"
+                )
             solve_diagnostics[comp_name] = {
-                "initial_residual": normalized_residual(A_shared, x_initial, b_relaxed),
-                "final_residual": normalized_residual(A_shared, X[:, i_comp], b_relaxed),
+                "initial_residual": initial_residual,
+                "final_residual": final_residual,
             }
             solve_diagnostics[comp_name]["linear_result"] = replace(
                 shared_result,
-                initial_residual=solve_diagnostics[comp_name]["initial_residual"],
-                final_residual=solve_diagnostics[comp_name]["final_residual"],
+                initial_residual=initial_residual,
+                final_residual=final_residual,
+                converged=True,
                 setup_seconds=shared_result.setup_seconds if i_comp == 0 else 0.0,
                 solve_seconds=shared_result.solve_seconds if i_comp == 0 else 0.0,
             )

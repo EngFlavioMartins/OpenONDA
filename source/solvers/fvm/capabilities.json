@@ -1,6 +1,8 @@
 {
-  "schema_version": 2,
-  "release_level": "R3",
+  "schema_version": 3,
+  "release_level": "evidence-gated",
+  "qualification_status": "not_certified_in_this_checkout",
+  "qualification_note": "Numerical and performance claims require the executable evidence map below; this file does not certify an R-level release.",
   "reference_backend": "numpy-scipy-serial-cpu-float64",
   "mesh_inputs": {
     "native": {
@@ -21,36 +23,36 @@
     }
   },
   "verified_components": [
-    "strict native Python configuration, boundary, field, and Gmsh parsing",
+    "configuration and public API validation",
     "static-mesh topology, geometry, and quality validation",
-    "serial float64 NumPy/SciPy SIMPLE, PISO, and PIMPLE",
-    "structured linear, nonlinear, conservation, force, and acceptance diagnostics",
-    "BDF1/BDF2 serial and partitioned backup restart equivalence",
-    "translational cyclic and incompressible freestream boundaries",
-    "native/Gmsh first-order importer operator equivalence",
-    "three-level tetrahedral, prism, and mixed Poisson verification",
-    "three-level periodic 2D Taylor-Green PIMPLE convergence and energy decay",
-    "three-level periodic 3D ABC/Beltrami PIMPLE convergence",
-    "three-level analytical square-duct profile and pressure-drop convergence",
-    "three-level cubic lid-cavity comparison with published data",
-    "WALE Taylor-Green decay trend against published DNS peak data",
-    "NumPy/Numba/Taichi-CPU assembly and multi-step PIMPLE parity",
-    "fixed-body IBM transfer identities and two-level body-fitted force/wake comparison",
-    "one-rank FVM-VPM conservation, Picard residual, and coupled restart",
-    "one/two/four-rank partitioned Gauss-gradient PIMPLE, global diagnostics, restart, and PVTU output"
+    "serial float64 FVM lifecycle, diagnostics, and lossless backup admission",
+    "restart history reconciliation and typed offline sampling context",
+    "native first-order mesh storage and VTK/PVD artifact contracts"
   ],
-  "performance_evidence": {
-    "serial": "docs/benchmarks/fvm-serial-baseline-macos-arm64.json",
-    "operator_backends": "docs/benchmarks/fvm-backend-10k-macos-arm64.json",
-    "mpi_weak_scaling": "docs/benchmarks/fvm-mpi-weak-scaling-macos-arm64.json",
-    "max_verified_serial_cells": 1000000,
-    "qualified_partitioned_ranks": 4
+  "evidence": {
+    "contract_tests": {
+      "command": "PYTHONPATH=. pytest -q tests/fvm tests/coupler tests/test_public_api.py",
+      "paths": [
+        "tests/fvm/test_restart_and_diagnostics.py",
+        "tests/fvm/test_time_step_control.py",
+        "tests/fvm/test_logging.py",
+        "tests/fvm/test_nonorthogonal_pressure_correction.py",
+        "tests/test_public_api.py"
+      ],
+      "scope": "API, lifecycle, restart, output, and local numerical contracts; not a convergence qualification"
+    },
+    "qualification_gates": {
+      "specification": "fvm_audit.md#15-verification-and-acceptance-criteria",
+      "evidence_map": "docs/validation/fvm_qualification.md"
+    }
   },
   "experimental": [
+    "all three-level spatial/temporal, nonlinear, IBM, and performance claims until their evidence files are restored and rerun",
     "FVM-VPM coupling beyond the uniform one-rank reference",
     "Numba CPU assembly reductions",
     "Taichi CPU assembly reductions",
-    "replicated PETSc compatibility mode"
+    "replicated PETSc compatibility mode",
+    "partitioned PETSc execution until the declared MPI matrix has been rerun"
   ],
   "unsupported": [
     "dynamic/ALE meshes",

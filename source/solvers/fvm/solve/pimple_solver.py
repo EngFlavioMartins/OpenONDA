@@ -60,6 +60,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             if key not in self.params:
                 self.params[key] = val
 
+        self._timer = self.params.get("_timer") or logging.Timer()
+
         # Optional immersed-boundary forcing (set via FVMSolver.set_immersed_bodies).
         self.ibm = None
         self.last_linear_results = ()
@@ -190,6 +192,40 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         linear_results = []
         outer_diagnostics = []
         logger = self.params.get("_logger")
+        parallel = self.params.get("_parallel_context")
+        n_owned = parallel.n_owned if parallel is not None and parallel.is_partitioned else n_elem
+
+        def _normalized_outer_state_update(previous_velocity, previous_pressure) -> float:
+            """Measure the nonlinear state change, independent of inner residuals."""
+            if n_owned == 0:
+                local_update = 0.0
+            else:
+                current_velocity = np.asarray(velocity[:n_owned], dtype=np.float64)
+                velocity_scale = np.maximum(
+                    np.maximum(
+                        np.linalg.norm(current_velocity, axis=1),
+                        np.linalg.norm(previous_velocity, axis=1),
+                    ),
+                    1.0e-12,
+                )
+                velocity_update = (
+                    np.linalg.norm(current_velocity - previous_velocity, axis=1) / velocity_scale
+                )
+                current_pressure = np.asarray(kinematic_pressure[:n_owned], dtype=np.float64)
+                pressure_scale = np.maximum(
+                    np.maximum(np.abs(current_pressure), np.abs(previous_pressure)),
+                    1.0e-12,
+                )
+                pressure_update = np.abs(current_pressure - previous_pressure) / pressure_scale
+                local_update = float(
+                    max(
+                        np.max(velocity_update, initial=0.0),
+                        np.max(pressure_update, initial=0.0),
+                    )
+                )
+            if parallel is not None and parallel.is_partitioned:
+                return float(parallel.global_max(local_update))
+            return local_update
 
         # Apply the PIMPLE relaxation factors on every outer
         # corrector *except the last one*: ``fvMatrix::relax`` and
@@ -206,6 +242,10 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         final_iteration = False
 
         for outer in range(n_outer):
+            outer_previous_velocity = np.asarray(velocity[:n_owned], dtype=np.float64).copy()
+            outer_previous_pressure = np.asarray(
+                kinematic_pressure[:n_owned], dtype=np.float64
+            ).copy()
             final_iteration = final_iteration or outer == n_outer - 1
             outer_velocity_relaxation = 1.0 if final_iteration else velocity_relaxation
             outer_pressure_relaxation = 1.0 if final_iteration else pressure_relaxation
@@ -260,21 +300,21 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     return_diagnostics=True,
                 )
 
-            logging.Timer.start("Momentum Predictor")
+            self._timer.start("Momentum Predictor")
             velocity_star, momentum_diagonal, momentum_diagnostics = _solve_predictor(
                 source_explicit
             )
             linear_results.extend(
                 values["linear_result"] for values in momentum_diagnostics.values()
             )
-            logging.Timer.log(
+            self._timer.log(
                 "Momentum Predictor",
                 sink=logger,
             )
 
             ibm = getattr(self, "ibm", None)
             if ibm is not None:
-                logging.Timer.start("IBM Forcing")
+                self._timer.start("IBM Forcing")
                 n_loops = int(self.params.get("ibm_forcing_loops", 2))
                 if bool(self.params["ibm_second_solve"]):
                     src_ibm = density * ibm.compute_force(velocity_star, time_step_size)
@@ -292,7 +332,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     ibm.multidirect_correct(
                         velocity_star, time_step_size, n_iterations=max(n_loops, 2)
                     )
-                logging.Timer.log(
+                self._timer.log(
                     "IBM Forcing",
                     sink=logger,
                 )
@@ -305,7 +345,12 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             pressure_geometry = None
 
             for _corr in range(n_corr):
-                n_non_ortho = int(self.params.get("n_orthogonal_correctors", 0))
+                n_non_ortho = int(
+                    self.params.get(
+                        "n_nonorthogonal_correctors",
+                        self.params.get("n_orthogonal_correctors", 0),
+                    )
+                )
                 pressure_before_nonorthogonal_sweeps = kinematic_pressure[:n_elem].copy()
                 frozen_velocity_h_over_a = None
                 for non_ortho in range(n_non_ortho + 1):
@@ -327,7 +372,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     reuse_pressure_matrix = (
                         pressure_geometry is not None and pressure_matrix_reusable
                     )
-                    logging.Timer.start("Pressure Assembly")
+                    self._timer.start("Pressure Assembly")
                     (
                         pressure_matrix,
                         pressure_right_hand_side,
@@ -356,7 +401,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         pressure_geometry = pressure_workspace
                     if frozen_velocity_h_over_a is None:
                         frozen_velocity_h_over_a = pressure_workspace.velocity_h_over_a
-                    logging.Timer.log(
+                    self._timer.log(
                         "Pressure Assembly",
                         sink=logger,
                     )
@@ -364,7 +409,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         self.boundaries, velocity_iter, self.mesh_data, self.geo_data
                     )
 
-                    logging.Timer.start("Pressure Solve")
+                    self._timer.start("Pressure Solve")
                     final_pressure_solve = _corr == n_corr - 1 and non_ortho == n_non_ortho
                     pressure_tolerance, pressure_relative_tolerance = _linear_tolerances(
                         "pressure", final=final_pressure_solve
@@ -409,7 +454,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     final_kinematic_pressure_residual = kinematic_pressure_result.final_residual
                     parallel = self.params.get("_parallel_context")
                     del pressure_matrix, pressure_right_hand_side
-                    logging.Timer.log(
+                    self._timer.log(
                         "Pressure Solve",
                         sink=logger,
                     )
@@ -430,7 +475,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             - pressure_before_nonorthogonal_sweeps
                             + kinematic_pressure_correction
                         )
-                        logging.Timer.start("Velocity Correction")
+                        self._timer.start("Velocity Correction")
                         velocity_iter, corrected_volumetric_face_flux = (
                             simple_solver.correct_velocity_and_flux(
                                 velocity_iter,
@@ -455,7 +500,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             pressure_before_nonorthogonal_sweeps
                             + outer_pressure_relaxation * accumulated_kinematic_pressure_correction
                         )
-                        logging.Timer.log(
+                        self._timer.log(
                             "Velocity Correction",
                             sink=logger,
                         )
@@ -515,12 +560,17 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 if parallel is not None and parallel.is_partitioned
                 else local_continuity
             )
+            state_update = _normalized_outer_state_update(
+                outer_previous_velocity,
+                outer_previous_pressure,
+            )
             outer_diagnostics.append(
                 OuterCorrectorDiagnostics(
                     index=outer,
                     velocity_residual=outer_velocity_residual,
                     kinematic_pressure_residual=final_kinematic_pressure_residual,
                     max_continuity_error=continuity_outer,
+                    state_update=state_update,
                 )
             )
 
@@ -534,10 +584,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             checks = []
             residual_tolerance = self.params.get("outer_residual_tolerance")
             if residual_tolerance is not None:
-                checks.append(
-                    max(outer_velocity_residual, final_kinematic_pressure_residual)
-                    <= float(residual_tolerance)
-                )
+                checks.append(state_update <= float(residual_tolerance))
             continuity_tolerance = self.params.get("outer_continuity_tolerance")
             if continuity_tolerance is not None:
                 checks.append(continuity_outer <= float(continuity_tolerance))
@@ -566,6 +613,9 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             "velocity": velocity_residual,
             "initial_kinematic_pressure": initial_kinematic_pressure_residual,
             "velocity_increment": velocity_increment,
+            "nonlinear_state_update": (
+                outer_diagnostics[-1].state_update if outer_diagnostics else 0.0
+            ),
         }
         residuals.update(
             {

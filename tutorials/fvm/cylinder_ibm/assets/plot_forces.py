@@ -3,12 +3,19 @@
 from samples/ibm_forces_history.csv, with reference bands from
 Constant et al. 2017."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     COLORS,
     FIGURES_DIR,
     REFERENCES,

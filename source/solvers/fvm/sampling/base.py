@@ -106,9 +106,11 @@ class Sampler:
         """
         return type(self) is type(other) and self.config_dict() == other.config_dict()
 
-    def __hash__(self) -> int:
-        items = tuple(sorted(self.config_dict().items()))
-        return hash((type(self).__name__, items))
+    # Samplers are mutable runtime objects (for example, a probe may cache a
+    # spatial stencil), so equality is useful for configuration checks but the
+    # object must not be hashable.  Hashing nested schedule/config dictionaries
+    # was both unsafe and inconsistent with that mutability.
+    __hash__ = None
 
     def sample(self, context) -> dict[str, Any] | None:
         raise NotImplementedError

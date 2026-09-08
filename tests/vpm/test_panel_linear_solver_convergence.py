@@ -1,4 +1,4 @@
-"""Residual-based acceptance tests for the panel linear solvers."""
+"""Panel linear solver convergence: numerical and lifecycle contracts."""
 
 from __future__ import annotations
 
@@ -11,6 +11,9 @@ from source.solvers.vpm.boundary_elements.panels.solver.linear_solvers import ( 
     PanelScipySolver,
     constrained_least_squares_metrics,
     relative_residual,
+)
+from source.solvers.vpm.boundary_elements.panels.solver.panel_solver import (
+    PanelSolver,  # noqa: E402
 )
 
 
@@ -119,3 +122,18 @@ def test_reusable_constrained_factorization_matches_kkt_reference_for_multiple_r
         assert metrics["projected_optimality_residual"] < 1.0e-12
 
     assert factorization.memory_bytes > influence_matrix.nbytes
+
+
+def test_oversized_panel_count_is_rejected_before_any_allocation():
+    solver = PanelSolver(max_n_panels=200_000, float_dtype="f32", memory_budget_bytes=10_000_000)
+    with pytest.raises(RuntimeError, match="memory_budget_bytes"):
+        solver._ensure_initialized()
+    assert solver.lattice is None
+
+
+def test_normal_panel_count_is_allowed():
+    if taichi.lang.impl.get_runtime().prog is None:
+        taichi.init(arch=taichi.cpu)
+    solver = PanelSolver(max_n_panels=16, float_dtype="f32", linear_solver="SCIPY")
+    solver._ensure_initialized()
+    assert solver.lattice is not None

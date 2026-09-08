@@ -9,7 +9,12 @@ from numba import njit
 import numpy as np
 
 from ..mesh.partition import ownership_ranges
-from .linear_interface import LinearSolveError, LinearSolveResult
+from .linear_interface import (
+    LINEAR_RESIDUAL_FLOOR,
+    LINEAR_VERIFICATION_FACTOR,
+    LinearSolveError,
+    LinearSolveResult,
+)
 
 
 @njit(cache=True)
@@ -343,7 +348,11 @@ class PartitionedLinearWorkspace:
             converged=(
                 reason_code > 0
                 and np.isfinite(relative_residual)
-                and relative_residual <= max(10.0 * residual_target, 1e-12)
+                and relative_residual
+                <= max(
+                    LINEAR_VERIFICATION_FACTOR * residual_target,
+                    LINEAR_RESIDUAL_FLOOR,
+                )
             ),
             reason=str(self.ksp.getConvergedReason()),
             iterations=int(self.ksp.getIterationNumber()),

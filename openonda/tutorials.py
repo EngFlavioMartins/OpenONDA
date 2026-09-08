@@ -39,6 +39,7 @@ class Tutorial:
 
 
 TUTORIALS: Final[tuple[Tutorial, ...]] = (
+    Tutorial("fvm/cartesian_mesher", "Build and inspect a native Cartesian mesh"),
     Tutorial("fvm/airfoil_flow", "Laminar flow around an airfoil"),
     Tutorial("fvm/boundary_layer", "Laminar flat-plate boundary layer"),
     Tutorial("fvm/cube_flow", "Square-cylinder wake"),
@@ -52,6 +53,9 @@ TUTORIALS: Final[tuple[Tutorial, ...]] = (
     Tutorial("vpm/rotor_flow", "Single-rotor VLM-VPM flow"),
     Tutorial("vpm/vortex_interactions", "Vortex-ring interaction stabilization"),
     Tutorial("vpm/vortex_ring", "Viscous vortex-ring propagation"),
+    Tutorial(
+        "coupled_fvm_vpm/uniform_flow", "Two CPU coupling steps with an exact uniform solution"
+    ),
     Tutorial("coupled_fvm_vpm/cube_flow", "Coupled FVM-VPM cube flow"),
     Tutorial(
         "coupled_fvm_vpm/cube_flow/reference_flow",
@@ -71,8 +75,10 @@ TUTORIALS: Final[tuple[Tutorial, ...]] = (
 _BY_NAME: Final = {tutorial.name: tutorial for tutorial in TUTORIALS}
 _EXCLUDED_PARTS: Final = {
     "solution",
+    "solutions",
     "samples",
     "figures",
+    "study_results",
     "__pycache__",
     ".matplotlib",
     "animation",
@@ -202,15 +208,6 @@ def materialize_tutorial(name: str, workspace: Path) -> Path:
                 category_init,
                 workspace / "tutorials" / category / "__init__.py",
             )
-
-        # Plot scripts resolve this stable workspace-relative location.  Both
-        # resources are part of the wheel, not paths into a source checkout.
-        theme_root = installed_root / "docs/themes"
-        for file_name in ("matplotlib_setup.py", "DejaVuSerif.ttf"):
-            theme_file = theme_root / file_name
-            if not theme_file.is_file():
-                raise RuntimeError(f"Installed plotting resource is missing: {file_name}")
-            _copy_file_if_missing(theme_file, workspace / "docs/themes" / file_name)
 
         readme = workspace / "README.md"
         if not readme.exists():

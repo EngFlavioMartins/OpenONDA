@@ -1,6 +1,6 @@
 """Offline post-processing for archived FVM states.
 
-:class:`PostProcess` replays archived solver snapshots (``solution/<case>.pvd``)
+:class:`PostProcess` replays archived solver snapshots (``solutions/<case>.pvd``)
 through the *same* sampler objects and the *same* executor used by a live run.
 It never instantiates the transient solver, never evolves the case, and never
 overwrites the archive — each archived snapshot becomes a read-only
@@ -50,6 +50,9 @@ class _NullLogger:
     def force_info(self, forces):
         pass
 
+    def warning(self, _text, **_kwargs):
+        pass
+
 
 class SnapshotContext:
     """Read-only sampling context exposing one archived FVM state.
@@ -75,6 +78,8 @@ class SnapshotContext:
         time: float,
         step: int,
         time_step_size: float,
+        solution_dir: str | None = None,
+        samples_dir: str | None = None,
     ):
         from ..core.parallel import ParallelContext
 
@@ -89,12 +94,18 @@ class SnapshotContext:
         self.time = time
         self.step = step
         self._accepted_time_step_size = time_step_size
+        self._current_dt = time_step_size
+        self.solution_dir = solution_dir
+        self.samples_dir = samples_dir
         self.parallel = ParallelContext()
         self.logger = _NullLogger()
         self.last_forces = None
         self.last_y_plus = None
         self.ibm = None
         self._derived_fields: dict[object, np.ndarray] = {}
+        # Runtime output indexes belong to this replay context, never to a
+        # reusable sampler specification.
+        self._sample_pvd_entries: dict[str, list[tuple[float, str]]] = {}
 
     def _velocity_gradient(self) -> np.ndarray:
         from ..fields import gradients
@@ -151,7 +162,9 @@ class PostProcess:
         config,
         samplers=None,
         mesh=None,
-        overwrite: bool = True,
+        overwrite: bool = False,
+        solution_dir=None,
+        samples_dir=None,
     ):
         from dataclasses import replace
 
@@ -162,6 +175,37 @@ class PostProcess:
         self.boundaries = self._setup_boundaries(self.mesh_data)
         self.geo_data = self._build_geometry(self.mesh_data)
         self.overwrite = bool(overwrite)
+        self.solution_dir = self._resolve_directory(
+            solution_dir,
+            default_names=("solutions", "solution"),
+        )
+        if samples_dir is not None:
+            self.samples_dir = self._resolve_directory(samples_dir)
+        elif self.overwrite:
+            self.samples_dir = (Path(self.case_dir) / "samples").resolve()
+        else:
+            # Replay is isolated by default.  This keeps a live run's samples
+            # and a previous replay intact, while still giving each replay a
+            # deterministic, discoverable location.
+            samples_root = (Path(self.case_dir) / "samples").resolve()
+            candidate = samples_root / "replay"
+            suffix = 1
+            while candidate.exists():
+                candidate = samples_root / f"replay-{suffix}"
+                suffix += 1
+            self.samples_dir = candidate
+
+    def _resolve_directory(self, value, *, default_names=()) -> Path:
+        if value is None:
+            for name in default_names:
+                candidate = Path(self.case_dir) / name
+                if candidate.exists():
+                    return candidate.resolve()
+            if default_names:
+                return (Path(self.case_dir) / default_names[0]).resolve()
+            raise TypeError("a directory path is required")
+        path = Path(value)
+        return (path if path.is_absolute() else Path(self.case_dir) / path).resolve()
 
     def _build_geometry(self, mesh_data: dict) -> dict:
         from ..fields.gradients import compute_lsq_geometry
@@ -207,7 +251,7 @@ class PostProcess:
         return boundaries
 
     def _pvd_frames(self) -> list[tuple[float, int, Path]]:
-        solution_dir = Path(self.case_dir) / "solution"
+        solution_dir = self.solution_dir
         pvd_path = solution_dir / f"{self.setup.case_name}.pvd"
         if not pvd_path.exists():
             candidates = sorted(solution_dir.glob("*.pvd"))
@@ -227,7 +271,13 @@ class PostProcess:
             frames.append((float(match.group(1)), int(step_match.group(1)), path))
         if not frames:
             raise ValueError(f"No snapshots listed in {pvd_path}")
-        return sorted(frames)
+        frames = sorted(frames)
+        missing = [str(path) for _time, _step, path in frames if not path.is_file()]
+        if missing:
+            raise FileNotFoundError(
+                "Archived PVD references missing snapshot file(s): " + ", ".join(missing)
+            )
+        return frames
 
     def _read_snapshot(self, path: Path, n_cells: int) -> dict[str, np.ndarray | None]:
         """Return interior cell fields for one archived snapshot.
@@ -335,7 +385,7 @@ class PostProcess:
 
     def _archived_time_steps(self) -> dict[int, float]:
         """Return accepted ``time_step_size`` values keyed by archived solver step."""
-        diagnostics = Path(self.case_dir) / "solution" / "diagnostics.jsonl"
+        diagnostics = self.solution_dir / "diagnostics.jsonl"
         if not diagnostics.exists():
             return {}
         values: dict[int, float] = {}
@@ -359,18 +409,20 @@ class PostProcess:
     def run(self) -> list[tuple[float, int]]:
         """Replay every archived snapshot through the configured samplers.
 
-        Output is *fresh*: the previous run's sampler products under
-        ``samples/`` are cleared first, so re-running ``PostProcess`` never
-        appends duplicate rows into an existing CSV or PVD.  The snapshot
+        By default output is written below an isolated ``samples/replay*``
+        directory.  With ``overwrite=True`` only products owned by the
+        selected samplers are replaced; unrelated files are preserved.  The snapshot
         ``time_step_size`` passed to the samplers is the *archived* inter-frame advance
         (not ``config.time.time_step_size``), so adaptive-step cases resample offline
         with the same cadence they selected online.
         """
-        if self.overwrite:
-            self._clear_previous_output()
         frames = self._pvd_frames()
         archived_time_step_size = self._archived_time_steps()
+        self._validate_replay_prerequisites(frames)
+        if self.overwrite:
+            self._clear_previous_output()
         sampled: list[tuple[float, int]] = []
+        last_context = None
         n_cells = self.mesh_data["n_cells"]
         default_time_step_size = float(self.setup.time.time_step_size)
         for index, (time, step, path) in enumerate(frames):
@@ -397,17 +449,38 @@ class PostProcess:
                 time=time,
                 step=step,
                 time_step_size=time_step_size,
+                solution_dir=str(self.solution_dir),
+                samples_dir=str(self.samples_dir),
             )
             FVMSamplerExecutor.execute(context, strict=True)
+            last_context = context
             sampled.append((time, step))
+        if last_context is not None:
+            FVMSamplerExecutor.execute(last_context, strict=True, event="final")
         return sampled
 
     def _clear_previous_output(self) -> None:
-        """Remove prior sampler output so replay is idempotent."""
-        from .base import samples_dir
-
-        samples = Path(samples_dir(self.case_dir))
+        """Remove only selected sampler products from an explicit destination."""
+        samples = self.samples_dir
         if samples.exists():
-            for child in samples.iterdir():
-                if child.is_file():
-                    child.unlink()
+            for sampler in self.setup.samplers:
+                stem = str(getattr(sampler, "file_name", None) or sampler.name)
+                for pattern in (f"{stem}.csv", f"{stem}.pvd", f"{stem}_*.vts"):
+                    for child in samples.glob(pattern):
+                        if child.is_file():
+                            child.unlink()
+
+    def _validate_replay_prerequisites(self, frames) -> None:
+        """Validate archive and sampler inputs before destructive overwrite."""
+        for sampler in self.setup.samplers:
+            if not callable(getattr(sampler, "sample", None)):
+                raise TypeError(
+                    f"Configured sampler {type(sampler).__name__} does not implement sample()"
+                )
+        # Read every archived field set before clearing an explicit output
+        # directory.  Replay archives are normally modest; this preflight is
+        # the data-integrity guard that prevents a corrupt late frame from
+        # deleting an otherwise valid previous analysis.
+        n_cells = self.mesh_data["n_cells"]
+        for _time, _step, path in frames:
+            self._read_snapshot(path, n_cells)

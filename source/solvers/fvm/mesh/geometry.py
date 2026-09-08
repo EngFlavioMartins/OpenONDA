@@ -94,6 +94,7 @@ def compute_geometry(
     cell_face_indices,
     *,
     logger=None,
+    timer=None,
 ):
     """
     Compute geometric properties of the mesh.
@@ -137,7 +138,8 @@ def compute_geometry(
     # --- Process Basic Face Geometry ---
     from ..io import logging
 
-    logging.Timer.start("Basic Face Geometry")
+    timer = logging.Timer() if timer is None else timer
+    timer.start("Basic Face Geometry")
 
     # 1. Convert faces to a compact padded array.  Rectilinear meshes already
     # store fixed-width quads contiguously, so avoid rebuilding them through a
@@ -199,13 +201,13 @@ def compute_geometry(
         face_area_vector[start:stop] = sf_sum
         face_area[start:stop] = area_sum
 
-    logging.Timer.log(
+    timer.log(
         "Basic Face Geometry",
         sink=logger,
     )
 
     # --- Process Element Geometry ---
-    logging.Timer.start("Element Geometry")
+    timer.start("Element Geometry")
 
     # ``compute_mesh_geometry`` normally passes CSR connectivity.  Only the
     # counts persist globally; padded connectivity and all gathered face
@@ -271,7 +273,7 @@ def compute_geometry(
         safe_volume = np.where(local_sum == 0.0, 1.0, local_sum)
         cell_centre[start:stop] = weighted / safe_volume[:, np.newaxis]
         cell_volume[start:stop] = local_sum
-    logging.Timer.log(
+    timer.log(
         "Element Geometry",
         sink=logger,
     )
@@ -330,7 +332,14 @@ def compute_geometry(
     }
 
 
-def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, compute_lsq=True, logger=None):
+def compute_mesh_geometry(
+    mesh_data,
+    gradient_scheme="gauss",
+    *,
+    compute_lsq=True,
+    logger=None,
+    timer=None,
+):
     """Compute cell and face geometry for a validated mesh dictionary.
 
     ``compute_lsq=False`` is an initialization ordering tool.  It lets the
@@ -364,6 +373,7 @@ def compute_mesh_geometry(mesh_data, gradient_scheme="gauss", *, compute_lsq=Tru
         mesh_data["n_interior_faces"],
         (cell_face_indices, cell_face_offset),
         logger=logger,
+        timer=timer,
     )
 
     # Pre‑compute LSQ gradient geometry if requested

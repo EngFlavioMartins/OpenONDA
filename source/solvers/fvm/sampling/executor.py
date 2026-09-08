@@ -3,7 +3,8 @@
 :class:`FVMSamplerExecutor` runs after every accepted solver step (and once at
 initialisation).  Each sampler decides, through its own
 :class:`~source.solvers.fvm.config.RunSchedule`, whether it is due; the executor never applies
-a global force cadence.
+a global force cadence.  A ``final_only`` schedule is selected only when the
+caller explicitly dispatches the final lifecycle event.
 
 Force, y+ and IBM sampling are MPI-collective in partitioned runs and are never
 wrapped in error handling that could let ranks diverge.  Field samplers (line /
@@ -28,7 +29,17 @@ class FVMSamplerExecutor:
     """Orchestrates FVM sampler execution for one accepted step."""
 
     @staticmethod
-    def execute(solver, *, strict: bool = True) -> None:
+    def execute(solver, *, strict: bool = True, event: str = "accepted") -> None:
+        """Execute samplers for one lifecycle event.
+
+        ``accepted`` is also used for the initial state for backwards
+        compatibility: ordinary step/time schedules are evaluated at the
+        current accepted state, including step zero.  ``final`` selects only
+        schedules declared with ``final_only=True`` and never replays a
+        periodic sampler a second time.
+        """
+        if event not in {"accepted", "initial", "final"}:
+            raise ValueError(f"Unknown FVM sampler event {event!r}")
         samplers = list(getattr(solver, "_samplers", getattr(solver.setup, "samplers", ())) or ())
         auto_yplus = getattr(solver, "_default_yplus_sampler", None)
         if auto_yplus is not None and auto_yplus not in samplers:
@@ -50,11 +61,18 @@ class FVMSamplerExecutor:
         for sampler in samplers:
             captured_schedules = getattr(solver, "_sampler_schedules", {})
             schedule = captured_schedules.get(id(sampler))
-            due = (
-                schedule.is_due(solver.step, solver.time, solver._accepted_time_step_size)
-                if schedule is not None
-                else sampler.is_due(solver.step, solver.time, solver._accepted_time_step_size)
-            )
+            if event == "final":
+                due = bool(
+                    getattr(schedule, "is_final_only", getattr(schedule, "at_end", False))
+                    if schedule is not None
+                    else getattr(getattr(sampler, "schedule", None), "is_final_only", False)
+                )
+            else:
+                due = (
+                    schedule.is_due(solver.step, solver.time, solver._accepted_time_step_size)
+                    if schedule is not None
+                    else sampler.is_due(solver.step, solver.time, solver._accepted_time_step_size)
+                )
             if not due:
                 continue
             if isinstance(sampler, ForceSampler):
@@ -89,9 +107,10 @@ class FVMSamplerExecutor:
                 return
             if not solver.parallel.is_root or data is None:
                 return
-            entries = getattr(sampler, "_pvd_entries", None)
-            if entries is None:
-                entries = sampler._pvd_entries = []
+            pvd_runtime = getattr(solver, "_sample_pvd_entries", None)
+            if pvd_runtime is None:
+                pvd_runtime = solver._sample_pvd_entries = {}
+            entries = pvd_runtime.setdefault(sampler.name, [])
             entries.append((solver.time, filename))
             base.write_pvd(samples_dir, sampler.name, entries)
         else:

@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import json
 from pathlib import Path
 import re
@@ -7,9 +14,9 @@ import re
 import h5py
 import numpy as np
 
-from _reference_util import sample_vtu
-from _frames_util import vpm_velocity
-from _plotutil import load_vpm_particles
+from ._reference_util import sample_vtu
+from ._frames_util import vpm_velocity
+from ._plotutil import load_vpm_particles
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 TIME = 3.0

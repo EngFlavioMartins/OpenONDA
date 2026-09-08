@@ -1448,8 +1448,19 @@ class TaichiTreecode:
                 gradu += term1 * self.skew(self.vortex_strength[j]) + term2 * cross_j.outer_product(
                     r_vec_j
                 )
+            else:
+                # An arbitrary target at a source centre still sees its finite
+                # velocity Jacobian: q(r/sigma)/r^3 -> zeta(0)/(3 sigma^3).
+                sigma = self.core_radius[j]
+                gradu += (
+                    self.zeta_kernel(0.0) / (3.0 * sigma**3) * self.skew(self.vortex_strength[j])
+                )
         return gradu
 
+    # Near-core targets use direct leaf sums: inverse powers in the multipole
+    # derivatives can overflow even for a one-particle leaf with zero moments.
+    # Opening nodes inside their mean core radius also handles sampler points
+    # that nearly coincide with remeshed particles without moving those points.
     # TRAVERSAL — Binary-tree stack-based
 
     @ti.func
@@ -1496,7 +1507,7 @@ class TaichiTreecode:
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
             if (
-                r_mag > 1e-8
+                r_mag > ti.max(1e-8, self.node_avg_radius[node])
                 and (node_size * node_size / r_sq) < theta_sq
                 and self._node_core_is_homogeneous(node) != 0
             ):
@@ -1527,7 +1538,7 @@ class TaichiTreecode:
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
             if (
-                r_mag > 1e-8
+                r_mag > ti.max(1e-8, self.node_avg_radius[node])
                 and (node_size * node_size / r_sq) < theta_sq
                 and self._node_core_is_homogeneous(node) != 0
             ):
@@ -1557,7 +1568,7 @@ class TaichiTreecode:
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
             if (
-                r_mag > 1e-8
+                r_mag > ti.max(1e-8, self.node_avg_radius[node])
                 and (node_size * node_size / r_sq) < theta_sq
                 and self._node_core_is_homogeneous(node) != 0
             ):
@@ -1587,7 +1598,7 @@ class TaichiTreecode:
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
             if (
-                r_mag > 1e-8
+                r_mag > ti.max(1e-8, self.node_avg_radius[node])
                 and (node_size * node_size / r_sq) < theta_sq
                 and self._node_core_is_homogeneous(node) != 0
             ):
@@ -1676,7 +1687,7 @@ class TaichiTreecode:
                 r_mag = ti.sqrt(r_sq)
                 node_size = 2.0 * self.node_half_size[node]
                 if (
-                    r_mag > 1e-8
+                    r_mag > ti.max(1e-8, self.node_avg_radius[node])
                     and (node_size * node_size / r_sq) < theta_sq
                     and self._node_core_is_homogeneous(node) != 0
                 ):
@@ -1845,7 +1856,7 @@ class TaichiTreecode:
                 r_mag = ti.sqrt(r_sq)
                 node_size = 2.0 * self.node_half_size[node]
                 if (
-                    r_mag > 1e-8
+                    r_mag > ti.max(1e-8, self.node_avg_radius[node])
                     and (node_size * node_size / r_sq) < theta_sq
                     and self._node_core_is_homogeneous(node) != 0
                 ):

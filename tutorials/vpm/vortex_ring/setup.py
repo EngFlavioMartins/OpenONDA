@@ -7,10 +7,10 @@ the direct, transposed, and symmetric mixed vortex-stretching formulations;
 Every case uses the same Lagrangian-CFL endpoint; crossing it is the measured
 outcome and returns normally so the remaining cases can run.
 
-Examples::
+Examples (from this case directory)::
 
-    python -m tutorials.vpm.vortex_ring.setup --variant dns_direct
-    python -m tutorials.vpm.vortex_ring.setup --variant les_transposed --resume
+    python -m openonda.tutorial_runner . setup --variant dns_direct
+    python -m openonda.tutorial_runner . setup --variant les_transposed --resume
 """
 
 from __future__ import annotations
@@ -25,7 +25,14 @@ import numpy as np
 
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
-from tutorials.vpm.vortex_ring.assets.ring_diagnostics import (
+
+if not __package__:
+    from openonda.tutorial_runner import case_package
+    from pathlib import Path as _CasePath
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[0]) + ""
+
+from .assets.ring_diagnostics import (
     RingDiagnosticsSampler,
     vortex_ring_mode_sampler,
 )

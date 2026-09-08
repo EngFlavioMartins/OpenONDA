@@ -6,11 +6,18 @@ No simulation samples or solver parameters are modified. Both snapshots use
 one orthographic field of view and the same strength-to-radius/color maps.
 """
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 import argparse, json, os, shutil, subprocess, tempfile
 import h5py, numpy as np, pyvista as pv
 from matplotlib import colormaps
-from tutorials.vpm.vortex_ring import setup as s
+from .. import setup as s
 import openonda.vpm as vpm
 
 CASE = Path(__file__).resolve().parents[1]

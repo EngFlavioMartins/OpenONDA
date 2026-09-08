@@ -18,6 +18,12 @@ from source.solvers.vpm.config.fingerprint import numerical_configuration
 import numpy as np
 
 import openonda.vpm as vpm
+
+if not __package__:
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(Path(__file__).resolve().parent)
+
 from . import setup
 
 METHODS = (
@@ -37,37 +43,15 @@ METHODS = (
 STUDY_DIR = setup.TUTORIAL_DIR / "study_results"
 
 
-class ParticleSnapshots:
-    """Small particle archives for independent field and instability checks."""
-
-    initial = True
-
-    def __init__(self, interval: int = 100):
-        self.schedule = vpm.EverySteps(interval)
-
-    def write(self, context):
-        path = context.output_directory / "particles"
-        path.mkdir(parents=True, exist_ok=True)
-        solver = context.solver
-        np.savez_compressed(
-            path / f"{context.step:06d}.npz",
-            time=context.time,
-            step=context.step,
-            position=solver.particle_position,
-            vortex_strength=solver.particle_vortex_strength,
-            core_radius=solver.particle_core_radius,
-            particle_volume=solver.particle_volume,
-            group_id=solver.particle_group_id,
-        )
-
-
 def source_fingerprint() -> str:
-    root = setup.TUTORIAL_DIR.parents[2]
-    files = sorted((root / "source" / "solvers" / "vpm").rglob("*.py"))
-    files += [Path(__file__), Path(setup.__file__)]
+    from importlib.resources import files
+
+    root = Path(files("source.solvers.vpm"))
+    inputs = [(str(path.relative_to(root)), path) for path in sorted(root.rglob("*.py"))]
+    inputs += [("study.py", Path(__file__)), ("setup.py", Path(setup.__file__))]
     digest = hashlib.sha256()
-    for path in files:
-        digest.update(str(path.relative_to(root)).encode())
+    for name, path in inputs:
+        digest.update(name.encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
 
@@ -179,6 +163,10 @@ def build_experiment(args, directory: Path):
     return replace(
         base,
         directory=directory,
+        run=replace(
+            base.run,
+            wall_time_limit_seconds=None if args.wall_minutes is None else 60.0 * args.wall_minutes,
+        ),
         initial_conditions=tuple(rings),
         numerics=replace(
             base.numerics,
@@ -188,6 +176,7 @@ def build_experiment(args, directory: Path):
                 stretching_scheme=args.stretching,
             ),
             time_step_size=args.dt,
+            integrator=vpm.SSPRK3() if args.integrator == "SSPRK3" else vpm.RK4(),
             viscous=viscous,
             domain_bounds=(-2.0, 12.0, -3.0, 3.0, -3.0, 3.0)
             if args.diffusion == "GBD"
@@ -205,7 +194,7 @@ def build_experiment(args, directory: Path):
             samples=(
                 setup.FlowIntegralsSampler(schedule=vpm.EverySteps(10)),
                 setup.RingDiagnosticsSampler(schedule=vpm.EverySteps(10)),
-                ParticleSnapshots(interval=args.snapshot_interval),
+                *setup.core_section_samplers(interval=args.field_interval),
             ),
             directory="diagnostics",
         ),
@@ -275,7 +264,13 @@ def run(args):
             wall_seconds=time.perf_counter() - start,
             completed_steps=0 if solver is None else int(solver.step),
             final_time=0.0 if solver is None else float(solver.time),
-            termination_reason=None if error is None else f"{type(error).__name__}: {error}",
+            termination_reason=(
+                "wall-clock budget exhausted"
+                if metadata["status"] == "wall_time_limit"
+                else None
+                if error is None
+                else f"{type(error).__name__}: {error}"
+            ),
         )
         write()
     print(
@@ -304,7 +299,13 @@ def parser():
     result.add_argument("--scenario", choices=("leapfrog", "collision"), default="leapfrog")
     result.add_argument("--method", choices=METHODS, default="baseline")
     result.add_argument("--steps", type=int, default=1200)
+    result.add_argument(
+        "--wall-minutes",
+        type=float,
+        help="stop at an accepted step and save VPM samplers when this budget expires",
+    )
     result.add_argument("--dt", type=float, default=setup.TIME_STEP_SIZE)
+    result.add_argument("--integrator", choices=("SSPRK3", "RK4"), default="SSPRK3")
     result.add_argument("--spacing", type=float, default=setup.PARTICLE_SPACING)
     result.add_argument("--amplitude", type=float, default=setup.DISTURBANCE_AMPLITUDE)
     result.add_argument("--seed-direction", choices=("radial", "axial"), default="radial")
@@ -327,7 +328,12 @@ def parser():
     result.add_argument("--diffusion-tail", type=float, default=1e-5)
     result.add_argument("--gbd-remeshing", choices=("M4_PRIME", "LAGRANGE6"), default="M4_PRIME")
     result.add_argument("--timing", action="store_true")
-    result.add_argument("--snapshot-interval", type=int, default=100)
+    result.add_argument(
+        "--field-interval",
+        type=float,
+        default=0.15,
+        help="SurfaceSampler output interval in physical seconds",
+    )
     result.add_argument(
         "--tree-theta",
         type=float,

@@ -1,9 +1,11 @@
 # OpenONDA finite-volume solver
 
 This package provides a static-mesh, constant-density incompressible
-SIMPLE/PISO/PIMPLE solver for first-order polyhedral meshes. It is qualified at
-R3 for the configurations listed in `capabilities.json`; configurations
-outside that matrix fail during setup or remain explicitly experimental.
+SIMPLE/PISO/PIMPLE solver for first-order polyhedral meshes. Numerical and
+performance support is evidence-gated; see `capabilities.json` and
+[`docs/validation/fvm_qualification.md`](../../../docs/validation/fvm_qualification.md)
+for the executable contract gate and the qualifications that still require
+measured reports.
 
 The solver stores kinematic pressure ``p/ρ`` in m²/s² and volumetric face
 flux ``U·Sf`` in m³/s. Constant density therefore cancels from the flow
@@ -14,9 +16,10 @@ evolution; it is applied when reporting dimensional pressure and viscous forces.
 ```python
 import openonda.fvm as fvm
 
-setup = fvm.FVMSetup(
-    case_name="cube",
-    cores=1,
+case = fvm.FVMCase(
+    name="cube",
+    directory="path/to/case",
+    mesh="mesh.npz",  # or a mesh dictionary/buildable mesher
     output=fvm.OutputConfig(
         compression="lz4",
         precision="f32",
@@ -31,7 +34,7 @@ setup = fvm.FVMSetup(
         schedule=fvm.RunSchedule(every_time=0.25),
         write_at_end=True,
     ),
-    time=fvm.TimeConfig(
+    run=fvm.RunPlan(
         time_step_size=1e-3,
         end_time=1.0,
         output_schedule=fvm.RunSchedule(every_n_steps=20),
@@ -40,31 +43,33 @@ setup = fvm.FVMSetup(
             maximum_time_step_size=5e-3,
         ),
     ),
-    schemes=fvm.DiscretizationConfig(
-        convection_scheme="limitedLinear",
-        gradient_scheme="lsq",
+    numerics=fvm.Numerics(
+        schemes=fvm.DiscretizationConfig(
+            convection_scheme="limitedLinear",
+            gradient_scheme="lsq",
+        ),
+        linear=fvm.LinearSolverConfig(
+            momentum_solver="bicgstab",
+            pressure_solver="amg",
+        ),
+        coupling=fvm.PimpleControl(n_correctors=2, n_outer_correctors=2),
+        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=1.5e-5),
     ),
-    linear=fvm.LinearSolverConfig(
-        momentum_solver="bicgstab",
-        pressure_solver="amg",
-    ),
-    pimple=fvm.PimpleControl(n_correctors=2, n_outer_correctors=2),
-    transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=1.5e-5),
-    boundaries=[
+    boundaries=(
         fvm.BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
         fvm.BoundaryConfig.outlet("outlet", 0.0),
-    ],
-    initial_velocity=[1.0, 0.0, 0.0],
-    initial_kinematic_pressure=0.0,
+    ),
+    initial_conditions=fvm.InitialFields(velocity=[1.0, 0.0, 0.0]),
 )
-# ``mesh`` may also be a mesh dictionary or a callable returning one.
-with fvm.create_fvm_solver(setup, case_dir="path/to/case", mesh="mesh.msh") as solver:
+with fvm.FVMSolver(case) as solver:
     solver.run()
 ```
 
-Configuration is provided entirely through `FVMSetup`. Initial velocity and
-pressure values are supplied through `FVMSetup.initial_velocity` and
-`FVMSetup.initial_kinematic_pressure`.
+The canonical construction path is `FVMCase` followed by `FVMSolver(case)`;
+the older `FVMSetup`/`create_fvm_solver` path remains available for existing
+coupled/tutorial callers while migration is completed. `FVMCase` resolves its
+default artifacts under `solutions/` and `samples/` relative to the case root.
+Initial velocity and pressure values are supplied through `InitialFields`.
 `TimeConfig` and `MaximumCourantTimeStep` are immutable construction objects.
 The latter uses OpenFOAM-style damped growth (at most 20% per accepted step),
 immediate CFL-driven reductions, an optional maximum step, and exact final-time
@@ -101,22 +106,21 @@ defaults to `"raise"`.
 
 ## Capability status
 
-The serial reference has analytical hex/tet/prism/mixed-mesh convergence,
-physical square-duct, cavity, periodic 3D flow, and LES-decay gates. A complete
-1M-cell PIMPLE step used 3.62 GB peak RSS on the documented macOS ARM host.
-Fixed-body IBM has transfer, force-balance, mesh-refinement, and body-fitted
-force/wake evidence. One-rank FVM–VPM restart and conservation are verified,
-but broader coupled cases remain experimental.
+The repository contains focused contract tests for serial configuration,
+restart, output, diagnostics, and coupling behavior. The broader analytical,
+convergence, performance, IBM, and multi-rank claims previously associated
+with this solver are not certified by the evidence present in this checkout;
+they remain experimental until their reports are restored and rerun. See the
+evidence map for the exact boundary.
 
-`FVMSetup(cores=N, ...)` is the public parallel interface.
-`create_fvm_solver(...)` internally selects owned-plus-halo PIMPLE, owned PETSc
-rows, rank-local fields, and VTU/PVTU output when `N > 1`. Visualization is
-written as cell-centred, appended-binary VTK XML with LZ4 compression. Parallel
-pieces include one marked overlap layer by default, so ParaView's
-**Cell Data to Point Data** filter remains smooth across rank boundaries.
-Fields, global diagnostics, forces, and backups are invariant in the
-collective MPI tests. Cyclic patches remain serial-only. The
-same setup API is used by standalone FVM and coupled FVM–VPM cases; invoking
+`FVMSetup(cores=N, ...)` is the legacy parallel interface; new cases should
+declare the execution controls inside `FVMCase.numerics`.
+`create_fvm_solver(...)` remains available for existing callers and selects
+the configured backend and output mode. Visualization is written as
+cell-centred, appended-binary VTK XML. Partitioned and replicated MPI behavior
+must be treated as experimental until the supported matrix has been rerun.
+Cyclic patches remain serial-only. The same low-level setup API is used by
+standalone FVM and coupled FVM–VPM cases; invoking
 `python <case_name>_setup.py` selects the canonical environment and launches any
 required worker processes internally.
 
@@ -139,7 +143,6 @@ hexahedra (5), prisms (6), and pyramids (7). Other dimensions and higher-order
 cells fail before geometry assembly. Import provenance records the exact
 contract and runtime/API version in run manifests.
 
-The test commands and evidence files are listed in `tests/fvm/README.md`; the
-machine-readable support contract is `capabilities.json`.
-Measured optimization results and retained design decisions are recorded in
-[`docs/fvm-performance-and-code-audit.md`](../../../docs/fvm-performance-and-code-audit.md).
+The maintained test command and evidence policy are listed in
+`docs/validation/fvm_qualification.md`; the machine-readable support contract
+is `capabilities.json`.

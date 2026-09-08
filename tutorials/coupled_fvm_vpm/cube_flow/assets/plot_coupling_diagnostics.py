@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Plot coupled-run timing, particle population, and transfer diagnostics."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 import argparse
 import json
@@ -12,8 +19,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _plotutil as util  # noqa: E402
+from . import _plotutil as util  # noqa: E402
 
 FIGURE_FORMAT = "png"
 FIGURE_DPI = util.FIGURE_DPI

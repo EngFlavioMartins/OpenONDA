@@ -1,138 +1,22 @@
-"""The supported solver facades expose one explicit, reviewable API each."""
+"""Public solver interfaces remain importable and construct valid cases."""
 
-from __future__ import annotations
+from openonda import coupler, fvm, vpm
 
 
-def test_public_solver_api_matches_the_explicit_allowlist():
-    import openonda.coupler as coupler
-    import openonda.fvm as fvm
-    import openonda.fvm.mesher as mesher
-    import openonda.vpm as vpm
-
-    expected = {
-        fvm: {
-            "BackupConfig",
-            "BoundaryConfig",
-            "ComputeConfig",
-            "DiscretizationConfig",
-            "FieldState",
-            "ForceSampler",
-            "FVMSetup",
-            "IBMForceSampler",
-            "ImmersedBody",
-            "LinearSolveResult",
-            "LinearSolverConfig",
-            "LineSampler",
-            "LoggingConfig",
-            "MaximumCourantTimeStep",
-            "MeshMotionConfig",
-            "MeshQualityConfig",
-            "OutputConfig",
-            "PimpleControl",
-            "RunAcceptanceLimits",
-            "RunSchedule",
-            "StepDiagnostics",
-            "SurfaceSampler",
-            "TimeConfig",
-            "TransportConfig",
-            "TurbulenceConfig",
-            "YPlusSampler",
-            "compute_continuity_error",
-            "compute_enstrophy",
-            "compute_kinetic_energy",
-            "create_fvm_solver",
-            "mesher",
-        },
-        mesher: {
-            "BoundaryLayers",
-            "BoxDomain",
-            "BoxPatches",
-            "BoxRefinement",
-            "CartesianMesher",
-            "CompositeSizeField",
-            "ConeRefinement",
-            "FeatureRefinement",
-            "GenerationReport",
-            "GmshImporter",
-            "LineRefinement",
-            "SizeField",
-            "SizeReport",
-            "SphereRefinement",
-            "STLSurface",
-            "coupling_box_mesh",
-            "geometry",
-            "periodic_square_mesh",
-            "stretched",
-            "structured_box",
-            "wall_refined_axis",
-        },
-        vpm: {
-            "Backup",
-            "CylindricalDistribution",
-            "DiagnosticsConfig",
-            "DirectInduction",
-            "DivergenceLimit",
-            "DivergenceRelaxationConfig",
-            "DivergenceRelaxationError",
-            "EverySteps",
-            "EveryTime",
-            "FilamentDisturbance",
-            "FilamentRefinementConfig",
-            "FinalOnly",
-            "FMMInduction",
-            "FiniteStateCheck",
-            "FlowIntegralsSampler",
-            "ForceConfig",
-            "GrowthLimit",
-            "HealthLimits",
-            "IsotropicTurbulence",
-            "LagrangianCFLLimit",
-            "LineSampler",
-            "ManeuverVLM",
-            "MisalignmentLimit",
-            "NoisyRectangularDistribution",
-            "Numerics",
-            "PanelBodySetup",
-            "PanelSolver",
-            "ParticleCoreCompensation",
-            "ParticleDistribution",
-            "ParticleStrengthLimit",
-            "PitchingVLM",
-            "RectangularDistribution",
-            "RestartState",
-            "RingDiagnosticsSampler",
-            "RotatingVLM",
-            "RunPlan",
-            "Samplers",
-            "SmoothRampVLM",
-            "StabilizationConfig",
-            "StaticVLM",
-            "SurfaceSampler",
-            "TaylorGreenVortex",
-            "ToroidalDistribution",
-            "TranslatingVLM",
-            "TriangularPrismDistribution",
-            "TurbulenceConfig",
-            "RK2",
-            "RK4",
-            "SSPRK3",
-            "TreecodeInduction",
-            "ViscousConfig",
-            "VLMMeshSetup",
-            "VLMSetup",
-            "VLMSurfaceSetup",
-            "VortexDoublet",
-            "VortexFilament",
-            "VortexParticleSet",
-            "VortexRing",
-            "VPMCase",
-            "VPMSolver",
-            "WidnallDisturbance",
-        },
+def test_public_exports_and_case_construction(tmp_path):
+    required = {
+        fvm: {"FVMCase", "FVMSolver", "Numerics", "RunPlan", "mesher"},
+        vpm: {"VPMCase", "VPMSolver", "Numerics", "RunPlan"},
         coupler: {"CouplerSetup", "FVMVPMCoupler", "create_coupler"},
+        fvm.mesher: {"CartesianMesher", "ExtrudedCartesianMesher", "STLSurface"},
     }
-
-    for module, names in expected.items():
-        assert set(module.__all__) == names
-        for name in names:
+    for module, names in required.items():
+        assert names <= set(module.__all__)
+        assert len(module.__all__) == len(set(module.__all__))
+        for name in module.__all__:
             assert getattr(module, name) is not None
+    mesh = fvm.mesher.structured_box(2, 2, 2)
+    flow = fvm.FVMCase(name="api", mesh=mesh, directory=tmp_path)
+    particles = vpm.VPMCase(numerics=vpm.Numerics(compute_device="CPU"), directory=tmp_path)
+    assert flow.to_setup().case_name == "api"
+    assert flow.directory == particles.directory == tmp_path

@@ -4,6 +4,13 @@
 Output: figures/plate_staticvsmoving.png
 """
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import argparse
 from pathlib import Path
 
@@ -11,8 +18,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from _plot_theme import SAMPLES_DIR, FIG_DIR, color, cm, save_fig
-from theoretical_model import prandtl_finite_span_lift_curve_slope
+from ._plot_theme import SAMPLES_DIR, FIG_DIR, color, cm, save_fig
+from .theoretical_model import prandtl_finite_span_lift_curve_slope
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--format", choices=("png", "pdf"), default="png")

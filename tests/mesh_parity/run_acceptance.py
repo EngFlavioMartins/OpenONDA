@@ -29,8 +29,6 @@ import time
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 import openonda.fvm.mesher as msh
 from source.solvers.fvm.io.mesh_storage import save_native_mesh

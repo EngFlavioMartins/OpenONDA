@@ -1,4 +1,12 @@
-"""Sparse linear solvers and convergence telemetry."""
+"""Sparse linear solvers and convergence telemetry.
+
+All backends report the algebraic residual as ``||b - A x|| / S`` where
+``S`` is the deviation-aware scale returned by :func:`deviation_norm_factor`.
+The configured absolute/relative target is the stopping target.  A small
+ten-times allowance is retained only for backend verification because SciPy
+and PETSc can stop on slightly different internal norms; the reported
+``final_residual`` remains the common algebraic quantity.
+"""
 
 from dataclasses import dataclass, replace
 import logging
@@ -15,6 +23,8 @@ _AMG_CACHE = {}
 _MAX_TRANSIENT_CACHE_ENTRIES = 16
 _AMG_BUILD_SEED = 0
 _FALLBACK_WARN_COUNT = 0
+LINEAR_VERIFICATION_FACTOR = 10.0
+LINEAR_RESIDUAL_FLOOR = 1.0e-12
 
 
 def _emit_warning(log_sink, message, *args) -> None:
@@ -211,7 +221,7 @@ def _trivial_solution(A, b, x0, tol):
     return None
 
 
-def _breakdown_converged(A, b, x, tol, method, info, log_sink=None):
+def _breakdown_converged(A, b, x, tol, method, info, log_sink=None, x0=None):
     """True when a nonzero ``info`` iterate nevertheless meets the tolerance.
 
     SciPy signals breakdown (``info < 0``) when the recurrence scalars
@@ -219,7 +229,8 @@ def _breakdown_converged(A, b, x, tol, method, info, log_sink=None):
     below what the recurrences can resolve.  The algebraic residual is the
     ground truth, so accept the iterate when it verifies.
     """
-    res = normalized_residual(A, x, b)
+    norm_factor = deviation_norm_factor(A, b, x0)
+    res = float(np.linalg.norm(np.asarray(b) - A @ np.asarray(x)) / norm_factor)
     if res <= tol:
         _emit_debug(
             log_sink,
@@ -452,7 +463,8 @@ def _solve_petsc(
     converged = (
         reason_code > 0
         and np.isfinite(final_residual)
-        and final_residual <= max(10.0 * residual_target, 1e-12)
+        and final_residual
+        <= max(LINEAR_VERIFICATION_FACTOR * residual_target, LINEAR_RESIDUAL_FLOOR)
     )
     info = LinearSolveResult(
         backend="petsc",
@@ -652,7 +664,7 @@ def _solve_pressure(
             callback=count_iteration,
         )
         if info != 0 and _breakdown_converged(
-            A, b, x, amg_tolerance, "pressure CG", info, log_sink
+            A, b, x, amg_tolerance, "pressure CG", info, log_sink, x0=x0
         ):
             info = 0
         if info != 0:
@@ -673,7 +685,7 @@ def _solve_pressure(
                 callback=count_iteration,
             )
             if info != 0 and _breakdown_converged(
-                A, b, x, amg_tolerance, "pressure CG", info, log_sink
+                A, b, x, amg_tolerance, "pressure CG", info, log_sink, x0=x0
             ):
                 info = 0
         if info != 0:
@@ -787,7 +799,7 @@ def _iterative_solve_with_M(
         Solution vector.
     """
     x, info, iterations = _run_krylov(A, b, method, M, tol, maxiter, x0)
-    if info != 0 and _breakdown_converged(A, b, x, tol, method, info, log_sink):
+    if info != 0 and _breakdown_converged(A, b, x, tol, method, info, log_sink, x0=x0):
         info = 0
     if info != 0:
         global _FALLBACK_WARN_COUNT
@@ -998,7 +1010,7 @@ def solve_linear_system(
 
     def finish(solution, metadata):
         final_residual = float(np.linalg.norm(np.asarray(b) - A @ solution) / norm_factor)
-        residual_limit = max(10.0 * tol, 1e-12)
+        residual_limit = max(LINEAR_VERIFICATION_FACTOR * tol, LINEAR_RESIDUAL_FLOOR)
         result = LinearSolveResult(
             backend="scipy",
             method=method,

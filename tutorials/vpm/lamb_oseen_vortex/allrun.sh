@@ -3,9 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-cd "${REPO_ROOT}"
-MODULE="tutorials.vpm.lamb_oseen_vortex"
+cd "${SCRIPT_DIR}"
 PYTHON_BIN="${OPENONDA_PYTHON:-python}"
 
 CACHE_PARENT="${TI_OFFLINE_CACHE_FILE_PATH:-${XDG_CACHE_HOME:-${SCRIPT_DIR}/.cache}/taichi}"
@@ -42,19 +40,19 @@ esac
 
 run_physics_case() {
     local physics="$1"
-    run_phase "${physics} / CS" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" CS --resume
+    run_phase "${physics} / CS" "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" setup "${physics}" CS --resume
 
     run_phase "${physics} / RWM / converge ensemble" \
-        "${PYTHON_BIN}" -u -m "${MODULE}.assets.rwm_ensemble" "${physics}" \
+        "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.rwm_ensemble "${physics}" \
         --number-of-realizations 10 --converge --resume
 
-    run_phase "${physics} / DVH" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" DVH --resume
+    run_phase "${physics} / DVH" "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" setup "${physics}" DVH --resume
 
-    run_phase "${physics} / GBD" "${PYTHON_BIN}" -u -m "${MODULE}.setup" "${physics}" GBD --resume
+    run_phase "${physics} / GBD" "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" setup "${physics}" GBD --resume
 
-    run_phase "${physics} / extract diagnostics" "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" \
+    run_phase "${physics} / extract diagnostics" "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess \
         --extract-fields --case "${physics}"
-    run_phase "${physics} / validate" "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" \
+    run_phase "${physics} / validate" "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess \
         --pre-plot --validate-case "${physics}"
 }
 

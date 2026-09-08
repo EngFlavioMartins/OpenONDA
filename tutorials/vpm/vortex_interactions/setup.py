@@ -42,6 +42,8 @@ TOROIDAL_TAIL_FRACTION = 1.0e-4
 TIME_STEP_SIZE = 20.0 * PARTICLE_SPACING**2 / RING_CIRCULATION
 N_STEPS = 1200
 SAMPLE_INTERVAL_STEPS = 5
+CORE_SECTION_INTERVAL = 1.5  # physical seconds, independent of the integration timestep
+CORE_SECTION_SPACING = 0.02 * RING_RADIUS
 BACKUP_INTERVAL_STEPS = 50
 MAX_N_PARTICLES = 120_000
 SMAGORINSKY_COEFFICIENT = 0.20
@@ -95,6 +97,35 @@ class RingDiagnosticsSampler(vpm.RingDiagnosticsSampler):
     """Write the initial ring geometry as well as the regular cadence."""
 
     initial = True
+
+
+class CoreSectionSampler(vpm.SurfaceSampler):
+    """Record the initial meridional section as well as the regular cadence."""
+
+    initial = True
+
+
+def core_section_samplers(
+    *, interval: float = CORE_SECTION_INTERVAL
+) -> tuple[vpm.SurfaceSampler, ...]:
+    """Sample curl(u) on z=0, y>=0; here omega_theta equals omega_z.
+
+    The fixed grid covers both rings' travel. Postprocessing crops the saved
+    plane around the cores without recomputing or azimuthally averaging fields.
+    A final sampler also records runs that end between cadence boundaries.
+    """
+    options = dict(
+        point=[0.0, 0.0, 0.0],
+        normal=[0.0, 0.0, 1.0],
+        bounds=[-2.0 * RING_RADIUS, 14.0 * RING_RADIUS, 0.0, 1.8 * RING_RADIUS],
+        spacing=CORE_SECTION_SPACING,
+        file_name="core_section",
+        include_derivatives=False,
+    )
+    return (
+        CoreSectionSampler(**options, schedule=vpm.EveryTime(interval)),
+        vpm.SurfaceSampler(**options, schedule=vpm.FinalOnly()),
+    )
 
 
 def create_ring(centre_x: float, group_id: int) -> vpm.VortexRing:
@@ -222,6 +253,7 @@ def build_case(
             samples=(
                 FlowIntegralsSampler(schedule=vpm.EverySteps(SAMPLE_INTERVAL_STEPS)),
                 RingDiagnosticsSampler(schedule=vpm.EverySteps(SAMPLE_INTERVAL_STEPS)),
+                *core_section_samplers(),
             ),
             directory=case_name,
         ),

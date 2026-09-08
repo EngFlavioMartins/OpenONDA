@@ -27,6 +27,13 @@ Usage::
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import argparse
 import sys
 from pathlib import Path
@@ -34,8 +41,7 @@ from pathlib import Path
 import numpy as np
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_SCRIPT_DIR))
-from generate_openvsp_blade import RotorBladeDesign, design_schedule
+from .generate_openvsp_blade import RotorBladeDesign, design_schedule
 
 
 def main() -> int:

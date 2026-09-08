@@ -54,6 +54,19 @@ def test_stretching_control_changes_the_restart_identity():
     assert identities[0] != identities[1]
 
 
+def test_integrator_control_selects_tableau_and_changes_restart_identity():
+    from source.solvers.vpm.config.fingerprint import numerical_configuration
+
+    identities = []
+    for name, order in (("SSPRK3", 3), ("RK4", 4)):
+        args = parser().parse_args(["--integrator", name])
+        case = build_experiment(args, Path("/tmp/interaction-config-test"))
+        assert case.numerics.integrator.name == name
+        assert case.numerics.integrator.order == order
+        identities.append(numerical_configuration(case.numerics)["integrator"])
+    assert identities[0] != identities[1]
+
+
 def test_collision_reverses_only_the_second_rings_circulation():
     cases = {}
     for scenario in ("leapfrog", "collision"):

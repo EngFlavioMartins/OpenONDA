@@ -79,7 +79,9 @@ class Numerics:
             raise TypeError("induction must implement evaluate_stage")
         if not callable(getattr(self.induction, "build", None)):
             raise TypeError("induction must implement build() for solver-local runtime state")
-        if self.time_step_size <= 0.0:
+        if isinstance(self.time_step_size, bool) or not isinstance(self.time_step_size, Real):
+            raise TypeError("time_step_size must be a real number")
+        if not math.isfinite(float(self.time_step_size)) or self.time_step_size <= 0.0:
             raise ValueError("time_step_size must be positive")
         if self.max_n_particles < 1:
             raise ValueError("max_n_particles must be at least one")
@@ -194,6 +196,14 @@ class RunPlan:
     initial_samples: bool = True
     final_backup: bool = True
     health_limit_action: Literal["RAISE", "STOP"] = "RAISE"
+    wall_time_limit_seconds: float | None = None
+    """Optional runtime budget, checked between accepted steps.
+
+    Budget stops save terminal samplers and the configured final backup. They
+    have status ``wall_time_limit``, not a numerical health failure. Initial
+    construction and sampling count toward the budget; final output can add
+    overhead, and an in-flight step is allowed to finish.
+    """
 
     def __post_init__(self) -> None:
         if isinstance(self.steps, bool) or not isinstance(self.steps, int):
@@ -204,6 +214,12 @@ class RunPlan:
         if action not in {"RAISE", "STOP"}:
             raise ValueError("RunPlan.health_limit_action must be 'RAISE' or 'STOP'")
         object.__setattr__(self, "health_limit_action", action)
+        limit = self.wall_time_limit_seconds
+        if limit is not None:
+            if isinstance(limit, bool) or not isinstance(limit, Real):
+                raise TypeError("RunPlan.wall_time_limit_seconds must be a positive number")
+            if not math.isfinite(limit) or limit <= 0:
+                raise ValueError("RunPlan.wall_time_limit_seconds must be finite and positive")
 
 
 @dataclass(slots=True)
@@ -223,8 +239,10 @@ class RestartState:
     step: int = 0
 
     def __post_init__(self) -> None:
-        if self.time < 0.0:
-            raise ValueError("RestartState.time must be non-negative")
+        if isinstance(self.time, bool) or not isinstance(self.time, Real):
+            raise TypeError("RestartState.time must be a real number")
+        if not math.isfinite(float(self.time)) or self.time < 0.0:
+            raise ValueError("RestartState.time must be finite and non-negative")
         if isinstance(self.step, bool) or not isinstance(self.step, int):
             raise TypeError("RestartState.step must be an integer")
         if self.step < 0:

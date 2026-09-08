@@ -29,12 +29,6 @@ def _load_module(path: Path, name: str):
 
 def _import_repository_tutorial(name: str):
     """Import a tutorial module outside pytest's ``tests/tutorials`` namespace."""
-    existing = sys.modules.get("tutorials")
-    if existing is not None and getattr(existing, "__file__", None) is None:
-        del sys.modules["tutorials"]
-    root = str(REPOSITORY_ROOT)
-    if root not in sys.path:
-        sys.path.insert(0, root)
     return importlib.import_module(name)
 
 

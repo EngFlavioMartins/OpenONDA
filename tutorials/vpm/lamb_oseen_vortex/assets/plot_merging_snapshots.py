@@ -27,15 +27,19 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib.ticker import FormatStrFormatter
 
-REPO = Path(__file__).resolve().parents[4]
 CASE_DIR = Path(__file__).resolve().parents[1]
 OUT = CASE_DIR / "figures"
-sys.path.insert(0, str(REPO))
-from tutorials.vpm.lamb_oseen_vortex import setup
+from .. import setup
 
 _initial_conditions = setup._initial_conditions
 
-from tutorials.vpm.lamb_oseen_vortex.assets.postprocess import load_theme
+if not __package__:
+    from openonda.tutorial_runner import case_package
+    from pathlib import Path as _CasePath
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+from ..assets.postprocess import load_theme
 
 load_theme()
 plt.rcParams.update({"axes.linewidth": 0.45, "pdf.compression": 9})

@@ -20,6 +20,8 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
+import weakref
 
 import taichi as ti
 
@@ -28,6 +30,85 @@ from source import log_style
 from ..config import constants as constants_module
 
 _logger = logging.getLogger(__name__)
+
+# Taichi owns one process-global runtime.  VPM solvers may share that runtime
+# only when they use the same effective backend/precision.  A weak owner set
+# avoids keeping abandoned interactive solver objects alive, while ensuring
+# that closing one solver never silently tears down another live solver.
+_BACKEND_OWNERS: weakref.WeakSet[object] = weakref.WeakSet()
+_BACKEND_CONFIGURATION: tuple[str, str] | None = None
+_BACKEND_OWNER_LOCK = threading.RLock()
+
+
+def acquire_taichi_backend(
+    owner: object,
+    *,
+    preferred_backend: str = "AUTO",
+    precision: str = "f32",
+) -> None:
+    """Reserve a compatible lease on the process-global Taichi runtime.
+
+    Taichi can share a runtime between compatible VPM objects, but it cannot
+    safely mix precision or effective backend settings.  Unsupported mixes
+    fail at admission before output or field allocation begins.
+    """
+    global _BACKEND_CONFIGURATION
+    with _BACKEND_OWNER_LOCK:
+        # A solver that was abandoned without an explicit ``close()`` can be
+        # held in a reference cycle by Taichi/Python callback objects.  The
+        # ownership set is weak, but its callbacks cannot run until that cycle
+        # is collected.  Reclaim those dead leases before deciding whether a
+        # new precision/backend request is compatible with the live runtime.
+        gc.collect()
+
+        # If the previous owner was abandoned rather than closed, its Taichi
+        # program may still be initialized with an incompatible default
+        # precision/backend.  Once no tracked solver remains, it is safe to
+        # reset that unowned runtime; doing so preserves the mixed-live-solver
+        # guard below while allowing ordinary sequential cases to choose their
+        # declared configuration.
+        if not _BACKEND_OWNERS and _BACKEND_CONFIGURATION is not None:
+            active_backend, active_precision = _BACKEND_CONFIGURATION
+            requested_backend = str(preferred_backend).upper()
+            requested_precision = str(precision).lower()
+            if active_precision != requested_precision or (
+                requested_backend not in {"AUTO", active_backend}
+            ):
+                with contextlib.suppress(Exception):
+                    ti.sync()
+                with contextlib.suppress(Exception):
+                    ti.reset()
+                constants_module.TAICHI_BACKEND = "UNKNOWN"
+                _BACKEND_CONFIGURATION = None
+
+        if owner in _BACKEND_OWNERS:
+            return
+        if _BACKEND_CONFIGURATION is not None:
+            active_backend, active_precision = _BACKEND_CONFIGURATION
+            requested_backend = str(preferred_backend).upper()
+            if active_precision != str(precision).lower():
+                raise RuntimeError(
+                    "The Taichi backend is already initialized at "
+                    f"precision={active_precision!r}; requested {precision!r}"
+                )
+            if requested_backend not in {"AUTO", active_backend}:
+                raise RuntimeError(
+                    "The Taichi backend is already initialized as "
+                    f"{active_backend!r}; requested {requested_backend!r}"
+                )
+        _BACKEND_OWNERS.add(owner)
+
+
+def _release_taichi_backend(owner: object | None) -> None:
+    """Release an ownership reservation without touching Taichi state."""
+    global _BACKEND_CONFIGURATION
+    with _BACKEND_OWNER_LOCK:
+        if owner is not None:
+            _BACKEND_OWNERS.discard(owner)
+        else:
+            _BACKEND_OWNERS.clear()
+        if not _BACKEND_OWNERS:
+            _BACKEND_CONFIGURATION = None
 
 
 def _clear_stale_taichi_cache() -> None:
@@ -327,13 +408,13 @@ def _build_backend_chain(preferred_backend: str, precision: str = "f32") -> list
     return chain
 
 
-def reset_taichi_backend() -> None:
+def reset_taichi_backend(*, owner: object | None = None) -> None:
     """Fully reset the Taichi runtime, releasing all GPU memory.
 
-    Call this **before** creating a new :class:`VPMSolver` when running multiple
-    VPM simulations sequentially in the same Python process.  After this call
-    every Taichi field, kernel, and ndarray from the previous run is invalid;
-    the next :class:`VPMSolver` constructor will re-initialise Taichi from scratch.
+    Call this **after** the active :class:`VPMSolver` has been closed, or pass
+    that solver as ``owner`` from its cleanup path.  Resetting a runtime owned
+    by another live solver is rejected because every Taichi field, kernel, and
+    ndarray from that solver becomes invalid after ``ti.reset()``.
 
     Typical usage in a script that runs several cases back-to-back::
 
@@ -348,18 +429,41 @@ def reset_taichi_backend() -> None:
     This prevents the ``Failed to allocate ext arr buffer`` Taichi error that
     occurs when accumulated GPU allocations leave no room for staging buffers.
     """
-    # Flush all pending GPU work before tearing down the runtime so the
-    # Vulkan driver can release resources immediately.
-    with contextlib.suppress(Exception):
-        ti.sync()
-    with contextlib.suppress(Exception):
-        ti.reset()
-    # Force CPython to destroy C++ Taichi objects now (leaked fields,
-    # reference cycles, etc.) so the Vulkan device is fully cleaned up
-    # before the process exits or the next ti.init() runs.
-    gc.collect()
-    # Clear the cached backend flag so the next init runs unconditionally.
-    constants_module.TAICHI_BACKEND = "UNKNOWN"
+    global _BACKEND_CONFIGURATION
+    with _BACKEND_OWNER_LOCK:
+        # Remove weak leases held only by abandoned reference cycles before
+        # enforcing the live-owner safety check.  An explicit class-level
+        # reset should be useful for ordinary sequential scripts even when a
+        # previous interactive solver forgot to call ``close()``.
+        gc.collect()
+        if owner is None and _BACKEND_OWNERS:
+            raise RuntimeError(
+                "Cannot reset the Taichi backend while a VPM solver is live; "
+                "close all live solvers first"
+            )
+        if owner is not None:
+            if owner not in _BACKEND_OWNERS:
+                return
+            _BACKEND_OWNERS.discard(owner)
+            if _BACKEND_OWNERS:
+                # Other compatible solvers still use this process-global
+                # runtime.  Releasing this lease must not invalidate them.
+                return
+        try:
+            # Flush all pending GPU work before tearing down the runtime so the
+            # Vulkan driver can release resources immediately.
+            with contextlib.suppress(Exception):
+                ti.sync()
+            with contextlib.suppress(Exception):
+                ti.reset()
+            # Force CPython to destroy C++ Taichi objects now (leaked fields,
+            # reference cycles, etc.) so the Vulkan device is fully cleaned up
+            # before the process exits or the next ti.init() runs.
+            gc.collect()
+            # Clear the cached backend flag so the next init runs unconditionally.
+            constants_module.TAICHI_BACKEND = "UNKNOWN"
+        finally:
+            _BACKEND_CONFIGURATION = None
 
 
 def _probe_taichi_backend() -> None:
@@ -419,13 +523,16 @@ def initialize_taichi_backend(
           str: Name of the successfully initialised backend
               (``'METAL'``, ``'VULKAN'``, ``'CUDA'``, or ``'CPU'``).
     """
+    global _BACKEND_CONFIGURATION
     # Check if Taichi is already initialized
     if ti.lang.impl.get_runtime().prog is not None:
         cached = getattr(constants_module, "TAICHI_BACKEND", None)
         if cached in {"CPU", "VULKAN", "CUDA", "METAL"}:
+            _BACKEND_CONFIGURATION = (cached, str(precision).lower())
             return cached
         resolved = _active_backend_name()
         constants_module.TAICHI_BACKEND = resolved
+        _BACKEND_CONFIGURATION = (resolved, str(precision).lower())
         return resolved
 
     if precision not in _PRECISION_MAP:
@@ -491,6 +598,7 @@ def initialize_taichi_backend(
                 )
             _probe_taichi_backend()
             constants_module.TAICHI_BACKEND = name
+            _BACKEND_CONFIGURATION = (name, str(precision).lower())
             _logger.info("backend %s initialized at precision %s", name, precision)
             return name
         except Exception as exc:

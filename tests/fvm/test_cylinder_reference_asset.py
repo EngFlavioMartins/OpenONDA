@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +10,7 @@ from tutorials.coupled_fvm_vpm.cylinder_shedding_flow.reference_flow import setu
 
 
 def test_tracked_cylinder_surface_crosses_span_with_caps_outside_domain():
-    cylinder_stl = Path(setup.__file__).resolve().parent.parent / "assets/cylinder_long.stl"
+    cylinder_stl = Path(setup.__file__).resolve().parent / "assets/cylinder_long.stl"
     assert cylinder_stl.is_file()
 
     vertices = np.asarray(
@@ -33,6 +32,3 @@ def test_tracked_cylinder_surface_crosses_span_with_caps_outside_domain():
     cap_triangles = np.ptp(triangles[:, :, 2], axis=1) == 0.0
     assert np.any(cap_triangles)
     np.testing.assert_allclose(np.abs(triangles[cap_triangles, :, 2]), 6.0, atol=0.0)
-
-    creator_source = inspect.getsource(setup.create_solver)
-    assert "surface_may_cross_domain_boundary=True" in creator_source

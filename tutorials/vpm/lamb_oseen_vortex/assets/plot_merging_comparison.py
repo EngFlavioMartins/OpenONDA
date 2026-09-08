@@ -7,6 +7,13 @@ z=L/4 velocity/vorticity plane) for each viscous scheme.
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib
@@ -31,7 +38,7 @@ if __package__:
         scheme_zorder,
     )
 else:
-    from postprocess import (
+    from .postprocess import (
         MERGING_NORMALIZED_END_TIME,
         SCHEME_DRAW_ORDER,
         SCHEMES,

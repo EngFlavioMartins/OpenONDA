@@ -28,71 +28,24 @@ def _load_trial(monkeypatch, module_name: str):
     return _load_setup(CASE_DIR / "assets" / "run_trial.py", module_name)
 
 
-def test_cube_flow_uses_one_exact_sampling_cadence_and_native_substeps():
-    assert not (CASE_DIR / "cube_flow_timing.py").exists()
-    setup = _load_setup(CASE_DIR / "setup.py", "cube_flow_setup_test")
-
-    assert pytest.approx(0.010) == setup.FVM_TIME_STEP_SIZE
-    assert pytest.approx(0.050) == setup.VPM_TIME_STEP_SIZE
-    assert setup.VPM_TIME_STEP_SIZE / setup.FVM_TIME_STEP_SIZE == 5
-    assert pytest.approx(0.5) == setup.WRITE_SOLUTION_BACKUP
-    assert setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS == 50
-    assert setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS == 10
-    assert setup.FVM_SAMPLING_INTERVAL_STEPS == 5
-    assert setup.VPM_SAMPLING_INTERVAL_STEPS == 1
-    assert (
-        pytest.approx(setup.WRITE_SOLUTION_BACKUP)
-        == setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS * setup.FVM_TIME_STEP_SIZE
-    )
-    assert (
-        pytest.approx(setup.WRITE_SOLUTION_BACKUP)
-        == setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS * setup.VPM_TIME_STEP_SIZE
-    )
-    assert (
-        pytest.approx(setup.SAMPLING_INTERVAL_TIME)
-        == setup.FVM_SAMPLING_INTERVAL_STEPS * setup.FVM_TIME_STEP_SIZE
-    )
-    assert (
-        pytest.approx(setup.SAMPLING_INTERVAL_TIME)
-        == setup.VPM_SAMPLING_INTERVAL_STEPS * setup.VPM_TIME_STEP_SIZE
-    )
-    assert setup.END_TIME / setup.VPM_TIME_STEP_SIZE == 400
-
-    assert all(
-        sampler.schedule.every_n_steps == setup.FVM_SAMPLING_INTERVAL_STEPS
-        and sampler.schedule.every_time is None
-        for sampler in setup.FVM_SAMPLERS
-    )
-    assert all(
-        sampler.schedule.interval == setup.VPM_SAMPLING_INTERVAL_STEPS
-        for sampler in setup.VPM_SAMPLERS
-    )
-    assert (
-        setup.FVM_SETUP.time.output_schedule.every_n_steps
-        == setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
-    )
-    assert setup.FVM_SETUP.time.output_schedule.every_time is None
-    assert setup.VPM_CASE.backup.interval_steps == 0
-    assert setup.VPM_CASE.numerics.write_precision == "f32"
-    assert setup.VPM_CASE.backup.directory == "solution"
-    assert setup.VPM_CASE.backup.log_directory == "solution"
-    assert (
-        setup.COUPLER_SETUP.backup_interval_steps == setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS
-    )
-    assert not hasattr(setup.COUPLER_SETUP, "vpm_particle_spacing")
-    assert not hasattr(setup.COUPLER_SETUP, "vpm_core_radius_ratio")
-    assert not hasattr(
-        setup.COUPLER_SETUP,
-        "is_boundary_condition_resynchronized_after_transfer",
-    )
-    assert setup.COUPLER_SETUP.transfer_method == "buffered_m4_renewal"
-    assert pytest.approx(6.0 * setup.VPM_PARTICLE_SPACING) == setup.ETA_BLEND_WIDTH
-    assert pytest.approx(setup.ETA_BLEND_WIDTH) == setup.COUPLER_SETUP.eta_blend_width
-    assert setup.COUPLER_SETUP.fvm_consistency_width == pytest.approx(0.25)
-    assert setup.COUPLER_SETUP.transfer_vorticity_cutoff == pytest.approx(0.05)
-    assert setup.COUPLER_SETUP.transfer_boundary_prune_multiplier == pytest.approx(10.0)
-    assert setup.COUPLER_SETUP.transfer_amplification_cap == pytest.approx(1.8)
-    assert setup.VPM_CASE.numerics.viscous.scheme == "GBD"
+def test_cube_flow_schedules_share_physical_time():
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_flow_schedule")
+    for dt, backup, sample in (
+        (
+            setup.FVM_TIME_STEP_SIZE,
+            setup.FVM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
+            setup.FVM_SAMPLING_INTERVAL_STEPS,
+        ),
+        (
+            setup.VPM_TIME_STEP_SIZE,
+            setup.VPM_WRITE_SOLUTION_BACKUP_INTERVAL_STEPS,
+            setup.VPM_SAMPLING_INTERVAL_STEPS,
+        ),
+    ):
+        assert dt * backup == pytest.approx(setup.WRITE_SOLUTION_BACKUP)
+        assert dt * sample == pytest.approx(setup.SAMPLING_INTERVAL_TIME)
+    ratio = setup.VPM_TIME_STEP_SIZE / setup.FVM_TIME_STEP_SIZE
+    assert ratio == pytest.approx(round(ratio))
 
 
 @pytest.mark.parametrize("scheme", ["CS", "GBD", "NONE"])

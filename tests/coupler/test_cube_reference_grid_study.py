@@ -33,6 +33,8 @@ def write_samples(directory: Path, spacing: float) -> None:
                 "side_force_coefficient",
             )
         )
+        writer.writerow((0.0, 99.0, 99.0, 99.0))
+        writer.writerow((10.0, 99.0, 99.0, 99.0))
         for value in time:
             writer.writerow(
                 (
@@ -46,6 +48,8 @@ def write_samples(directory: Path, spacing: float) -> None:
         with (directory / f"{name}.csv").open("w", newline="") as stream:
             writer = csv.writer(stream)
             writer.writerow(("time", "position_x", "position_y", "position_z", "velocity_x"))
+            writer.writerow((5.0, -1.0, y, 0.0, 99.0))
+            writer.writerow((10.0, -1.0, y, 0.0, 99.0))
             for value in np.linspace(5.0, 10.0, 11):
                 for x in np.linspace(-1.0, 4.0, 21):
                     writer.writerow((value, x, y, 0.0, np.tanh(x) + spacing**2))

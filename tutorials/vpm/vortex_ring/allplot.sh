@@ -3,9 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-cd "${REPO_ROOT}"
-MODULE="tutorials.vpm.vortex_ring"
+cd "${SCRIPT_DIR}"
 PYTHON_BIN="${OPENONDA_PYTHON:-python}"
 
 export MPLCONFIGDIR="${MPLCONFIGDIR:-${SCRIPT_DIR}/.cache/matplotlib}"
@@ -19,25 +17,25 @@ case "${1:-}" in
 esac
 
 if (( STRICT )); then
-    "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" --pre-plot
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess --pre-plot
 else
-    "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" --available --pre-plot
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess --available --pre-plot
 fi
 for figure_format in png pdf; do
-    "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_motion" --format "${figure_format}"
-    "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_energy" --format "${figure_format}"
-    "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_circulation" --format "${figure_format}"
-    "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_stability" --format "${figure_format}"
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.plot_vortex_ring_motion --format "${figure_format}"
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.plot_vortex_ring_energy --format "${figure_format}"
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.plot_vortex_ring_circulation --format "${figure_format}"
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.plot_vortex_ring_stability --format "${figure_format}"
 done
 if (( STRICT )); then
-    "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_scenes"
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.plot_vortex_ring_scenes
 else
-    "${PYTHON_BIN}" -m "${MODULE}.assets.plot_vortex_ring_scenes" --available
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.plot_vortex_ring_scenes --available
 fi
-"${PYTHON_BIN}" -m "${MODULE}.assets.summarize_ring_results"
-"${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" --manifest
+"${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.summarize_ring_results
+"${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess --manifest
 if (( STRICT )); then
-    "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess"
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess
 else
-    "${PYTHON_BIN}" -m "${MODULE}.assets.postprocess" --available
+    "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess --available
 fi

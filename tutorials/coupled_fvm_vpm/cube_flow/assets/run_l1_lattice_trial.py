@@ -18,9 +18,10 @@ import numpy as np
 
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(CASE_DIR))
 
-import setup as case  # noqa: E402
+from openonda.tutorial_runner import load_case_module
+
+case = load_case_module(CASE_DIR)
 import openonda.coupler as coupling  # noqa: E402
 import openonda.fvm as fvm  # noqa: E402
 import openonda.vpm as vpm  # noqa: E402

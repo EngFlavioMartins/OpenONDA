@@ -210,7 +210,15 @@ class ViscousConfig:
         core_radius_ratio: float = 2.5,
         remeshing_kernel: str = "M4_PRIME",
     ) -> ViscousConfig:
-        """Return Grid-Based Diffusion configuration."""
+        """Return Grid-Based Diffusion configuration.
+
+        ``LAGRANGE6`` is an experimental six-point, degree-five Lagrange
+        scatter added for the vortex-interaction core-transport controls.
+        It reduces remapping damping compared with M4' on those controls;
+        it is not positivity-preserving and still requires refinement.
+        The molecular Laplacian and viscosity coefficient are unchanged.
+        M4' remains the default. LAGRANGE6 needs at least four padding cells.
+        """
         return ViscousConfig(
             scheme="GBD",
             particle_spacing=particle_spacing,

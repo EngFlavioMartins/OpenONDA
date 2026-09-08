@@ -333,7 +333,7 @@ class FVMVPMCoupler:
     def _read_fvm_state(self) -> None:
         """Read fluid properties, time integration, and domain from the FVM."""
         assert self.fvm_solver is not None
-        fvm_cfg = self.fvm_solver.setup
+        fvm_cfg = getattr(self.fvm_solver, "_resolved_setup", self.fvm_solver.setup)
         time_config = self.fvm_solver._time_config
         if time_config.adjustment is not None:
             raise ValueError(
@@ -344,7 +344,9 @@ class FVMVPMCoupler:
             )
         self.fvm_time_step_size = float(time_config.time_step_size)
         self.end_time = float(time_config.end_time)
-        self.kinematic_viscosity = float(fvm_cfg.transport.kinematic_viscosity)
+        self.kinematic_viscosity = float(
+            getattr(self.fvm_solver, "_kinematic_viscosity", fvm_cfg.transport.kinematic_viscosity)
+        )
         self.density = float(fvm_cfg.transport.density)
         self.fvm_box = self._derive_fvm_box()
         self.setup.validate_transfer_region_box(self.fvm_box)

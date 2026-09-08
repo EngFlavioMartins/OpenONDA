@@ -3,6 +3,13 @@
 with reference bands from Okajima (1982), Sohankar et al. (1998), and
 Sen et al. (2011)."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib
@@ -11,7 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     COLORS,
     FIGURES_DIR,
     REFERENCES,

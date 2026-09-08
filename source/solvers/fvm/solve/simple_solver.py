@@ -15,7 +15,7 @@ from ..fields.mixed_velocity_boundary import (
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
 from .diagnostics import OuterCorrectorDiagnostics
-from .linear_interface import normalized_residual, solve_linear_system
+from .linear_interface import solve_linear_system
 
 
 @dataclass(frozen=True)
@@ -1247,8 +1247,12 @@ def assemble_pressure_correction_equation_rhie_chow(
     # 3b. Enforce global continuity of the predicted boundary flux (adjustPhi)
     # so the pressure Poisson problem is compatible.  A no-op when the boundary
     # flux already balances, so conservative inlet/outlet cases are untouched.
-    if n_boundary_faces > 0:
-        adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interior, n_faces)
+    # Every partition must enter the global reductions in adjustPhi, including
+    # interior-only partitions with no physical boundary faces.  Skipping this
+    # call locally lets those ranks advance into PETSc's next collective while
+    # boundary-owning ranks are still reducing the boundary flux, deadlocking
+    # the solve.
+    adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interior, n_faces)
 
     # 4. Assemble Matrix and RHS
     flux_data = {"flux_vf": flux_vf}
@@ -2113,6 +2117,7 @@ class SIMPLESolver:
         velocity_increment = np.linalg.norm(
             velocity_star[: self.mesh_data["n_cells"]] - velocity[: self.mesh_data["n_cells"]]
         ) / (np.linalg.norm(velocity[: self.mesh_data["n_cells"]]) + 1e-10)
+        pressure_before_update = kinematic_pressure[: self.mesh_data["n_cells"]].copy()
 
         velocity, volumetric_face_flux = correct_velocity_and_flux(
             velocity_star,
@@ -2142,9 +2147,10 @@ class SIMPLESolver:
         )
 
         # 5. Residuals
-        self.last_kinematic_pressure_residual = normalized_residual(
-            pressure_matrix, kinematic_pressure_correction, pressure_right_hand_side
-        )
+        # The backend result is already expressed in the common deviation-aware
+        # algebraic residual contract.  Recomputing this with ||b|| here made
+        # SIMPLE report a different quantity from PIMPLE/PETSc.
+        self.last_kinematic_pressure_residual = kinematic_pressure_result.final_residual
         self.last_velocity_residual = max(
             (values["final_residual"] for values in momentum_diagnostics.values()),
             default=0.0,
@@ -2154,6 +2160,20 @@ class SIMPLESolver:
         )
         volumes = self.geo_data["cell_volume"]
         max_continuity_error = float(np.max(np.abs(continuity) / (volumes + 1e-30)))
+        pressure_update = float(
+            np.max(
+                np.abs(kinematic_pressure[: self.mesh_data["n_cells"]] - pressure_before_update)
+                / np.maximum(
+                    np.maximum(
+                        np.abs(kinematic_pressure[: self.mesh_data["n_cells"]]),
+                        np.abs(pressure_before_update),
+                    ),
+                    1.0e-12,
+                ),
+                initial=0.0,
+            )
+        )
+        state_update = max(float(velocity_increment), pressure_update)
         self.last_linear_results = tuple(
             values["linear_result"] for values in momentum_diagnostics.values()
         ) + (kinematic_pressure_result,)
@@ -2163,6 +2183,7 @@ class SIMPLESolver:
                 velocity_residual=self.last_velocity_residual,
                 kinematic_pressure_residual=self.last_kinematic_pressure_residual,
                 max_continuity_error=max_continuity_error,
+                state_update=state_update,
             ),
         )
 
@@ -2170,6 +2191,7 @@ class SIMPLESolver:
             "kinematic_pressure": self.last_kinematic_pressure_residual,
             "velocity": self.last_velocity_residual,
             "velocity_increment": velocity_increment,
+            "nonlinear_state_update": state_update,
         }
         residuals.update(
             {
@@ -2202,6 +2224,7 @@ class SIMPLESolver:
         """
         velocity = initial_velocity.copy()
         kinematic_pressure = initial_kinematic_pressure.copy()
+        self.residuals.clear()
         logger: Any = self.params.get("_logger")
 
         if logger is not None:
@@ -2238,13 +2261,15 @@ class SIMPLESolver:
 
             kinematic_pressure_residual = self.last_kinematic_pressure_residual
             velocity_residual = residuals["velocity_increment"]
+            nonlinear_state_update = residuals["nonlinear_state_update"]
             continuity = self.last_outer_diagnostics[-1].max_continuity_error
 
             self.residuals.append(
                 {
-                    "iter": iteration,
+                    "iter": iteration + 1,
                     "kinematic_pressure_residual": kinematic_pressure_residual,
                     "velocity_residual": velocity_residual,
+                    "nonlinear_state_update": nonlinear_state_update,
                     "max_continuity_error": continuity,
                 }
             )
@@ -2254,19 +2279,20 @@ class SIMPLESolver:
             ):
                 logger.message(
                     f"  Iter {iteration:3d}: kinematic_pressure_residual={kinematic_pressure_residual:.3e}, "
-                    f"Δvelocity={velocity_residual:.3e}, continuity={continuity:.3e}"
+                    f"Δstate={nonlinear_state_update:.3e}, continuity={continuity:.3e}"
                 )
 
             if (
                 kinematic_pressure_residual < self.params["tolerance"]
-                and velocity_residual < self.params["tolerance"]
+                and nonlinear_state_update < self.params["tolerance"]
                 and continuity < self.params["tolerance"]
             ):
                 if logger is not None:
                     logger.info(
-                        f"component=SIMPLE status=converged iterations={iteration} "
+                        f"component=SIMPLE status=converged iterations={iteration + 1} "
                         f"kinematic_pressure_residual={kinematic_pressure_residual:.3e} "
-                        f"velocity_increment={velocity_residual:.3e} continuity={continuity:.3e}"
+                        f"nonlinear_state_update={nonlinear_state_update:.3e} "
+                        f"continuity={continuity:.3e}"
                     )
                 return velocity, kinematic_pressure, volumetric_face_flux, True
 
@@ -2275,6 +2301,6 @@ class SIMPLESolver:
                 f"component=SIMPLE status=not_converged "
                 f"iterations={self.params['max_iterations']} "
                 f"kinematic_pressure_residual={kinematic_pressure_residual:.3e} "
-                f"velocity_increment={velocity_residual:.3e} continuity={continuity:.3e}"
+                f"nonlinear_state_update={nonlinear_state_update:.3e} continuity={continuity:.3e}"
             )
         return velocity, kinematic_pressure, volumetric_face_flux, False

@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 import argparse
 import json
 from pathlib import Path
@@ -14,7 +21,7 @@ from typing import TextIO, TypedDict
 
 import numpy as np
 
-from measure_trial_errors import frame, load_table, profile_record
+from .measure_trial_errors import frame, load_table, profile_record
 
 
 ASSETS_DIR = Path(__file__).resolve().parent

@@ -11,7 +11,6 @@ field dumps. Three solutions are compared:
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import matplotlib
 from functools import lru_cache
@@ -28,12 +27,8 @@ FIGURES = CASE_DIR / "figures"
 
 # Keep one publication theme: reference and coupled figures are intended to be
 # visually interchangeable.
-_THEME_PATH = Path(__file__).resolve().parents[4] / "docs" / "themes" / "matplotlib_setup.py"
-_THEME_SPEC = importlib.util.spec_from_file_location("openonda_matplotlib_setup", _THEME_PATH)
-if _THEME_SPEC is None or _THEME_SPEC.loader is None:  # pragma: no cover
-    raise ImportError(f"cannot load plotting theme from {_THEME_PATH}")
-_THEME = importlib.util.module_from_spec(_THEME_SPEC)
-_THEME_SPEC.loader.exec_module(_THEME)
+from openonda import plotting as _THEME
+
 _THEME.set_style()
 
 # Publication canvas and export settings shared by every cube-flow figure.

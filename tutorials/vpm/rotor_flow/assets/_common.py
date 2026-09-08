@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import math
 from pathlib import Path
 
@@ -13,7 +12,6 @@ CASE_DIR = ASSETS_DIR.parent
 FIGURES_DIR = CASE_DIR / "figures"
 SOLUTION_DIR = CASE_DIR / "solution"
 SAMPLES_DIR = CASE_DIR / "samples" / "rotor"
-THEME_PATH = CASE_DIR.parents[2] / "docs" / "themes" / "matplotlib_setup.py"
 
 # -- Case definition ---------------------------------------------------------
 # Single source of truth for the post-processing side.  These must track the
@@ -34,11 +32,8 @@ _THEME_MODULE = None
 def _theme():
     global _THEME_MODULE
     if _THEME_MODULE is None:
-        if not THEME_PATH.exists():
-            raise FileNotFoundError(f"OpenONDA matplotlib theme not found: {THEME_PATH}")
-        spec = importlib.util.spec_from_file_location("openonda_matplotlib_setup", THEME_PATH)
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
+        from openonda import plotting as theme
+
         _THEME_MODULE = theme
     return _THEME_MODULE
 

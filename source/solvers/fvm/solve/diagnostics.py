@@ -25,12 +25,17 @@ class OuterCorrectorDiagnostics:
         Dimensionless residual of the pressure Poisson equation.
     max_continuity_error : float
         Maximum cell divergence of velocity (|div velocity|) in 1/s.
+    state_update : float
+        Dimensionless maximum normalized change of the velocity and pressure
+        state across this outer corrector.  This is the nonlinear stopping
+        metric; the two residual fields above remain linear-solve telemetry.
     """
 
     index: int
     velocity_residual: float
     kinematic_pressure_residual: float
     max_continuity_error: float
+    state_update: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -68,6 +73,8 @@ class StepDiagnostics:
         Maximum Courant number.
     min_velocity / max_velocity : tuple[float, float, float]
         Component-wise velocity extrema.
+    max_velocity_magnitude : float
+        Maximum cell-centred speed over owned cells [m/s].
     min_kinematic_pressure / max_kinematic_pressure : float
         Kinematic-pressure extrema.
     n_nonfinite_values : int
@@ -107,3 +114,4 @@ class StepDiagnostics:
     max_eddy_viscosity: float | None = None
     state_projection: dict[str, float] = field(default_factory=dict)
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    max_velocity_magnitude: float | None = None

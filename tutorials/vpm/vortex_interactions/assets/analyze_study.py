@@ -13,6 +13,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+if not __package__:
+    from openonda.tutorial_runner import case_package
+    from pathlib import Path as _CasePath
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
 from ..study import STUDY_DIR
 from .. import setup
 from .render_study import states

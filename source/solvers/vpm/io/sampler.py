@@ -85,6 +85,7 @@ class _SamplerRuntime:
     """Mutable runtime state separated from immutable sampler configuration."""
 
     pvd_entries: dict[str, list[tuple[float, str]]] = field(default_factory=dict)
+    last_written: dict[int, tuple[int, float]] = field(default_factory=dict)
 
 
 class OutputManager:
@@ -106,11 +107,18 @@ class OutputManager:
         for sampler in self._selected(event):
             self._execute_one(sampler, event)
 
-    def write_all(self, event: OutputEvent = OutputEvent.INITIAL) -> None:
+    def write_all(
+        self, event: OutputEvent = OutputEvent.INITIAL, *, skip_current: bool = False
+    ) -> None:
         """Write every configured sampler once for an explicit manual event."""
         if event is OutputEvent.FAILED:
             raise ValueError("manual sampler execution cannot use the failed event")
         for sampler in self.samplers.samples:
+            if skip_current and self._runtime.last_written.get(id(sampler)) == (
+                self.solver.step,
+                self.solver.time,
+            ):
+                continue
             self._execute_one(sampler, event)
 
     def _backup_due(self) -> bool:
@@ -176,6 +184,7 @@ class OutputManager:
         context = SamplingContext(self.solver, directory, self.solver.step, self.solver.time, event)
         try:
             self._write(sampler, context)
+            self._runtime.last_written[id(sampler)] = (context.step, context.time)
         except Exception as exc:
             prefix = self._name(sampler)
             raise RuntimeError(

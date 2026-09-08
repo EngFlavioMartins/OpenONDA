@@ -25,7 +25,6 @@ _THREAD_VARIABLES = (
     "MKL_NUM_THREADS",
     "VECLIB_MAXIMUM_THREADS",
     "NUMEXPR_NUM_THREADS",
-    "NUMBA_NUM_THREADS",
 )
 
 
@@ -94,6 +93,13 @@ class RunConfig:
         return self.cpu_cores > 1
 
     def _set_thread_count(self, count: int) -> None:
+        # Numba fixes its pool capacity at import. Mutating NUMBA_NUM_THREADS
+        # later breaks subsequent JIT compilation, including VPM diffusion
+        # after an FVM solve in the same process. Mask active threads through
+        # its runtime API, leaving the process pool capacity unchanged.
+        import numba
+
+        numba.set_num_threads(count)
         for name in _THREAD_VARIABLES:
             os.environ[name] = str(count)
 

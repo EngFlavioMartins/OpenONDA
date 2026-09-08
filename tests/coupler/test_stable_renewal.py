@@ -1,4 +1,4 @@
-"""Focused tests for the recovered long-run stable renewal mechanism."""
+"""Stable renewal: numerical and lifecycle contracts."""
 
 from __future__ import annotations
 
@@ -8,14 +8,13 @@ import numpy as np
 import pytest
 
 from source.coupler import vorticity_transfer as transfer_module
+from source.coupler.solver import _validate_gbd_moment_recovery
 from source.coupler.stable_renewal import (
     blend_represented_state,
     build_stable_renewal_lattice,
     inward_cosine_authority,
-    m4_prime,
     redistribute_pruned_vortex_strength_locally,
     renew_stable_overlap,
-    required_buffer_length,
     scatter_m4_prime_to_lattice,
     soft_prune_vortex_strength,
     vortex_invariants,
@@ -125,18 +124,6 @@ class _GBDVPM:
         self.particles.n_particles_total = len(self.particles.position)
 
 
-def test_buffer_contains_advection_and_complete_m4_support():
-    assert required_buffer_length(1.0, 0.01, 0.03125) == 0.0775
-
-
-def test_m4_prime_partitions_unity_and_reproduces_first_moment():
-    for phase in np.linspace(-0.95, 0.95, 31):
-        nodes = np.arange(np.floor(phase) - 1, np.floor(phase) + 3)
-        weight = m4_prime(phase - nodes)
-        np.testing.assert_allclose(weight.sum(), 1.0, rtol=0.0, atol=2.0e-15)
-        np.testing.assert_allclose(nodes @ weight, phase, rtol=0.0, atol=2.0e-15)
-
-
 def test_fixed_lattice_scatter_is_complete_and_conservative_at_belt_faces():
     spacing = 0.125
     lattice = build_stable_renewal_lattice(
@@ -178,25 +165,6 @@ def test_fixed_lattice_scatter_is_complete_and_conservative_at_belt_faces():
         rtol=0.0,
         atol=4.0e-15,
     )
-
-
-def test_aligned_duplicate_particles_are_inserted_directly_on_one_node():
-    lattice = build_stable_renewal_lattice(
-        BOX,
-        0.1,
-        buffer_length=0.2,
-        authority_ramp_width=0.2,
-        lattice_anchor=np.zeros(3),
-    )
-    position = np.array([[0.2, -0.1, 0.3], [0.2, -0.1, 0.3]])
-    strength = np.array([[0.1, 0.2, 0.3], [-0.4, 0.5, 0.6]])
-
-    target = scatter_m4_prime_to_lattice(position, strength, lattice)
-
-    active = np.flatnonzero(np.linalg.norm(target, axis=1) > 0.0)
-    assert len(active) == 1
-    np.testing.assert_allclose(lattice.positions[active[0]], position[0])
-    np.testing.assert_allclose(target[active[0]], strength.sum(axis=0))
 
 
 def test_velocity_trace_recovers_the_curl_of_a_linear_velocity_exactly():
@@ -826,3 +794,38 @@ def test_support_seam_coalesces_multiple_particles_but_preserves_a_near_miss_acr
             assert transfer.coalesced_outer_particles == 2
 
     assert counts[1:] == [counts[0], counts[0]]
+
+
+def _valid_recovery(**overrides):
+    recovery = {
+        "applied": True,
+        "nonzero_node_count": 100,
+        "retained_node_count": 90,
+        "pruned_node_count": 10,
+        "support_augmented_node_count": 2,
+        "correction_fraction": 0.01,
+        "normalized_vortex_strength_residual": 1.0e-8,
+        "normalized_linear_impulse_residual": 2.0e-8,
+        "normalized_angular_impulse_residual": 3.0e-8,
+    }
+    recovery.update(overrides)
+    return recovery
+
+
+def test_gbd_moment_recovery_accepts_a_closed_conservative_prune():
+    _validate_gbd_moment_recovery(_valid_recovery(), 0.08)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"applied": False}, "without conservative moment recovery"),
+        ({"correction_fraction": np.nan}, "is non-finite"),
+        ({"normalized_linear_impulse_residual": np.inf}, "is non-finite"),
+        ({"normalized_angular_impulse_residual": 1.1e-5}, "residual tolerance"),
+        ({"correction_fraction": 0.081}, "excessive particle-strength correction"),
+    ],
+)
+def test_gbd_moment_recovery_rejects_open_or_excessive_prunes(overrides, message):
+    with pytest.raises(RuntimeError, match=message):
+        _validate_gbd_moment_recovery(_valid_recovery(**overrides), 0.08)

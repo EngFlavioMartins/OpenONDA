@@ -5,14 +5,13 @@ from __future__ import annotations
 import argparse
 import contextlib
 from importlib import resources
-import importlib.util
 import io
 import json
 import os
 from pathlib import Path
 import tempfile
 
-import gmsh
+import numba
 import numpy as np
 import taichi as ti
 
@@ -43,6 +42,8 @@ def _verify_package_location(require_site_packages: bool) -> Path:
 
 
 def _verify_gmsh() -> str:
+    import gmsh
+
     gmsh.initialize()
     try:
         gmsh.model.add("openonda_install_verification")
@@ -170,19 +171,14 @@ def _verify_distribution_resources() -> dict[str, object]:
             case_path / "setup.py",
             case_path / "allrun.sh",
             case_path / "allplot.sh",
-            workspace / "docs/themes/matplotlib_setup.py",
-            workspace / "docs/themes/DejaVuSerif.ttf",
+            Path(resources.files("openonda")) / "_resources/DejaVuSerif.ttf",
         )
         missing = [str(path) for path in required if not path.is_file()]
         if missing:
             raise RuntimeError(f"Installed tutorial resources are incomplete: {missing}")
 
-        theme_path = workspace / "docs/themes/matplotlib_setup.py"
-        spec = importlib.util.spec_from_file_location("_openonda_installed_theme", theme_path)
-        if spec is None or spec.loader is None:
-            raise RuntimeError(f"Could not load the installed plotting theme: {theme_path}")
-        theme = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(theme)
+        from openonda import plotting as theme
+
         theme.set_style()
         figure, axes = plt.subplots(figsize=theme.figure_size("single_short"))
         axes.plot([0.0, 1.0], [0.0, 1.0])
@@ -216,14 +212,20 @@ def main() -> int:
         action="store_true",
         help="fail if OpenONDA resolves to an editable/source checkout",
     )
+    parser.add_argument(
+        "--with-meshing", action="store_true", help="also exercise optional Gmsh geometry"
+    )
     args = parser.parse_args()
 
+    # Initialize Numba before FVM runtime setup, as in a mixed-solver process.
+    numba.get_num_threads()
     report = {
         "openonda_version": openonda.__version__,
         "package_path": str(_verify_package_location(args.require_site_packages)),
-        "gmsh_version": _verify_gmsh(),
         "distribution": _verify_distribution_resources(),
     }
+    if args.with_meshing:
+        report["gmsh_version"] = _verify_gmsh()
     taichi_version, taichi_arch = _verify_taichi()
     report.update(
         {
@@ -232,6 +234,8 @@ def main() -> int:
             "native_fvm": _verify_native_fvm(),
         }
     )
+    numba.config.reload_config()
+    report["numba"] = {"version": numba.__version__, "active_threads": numba.get_num_threads()}
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 

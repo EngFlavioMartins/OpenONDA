@@ -1581,9 +1581,10 @@ class VorticityTransfer:
 
         # These partitioned getters are collective, even though only rank zero
         # receives the assembled arrays. Keep their call order identical.
+        resolved_setup = getattr(fvm, "_resolved_setup", fvm.setup)
         wall_patches = [
             boundary_condition.name
-            for boundary_condition in fvm.setup.boundaries
+            for boundary_condition in resolved_setup.boundaries
             if boundary_condition.mesh_type == "wall"
         ]
         wall_faces = None

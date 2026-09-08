@@ -13,6 +13,13 @@ Saves: ``figures/rotor_performance.png``
 
 from __future__ import annotations
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib
@@ -24,7 +31,7 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgba
 
-from _common import (
+from ._common import (
     build_arg_parser,
     build_rotor_style_map,
     DENSITY,

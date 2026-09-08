@@ -10,6 +10,7 @@ from pathlib import Path
 import platform
 import socket
 import sys
+import threading
 import time
 from typing import Any, TextIO
 
@@ -321,6 +322,7 @@ class Logging:
         self._step_reported = True
         self._step_wall_time = 0.0
         self._steps = 0
+        self._count_label = "steps"
         self._reported_steps = 0
         # VPM file logging may replace process-global ``sys.stdout`` after the
         # FVM is constructed.  Keep the FVM console sink stable so its records
@@ -335,7 +337,13 @@ class Logging:
             )
             output_directory.mkdir(parents=True, exist_ok=True)
             self.log_file_path = output_directory / filename
-            self._file = self.log_file_path.open("w", buffering=1, encoding="utf-8")
+            had_previous_log = self.log_file_path.exists() and self.log_file_path.stat().st_size > 0
+            self._file = self.log_file_path.open("a", buffering=1, encoding="utf-8")
+            if had_previous_log:
+                self._file.write(
+                    f"\n--- FVM log session started {datetime.now():%Y-%m-%d %H:%M:%S} ---\n"
+                )
+                self._file.flush()
 
     @property
     def debug(self) -> bool:
@@ -501,6 +509,13 @@ class Logging:
             self._step.elapsed = float(elapsed)
         self._flush_step()
 
+    def steady_iterations(self, iterations: int) -> None:
+        """Record steady SIMPLE iterations without pretending they are time steps."""
+        if isinstance(iterations, bool) or int(iterations) < 0:
+            raise ValueError("steady iteration count must be a non-negative integer")
+        self._steps = int(iterations)
+        self._count_label = "iterations"
+
     def _reportable(self, record: _StepRecord) -> bool:
         if record.warnings:
             return True
@@ -613,7 +628,7 @@ class Logging:
     @staticmethod
     def solver_info(solver: Any, initialization_time: float) -> str:
         """Return a comprehensive FVM initialization report."""
-        config = solver.setup
+        config = getattr(solver, "_resolved_setup", solver.setup)
         mesh = solver.mesh_data
         parallel = solver.parallel
         partition = getattr(parallel, "partition", None)
@@ -739,11 +754,14 @@ class Logging:
         self.section(
             "fvm solver  state",
             [
-                ("case", str(solver.setup.case_name)),
+                ("case", str(getattr(solver, "_resolved_setup", solver.setup).case_name)),
                 ("time", f"{solver.time:.5f}", "s"),
                 ("step", f"{solver.step:,}"),
                 ("cells, local", f"{solver.mesh_data['n_cells']:,}"),
-                ("algorithm", str(solver.setup.pimple.algorithm)),
+                (
+                    "algorithm",
+                    str(getattr(solver, "_resolved_setup", solver.setup).pimple.algorithm),
+                ),
             ],
         )
 
@@ -827,19 +845,22 @@ class Logging:
                 rows.append((f"  {label}", f"{values['aggregate_bytes'] / _MIB:.1f}", "MiB"))
         self.section("PERFORMANCE PROFILE", rows, flush=True)
 
-    def run_summary(self) -> None:
-        """Emit the closing wall-time summary."""
-        if self._steps == 0 or self._step_wall_time <= 0.0:
-            return
-        mean = self._step_wall_time / self._steps
+    def run_summary(self, *, status: str = "complete", failure=None) -> None:
+        """Emit the closing wall-time summary with truthful terminal status."""
+        mean = self._step_wall_time / self._steps if self._steps else 0.0
         self._emit("")
+        title = "RUN COMPLETE" if status == "complete" else "RUN " + str(status).upper()
+        rows = [
+            ("status", str(status)),
+            (self._count_label, f"{self._steps:,}"),
+            ("wall time, total", f"{self._step_wall_time:.3e}", "s"),
+            ("wall time, mean per step", f"{mean:.3f}", "s"),
+        ]
+        if failure is not None:
+            rows.append(("error", f"{type(failure).__name__}: {failure}"))
         self.section(
-            "RUN COMPLETE",
-            [
-                ("steps", f"{self._steps:,}"),
-                ("wall time, total", f"{self._step_wall_time:.3e}", "s"),
-                ("wall time, mean per step", f"{mean:.3f}", "s"),
-            ],
+            title,
+            rows,
             flush=True,
         )
 
@@ -848,13 +869,15 @@ class Logging:
         if self._file is not None and not self._closed:
             self._file.flush()
 
-    def close(self) -> None:
+    def close(self, *, status: str = "complete", failure=None) -> None:
         """Flush and close the file sink. This method is idempotent."""
         if self._closed:
             return
         self._flush_step()
-        if not self.debug:
-            self.run_summary()
+        # Terminal status is a lifecycle record, not a debug-only detail.
+        # Keep it visible in both simple and debug modes so failed runs never
+        # look like successful early exits.
+        self.run_summary(status=status, failure=failure)
         self.flush()
         if self._file is not None:
             self._file.close()
@@ -862,25 +885,64 @@ class Logging:
 
 
 class Timer:
-    """Named wall-clock timers for solver phases."""
+    """Named wall-clock timers with per-instance and thread-local storage.
 
-    _timers: dict[str, float] = {}
+    Existing solver call sites use the historical ``Timer.start("phase")``
+    form, which is retained as a thread-local compatibility store.  New code
+    can create ``Timer()`` and use ``timer.start("phase")`` so two solver
+    instances (or two worker threads) cannot overwrite one another's phase
+    timestamps.  A stack per phase also makes nested measurements safe.
+    """
+
+    _legacy = threading.local()
+
+    def __init__(self) -> None:
+        self._timers: dict[str, list[float]] = {}
+
+    @classmethod
+    def _legacy_storage(cls) -> dict[str, list[float]]:
+        storage = getattr(cls._legacy, "timers", None)
+        if storage is None:
+            storage = {}
+            cls._legacy.timers = storage
+        return storage
 
     @staticmethod
-    def start(name: str) -> None:
-        """Start or restart a named timer."""
-        Timer._timers[name] = time.perf_counter()
+    def _target(timer_or_name, name):
+        if isinstance(timer_or_name, Timer):
+            if name is None:
+                raise TypeError("Timer phase name is required")
+            return timer_or_name._timers, str(name)
+        if name is not None:
+            raise TypeError("Timer.start/stop/log accepts one phase name")
+        return Timer._legacy_storage(), str(timer_or_name)
 
-    @staticmethod
-    def stop(name: str) -> float:
-        """Stop a named timer and return its elapsed seconds."""
-        started = Timer._timers.pop(name, None)
-        return 0.0 if started is None else time.perf_counter() - started
+    def start(self, name: str | None = None) -> None:
+        """Start a named phase on this instance or the legacy thread store."""
+        timers, timer_name = Timer._target(self, name)
+        timers.setdefault(timer_name, []).append(time.perf_counter())
 
-    @staticmethod
-    def log(name: str, *, sink: Any | None = None) -> float:
-        """Stop a timer and record it with the configured sink."""
-        elapsed = Timer.stop(name)
+    def stop(self, name: str | None = None) -> float:
+        """Stop a named phase and return its elapsed seconds."""
+        timers, timer_name = Timer._target(self, name)
+        started = timers.get(timer_name)
+        if not started:
+            return 0.0
+        value = started.pop()
+        if not started:
+            del timers[timer_name]
+        return time.perf_counter() - value
+
+    def log(self, name: str | None = None, *, sink: Any | None = None) -> float:
+        """Stop a phase and record it with the configured sink."""
+        timers, timer_name = Timer._target(self, name)
+        started = timers.get(timer_name)
+        if not started:
+            return 0.0
+        value = started.pop()
+        if not started:
+            del timers[timer_name]
+        elapsed = time.perf_counter() - value
         if sink is not None and elapsed > 0.0:
-            sink.timing(name.strip(" -"), elapsed)
+            sink.timing(timer_name.strip(" -"), elapsed)
         return elapsed

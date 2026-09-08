@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from .backup import config_hash, mesh_hash
+from .backup import config_hash, full_config_hash, mesh_hash
 
 
 def _git_identity(repository: Path) -> tuple[str | None, bool | None]:
@@ -33,7 +33,7 @@ def _git_identity(repository: Path) -> tuple[str | None, bool | None]:
         return None, None
 
 
-def build_manifest(solver) -> dict[str, Any]:
+def build_manifest(solver, *, status: str | None = None, failure=None) -> dict[str, Any]:
     """Collect source, environment, execution, mesh, and configuration identity."""
     from source.solvers.fvm.sampling.base import sampler_to_dict
 
@@ -45,22 +45,29 @@ def build_manifest(solver) -> dict[str, Any]:
             packages[name] = None
     repository = Path(__file__).resolve().parents[4]
     revision, dirty = _git_identity(repository)
-    configuration = asdict(solver.setup)
-    if solver.setup.samplers:
-        configuration["samplers"] = [sampler_to_dict(sampler) for sampler in solver.setup.samplers]
-    return {
+    config = getattr(solver, "_resolved_setup", solver.setup)
+    configuration = asdict(config)
+    if config.samplers:
+        configuration["samplers"] = [sampler_to_dict(sampler) for sampler in config.samplers]
+    manifest = {
         "schema_version": 1,
         "distribution_version": metadata.version("OpenONDA"),
         "git_revision": revision,
         "git_dirty": dirty,
-        "config_hash": config_hash(solver.setup),
+        "config_hash": config_hash(config),
+        "full_config_hash": full_config_hash(config),
         "mesh_hash": mesh_hash(solver.mesh_data),
         "active_components": {
             "immersed_boundary": getattr(solver, "ibm", None) is not None,
             "turbulence": getattr(solver, "turbulence", None) is not None,
         },
         "configuration": configuration,
-        "execution": asdict(solver.setup.execution),
+        "execution": asdict(config.execution),
+        "runtime_overrides": {
+            "kinematic_viscosity": float(
+                getattr(solver, "_kinematic_viscosity", config.transport.kinematic_viscosity)
+            ),
+        },
         "mesh_quality": solver.mesh_quality,
         "mesh": {
             "n_cells": int(solver.mesh_data["n_cells"]),
@@ -79,9 +86,15 @@ def build_manifest(solver) -> dict[str, Any]:
             "cpu_count": os.cpu_count(),
         },
     }
+    if status is not None:
+        manifest["lifecycle"] = {
+            "status": str(status),
+            "error": None if failure is None else f"{type(failure).__name__}: {failure}",
+        }
+    return manifest
 
 
-def write_manifest(solver, path) -> Path:
+def write_manifest(solver, path, *, status: str | None = None, failure=None) -> Path:
     """Atomically write a machine-readable run manifest."""
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -94,7 +107,7 @@ def write_manifest(solver, path) -> Path:
         raise TypeError(f"Cannot serialize {type(value).__name__} in an FVM manifest")
 
     payload = json.dumps(
-        build_manifest(solver),
+        build_manifest(solver, status=status, failure=failure),
         indent=2,
         sort_keys=True,
         allow_nan=False,

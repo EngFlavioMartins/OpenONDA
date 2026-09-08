@@ -18,7 +18,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from tutorials.vpm.vortex_ring.assets.ring_metrics import (
+if not __package__:
+    from openonda.tutorial_runner import case_package
+    from pathlib import Path as _CasePath
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+from ..assets.ring_metrics import (
     FIGURES_DIR,
     SAMPLES_DIR,
     SOLUTION_DIR,

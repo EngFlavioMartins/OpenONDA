@@ -239,7 +239,7 @@ class GmshImporter:
         """
         if gmsh is None:
             raise ImportError(
-                "Gmsh support requires the optional FVM dependencies: pip install 'OpenONDA[fvm]'"
+                "Gmsh support requires the optional meshing dependencies: pip install 'OpenONDA[meshing]'"
             )
         self._gmsh: Any = gmsh
         if not self._gmsh.isInitialized():

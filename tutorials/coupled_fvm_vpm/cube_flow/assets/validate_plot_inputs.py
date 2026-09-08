@@ -3,7 +3,14 @@
 
 from __future__ import annotations
 
-import _plotutil as util
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
+from . import _plotutil as util
 
 
 def main() -> None:

@@ -50,6 +50,22 @@ def _check(value, valid, label, errors):
 def validate_solver_params(solver, time=None) -> None:
     """Raise ``ValueError`` if any scheme name in the merged solver params is invalid."""
     errors: list[str] = []
+
+    def finite_real(name: str, value, *, minimum=None, maximum=None, strict_min=False):
+        if isinstance(value, bool) or not isinstance(value, int | float | np.integer | np.floating):
+            errors.append(f"  {name}={value!r} must be a finite real number")
+            return None
+        value = float(value)
+        if not np.isfinite(value):
+            errors.append(f"  {name}={value!r} must be finite")
+            return None
+        if minimum is not None and (value <= minimum if strict_min else value < minimum):
+            relation = ">" if strict_min else ">="
+            errors.append(f"  {name}={value!r} must be {relation} {minimum}")
+        if maximum is not None and value > maximum:
+            errors.append(f"  {name}={value!r} must be <= {maximum}")
+        return value
+
     algorithm = str(getattr(solver, "algorithm", "PIMPLE")).upper()
     if algorithm not in {"SIMPLE", "PIMPLE", "PISO"}:
         errors.append(
@@ -79,7 +95,10 @@ def validate_solver_params(solver, time=None) -> None:
         value = getattr(solver, name, None)
         if value is not None:
             _check(value, LINEAR_SOLVERS, name, errors)
-    if getattr(solver, "momentum_solver", None) == "amg":
+    effective_momentum_solver = getattr(solver, "momentum_solver", None) or getattr(
+        solver, "linear_solver", "bicgstab"
+    )
+    if str(effective_momentum_solver).lower() == "amg":
         errors.append("  momentum_solver='amg' is unsupported; AMG is pressure-only")
     for name, minimum in (
         ("n_correctors", 1),
@@ -88,16 +107,14 @@ def validate_solver_params(solver, time=None) -> None:
         ("n_orthogonal_correctors", 0),
     ):
         value = getattr(solver, name, minimum)
-        if not isinstance(value, int) or value < minimum:
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
             errors.append(f"  {name}={value!r} must be an integer >= {minimum}")
     if algorithm == "PISO" and getattr(solver, "n_outer_correctors", 1) != 1:
         errors.append("  PISO requires n_outer_correctors == 1")
     if getattr(solver, "min_outer_correctors", 1) > getattr(solver, "n_outer_correctors", 1):
         errors.append("  min_outer_correctors cannot exceed n_outer_correctors")
     for name in ("velocity_relaxation", "pressure_relaxation"):
-        value = float(getattr(solver, name, 1.0))
-        if not 0.0 < value <= 1.0:
-            errors.append(f"  {name}={value!r} must satisfy 0 < {name} <= 1")
+        finite_real(name, getattr(solver, name, 1.0), minimum=0.0, maximum=1.0, strict_min=True)
     for name in (
         "tolerance",
         "momentum_tolerance",
@@ -105,9 +122,7 @@ def validate_solver_params(solver, time=None) -> None:
         "amg_reuse_tolerance",
         "ilu_drop_tolerance",
     ):
-        value = float(getattr(solver, name, 1e-6))
-        if not value > 0.0:
-            errors.append(f"  {name}={value!r} must be > 0")
+        finite_real(name, getattr(solver, name, 1e-6), minimum=0.0, strict_min=True)
     for name in (
         "momentum_relative_tolerance",
         "momentum_final_relative_tolerance",
@@ -115,28 +130,31 @@ def validate_solver_params(solver, time=None) -> None:
         "pressure_final_relative_tolerance",
     ):
         value = getattr(solver, name, 0.0)
-        if value is not None and not 0.0 <= float(value) <= 1.0:
-            errors.append(f"  {name}={value!r} must satisfy 0 <= {name} <= 1")
+        if value is not None:
+            finite_real(name, value, minimum=0.0, maximum=1.0)
     for name in ("momentum_max_iterations", "pressure_max_iterations"):
         value = getattr(solver, name, 1)
-        if not isinstance(value, int) or value < 1:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             errors.append(f"  {name}={value!r} must be an integer >= 1")
     for name in ("amg_tolerance",):
         value = getattr(solver, name, None)
-        if value is not None and float(value) <= 0.0:
-            errors.append(f"  {name}={value!r} must be > 0 when set")
+        if value is not None:
+            finite_real(name, value, minimum=0.0, strict_min=True)
     for name in ("outer_residual_tolerance", "outer_continuity_tolerance"):
         value = getattr(solver, name, None)
-        if value is not None and float(value) <= 0.0:
-            errors.append(f"  {name}={value!r} must be > 0 when set")
+        if value is not None:
+            finite_real(name, value, minimum=0.0, strict_min=True)
     for name in ("amg_max_iterations",):
         value = getattr(solver, name, None)
-        if value is not None and (not isinstance(value, int) or value < 1):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 1
+        ):
             errors.append(f"  {name}={value!r} must be an integer >= 1 when set")
     if time is not None:
-        if not float(time.time_step_size) > 0.0:
-            errors.append(f"  time_step_size={time.time_step_size!r} must be > 0")
-        if not float(time.end_time) > float(time.start_time):
+        finite_real("time_step_size", time.time_step_size, minimum=0.0, strict_min=True)
+        start = finite_real("start_time", time.start_time)
+        end = finite_real("end_time", time.end_time)
+        if start is not None and end is not None and not end > start:
             errors.append(
                 f"  end_time={time.end_time!r} must be greater than start_time={time.start_time!r}"
             )

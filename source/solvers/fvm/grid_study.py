@@ -15,6 +15,11 @@ def _table(path: Path) -> np.ndarray:
     data = np.atleast_1d(data)
     if data.size == 0 or not data.dtype.names:
         raise ValueError(f"Empty or malformed grid-study sample: {path}")
+    if "time" in data.dtype.names and len(data) > 1:
+        time = np.asarray(data["time"], dtype=float)
+        resets = np.flatnonzero(np.diff(time) < -1.0e-12)
+        if resets.size:
+            data = data[int(resets[-1]) + 1 :]
     return data
 
 

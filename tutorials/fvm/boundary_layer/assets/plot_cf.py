@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Skin-friction distribution along the plate vs Cf = 0.664 / sqrt(Re_x)."""
 
+if not __package__:
+    from pathlib import Path as _CasePath
+    from openonda.tutorial_runner import case_package
+
+    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+
+
 from pathlib import Path
 
 import matplotlib
@@ -9,7 +16,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from _common import (  # noqa: E402
+from ._common import (  # noqa: E402
     COLORS,
     FIGURES_DIR,
     SOLUTION_DIR,

@@ -73,7 +73,7 @@ class VTKExporter:
         """
         if _pyvista is None or _vtk is None:
             raise ImportError(
-                "VTK export requires the optional FVM dependencies: pip install 'OpenONDA[fvm]'"
+                "VTK export requires the declared runtime dependency: pip install vtk"
             )
         self.mesh_data = mesh_data
         self.output = output or OutputConfig()
@@ -563,20 +563,24 @@ class PVDManager:
             self._parse_existing()
 
     def _parse_existing(self):
-        """Parse an existing ``.pvd`` file to resume appending.
+        """Parse an existing ``.pvd`` file with tolerant attribute ordering."""
+        import defusedxml.ElementTree as SafeElementTree
 
-        Uses a simple regex to extract ``timestep`` and ``file``
-        attributes from each ``<DataSet>`` element.
-        """
-        import re
-
-        with open(self.filename) as f:
-            content = f.read()
-            matches = re.findall(
-                r'<DataSet timestep="(.+?)" group="" part="0" file="(.+?)"/>', content
-            )
-            for time, fpath in matches:
-                self.entries.append((float(time), unescape(fpath)))
+        tree = SafeElementTree.parse(self.filename)
+        collection = tree.find(".//Collection")
+        if collection is None:
+            return
+        entries: dict[str, float] = {}
+        for dataset in collection.findall("DataSet"):
+            filename = dataset.attrib.get("file")
+            timestep = dataset.attrib.get("timestep")
+            if filename is None or timestep is None:
+                continue
+            entries[unescape(filename)] = float(timestep)
+        self.entries = sorted(
+            ((time, filename) for filename, time in entries.items()),
+            key=lambda item: (item[0], item[1]),
+        )
 
     def add_step(self, time: float, vtu_file: str):
         """Register a time step and re-write the ``.pvd`` file.
@@ -592,7 +596,33 @@ class PVDManager:
             vtu_file: Path to the ``.vtu`` file.
         """
         rel_path = os.path.relpath(vtu_file, os.path.dirname(self.filename))
-        self.entries.append((time, rel_path))
+        # A step identity is its artifact filename.  Re-emitting an accepted
+        # state after restart replaces the existing entry instead of creating
+        # duplicate or nonmonotonic PVD records.
+        self.entries = [
+            (existing_time, filename)
+            for existing_time, filename in self.entries
+            if filename != rel_path
+        ]
+        self.entries.append((float(time), rel_path))
+        self.entries.sort(key=lambda item: (item[0], item[1]))
+        self.write()
+
+    def rewind(self, time: float) -> None:
+        """Drop future entries while retaining the prior branch on disk."""
+        self.entries = [
+            (entry_time, filename)
+            for entry_time, filename in self.entries
+            if entry_time <= float(time) + 1.0e-12
+        ]
+        seen: set[str] = set()
+        unique_entries: list[tuple[float, str]] = []
+        for entry in self.entries:
+            if entry[1] not in seen:
+                seen.add(entry[1])
+                unique_entries.append(entry)
+        self.entries = unique_entries
+        self.entries.sort(key=lambda item: (item[0], item[1]))
         self.write()
 
     def write(self):
