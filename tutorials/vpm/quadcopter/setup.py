@@ -6,6 +6,9 @@ climbs at constant speed while the rotors shed their wakes into the flow. The
 particle count and the integrated vorticity history are sampled for the
 diagnostic figures made by ``allplot.sh``.
 
+The induction backend and stretching formulation are independent. Set
+`stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
+
 Usage:
     python setup.py
 """
@@ -120,7 +123,7 @@ def run() -> None:
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            induction=vpm.FMMInduction(),
+            induction=vpm.FMMInduction(stretching_scheme="transposed"),
             turbulence=vpm.TurbulenceConfig.dns(),
             particle_kernel="WINCKELMANS",
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],

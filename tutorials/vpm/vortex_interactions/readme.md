@@ -7,6 +7,11 @@ has yet been established.**
 
 All current study cases use LES (Smagorinsky Cs=0.20), SSPRK3, transposed
 stretching, Re_Gamma=3000 and the same corrected Gaussian initial condition.
+The case selects the treecode backend with
+`vpm.TreecodeInduction(stretching_scheme="TRANSPOSED")`. The study's
+`--stretching direct|mixed|transposed` option changes only the formulation;
+qualification campaigns retain transposed stretching.
+
 The Fig. 5 LBM trajectory is unperturbed; an imposed disturbance belongs to a
 separate experiment. VPM uses unbounded induction whereas the LBM reference
 uses a periodic domain; that discrepancy remains part of the qualification.

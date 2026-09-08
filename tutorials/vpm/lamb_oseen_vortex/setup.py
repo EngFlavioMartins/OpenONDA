@@ -49,6 +49,8 @@ ALL_VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
 RWM_ENSEMBLE_SIZE = 10
 ENERGY_DIAGNOSTIC_VERSION = 2
 
+# Backend selection is independent of the stretching formulation.
+STRETCHING_SCHEME = "transposed"  # "direct", "mixed", or "transposed"
 COMPUTE_METHOD = {
     "CS": "DIRECT",
     "RWM": "DIRECT",
@@ -101,12 +103,13 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
 
 
 def induction_config(scheme: str):
+    """Select an induction backend while keeping stretching independently configurable."""
     methods = {
         "DIRECT": vpm.DirectInduction,
         "TREECODE": vpm.TreecodeInduction,
         "FMM": vpm.FMMInduction,
     }
-    return methods[COMPUTE_METHOD[scheme.upper()]]()
+    return methods[COMPUTE_METHOD[scheme.upper()]](stretching_scheme=STRETCHING_SCHEME)
 
 
 def _initial_conditions(physics: str, kinematic_viscosity: float):
@@ -224,6 +227,7 @@ def completed_run_matches(physics: str, scheme: str, name: str, random_seed: int
         folder = TUTORIAL_DIR / "samples" / name
         metadata = json.loads((folder / "run_metadata.json").read_text())
         steps = round(TOTAL_TIME / TIME_STEP_SIZE)
+        induction = induction_config(scheme)
         expected = {
             "status": "complete",
             "completed": True,
@@ -234,7 +238,8 @@ def completed_run_matches(physics: str, scheme: str, name: str, random_seed: int
             "particle_core_radius": PARTICLE_RADIUS,
             "time_step_size": TIME_STEP_SIZE,
             "number_of_steps": steps,
-            "induction_backend": COMPUTE_METHOD[scheme],
+            "induction_backend": induction.method,
+            "stretching_scheme": induction.stretching_scheme,
             "integrator": "RK2",
             "circulations": list(PHYSICS_CIRCULATIONS[physics]),
             "kinematic_viscosity": abs(PHYSICS_CIRCULATIONS[physics][0])

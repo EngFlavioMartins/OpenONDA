@@ -50,6 +50,13 @@ and `openonda tutorial clean`.
 - Time integration: two-stage, second-order RK2 at the documented timestep.
 - CS and RWM induction: exact direct summation.
 - DVH and GBD induction: kernel-independent treecode.
+- Stretching: transposed for every viscous method.
+
+In `setup.py`, `COMPUTE_METHOD` selects the backend separately from
+`STRETCHING_SCHEME`, which accepts `"direct"`, `"mixed"`, or `"transposed"`.
+The factory calls, for example, `vpm.TreecodeInduction(stretching_scheme="transposed")`.
+Changing either choice invalidates reuse of completed results; both choices
+are recorded separately in the run metadata.
 
 FMM remains available in OpenONDA, but is not used for this cross-platform
 benchmark because it is unavailable on Metal and its surface evaluation is

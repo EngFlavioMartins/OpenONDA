@@ -342,7 +342,11 @@ def parser():
     )
     result.add_argument("--tree-order", type=int, choices=(1, 2, 3), default=1)
     result.add_argument(
-        "--stretching", choices=("DIRECT", "TRANSPOSED", "MIXED"), default="TRANSPOSED"
+        "--stretching",
+        type=str.upper,
+        choices=("DIRECT", "TRANSPOSED", "MIXED"),
+        default="TRANSPOSED",
+        help="stretching formulation, independent of the treecode induction backend",
     )
     result.add_argument("--remesh-interval", type=int, default=50)
     result.add_argument("--remesh-start", type=int)

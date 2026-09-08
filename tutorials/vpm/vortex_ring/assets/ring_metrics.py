@@ -313,8 +313,9 @@ def load_ring_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
 def load_vector_circulation_error(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
     """Return drift in the conserved vector sum, normalized by initial strength.
 
-    The direct transposed stretching operator conserves ``Σ alpha``.  For a
-    closed vortex ring this vector sum is close to zero, so the drift is scaled
+    Transposed stretching conserves ``Σ alpha`` under exact pair summation;
+    accelerated evaluation may introduce approximation error. For a closed
+    vortex ring this vector sum is close to zero, so the drift is scaled
     by the initial length-integrated strength ``Σ|alpha|`` rather than by
     ``|Σ alpha_0|``.
     """

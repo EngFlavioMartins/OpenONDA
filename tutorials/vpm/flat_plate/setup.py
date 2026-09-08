@@ -14,6 +14,9 @@ Each case is named ``exp_<mode>_aoa<NN>``; the sampled forces are used by
 plates at matching angles. The ``static`` case at 8 degrees additionally
 writes cross-flow wake planes for the Kelvin theorem figure.
 
+The induction backend and stretching formulation are independent. Set
+`stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
+
 Usage:
     python setup.py --mode moving --angle 8
 """
@@ -183,7 +186,9 @@ def run_case(
     final_samples = crossflow_samplers(name) if sample_planes else ()
     case = vpm.VPMCase(
         numerics=vpm.Numerics(
-            smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT,
+            turbulence=vpm.TurbulenceConfig.les_smagorinsky(
+                smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT
+            ),
             time_step_size=TIME_STEP_SIZE,
             compute_device="AUTO",
             integrator=vpm.SSPRK3(),
@@ -192,7 +197,7 @@ def run_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
             freestream_velocity=freestream_velocity,
-            induction=vpm.TreecodeInduction(),
+            induction=vpm.TreecodeInduction(stretching_scheme="transposed"),
             write_precision="f32",
             max_n_particles=120_000,
         ),

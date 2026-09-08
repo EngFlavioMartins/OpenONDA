@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Measure vortex-ring instability onset across stretching formulations.
 
-All cases use the hierarchical treecode gradient. The three DNS cases use
+All cases select the treecode induction backend independently of stretching.
+The three DNS cases use
 the direct, transposed, and symmetric mixed vortex-stretching formulations;
 ``les_transposed`` adds the equilibrium Smagorinsky sub-grid model.
 Every case uses the same Lagrangian-CFL endpoint; crossing it is the measured

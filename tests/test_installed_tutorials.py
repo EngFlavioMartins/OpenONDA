@@ -153,3 +153,89 @@ def test_local_module_runner_uses_edited_case_and_propagates_exit_code(tmp_path)
     )
     assert result.returncode == 23, result.stderr
     assert (case / "assets/check.txt").read_text() == "73"
+
+
+def test_lamb_oseen_reuses_results_only_for_the_selected_backend_and_stretching(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    setup = _load_lamb_oseen_setup()
+    monkeypatch.setattr(setup, "TUTORIAL_DIR", tmp_path)
+    name = "vortex_cs"
+    folder = tmp_path / "samples" / name
+    folder.mkdir(parents=True)
+    (folder / "flow_integrals.csv").touch()
+    (folder / f"{name}_zq.pvd").touch()
+    solution = tmp_path / "solution" / name
+    solution.mkdir(parents=True)
+    steps = round(setup.TOTAL_TIME / setup.TIME_STEP_SIZE)
+    (solution / f"vpm_{steps:06d}.h5").touch()
+
+    for backend, stretching in (
+        ("DIRECT", "transposed"),
+        ("DIRECT", "mixed"),
+        ("FMM", "mixed"),
+        ("TREECODE", "direct"),
+    ):
+        monkeypatch.setitem(setup.COMPUTE_METHOD, "CS", backend)
+        monkeypatch.setattr(setup, "STRETCHING_SCHEME", stretching)
+        assert not setup.completed_run_matches("vortex", "CS", name, 42)
+        solver = SimpleNamespace(
+            induction=setup.induction_config("CS"),
+            integrator_tableau=SimpleNamespace(name="RK2", order=2, stages=2),
+            time=setup.TOTAL_TIME,
+            particles=SimpleNamespace(n_particles_total=0),
+        )
+        setup.write_run_metadata(
+            physics="vortex",
+            scheme="CS",
+            sample_directory=name,
+            circulations=setup.PHYSICS_CIRCULATIONS["vortex"],
+            kinematic_viscosity=1.0 / setup.CIRCULATION_REYNOLDS_NUMBER,
+            spacing=setup.SPACING,
+            particle_core_radius=setup.PARTICLE_RADIUS,
+            field_spacing=setup.FIELD_SPACING,
+            n_steps=steps,
+            random_seed=42,
+            initial_n_particles_total=0,
+            solver=solver,
+        )
+        assert setup.completed_run_matches("vortex", "CS", name, 42)
+
+
+def test_all_vpm_tutorials_construct_cases_with_the_installed_api(tmp_path, monkeypatch):
+    from openonda.tutorial_runner import load_case_module
+
+    class CaseCapturedError(Exception):
+        def __init__(self, case):
+            self.case = case
+
+    def capture(case):
+        raise CaseCapturedError(case)
+
+    builders = {
+        "delta_wing": lambda setup: setup.run(),
+        "quadcopter": lambda setup: setup.run(),
+        "flat_plate": lambda setup: setup.run("static", 8),
+        "rotor_flow": lambda setup: setup.build_rotor_case(steps=1, directory=setup.TUTORIAL_DIR),
+        "lamb_oseen_vortex": lambda setup: setup.run_case("vortex", "CS", surfaces=False),
+        "vortex_ring": lambda setup: setup.run_case("dns_mixed", n_steps=1),
+        "vortex_interactions": lambda setup: setup.build_case("baseline", n_steps=1),
+    }
+    for name, build in builders.items():
+        case_dir = materialize_tutorial(f"vpm/{name}", tmp_path / name)
+        setup = load_case_module(case_dir)
+        with monkeypatch.context() as patch:
+            # Exercise real case/geometry construction without starting a
+            # long GPU campaign or writing into installed tutorial resources.
+            patch.setattr(setup.vpm, "VPMSolver", capture)
+            try:
+                case = build(setup)
+            except CaseCapturedError as captured:
+                case = captured.case
+        assert case.directory == case_dir
+        configured = case.numerics.induction
+        runtime = configured.build()
+        assert runtime.method == configured.method
+        assert runtime.stretching_scheme == configured.stretching_scheme

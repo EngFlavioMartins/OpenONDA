@@ -6,6 +6,9 @@ with vortex particles whose position and strength use common Runge--Kutta stages
 the blade loading and the downstream wake planes are sampled for the
 ``allplot.sh`` figures.
 
+The induction backend and stretching formulation are independent. Set
+`stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
+
 Usage:
     python setup.py
 """
@@ -113,7 +116,9 @@ def build_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=wake_spacing,
             ),
-            induction=vpm.FMMInduction() if induction is None else induction,
+            induction=vpm.FMMInduction(stretching_scheme="transposed")
+            if induction is None
+            else induction,
             particle_kernel="WINCKELMANS",
             max_n_particles=max_n_particles,
             write_precision="f32",
