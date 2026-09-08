@@ -1,15 +1,17 @@
 """Structural and numerical tests for the VPM FMM hierarchy components."""
 
 import numpy as np
+import pytest
 import taichi as ti
 
 from source.solvers.vpm.kernels.base import make_vortex_kernel
 from source.solvers.vpm.physics.induction.direct import DirectInduction
-from source.solvers.vpm.physics.induction.fmm import FMMTree, interaction_lists
+from source.solvers.vpm.physics.induction.fmm import FMMInduction, FMMTree, interaction_lists
 from source.solvers.vpm.physics.induction.fmm.local_expansions import l2l, l2p, m2l
 from source.solvers.vpm.physics.induction.fmm.multipoles import m2m, p2m
 from source.solvers.vpm.physics.induction.fmm.near_field import p2p_velocity
 from source.solvers.vpm.physics.induction.fmm.reference import HostFMMReference
+from source.solvers.vpm.physics.induction.treecode import TreecodeInduction
 
 
 class _Field:
@@ -132,98 +134,114 @@ def test_near_field_p2p_preserves_matching_indices_for_distinct_sets():
     np.testing.assert_allclose(actual, expected)
 
 
-def test_fmm_stage_velocity_and_rate_share_the_supplied_temporary_state(tmp_path):
-    from openonda.vpm import Backup, FMMInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
+@pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
+@pytest.mark.parametrize("scheme", ("DIRECT", "TRANSPOSED", "MIXED"))
+def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
+    tmp_path, monkeypatch, induction_type, scheme
+):
+    from openonda.vpm import Backup, Numerics, ViscousConfig, VPMCase, VPMSolver
 
     rng = np.random.default_rng(20260901)
-    position = rng.normal(scale=0.08, size=(64, 3)).astype(np.float32)
+    count = 64
+    position = rng.normal(scale=0.08, size=(count, 3)).astype(np.float32)
     position[:32, 0] -= 4.0
     position[32:, 0] += 4.0
-    strength = rng.normal(scale=0.01, size=(64, 3)).astype(np.float32)
-    radius = rng.uniform(0.008, 0.016, size=64).astype(np.float32)
+    strength = rng.normal(scale=0.01, size=(count, 3)).astype(np.float32)
+    radius = rng.uniform(0.008, 0.016, size=count).astype(np.float32)
     solver = VPMSolver(
         VPMCase(
             directory=tmp_path,
             backup=Backup(0),
             numerics=Numerics(
                 compute_device="CPU",
-                max_n_particles=64,
-                max_evaluation_points=64,
-                induction=FMMInduction(),
+                max_n_particles=count,
+                max_evaluation_points=count,
+                induction=induction_type(stretching_scheme=scheme),
                 viscous=ViscousConfig.inviscid(particle_spacing=0.2),
                 verbose=False,
             ),
         )
     )
-    solver.add_vortex_particles(
-        position=position,
-        velocity=np.zeros_like(position),
-        vortex_strength=strength,
-        core_radius=radius,
-        particle_volume=np.full(64, 0.008, dtype=np.float32),
-        kinematic_viscosity=np.zeros(64, dtype=np.float32),
-    )
-    velocity_fmm = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
-    rate_fmm = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
-    solver.induction.evaluate_stage(
-        position=solver.particles.position,
-        vortex_strength=solver.particles.vortex_strength,
-        core_radius=solver.particles.core_radius,
-        count=64,
-        velocity_out=velocity_fmm,
-        vortex_strength_rate_out=rate_fmm,
-    )
-    stage_position = solver.particles.position.to_numpy()[:64]
-    stage_strength = solver.particles.vortex_strength.to_numpy()[:64]
-    stage_radius = solver.particles.core_radius.to_numpy()[:64]
+    # Independent stage buffers ensure that induction never reads accepted state.
+    stage_position = ti.Vector.field(3, dtype=ti.f32, shape=count)
+    stage_strength = ti.Vector.field(3, dtype=ti.f32, shape=count)
+    stage_radius = ti.field(dtype=ti.f32, shape=count)
+    stage_position.from_numpy(position)
+    stage_strength.from_numpy(strength)
+    stage_radius.from_numpy(radius)
+    velocity = ti.Vector.field(3, dtype=ti.f32, shape=count)
+    rate = ti.Vector.field(3, dtype=ti.f32, shape=count)
+    gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=count)
+
+    if induction_type is not DirectInduction:
+
+        def forbid_direct_fallback(*args, **kwargs):
+            raise AssertionError("accelerated stretching fell back to direct summation")
+
+        for name in (
+            "compute_velocity_and_stretching_rate_kernel",
+            "compute_stretching_rate_batch_kernel",
+            "compute_stretching_rate_kernel",
+            "compute_velocity_gradients_kernel",
+        ):
+            monkeypatch.setattr(solver.physics, name, forbid_direct_fallback)
+
+    # Analytical pair Jacobians are independently checked against finite
+    # differences in test_vortex_kernel_contract, and use unequal pair cores.
     kernel = make_vortex_kernel("GAUSSIAN")
-    displacement = stage_position[:, None, :] - stage_position[None, :, :]
+    displacement = position[:, None, :].astype(float) - position[None, :, :]
     expected_velocity = kernel.velocity_pair(
-        displacement,
-        stage_strength[None, :, :],
-        stage_radius[:, None],
-        stage_radius[None, :],
-    )
-    expected_velocity[np.arange(64), np.arange(64)] = 0.0
-    expected_velocity = expected_velocity.sum(axis=1)
-    expected_rate = kernel.transposed_rate_pair(
-        displacement,
-        stage_strength[:, None, :],
-        stage_strength[None, :, :],
-        stage_radius[:, None],
-        stage_radius[None, :],
-    )
-    expected_rate[np.arange(64), np.arange(64)] = 0.0
-    expected_rate = expected_rate.sum(axis=1)
-    direct = DirectInduction().bind(solver.physics)
-    direct_rate = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
-    direct_velocity = ti.Vector.field(3, dtype=ti.f32, shape=(64,))
-    direct.evaluate_stage(
-        position=solver.particles.position,
-        vortex_strength=solver.particles.vortex_strength,
-        core_radius=solver.particles.core_radius,
-        count=64,
-        velocity_out=direct_velocity,
-        vortex_strength_rate_out=direct_rate,
-    )
-    np.testing.assert_allclose(direct_rate.to_numpy()[:64], expected_rate, rtol=3.0e-5, atol=2.0e-7)
-    error = np.linalg.norm(velocity_fmm.to_numpy()[:64] - expected_velocity) / np.linalg.norm(
-        expected_velocity
-    )
-    assert solver.induction.diagnostics.m2l_interactions > 0
-    assert error < 5.0e-3
-    rate_error = np.linalg.norm(rate_fmm.to_numpy()[:64] - expected_rate) / np.linalg.norm(
-        expected_rate
-    )
-    assert rate_error < 1.5e-2
-    assert solver.induction.diagnostics.hierarchical_strength_rates == 1
-    assert solver.induction.diagnostics.direct_strength_rate_fallbacks == 0
-    assert solver.induction.diagnostics.host_particle_transfers == 0
-    assert solver.induction.diagnostics.hierarchy_builds == 1
-    assert solver.induction.diagnostics.last_relative_rate_defect <= 1.0e-3
+        displacement, strength[None, :, :], radius[:, None], radius[None, :]
+    ).sum(axis=1)
+    expected_gradient = kernel.gradient_pair(
+        displacement, strength[None, :, :], radius[:, None], radius[None, :]
+    ).sum(axis=1)
+    operator = {
+        "DIRECT": expected_gradient,
+        "TRANSPOSED": expected_gradient.swapaxes(1, 2),
+        "MIXED": 0.5 * (expected_gradient + expected_gradient.swapaxes(1, 2)),
+    }[scheme]
+    expected_rate = np.einsum("nij,nj->ni", operator, strength)
+    rate_tolerance = 3.0e-5 if induction_type is DirectInduction else 1.5e-2
+    stage = {
+        "position": stage_position,
+        "vortex_strength": stage_strength,
+        "core_radius": stage_radius,
+        "count": count,
+        "velocity_out": velocity,
+        "vortex_strength_rate_out": rate,
+    }
+    try:
+        # Optional gradient output must not select a different rate formula.
+        for with_gradient in (False, True):
+            solver.induction.evaluate_stage(
+                **stage, velocity_gradient_out=gradient if with_gradient else None
+            )
+            velocity_error = np.linalg.norm(velocity.to_numpy() - expected_velocity)
+            assert velocity_error / np.linalg.norm(expected_velocity) < 5.0e-3
+            rate_error = np.linalg.norm(rate.to_numpy() - expected_rate)
+            assert rate_error / np.linalg.norm(expected_rate) < rate_tolerance
+            if with_gradient:
+                error = np.linalg.norm(gradient.to_numpy() - expected_gradient)
+                assert error / np.linalg.norm(expected_gradient) < 1.5e-2
+        if induction_type is FMMInduction:
+            diagnostics = solver.induction.diagnostics
+            assert diagnostics.m2l_interactions > 0
+            assert diagnostics.hierarchical_strength_rates == 2
+            assert diagnostics.direct_strength_rate_fallbacks == 0
+            assert diagnostics.host_particle_transfers == 0
+            assert diagnostics.hierarchy_builds == 2
+            assert diagnostics.stretching_scheme == scheme
+            if scheme == "TRANSPOSED":
+                assert diagnostics.last_relative_rate_defect <= 1.0e-3
+        solver.induction.evaluate_stage(**stage, strength_rate_enabled=False)
+        np.testing.assert_array_equal(rate.to_numpy(), 0.0)
+    finally:
+        solver.close()
 
 
-def test_private_host_fmm_reference_qualifies_all_radial_kernels():
+@pytest.mark.parametrize("scheme", ("DIRECT", "TRANSPOSED", "MIXED"))
+def test_private_host_fmm_reference_qualifies_all_radial_kernels(scheme):
     rng = np.random.default_rng(20260903)
     count = 16
     position = rng.uniform(-1.0, 1.0, size=(count, 3))
@@ -238,6 +256,7 @@ def test_private_host_fmm_reference_qualifies_all_radial_kernels():
             tolerance=1.0e-3,
             max_n_particles=count,
             leaf_capacity=1,
+            stretching_scheme=scheme,
         )
         velocity = np.zeros((count, 3), dtype=np.float64)
         gradient = np.zeros((count, 3, 3), dtype=np.float64)
@@ -271,7 +290,12 @@ def test_private_host_fmm_reference_qualifies_all_radial_kernels():
         expected_gradient[diagonal, diagonal] = 0.0
         expected_velocity = expected_velocity.sum(axis=1)
         expected_gradient = expected_gradient.sum(axis=1)
-        expected_rate = np.einsum("nji,nj->ni", expected_gradient, strength)
+        operator = {
+            "DIRECT": expected_gradient,
+            "TRANSPOSED": expected_gradient.swapaxes(1, 2),
+            "MIXED": 0.5 * (expected_gradient + expected_gradient.swapaxes(1, 2)),
+        }[scheme]
+        expected_rate = np.einsum("nij,nj->ni", operator, strength)
 
         velocity_error = np.linalg.norm(velocity - expected_velocity) / np.linalg.norm(
             expected_velocity
@@ -288,6 +312,6 @@ def test_private_host_fmm_reference_qualifies_all_radial_kernels():
         assert induction.diagnostics.l2l_operations > 0
         assert induction.diagnostics.nonzero_l2l_operations > 0
         assert induction.diagnostics.direct_strength_rate_fallbacks == 0
-        assert induction.diagnostics.strength_rate_mode == "HIERARCHICAL_GRADIENT"
+        assert induction.diagnostics.stretching_scheme == scheme
         assert induction.diagnostics.last_strength_rate_norm > 0.0
         assert induction.diagnostics.last_relative_rate_defect >= 0.0

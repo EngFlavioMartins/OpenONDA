@@ -9,7 +9,7 @@ from dataclasses import dataclass
 class FMMDiagnostics:
     """Counters recorded for one evaluator instance."""
 
-    strength_rate_mode: str = "HIERARCHICAL_GRADIENT"
+    stretching_scheme: str = "TRANSPOSED"
 
     stage_evaluations: int = 0
     hierarchy_builds: int = 0

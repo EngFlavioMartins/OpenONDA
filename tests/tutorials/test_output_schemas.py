@@ -248,7 +248,6 @@ def test_vortex_ring_records_a_resolution_limit_as_a_terminal_result(tmp_path: P
         integrator_tableau=SimpleNamespace(name="SSPRK3", order=3),
         induction=SimpleNamespace(
             method="TREECODE",
-            strength_rate_mode="HIERARCHICAL_GRADIENT",
             stretching_scheme="DIRECT",
         ),
         viscous_scheme="CS",
@@ -268,6 +267,9 @@ def test_vortex_ring_records_a_resolution_limit_as_a_terminal_result(tmp_path: P
         (tmp_path / "samples/dns_direct/run_metadata.json").read_text(encoding="utf-8")
     )
     assert metadata["schema_version"] == 4
+    assert metadata["induction_backend"] == "TREECODE"
+    assert metadata["stretching_scheme"] == "DIRECT"
+    assert "strength_rate_mode" not in metadata
     assert metadata["status"] == "instability_detected"
     assert metadata["outcome"] == "instability_detected"
     assert not metadata["completed"]

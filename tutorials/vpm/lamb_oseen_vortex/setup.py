@@ -199,7 +199,7 @@ def write_run_metadata(
         "integrator_order": int(solver.integrator_tableau.order),
         "integrator_stages": int(solver.integrator_tableau.stages),
         "induction_backend": solver.induction.method,
-        "strength_rate_formulation": solver.induction.strength_rate_mode,
+        "stretching_scheme": solver.induction.stretching_scheme,
         "particle_kernel": "GAUSSIAN",
         "diffusion_scheme": scheme,
         "compute_backend": getattr(solver, "compute_device", "AUTO"),

@@ -8,7 +8,7 @@ import numpy as np
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
-from ..base import StrengthRateMode
+from ..base import normalize_stretching_scheme
 from .diagnostics import FMMDiagnostics
 from .interaction_lists import well_separated
 from .local_expansions import l2l, m2l
@@ -41,7 +41,6 @@ class HostFMMReference:
     # This reference implementation stages the active prefix through
     # reusable host buffers. It is not a device-resident production backend.
     device_resident = False
-    strength_rate_mode = "HIERARCHICAL_GRADIENT"
 
     def __init__(
         self,
@@ -51,7 +50,7 @@ class HostFMMReference:
         kernel: RadialVortexKernel | None = None,
         max_n_particles: int | None = None,
         leaf_capacity: int = 8,
-        strength_rate_mode: StrengthRateMode = "HIERARCHICAL_GRADIENT",
+        stretching_scheme: str = "TRANSPOSED",
     ) -> None:
         if not 0.0 < float(tolerance) < 1.0:
             raise ValueError("FMM tolerance must lie in (0, 1)")
@@ -63,15 +62,9 @@ class HostFMMReference:
         self.physics = None
         self.max_n_particles = int(max_n_particles or 1)
         self.leaf_capacity = int(leaf_capacity)
-        normalized_rate_mode = strength_rate_mode.upper()
-        if normalized_rate_mode != self.strength_rate_mode:
-            raise ValueError(
-                "HostFMMReference supports only strength_rate_mode="
-                f"{self.strength_rate_mode}; exact pairwise rates require DirectInduction"
-            )
-        self.strength_rate_mode = normalized_rate_mode
+        self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
         self.tree = FMMTree(leaf_capacity=self.leaf_capacity)
-        self.diagnostics = FMMDiagnostics(strength_rate_mode=self.strength_rate_mode)
+        self.diagnostics = FMMDiagnostics(stretching_scheme=self.stretching_scheme)
         if physics is not None:
             self.bind(physics)
 
@@ -82,7 +75,7 @@ class HostFMMReference:
             kernel=self.kernel,
             max_n_particles=self.max_n_particles,
             leaf_capacity=self.leaf_capacity,
-            strength_rate_mode=self.strength_rate_mode,
+            stretching_scheme=self.stretching_scheme,
         )
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
@@ -136,7 +129,14 @@ class HostFMMReference:
 
         if strength_rate_enabled:
             strength_np = self.tree.vortex_strength
-            rate_np = np.einsum("nji,nj->ni", gradient_np, strength_np)
+            if self.stretching_scheme == "DIRECT":
+                rate_np = np.einsum("nij,nj->ni", gradient_np, strength_np)
+            elif self.stretching_scheme == "TRANSPOSED":
+                rate_np = np.einsum("nji,nj->ni", gradient_np, strength_np)
+            else:
+                rate_np = 0.5 * np.einsum(
+                    "nij,nj->ni", gradient_np + gradient_np.swapaxes(1, 2), strength_np
+                )
             self.diagnostics.hierarchical_strength_rates += 1
             self.diagnostics.last_uncorrected_rate_defect = float(
                 np.linalg.norm(rate_np.sum(axis=0))

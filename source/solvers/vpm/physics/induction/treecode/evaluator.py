@@ -6,12 +6,13 @@ import numpy as np
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
+from ..base import _STRETCHING_MODES, normalize_stretching_scheme
+from ..stretching import stretching_rate
 
 _TREECODE_THETA = 0.1
 _TREECODE_MULTIPOLE_ORDER = 1
 _TREECODE_SORT_PARTICLE_TARGETS = False
 _TREECODE_TRAVERSAL_BLOCK_DIM = 128
-_STRETCHING_MODES = {"DIRECT": 0, "TRANSPOSED": 1, "MIXED": 2}
 
 
 @ti.kernel
@@ -24,12 +25,7 @@ def _rate_from_gradient(
 ):
     """Contract the hierarchical velocity gradient using the selected scheme."""
     for i in range(count):
-        if stretching_mode == 0:
-            output[i] = gradient[i] @ strength[i]
-        elif stretching_mode == 1:
-            output[i] = gradient[i].transpose() @ strength[i]
-        else:
-            output[i] = 0.5 * (gradient[i] + gradient[i].transpose()) @ strength[i]
+        output[i] = stretching_rate(gradient[i], strength[i], stretching_mode)
 
 
 @ti.data_oriented
@@ -53,15 +49,9 @@ class TreecodeInduction:
     # bounded; reject a nominal f64 case at the immutable configuration edge.
     supports_f64 = False
     device_resident = True
-    strength_rate_mode = "HIERARCHICAL_GRADIENT"
 
     def __init__(self, *, stretching_scheme: str = "TRANSPOSED") -> None:
-        stretching_scheme = str(stretching_scheme).upper()
-        if stretching_scheme not in _STRETCHING_MODES:
-            raise ValueError(
-                f"stretching_scheme must be one of {tuple(_STRETCHING_MODES)}; "
-                f"got {stretching_scheme!r}"
-            )
+        stretching_scheme = normalize_stretching_scheme(stretching_scheme)
         self.method = "TREECODE"
         self.stretching_scheme = stretching_scheme
         self._stretching_mode = _STRETCHING_MODES[stretching_scheme]
@@ -73,7 +63,6 @@ class TreecodeInduction:
         self.traversal_block_dim = _TREECODE_TRAVERSAL_BLOCK_DIM
         self.max_n_particles = 1
         self.diagnostics = {
-            "strength_rate_mode": self.strength_rate_mode,
             "stretching_scheme": self.stretching_scheme,
             "stage_evaluations": 0,
             "gradient_evaluations": 0,

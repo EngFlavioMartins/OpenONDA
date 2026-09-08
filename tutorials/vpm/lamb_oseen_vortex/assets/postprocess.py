@@ -2950,7 +2950,7 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
                 "observed_time_step_size": observed_time_step,
                 "integrator": metadata.get("integrator"),
                 "induction_backend": metadata.get("induction_backend"),
-                "strength_rate_formulation": metadata.get("strength_rate_formulation"),
+                "stretching_scheme": metadata.get("stretching_scheme"),
                 "particle_kernel": metadata.get("particle_kernel"),
                 "precision": metadata.get("precision"),
                 "max_particles_capacity": MAX_PARTICLES,

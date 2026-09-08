@@ -92,7 +92,6 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
         "variant": name,
         "integrator": "SSPRK3",
         "induction_backend": "TREECODE",
-        "strength_rate_mode": "HIERARCHICAL_GRADIENT",
         "stretching_scheme": (
             "DIRECT" if name == "dns_direct" else "MIXED" if name == "dns_mixed" else "TRANSPOSED"
         ),
@@ -341,7 +340,6 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
             "completed_time": metadata.get("final_time"),
             "n_particles_total": metadata.get("final_n_particles_total"),
             "induction_backend": metadata.get("induction_backend"),
-            "strength_rate_mode": metadata.get("strength_rate_mode"),
             "stretching_scheme": metadata.get("stretching_scheme"),
             "instability_step": metadata.get("instability_step"),
             "instability_time": metadata.get("instability_time"),

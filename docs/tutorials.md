@@ -39,6 +39,32 @@ editing a materialized case. No package directory needs to be added to Python's
 search path. Bash is needed for shell campaigns; Python modules can be run
 individually. `openonda tutorial` keeps the CLI's interpreter for subprocesses.
 
+## VPM induction and stretching
+
+Choose the induction backend and stretching formulation independently. All
+three backends accept `stretching_scheme="direct"`, `"transposed"`, or `"mixed"`:
+
+```python
+from openonda import vpm
+
+vpm.DirectInduction(stretching_scheme="transposed")
+vpm.TreecodeInduction(stretching_scheme="transposed")
+vpm.FMMInduction(stretching_scheme="transposed")
+
+numerics = vpm.Numerics(induction=vpm.FMMInduction(stretching_scheme="mixed"))
+```
+
+For the velocity Jacobian `J` and particle strength `Γ`, direct stretching is
+`J @ Γ`, transposed is `J.T @ Γ`, and mixed is `0.5 * (J + J.T) @ Γ`.
+The chosen backend evaluates that same formulation: direct summation over
+particle pairs, a treecode traversal, or FMM expansions and near-field pairs.
+Accelerated results approximate the same equations to their numerical accuracy.
+
+The default remains transposed for every backend. Output records the backend
+and `stretching_scheme` separately, with uppercase values. Restart checks
+include the formulation; older direct/FMM checkpoints without this field retain
+their implicit transposed meaning.
+
 ## Catalog and scope
 
 All catalog cases were inspected for source-root and machine-specific paths,

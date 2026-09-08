@@ -7,6 +7,7 @@ from typing import Self
 import taichi as ti
 
 from ...kernels.base import RadialVortexKernel, make_vortex_kernel
+from .base import _STRETCHING_MODES, normalize_stretching_scheme
 
 
 @ti.data_oriented
@@ -15,9 +16,8 @@ class DirectInduction:
 
     The adapter owns no particle state.  It receives the complete temporary
     stage fields on every call and writes only the caller-provided outputs.
-    The canonical production strength equation is the pairwise transposed
-    equation (mode ``1`` in the legacy kernel factory); the mode integer is
-    intentionally private to this migration adapter.
+    Direct, transposed, and mixed stretching use the same pair walk as
+    velocity evaluation. The backend choice does not select the formulation.
     """
 
     supported_kernels = frozenset(
@@ -28,10 +28,11 @@ class DirectInduction:
     supports_variable_core_radius = True
     supports_f64 = True
     device_resident = True
-    strength_rate_mode = "PAIRWISE_TRANSPOSED"
     supports_target_fields = True
 
-    def __init__(self) -> None:
+    def __init__(self, *, stretching_scheme: str = "TRANSPOSED") -> None:
+        self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
+        self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
         self.method = "DIRECT"
         self.kernel = make_vortex_kernel("GAUSSIAN")
         self.physics = None
@@ -40,7 +41,7 @@ class DirectInduction:
 
     def build(self) -> Self:
         """Return a fresh unbound runtime evaluator for an immutable case."""
-        return type(self)()
+        return type(self)(stretching_scheme=self.stretching_scheme)
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind this immutable construction object to one physics workspace."""
@@ -90,6 +91,7 @@ class DirectInduction:
                 velocity_out,
                 vortex_strength_rate_out,
                 self.physics._zero_velocity,
+                self._stretching_mode,
                 count,
             )
         else:
@@ -111,7 +113,7 @@ class DirectInduction:
                     vortex_strength,
                     core_radius,
                     vortex_strength_rate_out,
-                    1,
+                    self._stretching_mode,
                     start,
                     target_count,
                     count,

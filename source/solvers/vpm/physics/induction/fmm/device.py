@@ -19,7 +19,8 @@ import numpy as np
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
-from ..base import StrengthRateMode
+from ..base import _STRETCHING_MODES, normalize_stretching_scheme
+from ..stretching import stretching_rate
 from ..treecode.lbvh import TaichiTreecode
 from .diagnostics import FMMDiagnostics
 
@@ -690,9 +691,11 @@ class FMMDeviceWorkspace:
         self._rate_defect[None] = 0.0
 
     @ti.kernel
-    def _rate_pass(self, count: ti.i32):
+    def _rate_pass(self, count: ti.i32, stretching_mode: ti.i32):
         for particle in range(count):
-            rate = self.gradient[particle].transpose() @ self.tree.vortex_strength[particle]
+            rate = stretching_rate(
+                self.gradient[particle], self.tree.vortex_strength[particle], stretching_mode
+            )
             self.rate[particle] = rate
             for component in ti.static(range(3)):
                 ti.atomic_add(self._rate_sum[None][component], rate[component])
@@ -702,7 +705,9 @@ class FMMDeviceWorkspace:
     def _finalize_rate_diagnostics(self):
         self._rate_defect[None] = ti.sqrt(self._rate_sum[None].dot(self._rate_sum[None]))
 
-    def evaluate(self, position, vortex_strength, core_radius, count: int) -> None:
+    def evaluate(
+        self, position, vortex_strength, core_radius, count: int, stretching_mode: int
+    ) -> None:
         count = int(count)
         phase_start = time.perf_counter()
         self.tree.build(position, vortex_strength, core_radius, count)
@@ -755,7 +760,7 @@ class FMMDeviceWorkspace:
             self.last_phase_seconds["near_field"] = time.perf_counter() - phase_start
         phase_start = time.perf_counter()
         self._reset_rate_diagnostics()
-        self._rate_pass(count)
+        self._rate_pass(count, stretching_mode)
         self._finalize_rate_diagnostics()
         ti.sync()
         if self.profile_passes:
@@ -764,7 +769,7 @@ class FMMDeviceWorkspace:
 
 @ti.data_oriented
 class FMMInduction:
-    """Device-resident hierarchical-gradient FMM induction backend."""
+    """Device-resident FMM with direct, transposed, or mixed stretching."""
 
     # AUTO is accepted as a request to resolve a backend at solver construction;
     # the resolved backend is checked again before any FMM workspace is built.
@@ -778,19 +783,20 @@ class FMMInduction:
     supports_f64 = False
     supports_target_fields = True
     device_resident = True
-    strength_rate_mode: StrengthRateMode = "HIERARCHICAL_GRADIENT"
 
-    def __init__(self) -> None:
+    def __init__(self, *, stretching_scheme: str = "TRANSPOSED") -> None:
+        self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
+        self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
         self.method = "FMM"
         self.physics = None
         self.kernel: RadialVortexKernel = make_vortex_kernel("GAUSSIAN")
         self.max_n_particles = 1
         self.workspace: FMMDeviceWorkspace | None = None
-        self.diagnostics = FMMDiagnostics(strength_rate_mode=self.strength_rate_mode)
+        self.diagnostics = FMMDiagnostics(stretching_scheme=self.stretching_scheme)
 
     def build(self) -> Self:
         """Return a fresh unbound FMM evaluator for an immutable case setup."""
-        return type(self)()
+        return type(self)(stretching_scheme=self.stretching_scheme)
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind the evaluator to one single-precision VPM physics workspace."""
@@ -846,7 +852,9 @@ class FMMInduction:
             raise ValueError(f"stage count {count} exceeds FMM capacity {self.max_n_particles}")
         if count == 0:
             return
-        self.workspace.evaluate(position, vortex_strength, core_radius, count)
+        self.workspace.evaluate(
+            position, vortex_strength, core_radius, count, self._stretching_mode
+        )
         self.physics._copy_vec3(self.workspace.velocity, velocity_out, count)
         if velocity_gradient_out is not None:
             self.physics._copy_mat3(self.workspace.gradient, velocity_gradient_out, count)

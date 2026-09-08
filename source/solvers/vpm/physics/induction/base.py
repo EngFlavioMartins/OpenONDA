@@ -8,9 +8,20 @@ the output fields.  Implementations must read only that supplied state.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal, Protocol
+from typing import Any, ClassVar, Literal, Protocol, cast
 
-StrengthRateMode = Literal["PAIRWISE_TRANSPOSED", "HIERARCHICAL_GRADIENT"]
+StretchingScheme = Literal["DIRECT", "TRANSPOSED", "MIXED"]
+_STRETCHING_MODES = {"DIRECT": 0, "TRANSPOSED": 1, "MIXED": 2}
+
+
+def normalize_stretching_scheme(scheme: str) -> StretchingScheme:
+    """Validate the stretching formulation independently of the induction backend."""
+    normalized = str(scheme).upper()
+    if normalized not in _STRETCHING_MODES:
+        raise ValueError(
+            f"stretching_scheme must be 'direct', 'transposed', or 'mixed'; got {scheme!r}"
+        )
+    return cast(StretchingScheme, normalized)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +54,7 @@ class InductionMethod(Protocol):
     supports_f64: ClassVar[bool]
     supports_target_fields: ClassVar[bool]
     device_resident: ClassVar[bool]
-    strength_rate_mode: ClassVar[StrengthRateMode]
+    stretching_scheme: StretchingScheme
 
     def build(self) -> InductionMethod:
         """Create an unbound runtime evaluator for one solver instance."""
@@ -80,4 +91,4 @@ class InductionMethod(Protocol):
         """Write arbitrary target velocity and/or gradient fields."""
 
 
-__all__ = ["InductionMethod", "StageRates", "StageState", "StrengthRateMode"]
+__all__ = ["InductionMethod", "StageRates", "StageState", "StretchingScheme"]

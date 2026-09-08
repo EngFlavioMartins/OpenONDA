@@ -862,6 +862,16 @@ class _BackupIO:
                     invalid(f"numerical configuration is not valid JSON ({exc.msg})")
                 if not isinstance(stored_configuration, dict):
                     invalid("numerical configuration must be a JSON object")
+                # Before stretching was selectable on these two backends,
+                # their checkpoints implicitly used transposed stretching.
+                # Verify the original checksum first, then recover that one
+                # known default without weakening other restart comparisons.
+                stored_induction = stored_configuration.get("induction")
+                if isinstance(stored_induction, dict) and stored_induction.get("type") in {
+                    "source.solvers.vpm.physics.induction.direct.DirectInduction",
+                    "source.solvers.vpm.physics.induction.fmm.device.FMMInduction",
+                }:
+                    stored_induction.setdefault("stretching_scheme", "TRANSPOSED")
                 if expected_configuration is not None:
                     mismatches = _configuration_mismatches(
                         expected_configuration,

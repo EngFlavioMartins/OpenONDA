@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import io
+import json
 import multiprocessing
 from pathlib import Path
 
@@ -510,3 +512,39 @@ def test_backup_rejects_a_different_random_seed(tmp_path):
     reader = _solver(tmp_path / "reader", random_seed=8)
     with pytest.raises(ValueError, match="random_seed"):
         reader.load_backup(str(tmp_path / "writer" / "solution" / "vpm_000000"))
+
+
+@pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
+def test_restart_matches_stretching_and_recovers_only_known_implicit_defaults(
+    tmp_path, induction_type
+):
+    solver = _solver(tmp_path / "writer", induction=induction_type())
+    solver.save_backup()
+    backup = tmp_path / "writer" / "solution" / "vpm_000000"
+    solver.close()
+    forms = ("explicit", "implicit") if induction_type is not TreecodeInduction else ("explicit",)
+    for form in forms:
+        if form == "implicit":
+            with h5py.File(f"{backup}.h5", "r+") as archive:
+                attrs = archive["solver"].attrs
+                configuration = json.loads(attrs["numerical_configuration"])
+                del configuration["induction"]["stretching_scheme"]
+                encoded = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
+                attrs["numerical_configuration"] = encoded
+                attrs["numerical_configuration_sha256"] = hashlib.sha256(
+                    encoded.encode()
+                ).hexdigest()
+        for scheme in ("DIRECT", "TRANSPOSED", "MIXED"):
+            reader = _solver(
+                tmp_path / f"reader-{form}-{scheme}",
+                induction=induction_type(stretching_scheme=scheme),
+            )
+            try:
+                if scheme == "TRANSPOSED":
+                    reader.load_backup(str(backup))
+                    assert reader.induction.stretching_scheme == scheme
+                else:
+                    with pytest.raises(ValueError, match="induction.stretching_scheme"):
+                        reader.load_backup(str(backup))
+            finally:
+                reader.close()

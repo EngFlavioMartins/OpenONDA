@@ -530,7 +530,7 @@ def _make_stretching_rate_batch_kernel(q_, zeta_):
 
 
 def _make_velocity_and_stretching_rate_kernel(q_, zeta_):
-    """Fuse direct velocity and canonical transposed rate in one pair walk."""
+    """Fuse direct-summation velocity and the selected stretching in one pair walk."""
 
     @ti.kernel
     def compute_velocity_and_stretching_rate_kernel(
@@ -540,6 +540,7 @@ def _make_velocity_and_stretching_rate_kernel(q_, zeta_):
         velocity: ti.template(),
         vortex_strength_rate: ti.template(),
         freestream_velocity: ti.template(),
+        stretching_mode: ti.i32,
         n_particles_total: ti.i32,
     ):  # type: ignore
         for i in range(n_particles_total):
@@ -568,7 +569,7 @@ def _make_velocity_and_stretching_rate_kernel(q_, zeta_):
                         zeta_value,
                         sigma,
                         normalized_radius,
-                        1,
+                        stretching_mode,
                     )
             velocity[i] = -induced_velocity + freestream_velocity[None]
             vortex_strength_rate[i] = strength_rate
