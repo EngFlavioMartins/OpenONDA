@@ -26,6 +26,21 @@ class CouplingStepper:
     """Advance the coupled boundary-element solvers and append shed particles."""
 
     def __init__(self, solver: VPMSolver) -> None:
+        """Attach the boundary-element coupling orchestrator to a solver.
+
+        Parameters
+        ----------
+        solver : VPMSolver
+            VPM solver that owns the particle arrays, time-step clock, and
+            optional panel/VLM solver. The reference is retained; no arrays
+            are copied.
+
+        Notes
+        -----
+        :meth:`advance_panel` and :meth:`advance_vlm` may append shed wake
+        particles to the owning solver. This helper is normally constructed
+        by ``VPMSolver`` and is not an independent time integrator.
+        """
         self.solver = solver
 
     def advance_panel(self):

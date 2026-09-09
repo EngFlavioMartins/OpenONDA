@@ -66,6 +66,28 @@ class ParticleContainerWrapper:
         effective_viscosity,
         count,
     ):
+        """Wrap saved particle arrays behind the diagnostics field interface.
+
+        Parameters
+        ----------
+        position : array_like, shape (N, 3)
+            Particle centres in metres.
+        vortex_strength : array_like, shape (N, 3)
+            Particle-strength vectors ``Gamma = omega * V`` in m³/s.
+        core_radius : array_like, shape (N,)
+            Particle core radii in metres.
+        effective_viscosity : array_like, shape (N,)
+            Effective kinematic viscosities in m²/s.
+        count : int
+            Active prefix length. The wrapper stores the supplied arrays and
+            count without copying or validating them; callers must provide
+            mutually compatible prefixes.
+
+        Notes
+        -----
+        This is an adapter for offline kernels, not a particle owner. The
+        arrays are treated as read-only by this class.
+        """
         self.position = position
         self.vortex_strength = vortex_strength
         self.core_radius = core_radius
@@ -342,7 +364,7 @@ class OfflineFlowDiagnostics:
             f.write("#   total_kinetic_energy  - Total kinetic energy [m²/s²]\n")
             f.write("#   total_enstrophy       - Total total_enstrophy [1/s²]\n")
             f.write("#   total_helicity        - Total total_helicity [m³/s²]\n")
-            f.write("#   vortex_strength_magnitude_sum - Sum of particle |alpha| [m³/s]\n")
+            f.write("#   vortex_strength_magnitude_sum - Sum of particle |Gamma| [m³/s]\n")
             f.write("#   kinetic_energy_rate - Signed energy rate [m²/s³]\n")
             f.write("#   impulse_x/y/z   - Linear impulse components [m³/s]\n")
             f.write("#\n")

@@ -38,7 +38,6 @@ def run_ensemble(
     first_random_seed: int = 42000,
     *,
     first_realization: int = 0,
-    resume: bool = False,
 ) -> None:
     """Advance independent random walks of the same initial vortex field."""
     if number_of_realizations < 4:
@@ -59,7 +58,6 @@ def run_ensemble(
             random_seed=random_seed,
             surfaces=False,
             backup_steps=field_interval_steps(case),
-            resume=resume,
         )
 
 
@@ -72,19 +70,15 @@ def required_ensemble_size(current: int, relative_error: float, limit: float) ->
     return max(current + 4, math.ceil(1.1 * current * (relative_error / limit) ** 2))
 
 
-def run_converged_ensemble(case, pilot, first_seed, maximum, resume=False):
+def run_converged_ensemble(case, pilot, first_seed, maximum):
     from .postprocess import RWM_RELATIVE_STANDARD_ERROR_LIMIT, aggregate_case
 
     if maximum < pilot:
         raise ValueError("maximum realizations must be at least the pilot size")
     count = pilot
-    if resume:
-        # Preserve previously extended ensembles instead of dropping their seeds.
-        existing = list((TUTORIAL_DIR / "solution").glob(f"{case}_rwm_[0-9][0-9][0-9]"))
-        count = max(count, len(existing))
     first = 0
     while True:
-        run_ensemble(case, count, first_seed, first_realization=first, resume=resume)
+        run_ensemble(case, count, first_seed, first_realization=first)
         aggregate_case(TUTORIAL_DIR / "solution", TUTORIAL_DIR / "samples", case, count)
         convergence = pd.read_csv(TUTORIAL_DIR / "samples" / f"{case}_rwm/rwm_convergence.csv")
         values = convergence[
@@ -118,10 +112,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--converge",
         action="store_true",
-        help="extend independent seeds until the 7.5% precision gate passes",
+        help="extend independent seeds until the 7.5%% precision gate passes",
     )
     parser.add_argument("--maximum-realizations", type=int, default=80)
-    parser.add_argument("--resume", action="store_true")
     return parser.parse_args()
 
 
@@ -133,12 +126,9 @@ def main() -> int:
             args.number_of_realizations,
             args.first_random_seed,
             args.maximum_realizations,
-            args.resume,
         )
     else:
-        run_ensemble(
-            args.case, args.number_of_realizations, args.first_random_seed, resume=args.resume
-        )
+        run_ensemble(args.case, args.number_of_realizations, args.first_random_seed)
     return 0
 
 

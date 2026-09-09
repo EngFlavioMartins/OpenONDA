@@ -7,12 +7,9 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
-from source.solvers.vpm.config.health import HealthError
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 TUTORIALS = REPOSITORY_ROOT / "tutorials"
@@ -30,6 +27,69 @@ def _load_module(path: Path, name: str):
 def _import_repository_tutorial(name: str):
     """Import a tutorial module outside pytest's ``tests/tutorials`` namespace."""
     return importlib.import_module(name)
+
+
+def _write_vpm_metadata(
+    root: Path,
+    case_name: str,
+    *,
+    stretching_scheme: str,
+    status: str = "completed",
+    step: int = 3000,
+    time: float = 60.0,
+    requested_steps: int = 3000,
+    turbulence_model: str = "DNS",
+) -> dict:
+    """Write the universal solver record needed by tutorial-reader tests."""
+    payload = {
+        "schema_version": 1,
+        "solver": "VPM",
+        "case_name": case_name,
+        "configuration": {
+            "numerics": {
+                "integrator": {"type": "RKTableau", "name": "SSPRK3"},
+                "induction": {
+                    "type": "TreecodeInduction",
+                    "method": "TREECODE",
+                    "stretching_scheme": stretching_scheme,
+                },
+                "viscous": {"type": "ViscousConfig", "scheme": "CS"},
+                "turbulence": {
+                    "type": "TurbulenceConfig",
+                    "model": turbulence_model,
+                },
+            },
+            "run": {
+                "steps": requested_steps,
+                "initial_samples": True,
+                "final_backup": True,
+                "health_limit_action": "STOP",
+                "wall_time_limit_seconds": None,
+            },
+            "backup": {
+                "interval_steps": 25,
+                "directory": f"solution/{case_name}",
+                "log_directory": f"solution/{case_name}",
+            },
+            "samplers": {"directory": case_name, "items": []},
+            "initial_conditions": [],
+            "initial_weak_particle_percent": 0.0,
+        },
+        "state": {
+            "initial_step": 0,
+            "initial_time": 0.0,
+            "step": step,
+            "time": time,
+            "requested_steps": requested_steps,
+            "initial_n_particles_total": 8772,
+            "n_particles_total": 8772,
+        },
+        "lifecycle": {"status": status},
+    }
+    destination = root / "solution" / case_name / "vpm_metadata.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    return payload
 
 
 def test_cube_plot_metadata_accepts_only_supported_coupling_schemas():
@@ -118,6 +178,61 @@ def test_lamb_oseen_energy_reader_keeps_persistent_fourier_rate(tmp_path: Path):
     np.testing.assert_allclose(data["kinetic_energy_rate"], [-1.0, -1.8])
 
 
+def test_lamb_oseen_reads_only_solver_owned_metadata(tmp_path: Path):
+    diagnostics = _load_module(
+        TUTORIALS / "vpm/lamb_oseen_vortex/assets/postprocess.py",
+        "lamb_oseen_solver_metadata_test",
+    )
+    payload = _write_vpm_metadata(
+        tmp_path,
+        "vortex_cs",
+        stretching_scheme="TRANSPOSED",
+        step=9,
+        time=0.9,
+        requested_steps=9,
+    )
+    payload["configuration"]["numerics"].update(
+        {
+            "time_step_size": 0.1,
+            "random_seed": 17,
+            "compute_device": "CPU",
+            "precision": "f32",
+            "write_precision": "f32",
+            "particle_kernel": "GAUSSIAN",
+        }
+    )
+    payload["configuration"]["initial_conditions"] = [
+        {
+            "type": "VortexFilament",
+            "centre": [0.0, 0.0, 0.0],
+            "circulation": 1.0,
+            "vortex_core_radius": 0.125,
+            "kinematic_viscosity": 0.002,
+            "distribution": {
+                "type": "TriangularPrismDistribution",
+                "bounds": [[-1.0, 1.0], [-1.0, 1.0], [-2.5, 2.5]],
+                "spacing": 0.075,
+                "core_radius_ratio": 1.2,
+            },
+        }
+    ]
+    destination = tmp_path / "solution/vortex_cs/vpm_metadata.json"
+    destination.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    samples = tmp_path / "samples/vortex_cs"
+    samples.mkdir(parents=True)
+
+    metadata = diagnostics._metadata(samples)
+
+    assert metadata["status"] == "completed"
+    assert metadata["number_of_steps"] == 9
+    assert metadata["final_time"] == pytest.approx(0.9)
+    assert metadata["random_seed"] == 17
+    assert metadata["core_radius"] == pytest.approx(0.125)
+    assert metadata["particle_spacing"] == pytest.approx(0.075)
+    assert metadata["particle_core_radius"] == pytest.approx(0.09)
+    assert metadata["column_half_length"] == pytest.approx(2.5)
+
+
 def test_vortex_ring_backup_schedule_follows_the_completed_horizon():
     postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
 
@@ -126,6 +241,17 @@ def test_vortex_ring_backup_schedule_follows_the_completed_horizon():
     assert postprocess._expected_backup_steps(0, 25) == set()
     with pytest.raises(ValueError, match="positive"):
         postprocess._expected_backup_steps(100, 0)
+
+
+def test_vortex_ring_empty_summary_has_no_ranked_case(tmp_path: Path):
+    postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
+
+    summary = postprocess.build_summary(tmp_path / "samples", tmp_path / "figures")
+
+    assert summary["runs"] == {}
+    assert summary["stability_ranking"] == []
+    assert summary["longest_sustained_variant"] is None
+    assert summary["longest_sustained_variants"] == []
 
 
 def test_vortex_ring_flow_integrals_allow_initially_undefined_health_only(tmp_path: Path):
@@ -153,10 +279,13 @@ def test_vortex_ring_available_plot_validation_accepts_partial_campaign(
     figures = tmp_path / "figures"
     dns = samples / "dns_direct"
     dns.mkdir(parents=True)
-    (dns / "run_metadata.json").write_text(
-        '{"schema_version": 3, "status": "running", "variant": "dns_direct", '
-        '"stretching_scheme": "DIRECT"}\n',
-        encoding="utf-8",
+    _write_vpm_metadata(
+        tmp_path,
+        "dns_direct",
+        stretching_scheme="DIRECT",
+        status="running",
+        step=5,
+        time=0.1,
     )
     (dns / "ring_diagnostics.csv").write_text(
         "time,step,vortex_centroid_x,tube_circulation\n0.0,0,0.0,3.14\n0.1,5,0.2,3.13\n",
@@ -172,12 +301,12 @@ def test_vortex_ring_available_plot_validation_accepts_partial_campaign(
     monkeypatch.setattr(postprocess, "FIGURES_DIR", figures)
 
     assert postprocess.validate_available(pre_plot=True) == 0
-    manifest = postprocess.build_manifest(samples, figures)
-    assert manifest["runs"]["dns_direct"]["status"] == "running"
-    assert manifest["runs"]["dns_direct"]["completed_steps"] == 5
-    assert manifest["runs"]["dns_direct"]["completed_time"] == pytest.approx(0.1)
-    assert manifest["runs"]["dns_direct"]["n_particles_total"] == 10
-    postprocess.json.dumps(manifest)
+    summary = postprocess.build_summary(samples, figures)
+    assert summary["runs"]["dns_direct"]["status"] == "running"
+    assert summary["runs"]["dns_direct"]["completed_steps"] == 5
+    assert summary["runs"]["dns_direct"]["completed_time"] == pytest.approx(0.1)
+    assert summary["runs"]["dns_direct"]["n_particles_total"] == 8772
+    json.dumps(summary)
 
 
 def test_vortex_ring_saffman_comparison_is_limited_to_thin_cores():
@@ -196,103 +325,58 @@ def test_vortex_ring_saffman_comparison_is_limited_to_thin_cores():
 
 def test_vortex_ring_plot_selection_keeps_compatible_results_during_new_campaign(tmp_path: Path):
     metrics = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.ring_metrics")
-
-    metadata = {
-        "dns_direct": (3, "DIRECT"),
-        "dns_treecode": (2, None),
-        "les_treecode": (2, None),
-    }
-    for variant, (schema, scheme) in metadata.items():
-        directory = tmp_path / variant
-        directory.mkdir()
-        payload = {"schema_version": schema, "variant": variant}
-        if scheme is not None:
-            payload["stretching_scheme"] = scheme
-        (directory / "run_metadata.json").write_text(json.dumps(payload) + "\n", encoding="utf-8")
-
-    assert metrics.plot_variants(tmp_path) == (
-        "dns_direct",
-        "dns_treecode",
-        "les_treecode",
+    samples = tmp_path / "samples"
+    for variant in metrics.CURRENT_VARIANTS:
+        (samples / variant).mkdir(parents=True)
+    _write_vpm_metadata(tmp_path, "dns_direct", stretching_scheme="DIRECT")
+    _write_vpm_metadata(
+        tmp_path,
+        "les_transposed",
+        stretching_scheme="TRANSPOSED",
+        turbulence_model="LES_SMAGORINSKY",
     )
 
-    transposed = tmp_path / "dns_transposed"
-    transposed.mkdir()
-    (transposed / "run_metadata.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 3,
-                "variant": "dns_transposed",
-                "stretching_scheme": "TRANSPOSED",
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    assert metrics.plot_variants(tmp_path) == (
+    assert metrics.plot_variants(samples) == ("dns_direct", "les_transposed")
+
+    _write_vpm_metadata(tmp_path, "dns_transposed", stretching_scheme="TRANSPOSED")
+    _write_vpm_metadata(tmp_path, "dns_mixed", stretching_scheme="MIXED")
+    assert metrics.plot_variants(samples) == (
         "dns_direct",
         "dns_transposed",
-        "les_treecode",
+        "dns_mixed",
+        "les_transposed",
     )
 
 
 def test_vortex_ring_records_a_resolution_limit_as_a_terminal_result(tmp_path: Path, monkeypatch):
     setup = _import_repository_tutorial("tutorials.vpm.vortex_ring.setup")
-    monkeypatch.setattr(setup, "TUTORIAL_DIR", tmp_path)
-    failure = HealthError("declared Lagrangian CFL limit")
-    solver = SimpleNamespace(
-        run_status="resolution_lost",
-        run_failure=failure,
+    assert not hasattr(setup, "write_run_metadata")
+    assert not hasattr(setup, "result_exists")
+    metadata = _write_vpm_metadata(
+        tmp_path,
+        "dns_direct",
+        stretching_scheme="DIRECT",
+        status="resolution_lost",
         step=242,
         time=4.84,
-        integrator_tableau=SimpleNamespace(name="SSPRK3", order=3),
-        induction=SimpleNamespace(
-            method="TREECODE",
-            stretching_scheme="DIRECT",
-        ),
-        viscous_scheme="CS",
-        compute_device="CPU",
-        particles=SimpleNamespace(n_particles_total=8772),
     )
-
-    setup.write_run_metadata(
-        variant="dns_direct",
-        n_steps=3000,
-        particle_core_radius=0.07,
-        initial_n_particles_total=8772,
-        solver=solver,
-    )
-
-    metadata = json.loads(
-        (tmp_path / "samples/dns_direct/run_metadata.json").read_text(encoding="utf-8")
-    )
-    assert metadata["schema_version"] == 4
-    assert metadata["induction_backend"] == "TREECODE"
-    assert metadata["stretching_scheme"] == "DIRECT"
-    assert "strength_rate_mode" not in metadata
-    assert metadata["status"] == "instability_detected"
-    assert metadata["outcome"] == "instability_detected"
-    assert not metadata["completed"]
-    assert metadata["requested_steps"] == 3000
-    assert metadata["completed_steps"] == 242
-    assert metadata["instability_step"] == 242
-    assert metadata["instability_time"] == pytest.approx(4.84)
-    assert metadata["instability_reason"].startswith("HealthError:")
-    assert metadata["maximum_lagrangian_cfl"] == pytest.approx(1.0)
-    assert metadata["maximum_vorticity_divergence_error"] == pytest.approx(0.12)
-    assert metadata["maximum_vortex_misalignment_degrees"] == pytest.approx(25.0)
+    assert metadata["lifecycle"] == {"status": "resolution_lost"}
+    assert metadata["state"]["step"] == 242
+    assert metadata["state"]["time"] == pytest.approx(4.84)
+    serialized = json.dumps(metadata).lower()
+    assert "reason" not in serialized
+    assert "failure" not in serialized
 
     sample_directory = tmp_path / "samples/dns_direct"
+    sample_directory.mkdir(parents=True)
     for csv_name in ("flow_integrals.csv", "ring_diagnostics.csv", "ring_modes.csv"):
         (sample_directory / csv_name).write_text("time,step\n4.84,242\n", encoding="utf-8")
-    assert setup.result_exists("dns_direct", 3000)
-    assert not setup.result_exists("dns_direct", 2999)
 
     postprocess = _import_repository_tutorial("tutorials.vpm.vortex_ring.assets.postprocess")
     monkeypatch.setattr(postprocess, "SAMPLES_DIR", tmp_path / "samples")
     monkeypatch.setattr(postprocess, "SOLUTION_DIR", tmp_path / "solution")
     checked_metadata, expected_steps, failures = postprocess._run_validation("dns_direct")
-    assert checked_metadata["status"] == "instability_detected"
+    assert checked_metadata["status"] == "resolution_lost"
     assert expected_steps == set(range(25, 243, 25))
     assert failures == []
 
@@ -309,33 +393,24 @@ def test_vortex_ring_ranks_the_last_instability_from_terminal_times(tmp_path: Pa
     for variant, (scheme, terminal_time) in schemes.items():
         directory = tmp_path / "samples" / variant
         directory.mkdir(parents=True)
-        (directory / "run_metadata.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 4,
-                    "variant": variant,
-                    "stretching_scheme": scheme,
-                    "status": "instability_detected",
-                    "completed_steps": round(terminal_time / 0.02),
-                    "requested_steps": 3000,
-                    "final_time": terminal_time,
-                    "instability_step": round(terminal_time / 0.02),
-                    "instability_time": terminal_time,
-                    "instability_reason": "HealthError: common CFL limit",
-                }
-            )
-            + "\n",
-            encoding="utf-8",
+        _write_vpm_metadata(
+            tmp_path,
+            variant,
+            stretching_scheme=scheme,
+            status="resolution_lost",
+            step=round(terminal_time / 0.02),
+            time=terminal_time,
+            turbulence_model="LES_SMAGORINSKY" if variant.startswith("les_") else "DNS",
         )
 
-    manifest = postprocess.build_manifest(tmp_path / "samples", tmp_path / "figures")
-    assert manifest["stability_ranking"] == [
+    summary = postprocess.build_summary(tmp_path / "samples", tmp_path / "figures")
+    assert summary["stability_ranking"] == [
         "les_transposed",
         "dns_transposed",
         "dns_mixed",
         "dns_direct",
     ]
-    assert manifest["longest_sustained_variant"] == "les_transposed"
+    assert summary["longest_sustained_variant"] == "les_transposed"
 
     results = metrics.load_stability_results(tmp_path / "samples")
     assert {result["variant"]: result["time"] for result in results} == {

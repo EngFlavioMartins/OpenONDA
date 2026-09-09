@@ -16,11 +16,31 @@ Axis = Literal["x", "y", "z"]
 
 @dataclass(frozen=True, slots=True)
 class ToroidalDistribution:
-    """Hexagonal-cross-section particle cloud around a circular centreline.
+    """Configure a toroidal cloud with a hexagonal transverse lattice.
 
-    ``ring_radius`` exceeds positive ``tube_radius``. ``spacing`` is the target
-    transverse particle spacing; returned volume weights are cylindrical-cell
-    quadrature weights in cubic length units.
+    Parameters
+    ----------
+    ring_radius : float
+        Positive major radius from the torus axis to its centreline, in m.
+    tube_radius : float
+        Positive minor/cross-section radius in m; it must be smaller than
+        ``ring_radius``.
+    spacing : float
+        Target transverse particle spacing ``h`` in m.
+    core_radius_ratio : float
+        Positive dimensionless core ratio ``sigma/h``.
+    centre : tuple[float, float, float], default=(0, 0, 0)
+        Cartesian torus centre in m.
+    axis : {'x', 'y', 'z'}, default='x'
+        Normal of the ring plane in the global frame.
+    disturbance : WidnallDisturbance or None, default=None
+        Optional radial or axial centreline displacement. The same geometry
+        convention is used by :class:`~source.solvers.vpm.initialization.VortexRing`.
+
+    Notes
+    -----
+    Azimuthal resolution is rounded up to a multiple of four. Curved-cell
+    quadrature includes the cylindrical Jacobian and has units m³.
     """
 
     ring_radius: float
@@ -32,7 +52,20 @@ class ToroidalDistribution:
     disturbance: WidnallDisturbance | None = None
 
     def build(self) -> ParticleDistribution:
-        """Build immutable toroidal geometry and curved-cell quadrature."""
+        """Build immutable toroidal geometry and curved-cell quadrature.
+
+        Returns
+        -------
+        ParticleDistribution
+            Positions ``(N, 3)`` in m, core radii ``(N,)`` in m, and positive
+            curved-cell volumes ``(N,)`` in m³.
+
+        Raises
+        ------
+        ValueError
+            If radii/spacing/core ratio, centre, or axis are invalid, or a
+            disturbance moves the tube through its toroidal axis.
+        """
         spacing, ratio = validate_spacing(self.spacing, self.core_radius_ratio)
         if not np.isfinite(self.ring_radius) or self.ring_radius <= 0.0:
             raise ValueError("ring_radius must be finite and positive")

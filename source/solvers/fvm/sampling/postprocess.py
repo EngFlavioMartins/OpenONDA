@@ -81,6 +81,37 @@ class SnapshotContext:
         solution_dir: str | None = None,
         samples_dir: str | None = None,
     ):
+        """Create a read-only-compatible context for one archived frame.
+
+        Parameters
+        ----------
+        setup : FVMSetup
+            Configuration used to reconstruct boundaries and schemes.
+        case_dir : str
+            Resolved case root.
+        mesh_data, geo_data : dict
+            Native topology and derived geometry matching the archive.
+        boundaries : list[dict]
+            Boundary records with configured field values.
+        velocity, kinematic_pressure : numpy.ndarray
+            Full cell/ghost arrays with shapes ``(n_total, 3)`` and
+            ``(n_total,)`` in m/s and m²/s².
+        eddy_viscosity : numpy.ndarray or None
+            Archived cell-centred eddy viscosity in m²/s, when available.
+        time : float
+            Archived physical time in seconds.
+        step : int
+            Archived accepted-step index.
+        time_step_size : float
+            Archived inter-frame step size in seconds.
+        solution_dir, samples_dir : str or None, optional
+            Paths used by replay diagnostics and output.
+
+        Notes
+        -----
+        The context does not own or mutate the archive. It lazily caches only
+        derived gradient/vorticity arrays for the current frame.
+        """
         from ..core.parallel import ParallelContext
 
         self.setup = setup
@@ -154,7 +185,12 @@ def _materialize_mesh(mesh) -> dict:
 
 
 class PostProcess:
-    """Replay archived FVM snapshots through the configured samplers."""
+    """Replay archived FVM snapshots through the configured samplers.
+
+    Offline replay rebuilds ghost fields and gradients with the same mesh and
+    boundary contracts used online, then invokes :class:`FVMSamplerExecutor`.
+    It never advances the numerical solver or overwrites archives.
+    """
 
     def __init__(
         self,
@@ -166,6 +202,29 @@ class PostProcess:
         solution_dir=None,
         samples_dir=None,
     ):
+        """Configure deterministic replay of an archived FVM case.
+
+        Parameters
+        ----------
+        case_dir : str or pathlib.Path
+            Case root containing archived solutions and diagnostics.
+        config : FVMSetup
+            Setup with boundary, scheme, and sampler configuration.
+        samplers : sequence[Sampler] or None, default=None
+            Optional sampler override; ``config.samplers`` is used otherwise.
+        mesh : dict, path, or callable
+            Mesh that produced the archive. Required for reconstruction.
+        overwrite : bool, default=False
+            Replace only selected products in the destination when true.
+        solution_dir, samples_dir : path-like or None, optional
+            Explicit archive/output directories. Replay defaults to an isolated
+            ``samples/replay*`` directory.
+
+        Raises
+        ------
+        TypeError
+            If the mesh is missing or has an unsupported representation.
+        """
         from dataclasses import replace
 
         self.case_dir = str(Path(case_dir).resolve())
@@ -415,6 +474,19 @@ class PostProcess:
         ``time_step_size`` passed to the samplers is the *archived* inter-frame advance
         (not ``config.time.time_step_size``), so adaptive-step cases resample offline
         with the same cadence they selected online.
+
+        Returns
+        -------
+        list[tuple[float, int]]
+            ``(time, step)`` for every replayed archived frame.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the PVD index or a referenced snapshot is missing.
+        ValueError
+            If the archive is corrupt, does not match the mesh, or sampler
+            output would be non-monotonic.
         """
         frames = self._pvd_frames()
         archived_time_step_size = self._archived_time_steps()

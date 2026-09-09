@@ -19,53 +19,61 @@ CUTOFF = VLM_CUTOFF
 
 
 @ti.func
-def bound_vortex_velocity(target, pa, pb, circulation: float, epsilon: float):
+def regularized_segment_velocity_and_gradient(target, pa, pb, circulation, core_radius):
+    """Integrate a Rosenhead-regularized filament and its target Jacobian.
+
+    ``core_radius`` is a length, not an area. The formula is the exact line
+    integral of ``Gamma cross r / (4*pi*(r*r + core_radius**2)**1.5)``.
+    The Jacobian uses ``gradient[i,j] = d velocity[i] / d target[j]``.
+    It remains finite on the filament and needs no finite-difference probes.
     """
-    Compute velocity induced by a bound vortex filament from pa to pb.
-
-    Uses regularized Biot-Savart law:
-    V = (Γ/4π) * (r1×r2) * [(r1/|r1| - r2/|r2|) · r12] / (|r1×r2|² + ε²)
-
-    Args:
-        target: Point where velocity is evaluated
-        pa: Starting point of vortex filament
-        pb: Ending point of vortex filament
-        circulation: Circulation strength
-        epsilon: Regularization parameter
-
-    Returns:
-        Velocity vector at target
-    """
-    vel = ti.Vector([0.0, 0.0, 0.0])
-
-    # Vectors from endpoints to target
     r1 = target - pa
     r2 = target - pb
-    r12 = pb - pa
+    segment = pb - pa
+    cross = segment.cross(r1)
+    radius_sq = core_radius * core_radius
+    d1 = ti.sqrt(r1.dot(r1) + radius_sq)
+    d2 = ti.sqrt(r2.dot(r2) + radius_sq)
+    denominator = cross.dot(cross) + radius_sq * segment.dot(segment)
+    velocity = target * 0.0
+    gradient = target.outer_product(target) * 0.0
+    if denominator > 0.0 and d1 > 0.0 and d2 > 0.0:
+        projection = segment.dot(r1 / d1 - r2 / d2)
+        factor = circulation / (4.0 * 3.141592653589793)
+        velocity = factor * projection * cross / denominator
+        projection_gradient = (
+            segment / d1
+            - r1 * segment.dot(r1) / (d1 * d1 * d1)
+            - segment / d2
+            + r2 * segment.dot(r2) / (d2 * d2 * d2)
+        )
+        for column in ti.static(range(3)):
+            unit = target * 0.0
+            unit[column] = 1.0
+            cross_gradient = segment.cross(unit)
+            derivative = factor * (
+                (projection_gradient[column] * cross + projection * cross_gradient) / denominator
+                - projection
+                * cross
+                * (2.0 * cross.dot(cross_gradient))
+                / (denominator * denominator)
+            )
+            for row in ti.static(range(3)):
+                gradient[row, column] = derivative[row]
+    return velocity, gradient
 
-    # Cross product r1 × r2
-    cross = r1.cross(r2)
-    cross_mag_sq = cross.dot(cross)
 
-    # Check if target is too close to the vortex line
-    # Use conditional assignment instead of early return
-    if cross_mag_sq > CUTOFF * CUTOFF:
-        # Floor the endpoint distances at epsilon to avoid 0/0 when the target
-        # coincides with a filament endpoint.
-        r1_mag = ti.max(r1.norm(), epsilon)
-        r2_mag = ti.max(r2.norm(), epsilon)
+@ti.func
+def bound_vortex_velocity(target, pa, pb, circulation: float, epsilon: float):
+    """Finite-filament velocity with a Rosenhead core of length ``epsilon``.
 
-        # Biot-Savart kernel: r12 · (r1/|r1| - r2/|r2|)
-        r12_dot_hat = r12.dot(r1 / r1_mag - r2 / r2_mag)
-
-        # Regularized denominator
-        denom = cross_mag_sq + epsilon * epsilon
-
-        # Velocity contribution
-        factor = circulation * r12_dot_hat / (4.0 * 3.14159265359 * denom)
-        vel = factor * cross
-
-    return vel
+    Use the same dimensionally consistent line integral as the particle-stage
+    field. Its denominator contains ``epsilon**2 * segment_length**2``;
+    adding a length squared directly to a cross-product magnitude squared
+    would change the model when geometry units or scale change.
+    """
+    velocity, _ = regularized_segment_velocity_and_gradient(target, pa, pb, circulation, epsilon)
+    return velocity
 
 
 @ti.func
@@ -128,8 +136,8 @@ def horseshoe_velocity(target, v1, v2, v3, v4, circulation: float, epsilon: floa
     2. Bound leg: v2 → v3 (bound right)
     3. Right trailing leg: v3 → v4 (far downstream)
 
-    The far points v1/v4 lie downstream at V2 + da·∞ / V3 + db·∞ (see
-    _compute_trailing_geometry), so the trailing legs run v1→v2 and v3→v4.
+    The far points v1/v4 lie downstream along the prescribed trailing
+    directions, so the trailing legs run v1→v2 and v3→v4.
     """
     # Sum contributions from all three legs
     vel_left = bound_vortex_velocity(target, v1, v2, circulation, epsilon)  # Left trailing

@@ -70,6 +70,19 @@ _GRADIENT_TAIL_RELATIVE_TOLERANCE = 1.0e-5
 
 
 def _double_factorial(value: int) -> int:
+    """Return ``value!!`` for the derivative-table coefficient builder.
+
+    Parameters
+    ----------
+    value : int
+        Non-negative integer whose same-parity factors are multiplied.
+
+    Returns
+    -------
+    int
+        Product ``value * (value - 2) * ...`` down to one or two. The helper
+        is evaluated during host-side FMM metadata construction only.
+    """
     result = 1
     for factor in range(value, 0, -2):
         result *= factor
@@ -77,7 +90,14 @@ def _double_factorial(value: int) -> int:
 
 
 def _translation_tables():
-    """Build fixed analytic ``1/r`` derivative metadata through order six."""
+    """Build fixed analytic ``1/(4*pi*r)`` derivative metadata through order six.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, ...]
+        Lookup indices, term counts, coefficients, Cartesian exponents, and
+        radial powers consumed by the Taichi M2L kernels.
+    """
     lookup = np.full(
         (_DERIVATIVE_ORDER + 1,) * 3,
         -1,
@@ -119,7 +139,29 @@ def _translation_tables():
 
 @ti.data_oriented
 class FMMDeviceWorkspace:
-    """Preallocated Taichi fields and fixed-order FMM passes."""
+    """Preallocated f32 fields implementing the fixed-order device FMM.
+
+    This important internal runtime object stores source moments, local
+    expansions, interaction lists, near-field pairs, output rates, and scalar
+    diagnostics for one fixed particle capacity. The algorithm uses a
+    Cartesian expansion of order three, exact kernel-specific P2P interactions
+    for non-admissible pairs, and analytic local derivatives for gradients.
+
+    Parameters
+    ----------
+    max_n_particles : int
+        Fixed particle capacity. Allocation scales with capacity, not active
+        count.
+    q_kernel, zeta_kernel : callable
+        Device functions for the selected radial kernel and derivative.
+    velocity_tail_cutoff, gradient_tail_cutoff : float
+        Dimensionless regularization-tail multipliers used by admissibility.
+
+    Notes
+    -----
+    All numerical fields use f32. The workspace is not thread-safe and must
+    be used by one induction evaluator at a time.
+    """
 
     def __init__(
         self,
@@ -129,6 +171,27 @@ class FMMDeviceWorkspace:
         velocity_tail_cutoff: float,
         gradient_tail_cutoff: float,
     ) -> None:
+        """Allocate fixed-capacity f32 storage for one device FMM evaluator.
+
+        Parameters
+        ----------
+        max_n_particles : int
+            Maximum active source/target count. Device fields are allocated
+            for this capacity, so increasing it changes memory use.
+        q_kernel, zeta_kernel : callable
+            Taichi-compatible regularization functions for the selected
+            radial kernel. ``q`` supplies velocity attenuation and ``zeta``
+            supplies the gradient attenuation.
+        velocity_tail_cutoff, gradient_tail_cutoff : float
+            Dimensionless tail thresholds used when deciding whether a cell
+            interaction is admissible for velocity and gradient evaluation.
+
+        Notes
+        -----
+        Allocation has a device-side memory cost and is not thread-safe. All
+        numerical fields use ``ti.f32``; the caller must reuse this workspace
+        only with a compatible fixed-capacity evaluator.
+        """
         self.max_n_particles = int(max_n_particles)
         self.max_nodes = 2 * self.max_n_particles
         self.max_pairs = max(64, _PAIR_CAPACITY_FACTOR * self.max_n_particles)
@@ -237,11 +300,13 @@ class FMMDeviceWorkspace:
                 result *= value
         return result
 
+    # Keep this description outside the Taichi function body. Taichi 1.7.4
+    # misidentifies this bound helper as nested when its first statement is a
+    # docstring, which prevents the enclosing kernels from compiling.
     @ti.func
     def _inverse_r_derivative(
         self, displacement: ti.template(), derivative_index: ti.i32
     ) -> ti.f32:
-        """Evaluate a table-driven analytic derivative of ``1/(4*pi*r)``."""
         radius_sq = displacement.dot(displacement)
         inverse_radius = ti.rsqrt(ti.max(radius_sq, ti.cast(_EPSILON_SQUARED, ti.f32)))
         inverse_radius_sq = inverse_radius * inverse_radius
@@ -708,6 +773,33 @@ class FMMDeviceWorkspace:
     def evaluate(
         self, position, vortex_strength, core_radius, count: int, stretching_mode: int
     ) -> None:
+        """Run all FMM passes for one particle stage.
+
+        Parameters
+        ----------
+        position : ti.Vector.field
+            Source/target positions with logical shape ``(count, 3)`` in m.
+        vortex_strength : ti.Vector.field
+            Particle-strength vectors ``Gamma`` with shape ``(count, 3)`` in m³/s.
+        core_radius : ti.field
+            Core radii with shape ``(count,)`` in m.
+        count : int
+            Active particle count; only the prefix is read.
+        stretching_mode : int
+            Internal code for the direct, transposed, or mixed strength-rate
+            contraction.
+
+        Raises
+        ------
+        RuntimeError
+            If the fixed interaction-list capacity is exceeded.
+
+        Notes
+        -----
+        The method mutates workspace outputs and diagnostics. It rebuilds the
+        hierarchy from the supplied stage so Runge--Kutta position, strength,
+        and core-radius changes are represented in the source moments.
+        """
         count = int(count)
         phase_start = time.perf_counter()
         self.tree.build(position, vortex_strength, core_radius, count)
@@ -769,7 +861,19 @@ class FMMDeviceWorkspace:
 
 @ti.data_oriented
 class FMMInduction:
-    """Device-resident FMM with direct, transposed, or mixed stretching."""
+    """Device-resident fixed-order FMM induction backend.
+
+    The backend performs P2M, M2M, M2L, L2L, L2P, and kernel-specific near-field
+    P2P passes on device-resident particle fields. It computes a velocity
+    gradient from the same expansion and contracts that gradient into the
+    requested particle-strength rate. The stretching formulation is
+    independent of the FMM approximation.
+
+    Supported production combinations are CPU/Vulkan/AUTO resolution, f32
+    precision, and Gaussian, high-order Gaussian, super-Gaussian, or
+    Winckelmans radial kernels. Arbitrary target queries use the shared
+    regularized target kernels until a dual-tree target path is available.
+    """
 
     # AUTO is accepted as a request to resolve a backend at solver construction;
     # the resolved backend is checked again before any FMM workspace is built.
@@ -785,6 +889,25 @@ class FMMInduction:
     device_resident = True
 
     def __init__(self, *, stretching_scheme: str = "TRANSPOSED") -> None:
+        """Create an unbound FMM evaluator.
+
+        Parameters
+        ----------
+        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+            Formulation used to contract the computed velocity gradient into
+            ``dGamma/dt``. It does not change hierarchy construction or
+            induced velocity.
+
+        Notes
+        -----
+        Construction allocates no FMM workspace. :meth:`bind` performs the
+        precision check and allocates fields sized to the physics capacity.
+
+        Raises
+        ------
+        ValueError
+            If ``stretching_scheme`` is unsupported.
+        """
         self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
         self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
         self.method = "FMM"
@@ -795,11 +918,37 @@ class FMMInduction:
         self.diagnostics = FMMDiagnostics(stretching_scheme=self.stretching_scheme)
 
     def build(self) -> Self:
-        """Return a fresh unbound FMM evaluator for an immutable case setup."""
+        """Return a fresh unbound FMM evaluator preserving the scheme."""
         return type(self)(stretching_scheme=self.stretching_scheme)
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
-        """Bind the evaluator to one single-precision VPM physics workspace."""
+        """Bind and allocate the evaluator for one f32 physics workspace.
+
+        Parameters
+        ----------
+        physics : PhysicsEngine
+            Runtime VPM workspace. Its capacity, particle kernel, device
+            functions, and f32 accumulator dtype determine allocation.
+        kernel : RadialVortexKernel or None, default=None
+            Optional already-constructed kernel. If omitted, the kernel named
+            by ``physics.particle_kernel`` is created.
+
+        Returns
+        -------
+        FMMInduction
+            This bound evaluator.
+
+        Raises
+        ------
+        ValueError
+            If the workspace uses f64 accumulators.
+
+        Notes
+        -----
+        Binding allocates a fixed-order workspace proportional to capacity;
+        it may consume substantially more memory than the active count alone
+        suggests.
+        """
         if physics.accumulator_dtype != ti.f32:
             raise ValueError("FMMInduction currently supports precision='f32' only")
         self.physics = physics
@@ -819,7 +968,25 @@ class FMMInduction:
         return self
 
     def estimated_workspace_bytes(self, max_n_particles: int) -> int:
-        """Return the fixed FMM workspace allocation for a particle capacity."""
+        """Estimate principal FMM workspace bytes for a particle capacity.
+
+        Parameters
+        ----------
+        max_n_particles : int
+            Positive capacity used to size hierarchy, interaction-list, and
+            output arrays.
+
+        Returns
+        -------
+        int
+            Approximate bytes for the principal f32/vector allocations. Python
+            object overhead and Taichi runtime allocations are excluded.
+
+        Raises
+        ------
+        ValueError
+            If ``max_n_particles`` is less than one.
+        """
         capacity = int(max_n_particles)
         if capacity < 1:
             raise ValueError("max_n_particles must be positive")
@@ -843,7 +1010,46 @@ class FMMInduction:
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
-        """Evaluate velocity, gradient, and strength rate for one RK stage."""
+        """Evaluate velocity, gradient, and strength rate for one RK stage.
+
+        Parameters
+        ----------
+        position : object
+            Stage positions, logical shape ``(count, 3)``, in m.
+        vortex_strength : object
+            Stage particle-strength vectors ``Gamma``, shape ``(count, 3)``, in m³/s.
+        core_radius : object
+            Stage core radii, shape ``(count,)``, in m.
+        count : int
+            Active particle prefix.
+        velocity_out : object
+            Output velocity field, shape ``(count, 3)``, in m/s.
+        vortex_strength_rate_out : object
+            Output strength-rate field, shape ``(count, 3)``, in m³/s².
+        velocity_gradient_out : object or None, default=None
+            Optional output gradient, shape ``(count, 3, 3)``, in 1/s.
+        strength_rate_enabled : bool, default=True
+            Copy the FMM stretching rate when true; otherwise explicitly zero
+            the output rate.
+        stage_time : float, default=0.0
+            Stage time in seconds, accepted for the common contract and unused
+            by this autonomous backend.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`bind` has not been called or an interaction list
+            overflows its fixed capacity.
+        ValueError
+            If ``count`` exceeds the bound capacity.
+
+        Notes
+        -----
+        Source stage fields are read-only. Output fields, workspace storage,
+        and :attr:`diagnostics` are mutated. The stage gradient is computed
+        even when only a strength rate is requested because it defines that
+        discrete rate.
+        """
         del stage_time
         if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before evaluation")
@@ -918,6 +1124,35 @@ class FMMInduction:
         the backend boundary and use the shared regularized target kernels as
         a bounded correctness fallback; PhysicsBase no longer silently
         bypasses the selected induction method.
+
+        Parameters
+        ----------
+        target_position : object
+            Target points, shape ``(target_count, 3)``, in m.
+        source_position, source_vortex_strength, source_core_radius : object
+            Source fields with shapes ``(source_count, 3)``, ``(source_count,
+            3)``, and ``(source_count,)`` in m, m³/s, and m.
+        target_velocity : object or None
+            Optional velocity output, shape ``(target_count, 3)``, in m/s.
+        target_velocity_gradient : object or None
+            Optional gradient output, shape ``(target_count, 3, 3)``, in 1/s.
+        target_count, source_count : int
+            Active target and source counts.
+        include_freestream : bool
+            Add ``background_velocity`` to velocity output when true.
+        background_velocity : object
+            Freestream vector in m/s.
+
+        Raises
+        ------
+        RuntimeError
+            If the evaluator is not bound.
+
+        Notes
+        -----
+        The arbitrary-target path is an explicit regularized O(target_count ×
+        source_count) fallback and is not the device-resident FMM particle
+        stage path.
         """
         if self.physics is None:
             raise RuntimeError("FMMInduction must be bound before target evaluation")
@@ -944,6 +1179,7 @@ class FMMInduction:
             )
 
     def _estimate_memory_bytes(self) -> int:
+        """Return the current capacity-based workspace estimate in bytes."""
         return self.estimated_workspace_bytes(self.max_n_particles)
 
 

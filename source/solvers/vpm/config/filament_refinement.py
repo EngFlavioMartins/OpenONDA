@@ -7,13 +7,41 @@ import numpy as np
 
 @dataclass(frozen=True)
 class FilamentRefinementConfig:
-    """Adaptive refinement of stretched Lagrangian vortex-line elements."""
+    """Configure conservative splitting of stretched vortex-line particles.
+
+    Parameters
+    ----------
+    interval_steps : int, default=0
+        Accepted-step cadence; zero disables refinement.
+    max_vortex_strength_factor : float, default=2.0
+        Split when ``|Gamma|`` exceeds this factor times its stored lineage
+        reference; must exceed one.
+    offset_fraction : float, default=0.25
+        Symmetric child offset divided by estimated material-line length, in
+        ``[0, 0.5]``.
+    max_n_particles : int or None, optional
+        Positive post-event population ceiling, independent of device capacity.
+    max_absolute_vortex_strength : float or None, optional
+        Additional positive ``|Gamma|`` trigger in m³/s.
+    late_interval_steps, late_start_step : int or None, optional
+        Optional positive cadence and non-negative activation step; specify both.
+    late_absolute_only : bool, default=False
+        After ``late_start_step``, ignore the lineage-relative trigger and use
+        only ``max_absolute_vortex_strength``.
+    end_step : int or None, optional
+        First accepted step excluded from refinement.
+
+    Notes
+    -----
+    Splitting mutates particle position, volume, core radius, and strength while
+    conserving parent vector circulation across the children.
+    """
 
     interval_steps: int = 0
     """Steps between refinement events; zero disables refinement."""
 
     max_vortex_strength_factor: float = 2.0
-    """Refine once ``|alpha_p|`` exceeds this multiple of its lineage reference."""
+    """Refine once ``|Gamma_p|`` exceeds this multiple of its lineage reference."""
 
     offset_fraction: float = 0.25
     """Child offset as a fraction of the estimated material-line length."""

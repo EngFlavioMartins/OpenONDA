@@ -1,101 +1,139 @@
-"""Reproducibility manifest for FVM verification and benchmark runs."""
+"""Solver-owned metadata for FVM runs."""
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from importlib import metadata
+from collections.abc import Mapping
+from dataclasses import fields, is_dataclass
+from enum import Enum
+import hashlib
 import json
 import os
 from pathlib import Path
-import platform
-import sys
 import tempfile
 from typing import Any
 
 import numpy as np
 
-from .backup import config_hash, full_config_hash, mesh_hash
+
+def _array_identity(value: np.ndarray) -> dict[str, Any]:
+    """Describe an array without copying a full cell field into metadata."""
+    array = np.asarray(value)
+    result: dict[str, Any] = {
+        "type": "numpy.ndarray",
+        "shape": list(array.shape),
+        "dtype": str(array.dtype),
+    }
+    if array.size <= 64:
+        result["values"] = array.tolist()
+    else:
+        result["sha256"] = hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
+    return result
 
 
-def _git_identity(repository: Path) -> tuple[str | None, bool | None]:
-    """Return checkout identity when developer Git metadata is available."""
-    try:
-        import pygit2
-    except ImportError:
-        return None, None
-    discovered = pygit2.discover_repository(str(repository))
-    if discovered is None:
-        return None, None
-    try:
-        git_repository = pygit2.Repository(discovered)
-        return str(git_repository.head.target), bool(git_repository.status())
-    except (KeyError, pygit2.GitError):
-        return None, None
+def _manifest_value(value: object) -> Any:
+    """Convert a construction value to concise, stable JSON data."""
+    if isinstance(value, np.ndarray):
+        return _array_identity(value)
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Enum):
+        return _manifest_value(value.value)
+    if is_dataclass(value) and not isinstance(value, type):
+        result = {"type": type(value).__name__}
+        for item in fields(value):
+            result[item.name] = _manifest_value(getattr(value, item.name))
+        return result
+    if isinstance(value, Mapping):
+        return {str(key): _manifest_value(item) for key, item in value.items()}
+    if isinstance(value, tuple | list):
+        return [_manifest_value(item) for item in value]
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    return {"type": type(value).__name__}
 
 
-def build_manifest(solver, *, status: str | None = None, failure=None) -> dict[str, Any]:
-    """Collect source, environment, execution, mesh, and configuration identity."""
+def build_manifest(solver: Any, *, status: str | None = None) -> dict[str, Any]:
+    """Collect universal FVM construction and accepted-state metadata.
+
+    The schema deliberately omits tutorial-specific labels and failure prose.
+    Large initial fields are represented by shape, dtype, and a content hash.
+
+    Parameters
+    ----------
+    solver : FVMSolver
+        Initialized solver whose resolved setup, mesh summary, and latest
+        accepted state are described.
+    status : str or None, optional
+        Lifecycle status to include. ``None`` omits the ``lifecycle`` member.
+
+    Returns
+    -------
+    dict[str, object]
+        JSON-compatible metadata using schema version 1.
+    """
     from source.solvers.fvm.sampling.base import sampler_to_dict
 
-    packages: dict[str, str | None] = {}
-    for name in ("numpy", "scipy", "numba", "pyamg", "mpi4py", "petsc4py", "taichi"):
-        try:
-            packages[name] = metadata.version(name)
-        except metadata.PackageNotFoundError:
-            packages[name] = None
-    repository = Path(__file__).resolve().parents[4]
-    revision, dirty = _git_identity(repository)
     config = getattr(solver, "_resolved_setup", solver.setup)
-    configuration = asdict(config)
+    configuration = _manifest_value(config)
     if config.samplers:
-        configuration["samplers"] = [sampler_to_dict(sampler) for sampler in config.samplers]
+        configuration["samplers"] = [
+            _manifest_value(sampler_to_dict(sampler)) for sampler in config.samplers
+        ]
+    n_points = solver.mesh_data.get("n_points")
+    if n_points is None:
+        n_points = len(solver.mesh_data["vertex_position"])
     manifest = {
         "schema_version": 1,
-        "distribution_version": metadata.version("OpenONDA"),
-        "git_revision": revision,
-        "git_dirty": dirty,
-        "config_hash": config_hash(config),
-        "full_config_hash": full_config_hash(config),
-        "mesh_hash": mesh_hash(solver.mesh_data),
-        "active_components": {
-            "immersed_boundary": getattr(solver, "ibm", None) is not None,
-            "turbulence": getattr(solver, "turbulence", None) is not None,
-        },
+        "solver": "FVM",
+        "case_name": config.case_name,
         "configuration": configuration,
-        "execution": asdict(config.execution),
-        "runtime_overrides": {
-            "kinematic_viscosity": float(
-                getattr(solver, "_kinematic_viscosity", config.transport.kinematic_viscosity)
-            ),
-        },
-        "mesh_quality": solver.mesh_quality,
         "mesh": {
             "n_cells": int(solver.mesh_data["n_cells"]),
-            "faces": int(solver.mesh_data["n_faces"]),
-            "vertex_position": int(
-                solver.mesh_data.get("n_points", len(solver.mesh_data["vertex_position"]))
-            ),
-            "provenance": solver.mesh_data.get("provenance"),
+            "n_faces": int(solver.mesh_data["n_faces"]),
+            "n_points": int(n_points),
+            "provenance": _manifest_value(solver.mesh_data.get("provenance")),
         },
-        "python": sys.version,
-        "packages": packages,
-        "host": {
-            "platform": platform.platform(),
-            "machine": platform.machine(),
-            "processor": platform.processor(),
-            "cpu_count": os.cpu_count(),
+        "state": {
+            "step": int(solver.step),
+            "time": float(solver.time),
         },
     }
     if status is not None:
-        manifest["lifecycle"] = {
-            "status": str(status),
-            "error": None if failure is None else f"{type(failure).__name__}: {failure}",
-        }
+        manifest["lifecycle"] = {"status": str(status)}
     return manifest
 
 
-def write_manifest(solver, path, *, status: str | None = None, failure=None) -> Path:
-    """Atomically write a machine-readable run manifest."""
+def write_manifest(solver: Any, path: str | Path, *, status: str | None = None) -> Path:
+    """Atomically write the solver's universal FVM metadata.
+
+    Parameters
+    ----------
+    solver : FVMSolver
+        Initialized solver to describe.
+    path : str or pathlib.Path
+        Destination metadata file.
+    status : str or None, optional
+        Current solver lifecycle status.
+
+    Returns
+    -------
+    pathlib.Path
+        Destination path after the atomic replacement succeeds.
+
+    Raises
+    ------
+    TypeError
+        If a public configuration value cannot be represented as JSON.
+    OSError
+        If the destination directory or metadata file cannot be written.
+
+    Side Effects
+    ------------
+    Creates the destination directory when needed and atomically replaces the
+    metadata file.
+    """
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
@@ -104,10 +142,10 @@ def write_manifest(solver, path, *, status: str | None = None, failure=None) -> 
             return value.tolist()
         if isinstance(value, np.generic):
             return value.item()
-        raise TypeError(f"Cannot serialize {type(value).__name__} in an FVM manifest")
+        raise TypeError(f"Cannot serialize {type(value).__name__} in FVM metadata")
 
     payload = json.dumps(
-        build_manifest(solver, status=status, failure=failure),
+        build_manifest(solver, status=status),
         indent=2,
         sort_keys=True,
         allow_nan=False,

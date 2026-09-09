@@ -14,6 +14,7 @@ from source.simulation.paths import CasePaths
 
 from .config import FVMSetup
 from .config.types import validate_fvm_setup
+from .mesh.progress import mesh_event, mesh_stage, mesher_log_session
 
 if TYPE_CHECKING:
     from .core.solver import FVMSolver
@@ -21,9 +22,16 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class BuildableMesh(Protocol):
-    """Declarative mesh object materialized by the solver factory."""
+    """Structural interface for a mesh object materialized by the FVM factory.
 
-    def build(self) -> dict[str, Any] | tuple[dict[str, Any], Any]: ...
+    Implementations are normally mesher configuration objects. ``build`` must
+    return either a solver-native mesh mapping or ``(mesh_mapping, report)``;
+    the report is retained by the producer and ignored during solver creation.
+    """
+
+    def build(self) -> dict[str, Any] | tuple[dict[str, Any], Any]:
+        """Materialize mesh connectivity and geometry input without mutating a solver."""
+        ...
 
 
 MeshSource = (
@@ -100,8 +108,10 @@ def _materialize_mesh(
     if mesh is None or not is_root:
         return None
     if isinstance(mesh, str | Path):
+        mesh_event("mesh source", kind="file", path=Path(mesh).resolve())
         return _load_mesh_file(mesh)
 
+    mesh_event("mesh source", kind=type(mesh).__name__)
     if callable(mesh):
         generated = mesh()
     elif isinstance(mesh, BuildableMesh):
@@ -134,24 +144,31 @@ def _save_generated_mesh(mesh_data: dict[str, Any], solution_dir: Path, output: 
             fields[output_name] = values
     # Export before geometric/LSQ admission so a rejected mesh remains inspectable.
     # Finish both new files before moving any previous successful backup.
-    with tempfile.TemporaryDirectory(prefix=".mesh-export-", dir=solution_dir) as temporary:
-        staging = Path(temporary)
-        save_native_mesh(mesh_data, staging / "mesh.npz")
-        VTKExporter(mesh_data, output).export(str(staging / "mesh.vtu"), fields)
-        existing = [solution_dir / name for name in ("mesh.npz", "mesh.vtu")]
-        if any(path.exists() for path in existing):
-            previous = Path(tempfile.mkdtemp(prefix="mesh-backup-", dir=solution_dir))
-            for path in existing:
-                if path.exists():
-                    path.rename(previous / path.name)
-        for name in ("mesh.npz", "mesh.vtu"):
-            (staging / name).replace(solution_dir / name)
+    with mesh_stage("mesh backup export") as stage:
+        with tempfile.TemporaryDirectory(prefix=".mesh-export-", dir=solution_dir) as temporary:
+            staging = Path(temporary)
+            save_native_mesh(mesh_data, staging / "mesh.npz")
+            VTKExporter(mesh_data, output).export(str(staging / "mesh.vtu"), fields)
+            existing = [solution_dir / name for name in ("mesh.npz", "mesh.vtu")]
+            if any(path.exists() for path in existing):
+                previous = Path(tempfile.mkdtemp(prefix="mesh-backup-", dir=solution_dir))
+                for path in existing:
+                    if path.exists():
+                        path.rename(previous / path.name)
+            for name in ("mesh.npz", "mesh.vtu"):
+                (staging / name).replace(solution_dir / name)
+        stage.details(
+            native=solution_dir / "mesh.npz",
+            visualisation=solution_dir / "mesh.vtu",
+        )
     # Enrich a valid backup without making its availability depend on geometry.
     from .mesh.geometry import compute_mesh_geometry
 
-    geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
-    fields["cell_volume"] = geometry["cell_volume"]
-    VTKExporter(mesh_data, output).export(str(solution_dir / "mesh.vtu"), fields)
+    with mesh_stage("mesh geometry and final visualisation") as stage:
+        geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
+        fields["cell_volume"] = geometry["cell_volume"]
+        VTKExporter(mesh_data, output).export(str(solution_dir / "mesh.vtu"), fields)
+        stage.details(cells=mesh_data.get("n_cells"), faces=mesh_data.get("n_faces"))
 
 
 def _prepare_output_directories(
@@ -174,7 +191,43 @@ def create_fvm_solver(
     samples_dir: str | Path | None = None,
     mesh: MeshSource | None = None,
 ) -> FVMSolver:
-    """Construct an FVM solver from an ``FVMSetup``."""
+    """Validate configuration, materialize a mesh, and construct an FVM solver.
+
+    Parameters
+    ----------
+    setup : FVMSetup
+        Low-level solver configuration. New applications normally construct an
+        :class:`~source.solvers.fvm.config.case.FVMCase` and call its factory
+        path instead.
+    case_dir : str or pathlib.Path or None, optional
+        Case root. ``None`` uses the current working directory.
+    solution_dir, samples_dir : str or pathlib.Path or None, optional
+        Artifact destinations. Relative paths are resolved below ``case_dir``;
+        omitted paths use the legacy ``solution/`` and canonical ``samples/``
+        locations.
+    mesh : path-like, mapping, BuildableMesh, callable, or None, optional
+        Mesh source. ``.npz`` and Gmsh ``.msh`` files are supported. A callable
+        or buildable object may return a mesh mapping or ``(mapping, report)``.
+
+    Returns
+    -------
+    FVMSolver
+        Initialized solver owning mutable fields, output paths, and parallel
+        resources.
+
+    Raises
+    ------
+    TypeError, ValueError
+        If configuration or the materialized mesh violates its contract.
+    RuntimeError
+        If the requested threaded/MPI runtime cannot be established.
+
+    Notes
+    -----
+    This function creates artifact directories and writes a native/VTK backup
+    of a generated mesh before solver admission. In multi-rank runs the mesh is
+    built on the rank required by the configured parallel layout.
+    """
     validate_fvm_setup(setup)
     runtime_setup = _runtime_setup(setup)
     validate_fvm_setup(runtime_setup)
@@ -183,12 +236,12 @@ def create_fvm_solver(
         resolved_case_dir,
         solution_dir=solution_dir,
         samples_dir=samples_dir,
-        # Keep the explicitly legacy FVMSetup path stable while the public
-        # FVMCase constructor uses the canonical plural destination.
+        # Keep every FVM construction path on the same portable default.
         solution_default="solution",
     )
     resolved_solution_dir = paths.solution_dir
     resolved_samples_dir = paths.samples_dir
+    mesher_log_path = resolved_solution_dir / "mesher.log"
     samples_requested = bool(runtime_setup.samplers) or samples_dir is not None
 
     RunConfig(
@@ -262,6 +315,7 @@ def create_fvm_solver(
                     ("case", runtime_setup.case_name),
                     ("solution directory", str(resolved_solution_dir)),
                     ("samples directory", str(resolved_samples_dir)),
+                    ("mesher log", str(mesher_log_path)),
                     ("next", "materializing mesh"),
                 ],
                 flush=True,
@@ -274,9 +328,17 @@ def create_fvm_solver(
     _raise_collective_failure(logger_error, "startup logging")
 
     try:
-        mesh_data = _materialize_mesh(mesh, is_root=materialize_mesh_here)
-        if is_root and mesh_data is not None:
-            _save_generated_mesh(mesh_data, resolved_solution_dir, runtime_setup.output)
+        with mesher_log_session(mesher_log_path if is_root else None):
+            with mesh_stage("mesh materialization") as materialization:
+                mesh_data = _materialize_mesh(mesh, is_root=materialize_mesh_here)
+                if mesh_data is not None:
+                    materialization.details(
+                        cells=mesh_data.get("n_cells"),
+                        faces=mesh_data.get("n_faces"),
+                        points=mesh_data.get("n_points"),
+                    )
+            if is_root and mesh_data is not None:
+                _save_generated_mesh(mesh_data, resolved_solution_dir, runtime_setup.output)
         if startup_logger is not None:
             startup_logger.info("component=fvm_startup status=mesh_materialized", flush=True)
     except BaseException as error:

@@ -20,8 +20,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from numba import njit
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 _DEFAULT_RAY_DIRECTIONS = (
     np.array([1.0, 0.0, 0.0]),
@@ -290,6 +291,32 @@ class SurfaceIndex:
 
     @classmethod
     def build(cls, triangles: np.ndarray) -> SurfaceIndex:
+        """Build broad-phase lookup data for exact surface queries.
+
+        Parameters
+        ----------
+        triangles : ndarray, shape (T, 3, 3)
+            Cartesian triangle vertices in metres. Vertex order is retained
+            because it defines surface winding and normals.
+
+        Returns
+        -------
+        SurfaceIndex
+            Per-triangle bounds and a spatial grid used by overlap,
+            closest-point, and inside/outside operations. Triangle data are
+            stored as a contiguous float64 copy.
+
+        Raises
+        ------
+        ValueError
+            If the input is empty or cannot be represented as triangular
+            ``(T, 3, 3)`` geometry.
+
+        Notes
+        -----
+        The index accelerates queries; it does not repair winding, degenerate
+        triangles, or non-manifold topology.
+        """
         triangles = np.ascontiguousarray(triangles, dtype=np.float64)
         n = len(triangles)
         v0, v1, v2 = triangles[:, 0], triangles[:, 1], triangles[:, 2]

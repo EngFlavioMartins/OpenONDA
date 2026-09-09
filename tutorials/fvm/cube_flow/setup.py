@@ -9,31 +9,26 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[0]) + ""
-
-
-import os
-
-from .assets.mesh_square import square_cylinder_mesh
+from pathlib import Path
 
 import openonda.fvm as fvm
+from openonda.tutorial_runner import case_package
 
-# ---- Case definition -----------------------------------------------------
+__package__ = case_package(Path(__file__).parent)
+from .assets.mesh_square import square_cylinder_mesh
+
+# Case definition
 CASE_NAME = "cube_flow"
 SIDE = 1.0  # side length of the square cylinder [m]
 FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
 DENSITY = 1.0  # fluid density [kg/m^3]
 REYNOLDS_NUMBER = 100.0
-FINAL_TIME = 120.0
+FINAL_TIME = 120.0  # simulation duration [s]
 
-# ---- Mesh ----------------------------------------------------------------
+# Mesh
 SPACING = 0.0625  # core grid spacing next to the cylinder [m]
 
-# ---- Time stepping and numerics ------------------------------------------
+# Time stepping and numerics
 TIME_STEP_SIZE = 0.02  # initial time step [s]
 MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.05  # upper bound on the adapted time step [s]
@@ -71,7 +66,6 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
-            start_time=0.0,
             end_time=FINAL_TIME,
             output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
             adjustment=fvm.MaximumCourantTimeStep(
@@ -84,7 +78,6 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
         pimple=pimple,
         samplers=forces,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-        turbulence=None,  # laminar validation case
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
@@ -108,31 +101,15 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
         # A tiny cross-stream component lets the vortex street start right
         # away instead of waiting for numerical round-off to break symmetry.
         initial_velocity=[FREESTREAM_VELOCITY, 0.05 * FREESTREAM_VELOCITY, 0.0],
-        initial_kinematic_pressure=0.0,
     )
 
 
 def main() -> None:
-    case_dir = os.path.dirname(os.path.abspath(__file__))
-
-    print("\n===== MESH =====")
-    print("---- Generating the square-cylinder mesh ----")
-    mesh_data, depth = square_cylinder_mesh(grid_spacing=SPACING, side_length=SIDE)
-    print(
-        f"  cells: {mesh_data['n_cells']}, core spacing {SPACING} "
-        f"(D/h = {SIDE / SPACING:.0f}), blockage 5%"
+    mesh, depth = square_cylinder_mesh(grid_spacing=SPACING, side_length=SIDE)
+    solver = fvm.create_fvm_solver(
+        create_fvm_setup(depth), case_dir=Path(__file__).parent, mesh=mesh
     )
-
-    print("\n===== SIMULATION =====")
-    fvm_setup = create_fvm_setup(depth)
-    fvm_solver = fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh_data)
-    fvm_solver.run()
-
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
-    print("Reference values at Re = 100 (square cylinder, 5% blockage):")
-    print("  St = 0.140-0.150   (Okajima 1982; Sohankar et al. 1998; Sen et al. 2011)")
-    print("  mean Cd = 1.45-1.58")
+    solver.run()
 
 
 if __name__ == "__main__":

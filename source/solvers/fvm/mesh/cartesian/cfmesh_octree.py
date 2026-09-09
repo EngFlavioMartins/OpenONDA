@@ -13,6 +13,9 @@ from itertools import product
 
 import numpy as np
 
+from source._numba import cacheable_njit as njit
+
+from ..progress import mesh_event
 from .config import BoxRefinement
 
 Leaf = tuple[int, int, int, int, int, int]
@@ -33,6 +36,23 @@ class LeafLookup:
     """O(depth) leaf lookup without allocating a finest-level dense cube."""
 
     def __init__(self, leaves: Sequence[Leaf] | np.ndarray, max_level: int) -> None:
+        """Index octree leaves by level for logarithmic spatial lookup.
+
+        Parameters
+        ----------
+        leaves : sequence or ndarray, shape (n_leaves, 6)
+            Rows ``(x, y, z, width, level, kind)`` in finest-grid integer
+            coordinates.
+        max_level : int
+            Finest octree level and coordinate extent exponent.
+
+        Notes
+        -----
+        The constructor stores integer lookup dictionaries only; it does not
+        alter the supplied leaf array. Coordinates outside
+        ``[0, 2**max_level)`` are rejected later by :meth:`find` with the
+        sentinel ``-1``.
+        """
         self.max_level = max_level
         self.limit = 2**max_level
         self.maps: list[dict[tuple[int, int, int], int]] = [{} for _ in range(max_level + 1)]
@@ -149,7 +169,9 @@ def refine_objects(
         )
         for request in requests
     ]
+    pass_number = 0
     while True:
+        pass_number += 1
         selected: set[int] = set()
         for leaf_id, leaf in enumerate(leaves):
             x, y, z, width, level, kind = leaf
@@ -162,9 +184,53 @@ def refine_objects(
                 for low, high, target in controls
             ):
                 selected.add(leaf_id)
+        mesh_event(
+            "object refinement pass",
+            pass_number=pass_number,
+            leaves=len(leaves),
+            selected=len(selected),
+        )
         if not selected:
             return leaves
         leaves = refine_selected_leaves(leaves, selected, max_level, classify)
+
+
+@njit(cache=True, fastmath=False)
+def _balance_selection_kernel(leaves: np.ndarray, max_level: int) -> np.ndarray:
+    """Select coarse neighbours in compiled code without a dense lattice.
+
+    Use separate level/x/y/z keys: packing them into one integer would
+    overflow for deep octrees. The caller supplies contiguous int64 records.
+    The returned mask is independent of traversal order; splitting and
+    geometric classification retain their existing Morton order in Python.
+    """
+    lookup = {(row[4], row[0], row[1], row[2]): index for index, row in enumerate(leaves)}
+    selected = np.zeros(len(leaves), dtype=np.bool_)
+    limit = 1 << max_level
+    for leaf_id in range(len(leaves)):
+        x, y, z, width, level = leaves[leaf_id, :5]
+        for dz in range(-1, 2):
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if dx == 0 and dy == 0 and dz == 0:
+                        continue
+                    qx, qy, qz = x + dx * width, y + dy * width, z + dz * width
+                    if min(qx, qy, qz) < 0 or max(qx, qy, qz) >= limit:
+                        continue
+                    for current in range(level, -1, -1):
+                        neighbour_width = 1 << (max_level - current)
+                        key = (
+                            current,
+                            (qx // neighbour_width) * neighbour_width,
+                            (qy // neighbour_width) * neighbour_width,
+                            (qz // neighbour_width) * neighbour_width,
+                        )
+                        if key in lookup:
+                            neighbour = lookup[key]
+                            if leaves[neighbour, 4] + 1 < level:
+                                selected[neighbour] = True
+                            break
+    return np.flatnonzero(selected)
 
 
 def balance_leaves(
@@ -172,15 +238,18 @@ def balance_leaves(
     max_level: int,
     classify: Callable[[int, int, int, int, int], Leaf],
 ) -> list[Leaf]:
-    """Close 2:1 gaps after recursively applying surface size requests."""
+    """Close 2:1 gaps with a cached, CPU-compiled neighbour scan."""
+    pass_number = 0
     while True:
-        lookup = LeafLookup(leaves, max_level)
-        selected = {
-            neighbour
-            for leaf in leaves
-            for neighbour in lookup.neighbours(leaf)
-            if leaves[neighbour][4] + 1 < leaf[4]
-        }
+        pass_number += 1
+        records = np.asarray(leaves, dtype=np.int64).reshape(-1, 6)
+        selected = set(map(int, _balance_selection_kernel(records, max_level)))
+        mesh_event(
+            "octree balance pass",
+            pass_number=pass_number,
+            leaves=len(leaves),
+            selected=len(selected),
+        )
         if not selected:
             return leaves
         leaves = refine_selected_leaves(leaves, selected, max_level, classify)

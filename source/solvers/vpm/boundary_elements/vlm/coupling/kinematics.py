@@ -19,87 +19,106 @@ if TYPE_CHECKING:
 
 
 class VLMKinematics(ABC):
-    """
-    Abstract base class for VLM surface kinematics.
+    """Abstract rigid-motion contract consumed by the VLM solver.
 
-    Kinematics define how the VLM surfaces move through time,
-    providing position and velocity information at each time step.
+    Subclasses provide translational and angular velocity at physical time and
+    mutate an assigned panel range over one accepted interval. Users normally
+    instantiate one of the concrete motion classes and attach it through
+    :class:`VLMSurfaceSetup`.
 
-    Subclasses must implement:
-        - get_velocity(time): Return velocity vector at time time
-        - get_angular_velocity(time): Return angular velocity at time time
-        - update(vlm_solver, time, dt): Update VLM geometry for new time step
+    Attributes
+    ----------
+    current_position : ndarray, shape (3,)
+        Accumulated Cartesian translation metadata in m.
+    current_orientation : ndarray, shape (3, 3)
+        Accumulated proper rotation matrix from reference to current frame.
+
+    Notes
+    -----
+    ``time`` denotes the start of an interval and ``time_step_size`` its
+    duration in s. ``update`` mutates VLM lattice geometry; velocity queries do
+    not. Angular velocity vectors use rad/s in the global Cartesian frame.
     """
 
     @abstractmethod
     def get_velocity(self, time: float) -> np.ndarray:
-        """
-        Get translational velocity at time time.
+        """Return Cartesian translational velocity at ``time``.
 
-        Args:
-            time: Current time (s)
+        Parameters
+        ----------
+        time : float
+            Physical query time in s.
 
-        Returns:
-            Velocity vector [Vx, Vy, Vz] (m/s)
+        Returns
+        -------
+        ndarray, shape (3,)
+            Global ``[Vx, Vy, Vz]`` in m/s.
         """
         pass
 
     @abstractmethod
     def get_angular_velocity(self, time: float) -> np.ndarray:
-        """
-        Get angular velocity at time time.
+        """Return global angular velocity at ``time``.
 
-        Args:
-            time: Current time (s)
-
-        Returns:
-            Angular velocity vector [Wx, Wy, Wz] (rad/s)
+        ``time`` is in s; the returned NumPy vector has shape ``(3,)`` and
+        units rad/s.
         """
         pass
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize zero translation and identity orientation metadata."""
         self.current_position = np.zeros(3)
         self.current_orientation = np.eye(3)
 
     @abstractmethod
-    def update(self, vlm_solver, time: float, time_step_size: float, panel_range: tuple = None):
-        """
-        Update VLM solver geometry for new time step.
+    def update(
+        self,
+        vlm_solver: "VLMSolver",
+        time: float,
+        time_step_size: float,
+        panel_range: tuple[int, int] | None = None,
+    ) -> None:
+        """Advance assigned VLM panel geometry over one time interval.
 
-        Args:
-            vlm_solver: VLMSolver instance to update
-            time: Current time (s)
-            time_step_size: Time step (s)
-            panel_range: Optional tuple (start_idx, end_idx) of panels to update.
-                        If None, updates all panels.
+        Parameters
+        ----------
+        vlm_solver : VLMSolver
+            Runtime whose lattice coordinates are modified in place.
+        time : float
+            Start time of the interval in s.
+        time_step_size : float
+            Positive interval duration in s.
+        panel_range : tuple[int, int] or None, default=None
+            Half-open panel-index range ``[start, stop)``; ``None`` updates all
+            panels represented by the lattice.
         """
         pass
 
 
 class StaticVLM(VLMKinematics):
-    """
-    Static kinematics - no motion.
+    """Keep a VLM surface fixed in its reference geometry.
 
     The VLM surfaces remain fixed in space. This is appropriate for
     steady-state analysis or when studying wake development without
     surface motion.
 
-    Example:
-        >>> kinematics = StaticVLM()
-        >>> velocity = kinematics.get_velocity(time=1.0)
-        >>> print(velocity)  # [0, 0, 0]
+    Examples
+    --------
+    >>> kinematics = StaticVLM()
+    >>> kinematics.get_velocity(time=1.0)
+    array([0., 0., 0.])
     """
 
-    def __init__(self):
-        """Initialize static kinematics."""
-        pass
+    def __init__(self) -> None:
+        """Initialize static motion with zero translation and identity pose."""
+        super().__init__()
 
     def get_velocity(self, time: float) -> np.ndarray:
-        """Return zero velocity (static)."""
+        """Return a new zero Cartesian velocity vector in m/s."""
         return np.zeros(3)
 
     def get_angular_velocity(self, time: float) -> np.ndarray:
-        """Return zero angular velocity (static)."""
+        """Return a new zero angular-velocity vector in rad/s."""
         return np.zeros(3)
 
     def update(
@@ -109,39 +128,41 @@ class StaticVLM(VLMKinematics):
         time_step_size: float,
         panel_range: tuple[int, int] | None = None,
     ) -> None:
-        """No update needed for static case."""
+        """Leave lattice geometry and pose metadata unchanged."""
         pass
 
 
 class TranslatingVLM(VLMKinematics):
+    """Translate VLM panels with constant Cartesian velocity.
+
+    Parameters
+    ----------
+    velocity : array-like, shape (3,)
+        Constant global velocity in m/s. It is copied to ``float64``.
+
+    Notes
+    -----
+    :meth:`update` applies ``delta_x = velocity * time_step_size`` in place and
+    increments :attr:`current_position`. It does not rotate panels.
+
+    Examples
+    --------
+    >>> kinematics = TranslatingVLM(velocity=[30.0, 0.0, 0.0])
+    >>> kinematics.get_velocity(time=1.0)
+    array([30.,  0.,  0.])
     """
-    Constant translational velocity kinematics.
 
-    The VLM surfaces translate at a constant velocity. This can
-    represent a vehicle in steady forward flight.
-
-    Example:
-        >>> kinematics = TranslatingVLM(velocity=[30.0, 0.0, 0.0])
-        >>> velocity = kinematics.get_velocity(time=1.0)
-        >>> print(velocity)  # [30, 0, 0]
-    """
-
-    def __init__(self, velocity: np.ndarray):
-        """
-        Initialize translating kinematics.
-
-        Args:
-            velocity: Constant velocity vector [Vx, Vy, Vz] (m/s)
-        """
+    def __init__(self, velocity: np.ndarray) -> None:
+        """Copy a constant shape-``(3,)`` velocity vector in m/s."""
         super().__init__()
         self.velocity = np.array(velocity, dtype=np.float64)
 
     def get_velocity(self, time: float) -> np.ndarray:
-        """Return constant velocity."""
+        """Return a copy of the constant shape-``(3,)`` velocity in m/s."""
         return self.velocity.copy()
 
     def get_angular_velocity(self, time: float) -> np.ndarray:
-        """Return zero angular velocity."""
+        """Return a new zero angular-velocity vector in rad/s."""
         return np.zeros(3)
 
     def update(
@@ -151,8 +172,10 @@ class TranslatingVLM(VLMKinematics):
         time_step_size: float,
         panel_range: tuple[int, int] | None = None,
     ) -> None:
-        """
-        Translate VLM geometry.
+        """Translate selected panels by ``velocity * time_step_size``.
+
+        Geometry and :attr:`current_position` are mutated in place. An
+        uninitialized/empty lattice is left unchanged.
         """
         # Safety check: ensure lattice is initialized
         if vlm_solver.lattice is None or vlm_solver.lattice.n_panels == 0:
@@ -172,36 +195,36 @@ class TranslatingVLM(VLMKinematics):
 
 
 class RotatingVLM(VLMKinematics):
-    """
-    Constant angular velocity kinematics (rotation about a fixed axis).
+    """Rotate VLM panels about a fixed axis at constant angular speed.
 
-    The VLM surfaces rotate about a specified axis at constant rate.
-    This can represent a rotor blade or a pitching wing.
+    Parameters
+    ----------
+    angular_speed : float
+        Signed angular speed in rad/s.
+    axis : array-like, shape (3,)
+        Non-zero global rotation axis, normalized internally.
+    rotation_centre : array-like, shape (3,), optional
+        Fixed pivot coordinates in m; ``None`` uses the origin.
 
-    Example:
-        >>> kinematics = RotatingVLM(
-        ...     angular_speed=10.0,  # rad/s
-        ...     axis=[0, 1, 0],  # rotate about Y axis
-        ...     rotation_centre=[0, 0, 0]  # rotation rotation_centre
-        ... )
+    Notes
+    -----
+    Each update uses Rodrigues' formula for the incremental angle
+    ``angular_speed * time_step_size`` and mutates selected lattice panels.
     """
 
     def __init__(
         self,
         angular_speed: float,
         axis: np.ndarray,
-        rotation_centre: np.ndarray = None,
-    ):
-        """
-        Initialize rotating kinematics.
-
-        Args:
-            angular_speed: Angular velocity magnitude (rad/s)
-            axis: Unit vector defining rotation axis
-            rotation_centre: Center of rotation (default: origin)
-        """
+        rotation_centre: np.ndarray | None = None,
+        acceleration_time: float = 0.0,
+    ) -> None:
+        """Normalize the axis and copy fixed-pivot rotation parameters."""
         super().__init__()
         self.angular_speed = angular_speed
+        if acceleration_time < 0:
+            raise ValueError("rotation acceleration_time must be nonnegative")
+        self.acceleration_time = float(acceleration_time)
         axis = np.array(axis, dtype=np.float64)
         self.axis = axis / np.linalg.norm(axis)
         self.rotation_centre = np.array(
@@ -209,12 +232,27 @@ class RotatingVLM(VLMKinematics):
         )
 
     def get_velocity(self, time: float) -> np.ndarray:
-        """Return zero translational velocity."""
+        """Return a new zero translational-velocity vector in m/s."""
         return np.zeros(3)
 
     def get_angular_velocity(self, time: float) -> np.ndarray:
-        """Return angular velocity vector."""
-        return self.angular_speed * self.axis
+        """Return prescribed global angular velocity, including smooth spin-up."""
+        factor = (
+            1.0
+            if self.acceleration_time == 0
+            else np.sin(0.5 * np.pi * np.clip(time / self.acceleration_time, 0.0, 1.0)) ** 2
+        )
+        return factor * self.angular_speed * self.axis
+
+    def rotation_angle(self, time: float) -> float:
+        """Integrated angle of the optional sin-squared spin-up, in radians."""
+        if self.acceleration_time == 0:
+            return self.angular_speed * time
+        ramp = np.clip(time, 0.0, self.acceleration_time)
+        integral = 0.5 * (
+            ramp - self.acceleration_time / np.pi * np.sin(np.pi * ramp / self.acceleration_time)
+        )
+        return self.angular_speed * (integral + max(time - self.acceleration_time, 0.0))
 
     def _rotation_matrix(self, angle: float) -> np.ndarray:
         """
@@ -245,10 +283,12 @@ class RotatingVLM(VLMKinematics):
         time_step_size: float,
         panel_range: tuple[int, int] | None = None,
     ) -> None:
+        """Rotate selected panel geometry over one interval.
+
+        The lattice coordinates, :attr:`current_orientation`, and accumulated
+        position metadata are mutated in place.
         """
-        Rotate VLM geometry.
-        """
-        angle = self.angular_speed * time_step_size
+        angle = self.rotation_angle(time + time_step_size) - self.rotation_angle(time)
         rotation_matrix = self._rotation_matrix(angle)
 
         # Update metadata
@@ -268,33 +308,33 @@ class RotatingVLM(VLMKinematics):
 
 
 class ManeuverVLM(VLMKinematics):
-    """
-    General time-varying kinematics defined by callable functions.
+    """Drive arbitrary rigid motion with user-supplied velocity functions.
 
-    Allows arbitrary motion profiles by specifying functions that
-    return velocity and angular velocity as functions of time.
+    Parameters
+    ----------
+    velocity_function : callable or None
+        Function ``f(time_seconds) -> array-like shape (3,)`` returning global
+        translation velocity in m/s. ``None`` supplies zero.
+    angular_velocity_function : callable or None
+        Function ``g(time_seconds) -> array-like shape (3,)`` returning global
+        angular velocity in rad/s. ``None`` supplies zero.
+    rotation_centre : array-like, shape (3,), optional
+        Initial pivot coordinates in m; ``None`` uses the origin. Translation
+        advects this pivot during updates.
 
-    Example:
-        >>> # Sinusoidal heaving motion
-        >>> def heave_velocity(time):
-        ...     return np.array([0, 0, 0.5 * np.cos(2 * np.pi * time)])
-        >>> kinematics = ManeuverVLM(velocity_function=heave_velocity)
+    Notes
+    -----
+    Update samples both functions at the interval midpoint, advances translation and applies an incremental Rodrigues rotation. The functions
+    must be deterministic for reproducible restart behavior.
     """
 
     def __init__(
         self,
         velocity_function: Callable[[float], np.ndarray] | None = None,
         angular_velocity_function: Callable[[float], np.ndarray] | None = None,
-        rotation_centre: np.ndarray = None,
-    ):
-        """
-        Initialize maneuver kinematics.
-
-        Args:
-            velocity_function: Function returning velocity vector for time time
-            angular_velocity_function: Function returning angular velocity for time time
-            rotation_centre: Center of rotation for angular velocity
-        """
+        rotation_centre: np.ndarray | None = None,
+    ) -> None:
+        """Retain motion callables and copy the initial rotation centre."""
         super().__init__()
         self.velocity_function = velocity_function or (lambda time: np.zeros(3))
         self.angular_velocity_function = angular_velocity_function or (lambda time: np.zeros(3))
@@ -303,11 +343,11 @@ class ManeuverVLM(VLMKinematics):
         )
 
     def get_velocity(self, time: float) -> np.ndarray:
-        """Return velocity from user function."""
+        """Evaluate and return a ``float64`` velocity vector in m/s."""
         return np.array(self.velocity_function(time), dtype=np.float64)
 
     def get_angular_velocity(self, time: float) -> np.ndarray:
-        """Return angular velocity from user function."""
+        """Evaluate and return a ``float64`` angular velocity in rad/s."""
         return np.array(self.angular_velocity_function(time), dtype=np.float64)
 
     def _rotation_matrix(self, angular_velocity: np.ndarray, time_step_size: float) -> np.ndarray:
@@ -336,11 +376,13 @@ class ManeuverVLM(VLMKinematics):
         time_step_size: float,
         panel_range: tuple[int, int] | None = None,
     ) -> None:
+        """Apply midpoint translation and rotation to selected panels.
+
+        Lattice geometry, accumulated pose metadata, and the advected rotation
+        centre are mutated in place.
         """
-        Update VLM geometry for maneuver (rotation + translation).
-        """
-        velocity = self.get_velocity(time)
-        angular_velocity = self.get_angular_velocity(time)
+        velocity = self.get_velocity(time + 0.5 * time_step_size)
+        angular_velocity = self.get_angular_velocity(time + 0.5 * time_step_size)
 
         displacement_increment = velocity * time_step_size
         rotation_matrix = self._rotation_matrix(angular_velocity, time_step_size)
@@ -423,13 +465,26 @@ class HeavingVLM(ManeuverVLM):
 
 
 class PitchingVLM(ManeuverVLM):
-    """
-    Sinusoidal pitching motion kinematics.
+    """Configure sinusoidal pitching about a fixed global axis.
 
-    Models a pitching wing with specified amplitude and frequency.
+    Parameters
+    ----------
+    amplitude_degrees : float
+        Peak pitch angle in degrees.
+    frequency : float
+        Oscillation frequency in Hz.
+    phase : float, default=0.0
+        Initial phase in radians.
+    rotation_axis : array-like, shape (3,), optional
+        Non-zero pivot axis; ``None`` uses global y.
+    rotation_centre : array-like, shape (3,), optional
+        Pivot coordinates in m; ``None`` uses the origin.
 
-    θ(time) = θ0 * sin(2π * f * time + φ)
-    ω(time) = θ0 * 2π * f * cos(2π * f * time + φ)
+    Notes
+    -----
+    ``theta(t)=theta0*sin(2*pi*f*t+phase)`` and the returned angular velocity
+    is its derivative along ``rotation_axis`` in rad/s. Geometry updates use
+    the inherited start-time incremental integration.
 
     Example:
         >>> kinematics = PitchingVLM(
@@ -445,19 +500,10 @@ class PitchingVLM(ManeuverVLM):
         amplitude_degrees: float,
         frequency: float,
         phase: float = 0.0,
-        rotation_axis: np.ndarray = None,
-        rotation_centre: np.ndarray = None,
-    ):
-        """
-        Initialize pitching kinematics.
-
-        Args:
-            amplitude_degrees: Pitch amplitude (degrees)
-            frequency: Pitch frequency (Hz)
-            phase: Initial phase (rad)
-            rotation_axis: Axis of rotation (default: [0, 1, 0])
-            rotation_centre: Pivot point (default: origin)
-        """
+        rotation_axis: np.ndarray | None = None,
+        rotation_centre: np.ndarray | None = None,
+    ) -> None:
+        """Create the sinusoidal angular-velocity function and pivot."""
         self.amplitude = np.radians(amplitude_degrees)
         self.frequency = frequency
         self.phase = phase
@@ -822,11 +868,16 @@ class AcceleratingVLM(VLMKinematics):
 
 
 class SmoothRampVLM(VLMKinematics):
-    """
-    Smooth acceleration kinematics using a sinusoidal velocity profile.
+    """Ramp translation smoothly from rest to a constant velocity.
 
-    The VLM surfaces accelerate smoothly from rest to a final velocity
-    over a ramp period of acceleration_time.
+    Parameters
+    ----------
+    final_velocity : array-like, shape (3,)
+        Cartesian terminal velocity in m/s.
+    acceleration_time : float
+        Duration of the smooth ramp in s; expected positive.
+    start_time : float, default=0.0
+        Physical time in s at which acceleration begins.
 
     Motion (sin² profile):
         velocity(time) = final_velocity * sin²(π * time / (2 * t_accel))  (for time < t_accel)
@@ -839,22 +890,15 @@ class SmoothRampVLM(VLMKinematics):
 
     def __init__(
         self, final_velocity: np.ndarray, acceleration_time: float, start_time: float = 0.0
-    ):
-        """
-        Initialize smooth ramp kinematics.
-
-        Args:
-            final_velocity: Final velocity vector [Vx, Vy, Vz] (m/s).
-            acceleration_time: Duration of the acceleration phase (s).
-            start_time: Time when acceleration begins (s).
-        """
+    ) -> None:
+        """Copy the terminal velocity and retain the ramp time parameters."""
         super().__init__()
         self.final_velocity = np.array(final_velocity, dtype=np.float64)
         self.acceleration_time = acceleration_time
         self.start_time = start_time
 
     def get_velocity(self, time: float) -> np.ndarray:
-        """Return velocity at time time using sin² ramp."""
+        """Return shape-``(3,)`` sin-squared ramp velocity in m/s."""
         t_rel = time - self.start_time
 
         if t_rel <= 0:
@@ -878,8 +922,7 @@ class SmoothRampVLM(VLMKinematics):
         time_step_size: float,
         panel_range: tuple[int, int] | None = None,
     ) -> None:
-        """
-        Update VLM geometry using sin² velocity integration.
+        """Translate panels using the exact displacement change over the step.
 
         Distance traveled during step:
           displacement_increment = X(time+dt) - X(time)

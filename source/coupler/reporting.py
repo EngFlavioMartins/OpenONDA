@@ -17,9 +17,30 @@ _REAL_STDOUT = sys.stdout
 
 
 class OutputRedirector:
-    """Capture Python and native output by temporarily replacing file descriptors."""
+    """Temporarily redirect Python and native stdout/stderr to a case log.
 
-    def __init__(self, logfile=None, append=True):
+    Parameters
+    ----------
+    logfile : str, os.PathLike, or None, optional
+        Text-file destination. ``None`` makes the context manager a no-op,
+        which is used on non-owner MPI ranks.
+    append : bool, default=True
+        Append to an existing file when true; truncate it on entry otherwise.
+
+    Notes
+    -----
+    Entering duplicates file descriptors 1 and 2 so native numerical-library
+    output is captured as well as Python writes. Exiting restores both
+    descriptors and closes the file opened by this object, including after an
+    exception.
+    """
+
+    def __init__(
+        self,
+        logfile: str | os.PathLike[str] | None = None,
+        append: bool = True,
+    ) -> None:
+        """Configure a temporary output redirection context."""
         self.logfile = logfile
         self.append = append
         self._log_fd = None
@@ -28,6 +49,7 @@ class OutputRedirector:
         self.log_file = None
 
     def __enter__(self):
+        """Open the configured log and return this context manager."""
         if not self.logfile:
             return self
 
@@ -46,6 +68,7 @@ class OutputRedirector:
         return self
 
     def __exit__(self, _exc_type, _exc_value, traceback):
+        """Restore stdout/stderr and close the opened log file."""
         if not self.logfile:
             return
 
@@ -89,6 +112,14 @@ def configure_logging(solution_dir: Path, logger: logging.Logger) -> None:
 
 
 def flush_log(logger: logging.Logger) -> None:
+    """Flush all handlers attached to a logger.
+
+    Parameters
+    ----------
+    logger : logging.Logger
+        Coupler logger whose file and console handlers should publish buffered
+        records before a barrier, backup, or process exit.
+    """
     for handler in logger.handlers:
         handler.flush()
 
@@ -179,7 +210,30 @@ def write_run_metadata(
 
 
 def compute_diagnostics(coupler, transfer_result=None) -> dict:
-    """Return finite transfer and boundary-flux diagnostics."""
+    """Flatten the latest coupling state into JSON-safe diagnostic values.
+
+    Parameters
+    ----------
+    coupler : FVMVPMCoupler-compatible object
+        Driver exposing the latest boundary, transfer, solver, and recovery
+        state.
+    transfer_result : TransferResult or None, optional
+        Result for the current replacement. ``None`` uses the coupler cache;
+        before the first transfer, zero/``None`` placeholders are returned.
+
+    Returns
+    -------
+    dict[str, object]
+        Nested boundary, transfer, interface, and recovery records. Vector
+        quantities are split into scalar components for JSONL serialization;
+        strengths use m³/s, velocities m/s, and normalized errors are
+        dimensionless.
+
+    Notes
+    -----
+    The function is read-only. :func:`record_step` appends its result to the
+    in-memory history and ``coupler_diagnostics.jsonl``.
+    """
     result = transfer_result
     if result is None:
         result = coupler._last_transfer_result

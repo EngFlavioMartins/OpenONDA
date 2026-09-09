@@ -109,11 +109,29 @@ class ForceConfig:
     method: Literal["BERNOULLI", "KUTTA_JOUKOWSKI"] = "BERNOULLI"
 
     @classmethod
-    def bernoulli(cls):
+    def bernoulli(cls) -> "ForceConfig":
+        """Construct the steady Bernoulli pressure-integration option.
+
+        Returns
+        -------
+        ForceConfig
+            Configuration with :attr:`method` set to ``"BERNOULLI"``.
+            The panel solver evaluates pressure from the local surface speed
+            and integrates the pressure traction over each panel.
+        """
         return cls(method="BERNOULLI")
 
     @classmethod
-    def kutta_joukowski(cls):
+    def kutta_joukowski(cls) -> "ForceConfig":
+        """Construct the Kutta--Joukowski force-evaluation option.
+
+        Returns
+        -------
+        ForceConfig
+            Configuration with :attr:`method` set to
+            ``"KUTTA_JOUKOWSKI"``.  The panel solver evaluates the local
+            circulation-based force instead of integrating Bernoulli pressure.
+        """
         return cls(method="KUTTA_JOUKOWSKI")
 
 
@@ -191,6 +209,86 @@ class PanelSolver:
         reuse_constrained_factorization: bool = True,
         collect_timing: bool = False,
     ) -> None:
+        """Create a lazily initialized triangular-panel flow solver.
+
+        Parameters
+        ----------
+        max_n_panels : int, default=10000
+            Capacity reserved for panel geometry and the dense influence
+            matrix.  The value controls memory use; it is not the number of
+            panels loaded from an STL scene.
+        float_dtype : {"f32", "f64"}, default="f64"
+            Floating-point precision used by Taichi fields and panel kernels.
+            ``"f64"`` is more robust for dense influence solves; ``"f32"``
+            reduces memory use and is required by some GPU backends.
+        linear_solver : {"SCIPY", "BICGSTAB_GPU"}, default="SCIPY"
+            Linear-system backend.  ``"SCIPY"`` copies the active dense
+            matrix to the CPU for a direct solve; ``"BICGSTAB_GPU"`` keeps the
+            iterative solve on the Taichi device.
+        force_config : ForceConfig or None, default=None
+            Force model.  ``None`` selects steady Bernoulli pressure
+            integration; use :meth:`ForceConfig.kutta_joukowski` for the
+            circulation-based alternative.
+        boundary_condition_type : {"DIRICHLET", "NEUMANN"}, default="NEUMANN"
+            Panel boundary formulation.  The Neumann form solves source
+            strengths for no penetration; the Dirichlet form solves doublet
+            strengths for constant potential.
+        density : float, default=1.225
+            Reference fluid density in kg/m³, used by force evaluation.
+        freestream_velocity : array_like, shape (3,), optional
+            Uniform incident velocity in m/s.  The value is copied into a
+            private NumPy array when supplied and can be overridden by
+            :meth:`solve` or :meth:`advance` inputs.
+        logging_interval_steps : int, default=1
+            Number of completed steps between force/diagnostic log records.
+            Values below one are clamped to one.
+        coupling_scope : {"full", "vpm_boundary_condition", "normal", "pressure"}, default="full"
+            Controls whether panel motion, force evaluation, and panel-induced
+            velocity participate in a VPM coupling step.  See the class
+            docstring for the exact scope semantics.
+        raise_on_non_convergence : bool, default=True
+            Raise when an iterative solve fails its residual criterion instead
+            of returning the unconverged circulation.
+        memory_budget_bytes : int, default=4 GiB
+            Fail-fast upper bound for the dense influence matrix and, for the
+            constrained Neumann SciPy path, its reusable factorization.
+        diagnostic_interval_steps : int, default=0
+            Particle induced-velocity diagnostic cadence.  Zero disables the
+            diagnostic; positive values record every Nth step.
+        diagnostic_sample_size : int, default=4096
+            Maximum number of active VPM particles sampled by diagnostics.
+        residual_tolerance : float, optional
+            Absolute residual tolerance for the selected linear solver.  If
+            omitted, a precision-appropriate default is selected.
+        far_field_acceptance : float, default=5.0
+            Barnes--Hut-style opening threshold used for optional far-field
+            panel grouping.  Smaller values are more accurate and more costly.
+        far_field_min_panels : int, default=256
+            Minimum eligible panel count before far-field grouping is used.
+        reuse_constrained_factorization : bool, default=True
+            Reuse the Neumann constrained least-squares factorization while
+            geometry is unchanged.
+        collect_timing : bool, default=False
+            Record synchronization and matrix-assembly timings in solver
+            diagnostics.
+
+        Notes
+        -----
+        Taichi fields and panel geometry are allocated only when the first
+        surface is added or :meth:`initialize` is called.  Construction does
+        not load files, solve a system, or mutate a VPM particle container.
+
+        Raises
+        ------
+        ValueError
+            If precision, coupling scope, or far-field parameters are invalid.
+
+        Examples
+        --------
+        >>> solver = PanelSolver(max_n_panels=2048, float_dtype="f64")
+        >>> solver.coupling_scope
+        'full'
+        """
         self.max_n_panels = max_n_panels
         self.float_dtype = float_dtype
         self.linear_solver_name = linear_solver

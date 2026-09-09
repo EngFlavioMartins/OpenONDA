@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import time
 
-from numba import njit
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 from ..mesh.partition import ownership_ranges
 from .linear_interface import (
@@ -120,6 +121,14 @@ class OwnedRowsCSR:
         )
 
     def validate(self) -> None:
+        """Validate CSR pointer, index, and owned-row consistency.
+
+        Raises
+        ------
+        ValueError
+            If the owned row interval, CSR arrays, RHS length, or global column
+            indices are inconsistent with this partition.
+        """
         local_rows = self.row_end - self.row_start
         if not 0 <= self.row_start <= self.row_end <= self.global_size:
             raise ValueError("Invalid owned row range")
@@ -143,6 +152,19 @@ class PartitionedLinearWorkspace:
     """
 
     def __init__(self, context) -> None:
+        """Create an unallocated PETSc workspace for one partitioned solve.
+
+        Parameters
+        ----------
+        context : ParallelContext
+            Partitioned MPI context owning the communicator and local mesh.
+
+        Notes
+        -----
+        PETSc matrices, vectors, KSP objects, and null spaces are allocated
+        lazily by :meth:`_build` and reused while their topology signature is
+        unchanged. Call :meth:`close` to release them.
+        """
         self.context = context
         self.matrix = None
         self.rhs = None

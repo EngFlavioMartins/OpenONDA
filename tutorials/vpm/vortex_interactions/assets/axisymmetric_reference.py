@@ -159,19 +159,6 @@ def run(args):
         q = q / 3 + 2 * (b + args.dt * rhs(b)[0]) / 3
         if not np.isfinite(q).all():
             raise RuntimeError("nonfinite control")
-    import json
-
-    (output / "result.json").write_text(
-        json.dumps(
-            {
-                **vars(args),
-                "wall_seconds": time.perf_counter() - started,
-                "initial_impulse": initial_impulse,
-            },
-            indent=2,
-        )
-        + "\n"
-    )
 
 
 if __name__ == "__main__":

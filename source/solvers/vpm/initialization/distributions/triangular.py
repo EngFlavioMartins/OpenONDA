@@ -15,11 +15,25 @@ Axis = Literal["x", "y", "z"]
 
 @dataclass(frozen=True, slots=True)
 class TriangularPrismDistribution:
-    """Triangular transverse lattice extruded along ``axis``.
+    """Configure a triangular transverse lattice extruded along one axis.
 
-    Positive ``spacing`` controls transverse nodes; ``axial_spacing`` defaults
-    to it. Bounds are inclusive and finite. Particle weights equal the regular
-    triangular cell area times axial spacing.
+    Parameters
+    ----------
+    bounds : sequence of three (float, float) pairs
+        Increasing Cartesian prism bounds in m.
+    spacing : float
+        Positive nearest-neighbour spacing in the triangular plane, in m.
+    core_radius_ratio : float
+        Positive dimensionless core ratio ``sigma/spacing``.
+    axis : {'x', 'y', 'z'}, default='z'
+        Cartesian extrusion axis.
+    axial_spacing : float or None, default=None
+        Positive axial particle spacing in m; ``None`` uses ``spacing``.
+
+    Notes
+    -----
+    Particle weights equal the regular triangular-cell area
+    ``sqrt(3)*spacing**2/2`` times the axial spacing.
     """
 
     bounds: Bounds3D
@@ -29,7 +43,19 @@ class TriangularPrismDistribution:
     axial_spacing: float | None = None
 
     def build(self) -> ParticleDistribution:
-        """Build immutable triangular-prism geometry and quadrature."""
+        """Build immutable triangular-prism geometry and quadrature.
+
+        Returns
+        -------
+        ParticleDistribution
+            Positions ``(N, 3)`` and radii ``(N,)`` in m plus uniform
+            quadrature volumes ``(N,)`` in m³.
+
+        Raises
+        ------
+        ValueError
+            If bounds, spacings, core ratio, or axis are invalid.
+        """
         spacing, ratio = validate_spacing(self.spacing, self.core_radius_ratio)
         axial_spacing = spacing if self.axial_spacing is None else float(self.axial_spacing)
         if not np.isfinite(axial_spacing) or axial_spacing <= 0.0:

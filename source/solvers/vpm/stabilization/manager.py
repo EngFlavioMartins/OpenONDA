@@ -135,6 +135,23 @@ class StabilizationManager:
     """
 
     def __init__(self, context: StabilizationContext) -> None:
+        """Create the solver-owned stabilization coordinator.
+
+        Parameters
+        ----------
+        context : StabilizationContext
+            Shared view of the particle arrays, evaluated induction fields,
+            accepted-step metadata, and immutable stabilization configuration.
+            The manager retains this owner-facing context and constructs its
+            own operator workspace; particle arrays are not copied.
+
+        Notes
+        -----
+        The manager initializes counters and restartable reference moments but
+        performs no stabilization until :meth:`run_phase` is called. Workers
+        may mutate the solver-owned particle fields only during their declared
+        scheduled phase.
+        """
         self.ctx = context
         self.config: StabilizationConfig = context.config
         # The stabilization subsystem owns its own kernels and fields; the
@@ -196,6 +213,23 @@ class StabilizationManager:
             before.max_vorticity_magnitude, np.finfo(float).tiny
         )
 
+        checks = []
+        if conserves_vortex_strength:
+            checks.append(
+                ("vortex_strength error", vortex_strength_error, cfg.max_vortex_strength_error)
+            )
+        if preserves_discretization:
+            checks += [
+                ("strength growth", strength_growth, cfg.max_vortex_strength_growth),
+                ("peak-vorticity growth", vorticity_growth, cfg.max_vorticity_growth),
+            ]
+        for name, value, limit in checks:
+            if not np.isfinite(value) or value > limit:
+                raise StabilizationError(
+                    f"{mechanism} produced a {name} of {value:.3e}, beyond the admissible "
+                    f"{limit:.3e}"
+                )
+
         self.events += 1
         self.last_mechanism = mechanism
         # Recorded for every mechanism.  A rotation carries vortex_strength with it
@@ -218,22 +252,6 @@ class StabilizationManager:
             rows.append(("detail", detail))
         Logging.record("stabilization", *rows)
 
-        checks = []
-        if conserves_vortex_strength:
-            checks.append(
-                ("vortex_strength error", vortex_strength_error, cfg.max_vortex_strength_error)
-            )
-        if preserves_discretization:
-            checks += [
-                ("strength growth", strength_growth, cfg.max_vortex_strength_growth),
-                ("peak-vorticity growth", vorticity_growth, cfg.max_vorticity_growth),
-            ]
-        for name, value, limit in checks:
-            if not np.isfinite(value) or value > limit:
-                raise StabilizationError(
-                    f"{mechanism} produced a {name} of {value:.3e}, beyond the admissible "
-                    f"{limit:.3e}"
-                )
         return after
 
     @property
@@ -440,7 +458,7 @@ class StabilizationManager:
     def apply_relaxation(self) -> None:
         """Rotate the scheduled fraction of the vortex_strength-omega misalignment away.
 
-        The particle field is a vorticity field only while ``alpha_p`` stays
+        The particle field is a vorticity field only while ``Gamma_p`` stays
         parallel to the vorticity it induces, and the divergence of the
         discrete field grows exactly where it does not. Optional moment
         restoration removes the global impulse introduced by that rotation.
@@ -449,6 +467,7 @@ class StabilizationManager:
         if (
             not cfg.pedrizzetti_relaxation_enabled
             or self.ctx.flow_model == "POTENTIAL"
+            or self.ctx.particles.n_particles_total == 0
             or (
                 cfg.pedrizzetti_relaxation_end_step is not None
                 and self.ctx.state.step >= cfg.pedrizzetti_relaxation_end_step
@@ -460,46 +479,51 @@ class StabilizationManager:
             return
 
         before = self.measure()
+        original_strength = self.ctx.particles.vortex_strength_cpu(use_cache=False).copy()
         reference_vortex_strength = None
         if cfg.pedrizzetti_relaxation_preserve_moments:
             particles = self.ctx.particles
             position = particles.position_cpu(use_cache=False).astype(np.float64)
-            reference_vortex_strength = particles.vortex_strength_cpu(use_cache=False).astype(
-                np.float64
-            )
+            reference_vortex_strength = original_strength.astype(np.float64)
             core_radius = particles.core_radius_cpu(use_cache=False).astype(np.float64)
             particle_volume = particles.particle_volume_cpu(use_cache=False).astype(np.float64)
-        statistics = self.operators.apply_pedrizzetti_relaxation(
-            self.ctx.particles,
-            cfg.pedrizzetti_relaxation_factor,
-            preserve_vortex_strength_magnitude=(
-                cfg.pedrizzetti_relaxation_preserve_vortex_strength
-            ),
-        )
-        correction_relative = 0.0
-        if reference_vortex_strength is not None:
-            from .divergence_relaxation import restore_particle_moments
-
-            relaxed = self.ctx.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
-            corrected, correction_relative = restore_particle_moments(
-                position,
-                relaxed,
-                core_radius,
-                particle_volume,
-                reference_vortex_strength,
-                angular_core_coefficient=self.ctx.physics._angular_core_coefficient,
+        try:
+            statistics = self.operators.apply_pedrizzetti_relaxation(
+                self.ctx.particles,
+                cfg.pedrizzetti_relaxation_factor,
+                preserve_vortex_strength_magnitude=(
+                    cfg.pedrizzetti_relaxation_preserve_vortex_strength
+                ),
             )
-            self.ctx.mutations.set_properties(vortex_strength=corrected.astype(self.ctx.np_dtype))
-        self.accept(
-            "Pedrizzetti relaxation",
-            before,
-            conserves_vortex_strength=reference_vortex_strength is not None,
-            detail=(
-                f"blend={cfg.pedrizzetti_relaxation_factor:.6g}, "
-                f"misalignment={statistics['pedrizzetti_misalignment_deg']:.2f} deg, "
-                f"moment correction={correction_relative:.2e}"
-            ),
-        )
+            correction_relative = 0.0
+            if reference_vortex_strength is not None:
+                from .divergence_relaxation import restore_particle_moments
+
+                relaxed = self.ctx.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
+                corrected, correction_relative = restore_particle_moments(
+                    position,
+                    relaxed,
+                    core_radius,
+                    particle_volume,
+                    reference_vortex_strength,
+                    angular_core_coefficient=self.ctx.physics._angular_core_coefficient,
+                )
+                self.ctx.mutations.set_properties(
+                    vortex_strength=corrected.astype(self.ctx.np_dtype)
+                )
+            self.accept(
+                "Pedrizzetti relaxation",
+                before,
+                conserves_vortex_strength=reference_vortex_strength is not None,
+                detail=(
+                    f"blend={cfg.pedrizzetti_relaxation_factor:.6g}, "
+                    f"misalignment={statistics['pedrizzetti_misalignment_deg']:.2f} deg, "
+                    f"moment correction={correction_relative:.2e}"
+                ),
+            )
+        except Exception:
+            self.ctx.mutations.set_properties(vortex_strength=original_strength)
+            raise
 
     def apply_filament_refinement(self) -> None:
         """Bisect over-stretched Lagrangian elements at the configured cadence."""

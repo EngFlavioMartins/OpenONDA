@@ -1,32 +1,24 @@
 # Cylinder reference flow
 
 This directory contains the complete Re=150 reference-flow case. The only
-geometric input is `../assets/cylinder_long.stl`; `setup.py` declares the domain,
+geometric input is `assets/cylinder_long.stl`; `setup.py` declares the domain,
 boundary types, mesh sizes, refinement boxes, samplers, and solver settings.
 
-Run the complete three-grid study with:
+Run the complete four-grid study with:
 
 ```bash
 ./allrun.sh
 ```
 
-`allrun.sh` always removes previous `solution/` and `samples/` data first, then
-immediately recreates fresh empty output roots before launching the three cases.
-
-The script runs `coarse`, `medium`, and `fine` in sequence. Each name selects
-both output directories, so the coarse case writes fields and mesh files under
-`solution/coarse/` and samples under `samples/coarse/`. To run one case
-directly, use for example:
+The script runs `coarse`, `medium`, `fine`, and `very_fine` in sequence.
+Each name selects its own output directories. Run `./allclean.sh` explicitly
+when you want to remove old results. To run one grid directly:
 
 ```bash
-python -u setup.py --name coarse --dx 0.125
+python setup.py --name coarse --dx 0.125
 ```
 
-Set `PYTHON` if OpenONDA is installed in a non-default environment:
-
-```bash
-PYTHON=/opt/anaconda3/envs/OpenONDA/bin/python ./allrun.sh
-```
+Use the Python environment in which OpenONDA was installed.
 
 `--dx` is the target cell size at the cylinder in units of D. The
 background is 8 times that size. The near-body and near-wake boxes use 2 times

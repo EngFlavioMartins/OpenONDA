@@ -8,33 +8,30 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[0]) + ""
-
-
 import os
+from pathlib import Path
 
 import numpy as np
 
-from .assets.mesh_rectilinear import cylinder_ibm_mesh
 import openonda.fvm as fvm
+from openonda.tutorial_runner import case_package
 
-# ---- Case definition -----------------------------------------------------
+__package__ = case_package(Path(__file__).parent)
+from .assets.mesh_rectilinear import cylinder_ibm_mesh
+
+# Case definition
 CASE_NAME = "cylinder_ibm"
 DIAMETER = 1.0  # cylinder diameter [m]
 FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
 DENSITY = 1.0  # fluid density [kg/m^3]
 REYNOLDS_NUMBER = 30.0
-FINAL_TIME = 60.0
+FINAL_TIME = 60.0  # [s]
 
-# ---- Mesh and IBM markers ------------------------------------------------
+# Mesh and IBM markers
 SPACING = 0.0625  # uniform grid spacing next to the cylinder [m]
 MARKER_ALPHA = 1.0  # marker spacing / grid spacing ratio
 
-# ---- Time stepping and numerics ------------------------------------------
+# Time stepping and numerics
 TIME_STEP_SIZE = 0.01  # initial time step [s]
 MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 0.03  # upper bound on the adapted time step [s]
@@ -66,7 +63,6 @@ def create_fvm_setup(
         case_name=CASE_NAME,
         time=fvm.TimeConfig(
             time_step_size=time_step_size,
-            start_time=0.0,
             end_time=end_time,
             output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
             adjustment=fvm.MaximumCourantTimeStep(
@@ -78,7 +74,6 @@ def create_fvm_setup(
         linear=linear,
         pimple=pimple,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-        turbulence=None,  # laminar validation case
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
@@ -88,43 +83,27 @@ def create_fvm_setup(
             fvm.BoundaryConfig.empty("back"),
         ],
         initial_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
-        initial_kinematic_pressure=0.0,
     )
 
 
 def main() -> None:
-    case_dir = os.path.dirname(os.path.abspath(__file__))
+    case_dir = Path(__file__).parent
 
     # The direct-forcing feedback loop is stable only for Fo = nu*dt/h^2 <~ 0.1;
     # above it a slow sawtooth develops in Cd and
     # in the marker slip error. Cap dt accordingly (this binds at low Re).
     kinematic_viscosity = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS_NUMBER
-    max_time_step_size = MAX_TIME_STEP_SIZE
-    time_step_size = TIME_STEP_SIZE
-    fourier_time_step_size_limit = MAX_FORCING_FOURIER * SPACING**2 / kinematic_viscosity
-    if fourier_time_step_size_limit < max_time_step_size:
-        print(
-            f"  [IBM] capping max time_step_size to {fourier_time_step_size_limit:.4g} s "
-            f"(forcing Fourier number <= {MAX_FORCING_FOURIER})"
-        )
-        max_time_step_size = fourier_time_step_size_limit
-        time_step_size = min(time_step_size, fourier_time_step_size_limit)
+    fourier_limit = MAX_FORCING_FOURIER * SPACING**2 / kinematic_viscosity
+    max_time_step_size = min(MAX_TIME_STEP_SIZE, fourier_limit)
+    time_step_size = min(TIME_STEP_SIZE, fourier_limit)
 
-    print("\n===== MESH =====")
-    print("---- Generating the rectilinear IBM mesh ----")
     mesh_data, depth = cylinder_ibm_mesh(grid_spacing=SPACING, diameter=DIAMETER)
-    print(
-        f"  cells: {mesh_data['n_cells']}, core spacing h = {SPACING} "
-        f"(D/h = {DIAMETER / SPACING:.0f})"
-    )
 
-    print("\n===== SIMULATION =====")
     fvm_setup = create_fvm_setup(
         REYNOLDS_NUMBER, FINAL_TIME, depth, time_step_size, max_time_step_size
     )
     fvm_solver = fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh_data)
 
-    print("---- Setting the immersed cylinder ----")
     body = fvm.ImmersedBody.cylinder_z(
         centre=[0.0, 0.0, 0.5 * depth],
         diameter=DIAMETER,
@@ -136,7 +115,6 @@ def main() -> None:
 
     # Save the marker cloud so the plotting scripts can draw the cylinder.
     sol_dir = os.path.join(case_dir, "solution")
-    os.makedirs(sol_dir, exist_ok=True)
     np.savetxt(
         os.path.join(sol_dir, "ibm_markers.csv"),
         body.position,
@@ -146,14 +124,6 @@ def main() -> None:
     )
 
     fvm_solver.run()
-
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
-    print("Reference values (Constant et al. 2017):")
-    if REYNOLDS_NUMBER == 30.0:
-        print("  Re=30 steady:  Cd = 1.74-1.80, recirculation L/D = 1.55-1.70")
-    elif REYNOLDS_NUMBER == 100.0:
-        print("  Re=100 unsteady:  mean Cd = 1.35-1.38, St = 0.164-0.165")
 
 
 if __name__ == "__main__":

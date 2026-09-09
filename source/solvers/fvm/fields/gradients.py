@@ -1,7 +1,5 @@
 """Gauss and inverse-distance least-squares gradients."""
 
-from typing import Any
-
 import numpy as np
 
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
@@ -98,19 +96,37 @@ def _correct_boundary_gradient(field_gradient, field_values, mesh_data, geo_data
 
 
 def compute_gauss_gradient(field_values, mesh_data, geo_data):
-    """Compute the gradient using the Gauss linear method (vectorised).
+    """Compute cell gradients with the linear Gauss theorem.
 
     Uses deterministic ``bincount`` reductions for face accumulation. The
     algorithm and interface are identical to
     :func:`compute_gradient_gauss_linear`.
 
-    Args:
-        scalar_field:      Field values ``(n_total, n_components)``.
-        mesh_data: Mesh dictionary.
-        geo_data:  Geometry dictionary.
+    Parameters
+    ----------
+    field_values : numpy.ndarray
+        Cell/ghost values with shape ``(n_total,)`` for a scalar or
+        ``(n_total, n_components)`` for a vector of components. Values may
+        carry arbitrary physical units; the returned gradient is per metre.
+    mesh_data : dict
+        Native mesh topology with cell/face counts, owner/neighbour indices,
+        boundary patches, and optional coupled-face metadata.
+    geo_data : dict
+        Geometry arrays including face area vectors (m²), interpolation
+        weights, and cell volumes (m³).
 
-    Returns:
-        Gradient field ``(n_total, 3, n_components)``.
+    Returns
+    -------
+    numpy.ndarray
+        Gradient field with shape ``(n_total, 3, n_components)``. The second
+        axis is the spatial derivative direction and the third axis is the
+        field component.
+
+    Notes
+    -----
+    Boundary ghost values are copied/interpolated according to patch metadata,
+    processor halos are exchanged when partitioned, and boundary-normal
+    components are corrected using the patch ``snGrad`` contract.
     """
 
     # Determine field type
@@ -244,11 +260,24 @@ def compute_gauss_gradient(field_values, mesh_data, geo_data):
     return field_gradient
 
 
-def compute_lsq_geometry(mesh_data, geo_data) -> dict[str, Any]:
+def compute_lsq_geometry(mesh_data, geo_data) -> dict[str, object]:
     """Precompute inverse-distance LSQ stencils and 3×3 inverses.
 
-    Distances are in metres. ``least_squares_neighbour_weighted_displacement`` therefore has units 1/m and
-    ``least_squares_normal_matrix_inverse`` has units m². Rank-deficient stencils use a pseudoinverse.
+    Distances are in metres. ``least_squares_neighbour_weighted_displacement``
+    therefore has units 1/m and ``least_squares_normal_matrix_inverse`` has
+    units m². Rank-deficient stencils use a pseudoinverse.
+
+    Parameters
+    ----------
+    mesh_data, geo_data : dict
+        Native topology and computed geometry. Boundary/coupled neighbors are
+        included in each owner-cell stencil.
+
+    Returns
+    -------
+    dict[str, object]
+        Reusable stencil indices, weighted displacements, inverse normal
+        matrices, rank/condition diagnostics, and the ``"lsq"`` scheme tag.
     """
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
@@ -346,6 +375,25 @@ def compute_lsq_gradient(field_values, mesh_data, geo_data):
     """Compute the inverse-distance-weighted least-squares gradient.
 
     For each cell minimises  Σ w²(φ_n − φ_c − ∇φ·dr)².
+
+    Parameters
+    ----------
+    field_values : numpy.ndarray
+        Values with shape ``(n_total,)`` or ``(n_total, n_components)``.
+    mesh_data, geo_data : dict
+        Native topology and the result of :func:`compute_lsq_geometry`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Gradient with shape ``(n_total, 3, n_components)``; spatial units are
+        the input field units divided by metres.
+
+    Notes
+    -----
+    Well-conditioned 3-D normal matrices use batched QR solves. Rank-deficient
+    or ill-conditioned cells use a pseudoinverse and expose rank/condition
+    diagnostics in ``geo_data``.
     """
     if field_values.ndim == 1:
         field_values = field_values.reshape(-1, 1)
@@ -416,11 +464,16 @@ def _resolve_gradient_fn(geo_data):
     - ``"lsq"`` → :func:`compute_lsq_gradient`
     - anything else → :func:`compute_gauss_gradient`
 
-    Args:
-        geo_data: Geometry dictionary (must contain ``"gradient_scheme"``).
+    Parameters
+    ----------
+    geo_data : dict
+        Geometry dictionary; ``"lsq"`` selects least squares and any other
+        value selects Gauss linear.
 
-    Returns:
-        A callable ``grad_fn(scalar_field, mesh_data, geo_data) -> gradient``.
+    Returns
+    -------
+    callable
+        ``grad_fn(field_values, mesh_data, geo_data) -> gradient``.
     """
     if geo_data.get("gradient_scheme") == "lsq":
         return compute_lsq_gradient

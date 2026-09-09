@@ -18,10 +18,8 @@ def summarize():
     result = {}
     for name in rm.CURRENT_VARIANTS:
         root = rm.SAMPLES_DIR / name
-        if (
-            not (root / "run_metadata.json").is_file()
-            or not (root / "flow_integrals.csv").is_file()
-        ):
+        metadata = rm.load_metadata(name)
+        if not metadata or not (root / "flow_integrals.csv").is_file():
             continue
         d = rm.load_sampled_ring_data(root / "ring_diagnostics.csv")
         if d is None:
@@ -31,7 +29,7 @@ def summarize():
             .sort_values("step")
             .drop_duplicates("step", keep="last")
         )
-        m = json.loads((root / "run_metadata.json").read_text())
+        numerics = metadata["configuration"]["numerics"]
         vector = d[
             ["net_vortex_strength_x", "net_vortex_strength_y", "net_vortex_strength_z"]
         ].to_numpy()
@@ -42,7 +40,7 @@ def summarize():
         reference = rm.saffman_speed(time * rm.REFERENCE_TIME) / rm.REFERENCE_VELOCITY
         valid = time * rm.REFERENCE_TIME <= rm.saffman_valid_time_limit()
         out = {
-            "status": m["status"],
+            "status": metadata["lifecycle"]["status"],
             "normalized_end_time": float(d.time.iloc[-1] / rm.REFERENCE_TIME),
             "final_vector_drift": float(drift[-1]),
             "initial_vector_norm": float(np.linalg.norm(vector[0]) / scale),
@@ -74,7 +72,7 @@ def summarize():
         if not common.empty:
             i = common.index[0]
             fs = f[(f.step > 0) & (f.step <= 100)]
-            ts = time <= 100 * m["time_step_size"] / rm.REFERENCE_TIME
+            ts = time <= 100 * numerics["time_step_size"] / rm.REFERENCE_TIME
             out["common_step_100"] = {
                 "normalized_time": float(d.time.iloc[i] / rm.REFERENCE_TIME),
                 "tube_change_percent": float(tube[i] * 100),

@@ -8,7 +8,12 @@ from .smagorinsky import SmagorinskyModel
 
 @ti.data_oriented
 class ParticlesLES:
-    """Evaluate the configured VPM sub-grid eddy-viscosity model."""
+    """Evaluate the configured VPM sub-grid eddy-viscosity model.
+
+    The current implementation wraps :class:`SmagorinskyModel` and writes
+    eddy viscosity into the particle container.  Reported viscosity values are
+    in m²/s; ratios to molecular kinematic viscosity are dimensionless.
+    """
 
     def __init__(
         self,
@@ -19,6 +24,29 @@ class ParticlesLES:
         subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
     ) -> None:
+        """Create a particle LES model and allocate its reduction fields.
+
+        Parameters
+        ----------
+        model_name : str
+            Registered model name, currently ``"SMAGORINSKY"`` or
+            ``"LES_SMAGORINSKY"``.
+        max_n_particles : int, default=MAX_N_PARTICLES
+            Particle capacity used for device reductions.
+        particle_kernel : str, default="GAUSSIAN"
+            VPM radial kernel used by the wrapped model.
+        smagorinsky_coefficient : float, default=SMAGORINSKY_CONSTANT
+            Dimensionless Smagorinsky coefficient.
+        subgrid_dissipation_coefficient : float, default=1.048
+            Dimensionless model coefficient for sub-grid dissipation.
+        accumulator_dtype : taichi scalar type, default=ti.f32
+            Precision of device reduction fields.
+
+        Raises
+        ------
+        ValueError
+            If ``model_name`` is not supported.
+        """
         self.model_name = model_name.upper()
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.upper()
@@ -53,6 +81,7 @@ class ParticlesLES:
         particle_kernel: str = "GAUSSIAN",
         accumulator_dtype: ti.types = ti.f32,
     ) -> "ParticlesLES":
+        """Construct LES from a configuration-like object."""
         return cls(
             model_name=getattr(turbulence_config, "model", "LES_SMAGORINSKY"),
             max_n_particles=max_n_particles,
@@ -67,6 +96,7 @@ class ParticlesLES:
         )
 
     def initialize(self, particles) -> None:
+        """Initialize wrapped-model fields from a particle container."""
         self.model.initialize(particles)
 
     def compute(
@@ -74,6 +104,16 @@ class ParticlesLES:
         particles,
         time_step_size: float | None = None,
     ) -> None:
+        """Compute eddy viscosity for the current particle state.
+
+        Parameters
+        ----------
+        particles : Particles
+            Mutable particle container whose ``eddy_viscosity`` field is
+            updated in m²/s.
+        time_step_size : float, optional
+            Physical step in seconds for models that use temporal scaling.
+        """
         if self.model.smagorinsky_coefficient == 0.0:
             self.min_eddy_viscosity = 0.0
             self.max_eddy_viscosity = 0.0
@@ -84,6 +124,7 @@ class ParticlesLES:
         self.update_turbulence_statistics(particles)
 
     def update_turbulence_statistics(self, particles) -> None:
+        """Reduce active eddy-viscosity extrema and molecular-viscosity ratios."""
         n_particles_total = len(particles)
         if n_particles_total == 0:
             return

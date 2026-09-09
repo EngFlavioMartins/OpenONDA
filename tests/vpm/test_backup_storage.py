@@ -20,8 +20,10 @@ from source.solvers.vpm import (
     SSPRK3,
     Backup,
     DirectInduction,
+    FilamentRefinementConfig,
     FMMInduction,
     Numerics,
+    StabilizationConfig,
     TreecodeInduction,
     ViscousConfig,
     VPMCase,
@@ -47,6 +49,7 @@ def _case(
     viscous: ViscousConfig | None = None,
     induction=None,
     random_seed: int = 42,
+    stabilization: StabilizationConfig | None = None,
 ) -> VPMCase:
     return VPMCase(
         directory=case_directory,
@@ -66,6 +69,9 @@ def _case(
             ),
             induction=DirectInduction() if induction is None else induction,
             random_seed=random_seed,
+            stabilization=(
+                StabilizationConfig.disabled() if stabilization is None else stabilization
+            ),
         ),
     )
 
@@ -197,6 +203,43 @@ def test_vpm_restart_preserves_compute_precision_and_freestream(tmp_path):
     np.testing.assert_array_equal(restored.freestream_velocity, solver.freestream_velocity)
 
 
+def test_restart_preserves_unbounded_filament_refinement(tmp_path):
+    def solver(directory, factor):
+        return _solver(
+            tmp_path / directory,
+            stabilization=StabilizationConfig(
+                filament_refinement=FilamentRefinementConfig.adaptive(
+                    interval_steps=1,
+                    max_vortex_strength_factor=factor,
+                    max_absolute_vortex_strength=1.0,
+                )
+            ),
+        )
+
+    writer = solver("writer", float("inf"))
+    try:
+        _add_counter_rotating_pair(writer)
+        _advance(writer, 1)
+        expected_position = writer.particle_position.copy()
+        writer.save_backup()
+    finally:
+        writer.close()
+    backup = tmp_path / "writer/solution/vpm_000001.h5"
+    restored = solver("reader", np.float32("inf"))
+    try:
+        restored.load_backup(str(backup))
+        assert restored.step == 1
+        np.testing.assert_array_equal(restored.particle_position, expected_position)
+    finally:
+        restored.close()
+    incompatible = solver("finite-threshold", 2.0)
+    try:
+        with pytest.raises(ValueError, match="max_vortex_strength_factor"):
+            incompatible.load_backup(str(backup))
+    finally:
+        incompatible.close()
+
+
 def test_vpm_restart_rejects_incompatible_format_with_versions(tmp_path):
     solver = _solver(tmp_path / "writer")
     with contextlib.redirect_stdout(io.StringIO()):
@@ -221,6 +264,69 @@ def test_vpm_restart_reports_the_incompatible_configuration_path(tmp_path):
 
     with pytest.raises(ValueError, match=r"numerical configuration mismatch at time_step_size"):
         reader.load_backup(str(backup))
+
+
+@pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
+def test_larger_restart_capacity_preserves_the_particle_trajectory(tmp_path, induction_type):
+    writer = _solver(tmp_path / "writer", induction=induction_type())
+    random = np.random.default_rng(21)
+    count = 48
+    try:
+        writer.add_vortex_particles(
+            position=random.uniform(-0.7, 0.7, (count, 3)),
+            velocity=np.zeros((count, 3)),
+            vortex_strength=random.normal(0.0, 1e-4, (count, 3)),
+            core_radius=np.full(count, 0.08),
+            particle_volume=np.full(count, 0.08**3),
+            kinematic_viscosity=np.full(count, 0.01),
+        )
+        _advance(writer, 1)
+        writer.save_backup()
+        _advance(writer, 1)
+        position = writer.particle_position.copy()
+        strength = writer.particle_vortex_strength.copy()
+    finally:
+        writer.close()
+    reader = _solver(tmp_path / "reader", max_n_particles=128, induction=induction_type())
+    try:
+        reader.load_backup(tmp_path / "writer/solution/vpm_000001.h5")
+        _advance(reader, 1)
+        np.testing.assert_allclose(reader.particle_position, position, rtol=1e-6, atol=1e-7)
+        np.testing.assert_allclose(reader.particle_vortex_strength, strength, rtol=1e-5, atol=1e-10)
+        assert reader.particles.n_particles_total == count
+        assert reader.step == 2
+    finally:
+        reader.close()
+
+
+@pytest.mark.parametrize("policy", ("smaller", "filament", "remesh"))
+def test_restart_keeps_capacity_checks_for_smaller_or_adaptive_allocations(tmp_path, policy):
+    stabilization = StabilizationConfig.disabled()
+    if policy == "filament":
+        stabilization = StabilizationConfig(
+            filament_refinement=FilamentRefinementConfig.adaptive(interval_steps=1)
+        )
+    elif policy == "remesh":
+        stabilization = StabilizationConfig(
+            regularization_interval_steps=1, regularization_grid_spacing=0.1
+        )
+    writer = _solver(tmp_path / "writer", stabilization=stabilization)
+    try:
+        _add_counter_rotating_pair(writer)
+        writer.save_backup()
+    finally:
+        writer.close()
+    reader = _solver(
+        tmp_path / "reader",
+        max_n_particles=32 if policy == "smaller" else 128,
+        stabilization=stabilization,
+    )
+    try:
+        with pytest.raises(ValueError, match="max_n_particles"):
+            reader.load_backup(tmp_path / "writer/solution/vpm_000000.h5")
+        assert reader.particles.n_particles_total == 0
+    finally:
+        reader.close()
 
 
 def test_vpm_case_has_no_partial_configuration_serialization(tmp_path):

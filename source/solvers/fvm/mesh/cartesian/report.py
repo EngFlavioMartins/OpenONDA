@@ -27,7 +27,18 @@ def _thaw(value: Any) -> Any:
 
 @dataclass(frozen=True, slots=True)
 class SizeReport:
-    """Requested and effective dyadic size for one named control."""
+    """Requested and realizable dyadic size for one named meshing control.
+
+    Parameters
+    ----------
+    name : str
+        Diagnostic control name, such as ``"background"`` or ``"patch:wall"``.
+    requested, effective : float
+        Requested upper size and realized power-of-two size in m. The effective
+        value is no larger than the request.
+    level : int
+        Non-negative refinement level relative to the Cartesian root box.
+    """
 
     name: str
     requested: float
@@ -46,7 +57,27 @@ class SizeReport:
 
 @dataclass(frozen=True, slots=True)
 class GenerationReport:
-    """Immutable generation metadata exposed after a successful build."""
+    """Immutable provenance and diagnostics for one successful mesh build.
+
+    Parameters
+    ----------
+    method : str
+        Meshing workflow identifier.
+    sizes : tuple[SizeReport, ...]
+        Requested/effective sizing decisions in m.
+    boundary_patches : tuple[str, ...]
+        Contiguous native boundary-patch names in output order.
+    surface_hashes : tuple[str, ...]
+        SHA-256 digests of the exact input surface files.
+    diagnostics : collections.abc.Mapping
+        Nested quality/topology measurements. Construction recursively freezes
+        mappings and sequences so callers cannot mutate report state.
+
+    Notes
+    -----
+    :meth:`as_dict` returns a detached JSON-compatible copy suitable for run
+    manifests; changing that copy does not affect this report.
+    """
 
     method: str
     sizes: tuple[SizeReport, ...]

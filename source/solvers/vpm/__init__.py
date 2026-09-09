@@ -53,7 +53,7 @@ from .initialization import (
     VortexRing,
     WidnallDisturbance,
 )
-from .io.sampling import EverySteps, EveryTime, FinalOnly
+from .io.sampling import EverySteps, EveryTime, FinalOnly, VLMSampler
 from .numerics.rk_tableaux import RK2, RK4, SSPRK3
 from .physics.induction.direct import DirectInduction
 from .physics.induction.fmm import FMMInduction
@@ -107,6 +107,7 @@ __all__ = [
     "RK4",
     "SSPRK3",
     "TurbulenceConfig",
+    "VLMSampler",
     "VLMMeshSetup",
     "VLMSetup",
     "VLMSurfaceSetup",

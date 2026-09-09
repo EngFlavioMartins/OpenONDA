@@ -8,7 +8,25 @@ from ..mesh.partition import ownership_ranges
 
 
 def spanwise_cell_groups(mesh: dict) -> np.ndarray:
-    """Return one group id for each stack of equal x-y cells."""
+    """Return stack IDs for cells sharing the same x-y footprint.
+
+    Parameters
+    ----------
+    mesh : dict
+        Extruded native mesh with ``vertex_position`` and compact
+        ``cell_vertex_indices`` arrays.
+
+    Returns
+    -------
+    numpy.ndarray
+        Int32 group labels, shape ``(n_cells,)``. Each group must contain a
+        uniformly sized z stack.
+
+    Raises
+    ------
+    ValueError
+        If the mesh is not uniformly extruded or has incomplete stacks.
+    """
     points = np.asarray(mesh["vertex_position"], dtype=np.float64)
     vertices = np.asarray(mesh["cell_vertex_indices"], dtype=np.int64)
     centres_xy = points[vertices, :2].mean(axis=1)
@@ -24,7 +42,24 @@ def spanwise_cell_groups(mesh: dict) -> np.ndarray:
 
 
 def spanwise_face_groups(mesh: dict) -> tuple[np.ndarray, np.ndarray]:
-    """Group vertical faces by x-y vertices and identify horizontal faces."""
+    """Group vertical faces by x-y footprint and identify horizontal faces.
+
+    Parameters
+    ----------
+    mesh : dict
+        Native face mesh with vertex coordinates and polygon faces.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray]
+        Int32 group IDs for every face (``-1`` for horizontal faces) and a
+        boolean horizontal-face mask.
+
+    Raises
+    ------
+    ValueError
+        If vertical face stacks are incomplete/nonuniform.
+    """
     points = np.asarray(mesh["vertex_position"], dtype=np.float64)
     faces = np.asarray(mesh["faces"], dtype=np.int64)
     vertices = points[faces]
@@ -48,7 +83,21 @@ def spanwise_face_groups(mesh: dict) -> tuple[np.ndarray, np.ndarray]:
 
 
 def build_spanwise_projection_layout(mesh: dict, n_ranks: int) -> dict[str, np.ndarray | int]:
-    """Build global grouping and unique face-authority metadata on rank zero."""
+    """Build global stack groups and deterministic face-authority metadata.
+
+    Parameters
+    ----------
+    mesh : dict
+        Global extruded native mesh.
+    n_ranks : int
+        Number of partition ranks used to assign vertical-face authority.
+
+    Returns
+    -------
+    dict[str, numpy.ndarray or int]
+        Cell/face group arrays, horizontal mask, face-authority ranks, and
+        group counts for broadcast to all ranks.
+    """
     cell_groups = spanwise_cell_groups(mesh)
     face_groups, horizontal_faces = spanwise_face_groups(mesh)
     offsets = ownership_ranges(int(mesh["n_cells"]), int(n_ranks))
@@ -68,9 +117,46 @@ def build_spanwise_projection_layout(mesh: dict, n_ranks: int) -> dict[str, np.n
 
 
 class SpanwiseInvariantProjector:
-    """Average cell fields and conservative face flux over exact z stacks."""
+    """Project partitioned FVM fields onto an exact spanwise-invariant state.
+
+    The projector averages cell-centred values within each x-y stack, zeros
+    spanwise velocity/flux, and averages vertical face fluxes using one
+    deterministic MPI authority per face group. Horizontal fluxes are set to
+    zero. It is intended for quasi-2-D extruded calculations.
+
+    Parameters
+    ----------
+    solver : FVMSolver
+        Initialized solver with serial or partitioned parallel context.
+    root_layout : dict or None
+        Global layout built by :func:`build_spanwise_projection_layout` on rank
+        zero. It is broadcast during construction.
+    """
 
     def __init__(self, solver, root_layout: dict | None):
+        """Build local cell/face maps from the rank-zero projection layout.
+
+        Parameters
+        ----------
+        solver : FVMSolver
+            Initialized serial or partitioned solver whose mesh and MPI
+            context supply the local indexing.
+        root_layout : dict or None
+            Global layout returned by :func:`build_spanwise_projection_layout`
+            on rank zero. It is broadcast to all ranks before local maps are
+            formed.
+
+        Raises
+        ------
+        ValueError
+            If the broadcast layout is missing or contains an incomplete
+            spanwise cell stack.
+
+        Side Effects
+        ------------
+        Allocates host-side group/count arrays and performs MPI broadcasts and
+        reductions; it does not mutate the solver's physical fields.
+        """
         layout = solver.parallel.bcast(root_layout, root=0)
         if not isinstance(layout, dict):
             raise ValueError("spanwise projection layout was not provided by rank zero")
@@ -146,6 +232,19 @@ class SpanwiseInvariantProjector:
         return np.asarray(self.parallel.global_sum(local)) / self.face_counts
 
     def __call__(self, solver) -> None:
+        """Apply the projection in place and record removed maxima.
+
+        Parameters
+        ----------
+        solver : FVMSolver
+            Solver whose owned fields and face fluxes are modified.
+
+        Side Effects
+        ------------
+        Mutates owned velocity, kinematic pressure, and volumetric face-flux
+        arrays; ``last_removed_maximum`` is updated with global L-infinity
+        changes for diagnostics.
+        """
         velocity_before = np.array(solver.velocity[: self.n_owned], copy=True)
         pressure_before = np.array(solver.kinematic_pressure[: self.n_owned], copy=True)
         flux_before = np.array(solver.volumetric_face_flux, copy=True)

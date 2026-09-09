@@ -86,12 +86,54 @@ class PanelKinematics(abc.ABC):
 
     @abc.abstractmethod
     def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
-        """Return the body pose at ``time + time_step_size``."""
+        """Return a new pose advanced by one physical time step.
+
+        Parameters
+        ----------
+        time : float
+            Start time of the step, in seconds.
+        time_step_size : float
+            Step size in seconds.
+        pose : BodyPose
+            Current complete pose.  Implementations must not mutate this
+            object; stateful models may update their own integration state.
+
+        Returns
+        -------
+        BodyPose
+            Pose at ``time + time_step_size``.  Translation is in metres,
+            linear velocity in m/s, angular velocity in rad/s, and rotation is
+            a dimensionless ``(3, 3)`` matrix.
+
+        Raises
+        ------
+        ValueError
+            If a model parameter or vector has an invalid shape or magnitude.
+        """
 
     def update(
         self, panel_solver, time: float, time_step_size: float, body_range: tuple[int, int]
     ) -> None:
-        """Advance state and apply one composed pose through ``panel_solver``."""
+        """Advance one body and apply its complete pose through the solver.
+
+        Parameters
+        ----------
+        panel_solver : PanelSolver-like
+            Object providing ``get_body_pose`` and ``apply_body_pose`` for the
+            panel range.
+        time : float
+            Start time in seconds.
+        time_step_size : float
+            Physical step size in seconds.
+        body_range : tuple[int, int]
+            Half-open active panel range ``(start, end)`` identifying the body.
+
+        Notes
+        -----
+        The solver's geometry and body-velocity fields are mutated exactly
+        once.  The kinematics model may mutate its own accumulated position or
+        angle; the supplied ``BodyPose`` is copied before it is returned.
+        """
         pose = panel_solver.get_body_pose(body_range)
         panel_solver.apply_body_pose(
             self.advance_pose(time, time_step_size, pose),
@@ -100,9 +142,15 @@ class PanelKinematics(abc.ABC):
 
 
 class StaticPanel(PanelKinematics):
-    """No-kinematics model."""
+    """No-kinematics model that preserves the incoming pose."""
 
     def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        """Return an independent copy of ``pose`` without motion.
+
+        ``time`` and ``time_step_size`` are accepted for protocol compatibility
+        and are not used.  The returned arrays are copied, so callers can
+        safely apply or modify the result without changing the input pose.
+        """
         # This must be a no-op rather than an identity reset: StaticPanel can
         # be placed in a CompositePanel alongside a translating or rotating
         # component.
@@ -110,15 +158,43 @@ class StaticPanel(PanelKinematics):
 
 
 class TranslatingPanel(PanelKinematics):
-    """Rigid translation with time-varying linear velocity."""
+    """Rigid translation with a constant or time-varying linear velocity.
+
+    ``velocity`` is sampled at both step endpoints and integrated with the
+    trapezoidal rule.  The accumulated displacement is stateful and is used as
+    the next pose translation.
+    """
 
     def __init__(
         self, velocity: VectorOrCallable, initial_displacement: VectorLike = (0.0, 0.0, 0.0)
     ):
+        """Create a translating body model.
+
+        Parameters
+        ----------
+        velocity : array_like, shape (3,) or callable
+            Linear velocity in m/s, or a function ``velocity(time)`` returning
+            that vector.
+        initial_displacement : array_like, shape (3,), default=(0, 0, 0)
+            Initial translation from the uploaded geometry in metres.  The
+            value is copied and the model's accumulated displacement is
+            subsequently mutated by :meth:`advance_pose`.
+
+        Raises
+        ------
+        ValueError
+            If the initial displacement or a callable result is not a 3-vector.
+        """
         self.velocity = velocity
         self.displacement = _to_vec3(initial_displacement, name="initial_displacement").copy()
 
     def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        """Integrate translation over one step and return the new pose.
+
+        The endpoint velocities are evaluated in m/s at ``time`` and
+        ``time + time_step_size``; displacement is advanced by their trapezoid
+        in m, and the returned pose stores the final velocity in m/s.
+        """
         v0 = _eval_vec3(self.velocity, time, name="velocity")
         v1 = _eval_vec3(self.velocity, time + time_step_size, name="velocity")
         self.displacement += 0.5 * (v0 + v1) * time_step_size
@@ -147,12 +223,37 @@ class RotatingPanel(PanelKinematics):
         rotation_centre: VectorLike = (0.0, 0.0, 0.0),
         initial_angle: float = 0.0,
     ):
+        """Create a rigid rotation model.
+
+        Parameters
+        ----------
+        axis : array_like, shape (3,)
+            Rotation axis; it is normalized internally and is dimensionless.
+        angular_speed : float or callable
+            Angular speed in rad/s, or ``angular_speed(time)`` in rad/s.
+        rotation_centre : array_like, shape (3,), default=(0, 0, 0)
+            Fixed reference-frame point about which geometry rotates, in m.
+        initial_angle : float, default=0.0
+            Initial right-hand-rule angle in radians.
+
+        Raises
+        ------
+        ValueError
+            If ``axis`` or ``rotation_centre`` is not a 3-vector, or the axis
+            is zero.
+        """
         self.axis = _to_vec3(axis, name="axis")
         self.angular_speed = angular_speed
         self.rotation_centre = _to_vec3(rotation_centre, name="rotation_centre")
         self.angle = float(initial_angle)
 
     def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        """Integrate angular speed and return the rotated body pose.
+
+        The angle uses a trapezoidal update in radians.  The returned pose
+        contains the rotation matrix, the final angular velocity in rad/s, and
+        the configured rotation centre; the input pose is not mutated.
+        """
         initial_angular_speed = _eval_scalar(self.angular_speed, time)
         final_angular_speed = _eval_scalar(self.angular_speed, time + time_step_size)
         self.angle += 0.5 * (initial_angular_speed + final_angular_speed) * time_step_size
@@ -167,7 +268,11 @@ class RotatingPanel(PanelKinematics):
 
 
 class PitchingPanel(RotatingPanel):
-    """Sinusoidal pitching around a fixed axis/rotation_centre."""
+    """Sinusoidal pitching around a fixed axis and rotation centre.
+
+    The angle is ``bias + amplitude*sin(frequency*time + phase)`` in radians;
+    therefore ``frequency`` is angular frequency in rad/s.
+    """
 
     def __init__(
         self,
@@ -178,6 +283,23 @@ class PitchingPanel(RotatingPanel):
         axis: VectorLike = (0.0, 1.0, 0.0),
         rotation_centre: VectorLike = (0.0, 0.0, 0.0),
     ):
+        """Create a sinusoidal pitching model.
+
+        Parameters
+        ----------
+        amplitude : float
+            Angular amplitude in radians.
+        frequency : float
+            Angular frequency in rad/s.
+        phase : float, default=0.0
+            Initial phase in radians.
+        bias : float, default=0.0
+            Constant angular offset in radians.
+        axis : array_like, shape (3,), default=(0, 1, 0)
+            Pitch axis, normalized internally.
+        rotation_centre : array_like, shape (3,), default=(0, 0, 0)
+            Rotation centre in metres.
+        """
         self.amplitude = float(amplitude)
         self.frequency = float(frequency)
         self.phase = float(phase)
@@ -196,7 +318,11 @@ class PitchingPanel(RotatingPanel):
 
 
 class HeavingPanel(TranslatingPanel):
-    """Sinusoidal heaving translation along a specified direction."""
+    """Sinusoidal heaving translation along a specified direction.
+
+    The displacement is ``amplitude*sin(frequency*time + phase)*direction``;
+    amplitude is in metres and frequency is in rad/s.
+    """
 
     def __init__(
         self,
@@ -205,6 +331,24 @@ class HeavingPanel(TranslatingPanel):
         phase: float = 0.0,
         direction: VectorLike = (0.0, 0.0, 1.0),
     ):
+        """Create a sinusoidal heave model.
+
+        Parameters
+        ----------
+        amplitude : float
+            Displacement amplitude in metres.
+        frequency : float
+            Angular frequency in rad/s.
+        phase : float, default=0.0
+            Initial phase in radians.
+        direction : array_like, shape (3,), default=(0, 0, 1)
+            Non-zero translation direction; it is normalized internally.
+
+        Raises
+        ------
+        ValueError
+            If ``direction`` is not a non-zero 3-vector.
+        """
         direction_vec = _to_vec3(direction, name="direction")
         norm = np.linalg.norm(direction_vec)
         if norm == 0.0:
@@ -226,17 +370,33 @@ class HeavingPanel(TranslatingPanel):
 
 
 class ManeuverPanel(PanelKinematics):
-    """Combined translation and rotation composed into one rigid pose."""
+    """Compose optional translation and rotation models into one pose update."""
 
     def __init__(
         self,
         translation: TranslatingPanel | None = None,
         rotation: RotatingPanel | None = None,
     ):
+        """Create a combined rigid-body maneuver.
+
+        Parameters
+        ----------
+        translation : TranslatingPanel, optional
+            Translation model applied first.
+        rotation : RotatingPanel, optional
+            Rotation model applied second.
+
+        Notes
+        -----
+        The component objects are retained, so their accumulated displacement
+        and angle persist across steps.  At least one component is normally
+        expected; with both omitted the pose is simply copied.
+        """
         self.translation = translation
         self.rotation = rotation
 
     def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        """Apply translation then rotation and return the composed pose."""
         result = pose
         if self.translation is not None:
             result = self.translation.advance_pose(time, time_step_size, result)
@@ -246,12 +406,21 @@ class ManeuverPanel(PanelKinematics):
 
 
 class CompositePanel(PanelKinematics):
-    """Compose a sequence of pose-producing kinematics models in order."""
+    """Compose an ordered sequence of pose-producing kinematics models."""
 
     def __init__(self, components: Iterable[PanelKinematics]):
+        """Create a composite model.
+
+        Parameters
+        ----------
+        components : iterable of PanelKinematics
+            Models applied in the supplied order.  The iterable is consumed
+            immediately and stored as a list; component state remains shared.
+        """
         self.components = list(components)
 
     def advance_pose(self, time: float, time_step_size: float, pose: BodyPose) -> BodyPose:
+        """Apply every component in order and return the resulting pose."""
         result = pose
         for component in self.components:
             result = component.advance_pose(time, time_step_size, result)
@@ -259,7 +428,7 @@ class CompositePanel(PanelKinematics):
 
 
 class RampedRotatingPanel(RotatingPanel):
-    """Rotation whose angular speed ramps linearly from zero."""
+    """Rotation whose angular speed ramps linearly from zero to a target."""
 
     def __init__(
         self,
@@ -268,6 +437,20 @@ class RampedRotatingPanel(RotatingPanel):
         ramp_duration: float,
         rotation_centre: VectorLike = (0.0, 0.0, 0.0),
     ):
+        """Create a linearly ramped rotation model.
+
+        Parameters
+        ----------
+        axis : array_like, shape (3,)
+            Rotation axis, normalized internally.
+        target_angular_speed : float
+            Final angular speed in rad/s.
+        ramp_duration : float
+            Time to reach the target in seconds.  Values at or below zero are
+            clamped internally to a small positive duration.
+        rotation_centre : array_like, shape (3,), default=(0, 0, 0)
+            Rotation centre in metres.
+        """
         self.target_angular_speed = float(target_angular_speed)
         self.ramp_duration = max(float(ramp_duration), 1e-12)
 

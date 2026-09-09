@@ -270,6 +270,37 @@ class CellPartition:
 
     @classmethod
     def from_mesh_data(cls, mesh_data, rank: int, size: int) -> CellPartition:
+        """Build contiguous owned/ghost maps and the corresponding halo plan.
+
+        Parameters
+        ----------
+        mesh_data : Mapping[str, object]
+            Complete native FVM mesh with zero-based global owner/neighbour
+            cell IDs.
+        rank : int
+            Zero-based MPI rank to materialize.
+        size : int
+            Positive communicator size; ``rank`` must be smaller than it.
+
+        Returns
+        -------
+        CellPartition
+            Local metadata with owned cells first and ghost cells after them.
+            Face arrays use local indices while the ID arrays preserve global
+            identity for PETSc, diagnostics, and restart.
+
+        Raises
+        ------
+        ValueError
+            If the rank/size or mesh partition contract is invalid.
+        OverflowError
+            If global cell or face counts exceed the int32 indexing contract.
+
+        Notes
+        -----
+        Construction is local and does not communicate. The returned
+        :attr:`halo` performs MPI communication when explicitly exchanged.
+        """
         if not 0 <= rank < size:
             raise ValueError(f"rank {rank} outside communicator size {size}")
         n_cells = int(mesh_data["n_cells"])

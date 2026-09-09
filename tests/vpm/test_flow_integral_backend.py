@@ -154,3 +154,37 @@ def test_live_linear_impulse_does_not_require_energy_history_or_quadratic_diagno
     np.testing.assert_array_equal(VPMSolver.total_linear_impulse.fget(state), [0.0, 0.0, 6.0])
     state.particle_vortex_strength *= 2
     np.testing.assert_array_equal(VPMSolver.total_linear_impulse.fget(state), [0.0, 0.0, 12.0])
+
+
+def test_elongating_wake_keeps_transverse_diagnostic_grid_sizes(monkeypatch):
+    from source.solvers.vpm.numerics import fourier_integrals
+
+    evaluator = object.__new__(ParticleFieldEvaluation)
+    evaluator._fourier_grid = None
+    grids = []
+
+    def measure(*args, grid, **kwargs):
+        grids.append(grid)
+        return SimpleNamespace(total_kinetic_energy=1.0)
+
+    monkeypatch.setattr(fourier_integrals, "gaussian_fourier_integrals", measure)
+    strength = np.array([[0.0, 1.0, 0.0], [0.0, -1.0, 0.0]])
+    transverse_shape = None
+    for length in np.geomspace(0.2, 20.0, 30):
+        position = np.array([[0.0, -0.1, -0.05], [length, 0.1, 0.05]])
+        evaluator._fourier_integrals_on_persistent_grid(
+            position,
+            strength,
+            np.array([0.1, 0.2]),
+            np.full(2, 0.001),
+            np.full(2, 0.01),
+        )
+        grid = evaluator._fourier_grid
+        if transverse_shape is None:
+            transverse_shape = grid.shape[1:]
+        assert grid.shape[1:] == transverse_shape
+        coordinates = (position - grid.origin) / grid.spacing
+        assert np.all(coordinates >= 1.0)
+        assert np.all(coordinates <= np.asarray(grid.shape) - 2.0)
+
+    assert grids[-1].shape[0] > grids[0].shape[0]

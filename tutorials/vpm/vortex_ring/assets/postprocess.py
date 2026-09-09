@@ -10,9 +10,7 @@ from __future__ import annotations
 
 import argparse
 import glob
-import json
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -35,13 +33,14 @@ from ..assets.ring_metrics import (
     load_ring_speed,
     load_sampled_ring_speed,
     load_sampled_ring_data,
+    load_metadata,
     plot_variants,
     saffman_valid_time_limit,
     saffman_speed,
 )
 
 VARIANTS = ("dns_direct", "dns_transposed", "dns_mixed", "les_transposed")
-ALLOWED_RUN_STATUSES = {"horizon_reached", "instability_detected"}
+ALLOWED_RUN_STATUSES = {"completed", "resolution_lost", "wall_time_limit"}
 INITIAL_HEALTH_COLUMNS = {
     "strain_increment_infinity",
     "strain_increment_spectral",
@@ -59,28 +58,38 @@ def _expected_backup_steps(completed_steps: int, interval_steps: int) -> set[int
     return set(range(interval_steps, completed_steps + 1, interval_steps))
 
 
-def _metadata(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
 def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
-    """Check the parameters and measured instability time for one case."""
+    """Check one case against the universal solver-owned VPM metadata."""
     failures: list[str] = []
-    metadata_path = SAMPLES_DIR / name / "run_metadata.json"
-    metadata = _metadata(metadata_path)
+    metadata = load_metadata(name, SAMPLES_DIR)
     if not metadata:
-        return {}, set(), [f"{name}: missing or unreadable run_metadata.json"]
+        path = SOLUTION_DIR / name / "vpm_metadata.json"
+        return {}, set(), [f"{name}: missing or unreadable {path}"]
 
     try:
-        requested_steps = int(metadata["requested_steps"])
-        completed_steps = int(metadata["completed_steps"])
-        completed_time = float(metadata["final_time"])
-        interval_steps = int(metadata["backup_interval_steps"])
+        configuration = metadata["configuration"]
+        numerics = configuration["numerics"]
+        run = configuration["run"]
+        state = metadata["state"]
+        requested_steps = int(run["steps"])
+        completed_steps = int(state["step"])
+        completed_time = float(state["time"])
+        interval_steps = int(configuration["backup"]["interval_steps"])
+        status = str(metadata["lifecycle"]["status"])
     except (KeyError, TypeError, ValueError) as error:
         return metadata, set(), [f"{name}: invalid run metadata ({error})"]
+
+    run_data = {
+        "status": status,
+        "requested_steps": requested_steps,
+        "completed_steps": completed_steps,
+        "final_time": completed_time,
+        "backup_interval_steps": interval_steps,
+        "initial_n_particles_total": state.get("initial_n_particles_total"),
+        "final_n_particles_total": state.get("n_particles_total"),
+        "induction_backend": numerics.get("induction", {}).get("method"),
+        "stretching_scheme": numerics.get("induction", {}).get("stretching_scheme"),
+    }
 
     try:
         expected_steps = _expected_backup_steps(completed_steps, interval_steps)
@@ -88,55 +97,45 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
         return metadata, set(), [f"{name}: invalid backup cadence ({error})"]
 
     expected = {
-        "schema_version": 4,
-        "variant": name,
-        "integrator": "SSPRK3",
-        "induction_backend": "TREECODE",
-        "stretching_scheme": (
-            "DIRECT" if name == "dns_direct" else "MIXED" if name == "dns_mixed" else "TRANSPOSED"
-        ),
-        "viscous_scheme": "CS",
-        "stabilization": "DISABLED",
-        "health_limit_action": "STOP",
-        "experiment": "stretching_instability_onset",
-        "maximum_lagrangian_cfl": 1.0,
-        "maximum_vorticity_divergence_error": 0.12,
-        "maximum_vortex_misalignment_degrees": 25.0,
+        "solver": "VPM",
+        "case_name": name,
+        "schema_version": 1,
     }
     for key, value in expected.items():
         if metadata.get(key) != value:
             failures.append(f"{name}: {key} is {metadata.get(key)!r}; expected {value!r}")
+    expected_scheme = (
+        "DIRECT" if name == "dns_direct" else "MIXED" if name == "dns_mixed" else "TRANSPOSED"
+    )
+    expected_numerics = {
+        "integrator": (numerics.get("integrator", {}).get("name"), "SSPRK3"),
+        "induction backend": (numerics.get("induction", {}).get("method"), "TREECODE"),
+        "stretching scheme": (
+            numerics.get("induction", {}).get("stretching_scheme"),
+            expected_scheme,
+        ),
+        "viscous scheme": (numerics.get("viscous", {}).get("scheme"), "CS"),
+        "health-limit action": (run.get("health_limit_action"), "STOP"),
+    }
+    for label, (actual, expected_value) in expected_numerics.items():
+        if actual != expected_value:
+            failures.append(f"{name}: {label} is {actual!r}; expected {expected_value!r}")
     expected_turbulence = "LES_SMAGORINSKY" if name == "les_transposed" else "DNS"
-    if metadata.get("turbulence_model") != expected_turbulence:
+    turbulence_model = numerics.get("turbulence", {}).get("model")
+    if turbulence_model != expected_turbulence:
         failures.append(
-            f"{name}: turbulence_model is {metadata.get('turbulence_model')!r}; "
-            f"expected {expected_turbulence!r}"
+            f"{name}: turbulence model is {turbulence_model!r}; expected {expected_turbulence!r}"
         )
-    status = metadata.get("status")
     if status not in ALLOWED_RUN_STATUSES:
         failures.append(f"{name}: unsupported run status {status!r}")
     if completed_steps < 0 or requested_steps < 0 or completed_steps > requested_steps:
         failures.append(
             f"{name}: invalid progress completed={completed_steps}, requested={requested_steps}"
         )
-    if status == "horizon_reached" and (
-        not metadata.get("completed") or completed_steps != requested_steps
-    ):
-        failures.append(f"{name}: horizon_reached status does not reach the requested horizon")
-    if status == "instability_detected":
-        if metadata.get("completed") or completed_steps >= requested_steps:
-            failures.append(f"{name}: instability_detected status does not describe an early stop")
-        if not metadata.get("instability_reason"):
-            failures.append(f"{name}: instability_detected status has no reason")
-        if metadata.get("instability_step") != completed_steps:
-            failures.append(f"{name}: instability_step does not match the last step")
-        if not np.isclose(
-            float(metadata.get("instability_time", -1.0)),
-            completed_time,
-            rtol=0.0,
-            atol=max(1.0e-12, abs(completed_time) * 1.0e-10),
-        ):
-            failures.append(f"{name}: instability_time does not match the last time")
+    if status == "completed" and completed_steps != requested_steps:
+        failures.append(f"{name}: completed status does not reach the requested horizon")
+    if status == "resolution_lost" and completed_steps >= requested_steps:
+        failures.append(f"{name}: resolution_lost status does not describe an early stop")
     for csv_name in ("flow_integrals.csv", "ring_diagnostics.csv", "ring_modes.csv"):
         try:
             data = pd.read_csv(SAMPLES_DIR / name / csv_name)
@@ -159,7 +158,7 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
             atol=max(1.0e-12, abs(completed_time) * 1.0e-10),
         ):
             failures.append(f"{name}: {csv_name} does not end at the measured instability time")
-    return metadata, expected_steps, failures
+    return run_data, expected_steps, failures
 
 
 def _readable_finite_csv(path: Path) -> bool:
@@ -308,13 +307,25 @@ def validate(pre_plot: bool) -> int:
     return 0
 
 
-def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
-    """Summarize the measured instability times."""
+def build_summary(samples_dir: Path, figures_dir: Path) -> dict:
+    """Summarize measured terminal times without writing tutorial metadata."""
     runs = {}
     for variant in plot_variants(samples_dir):
         variant_samples = samples_dir / variant
-        metadata = _metadata(variant_samples / "run_metadata.json")
-        if metadata.get("status") == "running":
+        raw = load_metadata(variant, samples_dir)
+        configuration = raw.get("configuration", {})
+        numerics = configuration.get("numerics", {})
+        state = raw.get("state", {})
+        metadata = {
+            "status": raw.get("lifecycle", {}).get("status", "missing"),
+            "completed_steps": state.get("step"),
+            "requested_steps": configuration.get("run", {}).get("steps"),
+            "final_time": state.get("time"),
+            "final_n_particles_total": state.get("n_particles_total"),
+            "induction_backend": numerics.get("induction", {}).get("method"),
+            "stretching_scheme": numerics.get("induction", {}).get("stretching_scheme"),
+        }
+        if metadata["status"] == "created":
             observed_rows = []
             for csv_name in ("flow_integrals.csv", "ring_diagnostics.csv"):
                 try:
@@ -327,7 +338,7 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
                 latest = max(observed_rows, key=lambda row: int(row["step"]))
                 particle_count = latest.get("n_particles_total")
                 metadata = dict(metadata)
-                metadata.setdefault("status", "partial")
+                metadata["status"] = "partial"
                 metadata["completed_steps"] = int(latest["step"])
                 metadata["final_time"] = float(latest["time"])
                 metadata["final_n_particles_total"] = (
@@ -341,9 +352,6 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
             "n_particles_total": metadata.get("final_n_particles_total"),
             "induction_backend": metadata.get("induction_backend"),
             "stretching_scheme": metadata.get("stretching_scheme"),
-            "instability_step": metadata.get("instability_step"),
-            "instability_time": metadata.get("instability_time"),
-            "instability_reason": metadata.get("instability_reason"),
         }
     ranked = sorted(
         (
@@ -354,30 +362,16 @@ def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
         reverse=True,
     )
     return {
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "runs": runs,
         "stability_ranking": [name for _, name in ranked],
         "longest_sustained_variant": ranked[0][1]
         if len(ranked) == 1 or (len(ranked) > 1 and ranked[0][0] > ranked[1][0])
         else None,
-        "longest_sustained_variants": [name for time, name in ranked if time == ranked[0][0]],
+        "longest_sustained_variants": (
+            [name for time, name in ranked if time == ranked[0][0]] if ranked else []
+        ),
         "figures": sorted(path.name for path in figures_dir.glob("*.pdf")),
     }
-
-
-def write_manifest() -> int:
-    manifest = build_manifest(SAMPLES_DIR, FIGURES_DIR)
-    output = FIGURES_DIR / "postprocessing_manifest.json"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(output)
-    counts: dict[str, int] = {}
-    for run in manifest["runs"].values():
-        status = run["status"]
-        counts[status] = counts.get(status, 0) + 1
-    print(f"  [status] {counts}; wrote {output}")
-    return 0
 
 
 def main() -> int:
@@ -388,10 +382,7 @@ def main() -> int:
         action="store_true",
         help="validate available plotting inputs without requiring a complete campaign",
     )
-    parser.add_argument("--manifest", action="store_true", help="write JSON status manifest")
     args = parser.parse_args()
-    if args.manifest:
-        return write_manifest()
     if args.available:
         return validate_available(pre_plot=args.pre_plot)
     return validate(pre_plot=args.pre_plot)

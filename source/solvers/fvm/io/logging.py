@@ -302,6 +302,29 @@ class Logging:
         filename: str | None = None,
         console: bool | None = None,
     ) -> None:
+        """Open the FVM console/file sink for one case.
+
+        Parameters
+        ----------
+        case_dir : str or pathlib.Path
+            Case root used to resolve the default ``solution`` directory.
+        solution_dir : str or pathlib.Path or None, default=None
+            Explicit log directory; otherwise ``case_dir/solution``.
+        config : LoggingConfig or None, default=None
+            Formatting, filename, console, and cadence policy.
+        enabled : bool, default=True
+            Disable all output while retaining a compatible object for worker
+            ranks.
+        filename : str or None, default=None
+            Log filename; the configured/default name is used when omitted.
+        console : bool or None, default=None
+            Whether to mirror records to stdout. ``None`` follows ``config``.
+
+        Side Effects
+        ------------
+        Creates the configured output directory/file on the enabled owner
+        rank. The instance owns the opened stream until :meth:`close`.
+        """
         if console is None:
             console = True if config is None else bool(config.console)
         if filename is None:
@@ -897,6 +920,12 @@ class Timer:
     _legacy = threading.local()
 
     def __init__(self) -> None:
+        """Create an independent named phase-timer store.
+
+        The instance starts empty and has no wall-clock side effects until a
+        phase is started. The class-level legacy form remains available for
+        older call sites that use ``Timer.start("phase")``.
+        """
         self._timers: dict[str, list[float]] = {}
 
     @classmethod

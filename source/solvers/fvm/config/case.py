@@ -8,11 +8,15 @@ available as the low-level configuration used by the numerical kernels.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 import math
 from numbers import Real
 from pathlib import Path
-from typing import Any
+from typing import Protocol, TypeAlias
+
+import numpy as np
+from numpy.typing import NDArray
 
 from .scheduling import RunSchedule
 from .types import (
@@ -33,12 +37,51 @@ from .types import (
     TurbulenceConfig,
 )
 
+VelocityInput: TypeAlias = tuple[float, float, float] | list[float] | NDArray[np.float64]
+MeshMapping: TypeAlias = dict[str, object]
+
+
+class _BuildableMesh(Protocol):
+    """Structural mesh builder accepted by :class:`FVMCase`."""
+
+    def build(self) -> MeshMapping | tuple[MeshMapping, object]:
+        """Return native mesh data, optionally paired with a build report."""
+
+        ...
+
+
+MeshSource: TypeAlias = (
+    str
+    | Path
+    | MeshMapping
+    | _BuildableMesh
+    | Callable[[], MeshMapping | tuple[MeshMapping, object]]
+)
+
 
 @dataclass(frozen=True, slots=True)
 class InitialFields:
-    """Interior initial fields, before boundary ghost reconstruction."""
+    """Initial cell-centred FVM fields before boundary reconstruction.
 
-    velocity: Any = (0.0, 0.0, 0.0)
+    Parameters
+    ----------
+    velocity : tuple[float, float, float] or numpy.ndarray
+        Uniform velocity in m/s with shape ``(3,)`` or one vector per fluid
+        cell with shape ``(n_cells, 3)``. The cell count is checked after the
+        mesh is materialized. Inputs are copied when stored.
+    kinematic_pressure : float
+        Uniform initial ``p/rho`` in m²/s². The solver reconstructs pressure
+        boundary values from :class:`BoundaryConfig` after accepting the
+        interior field.
+
+    Notes
+    -----
+    Ghost cells and face fluxes are not accepted here. ``FVMSolver`` creates
+    them from the mesh and boundary conditions and initializes all time-history
+    levels consistently.
+    """
+
+    velocity: VelocityInput = (0.0, 0.0, 0.0)
     kinematic_pressure: float = 0.0
 
     def __post_init__(self) -> None:
@@ -63,9 +106,18 @@ class InitialFields:
 
 @dataclass(frozen=True, slots=True)
 class Samplers:
-    """Immutable sampler specifications owned by one FVM case."""
+    """Immutable collection of FVM sampler objects owned by one case.
 
-    samples: tuple[Any, ...] = ()
+    Parameters
+    ----------
+    samples : tuple[object, ...]
+        Samplers implementing a callable ``sample(solver)`` method. The tuple
+        is copied so later mutation of the caller's list cannot change case
+        configuration. Individual sampler output paths and schedules remain
+        owned by the sampler implementation.
+    """
+
+    samples: tuple[object, ...] = ()
 
     def __post_init__(self) -> None:
         samples = tuple(self.samples)
@@ -77,7 +129,28 @@ class Samplers:
 
 @dataclass(frozen=True, slots=True)
 class Numerics:
-    """Resolved FVM numerical and execution controls."""
+    """Grouped immutable numerical controls for an FVM case.
+
+    Attributes
+    ----------
+    transport : TransportConfig
+        Density and molecular kinematic viscosity in SI units.
+    schemes : DiscretizationConfig
+        Convection, gradient, and time-discretization choices.
+    linear : LinearSolverConfig
+        Momentum/pressure solver names, tolerances, and failure policy.
+    coupling : PimpleControl
+        SIMPLE/PISO/PIMPLE correction counts, relaxation, and acceptance
+        tolerances.
+    execution : ComputeConfig
+        Operator, linear-algebra, MPI, and output execution backends.
+    turbulence : TurbulenceConfig or None
+        Optional LES closure. ``None`` is laminar/no explicit SGS model.
+    acceptance : RunAcceptanceLimits
+        Warning/abort thresholds evaluated on candidate states.
+    logging : LoggingConfig
+        Console, file, and logging cadence policy.
+    """
 
     transport: TransportConfig = field(default_factory=TransportConfig)
     schemes: DiscretizationConfig = field(default_factory=DiscretizationConfig)
@@ -107,7 +180,22 @@ class Numerics:
 
 @dataclass(frozen=True, slots=True)
 class RunPlan:
-    """Finite physical-time plan for an FVM run."""
+    """Finite physical-time plan for an FVM run.
+
+    Attributes
+    ----------
+    start_time, end_time : float
+        Physical bounds in seconds. `end_time` must exceed `start_time`.
+    time_step_size : float
+        Initial/fixed step size in seconds. The solver owns the evolving value
+        when an adaptive maximum-Courant policy is configured.
+    output_schedule : RunSchedule
+        Accepted-step/time cadence for visualization output.
+    adjustment : MaximumCourantTimeStep or None
+        Optional solver-owned maximum-Courant step selection.
+    initial_output, final_output : bool
+        Whether framework-owned initial and terminal visualization events run.
+    """
 
     end_time: float = 1.0
     time_step_size: float = 0.01
@@ -139,10 +227,34 @@ class RunPlan:
 
 @dataclass(frozen=True, slots=True)
 class FVMCase:
-    """Complete immutable construction object for one FVM simulation."""
+    """Complete immutable construction object for one standalone FVM run.
+
+    Parameters
+    ----------
+    name : str
+        Stable case name used in output filenames and solver metadata.
+    mesh : MeshSource
+        Native mesh dictionary, path to a supported saved mesh, or callable
+        mesher returning one. Mesh coordinates use metres; the native topology
+        contract is described in :mod:`source.solvers.fvm.mesh.geometry`.
+    directory : str or pathlib.Path, default='.'
+        Case root for solutions, samples, logs, and solver metadata.
+    mesh_quality, numerics, boundaries, initial_conditions, run, output,
+    samplers, backup : corresponding configuration objects
+        Immutable case-owned policies. Boundary values are m/s, m²/s², m³/s,
+        or m²/s according to their field; see their class docstrings.
+    cores : int, default=1
+        Requested execution size for legacy/coupled setup materialization.
+
+    Notes
+    -----
+    Construction validates types and scalar ranges but does not allocate the
+    solver mesh or device fields. :class:`FVMSolver` materializes the mesh and
+    converts this case to the low-level :class:`FVMSetup` exactly once.
+    """
 
     name: str
-    mesh: Any
+    mesh: MeshSource
     directory: str | Path = "."
     mesh_quality: MeshQualityConfig = field(default_factory=MeshQualityConfig)
     numerics: Numerics = field(default_factory=Numerics)
@@ -179,7 +291,16 @@ class FVMCase:
         object.__setattr__(self, "boundaries", tuple(self.boundaries))
 
     def to_setup(self) -> FVMSetup:
-        """Materialize the low-level setup consumed by the numerical core."""
+        """Materialize a mutable low-level setup for the numerical core.
+
+        Returns
+        -------
+        FVMSetup
+            A new configuration object containing copied case policy values,
+            legacy field names, and the time/output controls consumed by the
+            solver factory. It performs no mesh I/O and does not mutate this
+            immutable case.
+        """
         fields = self.initial_conditions
         return FVMSetup(
             case_name=self.name,

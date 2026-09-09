@@ -17,7 +17,7 @@ def _load():
     if _theme is None:
         from openonda import plotting as _theme
 
-        _theme.set_style()
+        _theme.set_thesis_style()
     return _theme
 
 
@@ -36,9 +36,9 @@ def cm() -> float:
     return _load().CM
 
 
-def save_fig(fig, path, *, figure_format: str = "png", dpi: int = 300) -> None:
+def save_fig(fig, path, *, figure_format: str = "png", dpi: int | None = None) -> None:
     """Save a figure through the shared OpenONDA theme."""
-    _load().save_fig(fig, path, figure_format=figure_format, dpi=dpi)
+    _load().save_fig(fig, path, figure_format=figure_format, dpi=dpi, bbox_inches=None)
 
 
 def export_formats() -> tuple[str, ...]:

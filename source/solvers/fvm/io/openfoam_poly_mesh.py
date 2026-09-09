@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-from typing import Any
 
 import numpy as np
 
@@ -47,12 +46,12 @@ def _format_point(point: np.ndarray) -> str:
     return "(" + " ".join(format(float(value), ".17g") for value in point) + ")"
 
 
-def _format_face(face: Any) -> str:
+def _format_face(face: object) -> str:
     values = np.asarray(face, dtype=np.int64)
     return f"{len(values)}(" + " ".join(str(int(value)) for value in values) + ")"
 
 
-def _write_boundary(mesh_data: dict[str, Any]) -> str:
+def _write_boundary(mesh_data: dict[str, object]) -> str:
     patches = mesh_data["boundary"]
     lines = [
         "/*--------------------------------*- C++ -*----------------------------------*\\",
@@ -79,13 +78,32 @@ def _write_boundary(mesh_data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def write_poly_mesh(mesh_data: dict[str, Any], directory: str | Path) -> Path:
+def write_poly_mesh(mesh_data: dict[str, object], directory: str | Path) -> Path:
     """Write ``mesh_data`` to an ASCII ``constant/polyMesh`` directory.
 
     ``directory`` is the polyMesh directory itself. Internal faces are sorted
     by owner then neighbour for OpenFOAM's upper-triangular addressing. Cell
     ids, geometric connectivity, boundary ranges and the input mesh are
     preserved. Reversing an owner/neighbour pair also reverses its face.
+
+    Parameters
+    ----------
+    mesh_data : dict[str, object]
+        Native mesh mapping with vertex coordinates, polygon faces, owner/
+        neighbour indices, and boundary patch ranges. Coordinates use m; areas
+        and cell geometry are not written.
+    directory : str or pathlib.Path
+        Destination ``constant/polyMesh`` directory. It is created when absent.
+
+    Returns
+    -------
+    pathlib.Path
+        The created polyMesh directory.
+
+    Raises
+    ------
+    ValueError
+        If native topology validation fails.
     """
     validate_topology(mesh_data)
     destination = Path(directory)
@@ -194,8 +212,29 @@ def _read_faces(path: Path) -> list[np.ndarray]:
     return result
 
 
-def read_poly_mesh(directory: str | Path) -> dict[str, Any]:
-    """Read the files produced by :func:`write_poly_mesh` into native data."""
+def read_poly_mesh(directory: str | Path) -> dict[str, object]:
+    """Read an ASCII OpenFOAM ``polyMesh`` directory into native data.
+
+    Parameters
+    ----------
+    directory : str or pathlib.Path
+        Directory containing ``points``, ``faces``, ``owner``, ``neighbour``,
+        and ``boundary`` files.
+
+    Returns
+    -------
+    dict[str, object]
+        Native topology mapping with coordinates in m and zero-based int32
+        connectivity.
+
+    Raises
+    ------
+    ValueError
+        If any list is malformed, counts disagree, or topology validation
+        fails.
+    FileNotFoundError
+        If a required polyMesh file is missing.
+    """
     source = Path(directory)
     points = _read_points(source / "points")
     faces = _read_faces(source / "faces")
@@ -212,7 +251,7 @@ def read_poly_mesh(directory: str | Path) -> dict[str, Any]:
             raise ValueError("OpenFOAM neighbour list has non-trailing boundary entries")
         neighbours = neighbours[:first_boundary]
     boundary_tokens = _tokens(source / "boundary")
-    patches: list[dict[str, Any]] = []
+    patches: list[dict[str, object]] = []
     index = boundary_tokens.index("(") + 1
     while index < len(boundary_tokens) and boundary_tokens[index] != ")":
         name = boundary_tokens[index]
@@ -234,7 +273,7 @@ def read_poly_mesh(directory: str | Path) -> dict[str, Any]:
             }
         )
         index = end + 1
-    mesh_data: dict[str, Any] = {
+    mesh_data: dict[str, object] = {
         "vertex_position": points,
         "faces": faces,
         "owners": owners,

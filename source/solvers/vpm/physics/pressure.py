@@ -17,11 +17,11 @@ Rearranging:
 Three-Term Decomposition
 ------------------------
 1. TEMPORAL TERM (∂u/∂t) - Analytical sum over particles:
-   ∂u/∂t = Σᵢ [ -(∇uᵢ)·vᵢ + K(x, xᵢ, dαᵢ/dt) ]
+   ∂u/∂t = Σᵢ [ -(∇uᵢ)·vᵢ + K(x, xᵢ, dGammaᵢ/dt) ]
 
    - First term: Motion contribution from particle advection
-   - Second term: Biot-Savart velocity induced by stretching rate dαᵢ/dt
-   - Stretching rate: dαᵢ/dt = (∇u)ᵀ · αᵢ (transpose mode)
+   - Second term: Biot-Savart velocity induced by stretching rate dGammaᵢ/dt
+   - Stretching rate: dGammaᵢ/dt = (∇u)ᵀ · Gammaᵢ (transpose mode)
 
 2. ADVECTIVE TERM ((u·∇)u) - Field operation:
    Computed from total velocity u and velocity gradient ∇u at each point.
@@ -138,7 +138,7 @@ class PressurePhysics(PhysicsBase):
         # Pressure gradient output field
         self.pressure_gradient = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))
 
-        # Stretching rate temporary field (dα/dt for each particle)
+        # Stretching rate temporary field (dGamma/dt for each particle)
         self.dalpha_dt_field = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))
 
         # Material derivative of each particle's core radius.  The temporal
@@ -743,7 +743,7 @@ class PressurePhysics(PhysicsBase):
         # allocations on Vulkan/Metal.
         self._upload_vector_array(target_position, self.pressure_target_position, M)
 
-        # Compute stretching rate: dα/dt = (∇u)ᵀ · α on GPU
+        # Compute stretching rate: dGamma/dt = (∇u)ᵀ · Gamma on GPU
         self._compute_stretching_rate_kernel(
             particles.vortex_strength, particles.velocity_gradient, self.dalpha_dt_field, N
         )
@@ -791,22 +791,22 @@ class PressurePhysics(PhysicsBase):
         dalpha_dt_out: ti.template(),  # type: ignore
         N: ti.i32,  # type: ignore
     ):
-        """Compute dα/dt = (∇u)ᵀ · α using pre-computed velocity gradients.
+        """Compute dGamma/dt = (∇u)ᵀ · Gamma using pre-computed gradients.
 
-        The transpose formulation (∇u)ᵀ · α conserves vortex strength better than
-        the classical (∇u) · α formulation.
+        The transpose formulation (∇u)ᵀ · Gamma conserves particle strength
+        better than the classical (∇u) · Gamma formulation.
         """
         for i in range(N):
             alpha_i = vortex_strength[i]
             grad_u_i = velocity_gradient[i]
 
-            # Compute (∇u)ᵀ · α = J^T * α
+            # Compute (∇u)ᵀ · Gamma = J^T * Gamma
             # velocity_gradient[a, b] = ∂u_a/∂x_b
             # (velocity_gradient^T)[a, b] = ∂u_b/∂x_a
             dalpha = ti.Vector([0.0, 0.0, 0.0])
             for a in ti.static(range(3)):
                 for b in ti.static(range(3)):
-                    # (J^T)_{ab} * alpha_b = velocity_gradient[b,a] * alpha_b
+                    # (J^T)_{ab} * Gamma_b = velocity_gradient[b,a] * Gamma_b
                     dalpha[a] += grad_u_i[b, a] * alpha_i[b]
 
             dalpha_dt_out[i] = dalpha
@@ -860,7 +860,7 @@ class PressurePhysics(PhysicsBase):
         Compute temporal term ∂u/∂t at target position (GPU kernel).
 
         For each target m, sums contributions from all particles:
-            du/dt = Σᵢ [ -(∇uᵢ)·vᵢ + K(x, xᵢ, dαᵢ/dt) ]
+            du/dt = Σᵢ [ -(∇uᵢ)·vᵢ + K(x, xᵢ, dGammaᵢ/dt) ]
 
         Complexity: O(M×N) on GPU (parallel over M targets)
         """
@@ -938,9 +938,9 @@ class PressurePhysics(PhysicsBase):
                         du_dt -= motion  # Negative sign: -(∇u)·v
 
                         # ---------------------------------------------------------
-                        # STRETCHING CONTRIBUTION: K(x, xᵢ, dαᵢ/dt)
+                        # STRETCHING CONTRIBUTION: K(x, xᵢ, dGammaᵢ/dt)
                         # Biot-Savart velocity using stretching rate as strength
-                        # u_stretch = -q/r³ * (r × dα/dt)
+                        # u_stretch = -q/r³ * (r × dGamma/dt)
                         # ---------------------------------------------------------
                         r_cross_dalpha = r_vec.cross(dalpha_i)
                         du_dt -= (q_val / r_mag_cubed) * r_cross_dalpha

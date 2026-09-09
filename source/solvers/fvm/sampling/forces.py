@@ -27,7 +27,7 @@ Examples
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -118,17 +118,24 @@ class ForceSampler(Sampler):
         file_name: str = "forces_history",
         schedule: RunSchedule | None = None,
     ) -> None:
-        """Initialize the force sampler.
+        """Create a surface-force sampler.
 
-        Args:
-            patch_names: Patch names to integrate loads over. ``None``
-                integrates all wall patches.
-            reference_velocity: Reference velocity for coefficient calculation.
-            reference_area: Reference area for coefficient calculation.
-            reference_length: Reference length for moment coefficients.
-            moment_centre: Moment reference point [x, y, z].
-            file_name: Base name for the output CSV.
-            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
+        Parameters
+        ----------
+        patch_names : sequence[str] or None, default=None
+            Boundary names to integrate; ``None`` selects all wall patches.
+        reference_velocity : float, default=1.0
+            Reference speed in m/s for force coefficients.
+        reference_area : float, default=1.0
+            Reference area in m².
+        reference_length : float, default=1.0
+            Reference length in m for the pitching-moment coefficient.
+        moment_centre : sequence[float], default=(0, 0, 0)
+            Moment origin, shape ``(3,)``, in m.
+        file_name : str, default="forces_history"
+            Output CSV stem.
+        schedule : RunSchedule or None, default=None
+            Accepted-step/time cadence.
         """
         super().__init__(file_name=file_name, schedule=schedule)
         self.patch_names = patch_names
@@ -138,6 +145,7 @@ class ForceSampler(Sampler):
         self.moment_centre = list(moment_centre)
 
     def config_dict(self) -> dict:
+        """Return JSON-safe constructor settings for persistence."""
         spec = super().config_dict()
         spec.update(
             {
@@ -150,12 +158,18 @@ class ForceSampler(Sampler):
         )
         return spec
 
-    def sample(self, context: FVMSolver) -> dict[str, dict[str, Any]]:
+    def sample(self, context: FVMSolver) -> dict[str, dict[str, object]]:
         """Compute per-patch forces/coefficients for the current state.
 
         Uses the LES-aware effective viscosity (molecular plus ``eddy_viscosity``) that the
         momentum equation relies on, and merges patch fragments across ranks
         when partitioned — call on every rank, not just root.
+
+        Returns
+        -------
+        dict[str, dict[str, object]]
+            Patch force vectors in N, moments in N·m, face counts, and
+            coefficient scalars.
         """
         density, effective_kinematic_viscosity = _context_transport(context)
         dynamic_viscosity = effective_kinematic_viscosity * density
@@ -180,7 +194,17 @@ class ForceSampler(Sampler):
         return forces
 
     def write_csv(self, context: FVMSolver, samples_dir: str, forces: dict) -> None:
-        """Append one row per patch for an already-sampled ``forces`` dict."""
+        """Append one row per patch for an already-sampled force result.
+
+        Parameters
+        ----------
+        context : FVMSolver
+            Accepted solver state supplying time, step, and dt.
+        samples_dir : str
+            Solver-owned output directory.
+        forces : dict
+            Result returned by :meth:`sample`.
+        """
         rows = []
         for pname, fdata in forces.items():
             pressure_force = fdata.get("pressure_force", [0, 0, 0])
@@ -238,25 +262,34 @@ class YPlusSampler(Sampler):
         file_name: str | None = None,
         schedule: RunSchedule | None = None,
     ) -> None:
-        """Initialize the y+ sampler.
+        """Create a wall-unit diagnostic sampler.
 
-        Args:
-            patch_names: Patch names to compute y+ over; ``None`` selects all
-                wall patches.
-            file_name: Optional base name for a y+ history CSV; ``None``
-                disables file output.
-            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
+        Parameters
+        ----------
+        patch_names : sequence[str] or None, default=None
+            Patches to inspect; ``None`` selects all wall patches.
+        file_name : str or None, default=None
+            Optional CSV stem. ``None`` updates only ``context.last_y_plus``.
+        schedule : RunSchedule or None, default=None
+            Accepted-step/time cadence.
         """
         super().__init__(file_name=file_name, schedule=schedule)
         self.patch_names = patch_names
 
     def config_dict(self) -> dict:
+        """Return JSON-safe constructor settings for persistence."""
         spec = super().config_dict()
         spec["patch_names"] = self.patch_names
         return spec
 
     def sample(self, context: FVMSolver) -> dict[str, dict[str, float]]:
-        """Compute y+ statistics for the current state (collective)."""
+        """Compute y+ statistics for the current state (collective).
+
+        Returns
+        -------
+        dict[str, dict[str, float]]
+            Per-patch minimum, maximum, average, and face count.
+        """
         stats = diagnostics.compute_y_plus(
             context.velocity,
             getattr(
@@ -279,7 +312,7 @@ class YPlusSampler(Sampler):
         samples_dir: str,
         stats: dict[str, dict[str, float]],
     ) -> None:
-        """Append one row per patch to ``<samples_dir>/<name>.csv``."""
+        """Append one y+ row per patch to the history CSV."""
         if self.file_name is None:
             return
         header = ["time", "step", "patch", "min", "max", "avg"]
@@ -314,19 +347,25 @@ class IBMForceSampler(Sampler):
         file_name: str = "ibm_forces_history",
         schedule: RunSchedule | None = None,
     ) -> None:
-        """Initialize the IBM force sampler.
+        """Create an immersed-boundary force sampler.
 
-        Args:
-            reference_velocity: Reference velocity for coefficient calculation.
-            reference_area: Reference area for coefficient calculation.
-            file_name: Base name for the output CSV.
-            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
+        Parameters
+        ----------
+        reference_velocity : float, default=1.0
+            Reference speed in m/s.
+        reference_area : float, default=1.0
+            Reference area in m².
+        file_name : str, default="ibm_forces_history"
+            Output CSV stem.
+        schedule : RunSchedule or None, default=None
+            Accepted-step/time cadence.
         """
         super().__init__(file_name=file_name, schedule=schedule)
         self.reference_velocity = reference_velocity
         self.reference_area = reference_area
 
     def config_dict(self) -> dict:
+        """Return JSON-safe constructor settings for persistence."""
         spec = super().config_dict()
         spec.update(
             {"reference_velocity": self.reference_velocity, "reference_area": self.reference_area}
@@ -334,7 +373,21 @@ class IBMForceSampler(Sampler):
         return spec
 
     def sample(self, context: FVMSolver) -> dict[str, np.ndarray]:
-        """Compute per-body forces and slip for the current state."""
+        """Compute per-body IBM forces and no-slip slip error.
+
+        Returns
+        -------
+        dict[str, numpy.ndarray]
+            ``forces`` maps body IDs to force vectors in N; ``slip_error`` is
+            the scalar/array metric reported by the IBM model.
+
+        Raises
+        ------
+        RuntimeError
+            If no immersed-body manager is attached.
+        NotImplementedError
+            If partitioned sampling has not been qualified.
+        """
         if context.parallel.is_partitioned:
             raise NotImplementedError(
                 "IBM force sampling is not qualified for partitioned execution"

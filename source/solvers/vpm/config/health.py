@@ -25,7 +25,16 @@ def _optional_non_negative(value: float | None, name: str) -> None:
 
 @dataclass(frozen=True, slots=True)
 class FiniteStateCheck:
-    """Require finite particle fields and strictly positive radii and volumes."""
+    """Configure the non-negotiable finite-state gate after accepted VPM steps.
+
+    Parameters
+    ----------
+    enabled : bool, default=True
+        When true, require finite position, velocity, velocity-gradient, and
+        particle-strength fields plus strictly positive core radii and volumes.
+        Disable only for specialized diagnostics because an invalid accepted
+        state cannot be safely restarted.
+    """
 
     enabled: bool = True
 
@@ -36,7 +45,14 @@ class FiniteStateCheck:
 
 @dataclass(frozen=True, slots=True)
 class LagrangianCFLLimit:
-    """Limit the accepted-step material deformation CFL number."""
+    """Limit material deformation accumulated during one accepted VPM step.
+
+    Parameters
+    ----------
+    maximum : float or None, default=1.0
+        Positive dimensionless upper bound on ``dt * ||S||_infinity``, where
+        ``S = 0.5 * (grad(u) + grad(u).T)``. ``None`` disables this gate.
+    """
 
     maximum: float | None = 1.0
 
@@ -46,7 +62,14 @@ class LagrangianCFLLimit:
 
 @dataclass(frozen=True, slots=True)
 class ParticleStrengthLimit:
-    """Limit the magnitude of every particle vortex-strength vector [m³/s]."""
+    """Limit the largest particle strength (vector circulation) magnitude.
+
+    Parameters
+    ----------
+    maximum : float or None, optional
+        Positive bound on ``max_p |Gamma_p|`` in m³/s. ``None`` disables the
+        case-dependent gate. Particle strength obeys ``Gamma = omega * V``.
+    """
 
     maximum: float | None = None
 
@@ -56,7 +79,14 @@ class ParticleStrengthLimit:
 
 @dataclass(frozen=True, slots=True)
 class DivergenceLimit:
-    """Limit weighted vorticity-divergence error from resolution diagnostics."""
+    """Limit normalized vorticity-divergence error on an accepted particle cloud.
+
+    Parameters
+    ----------
+    maximum : float or None, optional
+        Non-negative dimensionless threshold for the weighted divergence metric
+        reported by :func:`discretization_health`; ``None`` disables the gate.
+    """
 
     maximum: float | None = None
 
@@ -66,7 +96,14 @@ class DivergenceLimit:
 
 @dataclass(frozen=True, slots=True)
 class MisalignmentLimit:
-    """Limit mean vortex-strength/vorticity misalignment in degrees."""
+    """Limit directional disagreement between represented and evaluated vorticity.
+
+    Parameters
+    ----------
+    maximum_degrees : float or None, optional
+        Mean angular threshold in degrees, in ``[0, 180]``. ``None`` disables
+        the gate. This metric compares particle ``Gamma`` to sampled ``omega``.
+    """
 
     maximum_degrees: float | None = None
 
@@ -78,7 +115,16 @@ class MisalignmentLimit:
 
 @dataclass(frozen=True, slots=True)
 class GrowthLimit:
-    """One-step relative-growth limits for particle strength and peak vorticity."""
+    """Bound relative growth of accepted VPM extrema between consecutive steps.
+
+    Parameters
+    ----------
+    maximum_particle_strength_growth : float or None, optional
+        Non-negative fractional increase allowed for ``max |Gamma|`` per step.
+    maximum_vorticity_growth : float or None, optional
+        Non-negative fractional increase allowed for ``max |omega|`` per step.
+        ``None`` disables the corresponding history-dependent check.
+    """
 
     maximum_particle_strength_growth: float | None = None
     maximum_vorticity_growth: float | None = None
@@ -101,6 +147,26 @@ class HealthLimits:
     The defaults enforce finite state and a conservative Lagrangian CFL bound.
     Strength, resolution, and growth limits are opt-in because their safe
     values are case-dependent physical choices.
+
+    Parameters
+    ----------
+    finite_state : FiniteStateCheck
+        Finite/positive field validation.
+    lagrangian_cfl : LagrangianCFLLimit
+        Dimensionless material-deformation bound.
+    maximum_particle_strength : ParticleStrengthLimit
+        Optional vector-circulation bound in m³/s.
+    divergence : DivergenceLimit
+        Optional normalized vorticity-divergence bound.
+    misalignment : MisalignmentLimit
+        Optional angular alignment bound in degrees.
+    growth : GrowthLimit
+        Optional accepted-step relative-growth bounds.
+
+    Notes
+    -----
+    The solver evaluates these limits only after refreshing all derived fields
+    for an accepted physical state. Candidate Runge--Kutta stages are excluded.
     """
 
     finite_state: FiniteStateCheck = FiniteStateCheck()
@@ -163,6 +229,23 @@ class HealthError(RuntimeError):
     """An accepted VPM particle state violates its declared health limits."""
 
     def __init__(self, message: str, *, restartable: bool = True) -> None:
+        """Create an accepted-state health failure.
+
+        Parameters
+        ----------
+        message : str
+            Human-readable description of the violated health gate. It is
+            passed unchanged to :class:`RuntimeError`.
+        restartable : bool, default=True
+            Whether the caller may safely write or resume from the state that
+            triggered the error. Non-finite accepted states should pass
+            ``False``.
+
+        Notes
+        -----
+        The exception carries the advisory :attr:`restartable` attribute; it
+        does not roll back or mutate particle state.
+        """
         super().__init__(message)
         self.restartable = bool(restartable)
 

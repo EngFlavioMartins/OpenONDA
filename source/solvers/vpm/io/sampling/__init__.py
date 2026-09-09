@@ -14,8 +14,10 @@ from .field_samplers import (
     sampler_csv_columns,
 )
 from .schedule import EverySteps, EveryTime, FinalOnly, OutputSchedule
+from .vlm import VLMSampler
 
 __all__ = [
+    "VLMSampler",
     "SAMPLER_CSV_COLUMNS",
     "LineSampler",
     "EverySteps",

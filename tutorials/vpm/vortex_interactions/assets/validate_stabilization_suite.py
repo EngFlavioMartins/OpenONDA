@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from copy import deepcopy
 import json
 from pathlib import Path
 
@@ -24,34 +25,14 @@ from .ring_metrics import (
     SAMPLES_DIR,
     case_style,
     discover_cases,
+    load_metadata,
     read_integrals,
     read_ring_diagnostics,
 )
 
-TERMINAL_STATES = {"horizon_reached", "resolution_lost"}
+TERMINAL_STATES = {"completed", "resolution_lost", "wall_time_limit"}
 REFERENCE = Path(__file__).resolve().parent / "references" / "leapfrogging_lbm_trajectory.csv"
 REFERENCE_ORIGIN = 2.5
-COMMON_SETTINGS = (
-    "time_step_size",
-    "integrator",
-    "induction_backend",
-    "stretching_scheme",
-    "turbulence_model",
-    "smagorinsky_coefficient",
-    "viscous_scheme",
-    "particle_spacing",
-    "particle_core_radius",
-    "ring_radius",
-    "ring_circulation",
-    "core_radius",
-    "ring_separation",
-    "reynolds_number",
-    "disturbance_amplitude",
-    "disturbance_mode",
-    "maximum_lagrangian_cfl",
-    "maximum_vorticity_divergence_error",
-    "maximum_vortex_misalignment_degrees",
-)
 
 
 def _finite_max(data, column: str) -> float:
@@ -114,22 +95,23 @@ def _trajectory_radius_rmse(case_dir: Path) -> float:
 
 def summarize(case_dir: Path, metadata: dict) -> dict:
     """Return the diagnostics used to compare one stabilization method."""
+    state = metadata.get("state", {})
     integrals = read_integrals(case_dir)
     energy_initial = _last(
         integrals.iloc[:1] if integrals is not None else None, "total_kinetic_energy"
     )
     energy_final = _last(integrals, "total_kinetic_energy")
-    particles_initial = float(metadata.get("initial_n_particles_total", np.nan))
+    particles_initial = float(state.get("initial_n_particles_total", np.nan))
     particles_final = _last(integrals, "n_particles_total")
     if not np.isfinite(particles_final):
-        particles_final = float(metadata.get("final_n_particles_total", np.nan))
+        particles_final = float(state.get("n_particles_total", np.nan))
     return {
         "case": case_dir.name,
         "label": case_style(case_dir.name)["label"],
-        "status": metadata.get("status", "unknown"),
-        "completed_steps": int(metadata.get("completed_steps", -1)),
-        "final_time": float(metadata.get("final_time", np.nan)),
-        "normalized_time": float(metadata.get("final_time", np.nan)) / REFERENCE_TIME,
+        "status": metadata.get("lifecycle", {}).get("status", "unknown"),
+        "completed_steps": int(state.get("step", -1)),
+        "final_time": float(state.get("time", np.nan)),
+        "normalized_time": float(state.get("time", np.nan)) / REFERENCE_TIME,
         "energy_ratio": (
             energy_final / energy_initial
             if np.isfinite(energy_initial) and energy_initial > 0.0
@@ -188,6 +170,16 @@ def _write_summary(rows: list[dict]) -> None:
     (FIGURES_DIR / "stabilization_guidelines.md").write_text("\n".join(lines), encoding="utf-8")
 
 
+def _common_configuration(metadata: dict) -> dict:
+    """Return case settings that should not vary across stabilization cases."""
+    configuration = deepcopy(metadata["configuration"])
+    configuration["numerics"].pop("stabilization", None)
+    configuration["backup"].pop("directory", None)
+    configuration["backup"].pop("log_directory", None)
+    configuration["samplers"].pop("directory", None)
+    return configuration
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--strict", action="store_true", help="require every planned case")
@@ -210,18 +202,16 @@ def main() -> int:
         case_dir = available.get(case_name)
         if case_dir is None:
             continue
-        metadata_path = case_dir / "run_metadata.json"
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
-            failures.append(f"{case_name}: invalid run metadata ({error})")
+        metadata = load_metadata(case_dir)
+        if not metadata:
+            failures.append(f"{case_name}: missing or invalid solver metadata")
             continue
 
-        if metadata.get("case") != case_name or metadata.get("stabilization") != case_name:
+        if metadata.get("solver") != "VPM" or metadata.get("case_name") != case_name:
             failures.append(f"{case_name}: metadata identifies a different case")
-        if metadata.get("status") not in TERMINAL_STATES:
+        if metadata.get("lifecycle", {}).get("status") not in TERMINAL_STATES:
             failures.append(f"{case_name}: result is not terminal")
-        settings = tuple(metadata.get(key) for key in COMMON_SETTINGS)
+        settings = json.dumps(_common_configuration(metadata), sort_keys=True)
         if reference_settings is None:
             reference_settings = settings
         elif settings != reference_settings:

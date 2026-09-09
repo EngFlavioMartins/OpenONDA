@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +10,7 @@ import pandas as pd
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 SAMPLES_DIR = CASE_DIR / "samples"
+SOLUTION_DIR = CASE_DIR / "solution"
 FIGURES_DIR = CASE_DIR / "figures"
 
 RING_RADIUS = 1.0
@@ -172,7 +172,9 @@ def discover_cases(solution_dir=SAMPLES_DIR, family: str | None = None) -> list[
         case_family, _ = _case_parts(case_dir.name)
         if family and case_family != family:
             continue
-        if (case_dir / "run_metadata.json").exists() or (case_dir / "flow_integrals.csv").exists():
+        if (SOLUTION_DIR / case_dir.name / "vpm_metadata.json").exists() or (
+            case_dir / "flow_integrals.csv"
+        ).exists():
             cases.append(case_dir)
     return sorted(cases, key=lambda path: intended[path.name])
 
@@ -183,6 +185,86 @@ def _samples_dir(case_dir: str | Path) -> Path:
     if case.parent.name == "samples":
         return case
     return CASE_DIR / "samples" / case.name
+
+
+def load_metadata(case_dir: str | Path) -> dict:
+    """Load the universal VPM metadata from the case's backup directory."""
+    import json
+
+    case = Path(case_dir)
+    path = SOLUTION_DIR / case.name / "vpm_metadata.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def load_study_metadata(directory: str | Path) -> dict:
+    """Load solver-owned metadata for one advanced study directory."""
+    import json
+
+    path = Path(directory) / "solution" / "vpm_metadata.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def metadata_settings(metadata: dict) -> dict:
+    """Extract plotting controls from the universal VPM metadata schema."""
+    configuration = metadata.get("configuration", {})
+    numerics = configuration.get("numerics", {})
+    initial_conditions = configuration.get("initial_conditions", [])
+    first = initial_conditions[0] if initial_conditions else {}
+    second = initial_conditions[1] if len(initial_conditions) > 1 else {}
+    distribution = first.get("distribution", {})
+    disturbance = first.get("disturbance", {}) or {}
+    distribution_disturbance = distribution.get("disturbance")
+    viscous = numerics.get("viscous", {})
+    stabilization = numerics.get("stabilization", {})
+    case_name = str(metadata.get("case_name") or "")
+    known_methods = (
+        "p_split_remesh",
+        "solenoidal_remeshing",
+        "divergence_relaxation",
+        "stretching_viscosity",
+        "p_relaxation",
+        "p_moments",
+        "p_remesh",
+        "splitting",
+        "remeshing",
+        "pedrizzetti",
+        "baseline",
+    )
+    method = next(
+        (name for name in known_methods if name in case_name),
+        "baseline",
+    )
+    if "halfdt" in case_name:
+        method = "baseline"
+    first_circulation = float(first.get("circulation", 0.0))
+    second_circulation = float(second.get("circulation", first_circulation))
+    time_step_size = float(numerics.get("time_step_size", np.nan))
+    relaxation = float(stabilization.get("pedrizzetti_relaxation_factor", 0.0))
+    return {
+        "scenario": "collision" if first_circulation * second_circulation < 0.0 else "leapfrog",
+        "method": method,
+        "diffusion": viscous.get("scheme", "CS"),
+        "gbd_remeshing": viscous.get("gbd_remeshing_kernel", "M4_PRIME"),
+        "integrator": numerics.get("integrator", {}).get("name", "SSPRK3"),
+        "spacing": float(distribution.get("spacing", viscous.get("particle_spacing", np.nan))),
+        "core_ratio": float(
+            distribution.get("core_radius_ratio", viscous.get("core_radius_ratio", np.nan))
+        ),
+        "support": "disturbed" if distribution_disturbance else "circular",
+        "amplitude": float(disturbance.get("amplitude", 0.0)),
+        "dt": time_step_size,
+        "smagorinsky": float(numerics.get("turbulence", {}).get("smagorinsky_coefficient", 0.0)),
+        "frequency": relaxation / time_step_size if time_step_size > 0.0 else np.nan,
+        "capacity": int(numerics.get("max_n_particles", 0)),
+    }
 
 
 def _trim_to_last_monotone_segment(df: pd.DataFrame, time_column: str) -> pd.DataFrame:
@@ -201,11 +283,7 @@ def _trim_to_last_monotone_segment(df: pd.DataFrame, time_column: str) -> pd.Dat
 
 def _merge_backup_restarts(df: pd.DataFrame, case_dir: str | Path) -> pd.DataFrame:
     """Merge identical backup continuations while keeping their latest samples."""
-    manifest_path = _samples_dir(case_dir) / "run_metadata.json"
-    if "step" not in df.columns or not manifest_path.is_file():
-        return df
-    manifest = json.loads(manifest_path.read_text())
-    if manifest.get("status") == "running":
+    if "step" not in df.columns:
         return df
     return (
         df.sort_values("step", kind="stable")

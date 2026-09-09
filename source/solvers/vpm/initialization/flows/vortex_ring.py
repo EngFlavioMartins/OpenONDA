@@ -26,11 +26,50 @@ from ._shared import (
 
 @dataclass(frozen=True, slots=True)
 class VortexRing:
-    """Gaussian vortex ring with optional Widnall centreline disturbance.
+    """Configure a Gaussian vortex ring on supplied particle geometry.
 
-    ``radius`` and ``vortex_core_radius`` are positive lengths; ``circulation``
-    is nonzero. Its initial velocity is zero, so induced velocity remains
-    refreshed by the solver; analytical velocity is not presently available.
+    Parameters
+    ----------
+    radius : float
+        Positive centreline radius ``R`` in m.
+    vortex_core_radius : float
+        Positive physical Gaussian core radius in m. This is distinct from
+        each numerical particle core ``sigma``.
+    circulation : float
+        Signed scalar filament circulation in m²/s. Its sign sets the
+        tangential vorticity orientation around ``axis``.
+    kinematic_viscosity : float
+        Non-negative molecular viscosity in m²/s assigned to every particle.
+    distribution : ParticleDistribution, distribution builder, or None
+        Geometry/quadrature used by :meth:`build`. ``None`` requires an
+        explicit distribution argument at build time.
+    centre : sequence[float], shape (3,), default=(0, 0, 0)
+        Cartesian ring centre in m.
+    axis : sequence[float], shape (3,), default=(1, 0, 0)
+        Non-zero normal to the ring plane; it is normalized internally.
+    disturbance : WidnallDisturbance or None, default=None
+        Optional radial/axial azimuthal centreline perturbation.
+    core_compensation : ParticleCoreCompensation or None, default=None
+        Optional correction separating the requested physical core from the
+        regularization already supplied by particle cores.
+    group_id : int or None, default=None
+        Optional int32 label assigned uniformly to the generated particles.
+
+    Notes
+    -----
+    The attributed continuum vorticity is Gaussian in the tube cross-section
+    and is integrated as ``Gamma_i = omega_i * V_i`` in m³/s. Strengths are
+    rescaled so their discrete circulation represents the requested scalar
+    ``circulation``. Initial particle velocity is zero because induced velocity
+    is refreshed by :class:`VPMSolver`.
+
+    Examples
+    --------
+    >>> ring = VortexRing(
+    ...     radius=1.0, vortex_core_radius=0.15, circulation=1.0,
+    ...     kinematic_viscosity=1e-4, distribution=distribution,
+    ... )
+    >>> particles = ring.build()
     """
 
     radius: float
@@ -45,7 +84,28 @@ class VortexRing:
     group_id: int | None = None
 
     def build(self, distribution: ParticleDistribution | None = None) -> VortexParticleSet:
-        """Attribute this ring to geometry and return immutable particle fields."""
+        """Attribute ring vorticity to geometry and return solver-ready fields.
+
+        Parameters
+        ----------
+        distribution : ParticleDistribution or None, default=None
+            Explicit immutable geometry. When supplied it takes precedence over
+            the constructor's ``distribution``.
+
+        Returns
+        -------
+        VortexParticleSet
+            Immutable arrays: position/velocity/strength have shape ``(N, 3)``
+            in m, m/s, and m³/s; radius, volume, and viscosity have shape
+            ``(N,)`` in m, m³, and m²/s.
+
+        Raises
+        ------
+        ValueError
+            If geometry is missing, a physical parameter/vector is invalid,
+            particle cores cannot represent the requested core, or the finite
+            geometry represents zero discrete ring circulation.
+        """
         geometry = resolve_distribution(distribution, self.distribution)
         centre, axis = vector3(self.centre, "centre"), unit_vector(self.axis, "axis")
         first, second = transverse_basis(axis)

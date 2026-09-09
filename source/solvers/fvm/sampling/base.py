@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import csv
 import os
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import defusedxml.ElementTree as ET  # noqa: N817
 
@@ -85,6 +85,22 @@ class Sampler:
         file_name: str | None = None,
         schedule: RunSchedule | None = None,
     ) -> None:
+        """Create a named FVM sampler with a deterministic output cadence.
+
+        Parameters
+        ----------
+        file_name : str or None, default=None
+            Output stem. When omitted, the lower-case concrete class name
+            without ``sampler`` is used.
+        schedule : RunSchedule or None, default=None
+            Accepted-step/physical-time selection policy. ``None`` selects
+            every accepted step.
+
+        Notes
+        -----
+        The sampler stores configuration and may accumulate runtime stencil
+        caches; output directory ownership remains with the solver/executor.
+        """
         self.file_name = file_name
         self.schedule = schedule if schedule is not None else RunSchedule(every_n_steps=1)
 
@@ -112,11 +128,16 @@ class Sampler:
     # was both unsafe and inconsistent with that mutability.
     __hash__ = None
 
-    def sample(self, context) -> dict[str, Any] | None:
+    def sample(self, context) -> dict[str, object] | None:
+        """Return canonical columns for one accepted solver context.
+
+        Subclasses must return equal-length columns keyed by the schema they
+        advertise to their writer, or ``None`` when no sample is applicable.
+        """
         raise NotImplementedError
 
-    def config_dict(self) -> dict:
-        """Constructor keyword arguments for this sampler (JSON-safe)."""
+    def config_dict(self) -> dict[str, object]:
+        """Return JSON-safe constructor arguments for persistence."""
         return {
             "file_name": self.file_name,
             "schedule": self.schedule.to_dict(),
@@ -124,6 +145,19 @@ class Sampler:
 
     @classmethod
     def from_config(cls, data: dict) -> Sampler:
+        """Reconstruct a sampler from :meth:`config_dict` data.
+
+        Parameters
+        ----------
+        data : dict
+            JSON-decoded constructor values, including an optional serialized
+            schedule.
+
+        Returns
+        -------
+        Sampler
+            Concrete sampler instance of ``cls``.
+        """
         data = dict(data)
         schedule = data.pop("schedule", None)
         return cls(**data, schedule=RunSchedule.from_dict(schedule))
@@ -156,9 +190,19 @@ def sampler_from_dict(spec: dict) -> Sampler:
 def append_csv_rows(
     filepath: str,
     header: list[str],
-    rows: list[list[Any]],
+    rows: list[list[object]],
 ) -> None:
-    """Append ``rows`` under ``header`` to a CSV file, writing the header once."""
+    """Append rows to a CSV, creating parent directories and one header.
+
+    Parameters
+    ----------
+    filepath : str
+        Destination CSV path.
+    header : list[str]
+        Column names written only when the file is new/empty.
+    rows : list[list[object]]
+        Data rows matching the header length.
+    """
     os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
     write_header = not os.path.exists(filepath) or os.path.getsize(filepath) == 0
     with open(filepath, "a", newline="") as stream:

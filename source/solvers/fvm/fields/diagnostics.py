@@ -9,27 +9,40 @@ Implements functions for computing:
 - y+ for wall boundaries
 """
 
-from numba import njit
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 from . import gradients
 
 
 def compute_courant_number(velocity, volumetric_face_flux, time_step_size, mesh_data, geo_data):
-    """
-    Compute Courant number field.
-    ``courant_number = 0.5 * time_step_size *
-    sum(|volumetric_face_flux|) / cell_volume``
+    """Compute the cell Courant number from oriented face fluxes.
 
-    Args:
-        velocity: Velocity field [m/s] (unused by this face-flux form).
-        volumetric_face_flux: Face volumetric flux ``velocity·Sf`` [m³/s].
-        time_step_size: Time-step size [s].
-        mesh_data: Mesh connectivity
-        geo_data: Geometric data
+    Parameters
+    ----------
+    velocity : numpy.ndarray
+        Cell/face velocity in m/s. Accepted for a common diagnostic signature;
+        this implementation uses the supplied face flux directly.
+    volumetric_face_flux : numpy.ndarray
+        Face flux ``U · Sf``, shape ``(n_faces,)``, in m³/s. Interior entries
+        are owner-to-neighbour oriented; boundary entries point outward.
+    time_step_size : float
+        Physical time step in seconds.
+    mesh_data, geo_data : dict
+        Native connectivity and geometry, including owner/neighbour indices and
+        cell volumes in m³.
 
-    Returns:
-        courant_number: Courant number field (n_elements)
+    Returns
+    -------
+    numpy.ndarray
+        Non-negative cell values, shape ``(n_cells,)``. The convention is
+        ``Co = 0.5 * dt * sum_faces(abs(phi)) / V``.
+
+    Raises
+    ------
+    ValueError
+        If any cell volume is non-finite or non-positive.
     """
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
@@ -62,20 +75,28 @@ def compute_continuity_error(
     mesh_data: dict,
     geo_data: dict,
 ) -> np.ndarray:
-    """Per-cell continuity residual ∮ velocity·dS [m³/s].
+    """Compute the signed net volumetric flux for every finite-volume cell.
 
     For a discretely divergence-free (incompressible) solution this net face
     flux is ~0 in every cell.  Returned unnormalised so callers can form both
     the global mass imbalance Σ|residual| and the local divergence
     max|residual / V|.
 
-    Args:
-        volumetric_face_flux: Face volumetric flux ``velocity·Sf`` [m³/s].
-        mesh_data: Mesh connectivity.
-        geo_data: Geometric data (unused; kept for signature parity).
+    Parameters
+    ----------
+    volumetric_face_flux : numpy.ndarray, shape (n_faces,)
+        Oriented face flux ``velocity · Sf`` in m³/s. Interior-face orientation
+        is owner-to-neighbour; boundary normals point out of their owner cell.
+    mesh_data : dict
+        Mesh mapping containing ``n_cells``, ``n_interior_faces``, ``owners``,
+        and ``neighbours``.
+    geo_data : dict
+        Accepted for diagnostic-call signature compatibility; not read.
 
-    Returns:
-        np.ndarray: net flux per cell (n_elements,).
+    Returns
+    -------
+    numpy.ndarray, shape (n_cells,)
+        Newly allocated signed net outward flux per cell in m³/s.
     """
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
@@ -94,7 +115,28 @@ def compute_kinetic_energy(
     geo_data: dict,
     density: float | np.ndarray = 1.0,
 ) -> float:
-    """Return volume-integrated kinetic energy for the interior cells."""
+    """Integrate ``0.5 * density * |velocity|²`` over interior cells.
+
+    Parameters
+    ----------
+    velocity : numpy.ndarray, shape (n_cells[, + n_boundary], 3)
+        Cell-centred velocity in m/s. Any appended boundary/ghost rows are
+        ignored.
+    geo_data : dict
+        Geometry mapping whose ``cell_volume`` has shape ``(n_cells,)`` in m³.
+    density : float or numpy.ndarray, default=1.0
+        Positive density in kg/m³, scalar or shape ``(n_cells,)``.
+
+    Returns
+    -------
+    float
+        Volume-integrated kinetic energy in joules.
+
+    Raises
+    ------
+    ValueError
+        If density has the wrong shape or contains non-positive/non-finite data.
+    """
     cell_volume = np.asarray(geo_data["cell_volume"], dtype=np.float64)
     velocity = np.asarray(velocity[: len(cell_volume)], dtype=np.float64)
     density = np.asarray(density, dtype=np.float64)
@@ -114,14 +156,48 @@ def compute_enstrophy(
     mesh_data: dict,
     geo_data: dict,
 ) -> float:
-    """Return ``0.5 ∫ |curl(velocity)|² dV`` over the interior cells."""
+    """Integrate ``0.5 * |curl(velocity)|²`` over the FVM domain.
+
+    Parameters
+    ----------
+    velocity : numpy.ndarray, shape (n_cells_with_ghosts, 3)
+        Cell-centred and reconstructed boundary velocity in m/s.
+    mesh_data, geo_data : dict
+        Mesh connectivity and geometry accepted by the configured gradient
+        reconstruction. ``cell_volume`` is in m³.
+
+    Returns
+    -------
+    float
+        Domain enstrophy integral in m³/s². The reconstructed vorticity has
+        units 1/s and only interior-cell rows are integrated.
+    """
     vorticity = compute_vorticity(velocity, mesh_data, geo_data)
     cell_volume = np.asarray(geo_data["cell_volume"], dtype=np.float64)
     return 0.5 * float(np.sum(cell_volume * np.sum(vorticity * vorticity, axis=1)))
 
 
 def vorticity_from_gradient(velocity_gradient, n_cells: int | None = None):
-    """Return curl(velocity) from an already reconstructed velocity gradient."""
+    """Return curl of velocity from a reconstructed Jacobian.
+
+    Parameters
+    ----------
+    velocity_gradient : numpy.ndarray
+        Jacobian with shape ``(n, 3, 3)`` and convention
+        ``gradient[cell, direction, component] = dU_component/dx_direction``.
+    n_cells : int or None, default=None
+        Number of leading entries to convert. ``None`` converts all rows.
+
+    Returns
+    -------
+    numpy.ndarray
+        Vorticity with shape ``(n_cells, 3)`` in 1/s.
+
+    Raises
+    ------
+    ValueError
+        If the input does not have a 3×3 trailing shape.
+    """
     gradient = np.asarray(velocity_gradient, dtype=np.float64)
     if gradient.ndim != 3 or gradient.shape[1:] != (3, 3):
         raise ValueError("Velocity gradient must have shape (n, 3, 3)")
@@ -147,7 +223,27 @@ def _enstrophy_from_gradient_kernel(gradient, cell_volume, n_cells):
 
 
 def enstrophy_from_gradient(velocity_gradient, cell_volume, n_cells: int | None = None) -> float:
-    """Integrate enstrophy without allocating a full vorticity field."""
+    """Integrate enstrophy directly from cell velocity gradients.
+
+    Parameters
+    ----------
+    velocity_gradient : numpy.ndarray
+        Jacobians, shape ``(n, 3, 3)``, in 1/s.
+    cell_volume : numpy.ndarray
+        Cell volumes, shape ``(n_cells,)``, in m³.
+    n_cells : int or None, default=None
+        Leading integration range; ``None`` uses every gradient row.
+
+    Returns
+    -------
+    float
+        ``0.5 * sum(V * |curl(U)|²)`` in m³/s².
+
+    Raises
+    ------
+    ValueError
+        If shapes or the requested range are incompatible.
+    """
     gradient = np.asarray(velocity_gradient, dtype=np.float64)
     cell_volume = np.asarray(cell_volume, dtype=np.float64)
     if gradient.ndim != 3 or gradient.shape[1:] != (3, 3):
@@ -159,16 +255,22 @@ def enstrophy_from_gradient(velocity_gradient, cell_volume, n_cells: int | None 
 
 
 def compute_vorticity(velocity, mesh_data, geo_data, *, gradient=None):
-    """
-    Compute vorticity field: vorticity = curl(velocity)
+    """Reconstruct velocity gradients and return cell-centred vorticity.
 
-    Args:
-        velocity: Velocity field (N, 3)
-        mesh_data: Mesh connectivity
-        geo_data: Geometric data
+    Parameters
+    ----------
+    velocity : numpy.ndarray
+        Cell/ghost velocity values with shape ``(n_total, 3)`` in m/s.
+    mesh_data, geo_data : dict
+        Topology and geometry used by the configured Gauss/LSQ gradient scheme.
+    gradient : numpy.ndarray or None, default=None
+        Optional precomputed gradient with shape ``(n_total, 3, 3)`` in 1/s;
+        supplying it avoids a second reconstruction.
 
-    Returns:
-        vorticity: Vorticity field (n_elements, 3)
+    Returns
+    -------
+    numpy.ndarray
+        Interior-cell vorticity, shape ``(n_cells, 3)``, in 1/s.
     """
     # velocity_gradient[i, j, k] is d(velocity_k)/dx_j. Solvers commonly need this same
     # expensive reconstruction for wall loads and VTK in one time state, so
@@ -339,21 +441,32 @@ def _compute_force_coefficients(
 def compute_y_plus(
     velocity, kinematic_viscosity, mesh_data, geo_data, boundaries, patch_names=None
 ):
-    """
-    Compute y+ for wall boundaries and return statistics.
+    """Compute wall-unit ``y+`` statistics for selected boundary patches.
 
-    Args:
-        velocity: Cell-centred velocity [m/s], shape ``(n_cells_with_ghosts, 3)``.
-        kinematic_viscosity: Positive kinematic viscosity [m²/s], either a scalar or one
-            value per interior cell.
-        mesh_data: Mesh connectivity
-        geo_data: Geometric data
-        boundaries: Boundary list
-        patch_names: Optional list of patch names to compute y+ for. If None,
-                     the function auto-selects wall patches (same as previous behavior).
+    Parameters
+    ----------
+    velocity : numpy.ndarray
+        Cell-centred velocities, shape ``(n_cells_with_ghosts, 3)``, in m/s.
+    kinematic_viscosity : float or numpy.ndarray
+        Positive viscosity in m²/s, scalar or at least ``(n_cells,)`` values.
+    mesh_data, geo_data : dict
+        Connectivity and geometry including owner indices, face areas, and wall
+        distances in m.
+    boundaries : sequence[dict]
+        Patch records containing ``name``, ``type``, and face ranges.
+    patch_names : sequence[str] or str or None, default=None
+        Explicit patch selection. ``None`` auto-selects patches whose mesh type
+        is ``"wall"``.
 
-    Returns:
-        y_plus_stats: Dictionary mapping selected boundary names to {min, max, avg}
+    Returns
+    -------
+    dict[str, dict[str, float]]
+        Per-patch ``min``, ``max``, ``avg``, and ``n_faces`` statistics.
+
+    Raises
+    ------
+    ValueError
+        If viscosity, wall distances, or face areas are invalid.
     """
     owners = mesh_data["owners"]
 
@@ -461,6 +574,32 @@ def compute_surface_face_loads(
     ``viscous_force`` are forces exerted on the solid, so their sum can be
     integrated directly into a force coefficient or compared face-for-face
     between cell-identical meshes.
+
+    Parameters
+    ----------
+    velocity : numpy.ndarray
+        Cell/ghost velocities, shape ``(n_total, 3)``, in m/s.
+    kinematic_pressure : numpy.ndarray
+        Cell/ghost ``p/rho`` values, shape ``(n_total,)``, in m²/s².
+    dynamic_viscosity : float or numpy.ndarray
+        Dynamic viscosity in Pa·s, scalar or one value per cell.
+    density : float
+        Fluid density in kg/m³.
+    mesh_data, geo_data : dict
+        Mesh topology/geometry used for owners, normals, areas, and wall
+        distances.
+    boundaries : sequence[dict]
+        Boundary patch records.
+    patch_names : sequence[str] or None, default=None
+        Selected patch names; ``None`` selects wall patches.
+    gradient : numpy.ndarray or None, default=None
+        Optional velocity gradient, shape ``(n_total, 3, 3)``, in 1/s.
+
+    Returns
+    -------
+    dict[str, dict[str, numpy.ndarray]]
+        Per-face centers, areas, normals, pressure values, pressure/viscous
+        forces, and wall-shear vectors.
     """
     from .gradients import _resolve_gradient_fn as _resolve_grad
 
@@ -546,24 +685,38 @@ def compute_surface_forces(
     moment_centre=None,
     gradient=None,
 ):
-    """
-    Compute surface forces (pressure + viscous) on boundary patches.
+    """Integrate pressure and viscous forces over selected surface patches.
 
-    Args:
-        velocity: Velocity field (n_elements + n_boundary, 3)
-        kinematic_pressure: Kinematic pressure field (n_elements + n_boundary,)
-        dynamic_viscosity: Dynamic viscosity (scalar or array)
-        density: Density (scalar)
-        mesh_data: Mesh connectivity
-        geo_data: Geometric data
-        boundaries: List of boundary patch dicts
-        patch_names: list of patch names to compute (default: all wall patches)
-        reference_velocity: reference velocity for coefficient calculation
-        reference_area: reference area for coefficient calculation
+    Parameters
+    ----------
+    velocity : numpy.ndarray
+        Cell/ghost velocities, shape ``(n_total, 3)``, in m/s.
+    kinematic_pressure : numpy.ndarray
+        Cell/ghost kinematic pressure, shape ``(n_total,)``, in m²/s².
+    dynamic_viscosity : float or numpy.ndarray
+        Dynamic viscosity in Pa·s, scalar or one value per cell.
+    density : float
+        Fluid density in kg/m³.
+    mesh_data, geo_data : dict
+        Topology/geometry consumed by :func:`compute_surface_face_loads`.
+    boundaries : sequence[dict]
+        Boundary patch records.
+    patch_names : sequence[str] or None, default=None
+        Patches to integrate; ``None`` selects all wall patches.
+    reference_velocity, reference_area : float or None
+        Dynamic-pressure reference values used for coefficients.
+    reference_length : float or None, default=None
+        Length in m for the z-axis pitching-moment coefficient.
+    moment_centre : numpy.ndarray or None, default=None
+        Moment origin, shape ``(3,)``, in m.
+    gradient : numpy.ndarray or None, default=None
+        Optional velocity gradient, shape ``(n_total, 3, 3)``, in 1/s.
 
-    Returns:
-        dict: mapping patch name to canonical pressure/viscous/total force
-        components and drag/lift coefficients.
+    Returns
+    -------
+    dict[str, dict[str, object]]
+        Per-patch integrated pressure/viscous/total force vectors in N,
+        moment vectors in N·m, face counts, and optional coefficients.
     """
     face_loads = compute_surface_face_loads(
         velocity,
@@ -611,7 +764,18 @@ def compute_surface_forces(
 
 
 def merge_partition_forces(parts):
-    """Sum non-overlapping patch-force fragments from all MPI ranks."""
+    """Merge non-overlapping per-patch force fragments from MPI ranks.
+
+    Parameters
+    ----------
+    parts : iterable[dict]
+        Rank-local results matching :func:`compute_surface_forces`.
+
+    Returns
+    -------
+    dict
+        Force/moment vectors and summed face counts keyed by patch name.
+    """
     merged = {}
     for rank_forces in parts:
         for name, values in rank_forces.items():
@@ -635,7 +799,19 @@ def merge_partition_forces(parts):
 
 
 def merge_partition_yplus(parts):
-    """Combine per-patch extrema and face-weighted means from MPI ranks."""
+    """Combine per-patch y+ extrema and face-weighted means across ranks.
+
+    Parameters
+    ----------
+    parts : iterable[dict]
+        Rank-local statistics matching :func:`compute_y_plus`.
+
+    Returns
+    -------
+    dict
+        Global minimum, maximum, face-weighted average, and face count per
+        patch.
+    """
     merged = {}
     for rank_stats in parts:
         for name, values in rank_stats.items():

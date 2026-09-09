@@ -12,8 +12,9 @@ from collections import defaultdict
 from collections.abc import Callable, Mapping
 from itertools import combinations
 
-from numba import njit
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 from ..surface_classification import SurfaceIndex, triangle_box_overlap
 from .cfmesh_octree import Leaf, LeafLookup, refine_selected_leaves
@@ -141,13 +142,42 @@ def _quadric_curvature(origin: np.ndarray, normal: np.ndarray, points: np.ndarra
 
 
 class AutomaticSurface:
-    """Shared triangulation, patch/feature connectivity and geometric criteria."""
+    """Indexed triangulated surface used by automatic octree refinement.
+
+    Parameters
+    ----------
+    groups : mapping[str, ndarray]
+        Named surface groups.  Each value has shape ``(T, 3, 3)`` and contains
+        triangle vertices in metres.  Groups are assigned deterministic integer
+        region ids in sorted-name order.
+    nearest_triangles : callable
+        Callback ``nearest_triangles(point, triangles)`` returning the closest
+        point on each candidate triangle; used by proximity tests.
+
+    Attributes
+    ----------
+    points, triangles, coordinates : ndarray
+        Deduplicated vertices ``(P, 3)``, triangle connectivity ``(T, 3)``,
+        and materialized triangle coordinates ``(T, 3, 3)``.
+    regions : ndarray, shape (T,)
+        Integer group id for each triangle.
+    feature_ids, corners : ndarray
+        Surface feature-edge ids and vertices where at least three feature
+        edges meet.
+
+    Notes
+    -----
+    Construction computes connectivity and smoothed curvature eagerly.  The
+    object is read-only during refinement; its query methods return ids into
+    the stored arrays rather than new geometry.
+    """
 
     def __init__(
         self,
         groups: Mapping[str, np.ndarray],
         nearest_triangles: Callable[[np.ndarray, np.ndarray], np.ndarray],
     ) -> None:
+        """Build connectivity, feature groups, and curvature metadata."""
         self.nearest_triangles = nearest_triangles
         vertices: list[np.ndarray] = []
         ids: dict[tuple[float, ...], int] = {}
@@ -308,6 +338,18 @@ class AutomaticSurface:
         return np.mean(values[self.edges], axis=1)
 
     def triangles_in_box(self, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
+        """Return surface-triangle ids intersecting an axis-aligned box.
+
+        Parameters
+        ----------
+        lower, upper : ndarray, shape (3,)
+            Box bounds in metres.
+
+        Returns
+        -------
+        ndarray, shape (K,)
+            Integer ids of triangles that geometrically overlap the box.
+        """
         ids = self.index.candidate_triangles(lower, upper)
         if not len(ids):
             return ids
@@ -323,6 +365,19 @@ class AutomaticSurface:
         ]
 
     def edges_in_box(self, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
+        """Return feature-edge ids intersecting an axis-aligned box.
+
+        Parameters
+        ----------
+        lower, upper : ndarray, shape (3,)
+            Box bounds in metres.
+
+        Returns
+        -------
+        ndarray, shape (K,)
+            Integer ids from :attr:`feature_ids` whose line segments intersect
+            the box.
+        """
         coordinates = self.points[self.edges[self.feature_ids]]
         start, end = coordinates[:, 0], coordinates[:, 1]
         direction = end - start
@@ -337,6 +392,20 @@ class AutomaticSurface:
         return self.feature_ids[valid]
 
     def in_range(self, centre: np.ndarray, radius: float) -> tuple[np.ndarray, np.ndarray]:
+        """Find nearby triangles and feature edges around a refinement cell.
+
+        Parameters
+        ----------
+        centre : ndarray, shape (3,)
+            Cell centre in metres.
+        radius : float
+            Search radius in metres.
+
+        Returns
+        -------
+        triangles, edges : ndarray
+            Integer ids of nearby triangles and feature edges.
+        """
         ids = self.index.candidate_triangles(centre - radius, centre + radius)
         nearest = self.nearest_triangles(centre, self.coordinates[ids])
         triangles = ids[np.sum((nearest - centre) ** 2, axis=1) < radius * radius]
@@ -348,6 +417,7 @@ class AutomaticSurface:
         return triangles, self.feature_ids[inside]
 
     def partitions_need_refinement(self, centre: np.ndarray, radius: float) -> bool:
+        """Return whether nearby patches/features are topologically separated."""
         triangles, edges = self.in_range(centre, radius)
         regions = set(map(int, self.regions[triangles]))
         groups = set(map(int, self.edge_groups[edges]))
@@ -358,6 +428,7 @@ class AutomaticSurface:
         )
 
     def proximity_needs_refinement(self, centre: np.ndarray, radius: float) -> bool:
+        """Return whether a refinement ball contains disconnected surface pieces."""
         triangles, edges = self.in_range(centre, radius)
         remaining = set(map(int, triangles))
         groups = 0

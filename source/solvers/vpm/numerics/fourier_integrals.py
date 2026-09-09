@@ -9,6 +9,31 @@ from scipy.special import erf
 
 @dataclass(frozen=True)
 class FourierIntegrals:
+    """Quadratic flow-integral diagnostics reconstructed from a Fourier grid.
+
+    Attributes
+    ----------
+    total_kinetic_energy, previous_order_total_kinetic_energy : float
+        ``0.5 * integral(|u|² dV)`` and the value from the penultimate core
+        expansion order.  These are mass-normalized kinetic integrals with
+        units m⁵/s²; multiply by density for physical kinetic energy.
+    total_enstrophy, test_filtered_enstrophy,
+    previous_order_total_enstrophy : float
+        Vorticity-square integrals in m³/s², with the test-filtered value using
+        a filter width of ``2*h``.
+    total_helicity, previous_order_total_helicity : float
+        ``integral(u dot omega dV)`` in m⁴/s².
+    radius_expansion_order : int
+        Number of terms used for variable-core Gaussian reconstruction.
+    viscous_kinetic_energy_rate : float or None
+        Viscous rate associated with the energy integral, in m⁵/s³, or None
+        when viscosity was not supplied.
+    energy_measurement : str
+        ``"periodic_fourier_energy"`` or ``"unbounded_energy"``; the label is
+        part of the diagnostic identity and must be considered when comparing
+        histories.
+    """
+
     total_kinetic_energy: float
     total_enstrophy: float
     test_filtered_enstrophy: float
@@ -198,6 +223,40 @@ def gaussian_fourier_integrals(
     correlations against the unbounded transverse Gaussian tensors. This mode
     requires a common core radius and uniform viscosity; the default spectral
     quadratic form remains available for variable-core transfer audits.
+
+    Parameters
+    ----------
+    position, vortex_strength : ndarray, shape (N, 3)
+        Particle centres in metres and vector strengths ``Gamma`` in m³/s.
+    core_radius, particle_volume : ndarray, shape (N,)
+        Particle core radii in metres and quadrature volumes in m³.
+    effective_viscosity : ndarray, shape (N,), optional
+        Per-particle viscosity in m²/s.  Its absence omits the viscous-rate
+        diagnostic.
+    spacing : float, optional
+        Fourier/M4 grid spacing ``h`` in metres.  If omitted, the median
+        cube-root particle volume is used.
+    grid : CartesianGrid, optional
+        Precomputed audit grid.  When supplied, its spacing takes precedence
+        and any explicit ``spacing`` must match.
+    radius_expansion_order : int, default=3
+        Number of variable-core Gaussian expansion terms used for the primary
+        and penultimate-order estimates.
+    free_space : bool, default=False
+        Use unbounded correlation tensors instead of the periodic spectral
+        form.  Requires common core radii and uniform effective viscosity.
+
+    Returns
+    -------
+    FourierIntegrals
+        Immutable energy, enstrophy, helicity, convergence, and viscous-rate
+        diagnostics.
+
+    Raises
+    ------
+    ValueError
+        If array shapes, positivity, grid spacing, expansion order, or
+        free-space prerequisites are invalid.
     """
 
     if radius_expansion_order < 1:
@@ -260,91 +319,66 @@ def gaussian_fourier_integrals(
             vortex_strength * variance_offset[:, None] ** order,
             grid,
         )
-        padding = tuple((size // 2, size - size // 2) for size in compact.shape[:3])
-        field = np.pad(compact, (*padding, (0, 0)))
-        viscosity_field = None
+        viscosity_compact = None
         if viscosity_transformed is not None:
             viscosity_compact = _scatter_vortex_strength_m4(
                 position,
                 vortex_strength * effective_viscosity[:, None] * variance_offset[:, None] ** order,
                 grid,
             )
-            viscosity_field = np.pad(viscosity_compact, (*padding, (0, 0)))
         multiplier = reference_gaussian * (-0.25 * norm_sq) ** order / factorial
         for axis in range(3):
-            transformed[axis] += fft.rfftn(field[..., axis], workers=-1) * multiplier
-            if viscosity_transformed is not None and viscosity_field is not None:
+            # Let the FFT pad one component at a time. Centering all three
+            # padded components explicitly consumes eight times the compact
+            # grid storage. The omitted translation is one common spectral
+            # phase, which cancels from every quadratic integral below.
+            transformed[axis] += (
+                fft.rfftn(compact[..., axis], s=padded_shape, workers=-1) * multiplier
+            )
+            if viscosity_transformed is not None and viscosity_compact is not None:
                 viscosity_transformed[axis] += (
-                    fft.rfftn(viscosity_field[..., axis], workers=-1) * multiplier
+                    fft.rfftn(viscosity_compact[..., axis], s=padded_shape, workers=-1) * multiplier
                 )
         if common_radius or order == radius_expansion_order - 1:
             transformed_previous = [component.copy() for component in transformed]
     assert transformed_previous is not None
 
-    multiplicity = np.ones(transformed[0].shape, dtype=np.float64)
+    del multiplier, reference_gaussian, viscosity_compact
+    # Only the last Fourier axis has conjugate-pair multiplicity. Broadcasting
+    # its weights avoids another full diagnostic-volume allocation.
+    multiplicity = np.ones((1, 1, transformed[0].shape[2]), dtype=np.float64)
     multiplicity[:, :, 1:] = 2.0
     if padded_shape[2] % 2 == 0:
         multiplicity[:, :, -1] = 1.0
     domain_volume = float(np.prod(padded_shape) * spacing**3)
-    nonzero = norm_sq > 0.0
+    inverse_norm_sq = np.divide(1.0, norm_sq, out=np.zeros_like(norm_sq), where=norm_sq > 0.0)
+    test_filter = np.exp(-(spacing**2) * norm_sq)
+    wave_numbers = (kx, ky, kz)
 
     def quadratic_integrals(
         spectrum: list[np.ndarray],
     ) -> tuple[float, float, float, float]:
-        cross = (
-            ky * spectrum[2] - kz * spectrum[1],
-            kz * spectrum[0] - kx * spectrum[2],
-            kx * spectrum[1] - ky * spectrum[0],
-        )
-        total_kinetic_energy = sum(
-            np.sum(
-                multiplicity[nonzero] * np.abs(component[nonzero]) ** 2 / norm_sq[nonzero] ** 2,
+        # Accumulate one component at a time; keeping three curl and three
+        # velocity volumes simultaneously dominates the memory of long wakes.
+        energy = enstrophy = enstrophy_test = helicity = 0.0
+        for axis in range(3):
+            squared = np.abs(spectrum[axis]) ** 2
+            enstrophy += np.sum(multiplicity * squared, dtype=np.float64)
+            enstrophy_test += np.sum(multiplicity * squared * test_filter, dtype=np.float64)
+            del squared
+            first, second = (axis + 1) % 3, (axis + 2) % 3
+            curl = wave_numbers[first] * spectrum[second] - wave_numbers[second] * spectrum[first]
+            velocity = 1j * curl * inverse_norm_sq
+            energy += np.sum(multiplicity * np.abs(velocity) ** 2, dtype=np.float64)
+            helicity += np.sum(
+                multiplicity * np.real(velocity * np.conjugate(spectrum[axis])),
                 dtype=np.float64,
             )
-            for component in cross
-        ) / (2.0 * domain_volume)
-        total_enstrophy = (
-            sum(
-                np.sum(
-                    multiplicity * np.abs(component) ** 2,
-                    dtype=np.float64,
-                )
-                for component in spectrum
-            )
-            / domain_volume
-        )
-        filter_width = 2.0 * spacing
-        test_filter = np.exp(-0.25 * filter_width**2 * norm_sq)
-        enstrophy_test = (
-            sum(
-                np.sum(
-                    multiplicity * np.abs(component) ** 2 * test_filter,
-                    dtype=np.float64,
-                )
-                for component in spectrum
-            )
-            / domain_volume
-        )
-        velocity = []
-        for component in cross:
-            value = np.zeros_like(component)
-            value[nonzero] = 1j * component[nonzero] / norm_sq[nonzero]
-            velocity.append(value)
-        total_helicity = (
-            sum(
-                np.sum(
-                    multiplicity * np.real(velocity[axis] * np.conjugate(spectrum[axis])),
-                    dtype=np.float64,
-                )
-                for axis in range(3)
-            )
-            / domain_volume
-        )
         return (
-            float(total_kinetic_energy),
-            float(total_enstrophy),
-            float(enstrophy_test),
-            float(total_helicity),
+            float(energy / (2.0 * domain_volume)),
+            float(enstrophy / domain_volume),
+            float(enstrophy_test / domain_volume),
+            float(helicity / domain_volume),
         )
 
     total_kinetic_energy, total_enstrophy, test_filtered_enstrophy, total_helicity = (

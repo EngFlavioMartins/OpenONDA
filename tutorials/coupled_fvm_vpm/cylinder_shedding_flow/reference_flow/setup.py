@@ -202,10 +202,6 @@ if __name__ == "__main__":
     parser.add_argument("--name", required=True)
     parser.add_argument("--dx", required=True, type=float)
     arguments = parser.parse_args()
-    solver = create_solver(arguments.name, arguments.dx)
-    try:
-        solver.write_run_manifest()
+    with create_solver(arguments.name, arguments.dx) as solver:
         solver.run()
         fvm.update_grid_study(solver, arguments.dx, profiles=("centreline",))
-    finally:
-        solver.close()

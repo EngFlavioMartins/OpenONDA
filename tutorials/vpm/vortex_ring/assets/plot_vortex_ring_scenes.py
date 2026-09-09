@@ -1,7 +1,7 @@
 """Rebuild the ring schematic and paired particle view from the saved LES run.
 
 Requires ParaView (PVPYTHON or installed pvpython), PyVista, and pdflatex.
-Uses a temporary build directory and keeps only PNG, PDF, TeX and metadata.
+Uses a temporary build directory and keeps only PNG, PDF, and TeX outputs.
 No simulation samples or solver parameters are modified. Both snapshots use
 one orthographic field of view and the same strength-to-radius/color maps.
 """
@@ -23,21 +23,9 @@ import openonda.vpm as vpm
 CASE = Path(__file__).resolve().parents[1]
 
 
-def initial_cloud(meta):
-    expected = {
-        "ring_radius": s.RING_RADIUS,
-        "ring_circulation": s.RING_STRENGTH,
-        "core_radius": s.CORE_RADIUS,
-        "particle_spacing": s.PARTICLE_SPACING,
-        "particle_core_radius": 2 * s.PARTICLE_SPACING,
-        "widnall_amplitude": s.DEFAULT_WIDNALL_AMPLITUDE,
-        "widnall_modes": s.WIDNALL_MODES,
-        "random_seed": s.RANDOM_SEED,
-    }
-    for key, value in expected.items():
-        if not np.isclose(meta[key], value, rtol=0, atol=1e-12):
-            raise ValueError(f"Setup differs from the saved run: {key}")
-    sigma = meta["particle_core_radius"]
+def initial_cloud():
+    """Rebuild the declarative initial cloud from the tutorial setup."""
+    sigma = 2 * s.PARTICLE_SPACING
     distribution = vpm.ToroidalDistribution(
         ring_radius=s.RING_RADIUS,
         tube_radius=np.sqrt(s.CORE_RADIUS**2 - sigma**2)
@@ -98,30 +86,29 @@ def main():
     if not pvbin:
         raise FileNotFoundError("Set PVPYTHON to the ParaView pvpython executable.")
     texbin = shutil.which("pdflatex") or "/Library/TeX/texbin/pdflatex"
-    meta_path = CASE / "samples/les_transposed/run_metadata.json"
+    meta_path = CASE / "solution/les_transposed/vpm_metadata.json"
     if args.available and not meta_path.is_file():
         print("Skipping ring scenes until the LES run is available.")
         return
     meta = json.loads(meta_path.read_text())
-    if args.available and (
-        meta.get("status") != "horizon_reached"
-        or not (
-            CASE / "solution/les_transposed" / f"vpm_{meta['completed_steps']:06d}.h5"
-        ).is_file()
-    ):
+    state = meta.get("state", {})
+    status = meta.get("lifecycle", {}).get("status")
+    completed_steps = int(state.get("step", -1))
+    final_backup = CASE / "solution/les_transposed" / f"vpm_{completed_steps:06d}.h5"
+    if args.available and (status != "completed" or not final_backup.is_file()):
         print("Skipping ring scenes until the final LES backup is available.")
         return
-    if meta["status"] != "horizon_reached":
+    if status != "completed":
         raise ValueError("A completed LES run is required for the final panel.")
-    ic = initial_cloud(meta)
-    path = CASE / "solution/les_transposed" / f"vpm_{meta['completed_steps']:06d}.h5"
+    ic = initial_cloud()
+    path = final_backup
     with h5py.File(path) as f:
         p1 = f["particles/position"][:].astype(float)
         a1 = f["particles/vortex_strength"][:].astype(float)
         final_time = float(f["solver"].attrs["time"])
-    if not np.isclose(final_time, meta["final_time"]):
+    if not np.isclose(final_time, float(state["time"])):
         raise ValueError("Snapshot time differs from run metadata.")
-    if len(ic) != meta["initial_n_particles_total"]:
+    if len(ic) != int(state["initial_n_particles_total"]):
         raise ValueError("Initial particle count differs from metadata.")
     strength_ref = np.linalg.norm(ic.vortex_strength, axis=1).max()
     colors = colormaps["viridis"](np.linspace(0, 1, 65))[:, :3]
@@ -253,9 +240,17 @@ def main():
 
         face = project(center, (0, 0), 94, 82, 1.30)
         scene["schematic"]["section_anchor_mm"] = face.tolist()
-        (work / "scene.json").write_text(json.dumps(scene, indent=2))
+        render_command = [
+            pvbin,
+            str(Path(__file__).with_name("render_vortex_ring.py")),
+            str(work),
+            json.dumps(scene["rgb_points"]),
+        ]
+        if args.schematic_only:
+            render_command.append("--schematic-only")
         subprocess.run(
-            [pvbin, str(Path(__file__).with_name("render_vortex_ring.py")), str(work)], check=True
+            render_command,
+            check=True,
         )
         # Keep image paths local so the exported LaTeX remains portable.
         for name in (
@@ -314,7 +309,6 @@ def main():
             )
             for ext in ["tex", "pdf"]:
                 shutil.copy2(work / f"{name}.{ext}", args.output_dir / f"{name}.{ext}")
-        (args.output_dir / "vortex_ring_scenes.json").write_text(json.dumps(scene, indent=2) + "\n")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 # Project tooling
 
-Pip is the primary installation interface. These optional Conda files help
+`python install.py` at the repository root installs with pip and verifies the
+result outside the checkout; `--dev` selects an editable installation.
+These optional Conda files help
 assemble a consistent interpreter and, where requested, an MPI/PETSc stack.
 They do not repair Python imports or modify shell startup files.
 

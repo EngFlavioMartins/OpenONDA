@@ -1,7 +1,5 @@
-#!/usr/bin/env bash
-# Remove only this tutorial's generated outputs. Called explicitly by allrun --clean.
-set -euo pipefail
+#!/bin/bash -e
 
-cd "$(dirname "$0")"
+cd -- "$(dirname -- "$0")"
 rm -rf solution samples figures
-rm -f ./*.log ./run_manifest.json
+rm -f ./*.log

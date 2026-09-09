@@ -34,11 +34,25 @@ class InitialVelocity(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ParticleCoreCompensation:
-    """Kernel-aware physical-core correction for blob representations.
+    """Configure kernel-aware physical-core correction for blob initialization.
 
-    ``kernel_diffusivity`` is the positive diffusion coefficient used by the
-    selected kernel model. Omit this correction to leave the requested physical
-    vortex-core radius uncorrected.
+    Parameters
+    ----------
+    kernel_diffusivity : float, default=4.0
+        Positive dimensionless diffusion constant of the selected radial
+        kernel. For each distribution, initialization uses
+        ``a_rep**2 = a_physical**2 - 4*sigma_mean**2/kernel_diffusivity``.
+
+    Raises
+    ------
+    ValueError
+        If ``kernel_diffusivity`` is non-finite or non-positive.
+
+    Notes
+    -----
+    Omit this object to leave the requested physical vortex-core radius
+    uncorrected. Compensation can fail at build time when the numerical core
+    ``sigma`` is too large to represent the requested physical core.
     """
 
     kernel_diffusivity: float = 4.0

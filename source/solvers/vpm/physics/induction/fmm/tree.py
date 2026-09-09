@@ -40,6 +40,28 @@ class FMMTree:
     """
 
     def __init__(self, leaf_capacity: int = 32, max_depth: int = 24) -> None:
+        """Create an empty deterministic octree builder.
+
+        Parameters
+        ----------
+        leaf_capacity : int, default=32
+            Maximum number of source particles retained in one leaf before
+            subdivision.
+        max_depth : int, default=24
+            Maximum subdivision depth. This bounds work for coincident or
+            nearly coincident particle coordinates.
+
+        Raises
+        ------
+        ValueError
+            If either capacity or depth is less than one.
+
+        Notes
+        -----
+        Construction allocates only metadata containers. :meth:`build`
+        replaces the tree's stage-prefix references and does not reorder or
+        mutate the supplied particle arrays.
+        """
         if leaf_capacity < 1 or max_depth < 1:
             raise ValueError("FMM leaf_capacity and max_depth must be positive")
         self.leaf_capacity = int(leaf_capacity)

@@ -79,7 +79,29 @@ class _ReleaseSlot:
 
 @dataclass(frozen=True)
 class ReleaseSlotStatus:
-    """Inspectable circulation-reservoir state for one release slot."""
+    """Inspectable circulation-reservoir state for one release slot.
+
+    ``pending_strength`` is the vector vortex strength in m³/s that has crossed
+    the flux surface but is waiting for a geometrically admissible emission.
+    ``accumulated_displacement`` and ``pending_age`` are in metres and seconds.
+
+    Attributes
+    ----------
+    slot_id : tuple[int, int, int]
+        Globally stable integer lattice identifier.
+    pending_strength : ndarray, shape (3,)
+        Held vector vortex strength in m³/s. The value returned by
+        :meth:`FluxReleaseHandoff.slot_status` is a copy.
+    accumulated_displacement : float
+        Transport distance accumulated since the last emission, in metres.
+    pending_age : float
+        Age of held strength, in seconds.
+    next_normal_index : int
+        Count-based phase used to choose the next deterministic normal-lattice
+        location.
+    emitted_count : int
+        Number of particles emitted by this slot since construction.
+    """
 
     slot_id: tuple[int, int, int]
     pending_strength: np.ndarray
@@ -91,7 +113,30 @@ class ReleaseSlotStatus:
 
 @dataclass(frozen=True)
 class FluxReleaseBatch:
-    """Emission and conservation report for one flux-handoff interval."""
+    """Emission and conservation report for one flux-handoff interval.
+
+    Particle arrays use one row per newly emitted particle. Positions and core
+    radii are in metres; vortex-strength vectors are in m³/s; integer slot IDs
+    identify the source release location. Scalar fractions and normalized
+    spacing diagnostics are dimensionless.
+
+    Attributes
+    ----------
+    position, vortex_strength, core_radius : ndarray
+        Emitted particle state with shapes ``(N, 3)``, ``(N, 3)``, and ``(N,)``.
+    slot_id : ndarray, shape (N, 3), dtype=int64
+        Source slot for each emitted row.
+    emitted_vortex_strength_net : ndarray, shape (3,)
+        Sum of emitted strength vectors in m³/s.
+    outward_flux_vortex_strength_increment : ndarray, shape (3,)
+        Outward patch-integrated increment in m³/s for this call.
+    inward_flux_vortex_strength_increment : ndarray, shape (3,)
+        Diagnostic inward increment in m³/s; it is not emitted by this one-way
+        handoff.
+    pending_vortex_strength_net, conservation_error : ndarray, shape (3,)
+        Held reservoir and ``emitted + pending - cumulative outward`` residual,
+        both in m³/s.
+    """
 
     position: np.ndarray
     vortex_strength: np.ndarray
@@ -115,7 +160,13 @@ class FluxReleaseBatch:
 
 
 class VortexParticleSink(Protocol):
-    """Minimal particle-solver API consumed by the experimental handoff."""
+    """Minimal particle-solver API consumed by the experimental handoff.
+
+    Implementations append aligned active-prefix arrays to a VPM container.
+    All vector arrays have shape ``(N, 3)``; scalar arrays have shape ``(N,)``.
+    Positions/core radii/particle volumes use m/m/m³, velocity uses m/s,
+    vortex strength uses m³/s, and both viscosity arrays use m²/s.
+    """
 
     def add_vortex_particles(
         self,
@@ -129,7 +180,9 @@ class VortexParticleSink(Protocol):
         group_id: np.ndarray | None = None,
         zone_id: np.ndarray | None = None,
         velocity_gradient: np.ndarray | None = None,
-    ) -> None: ...
+    ) -> None:
+        """Append a batch of particles, copying each aligned field."""
+        ...
 
 
 def inject_vpm_release_batch(
@@ -200,7 +253,29 @@ class FluxReleaseHandoff:
         core_radius: float,
         max_pending_strength: float | None = None,
         max_pending_age: float | None = None,
-    ):
+    ) -> None:
+        """Create an empty deterministic release reservoir.
+
+        Parameters
+        ----------
+        particle_spacing : float
+            Minimum allowed centre-to-centre spacing and transport distance
+            before emission, in metres.
+        core_radius : float
+            Core radius assigned to emitted particles, in metres.
+        max_pending_strength : float or None, optional
+            Optional positive magnitude threshold in m³/s for reporting a
+            trapped slot. It does not discard the reservoir.
+        max_pending_age : float or None, optional
+            Optional positive age threshold in seconds for reporting a trapped
+            slot. It does not discard the reservoir.
+
+        Notes
+        -----
+        Construction allocates no particles and resets cumulative flux and
+        emission counters. The object is mutable and is intended to be reused
+        for successive FVM boundary intervals.
+        """
         spacing = float(particle_spacing)
         radius = float(core_radius)
         if not np.isfinite(spacing) or spacing <= 0.0:
@@ -223,16 +298,16 @@ class FluxReleaseHandoff:
 
     @property
     def outward_flux_total(self) -> np.ndarray:
-        """Return total outward flux received since construction."""
+        """Return cumulative outward vortex-strength flux in m³/s as a copy."""
         return self._outward_flux_total.copy()
 
     @property
     def emitted_vortex_strength_total(self) -> np.ndarray:
-        """Return total strength emitted since construction."""
+        """Return cumulative emitted vector strength in m³/s as a copy."""
         return self._emitted_total.copy()
 
     def slot_status(self) -> tuple[ReleaseSlotStatus, ...]:
-        """Return deterministic, copy-safe reservoir state sorted by slot ID."""
+        """Return copy-safe reservoir snapshots sorted by globally stable slot ID."""
         return tuple(
             ReleaseSlotStatus(
                 slot_id=slot_id,

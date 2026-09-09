@@ -152,6 +152,27 @@ class SurfacePatchRefinement:
     """
 
     def __init__(self, patch: str, triangles: np.ndarray, cell_size: float) -> None:
+        """Create a geometric refinement selector for one surface patch.
+
+        Parameters
+        ----------
+        patch : str
+            Non-empty patch name to retain in generated boundary metadata.
+        triangles : ndarray, shape (n_triangles, 3, 3)
+            Surface vertices in metres. Input coordinates are copied as
+            contiguous float64 data.
+        cell_size : float
+            Target octree cell size in metres for intersecting leaves.
+
+        Raises
+        ------
+        ValueError
+            If the patch name, triangle shape/count, or cell size is invalid.
+
+        Side Effects
+        ------------
+        Builds a geometric index; it does not mutate ``triangles``.
+        """
         if not patch.strip():
             raise ValueError("surface patch refinement requires a non-empty patch name")
         values = np.ascontiguousarray(triangles, dtype=np.float64)
@@ -1071,6 +1092,36 @@ class CartesianOctree:
         include_cell_vertex_indices: bool = True,
         preserve_body_geometry: bool = True,
     ) -> None:
+        """Allocate a deterministic Cartesian octree mesh builder.
+
+        Parameters
+        ----------
+        domain : tuple[float, ...]
+            ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in metres.
+        max_cell_size : float
+            Coarse background cell size in metres.
+        surface_file, surface_data : path or TriangulatedSurface, optional
+            Mutually exclusive body-surface sources.
+        exact_surface_components, surface_exclusion_distance,
+        wall_patch_name, surface_cell_size, minimum_cell_size,
+        refinements, surface_patch_refinements, merge_outer_patch,
+        preserve_outer_patches, surface_may_cross_domain_boundary,
+        include_cell_vertex_indices, preserve_body_geometry
+            Mesh-quality, refinement, boundary, and topology policies. Lengths
+            are in metres; ``preserve_body_geometry`` selects exact Cartesian
+            body conformance.
+
+        Raises
+        ------
+        ValueError
+            If bounds, sizes, surface-source combinations, or refinement
+            policies are inconsistent.
+
+        Notes
+        -----
+        Construction validates policy and does not materialize the mesh.
+        :meth:`build` performs octree generation and quality checks.
+        """
         _validate_bounds(domain, "domain")
         if not math.isfinite(max_cell_size) or max_cell_size <= 0.0:
             raise ValueError("max_cell_size must be finite and positive")

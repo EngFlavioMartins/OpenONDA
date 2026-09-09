@@ -14,17 +14,8 @@ import numpy as np
 from .aircraft import Aircraft, Wing, WingSegment
 
 
-def save_surface(aircraft: "Aircraft", filepath: str) -> str:
-    """
-    Save aircraft surface geometry to JSON file.
-
-    Args:
-        aircraft: Aircraft object to save
-        filepath: Output filepath (without extension, .json will be added)
-
-    Returns:
-        str: Path to saved file
-    """
+def surface_to_dict(aircraft: "Aircraft") -> dict:
+    """Return the input geometry and reference values as a portable JSON mapping."""
     data = {"uid": aircraft.uid, "wings": []}
 
     for wing in aircraft.wings.values():
@@ -55,6 +46,22 @@ def save_surface(aircraft: "Aircraft", filepath: str) -> str:
         if hasattr(refs.get("reference_point", np.zeros(3)), "tolist")
         else list(refs.get("reference_point", [0, 0, 0])),
     }
+
+    return data
+
+
+def save_surface(aircraft: "Aircraft", filepath: str) -> str:
+    """
+    Save aircraft surface geometry to JSON file.
+
+    Args:
+        aircraft: Aircraft object to save
+        filepath: Output filepath (without extension, .json will be added)
+
+    Returns:
+        str: Path to saved file
+    """
+    data = surface_to_dict(aircraft)
 
     output_path = filepath if filepath.endswith(".json") else f"{filepath}.json"
     with open(output_path, "w") as f:

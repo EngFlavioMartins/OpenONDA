@@ -16,11 +16,28 @@ Axis = Literal["x", "y", "z"]
 
 @dataclass(frozen=True, slots=True)
 class CylindricalDistribution:
-    """Cartesian midpoint cells clipped to a solid cylinder.
+    """Configure Cartesian midpoint particles clipped to a solid cylinder.
 
-    ``radius`` and ``length`` are positive length units. Boundary-cell volumes
-    are normalized to the cylinder's analytic volume, preserving integrated
-    quadrature rather than retaining an unqualified ``h³`` after clipping.
+    Parameters
+    ----------
+    radius : float
+        Positive cylinder radius in m.
+    length : float
+        Positive axial length in m.
+    spacing : float
+        Positive nominal Cartesian particle spacing ``h`` in m.
+    core_radius_ratio : float
+        Positive dimensionless core ratio ``sigma/h``.
+    centre : tuple[float, float, float], default=(0, 0, 0)
+        Cartesian cylinder centre in m.
+    axis : {'x', 'y', 'z'}, default='z'
+        Cylinder-axis direction in the global Cartesian frame.
+
+    Notes
+    -----
+    Boundary cells are selected by midpoint inclusion. :meth:`build` assigns
+    equal weights summing to the analytic volume ``pi*radius**2*length`` rather
+    than retaining an uncorrected ``h**3`` after clipping.
     """
 
     radius: float
@@ -31,7 +48,20 @@ class CylindricalDistribution:
     axis: Axis = "z"
 
     def build(self) -> ParticleDistribution:
-        """Build immutable cylinder geometry with volume-conserving weights."""
+        """Build immutable cylinder geometry with volume-conserving weights.
+
+        Returns
+        -------
+        ParticleDistribution
+            Positions ``(N, 3)`` and radii ``(N,)`` in m plus quadrature
+            volumes ``(N,)`` in m³ that sum to the analytic cylinder volume.
+
+        Raises
+        ------
+        ValueError
+            If a length/spacing/core ratio is invalid, the centre is not a
+            finite three-vector, or ``axis`` is unsupported.
+        """
         spacing, ratio = validate_spacing(self.spacing, self.core_radius_ratio)
         if not np.isfinite(self.radius) or self.radius <= 0.0:
             raise ValueError("radius must be finite and positive")

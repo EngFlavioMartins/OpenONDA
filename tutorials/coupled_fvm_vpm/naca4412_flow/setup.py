@@ -15,14 +15,18 @@ from pathlib import Path
 
 import numpy as np
 
+import openonda.coupler as coupling
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
-import openonda.coupler as coupling
 import openonda.vpm as vpm
+from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers
 
+__package__ = case_package(Path(__file__).parent)
+from .assets.airfoil_geometry import naca4_vertices
+
 CASE_DIR = Path(__file__).resolve().parent
-# Physical parameters -----------------------------------------------------
+# Physical parameters
 NACA_CODE = "4412"
 ALPHA_DEG = 10.0
 CHORD = 1.0
@@ -43,46 +47,11 @@ VPM_CORE_RADIUS_RATIO = 1.5
 IBM_MARKER_RATIO = 2.5
 WRITE_INTERVAL_TIME = 0.8
 SAMPLE_INTERVAL_TIME = min(WRITE_INTERVAL_TIME, END_TIME)
-FVM_LOGGING_INTERVAL_STEPS = max(1, int(round(SAMPLE_INTERVAL_TIME / FVM_TIME_STEP_SIZE)))
-VPM_LOGGING_INTERVAL_STEPS = max(1, int(round(SAMPLE_INTERVAL_TIME / VPM_TIME_STEP_SIZE)))
+FVM_LOGGING_INTERVAL_STEPS = round(SAMPLE_INTERVAL_TIME / FVM_TIME_STEP_SIZE)
+VPM_LOGGING_INTERVAL_STEPS = round(SAMPLE_INTERVAL_TIME / VPM_TIME_STEP_SIZE)
 
 
-def naca4_vertices(code: str, n_chord: int = 161) -> np.ndarray:
-    """Return a closed clockwise polygon for a four-digit NACA section."""
-    if len(code) != 4 or not code.isdigit():
-        raise ValueError("NACA code must contain four digits")
-    m = int(code[0]) / 100.0
-    max_camber_position = int(code[1]) / 10.0
-    thickness = int(code[2:]) / 100.0
-    beta = np.linspace(0.0, np.pi, n_chord)
-    x = 0.5 * (1.0 - np.cos(beta))
-    yt = (
-        5.0
-        * thickness
-        * (0.2969 * np.sqrt(x) - 0.1260 * x - 0.3516 * x**2 + 0.2843 * x**3 - 0.1036 * x**4)
-    )
-    yc = np.where(
-        x < max_camber_position,
-        m / max_camber_position**2 * (2.0 * max_camber_position * x - x**2),
-        m
-        / (1.0 - max_camber_position) ** 2
-        * ((1.0 - 2.0 * max_camber_position) + 2.0 * max_camber_position * x - x**2),
-    )
-    slope = np.where(
-        x < max_camber_position,
-        2.0 * m / max_camber_position**2 * (max_camber_position - x),
-        2.0 * m / (1.0 - max_camber_position) ** 2 * (max_camber_position - x),
-    )
-    theta = np.arctan(slope)
-    upper = np.column_stack((x - yt * np.sin(theta), yc + yt * np.cos(theta)))
-    lower = np.column_stack((x + yt * np.sin(theta), yc - yt * np.cos(theta)))
-    section = np.vstack((upper[::-1], lower[1:-1]))
-    section[:, 0] = CHORD * (section[:, 0] - 0.5)
-    section[:, 1] *= CHORD
-    return section
-
-
-AIRFOIL_VERTICES = naca4_vertices(NACA_CODE)
+AIRFOIL_VERTICES = naca4_vertices(NACA_CODE, CHORD)
 FVM_MESH = msh.coupling_box_mesh(FVM_BOX, SPACING, patch_name="numericalBoundary")
 AIRFOIL = fvm.ImmersedBody.extruded_polygon_z(
     AIRFOIL_VERTICES,
@@ -185,6 +154,7 @@ FVM_SETUP = fvm.FVMSetup(
 )
 
 VPM_CASE = vpm.VPMCase(
+    name="naca4412_flow",
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=list(FREESTREAM_VELOCITY),
@@ -217,12 +187,6 @@ COUPLER_SETUP = coupling.CouplerSetup(
 
 
 def main() -> None:
-    print("\n===== SIMULATION =====")
-    print(
-        f"  FVM time_step_size={FVM_TIME_STEP_SIZE}s / "
-        f"VPM time_step_size={VPM_TIME_STEP_SIZE}s, "
-        f"spacing={SPACING}, particles<={MAX_N_PARTICLES}"
-    )
     fvm_solver = fvm.create_fvm_solver(FVM_SETUP, case_dir=CASE_DIR, mesh=FVM_MESH)
     fvm_solver.set_immersed_bodies(AIRFOIL, grid_spacing=SPACING)
     fvm_solver.write_vtk()

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import matplotlib
@@ -19,9 +18,10 @@ if not __package__:
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-from ..study import STUDY_DIR
+from .study import STUDY_DIR
 from .. import setup
 from .render_study import states
+from .ring_metrics import load_metadata, load_study_metadata, metadata_settings
 
 
 def mode_amplitudes(position, strength, groups, bins=64):
@@ -64,38 +64,33 @@ def load_runs(names=None):
     for directory in sorted(STUDY_DIR.glob("*")):
         if ".previous-" in directory.name or (names and directory.name not in names):
             continue
-        metadata = directory / "result.json"
         flow = directory / "samples" / "diagnostics" / "flow_integrals.csv"
-        if not metadata.exists() or not flow.exists():
+        meta = load_study_metadata(directory)
+        if not meta or not flow.exists():
             continue
-        meta = json.loads(metadata.read_text())
         data = pd.read_csv(flow)
         rings = pd.read_csv(flow.with_name("ring_diagnostics.csv"))
         runs.append((directory.name, directory, meta, data, rings))
     # The diagnostic-fix control was launched with the original tutorial.
     # Include it without copying or renaming its live scientific output.
-    baseline_meta = setup.TUTORIAL_DIR / "samples" / "baseline" / "run_metadata.json"
+    baseline_meta = load_metadata("baseline")
+    baseline_flow = setup.TUTORIAL_DIR / "samples" / "baseline" / "flow_integrals.csv"
     if (
         (not names or "leapfrog_baseline" in names)
         and not any(run[0] == "leapfrog_baseline" for run in runs)
-        and baseline_meta.exists()
+        and baseline_meta
+        and baseline_flow.exists()
     ):
-        meta = json.loads(baseline_meta.read_text())
-        if meta.get("schema_version", 0) >= 2:
-            meta["signature"] = {"scenario": "leapfrog", "method": "baseline"}
-            if meta["status"] == "running":
-                meta.pop("completed_steps", None)
-            flow = baseline_meta.with_name("flow_integrals.csv")
-            runs.insert(
-                0,
-                (
-                    "leapfrog_baseline",
-                    setup.TUTORIAL_DIR,
-                    meta,
-                    pd.read_csv(flow),
-                    pd.read_csv(flow.with_name("ring_diagnostics.csv")),
-                ),
-            )
+        runs.insert(
+            0,
+            (
+                "leapfrog_baseline",
+                setup.TUTORIAL_DIR,
+                baseline_meta,
+                pd.read_csv(baseline_flow),
+                pd.read_csv(baseline_flow.with_name("ring_diagnostics.csv")),
+            ),
+        )
     return runs
 
 
@@ -127,21 +122,22 @@ def summarize(runs, output):
         # individual initial ring impulse magnitudes, not the vanishing sum.
         ring_initial = rings[rings.step == rings.step.min()]
         impulse_scale = float(ring_initial.linear_impulse_magnitude.sum())
-        signature = meta["signature"]
+        settings = metadata_settings(meta)
+        state = meta.get("state", {})
         row = {
             "run": name,
-            "scenario": signature["scenario"],
-            "method": signature["method"],
-            "spacing": signature.get("spacing", setup.PARTICLE_SPACING),
-            "support": signature.get("support", "circular"),
-            "amplitude": signature.get("amplitude", setup.DISTURBANCE_AMPLITUDE),
-            "dt": signature.get("dt", setup.TIME_STEP_SIZE),
-            "smagorinsky": signature.get("smagorinsky", setup.SMAGORINSKY_COEFFICIENT),
-            "frequency": signature.get("frequency", np.nan),
-            "status": meta["status"],
-            "steps": meta.get("completed_steps", int(final.step)),
+            "scenario": settings["scenario"],
+            "method": settings["method"],
+            "spacing": settings.get("spacing", setup.PARTICLE_SPACING),
+            "support": settings.get("support", "circular"),
+            "amplitude": settings.get("amplitude", setup.DISTURBANCE_AMPLITUDE),
+            "dt": settings.get("dt", setup.TIME_STEP_SIZE),
+            "smagorinsky": settings.get("smagorinsky", setup.SMAGORINSKY_COEFFICIENT),
+            "frequency": settings.get("frequency", np.nan),
+            "status": meta.get("lifecycle", {}).get("status", "unknown"),
+            "steps": state.get("step", int(final.step)),
             "sampled_t_star": final.time * setup.RING_CIRCULATION,
-            "wall_seconds": meta.get("wall_seconds", np.nan),
+            "wall_seconds": np.nan,
             "runtime_energy_ratio": final.total_kinetic_energy / initial.total_kinetic_energy,
             "max_runtime_energy_ratio": data.total_kinetic_energy.max()
             / initial.total_kinetic_energy,
@@ -155,9 +151,8 @@ def summarize(runs, output):
             "max_misalignment": data.vortex_strength_misalignment_degrees.max(),
             "max_cfl": data.lagrangian_cfl.max(),
             "trajectory_radius_rmse": trajectory_rmse(rings)
-            if signature["scenario"] == "leapfrog" and not final.n_regularization_events
+            if settings["scenario"] == "leapfrog" and not final.n_regularization_events
             else np.nan,
-            "termination": meta.get("termination_reason"),
         }
         for tstar in (2, 5, 10, 15, 20):
             target = tstar / setup.RING_CIRCULATION

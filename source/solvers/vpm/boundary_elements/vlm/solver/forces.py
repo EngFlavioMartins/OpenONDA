@@ -40,45 +40,16 @@ class VLMForceEvaluator:
         density: float,
         reference_speed: float | None,
     ) -> dict[str, np.ndarray | float | str]:
-        """Compute forces using the conventional Kutta-Joukowski theorem.
-
-        Integrates pressure forces over bound vortex panels: F = ρ Γ × V_local.
-        """
+        """Return bound-leg KJ loads plus the configured unsteady pressure term."""
         if vlm_solver is None or not vlm_solver._solved:
-            return {
-                "method": "KUTTA_JOUKOWSKI",
-                "force": np.zeros(3),
-                "force_x": 0.0,
-                "force_y": 0.0,
-                "force_z": 0.0,
-                "error": "No VLM solver or not solved",
-            }
-        freestream_speed = float(np.linalg.norm(freestream_velocity))
-        if reference_speed is None:
-            reference_speed = freestream_speed
-        unit_direction = (
-            freestream_velocity / freestream_speed
-            if freestream_speed > 1e-10
-            else np.array([1.0, 0.0, 0.0])
-        )
-        try:
-            forces_dict = vlm_solver.compute_forces(
-                density, reference_velocity=unit_direction * reference_speed
-            )
-            force_vector = np.array(
-                [forces_dict["force_x"], forces_dict["force_y"], forces_dict["force_z"]]
-            )
-            return {
-                "method": "KUTTA_JOUKOWSKI",
-                "force": force_vector,
-                **forces_dict,
-            }
-        except Exception as exc:
-            return {
-                "method": "KUTTA_JOUKOWSKI",
-                "force": np.zeros(3),
-                "force_x": 0.0,
-                "force_y": 0.0,
-                "force_z": 0.0,
-                "error": str(exc),
-            }
+            raise RuntimeError("Force evaluation requires a solved VLM lattice")
+        reference = vlm_solver._resolve_reference_velocity(None, vlm_solver.lattice.n_panels)
+        if reference_speed is not None:
+            reference = reference / np.linalg.norm(reference) * reference_speed
+        forces = vlm_solver.compute_forces(density, reference_velocity=reference)
+        return {
+            "method": "KUTTA_JOUKOWSKI",
+            "unsteady_pressure": vlm_solver.force.unsteady,
+            "force": np.array([forces["force_x"], forces["force_y"], forces["force_z"]]),
+            **forces,
+        }

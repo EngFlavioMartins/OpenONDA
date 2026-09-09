@@ -52,6 +52,23 @@ class CellBoxFilter:
     """
 
     def __init__(self, mesh_data: dict, geo_data: dict, centre_weight: str = "cell_volume"):
+        """Build one reusable one-ring filter from mesh connectivity.
+
+        Parameters
+        ----------
+        mesh_data : dict
+            Native topology containing interior owner/neighbour arrays.
+        geo_data : dict
+            Geometry containing positive cell volumes in m³.
+        centre_weight : {"cell_volume", "neighbour_sum"}, default="cell_volume"
+            Weight assigned to the centre cell. The latter gives a smoother
+            residual filter with zero grid-scale response on regular meshes.
+
+        Raises
+        ------
+        ValueError
+            If ``centre_weight`` is unsupported.
+        """
         valid = ("cell_volume", "neighbour_sum")
         if centre_weight not in valid:
             raise ValueError(f"centre_weight must be one of {valid}, got {centre_weight!r}")
@@ -75,6 +92,17 @@ class CellBoxFilter:
         Works for scalars ``(n,)``, vectors ``(n, 3)`` and tensors ``(n, 3, 3)``
         alike — the weights are reshaped to broadcast against whatever trailing
         dimensions ``f`` has.
+
+        Parameters
+        ----------
+        f : numpy.ndarray
+            Cell field with leading dimension ``n_cells`` and any trailing
+            scalar/vector/tensor shape.
+
+        Returns
+        -------
+        numpy.ndarray
+            Filtered field with the same shape and units as ``f``.
         """
         cell_volume = self._vol
         shape = (-1,) + (1,) * (f.ndim - 1)

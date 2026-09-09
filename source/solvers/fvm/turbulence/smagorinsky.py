@@ -131,6 +131,21 @@ class Smagorinsky:
     """
 
     def __init__(self, mesh_data, geo_data, smagorinsky_coefficient=0.17):
+        """Bind the classical Smagorinsky model to FVM mesh geometry.
+
+        Parameters
+        ----------
+        mesh_data, geo_data : dict
+            Native topology and geometry. Cell volumes define the filter
+            width; the supplied mappings are not mutated.
+        smagorinsky_coefficient : float, default=0.17
+            Dimensionless ``C_s`` coefficient.
+
+        Raises
+        ------
+        ValueError
+            If ``smagorinsky_coefficient`` is non-finite or negative.
+        """
         if not np.isfinite(smagorinsky_coefficient) or smagorinsky_coefficient < 0.0:
             raise ValueError(
                 "Smagorinsky coefficient smagorinsky_coefficient must be finite and non-negative"
@@ -262,6 +277,24 @@ class EquilibriumSmagorinsky:
         subgrid_kinetic_energy_coefficient: float = EQUILIBRIUM_CK,
         subgrid_dissipation_coefficient: float = EQUILIBRIUM_CE,
     ) -> None:
+        """Bind the equilibrium Smagorinsky closure to FVM mesh geometry.
+
+        Parameters
+        ----------
+        mesh_data, geo_data : dict
+            Native topology and geometry read by the closure; cell volumes
+            determine the filter width.
+        subgrid_kinetic_energy_coefficient : float, default=EQUILIBRIUM_CK
+            Dimensionless equilibrium ``C_K`` coefficient.
+        subgrid_dissipation_coefficient : float, default=EQUILIBRIUM_CE
+            Positive dimensionless equilibrium ``C_E`` coefficient.
+
+        Raises
+        ------
+        ValueError
+            If either coefficient is non-finite, ``C_K`` is negative, or
+            ``C_E`` is non-positive.
+        """
         if (
             not np.isfinite(subgrid_kinetic_energy_coefficient)
             or subgrid_kinetic_energy_coefficient < 0.0

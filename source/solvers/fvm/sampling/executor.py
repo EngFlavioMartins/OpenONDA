@@ -26,7 +26,12 @@ from .forces import ForceSampler, IBMForceSampler, YPlusSampler
 
 
 class FVMSamplerExecutor:
-    """Orchestrates FVM sampler execution for one accepted step."""
+    """Orchestrate FVM sampler execution for live and offline contexts.
+
+    Field samplers gather partition-owned values to root before writing; force,
+    y-plus, and IBM samplers remain collective. The executor is stateless with
+    respect to cadence: each sampler's :class:`RunSchedule` decides eligibility.
+    """
 
     @staticmethod
     def execute(solver, *, strict: bool = True, event: str = "accepted") -> None:
@@ -98,6 +103,7 @@ class FVMSamplerExecutor:
 
     @staticmethod
     def _write_field_sampler(solver, sampler, samples_dir: str, *, strict: bool = True) -> None:
+        """Write one field sampler and update its VTK time-series index."""
         if hasattr(sampler, "save_vts"):
             filename = f"{sampler.name}_{solver.step:06d}.vts"
             try:
@@ -121,6 +127,7 @@ class FVMSamplerExecutor:
 
     @staticmethod
     def _handle_failure(solver, sampler, exc: Exception, strict: bool) -> None:
+        """Raise or log a sampler failure according to ``strict`` policy."""
         name = getattr(sampler, "file_name", None) or sampler.__class__.__name__
         if strict:
             raise RuntimeError(f"Sampler '{name}' failed: {exc}") from exc

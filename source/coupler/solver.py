@@ -121,8 +121,70 @@ def _world_rank() -> int:
 
 
 class FVMVPMCoupler:
-    """
-    FVM-VPM coupler for boundary exchange and absolute overlap synchronization.
+    """Synchronize an inner FVM solution with an outer VPM wake.
+
+    The driver samples the VPM field on an outer FVM patch, subcycles the FVM
+    to the next VPM time, then replaces or blends the FVM-authoritative
+    vorticity into the particle cloud. It owns the exchange sequence and
+    coupled restart state; the injected solvers retain ownership of their
+    respective meshes, fields, particles, and numerical models.
+
+    Parameters
+    ----------
+    fvm_solver : FVMSolver
+        Native incompressible FVM solver on this rank. In MPI execution every
+        rank supplies its local solver and enters collective calls in the same
+        order.
+    vpm_solver : VPMSolver or None
+        Particle solver on rank zero. Non-owner ranks pass ``None`` or an
+        inactive-rank placeholder. The active solver's domain, freestream,
+        viscosity, and time step must be compatible with the FVM case.
+    coupler_setup : CouplerSetup
+        Immutable coupling-owned transfer, boundary, diagnostic, and backup
+        policy.
+
+    Attributes
+    ----------
+    setup : CouplerSetup
+        Retained coupling policy.
+    fvm_solver : FVMSolver or None
+        Adopted solver after :meth:`initialize`; ``None`` beforehand.
+    vpm_solver : VPMSolver or None
+        Rank-zero adopted particle solver after initialization. It remains
+        ``None`` on other MPI ranks.
+    vorticity_transfer : VorticityTransfer or None
+        Prepared FVM-to-VPM transfer component.
+    fvm_consistency_band : FVMConsistencyBand or None
+        Optional resolved-scale consistency component.
+    fvm_time_step_size, vpm_time_step_size : float or None
+        Accepted FVM substep and VPM/coupling-step durations in s.
+    n_fvm_substeps : int
+        Exact integer number of FVM steps per VPM coupling step.
+    end_time : float or None
+        Physical FVM end time in s after initialization.
+    kinematic_viscosity : float or None
+        Shared fluid kinematic viscosity in m²/s.
+    density : float or None
+        FVM reference density in kg/m³.
+    fvm_box : ndarray or None, shape (6,)
+        Outer FVM bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m.
+    coupling_diagnostics : list[dict]
+        Accepted-step diagnostic records. The list is reset when a run is
+        prepared and mutated as coupling steps complete.
+
+    Notes
+    -----
+    Construction does not advance either solver, but on rank zero it creates
+    ``<fvm case>/solution`` and configures coupled logging. :meth:`run` is the
+    normal entry point; it calls :meth:`initialize` idempotently. A coupled
+    step is persistent state: VPM advance, VPM boundary trace, FVM substeps,
+    absolute vorticity transfer, scheduled VPM output, diagnostics, and backup.
+
+    Examples
+    --------
+    >>> setup = CouplerSetup(coupling_patch="numericalBoundary")
+    >>> driver = FVMVPMCoupler(fvm_solver, vpm_solver, setup)
+    >>> completed_step = driver.run(max_coupling_steps=2, backup_at_stop=True)
     """
 
     def __init__(
@@ -131,10 +193,30 @@ class FVMVPMCoupler:
         vpm_solver: VPMSolver | None,
         coupler_setup: CouplerSetup,
     ) -> None:
-        """Build a coupler from externally configured FVM and VPM solvers.
+        """Retain externally configured solvers and prepare coupled output.
 
-        The FVM solver is required on every rank. The VPM solver is required
-        only on rank zero.
+        Parameters
+        ----------
+        fvm_solver : FVMSolver
+            FVM instance required on every rank. The object is referenced, not
+            copied, and its accepted state will be mutated during a run.
+        vpm_solver : VPMSolver or None
+            VPM instance required on rank zero and referenced directly. It is
+            intentionally absent on other ranks.
+        coupler_setup : CouplerSetup
+            Validated coupling policy retained by reference.
+
+        Raises
+        ------
+        ValueError
+            If no FVM solver is supplied. Cross-solver constraints are deferred
+            to :meth:`initialize`, when mesh and runtime data are available.
+
+        Notes
+        -----
+        The constructor creates the coupled solution directory and log files
+        on rank zero. It does not initialize exchange geometry or advance the
+        accepted time of either solver.
         """
         if fvm_solver is None:
             raise ValueError(
@@ -352,8 +434,7 @@ class FVMVPMCoupler:
         self.setup.validate_transfer_region_box(self.fvm_box)
 
     def initialize(self) -> None:
-        """Adopt the injected solvers, derive sub-cycling, and build coupling
-        components.
+        """Validate both solvers and build immutable coupling geometry.
 
         The injected FVM solver's configuration owns the FVM step; the
         injected VPM solver's ``time_step_size`` configures the
@@ -361,8 +442,28 @@ class FVMVPMCoupler:
         ``n_fvm_substeps = round(vpm_time_step_size / fvm_time_step_size)``
         internally.
 
-        Idempotent: a second call is a no-op (the coupling components are built
-        exactly once), so ``initialize`` then ``run``/``solve`` is safe.
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If the master has no active VPM solver, the solver time steps do
+            not form an integer subcycling ratio, freestream/viscosity/domain
+            contracts disagree, adaptive FVM stepping is configured, or a
+            configured transfer/consistency region is invalid.
+        RuntimeError
+            If MPI and FVM execution sizes disagree or a transfer component
+            cannot be prepared from the available mesh/particle settings.
+
+        Notes
+        -----
+        This method reads collective FVM geometry, constructs transfer
+        lattices and boundary history, configures VPM diffusion anchors/body
+        masks, and resets run diagnostics. It does not advance accepted time.
+        It is idempotent: subsequent calls are no-ops once
+        :attr:`vorticity_transfer` exists.
         """
         if self.vorticity_transfer is not None:
             return  # already initialized
@@ -506,9 +607,48 @@ class FVMVPMCoupler:
     ) -> int:
         """Initialize and run a complete or explicitly bounded coupling segment.
 
+        Parameters
+        ----------
+        start_step : int, default=0
+            Previously completed coupling step for an already-restored in-memory
+            state. The FVM step must equal ``start_step * n_fvm_substeps`` and
+            the master VPM step must equal ``start_step``.
+        restart_from : str, pathlib.Path, or None, default=None
+            Coupled-backup directory to restore before solving. It is mutually
+            exclusive with a non-zero ``start_step``.
+        restart_allowed_config_differences : collection[str], default=()
+            Exact dotted configuration paths permitted to differ from the
+            backup manifest. This is accepted only with ``restart_from``;
+            artifact hashes and all unlisted settings remain strict.
+        max_coupling_steps : int or None, default=None
+            Positive cap on accepted coupling steps performed by this call.
+            ``None`` advances to the configured physical end time.
+        backup_at_stop : bool, default=False
+            Write an atomic coupled backup if a bounded segment stops at a step
+            not already covered by scheduled backup cadence.
+
+        Returns
+        -------
+        int
+            Final completed coupling-step index, including any restored prefix.
+
+        Raises
+        ------
+        TypeError
+            If a step limit/index is not an integer.
+        ValueError
+            If restart arguments conflict, step state is inconsistent, no
+            steps remain under a requested limit, or solver configurations are
+            incompatible.
+        RuntimeError
+            If initialization, stepping, transfer, output, or backup fails.
+
+        Notes
+        -----
         ``max_coupling_steps`` is an execution limit, not part of the physical
-        solver configuration.  It therefore permits strict, same-configuration
-        backup restarts without changing the configured end time.
+        configuration, so strict same-configuration restarts can continue a
+        bounded run without changing its end time. Both injected solvers,
+        boundary-history arrays, diagnostics, files, and clocks are mutated.
         """
         if self.vorticity_transfer is None:
             self.initialize()
@@ -567,7 +707,44 @@ class FVMVPMCoupler:
         max_coupling_steps: int | None = None,
         backup_at_stop: bool = False,
     ) -> int:
-        """Run the FVM--VPM coupling loop and return the final completed step."""
+        """Advance an initialized coupled state through accepted macro-steps.
+
+        Parameters
+        ----------
+        start_step : int, default=0
+            Number of coupling steps already represented by both solver states.
+            At zero, an initial FVM-to-VPM synchronization is performed before
+            any time advance.
+        max_coupling_steps : int or None, default=None
+            Optional positive execution cap for this invocation.
+        backup_at_stop : bool, default=False
+            Persist a coupled backup at a bounded stop unless that step was
+            already saved by the configured cadence.
+
+        Returns
+        -------
+        int
+            Last completed coupling-step index.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`initialize` has not prepared the transfer component or a
+            numerical/transfer/output operation fails.
+        TypeError
+            If either step argument has an invalid type.
+        ValueError
+            If the in-memory solver steps disagree with ``start_step`` or the
+            execution cap is invalid.
+
+        Notes
+        -----
+        Unlike :meth:`run`, this method does not initialize or load a restart.
+        Each iteration mutates both accepted solver states and their clocks,
+        updates boundary history and transfer diagnostics, executes due VPM
+        samplers, and may write logs/backups. MPI ranks must call it
+        collectively and in the same order.
+        """
         face_geometry, n_steps = self._prepare_run()
         start_step = self._validate_start_step(start_step, n_steps)
         step_limit = self._validate_step_limit(max_coupling_steps)
@@ -768,7 +945,38 @@ class FVMVPMCoupler:
         *,
         coupling_step: int | None = None,
     ) -> Path:
-        """Write a complete coupled backup."""
+        """Atomically write both solvers and the coupling boundary history.
+
+        Parameters
+        ----------
+        directory : str or pathlib.Path
+            Destination directory. It is created if needed. A rolling manifest
+            and referenced FVM, VPM, XDMF, and boundary-history artifacts are
+            stored below it.
+        coupling_step : int or None, default=None
+            Step label for the checkpoint. ``None`` derives it from the FVM
+            accepted step and :attr:`n_fvm_substeps`.
+
+        Returns
+        -------
+        pathlib.Path
+            Backup directory. On rank zero the committed VPM HDF5/XDMF pair is
+            also copied into :attr:`solution_dir` as a retained output frame.
+
+        Raises
+        ------
+        RuntimeError
+            If the coupler is not initialized on a rank that owns a required
+            solver.
+        OSError
+            If an artifact cannot be written, synchronized, or committed.
+
+        Notes
+        -----
+        The FVM save is collective in partitioned execution. The manifest is
+        committed last so a visible manifest denotes a complete checkpoint.
+        This method writes files but does not change physical time.
+        """
         backup = save_coupled_backup(self, directory, coupling_step=coupling_step)
         if self._is_master:
             publish_vpm_snapshot(backup, self.solution_dir)
@@ -780,7 +988,40 @@ class FVMVPMCoupler:
         *,
         allowed_config_differences: Collection[str] = (),
     ) -> int:
-        """Restore both solvers and the VPM boundary history."""
+        """Restore a complete coupled checkpoint into initialized solvers.
+
+        Parameters
+        ----------
+        directory : str or pathlib.Path
+            Directory containing the committed coupled ``manifest.json`` and
+            all artifacts named by it.
+        allowed_config_differences : collection[str], default=()
+            Exact recursive configuration paths permitted to differ for a
+            controlled restart. All other configuration and artifact hashes
+            remain strict.
+
+        Returns
+        -------
+        int
+            Restored coupling-step index, suitable as ``start_step`` for
+            :meth:`solve`.
+
+        Raises
+        ------
+        RuntimeError
+            If the coupler is not initialized, the manifest/artifacts are
+            incomplete or inconsistent, or restored solver clocks disagree.
+        ValueError
+            If configuration differs outside the explicit allow-list.
+        OSError
+            If required files cannot be read.
+
+        Notes
+        -----
+        This method mutates FVM fields/history, the VPM particle state and
+        clock, and all stored VPM boundary-condition history. In partitioned
+        execution every rank must participate collectively.
+        """
         return load_coupled_backup(
             self,
             directory,

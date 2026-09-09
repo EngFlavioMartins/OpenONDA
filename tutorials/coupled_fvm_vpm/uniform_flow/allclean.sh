@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")"
+#!/bin/bash -e
+
+cd -- "$(dirname -- "$0")"
 rm -rf solution samples

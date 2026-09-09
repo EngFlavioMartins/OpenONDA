@@ -121,7 +121,16 @@ class LinearSolver(Protocol):
     ...         return solution, result
     """
 
-    def solve(self, matrix, rhs, **_options) -> tuple[np.ndarray, LinearSolveResult]: ...
+    def solve(self, matrix, rhs, **_options) -> tuple[np.ndarray, LinearSolveResult]:
+        """Solve ``matrix @ x = rhs`` and return ``(x, telemetry)``.
+
+        Implementations receive a square sparse matrix and a one-dimensional
+        right-hand side in the equation's native units. They must return a new
+        solution vector and a :class:`LinearSolveResult`; backend-specific
+        options are passed through ``_options``. Concrete solvers may mutate
+        an internal workspace, but callers should not rely on input mutation.
+        """
+        ...
 
 
 def normalized_residual(A, x, b):

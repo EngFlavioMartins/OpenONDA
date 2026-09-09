@@ -99,10 +99,8 @@ def test_temporal_comparison_uses_identical_sampler_points_and_equal_times(tmp_p
         reports.append(
             {
                 "run": run,
-                "signature": {
+                "settings": {
                     "dt": dt,
-                    "steps": int(0.1 / dt),
-                    "tag": run,
                     "diffusion": "CS",
                     "smagorinsky": 0.2,
                 },

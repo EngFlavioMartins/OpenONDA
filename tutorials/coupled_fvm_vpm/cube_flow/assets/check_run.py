@@ -220,6 +220,8 @@ def _check_reference_accuracy(
     """Gate every sampled Cd and each authority-stitched profile's mean error."""
     samples = case_directory / "samples"
     reference_samples = reference_directory / "samples"
+    if (reference_samples / "fine").is_dir():
+        reference_samples /= "fine"
     candidate_force = load_table(samples / "forces_history.csv")
     reference_force = load_table(reference_samples / "forces_history.csv")
     measurements: list[tuple[str, float]] = []

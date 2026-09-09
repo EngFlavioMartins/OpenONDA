@@ -81,3 +81,38 @@ def test_periodic_gaussian_enstrophy_filters_nyquist_modes():
     # Periodic images are >20 core radii away; Gaussian tails at Nyquist
     # also lie below this tolerance for sigma/h=2.
     assert result.total_enstrophy == pytest.approx(exact, rel=1e-7)
+
+
+def test_componentwise_fft_padding_preserves_mixed_core_and_viscosity_integrals(monkeypatch):
+    """A common Fourier translation must cancel from energy, helicity and rates."""
+    from dataclasses import asdict
+
+    from scipy import fft
+
+    from source.solvers.vpm.numerics.fourier_integrals import gaussian_fourier_integrals
+
+    rng = np.random.default_rng(8921)
+    position = rng.uniform([-0.6, -0.3, -0.2], [0.8, 0.4, 0.3], (24, 3))
+    strength = rng.normal(size=(24, 3))
+    radii = rng.uniform(0.15, 0.23, 24)
+    volume = np.full(24, 0.1**3)
+    viscosity = rng.uniform(0.01, 0.03, 24)
+    arguments = {"effective_viscosity": viscosity, "spacing": 0.1}
+    actual = gaussian_fourier_integrals(position, strength, radii, volume, **arguments)
+    original_fft = fft.rfftn
+
+    def centred_padding(values, *, s, **kwargs):
+        padding = [
+            (int(size - current) // 2, int(size - current + 1) // 2)
+            for size, current in zip(s, values.shape, strict=True)
+        ]
+        return original_fft(np.pad(values, padding), **kwargs)
+
+    monkeypatch.setattr(fft, "rfftn", centred_padding)
+    centred = gaussian_fourier_integrals(position, strength, radii, volume, **arguments)
+    for name, value in asdict(actual).items():
+        expected = getattr(centred, name)
+        if isinstance(value, float | np.floating):
+            np.testing.assert_allclose(value, expected, rtol=2e-12, atol=1e-12, err_msg=name)
+        else:
+            assert value == expected

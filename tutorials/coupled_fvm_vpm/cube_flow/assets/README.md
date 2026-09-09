@@ -10,22 +10,21 @@ After installing OpenONDA, run the configured cube case with:
 ./allplot.sh
 ```
 
-`allrun.sh` has no run modes or command-line flags. It runs the `t=20` case
-defined in `setup.py`, checks numerical integrity for the complete
-run, and applies the drag/profile physics gate through `t=2.0`. By default it
-uses the checked-in full-horizon archive in `reference_flow/`; the archive must
-contain forces and both line profiles through `t=20`, and `allrun.sh` never
-regenerates or modifies it. `OPENONDA_CUBE_REFERENCE` may point to another
-complete reference directory when an explicit override is needed.
-The early gate requires every sampled drag-coefficient error and every
-authority-stitched line profile's spatial mean velocity error to stay within
-`7%`; pointwise maxima remain diagnostic because the accepted historical run
-contains large, localized errors at the moving near-body wake feature.
-The run removes the previous generated outputs before starting.
-The preserved baseline samples remain in `samples_archive/`; the archived
-full-horizon reference samples are in `reference_flow/samples/`. `allplot.sh`
-compares every coincident archived time through `t=20`. Run `./allplot.sh pdf`
-when PDF output is required; PNG is the default.
+`allrun.sh` runs the `t=20` case defined in `setup.py`. `allplot.sh` produces
+figures; pass `pdf` for PDF output. `allclean.sh` removes generated outputs
+only when explicitly invoked. Reference simulations are independent commands
+in `reference_flow/allrun.sh`; existing reference archives remain usable.
+
+Run the accuracy check explicitly after both results exist:
+
+```bash
+python assets/check_run.py --case-directory . --reference-directory reference_flow
+```
+
+The default early acceptance horizon is `t=2.0`, with a 7% drag/profile error
+limit. The reference reader accepts the grid study's `samples/fine/` and
+standalone archives' `samples/` directories. Complete reference data must
+cover the requested comparison horizon.
 
 The pre-change short-run physics and performance benchmark is recorded in
 [`baselines/2026-08-25_common_m4_gbd_t1p00`](baselines/2026-08-25_common_m4_gbd_t1p00/README.md).

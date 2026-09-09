@@ -14,6 +14,17 @@ class InsufficientStorageError(OSError):
     """Raised before an atomic output cannot fit alongside its old version."""
 
     def __init__(self, path: str | Path, required_bytes: int, free_bytes: int) -> None:
+        """Describe a failed atomic-write capacity check.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Output path whose replacement could not be staged safely.
+        required_bytes : int
+            Bytes needed for the new file plus the configured reserve.
+        free_bytes : int
+            Bytes available when the check ran.
+        """
         self.path = Path(path)
         self.required_bytes = int(required_bytes)
         self.free_bytes = int(free_bytes)

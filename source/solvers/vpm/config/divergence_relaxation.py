@@ -5,7 +5,50 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DivergenceRelaxationConfig:
-    """Configure the iterated divergence-relaxation projection."""
+    """Configure a guarded projection that reduces particle-field divergence.
+
+    Parameters
+    ----------
+    interval_steps : int, default=0
+        Accepted steps between events; zero disables the operator.
+    start_step : int, default=0
+        First accepted step eligible for projection.
+    grid_spacing : float or None, optional
+        Positive projection-lattice spacing in m; required when enabled.
+    regularization : float, default=0.1
+        Positive dimensionless Tikhonov weight in the correction solve.
+    solver_relative_tolerance : float, default=1e-5
+        Positive dimensionless iterative-solver tolerance.
+    max_iterations, max_projection_sweeps, max_grid_nodes : int
+        Positive limits on each linear solve, repeated nonlinear sweeps, and
+        allocated lattice nodes.
+    max_correction_norm : float, default=2e-2
+        Maximum accepted correction relative to the particle-strength norm.
+    max_residual_ratio : float, default=0.9
+        Required post/pre divergence-residual ratio, strictly between 0 and 1.
+    total_kinetic_energy_tolerance, total_enstrophy_tolerance,
+    total_helicity_tolerance, variation_tolerance : float
+        Non-negative relative conservation/change gates for a proposal.
+    vortex_strength_reference_scale : float or None
+        Positive ``Gamma`` scale in m³/s for reference-normalized invariants.
+    linear_impulse_reference_scale : float or None
+        Positive linear-impulse scale in m⁴/s.
+    angular_impulse_reference_scale : float or None
+        Positive angular-impulse scale in m⁵/s. All three reference scales must
+        be supplied together or all omitted.
+    vortex_strength_reference_tolerance, linear_impulse_reference_tolerance,
+    angular_impulse_reference_tolerance : float
+        Non-negative dimensionless acceptance tolerances for those invariants.
+    spectral_convergence_fraction : float, default=0.1
+        Fraction in ``(0, 1]`` of the initial spectral residual used as the
+        convergence target.
+
+    Notes
+    -----
+    The stabilization manager applies this operator between accepted physical
+    steps. A failed proposal is rolled back and raises a dedicated error; the
+    Runge--Kutta stage state is never projected.
+    """
 
     interval_steps: int = 0
     start_step: int = 0

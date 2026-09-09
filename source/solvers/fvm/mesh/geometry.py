@@ -62,8 +62,24 @@ class MeshGeometry:
 
     @classmethod
     def from_data(cls, mesh_data, geo_data) -> MeshGeometry:
-        """Create read-only array views without freezing the source arrays.
+        """Create read-only geometry views from native mesh and derived data.
 
+        Parameters
+        ----------
+        mesh_data : mapping
+            Native mesh containing ``vertex_position``.
+        geo_data : mapping
+            Output of :func:`compute_mesh_geometry` containing the derived
+            centres, areas, volumes, weights, and wall distances.
+
+        Returns
+        -------
+        MeshGeometry
+            Typed read-only views. Coordinate/length fields are in m, area
+            fields in m², and volume fields in m³.
+
+        Notes
+        -----
         The facade shares memory with already-contiguous ``float64`` source
         arrays, so later source updates remain visible. Only writes through the
         facade are prohibited.
@@ -96,29 +112,43 @@ def compute_geometry(
     logger=None,
     timer=None,
 ):
-    """
-    Compute geometric properties of the mesh.
+    """Compute centres, oriented areas, volumes, and interpolation geometry.
 
-    Args:
-        vertex_position (np.ndarray): Vertex coordinates (n_points, 3).
-        faces (list of np.ndarray): List of node indices for each face.
-        owners (np.ndarray): Owner cell indices.
-        neighbours (np.ndarray): Neighbour cell indices.
-        n_elements (int): Number of elements.
-        n_faces (int): Number of faces.
-        n_interior_faces (int): Number of interior faces.
-        element_faces (list of list): Face indices for each element.
+    Parameters
+    ----------
+    vertex_position : numpy.ndarray
+        Vertex coordinates with shape ``(n_vertices, 3)`` in m.
+    faces : sequence[numpy.ndarray] or numpy.ndarray
+        Face vertex indices. A ragged sequence is accepted; a rectangular
+        array represents fixed-width faces.
+    owners : numpy.ndarray
+        Owner cell index for every face, shape ``(n_faces,)``.
+    neighbours : numpy.ndarray
+        Neighbour cell index for interior faces, shape at least
+        ``(n_interior_faces,)``.
+    n_cells, n_faces, n_interior_faces : int
+        Native mesh counts. Boundary faces occupy
+        ``[n_interior_faces, n_faces)``.
+    cell_face_indices : sequence or tuple[numpy.ndarray, numpy.ndarray]
+        Cell-to-face incidence, either one face-index sequence per cell or a
+        CSR ``(indices, offsets)`` pair.
+    logger, timer : object or None
+        Optional timing/logging sinks; geometry computation itself is unchanged.
 
-    Returns:
-        dict: Dictionary containing geometric data:
-            - face_centre
-            - face_area_vector
-            - face_area
-            - cell_centre
-            - cell_volume
-            - face_interpolation_weight
-            - cell_connection_vector
-            - wall_distance
+    Returns
+    -------
+    dict[str, numpy.ndarray]
+        ``face_centre``/``cell_centre`` in m, ``face_area_vector``/``face_area``
+        in m², ``cell_volume`` in m³, interpolation weights (dimensionless),
+        cell-connection vectors in m, and signed boundary wall distances in m.
+
+    Notes
+    -----
+    Face area vectors point out of the owner cell. Interior connection vectors
+    point from owner centre to neighbour centre. Boundary faces use the face
+    centre as a virtual neighbour and retain signed owner-to-wall distance;
+    invalid orientation is left visible for mesh validation rather than
+    clamped away.
     """
 
     # --- Initialize Arrays ---
@@ -340,11 +370,29 @@ def compute_mesh_geometry(
     logger=None,
     timer=None,
 ):
-    """Compute cell and face geometry for a validated mesh dictionary.
+    """Compute cell and face geometry for a validated native mesh dictionary.
 
     ``compute_lsq=False`` is an initialization ordering tool.  It lets the
     caller install cyclic neighbour topology before constructing LSQ stencils,
     avoiding a discarded pre-periodic LSQ pass.
+
+    Parameters
+    ----------
+    mesh_data : dict
+        Native face-based mesh. Required arrays are updated with compact
+        cell-to-face CSR connectivity when absent.
+    gradient_scheme : {'gauss', 'lsq'}
+        Gradient geometry requested for downstream field reconstruction.
+    compute_lsq : bool, default=True
+        Whether to build least-squares stencil geometry when selected.
+    logger, timer : object or None
+        Optional timing/logging sinks.
+
+    Returns
+    -------
+    dict[str, numpy.ndarray]
+        Geometry arrays described by :func:`compute_geometry`, plus LSQ
+        conditioning/stencil data when requested.
     """
     # Build and retain compact cell-to-face CSR connectivity.  It is shared by
     # the typed topology and VTK exporter, and avoids repeatedly materialising

@@ -9,7 +9,6 @@ proxies are explicitly distinguished, and are not used to certify agreement.
 from __future__ import annotations
 import argparse
 import hashlib
-import json
 from pathlib import Path
 import matplotlib
 
@@ -26,39 +25,29 @@ if not __package__:
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-from ..study import STUDY_DIR
+from .study import STUDY_DIR
+from .ring_metrics import load_study_metadata, metadata_settings
 from source.solvers.vpm.diagnostics.axisymmetric_field import azimuthal_vorticity
 
 OUT = setup.TUTORIAL_DIR / "figures/study/physics"
 PEAKS = setup.TUTORIAL_DIR / "figures/study/core_diagnosis"
 
 
-def label(meta):
-    s = meta["signature"]
-    scheme = s.get("diffusion", "CS")
+def label(settings):
+    scheme = settings.get("diffusion", "CS")
     name = {
         "CS": "Core spreading",
-        "GBD": "GBD: " + s.get("gbd_remeshing", "M4_PRIME").replace("_PRIME", "′"),
+        "GBD": "GBD: " + settings.get("gbd_remeshing", "M4_PRIME").replace("_PRIME", "′"),
         "RWM": "Random walk",
     }[scheme]
-    return name + f"\nh/R₀ = {s['spacing']:g}, σ₀/h = {s.get('core_ratio', 2):g}"
+    return name + (f"\nh/R₀ = {settings['spacing']:g}, σ₀/h = {settings.get('core_ratio', 2):g}")
 
 
-def history(run, filename, *, peaks=False, visited=()):
-    """Join a recorded continuation to its parent, excluding duplicate steps."""
-    if run in visited:
-        raise ValueError("Cyclic continuation metadata")
+def history(run, filename, *, peaks=False):
+    """Read one run's recorded samples without reconstructing continuations."""
     folder = STUDY_DIR / run
-    meta = json.loads((folder / "result.json").read_text())
     path = PEAKS / f"{run}_peaks.csv" if peaks else folder / "samples/diagnostics" / filename
-    current = pd.read_csv(path) if path.exists() else pd.DataFrame()
-    snapshot = meta["signature"].get("continuation_snapshot")
-    if snapshot:
-        parent = Path(snapshot).parents[3].name
-        previous = history(parent, filename, peaks=peaks, visited=(*visited, run))
-        previous = previous[previous.step < meta["start_step"]]
-        current = pd.concat([previous, current], ignore_index=True)
-    return current
+    return pd.read_csv(path) if path.exists() else pd.DataFrame()
 
 
 def main():
@@ -71,14 +60,16 @@ def main():
     fig, axes = plt.subplots(
         1, len(args.runs), figsize=(4.6 * len(args.runs), 4.8), squeeze=False, sharey=True
     )
-    manifest = []
     for ax, run in zip(axes.flat, args.runs):
         folder = STUDY_DIR / run
-        meta = json.loads((folder / "result.json").read_text())
-        s = meta["signature"]
+        meta = load_study_metadata(folder)
+        if not meta:
+            raise FileNotFoundError(folder / "solution/vpm_metadata.json")
+        settings = metadata_settings(meta)
+        status = meta.get("lifecycle", {}).get("status", "unknown")
         rings = history(run, "ring_diagnostics.csv")
         integrals = history(run, "flow_integrals.csv")
-        if s["scenario"] == "leapfrog":
+        if settings["scenario"] == "leapfrog":
             for _, group in ref.groupby("ring"):
                 ax.plot(group.x_over_R0 - 2.5, group.R_over_R0, color="#555555", lw=1.4)
         for _, group in rings.groupby("group_id"):
@@ -86,14 +77,14 @@ def main():
         peaks = history(run, "", peaks=True)
         if not peaks.empty:
             ax.scatter(peaks.x, peaks.radius, color="#2874A6", s=27, zorder=4)
-        capacity_reached = bool((integrals.n_particles_total >= s["capacity"]).any())
+        capacity_reached = bool((integrals.n_particles_total >= settings["capacity"]).any())
         cap_note = (
             "Particle cap reached: screening only"
             if capacity_reached
             else "No sampled particle-cap contact"
         )
         ax.set(
-            title=label(meta),
+            title=label(settings),
             xlabel="Axial position from initial midpoint, x/R₀",
             xlim=(-0.6, 8),
             ylim=(0.5, 1.45),
@@ -103,20 +94,10 @@ def main():
         ax.text(
             0.03,
             0.03,
-            f"t = {rings.time.max():.2f} · {meta['status']}\n{cap_note}",
+            f"t = {rings.time.max():.2f} · {status}\n{cap_note}",
             transform=ax.transAxes,
             fontsize=8,
             color="#555555",
-        )
-        manifest.append(
-            dict(
-                run=run,
-                signature=s,
-                status=meta["status"],
-                final_sample_time=float(rings.time.max()),
-                sampled_capacity_reached=capacity_reached,
-                continuation_snapshot=s.get("continuation_snapshot"),
-            )
         )
     axes[0, 0].set_ylabel("Core / ring radius, R/R₀")
     fig.suptitle("Core transport controls: agreement with LBM is the test", fontsize=15, y=0.98)
@@ -144,7 +125,6 @@ def main():
     fig.subplots_adjust(top=0.72, bottom=0.24, wspace=0.12)
     fig.savefig(OUT / "trajectories.png", dpi=180)
     plt.close(fig)
-    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     if args.section_time is not None:
         sections(args.runs, args.section_time)
 
@@ -185,7 +165,9 @@ def sections(runs, target_time):
         print("section", run, "t", target_time, flush=True)
     fig, axes = plt.subplots(1, len(runs), figsize=(4.5 * len(runs), 4), squeeze=False, sharey=True)
     for ax, run, field in zip(axes.flat, runs, fields):
-        meta = json.loads((STUDY_DIR / run / "result.json").read_text())
+        meta = load_study_metadata(STUDY_DIR / run)
+        if not meta:
+            raise FileNotFoundError(STUDY_DIR / run / "solution/vpm_metadata.json")
         contour = ax.contourf(
             field["x"],
             field["r"],
@@ -202,7 +184,7 @@ def sections(runs, target_time):
             colors="#2874A6",
             linewidths=0.5,
         )
-        ax.set(title=label(meta), xlabel="x/R₀", aspect="equal")
+        ax.set(title=label(metadata_settings(meta)), xlabel="x/R₀", aspect="equal")
         ax.spines[["top", "right"]].set_visible(False)
     axes[0, 0].set_ylabel("r/R₀")
     fig.colorbar(

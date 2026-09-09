@@ -87,6 +87,32 @@ class IBMForcing:
         grid_spacing: float | None = None,
         empty_axis="auto",
     ):
+        """Create immersed-boundary interpolation and force operators.
+
+        Parameters
+        ----------
+        mesh_data, geo_data : dict
+            Native FVM topology and geometry. Cell centres/volumes and
+            owner/boundary information are read but not modified.
+        bodies : ImmersedBody or sequence of ImmersedBody
+            Marker bodies whose prescribed positions/velocities are imposed.
+        grid_spacing : float or None, default=None
+            Eulerian support spacing in m. ``None`` infers it from nearby
+            cells.
+        empty_axis : {0, 1, 2, "auto"}, default="auto"
+            Extruded axis for a 2-D mesh, or automatic detection from an
+            ``empty`` patch.
+
+        Raises
+        ------
+        ValueError
+            If no body is supplied or the spacing is invalid.
+
+        Side Effects
+        ------------
+        Copies marker arrays and precomputes interpolation bookkeeping; the
+        supplied mesh, geometry, and body objects are not mutated.
+        """
         if isinstance(bodies, ImmersedBody):
             bodies = [bodies]
         if not bodies:

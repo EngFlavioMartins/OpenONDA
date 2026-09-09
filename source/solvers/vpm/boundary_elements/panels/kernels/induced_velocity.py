@@ -39,6 +39,25 @@ def compute_induced_velocity_kernel(
     points: ti.types.ndarray(ndim=2),
     velocity: ti.types.ndarray(ndim=2),
 ):
+    """Accumulate velocity from closed triangular panel doublets at probes.
+
+    Parameters
+    ----------
+    vertex_position : ndarray, shape (n_panels, 3, 3), device array
+        Triangle vertices in metres.  Vertex order defines the panel normal.
+    doublet_strength : ndarray, shape (n_panels,), device array
+        Doublet strengths in m²/s, one scalar per active panel.
+    points : ndarray, shape (n_points, 3), device array
+        Probe locations in metres.
+    velocity : ndarray, shape (n_points, 3), device array
+        Output velocity in m/s, overwritten in place.
+
+    Notes
+    -----
+    This is an exact all-panels evaluation of the three finite vortex
+    segments forming each triangle.  It is O(n_points*n_panels) and uses
+    ``PANEL_EPSILON`` to avoid singular divisions at panel geometry.
+    """
     n_queries = points.shape[0]
     n_panels = doublet_strength.shape[0]
 
@@ -77,6 +96,27 @@ def compute_source_induced_velocity_kernel(
     points: ti.types.ndarray(ndim=2),
     velocity: ti.types.ndarray(ndim=2),
 ):
+    """Accumulate source-panel velocity at arbitrary probe points.
+
+    Parameters
+    ----------
+    vertex_position : ndarray, shape (n_panels, 3, 3), device array
+        Triangle vertices in metres.
+    normal : ndarray, shape (n_panels, 3), device array
+        Unit outward panel normals, dimensionless.
+    doublet_strength : ndarray, shape (n_panels,), device array
+        Source/doublet amplitudes using the panel solver's m²/s potential
+        convention.
+    points : ndarray, shape (n_points, 3), device array
+        Probe locations in metres.
+    velocity : ndarray, shape (n_points, 3), device array
+        Output velocity in m/s, overwritten in place.
+
+    Notes
+    -----
+    The kernel evaluates every panel against every probe, so its work scales
+    as O(n_points*n_panels).  The caller must provide only active panels.
+    """
     for i in range(points.shape[0]):
         point = ti.Vector([points[i, 0], points[i, 1], points[i, 2]])
         value = point * 0.0

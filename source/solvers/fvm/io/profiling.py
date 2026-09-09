@@ -150,6 +150,29 @@ class PerformanceProfiler:
         enabled: bool | None = None,
         solver: Any | None = None,
     ) -> None:
+        """Create an MPI-aware performance and memory recorder.
+
+        Parameters
+        ----------
+        case_dir : str or pathlib.Path
+            Case root for the default performance JSONL destination.
+        parallel : ParallelContext
+            Rank/collective interface used when an accepted-step summary is
+            published.
+        logger : Logging
+            Owner used for warnings when telemetry output cannot be written.
+        solution_dir : str or pathlib.Path or None, default=None
+            Explicit output directory; otherwise ``case_dir/solution``.
+        enabled : bool or None, default=None
+            Enable profiling unless ``FVM_PROFILE=0`` when omitted.
+        solver : FVMSolver or None, default=None
+            Optional weak reference for memory-allocation inventory reporting.
+
+        Side Effects
+        ------------
+        Creates no output until a report is published and retains no solver
+        fields beyond the optional weak reference.
+        """
         if enabled is None:
             enabled = os.environ.get("FVM_PROFILE", "1") != "0"
         self.enabled = bool(enabled)

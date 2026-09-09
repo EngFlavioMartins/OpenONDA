@@ -8,17 +8,18 @@ Run with ``python setup.py``.
 
 from __future__ import annotations
 
-import csv
 import math
-import os
 from pathlib import Path
-
-import numpy as np
 
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
+from openonda.tutorial_runner import case_package
 
-# ---- Case definition -----------------------------------------------------
+__package__ = case_package(Path(__file__).parent)
+from .assets.generate_surface import create_airfoil_surface
+from .assets.surface_pressure import write_surface_cp
+
+# Case definition
 CASE_NAME = "airfoil_flow"
 CHORD = 1.0  # airfoil chord length [m]
 DEPTH = 0.8  # finite-span extrusion depth [m]
@@ -26,9 +27,9 @@ FREESTREAM_VELOCITY = 1.0  # inflow speed [m/s]
 DENSITY = 1.0  # fluid density [kg/m^3]
 REYNOLDS_NUMBER = 1000.0
 ANGLE_OF_ATTACK_DEGREES = 0.0
-FINAL_TIME = 25.0
+FINAL_TIME = 25.0  # [s]
 
-# ---- Time stepping and numerics ------------------------------------------
+# Time stepping and numerics
 TIME_STEP_SIZE = 0.005  # initial time step [s]
 MAX_COURANT_NUMBER = 0.9  # target maximum Courant number
 MAX_TIME_STEP_SIZE = 4 * TIME_STEP_SIZE  # upper bound on the adapted time step [s]
@@ -42,86 +43,9 @@ DOMAIN = (-5.0, 15.0, -5.0, 5.0, -0.5, 0.5)
 AIRFOIL_STL = Path(__file__).resolve().parent / "assets" / "airfoil.stl"
 
 
-def ensure_airfoil_surface(path: Path = AIRFOIL_STL, chord_count: int = 80) -> Path:
-    """Generate the closed finite NACA 0012 surface when it is absent.
-
-    The tutorial therefore carries no opaque pre-generated mesh and remains
-    runnable when copied from an installed wheel.
-    """
-    if path.is_file():
-        return path
-
-    x_values = 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, chord_count + 1)))
-    thickness_values = (
-        5.0
-        * 0.12
-        * (
-            0.2969 * np.sqrt(x_values)
-            - 0.1260 * x_values
-            - 0.3516 * x_values**2
-            + 0.2843 * x_values**3
-            - 0.1036 * x_values**4
-        )
-    )
-    outline = np.concatenate(
-        (
-            np.column_stack((x_values, thickness_values)),
-            np.column_stack((x_values[-2:0:-1], -thickness_values[-2:0:-1])),
-        )
-    )
-    outline[:, 0] *= CHORD
-    outline[:, 0] -= 0.25 * CHORD
-    outline[:, 1] *= CHORD
-
-    vertices = np.vstack(
-        (
-            np.column_stack((outline[:, 0], outline[:, 1], np.full(len(outline), -DEPTH / 2))),
-            np.column_stack((outline[:, 0], outline[:, 1], np.full(len(outline), DEPTH / 2))),
-        )
-    )
-    count = len(outline)
-    centre = np.asarray((outline[:, 0].mean(), outline[:, 1].mean()), dtype=float)
-    vertices = np.vstack(
-        (
-            vertices,
-            (centre[0], centre[1], -DEPTH / 2),
-            (centre[0], centre[1], DEPTH / 2),
-        )
-    )
-    negative_centre, positive_centre = len(vertices) - 2, len(vertices) - 1
-    faces: list[tuple[int, int, int]] = []
-    for index in range(count):
-        next_index = (index + 1) % count
-        faces.extend(
-            (
-                (index, next_index, count + next_index),
-                (index, count + next_index, count + index),
-                (negative_centre, next_index, index),
-                (positive_centre, count + index, count + next_index),
-            )
-        )
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["solid openonda_naca0012"]
-    for face in faces:
-        triangle = vertices[np.asarray(face)]
-        normal = np.cross(triangle[1] - triangle[0], triangle[2] - triangle[0])
-        magnitude = float(np.linalg.norm(normal))
-        if magnitude > 0.0:
-            normal /= magnitude
-        lines.append(f"  facet normal {normal[0]:.9e} {normal[1]:.9e} {normal[2]:.9e}")
-        lines.append("    outer loop")
-        for vertex in triangle:
-            lines.append(f"      vertex {vertex[0]:.9e} {vertex[1]:.9e} {vertex[2]:.9e}")
-        lines.extend(("    endloop", "  endfacet"))
-    lines.append("endsolid openonda_naca0012")
-    path.write_text("\n".join(lines) + "\n", encoding="ascii")
-    return path
-
-
 def create_fvm_mesh() -> msh.CartesianMesher:
     """Declare the native surface-driven mesh for the finite wing."""
-    ensure_airfoil_surface()
+    create_airfoil_surface(AIRFOIL_STL, CHORD, DEPTH)
     return msh.CartesianMesher(
         domain=msh.BoxDomain(
             bounds=DOMAIN,
@@ -171,7 +95,6 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
 
     time = fvm.TimeConfig(
         time_step_size=TIME_STEP_SIZE,
-        start_time=0.0,
         end_time=FINAL_TIME,
         output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
         adjustment=fvm.MaximumCourantTimeStep(
@@ -188,7 +111,6 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
         pimple=pimple,
         samplers=forces,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-        turbulence=None,
         boundaries=[
             fvm.BoundaryConfig.inlet("inlet", u_vec),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
@@ -197,61 +119,18 @@ def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
             fvm.BoundaryConfig.empty("frontAndBack"),
         ],
         initial_velocity=u_vec,
-        initial_kinematic_pressure=0.0,
     )
-
-
-def write_surface_cp(fvm_solver, sol_dir: str) -> None:
-    """Write the surface pressure coefficient to ``surface_cp.csv``."""
-    n = fvm_solver.mesh_data["n_cells"]
-    n_interior = fvm_solver.mesh_data["n_interior_faces"]
-    q = 0.5 * FREESTREAM_VELOCITY**2  # kinematic pressure (rho folds out)
-    rows = []
-    for patch in fvm_solver.boundaries:
-        if patch["name"] != "airfoil":
-            continue
-        start, nf = patch["start_face"], patch["n_faces"]
-        centres = fvm_solver.geo_data["face_centre"][start : start + nf]
-        ghost = n + (start - n_interior)
-        p_face = fvm_solver.kinematic_pressure[ghost : ghost + nf]
-        for (x, y, _z), p_i in zip(centres, p_face, strict=True):
-            rows.append((x / CHORD, y / CHORD, p_i / q))
-    rows.sort()
-
-    path = os.path.join(sol_dir, "surface_cp.csv")
-    with open(path, "w", newline="") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(["position_x_over_chord", "position_y_over_chord", "pressure_coefficient"])
-        writer.writerows(rows)
-    print(f"  Surface Cp written: {path}")
 
 
 def main() -> None:
-    case_dir = os.path.dirname(os.path.abspath(__file__))
+    case_dir = Path(__file__).parent
     angle = math.radians(ANGLE_OF_ATTACK_DEGREES)
-    u_vec = [
-        FREESTREAM_VELOCITY * math.cos(angle),
-        FREESTREAM_VELOCITY * math.sin(angle),
-        0.0,
-    ]
-
-    print("\n===== SIMULATION =====")
-    fvm_setup = create_fvm_setup(u_vec)
-    fvm_solver = fvm.create_fvm_solver(
-        fvm_setup,
-        case_dir=case_dir,
-        mesh=create_fvm_mesh(),
+    velocity = [FREESTREAM_VELOCITY * math.cos(angle), FREESTREAM_VELOCITY * math.sin(angle), 0.0]
+    solver = fvm.create_fvm_solver(
+        create_fvm_setup(velocity), case_dir=case_dir, mesh=create_fvm_mesh()
     )
-    fvm_solver.run()
-
-    sol_dir = os.path.join(case_dir, "solution")
-    Path(sol_dir).mkdir(parents=True, exist_ok=True)
-    write_surface_cp(fvm_solver, sol_dir)
-
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
-    if abs(ANGLE_OF_ATTACK_DEGREES) < 1e-9:
-        print("Zero-angle check: mean lift and upper/lower Cp asymmetry should approach zero.")
+    solver.run()
+    write_surface_cp(solver, case_dir / "solution", CHORD, FREESTREAM_VELOCITY)
 
 
 if __name__ == "__main__":

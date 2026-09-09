@@ -109,6 +109,27 @@ class RuntimeProfiler:
         detailed: bool = False,
         sync: Callable[[], None] | None = None,
     ) -> None:
+        """Create an accumulating host-side timing profiler.
+
+        Parameters
+        ----------
+        enabled : bool, default=True
+            Enable named section measurements. Disabled sections return a
+            shared no-op context and do not synchronize the compute backend.
+        detailed : bool, default=False
+            Retain per-section detail in reports when true; the whole-step
+            counters are maintained in either mode.
+        sync : callable or None, optional
+            Zero-argument backend synchronization hook, such as
+            ``taichi.sync``. It is called around timed sections when supplied;
+            ``None`` is appropriate for CPU-only tests.
+
+        Notes
+        -----
+        All durations are wall-clock seconds. The profiler owns only Python
+        dictionaries and counters; it neither copies particle arrays nor
+        changes solver state.
+        """
         self.enabled = enabled
         self.detailed = detailed
         self._sync = sync

@@ -1,9 +1,6 @@
-#!/bin/sh
-# Remove all generated output from the native FVM+VPM cube case.
-cd "$(dirname "$0")" || exit 1
+#!/bin/bash -e
 
+cd -- "$(dirname -- "$0")"
 rm -rf solution constant samples figures
 rm -rf __pycache__ assets/__pycache__
 rm -f ./*.log
-
-echo "Cleaned: solution/ constant/ samples/ figures, caches, and logs removed."

@@ -30,6 +30,29 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         max_evaluation_points: int = 200000,
         event_observer: PhysicsEventObserver | None = None,
     ):
+        """Allocate the shared VPM physics workspace.
+
+        Parameters
+        ----------
+        particle_kernel : str, default="GAUSSIAN"
+            Kernel family used by inherited particle-field evaluation.
+        max_n_particles : int, default=MAX_N_PARTICLES
+            Fixed particle capacity for device fields.
+        accumulator_dtype : taichi scalar type, default=ti.f32
+            Precision of reusable accumulation fields.
+        max_evaluation_points : int, default=200000
+            Capacity for arbitrary target-point velocity/gradient evaluation.
+        event_observer : PhysicsEventObserver, optional
+            Diagnostic sink for warnings and numerical events.  A silent
+            :class:`NullPhysicsEventObserver` is used when omitted.
+
+        Notes
+        -----
+        Construction allocates device workspaces and diffusion support but
+        does not move particles, advance time, or select a Runge--Kutta stage.
+        External velocity/body hooks are initialized to ``None`` and are
+        consumed by :mod:`stage_rhs`.
+        """
         super().__init__(particle_kernel, max_n_particles, accumulator_dtype, max_evaluation_points)
         self._event_observer = event_observer or NullPhysicsEventObserver()
         self._init_grid_diffusion()
@@ -53,7 +76,21 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         ]
 
     def core_spreading_diffusion(self, particles, time_step_size: float):
-        """Apply Gaussian core spreading."""
+        """Apply deterministic Gaussian core-spreading diffusion.
+
+        Parameters
+        ----------
+        particles : Particles
+            Mutable particle container whose active core radii and strengths
+            are updated according to the configured viscosity.
+        time_step_size : float
+            Physical elapsed time in seconds.
+
+        Notes
+        -----
+        This is a split operator called by the accepted-step integrator; it
+        mutates particle device fields and does not return a new container.
+        """
         self._diffusion.core_spreading_diffusion(particles, time_step_size)
 
     def random_walk_method_diffusion(
@@ -64,7 +101,20 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         random_seed: int,
         accepted_step: int,
     ):
-        """Apply random-walk diffusion."""
+        """Apply stochastic random-walk diffusion to active particles.
+
+        Parameters
+        ----------
+        particles : Particles
+            Mutable particle container to update.
+        time_step_size : float
+            Physical elapsed time in seconds.
+        random_seed : int
+            Base seed for deterministic replay of the stochastic operator.
+        accepted_step : int
+            Accepted-step index mixed into the seed so rejected/candidate RK
+            stages do not consume a hidden random sequence.
+        """
         self._diffusion.random_walk_method_diffusion(
             particles,
             time_step_size,
@@ -77,9 +127,11 @@ class _DiffusionHandler:
     """Delegate split diffusion operators to the owning physics workspace."""
 
     def __init__(self, parent: PhysicsEngine):
+        """Bind the handler to its owning :class:`PhysicsEngine`."""
         self._parent = parent
 
     def core_spreading_diffusion(self, particles, time_step_size: float):
+        """Run core spreading through the parent workspace."""
         apply_core_spreading(self._parent, particles, time_step_size)
 
     def random_walk_method_diffusion(
@@ -90,6 +142,7 @@ class _DiffusionHandler:
         random_seed: int,
         accepted_step: int,
     ):
+        """Run random-walk diffusion through the parent workspace."""
         apply_random_walk(
             self._parent,
             particles,

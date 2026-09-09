@@ -77,6 +77,24 @@ def _mpi_executable() -> str:
 
 @dataclass(frozen=True)
 class RunConfig:
+    """Declare how one OpenONDA process uses CPU threads or MPI ranks.
+
+    Parameters
+    ----------
+    cpu_cores : int, default=1
+        Positive number of worker threads when ``parallel_mode="threads"`` or
+        MPI ranks when ``parallel_mode="mpi"``.
+    parallel_mode : {'threads', 'mpi'}, default='threads'
+        Execution model. Threaded execution stays in the current process;
+        MPI execution may replace it with ``mpiexec -n cpu_cores``.
+
+    Notes
+    -----
+    :meth:`ensure_runtime` changes process-wide numerical-library thread
+    limits. In MPI mode it may call :func:`os.execvpe`, so code following that
+    call runs only after the process has been relaunched under MPI.
+    """
+
     cpu_cores: int = 1
     parallel_mode: Literal["threads", "mpi"] = "threads"
 
@@ -90,6 +108,7 @@ class RunConfig:
 
     @property
     def is_parallel(self) -> bool:
+        """Whether the configuration requests more than one worker or rank."""
         return self.cpu_cores > 1
 
     def _set_thread_count(self, count: int) -> None:
@@ -104,7 +123,25 @@ class RunConfig:
             os.environ[name] = str(count)
 
     def ensure_mpi(self, script: str | Path) -> None:
-        """Re-execute ``script`` under MPI when multiple ranks are requested."""
+        """Ensure that ``script`` is running with the requested MPI world size.
+
+        Parameters
+        ----------
+        script : str or pathlib.Path
+            Python entry-point path passed to the relaunched interpreter.
+
+        Raises
+        ------
+        RuntimeError
+            If an existing MPI world has the wrong size, no launcher can be
+            found, or a requested child launch did not create an MPI world.
+
+        Notes
+        -----
+        With ``cpu_cores > 1`` outside an MPI world, this method replaces the
+        current process with ``mpiexec``. It also restricts each rank to one
+        numerical-library thread to avoid oversubscription.
+        """
         size = _world_size()
         if size > 1:
             if size != self.cpu_cores:
@@ -133,7 +170,24 @@ class RunConfig:
         os.execvpe(command[0], command, environment)
 
     def ensure_runtime(self, script: str | Path) -> None:
-        """Configure the declared threaded or MPI process runtime."""
+        """Apply this execution policy before allocating solver resources.
+
+        Parameters
+        ----------
+        script : str or pathlib.Path
+            Entry point used only if MPI relaunch is necessary.
+
+        Raises
+        ------
+        RuntimeError
+            If threaded execution is requested inside an MPI world, or if
+            MPI setup fails as described by :meth:`ensure_mpi`.
+
+        Notes
+        -----
+        Thread mode updates Numba and BLAS-related process environment limits;
+        MPI mode delegates to :meth:`ensure_mpi`.
+        """
         if self.parallel_mode == "mpi":
             self.ensure_mpi(script)
             return

@@ -11,7 +11,12 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 import taichi as ti
 
 from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
-from ..kernels.biot_savart import bound_vortex_velocity, horseshoe_velocity, vortex_ring_velocity
+from ....physics.induction.stretching import stretching_rate
+from ..kernels.biot_savart import (
+    bound_vortex_velocity,
+    horseshoe_velocity,
+    regularized_segment_velocity_and_gradient,
+)
 
 
 @ti.kernel
@@ -26,7 +31,6 @@ def compute_aerodynamic_influence_coefficient_matrix(
     n_panels: ti.i32,
     epsilon: float,
     coupled_mode: ti.i32,
-    wake_offset: ti.types.vector(3, float),
 ):
     """
     Compute aerodynamic influence coefficient matrix.
@@ -38,15 +42,10 @@ def compute_aerodynamic_influence_coefficient_matrix(
     component of velocity induced at collocation_point point i by a unit
     circulation vortex on panel j.
 
-    In 'coupled_mode', the bound horseshoe is closed by a short near-wake panel
-    rather than semi-infinite trailing legs: each trailing-edge panel's trailing
-    legs are extended downstream by 'wake_offset' (= relative-wind · dt, the
-    one-step convection length).  This fills the otherwise-empty gap between the
-    trailing edge and the first free wake particle (which sits one convection
-    length downstream), so the bound solve "sees" its own near wake (the implicit
-    near-wake panel of the canonical UVLM-VPM coupling).  The free VPM particles
-    continue the wake from TE + wake_offset onward, so there is no double-counting.
-    With wake_offset = 0 this reduces to the bound-only horseshoe.
+    In coupled mode, each chordwise horseshoe ends at its strip's trailing
+    edge. The actual newborn VPM row is added separately with its native blob
+    kernel, positions and core radii. The transported old particle wake supplies
+    the remaining influence through the right-hand side.
 
     Args:
         collocation_point: Collocation points (N x 3)
@@ -94,16 +93,6 @@ def compute_aerodynamic_influence_coefficient_matrix(
             vel += bound_vortex_velocity(collocation_point[i], v2, v3, 1.0, epsilon)
             # 3. Right internal leg (Bound to TE)
             vel += bound_vortex_velocity(collocation_point[i], v3, v_te_R, 1.0, epsilon)
-            # 4. Near-wake panel: extend the trailing legs one convection length
-            #    downstream so the filament free ends meet the first wake particle
-            #    at TE + wake_offset (implicit near-wake; only for TE panels).
-            if is_trailing_edge[j] == 1:
-                vel += bound_vortex_velocity(
-                    collocation_point[i], v_te_R, v_te_R + wake_offset, 1.0, epsilon
-                )
-                vel += bound_vortex_velocity(
-                    collocation_point[i], v_te_L + wake_offset, v_te_L, 1.0, epsilon
-                )
         else:
             # FULL semi-infinite horseshoe: used for standalone VLM
             vel = horseshoe_velocity(collocation_point[i], v1, v2, v3, v4, 1.0, epsilon)
@@ -180,43 +169,80 @@ def compute_coupled_right_hand_side(
         right_hand_side[i] = -normal[i].dot(V_rel_inflow)
 
 
+@ti.func
+def panel_velocity_and_gradient(
+    target,
+    panel,
+    vortex_points,
+    corners,
+    trailing_edge_index,
+    circulation,
+    coupled_mode,
+    core_radius,
+):
+    """Bound horseshoe in coupled mode; full horseshoe for standalone VLM.
+
+    The free VPM particles own the downstream wake. Do not add far trailing
+    legs or a fictitious ring closure to their velocity field.
+    """
+    left = vortex_points[panel, 0]
+    right = vortex_points[panel, 3]
+    if coupled_mode == 1:
+        te = trailing_edge_index[panel]
+        left = corners[te, 3]
+        right = corners[te, 2]
+    v1, g1 = regularized_segment_velocity_and_gradient(
+        target,
+        left,
+        vortex_points[panel, 1],
+        circulation,
+        core_radius,
+    )
+    v2, g2 = regularized_segment_velocity_and_gradient(
+        target,
+        vortex_points[panel, 1],
+        vortex_points[panel, 2],
+        circulation,
+        core_radius,
+    )
+    v3, g3 = regularized_segment_velocity_and_gradient(
+        target,
+        vortex_points[panel, 2],
+        right,
+        circulation,
+        core_radius,
+    )
+    return v1 + v2 + v3, g1 + g2 + g3
+
+
 @ti.kernel
 def compute_induced_velocities(
     n_panels: ti.i32,
     collocation_point: ti.template(),
     vortex_point_position: ti.template(),
+    panel_corner_position: ti.template(),
+    trailing_edge_index: ti.template(),
     circulation: ti.template(),
     velocity: ti.template(),
     external_velocity: ti.template(),
+    coupled_mode: ti.i32,
 ):
-    """
-    Compute total velocity including external field.
-
-    V_total = external_velocity + V_induced
-
-    Args:
-        n_panels: Number of panels
-        collocation_point: Collocation points (N x 3)
-        vortex_point_position: Horseshoe vertices (N x 4 x 3)
-        circulation: Circulation distribution (N,)
-        velocity: Output velocity field (N x 3)
-        external_velocity: External velocity field (N x 3)
-    """
+    """Evaluate the same bound field used for wake advection at collocation points."""
     for i in range(n_panels):
-        vel_induced = ti.Vector([0.0, 0.0, 0.0])
-
+        induced = collocation_point[i] * 0.0
         for j in range(n_panels):
-            v1 = vortex_point_position[j, ti.i32(0)]
-            v2 = vortex_point_position[j, ti.i32(1)]
-            v3 = vortex_point_position[j, ti.i32(2)]
-            v4 = vortex_point_position[j, ti.i32(3)]
-
-            vel_induced += vortex_ring_velocity(
-                collocation_point[i], v1, v2, v3, v4, circulation[j], VLM_EPSILON
+            value, _ = panel_velocity_and_gradient(
+                collocation_point[i],
+                j,
+                vortex_point_position,
+                panel_corner_position,
+                trailing_edge_index,
+                circulation[j],
+                coupled_mode,
+                VLM_EPSILON,
             )
-
-        # Total velocity
-        velocity[i] = external_velocity[i] + vel_induced
+            induced += value
+        velocity[i] = external_velocity[i] + induced
 
 
 @ti.kernel
@@ -224,23 +250,28 @@ def add_induced_velocity_at_targets(
     target_position: ti.template(),
     target_velocity: ti.template(),
     vortex_point_position: ti.template(),
+    panel_corner_position: ti.template(),
+    trailing_edge_index: ti.template(),
     circulation: ti.template(),
     n_targets: ti.i32,
     n_panels: ti.i32,
+    coupled_mode: ti.i32,
 ):
-    """Accumulate the solved VLM field at arbitrary temporary VPM targets."""
+    """Accumulate bound velocity at point probes, without a particle-volume filter."""
     for i in range(n_targets):
-        induced = ti.Vector([0.0, 0.0, 0.0])
-        for j in range(n_panels):
-            induced += vortex_ring_velocity(
+        induced = target_position[i] * 0.0
+        for panel in range(n_panels):
+            value, _ = panel_velocity_and_gradient(
                 target_position[i],
-                vortex_point_position[j, ti.i32(0)],
-                vortex_point_position[j, ti.i32(1)],
-                vortex_point_position[j, ti.i32(2)],
-                vortex_point_position[j, ti.i32(3)],
-                circulation[j],
+                panel,
+                vortex_point_position,
+                panel_corner_position,
+                trailing_edge_index,
+                circulation[panel],
+                coupled_mode,
                 VLM_EPSILON,
             )
+            induced += value
         target_velocity[i] += induced
 
 
@@ -249,56 +280,129 @@ def add_induced_velocity_and_gradient_at_targets(
     target_position: ti.template(),
     target_velocity: ti.template(),
     target_gradient: ti.template(),
+    target_core_radius: ti.template(),
     vortex_point_position: ti.template(),
+    panel_corner_position: ti.template(),
+    trailing_edge_index: ti.template(),
     circulation: ti.template(),
     n_targets: ti.i32,
     n_panels: ti.i32,
-    finite_difference_step: ti.f32,
+    coupled_mode: ti.i32,
 ):
-    """Accumulate VLM velocity and its stage-consistent target Jacobian.
+    """Add particle-volume-filtered velocity and write its analytic Jacobian.
 
-    The ring kernel is the authoritative VLM velocity operator.  Centered
-    differences reuse that same operator at temporary stage positions, so the
-    stretching field cannot drift from the velocity field used for advection.
-    ``target_gradient[i,j]`` is ``∂u_i/∂x_j``.
+    A particle represents a finite vortex volume. Filter filament induction
+    with that target particle's current core radius; using an almost singular
+    point derivative at a newly shed filament endpoint is not resolved by the
+    particle discretization. The gradient destination is provider-owned scratch
+    storage; its caller adds it to the other stage contributions.
     """
     for i in range(n_targets):
         target = target_position[i]
-        # Derive temporaries from the destination fields so f64 VPM
-        # accumulators do not silently force this contribution through f32.
         induced = target * 0.0
+        gradient = target.outer_product(target) * 0.0
+        radius = ti.max(target_core_radius[i], VLM_EPSILON)
         for panel in range(n_panels):
-            induced += vortex_ring_velocity(
+            value, jacobian = panel_velocity_and_gradient(
                 target,
-                vortex_point_position[panel, ti.i32(0)],
-                vortex_point_position[panel, ti.i32(1)],
-                vortex_point_position[panel, ti.i32(2)],
-                vortex_point_position[panel, ti.i32(3)],
+                panel,
+                vortex_point_position,
+                panel_corner_position,
+                trailing_edge_index,
                 circulation[panel],
-                VLM_EPSILON,
+                coupled_mode,
+                radius,
             )
-        gradient = target_gradient[i] * 0.0
-        for column in ti.static(range(3)):
-            offset = target * 0.0
-            offset[column] = finite_difference_step
-            plus = target * 0.0
-            minus = target * 0.0
-            for panel in range(n_panels):
-                v1 = vortex_point_position[panel, ti.i32(0)]
-                v2 = vortex_point_position[panel, ti.i32(1)]
-                v3 = vortex_point_position[panel, ti.i32(2)]
-                v4 = vortex_point_position[panel, ti.i32(3)]
-                plus += vortex_ring_velocity(
-                    target + offset, v1, v2, v3, v4, circulation[panel], VLM_EPSILON
-                )
-                minus += vortex_ring_velocity(
-                    target - offset, v1, v2, v3, v4, circulation[panel], VLM_EPSILON
-                )
-            derivative = (plus - minus) / (2.0 * finite_difference_step)
-            for row in ti.static(range(3)):
-                gradient[row, column] = derivative[row]
+            induced += value
+            gradient += jacobian
         target_velocity[i] += induced
         target_gradient[i] = gradient
+
+
+@ti.kernel
+def add_stage_rates_with_bound_exchange(
+    position: ti.template(),
+    strength: ti.template(),
+    radius: ti.template(),
+    velocity: ti.template(),
+    rate: ti.template(),
+    gradient_out: ti.template(),
+    vortex_points: ti.template(),
+    corners: ti.template(),
+    trailing_edge_index: ti.template(),
+    is_trailing_edge: ti.template(),
+    circulation: ti.template(),
+    stage_exchange: ti.template(),
+    count: ti.i32,
+    n_panels: ti.i32,
+    coupled_mode: ti.i32,
+    mode: ti.i32,
+    weighted_dt: float,
+    has_gradient: ti.template(),
+):
+    """Evaluate bound induction and retain its opposite strip strength exchange.
+
+    Chordwise panels are contiguous within each strip. Accumulate their reaction
+    before one atomic update at the trailing edge. Accumulate into a zeroed
+    stage field so small f32 increments are not rounded against the much larger
+    old bound vector. A diagnostic evaluation passes zero weight.
+    """
+    for i in range(count):
+        target = position[i]
+        induced = ti.Vector.zero(velocity.dtype, 3)
+        gradient = ti.Matrix.zero(rate.dtype, 3, 3)
+        strip_rate = ti.Vector.zero(rate.dtype, 3)
+        core = ti.max(radius[i], VLM_EPSILON)
+        for panel in range(n_panels):
+            value, jacobian = panel_velocity_and_gradient(
+                target,
+                panel,
+                vortex_points,
+                corners,
+                trailing_edge_index,
+                circulation[panel],
+                coupled_mode,
+                core,
+            )
+            induced += value
+            gradient += jacobian
+            if weighted_dt != 0.0:
+                strip_rate += stretching_rate(jacobian, strength[i], mode)
+                if is_trailing_edge[panel] == 1:
+                    for axis in ti.static(range(3)):
+                        ti.atomic_add(stage_exchange[panel][axis], -strip_rate[axis])
+                    strip_rate = ti.Vector.zero(rate.dtype, 3)
+        velocity[i] += induced
+        rate[i] += stretching_rate(gradient, strength[i], mode)
+        if ti.static(has_gradient):
+            gradient_out[i] += gradient
+
+
+@ti.kernel
+def accumulate_bound_transport(
+    transported_bound: ti.template(),
+    stage_exchange: ti.template(),
+    weighted_dt: float,
+    count: ti.i32,
+):
+    """Add the completed strip rate once, with its RK weight and step size."""
+    for i in range(count):
+        transported_bound[i] += weighted_dt * stage_exchange[i]
+
+
+@ti.kernel
+def initialize_bound_transport(
+    corners: ti.template(),
+    circulation: ti.template(),
+    is_trailing_edge: ti.template(),
+    transported_bound: ti.template(),
+    count: ti.i32,
+):
+    """Start each strip's transport from its accepted closing-line vector."""
+    for i in range(count):
+        transported_bound[i] = ti.Vector.zero(transported_bound.dtype, 3)
+        if is_trailing_edge[i] == 1:
+            transported_bound[i] = circulation[i] * (corners[i, 2] - corners[i, 3])
 
 
 @ti.func
@@ -359,6 +463,23 @@ def apply_circulation_smoothing(
     smoothed_circulation: ti.template(),
     n: ti.i32,
 ):
+    """Average current and previous VLM circulation elementwise.
+
+    Parameters
+    ----------
+    circulation, circulation_old : taichi field, shape (n_panels,)
+        Current and previous panel circulations in m²/s.
+    smoothed_circulation : taichi field, shape (n_panels,)
+        Output field in m²/s, overwritten for indices ``0 <= i < n``.
+    n : int
+        Number of active panels to process; must not exceed the field sizes.
+
+    Notes
+    -----
+    The operation is the explicit temporal filter
+    ``0.5 * (circulation + circulation_old)``.  It does not update either
+    input field or perform any spatial smoothing.
+    """
     for i in range(n):
         smoothed_circulation[i] = 0.5 * (circulation[i] + circulation_old[i])
 

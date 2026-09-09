@@ -15,29 +15,58 @@ protect user edits; `run` reuses an existing workspace.
 
 ## Running a local copy
 
-A case owns its `setup.py`, shell launchers, compact inputs under `assets/`, and
-generated output. You may move the case directory elsewhere after creation.
-With the installed Python environment active:
+After installation, open a case directory and run Python directly:
 
 ```bash
 cd ring-workspace/tutorials/vpm/vortex_ring
-bash allrun.sh --steps 2
+python setup.py --variant dns_direct
 ```
 
-For individual package-style modules, use the local runner:
+Edit the inputs in `setup.py` to define your experiment; for a short ring check,
+reduce `N_STEPS` there before running. The shell files have
+one purpose each:
 
 ```bash
-python -m openonda.tutorial_runner . setup --variant dns_direct --steps 2
-python -m openonda.tutorial_runner . assets.postprocess --available
+./allrun.sh    # Run the simulations listed in the file.
+./allplot.sh   # Plot their results.
+./allclean.sh  # Remove generated output when you choose to.
 ```
 
-This loads the edited local case, including its relative imports. It also
-works with an absolute case-directory argument from another working directory.
-`python setup.py` works for the directly executable setups. Running
-`python -m tutorials.…` addresses installed templates and is unsuitable for
-editing a materialized case. No package directory needs to be added to Python's
-search path. Bash is needed for shell campaigns; Python modules can be run
-individually. `openonda tutorial` keeps the CLI's interpreter for subprocesses.
+Running does not invoke cleaning, plotting, or result validation. Existing
+outputs remain until you explicitly clean them; individual solvers may
+replace their own output files when rerun. Launch the shell files from the
+case directory. Direct Python setup paths also work from other directories.
+No interpreter variables or module-runner commands are required.
+
+The installed CLI performs the same separate actions from any directory:
+
+```bash
+openonda tutorial plot fvm/taylor_green --workspace ./first-flow
+openonda tutorial clean fvm/taylor_green --workspace ./first-flow
+```
+
+Small comparisons expose only their meaningful variant arguments. For example:
+
+```bash
+# In the Lamb–Oseen case:
+python setup.py vortex CS
+python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge
+
+# In the vortex-interactions case:
+python setup_les.py --variant baseline
+python setup_les.py --variant p_moments
+python setup_les.py --variant halfdt
+```
+
+`setup_les.py` preserves the three-run LES experiment; `setup.py` contains the
+six stabilization comparisons. Advanced individual research trials remain in
+`assets/study.py`. There is no Python campaign wrapper behind `allrun.sh`.
+
+Validators are explicit, for example `python assets/postprocess.py --available`
+in the ring case. They and the plotters read the solvers' `vpm_metadata.json`
+or `fvm_metadata.json`, rather than a second tutorial metadata file.
+
+See the [tutorial style guide](development/tutorial_style.md) when adding a case.
 
 ## VPM induction and stretching
 
@@ -86,5 +115,6 @@ repository `docs/` directory.
 
 Core installation does not include external OpenFOAM/cfMesh executables,
 OpenVSP, or ParaView. See [optional tool requirements](installation.md).
-The [repository audit](../repository_audit.md) records executed examples,
-measured errors and verification limits.
+The [FVM qualification report](validation/fvm_qualification.md) records the
+current executable contract and verification limits. The broader documentation
+scope and terminology are summarized in [the documentation audit](documentation_audit.md).

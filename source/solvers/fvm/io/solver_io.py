@@ -8,24 +8,33 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Any
 
 from .storage import append_line_recoverably
 
 
 class SolverIO:
-    """Unified IO and Diagnostics manager for the FVM Solver.
+    """Own FVM diagnostics, restart-history, and output reconciliation.
 
-    Attributes:
-        solver (FVMSolver): Reference to the parent FVM solver instance.
-        case_dir (str): Working directory for the simulation.
+    The numerical solver owns field writers; this adapter owns append-only
+    diagnostics and safe history rewinds. It writes only on the root rank in a
+    partitioned run and uses temporary files/atomic replacement for rewrites.
+
+    Attributes
+    ----------
+    solver : FVMSolver
+        Parent solver/context.
+    case_dir, solution_dir, samples_dir : str or pathlib.Path
+        Case-owned output destinations.
     """
 
-    def __init__(self, solver: Any):
-        """Initializes the IO manager.
+    def __init__(self, solver: object) -> None:
+        """Bind the I/O manager to an initialized solver.
 
-        Args:
-            solver: The FVM solver instance to manage.
+        Parameters
+        ----------
+        solver : FVMSolver
+            Object exposing case, solution, and sample directories plus a
+            logger/parallel context.
         """
         self.solver = solver
         self.case_dir = solver.case_dir
@@ -34,7 +43,12 @@ class SolverIO:
         self._diagnostics_write_disabled = False
 
     def write_step_diagnostics(self) -> None:
-        """Append the accepted step health record as one JSON object."""
+        """Append the accepted-step health record as one JSON object.
+
+        The operation is root-only and recoverable on disk-full: an ENOSPC
+        disables later diagnostics writes and emits a warning, while other I/O
+        errors propagate.
+        """
         parallel = getattr(self.solver, "parallel", None)
         if parallel is not None and not parallel.is_root:
             return
@@ -54,6 +68,20 @@ class SolverIO:
             )
 
     def rewind_histories(self, time: float) -> None:
+        """Truncate solver-owned histories beyond a restart time.
+
+        Parameters
+        ----------
+        time : float
+            Inclusive accepted physical time in seconds. CSV/PVD/JSONL entries
+            after this time are removed; superseded PVD files are copied to a
+            ``restart-branches`` directory before replacement.
+
+        Notes
+        -----
+        Unrecognized files in shared sample directories are preserved. The
+        in-memory PVD indexes of active writers are rewound as well.
+        """
         parallel = getattr(self.solver, "parallel", None)
         if parallel is not None and not parallel.is_root:
             return

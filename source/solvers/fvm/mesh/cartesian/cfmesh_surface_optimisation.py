@@ -7,9 +7,10 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from numba import njit
 from numba.extending import register_jitable
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 _SMALL = 1.0e-15
 _VSMALL = 1.0e-300

@@ -36,6 +36,24 @@ class BufferedVTKWriter:
         pvd_path: str,
         output: OutputConfig | None = None,
     ):
+        """Allocate a bounded one-worker VTK output queue.
+
+        Parameters
+        ----------
+        mesh_data : dict
+            Native FVM mesh consumed by :class:`VTKExporter`.
+        pvd_path : str
+            Destination collection file for the time series.
+        output : OutputConfig or None, default=None
+            Visualization precision/format policy. A default policy is used
+            when omitted.
+
+        Notes
+        -----
+        The worker thread and VTK objects are created lazily. Each submitted
+        field is copied before the caller regains control; ``close()`` or
+        ``flush()`` must be called to surface background errors.
+        """
         self._mesh_data = mesh_data
         self._pvd_path = pvd_path
         self._output = output or OutputConfig()

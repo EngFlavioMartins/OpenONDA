@@ -65,12 +65,58 @@ def _polygon_contains_xy(
 
 
 class ImmersedBody:
-    """Marker cloud for one immersed obstacle.
+    """Represent one immersed solid by Lagrangian surface markers.
 
-    Attributes:
-        name:     Identifier used in force logs.
-        position: Marker positions ``(n_markers, 3)``.
-        prescribed_velocity: Desired fluid velocity at the markers ``(Ns, 3)``.
+    Users normally create bodies with :meth:`cylinder_z`, :meth:`sphere`, or
+    another geometry factory and attach them to an :class:`FVMSolver`. The
+    direct constructor is useful for externally generated point clouds. IBM
+    forcing interpolates the cell-centred fluid velocity to these markers and
+    spreads the correction required to match ``prescribed_velocity``.
+
+    Parameters
+    ----------
+    name : str
+        Non-empty identifier used in force histories and diagnostics.
+    position : sequence or ndarray, shape (n_markers, 3)
+        Cartesian marker coordinates in m. Values are converted to a
+        ``float64`` array owned by the body.
+    prescribed_velocity : sequence or ndarray, optional
+        Target Cartesian fluid velocity in m/s. A shape-``(3,)`` vector is
+        broadcast to every marker; shape ``(n_markers, 3)`` supplies a moving
+        velocity per marker. ``None`` creates a stationary body.
+    geometry : dict or None, keyword-only
+        Optional exact solid metadata used by :meth:`contains` and
+        :meth:`signed_distance`. Arbitrary marker clouds may omit it; built-in
+        factories populate it consistently.
+
+    Attributes
+    ----------
+    name : str
+        Body identifier.
+    position : ndarray, shape (n_markers, 3)
+        Mutable marker coordinates in m owned by this object.
+    prescribed_velocity : ndarray, shape (n_markers, 3)
+        Mutable target marker velocity in m/s owned by this object.
+
+    Raises
+    ------
+    ValueError
+        If the name is empty, marker layout is not ``(N, 3)``, no marker is
+        supplied, or any coordinate/velocity is non-finite.
+
+    Notes
+    -----
+    Marker spacing should remain comparable to the local Eulerian grid spacing
+    (normally a ratio near one). Construction does not insert the body into a
+    solver and does not copy arbitrary nested ``geometry`` data.
+
+    Examples
+    --------
+    >>> body = ImmersedBody.cylinder_z(
+    ...     centre=(0.0, 0.0, 0.0), diameter=1.0, grid_spacing=0.05
+    ... )
+    >>> body.position.shape == (body.n_markers, 3)
+    True
     """
 
     def __init__(
@@ -80,7 +126,8 @@ class ImmersedBody:
         prescribed_velocity: Sequence[float] | np.ndarray | None = None,
         *,
         geometry: dict | None = None,
-    ):
+    ) -> None:
+        """Validate and copy a marker cloud and its target velocity."""
         if not isinstance(name, str) or not name.strip():
             raise ValueError("Immersed body name must be a non-empty string")
         self.name = name
@@ -103,6 +150,7 @@ class ImmersedBody:
 
     @property
     def n_markers(self) -> int:
+        """Return the number of active surface markers represented by the body."""
         return self.position.shape[0]
 
     @property
@@ -124,7 +172,25 @@ class ImmersedBody:
         *,
         include_boundary: bool = False,
     ) -> np.ndarray:
-        """Return which query points lie in the represented solid.
+        """Classify Cartesian query points against the represented solid.
+
+        Parameters
+        ----------
+        points : sequence or ndarray, shape (N, 3)
+            Cartesian query coordinates in m.
+        include_boundary : bool, default=False
+            Treat points on the analytically represented surface as inside.
+
+        Returns
+        -------
+        ndarray, shape (N,)
+            New Boolean mask; true entries lie in the solid under the selected
+            boundary policy.
+
+        Raises
+        ------
+        ValueError
+            If this arbitrary marker cloud has no supported exact geometry.
 
         The marker cloud remains the IBM forcing representation.  This exact
         geometry metadata is used by coupled particle handoff to prevent solid
@@ -178,7 +244,23 @@ class ImmersedBody:
         self,
         points: Sequence[Sequence[float]] | np.ndarray,
     ) -> np.ndarray:
-        """Signed distance to the solid surface: positive in the fluid.
+        """Return signed distance to the solid surface for query points.
+
+        Parameters
+        ----------
+        points : sequence or ndarray, shape (N, 3)
+            Cartesian query coordinates in m.
+
+        Returns
+        -------
+        ndarray, shape (N,)
+            Distance in m, positive in fluid, zero on the boundary, and
+            negative in the represented solid.
+
+        Raises
+        ------
+        ValueError
+            If the body has no supported exact geometry metadata.
 
         Feeds the C1 wall taper. Exact outside, a lower bound inside.
         """

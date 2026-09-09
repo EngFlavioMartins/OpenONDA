@@ -10,11 +10,12 @@ Key concept: bound/wake vortex-strength closure
 For a discretized inviscid vortex system, the oriented bound and wake
 filament vortex_strength close:
 
-    d(alpha_total) / dt = 0
+    d(Gamma_total) / dt = 0
 
-where alpha = circulation times the oriented filament segment has units L^3/T.
+where Gamma = scalar circulation times the oriented filament segment and has
+units L^3/T.
 At shedding, scalar VLM circulation [L^2/T] is converted to VPM vector strength
-alpha_p [L^3/T] by the oriented filament length; the two quantities are never
+Gamma_p [L^3/T] by the oriented filament length; the two quantities are never
 added directly.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
@@ -54,11 +55,17 @@ class ConservationState:
     impulse_wake: np.ndarray = field(default_factory=lambda: np.zeros(3))
     """Wake linear impulse [kg m/s]."""
 
+    impulse_bound: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    """Finite bound-field linear impulse [kg m/s]."""
+
     impulse_total: np.ndarray = field(default_factory=lambda: np.zeros(3))
     """Tracked total linear impulse [kg m/s]."""
 
     kutta_joukowski_force: np.ndarray = field(default_factory=lambda: np.zeros(3))
     """Force from Kutta-Joukowski on panels [N]."""
+
+    unsteady_pressure_force: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    """Surface potential-jump time derivative contribution [N]."""
 
     total_kinetic_energy: float = 0.0
     """Total kinetic energy [J]."""
@@ -83,6 +90,21 @@ class ConservationTracker:
     """Track conservation properties during VLM-VPM coupled simulations."""
 
     def __init__(self, density: float = 1.225):
+        """Create an in-memory conservation history recorder.
+
+        Parameters
+        ----------
+        density : float, default=1.225
+            Fluid density in kg/m³. It scales impulse and kinetic-energy
+            quantities reconstructed from the VPM fields and is also passed to
+            the VLM force calculation.
+
+        Notes
+        -----
+        The tracker owns the append-only :attr:`history` list but does not
+        copy or mutate the solver's particle arrays. Call :meth:`record_state`
+        after an accepted, fully refreshed solver step.
+        """
         self.density = density
         self.history: list[ConservationState] = []
 
@@ -93,7 +115,7 @@ class ConservationTracker:
         state.wake_vortex_strength = solver.net_vortex_strength
         state.impulse_wake = solver.total_linear_impulse * self.density
         state.total_kinetic_energy = solver.total_kinetic_energy * self.density
-        state.viscous_kinetic_energy_rate = solver.kinetic_energy_rate * self.density
+        state.viscous_kinetic_energy_rate = solver.viscous_kinetic_energy_rate * self.density
         state.n_particles_total = solver.particles.n_particles_total
 
         if hasattr(solver, "_particles_removed_this_step"):
@@ -102,19 +124,18 @@ class ConservationTracker:
 
         if solver.vlm_solver is not None and solver.vlm_solver._solved:
             state.bound_vortex_strength = solver.vlm_solver.compute_total_bound_vortex_strength()
-            try:
-                forces = solver.vlm_solver.compute_forces(
-                    density=self.density,
-                    reference_speed=float(np.linalg.norm(solver.freestream_velocity)),
-                )
-                state.kutta_joukowski_force = np.array(
-                    [forces["force_x"], forces["force_y"], forces["force_z"]]
-                )
-            except Exception:
-                pass
+            state.impulse_bound = solver.vlm_solver.compute_bound_linear_impulse() * self.density
+            forces = solver.vlm_solver.compute_forces(density=self.density)
+            state.unsteady_pressure_force = np.array(
+                [forces[f"unsteady_force_{axis}"] for axis in "xyz"]
+            )
+            state.kutta_joukowski_force = (
+                np.array([forces["force_x"], forces["force_y"], forces["force_z"]])
+                - state.unsteady_pressure_force
+            )
 
         state.net_vortex_strength = state.bound_vortex_strength + state.wake_vortex_strength
-        state.impulse_total = state.impulse_wake
+        state.impulse_total = state.impulse_wake + state.impulse_bound
 
         closure_scale = max(
             np.linalg.norm(state.bound_vortex_strength),
@@ -159,6 +180,15 @@ class ConservationTracker:
                     "total_kinetic_energy",
                     "viscous_kinetic_energy_rate",
                     "n_particles_total",
+                    "bound_linear_impulse_x",
+                    "bound_linear_impulse_y",
+                    "bound_linear_impulse_z",
+                    "total_linear_impulse_x",
+                    "total_linear_impulse_y",
+                    "total_linear_impulse_z",
+                    "unsteady_pressure_force_x",
+                    "unsteady_pressure_force_y",
+                    "unsteady_pressure_force_z",
                 ]
             )
 
@@ -175,6 +205,9 @@ class ConservationTracker:
                         state.total_kinetic_energy,
                         state.viscous_kinetic_energy_rate,
                         state.n_particles_total,
+                        *state.impulse_bound,
+                        *state.impulse_total,
+                        *state.unsteady_pressure_force,
                     ]
                 )
 
@@ -200,16 +233,6 @@ class ConservationTracker:
         print(f"Initial total strength: {np.linalg.norm(initial.net_vortex_strength):.6e} m^3/s")
         print(f"Final total strength:   {np.linalg.norm(final.net_vortex_strength):.6e} m^3/s")
         print(f"Closure error:          {final.vortex_strength_closure_error_percent:.3f}%")
-
-        if final.vortex_strength_closure_error_percent < 0.1:
-            status = "EXCELLENT"
-        elif final.vortex_strength_closure_error_percent < 1.0:
-            status = "GOOD"
-        elif final.vortex_strength_closure_error_percent < 5.0:
-            status = "ACCEPTABLE"
-        else:
-            status = "POOR"
-        print(f"Status: {status}")
 
         print("\n--- Surface Force ---")
         print(

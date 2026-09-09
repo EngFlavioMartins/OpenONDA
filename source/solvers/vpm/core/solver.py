@@ -92,17 +92,77 @@ class VelocityOverrideBlender(Protocol):
 
 @ti.data_oriented
 class VPMSolver:
-    """Vortex Particle Method solver.
+    """Own and advance one complete Vortex Particle Method simulation.
 
-    The solver owns the particle field, time integration, viscous and turbulence
-    models, optional boundary-element coupling, diagnostics, sampling, and restart
-    state. Construction is supplied exclusively through :class:`VPMCase`.
+    The solver is the owner of the mutable particle fields, accepted clock,
+    induction backend, Runge--Kutta workspace, viscous/turbulence models,
+    optional VLM/panel coupling, diagnostics, samplers, and restart I/O. A
+    particle's ``vortex_strength`` is the particle-strength/circulation vector
+    ``Gamma = omega * V`` in m³/s; it is distinct from vorticity ``omega`` in
+    1/s and from core radius ``sigma`` in m.
+
+    Parameters
+    ----------
+    case : VPMCase
+        Immutable construction object containing numerical, physical, output,
+        and initial-condition policies. The case is validated before device
+        fields are allocated.
+
+    Attributes
+    ----------
+    time : float
+        Accepted physical time in seconds.
+    step : int
+        Accepted integer step index.
+    particles : Particles
+        Fixed-capacity mutable device container. Public CPU properties expose
+        copies of its active prefix.
+    setup : Numerics
+        Immutable numerical configuration used to build the runtime.
+
+    Notes
+    -----
+    Constructing a solver claims/configures the process Taichi backend and
+    creates output directories. :meth:`run` owns the complete lifecycle and
+    closes resources on success or failure; interactive callers may use
+    :meth:`advance` and then :meth:`close` explicitly. Numerical state is
+    updated in place, while an accepted step is committed only after all
+    physical phases pass.
     """
 
     # Initialization
 
     def __init__(self, case: VPMCase) -> None:
-        """Initialize one solver from its required immutable case object."""
+        """Validate a case and allocate its runtime workspaces.
+
+        Parameters
+        ----------
+        case : VPMCase
+            Immutable VPM configuration. Its particle capacity controls all
+            fixed-size device allocations; initial-condition builders are
+            invoked lazily by :meth:`run` or the first :meth:`advance`.
+
+        Raises
+        ------
+        TypeError
+            If ``case`` is not a :class:`VPMCase`.
+        ValueError
+            If the selected precision, device, induction backend, or coupled
+            configuration is unsupported.
+        RuntimeError
+            If backend initialization or an owned subsystem fails. Resources
+            acquired before the failure are released before the exception is
+            propagated.
+
+        Side Effects
+        ------------
+        Creates the configured backup, log, and sample directories; claims the
+        process Taichi runtime; allocates particle/physics/device fields; and
+        installs logging/output managers. On successful construction it also
+        writes ``vpm_metadata.json`` in the configured backup directory. It
+        does not populate declarative initial conditions until the first
+        lifecycle operation.
+        """
         if not isinstance(case, VPMCase):
             raise TypeError("VPMSolver requires a VPMCase construction object")
         self.case = case
@@ -116,7 +176,12 @@ class VPMSolver:
         self._backend_claimed = True
         self.restart_state = RestartState()
         self._initial_conditions_built = False
+        self._initial_n_particles_total = 0
+        self._run_initial_step = 0
+        self._run_initial_time = 0.0
         self._run_started = False
+        self._run_wall_started_at: float | None = None
+        self._run_wall_finished_at: float | None = None
         self._run_finished = False
         self.run_status = "not_started"
         self.run_failure: BaseException | None = None
@@ -133,6 +198,7 @@ class VPMSolver:
             Logging.set_routine_messages_enabled(True)
             Logging.startup(self)
             self._configuration_logged = True
+            self._write_run_manifest("created", None)
             # Declarative or externally supplied initial particles are populated
             # after construction.  Keep those setup mutations out of the runtime
             # event stream; the first requested diagnostics describe their state.
@@ -296,7 +362,7 @@ class VPMSolver:
         )
         # Keep the resolved backend identity independent of the process-global
         # Taichi constant.  ``close()`` releases that global runtime before a
-        # terminal manifest is written, so consulting the constant later can
+        # terminal metadata is written, so consulting the constant later can
         # incorrectly report ``UNKNOWN`` for an otherwise reproducible run.
         self._backend_name = str(self.compute_device)
         supported_devices = getattr(self.induction, "supported_devices", None)
@@ -507,6 +573,7 @@ class VPMSolver:
 
     def _setup_vlm_solver(self) -> None:
         """Configure VLM solver coupling: mesh generation, force config, stability check."""
+        self.vlm_solver._wake_kernel = self.induction.kernel
         self.vlm_solver.ensure_mesh_generated()
         if getattr(self.vlm_solver, "lattice", None) is not None:
             Logging.record("vlm", ("panels", f"{self.vlm_solver.lattice.n_panels:,}"))
@@ -620,7 +687,19 @@ class VPMSolver:
             )
 
     def export_diagnostics_csv(self, filename: str) -> None:
-        """Export diagnostics history to CSV for offline analysis."""
+        """Export the in-memory diagnostics history to a CSV file.
+
+        Parameters
+        ----------
+        filename : str
+            Destination path. Parent-directory creation and overwrite policy
+            are delegated to :class:`SolverIO`.
+
+        Notes
+        -----
+        The method serializes diagnostics already recorded; it does not force
+        a new field evaluation or append a new history sample.
+        """
         self.io.export_diagnostics_csv(self._diagnostics_history, filename)
 
     # Basic protocol
@@ -630,11 +709,24 @@ class VPMSolver:
         return len(self.particles)
 
     def __getitem__(self, index: int) -> ParticleRecord:
-        """Access particle data by index."""
+        """Return a CPU snapshot of one active particle record.
+
+        Parameters
+        ----------
+        index : int
+            Zero-based active-particle index; negative indices follow the
+            container's normal Python indexing behavior.
+
+        Returns
+        -------
+        ParticleRecord
+            Dictionary of scalar/vector fields in SI units. Values are copies,
+            so editing the record does not mutate device state.
+        """
         return self.particles[index]
 
     def __iter__(self) -> Iterator[ParticleRecord]:
-        """Iterate over all particles."""
+        """Yield CPU snapshots for active particles in index order."""
         for i in range(len(self)):
             yield self[i]
 
@@ -645,7 +737,7 @@ class VPMSolver:
     # Time stepping
 
     def print_timing(self) -> None:
-        """Print cumulative runtime-profiler statistics."""
+        """Print cumulative runtime-profiler statistics to the configured log."""
         self.profiler.set_particle_count(self.particles.n_particles_total)
         self.profiler.report()
 
@@ -659,6 +751,24 @@ class VPMSolver:
         facade method delegates to it. Coupled drivers may set
         ``defer_output=True`` and write scheduled output after synchronizing
         the particle state at the new time level.
+
+        Parameters
+        ----------
+        defer_output : bool, default=False
+            When false, refresh accepted-step health/diagnostics and dispatch
+            the accepted-step output event before returning. Coupled drivers
+            set true while they exchange the authoritative particle cloud and
+            call :meth:`execute_scheduled_samplers` afterward.
+
+        Raises
+        ------
+        RuntimeError
+            If a previous physical step failed or the solver cannot continue.
+        Exception
+            Any numerical, health, stabilization, or callback exception is
+            propagated. A failed physical step marks this solver terminally
+            invalid so partial device mutation cannot be mistaken for an
+            accepted state.
         """
         if self._evolution_failure is not None:
             raise RuntimeError(
@@ -680,8 +790,12 @@ class VPMSolver:
         if defer_output:
             return
         self._refresh_accepted_step_health()
+        if self.vlm_solver is not None:
+            self._record_vlm_diagnostics()
         if self.output_manager.flow_integrals_due(self.step, self.time):
-            self._refresh_diagnostics_for_output()
+            # Accepted-step health already refreshed velocity, gradients and
+            # LES viscosity at this exact state. Reuse those fields for output.
+            self._update_all_flow_integrals()
         self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
 
     def run(self) -> None:
@@ -689,22 +803,45 @@ class VPMSolver:
 
         The lifecycle has one owner: it constructs declarative initial
         conditions, dispatches initial/accepted/final output events, records an
-        atomic termination manifest, and releases logger/backend resources on
+        atomic progress and terminal metadata, and releases logger/backend resources on
         both successful and failed runs.  ``advance`` remains available for
         explicitly interactive or externally coupled control.
+
+        Raises
+        ------
+        RuntimeError
+            If the lifecycle was already started or a failed step made the
+            solver terminally invalid.
+        Exception
+            The primary evolution/output/finalization failure is re-raised
+            after failed-event output, metadata writing, and resource cleanup
+            have been attempted.
+
+        Side Effects
+        ------------
+        Builds initial conditions, mutates particle/device state, writes
+        configured samples/backups and ``vpm_metadata.json`` in the backup
+        directory, updates logging, and closes owned resources before returning
+        or raising.
         """
         if self._run_started:
             raise RuntimeError("VPMSolver.run() may be called only once")
         self._run_started = True
+        self._run_wall_started_at = perf_counter()
+        self._run_wall_finished_at = None
+        self._run_initial_step = self.step
+        self._run_initial_time = self.time
         self._run_final_step = self.step + self.case.run.steps
         status = "failed"
         failure: BaseException | None = None
         limit = self.case.run.wall_time_limit_seconds
-        deadline = None if limit is None else perf_counter() + limit
+        deadline = None if limit is None else self._run_wall_started_at + limit
         budget_exhausted = False
         primary_failure: BaseException | None = None
         try:
             self._build_initial_conditions()
+            self.run_status = "running"
+            self._write_run_manifest(self.run_status, None)
             self._log_configuration_once()
             if self.case.run.initial_samples:
                 self._refresh_diagnostics_for_output()
@@ -751,6 +888,7 @@ class VPMSolver:
                 if primary_failure is None:
                     primary_failure = failed_event_error
         finally:
+            self._run_wall_finished_at = perf_counter()
             if primary_failure is not None:
                 status = "failed"
                 failure = primary_failure
@@ -781,8 +919,10 @@ class VPMSolver:
         """Build each declarative initial condition exactly once."""
         if self._initial_conditions_built:
             return
+        built_particles = 0
         for initial_condition in self.case.initial_conditions:
             particles = initial_condition.build()
+            built_particles += len(particles.position)
             self.add_vortex_particles(
                 position=particles.position,
                 velocity=particles.velocity,
@@ -795,23 +935,49 @@ class VPMSolver:
             )
         if self.case.initial_weak_particle_percent > 0.0:
             self.remove_weak_particles(self.case.initial_weak_particle_percent)
+        container = getattr(self, "particles", None)
+        self._initial_n_particles_total = int(
+            getattr(container, "n_particles_total", built_particles)
+        )
         self._initial_conditions_built = True
 
     def _write_run_manifest(self, status: str, failure: BaseException | None) -> None:
-        """Atomically record the terminal lifecycle state for one case."""
-        write_manifest(self, self.case_dir / "run_manifest.json", status=status, failure=failure)
+        """Record universal solver state beside numerical backups.
+
+        ``failure`` remains part of the lifecycle-finalizer callback contract,
+        but exception details are intentionally excluded from solver metadata.
+        """
+        write_manifest(
+            self,
+            self._backup_path / "vpm_metadata.json",
+            status=status,
+        )
 
     def close(self) -> None:
-        """Release case-owned logging and Taichi resources exactly once."""
+        """Record manually advanced state and release logging/backend resources.
+
+        Drivers that call :meth:`advance` directly, including the coupled
+        solver, still publish their final accepted state on close. A bounded
+        run retains ``partial`` status when its configured steps remain.
+        """
         if getattr(self, "_closed", False):
             return
         primary_failure: BaseException | None = None
+        if not self._run_started and self._initial_conditions_built:
+            status = "completed" if self.step >= self.case.run.steps else "partial"
+            if self._evolution_failure is not None:
+                status = "failed"
+            try:
+                self._write_run_manifest(status, self._evolution_failure)
+            except BaseException as error:
+                primary_failure = error
         restore = getattr(self, "_restore_output_streams", None)
         if restore is not None:
             try:
                 restore()
             except BaseException as error:
-                primary_failure = error
+                if primary_failure is None:
+                    primary_failure = error
         if getattr(self, "_backend_claimed", False):
             try:
                 reset_taichi_backend(owner=self)
@@ -874,13 +1040,28 @@ class VPMSolver:
         # the particle cloud, so the accepted health state must be measured
         # here rather than before that synchronization.
         self._refresh_accepted_step_health()
+        if self.vlm_solver is not None:
+            self._record_vlm_diagnostics()
         if self.output_manager.flow_integrals_due(self.step, self.time):
-            self._refresh_diagnostics_for_output()
+            self._update_all_flow_integrals()
         self.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
 
     def execute_final_samples(self) -> None:
         """Execute samplers carrying a final-only schedule."""
         self.output_manager.dispatch(OutputEvent.FINAL)
+
+    @property
+    def elapsed_wall_time(self) -> float:
+        """Elapsed run seconds, including diagnostics, sampling and backups.
+
+        The detailed evolution profiler remains available as ``wall_time``.
+        Externally advanced solvers without an owned run use that profiler.
+        """
+        started = getattr(self, "_run_wall_started_at", None)
+        if started is None:
+            return getattr(self, "wall_time", 0.0)
+        finished = self._run_wall_finished_at
+        return (perf_counter() if finished is None else finished) - started
 
     # Particle properties
     def _get_particle_field(self, method_name: str) -> np.ndarray:
@@ -889,72 +1070,72 @@ class VPMSolver:
 
     @property
     def particle_position(self) -> np.ndarray:
-        """Particle position with shape ``(N, 3)`` [m]."""
+        """Return a copy of active particle positions, shape ``(N, 3)`` in m."""
         return self._get_particle_field("position")
 
     @property
     def particle_velocity(self) -> np.ndarray:
-        """Particle velocity with shape ``(N, 3)`` [m/s]."""
+        """Return a copy of active particle velocities, shape ``(N, 3)`` in m/s."""
         return self._get_particle_field("velocity")
 
     @property
     def particle_core_radius(self) -> np.ndarray:
-        """Particle core radius with shape ``(N,)`` [m]."""
+        """Return a copy of active core radii, shape ``(N,)`` in m."""
         return self._get_particle_field("core_radius")
 
     @property
     def particle_volume(self) -> np.ndarray:
-        """Particle volume with shape ``(N,)`` [m³]."""
+        """Return a copy of quadrature volumes, shape ``(N,)`` in m³."""
         return self._get_particle_field("particle_volume")
 
     @property
     def particle_group_id(self) -> np.ndarray:
-        """Particle group identifiers with shape ``(N,)``."""
+        """Return int32 particle-group labels, shape ``(N,)``."""
         return self._get_particle_field("group_id")
 
     @property
     def particle_zone_id(self) -> np.ndarray:
-        """Particle zone identifiers with shape ``(N,)``."""
+        """Return int32 spatial-zone labels, shape ``(N,)``."""
         return self._get_particle_field("zone_id")
 
     @property
     def particle_kinematic_viscosity(self) -> np.ndarray:
-        """Particle molecular kinematic_viscosity with shape ``(N,)`` [m²/s]."""
+        """Return molecular kinematic viscosity, shape ``(N,)`` in m²/s."""
         return self._get_particle_field("kinematic_viscosity")
 
     @property
     def particle_eddy_viscosity(self) -> np.ndarray:
-        """Particle eddy viscosity with shape ``(N,)`` [m²/s]."""
+        """Return modeled turbulent viscosity, shape ``(N,)`` in m²/s."""
         return self._get_particle_field("eddy_viscosity")
 
     @property
     def particle_effective_viscosity(self) -> np.ndarray:
-        """Particle effective kinematic_viscosity with shape ``(N,)`` [m²/s]."""
+        """Return molecular plus eddy viscosity, shape ``(N,)`` in m²/s."""
         return self._get_particle_field("effective_viscosity")
 
     @property
     def particle_velocity_gradient(self) -> np.ndarray:
-        """Get particle velocity gradients array."""
+        """Return ``J[i,j] = d u_i/d x_j``, shape ``(N, 3, 3)`` in 1/s."""
         return self._get_particle_field("velocity_gradient")
 
     @property
     def particle_strain_rate(self) -> np.ndarray:
-        """Get particle strain rate tensors array."""
+        """Return symmetric strain tensors, shape ``(N, 3, 3)`` in 1/s."""
         return self._get_particle_field("strain_rate")
 
     @property
     def freestream_velocity(self) -> np.ndarray:
-        """Uniform background velocity [m/s]."""
+        """Return the uniform background velocity, shape ``(3,)`` in m/s."""
         return self.particles.velocity_background_cpu()
 
     @property
     def particle_vorticity(self) -> np.ndarray:
-        """Get particle vorticity array."""
+        """Return particle vorticity diagnostics, shape ``(N, 3)`` in 1/s."""
         return self._get_particle_field("vorticity")
 
     @property
     def particle_vortex_strength(self) -> np.ndarray:
-        """Particle vortex-strength vectors with shape ``(N, 3)`` [m³/s]."""
+        """Return circulation vectors, shape ``(N, 3)`` in m³/s."""
         return self._get_particle_field("vortex_strength")
 
     # Flow diagnostics
@@ -966,7 +1147,6 @@ class VPMSolver:
         self._update_discretization_health()
         self._record_vortex_centroid_history()
         self._record_time_history()
-        self._record_vlm_diagnostics()
         self._flow_integrals_step = self.step
 
     def _update_discretization_health(self) -> None:
@@ -975,7 +1155,7 @@ class VPMSolver:
             self._discretization_health = {}
             return
         # The stored particle vorticity is only reconstructed for backups and
-        # initially contains alpha/V. It is not an accepted-step field. Use
+        # initially contains Gamma/V. It is not an accepted-step field. Use
         # curl(u) from the freshly evaluated Jacobian, as the P-relaxation
         # operator does; otherwise the health stop depends on backup cadence.
         gradient = self.particles.velocity_gradient_cpu(use_cache=False)
@@ -1054,42 +1234,51 @@ class VPMSolver:
 
     @property
     def total_kinetic_energy(self) -> float:
-        """Total kinetic energy per unit density."""
+        """Return total kinetic energy per unit density in m⁵/s²."""
         return self._flow_integrals.get("total_kinetic_energy", 0.0)
 
     @property
     def total_helicity(self) -> float:
-        """Total helicity."""
+        """Return ``integral(u · omega) dV`` per unit density, in m⁴/s²."""
         return self._flow_integrals.get("total_helicity", 0.0)
 
     @property
     def total_enstrophy(self) -> float:
-        """Total enstrophy."""
+        """Return ``integral(|omega|²) dV``, in m³/s² (no one-half factor)."""
         return self._flow_integrals.get("total_enstrophy", 0.0)
 
     @property
     def viscous_kinetic_energy_rate(self) -> float:
-        """Signed viscous contribution to the kinetic-energy rate [J/s]."""
+        """Return the modeled viscous rate of energy per density, in m⁵/s³."""
         return self._flow_integrals.get("viscous_kinetic_energy_rate", 0.0)
 
     @property
     def kinetic_energy_rate(self) -> float:
-        """Signed finite-difference kinetic-energy rate [J/s]."""
+        """Return the signed energy-per-density rate, in m⁵/s³.
+
+        Usually this is a backward difference. Transitions without compatible
+        energy history use a viscous estimate; see ``kinetic_energy_rate_source``.
+        """
         return self._flow_integrals.get("kinetic_energy_rate", 0.0)
 
     @property
+    def kinetic_energy_rate_source(self) -> str:
+        """Return the native provenance of the reported energy-rate value."""
+        return self._flow_integrals.get("kinetic_energy_rate_source", "unknown")
+
+    @property
     def net_vortex_strength(self) -> np.ndarray:
-        """Total particle vortex-strength vector [m³/s]."""
+        """Return the net circulation vector, shape ``(3,)`` in m³/s."""
         return self._flow_integrals.get("net_vortex_strength", np.array([0.0, 0.0, 0.0]))
 
     @property
     def vortex_strength_magnitude_sum(self) -> float:
-        """Sum of particle vortex-strength magnitudes [m³/s]."""
+        """Return the sum of particle-strength vector magnitudes in m³/s."""
         return self._flow_integrals.get("vortex_strength_magnitude_sum", 0.0)
 
     @property
     def total_linear_impulse(self) -> np.ndarray:
-        """Return the current linear impulse, recomputed from the active particle field."""
+        """Return ``0.5 * sum(x × Gamma)``, shape ``(3,)`` in m⁴/s."""
         # This linear moment needs neither a quadratic field integral nor an
         # energy-history derivative (which may be undefined at a grid switch).
         return 0.5 * np.cross(
@@ -1099,33 +1288,49 @@ class VPMSolver:
 
     @property
     def total_angular_impulse(self) -> np.ndarray:
-        """Total angular impulse."""
+        """Return the kernel-corrected angular impulse, shape ``(3,)`` in m⁵/s."""
         return self._flow_integrals.get("angular_impulse", np.array([0.0, 0.0, 0.0]))
 
     @property
     def vortex_centroids_by_group(self) -> dict[int, np.ndarray]:
-        """Vortex-strength-magnitude-weighted centroid for each particle group."""
+        """Return strength-magnitude-weighted centroids keyed by group ID in m."""
         return self.field_diagnostics.compute_vortex_centroids_by_group(self.particles)
 
     @property
     def vortex_centroid(self) -> np.ndarray:
-        """Global vortex-strength-magnitude-weighted particle centroid."""
+        """Return the global strength-magnitude-weighted centroid, shape ``(3,)`` in m."""
         return self.field_diagnostics.compute_vortex_centroid(self.particles)
 
     def compute_forces(
-        self, density: float = 1.225, reference_speed: float | None = None
+        self, density: float | None = None, reference_speed: float | None = None
     ) -> dict[str, np.ndarray | float]:
-        """Compute aerodynamic force from the configured VLM model.
+        """Compute aerodynamic force using the configured VLM method.
 
-        Args:
-            density: Fluid density [kg/m³].
-            reference_speed: Reference speed [m/s]. Uses the background speed when omitted.
+        Parameters
+        ----------
+        density : float or None, default=None
+            Fluid density in kg/m³; defaults to the attached VLM case density.
+        reference_speed : float or None, default=None
+            Speed used for nondimensional force coefficients in m/s. When
+            omitted, the configured VLM relative reference velocity is used.
 
-        Returns:
-            Force components and the force-evaluation method.
+        Returns
+        -------
+        dict[str, numpy.ndarray or float]
+            Force components, coefficients, and the selected method as defined
+            by the VLM force evaluator.
+
+        Raises
+        ------
+        RuntimeError
+            If this VPM solver has no attached VLM setup.
+        ValueError
+            If the attached VLM force method is unsupported.
         """
         if self.vlm_solver is None:
             raise RuntimeError("Force evaluation requires a VLM setup")
+        if density is None:
+            density = self.vlm_solver.density
         method = self.vlm_solver.force.method
 
         if method == "KUTTA_JOUKOWSKI":
@@ -1136,33 +1341,38 @@ class VPMSolver:
     def _compute_forces_kutta_joukowski(
         self, density: float, reference_speed: float | None
     ) -> dict[str, np.ndarray | float]:
-        """Compute forces via the Kutta-Joukowski theorem. Delegates to VLMForceEvaluator."""
+        """Compute force through the VLM Kutta--Joukowski evaluator."""
         return VLMForceEvaluator.compute_kutta_joukowski(
             self.vlm_solver, self.freestream_velocity, density, reference_speed
         )
 
     # Per-particle diagnostics
     def compute_kinetic_energies(self) -> np.ndarray:
-        """Return per-particle kinetic-energy contributions."""
+        """Return per-particle kinetic-energy contributions in m⁵/s²."""
         return self.field_diagnostics.compute_particles_kinetic_energy(self.particles)
 
     def compute_helicities(self) -> np.ndarray:
-        """Return per-particle helicity contributions."""
+        """Return per-particle helicity contributions in the normalized field units."""
         return self.field_diagnostics.compute_particles_helicity(self.particles)
 
     def compute_enstrophies(self) -> np.ndarray:
-        """Return per-particle enstrophy contributions."""
+        """Return per-particle enstrophy contributions in the normalized field units."""
         return self.field_diagnostics.compute_particles_enstrophy(self.particles)
 
     # Field evaluation
     def compute_vorticity_at_points(self, evaluation_position: np.ndarray) -> np.ndarray:
-        """Evaluate vorticity at arbitrary target points.
+        """Evaluate regularized vorticity at arbitrary target points.
 
-        Args:
-            evaluation_position: Target coordinates with shape ``(N, 3)`` [m].
+        Parameters
+        ----------
+        evaluation_position : numpy.ndarray
+            Target coordinates, shape ``(N, 3)`` in m. A single ``(3,)`` point
+            is accepted by the lower-level field evaluator.
 
-        Returns:
-            Vorticity vectors with shape ``(N, 3)`` [1/s].
+        Returns
+        -------
+        numpy.ndarray
+            Vorticity vectors, shape ``(N, 3)`` in 1/s.
         """
         return self.physics.compute_target_vorticity(self.particles, evaluation_position)
 
@@ -1173,16 +1383,24 @@ class VPMSolver:
         zone_mask: np.ndarray | None = None,
         include_body: bool = True,
     ) -> np.ndarray:
-        """Evaluate velocity at arbitrary target points.
+        """Evaluate complete velocity at arbitrary target points.
 
-        Args:
-            evaluation_position: Target coordinates with shape ``(N, 3)`` [m].
-            include_freestream: Include the uniform background velocity.
-            zone_mask: Optional mask selecting contributing particles.
-            include_body: Include boundary-element body induction.
+        Parameters
+        ----------
+        evaluation_position : numpy.ndarray
+            Target coordinates, shape ``(N, 3)``, in m.
+        include_freestream : bool, default=True
+            Include the uniform background velocity in the particle induction.
+        zone_mask : numpy.ndarray or None, default=None
+            Optional boolean/int mask selecting source particles. Its length
+            must match the active particle count.
+        include_body : bool, default=True
+            Include regularized surface sources and the optional body callback.
 
-        Returns:
-            Velocity vectors with shape ``(N, 3)`` [m/s].
+        Returns
+        -------
+        numpy.ndarray
+            Velocity vectors, shape ``(N, 3)``, in m/s.
         """
         velocity = self.physics.compute_target_velocity(
             self.particles,
@@ -1228,6 +1446,16 @@ class VPMSolver:
             )
             velocity = self.physics.extract_target_velocity(n_targets)
 
+        vlm = self.vlm_solver
+        if include_body and vlm is not None and vlm._solved and len(points):
+            self.physics._resize_target_fields(len(points))
+            positions = self.physics.target_position
+            velocities = self.physics.target_velocity
+            self.physics._upload_vector_array(points, positions, len(points))
+            self.physics._upload_vector_array(velocity, velocities, len(points))
+            vlm.add_stage_velocity(positions, velocities, len(points), self.time)
+            velocity = self.physics.extract_target_velocity(len(points))
+
         body_fn = self._body_induced_fn
         if include_body and body_fn is not None:
             velocity = velocity + np.asarray(
@@ -1261,6 +1489,25 @@ class VPMSolver:
         body induction. ``time_derivative_fn`` optionally maps the same inputs
         to ``∂u/∂t`` for pressure diagnostics. Target-query diagnostics invoke
         the callbacks at the solver's accepted time.
+
+        Parameters
+        ----------
+        fn : callable or None
+            Callback ``fn(position, time) -> velocity``. ``position`` has
+            shape ``(N, 3)`` in m, ``time`` is seconds, and the result has
+            shape ``(N, 3)`` in m/s. ``None`` disables body induction.
+        gradient_fn : callable or None, default=None
+            Optional callback returning ``(N, 3, 3)`` with
+            ``J[i,j] = d u_i/d x_j`` in 1/s.
+        time_derivative_fn : callable or None, default=None
+            Optional callback returning ``(N, 3)`` for ``d u/dt`` in m/s²,
+            used by pressure diagnostics.
+
+        Side Effects
+        ------------
+        Replaces callbacks used by RK-stage providers, target queries, and
+        pressure evaluation. Disabling ``fn`` also clears installed device
+        hooks.
         """
         self._body_induced_fn = fn
         self._pressure_body_induced_fn = fn
@@ -1281,6 +1528,11 @@ class VPMSolver:
         particle cloud at fixed physical time, so the panel's harmonic/body
         correction must be re-solved against the replaced state before the
         next boundary trace or advection step evaluates it.
+
+        Notes
+        -----
+        This is a synchronization operation, not a particle update. It may
+        mutate panel strengths/coefficients and solver-owned boundary caches.
         """
         panel = self.panel_solver
         if panel is None or getattr(panel, "coupling_scope", "full") not in (
@@ -1298,7 +1550,23 @@ class VPMSolver:
     def set_surface_sources(
         self, position: np.ndarray, vortex_strength: np.ndarray, core_radius: np.ndarray
     ) -> None:
-        """Set regularized source particles used for body-blockage corrections."""
+        """Set auxiliary regularized source particles for body corrections.
+
+        Parameters
+        ----------
+        position : numpy.ndarray
+            Source coordinates, shape ``(N, 3)``, in m.
+        vortex_strength : numpy.ndarray
+            Source circulation vectors, shape ``(N, 3)``, in m³/s.
+        core_radius : numpy.ndarray
+            Source radii, shape ``(N,)``, in m.
+
+        Notes
+        -----
+        Sources are copied into fixed-capacity device buffers and clipped to
+        ``MAX_SOURCES`` with a warning. They contribute to body-complete target
+        velocity/gradient queries, not to particle evolution.
+        """
         self.n_sources = len(position)
         if self.n_sources > MAX_SOURCES:
             Logging.warning(
@@ -1328,6 +1596,24 @@ class VPMSolver:
         differences with a step scaled by the coupling lattice spacing ``particle_spacing``.
         The result has shape ``(N, 3, 3)`` and convention
         ``J[i,j] = d(u_i)/d(x_j)``.
+
+        Parameters
+        ----------
+        evaluation_position : numpy.ndarray
+            Target coordinates, shape ``(N, 3)``, in m.
+        particle_spacing : float
+            Positive coupling/resolution spacing in m. It scales the centered
+            difference used only for auxiliary source/body terms.
+
+        Returns
+        -------
+        numpy.ndarray
+            Complete velocity Jacobian, shape ``(N, 3, 3)``, in 1/s.
+
+        Raises
+        ------
+        RuntimeError
+            If a body callback returns non-finite or incorrectly shaped data.
         """
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
         # Use the same approximation as the target-velocity trace.  Mixing a
@@ -1346,7 +1632,10 @@ class VPMSolver:
     ) -> np.ndarray:
         """Differentiate only the source and body corrections by centred differences."""
         gradient = np.asarray(particle_gradient, dtype=np.float64).reshape(-1, 3, 3).copy()
-        if (self._body_induced_fn is None and self.n_sources == 0) or len(points) == 0:
+        has_vlm = self.vlm_solver is not None and self.vlm_solver._solved
+        if (self._body_induced_fn is None and self.n_sources == 0 and not has_vlm) or len(
+            points
+        ) == 0:
             return gradient
 
         step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
@@ -1369,6 +1658,19 @@ class VPMSolver:
 
         Treecode runs build and traverse the particle hierarchy once, then add
         the regularized-source and body-potential velocity and Jacobian terms.
+
+        Parameters
+        ----------
+        evaluation_position : numpy.ndarray
+            Target coordinates, shape ``(N, 3)``, in m.
+        particle_spacing : float
+            Coupling spacing in m for centered differences of auxiliary terms.
+
+        Returns
+        -------
+        tuple[numpy.ndarray, numpy.ndarray]
+            Complete velocity ``(N, 3)`` in m/s and Jacobian ``(N, 3, 3)`` in
+            1/s.
         """
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
         velocity, gradient = self.physics.compute_target_velocity_and_gradients_consistent(
@@ -1395,6 +1697,25 @@ class VPMSolver:
         Jacobian.  Particle induction is still evaluated by the configured fused
         target operation, while source/body terms use only the two centred samples
         along each face normal instead of three coordinate-direction pairs.
+
+        Parameters
+        ----------
+        evaluation_position, normal : numpy.ndarray
+            Face points and normals, both shape ``(N, 3)``. Positions are in m;
+            normals are dimensionless and must be finite/non-zero.
+        particle_spacing : float
+            Centered-difference spacing in m for auxiliary source/body terms.
+
+        Returns
+        -------
+        tuple[numpy.ndarray, numpy.ndarray]
+            Complete velocity ``(N, 3)`` in m/s and tangential part of
+            ``J @ n`` with shape ``(N, 3)`` in m/s².
+
+        Raises
+        ------
+        ValueError
+            If normal and point shapes differ or a normal is zero/non-finite.
         """
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
         face_normals = np.asarray(normal, dtype=np.float64).reshape(-1, 3)
@@ -1453,6 +1774,40 @@ class VPMSolver:
         ``include_body=False`` omits the optional boundary-element velocity from
         the hierarchical pressure evaluation while retaining particles and the
         configured freestream.
+
+        Parameters
+        ----------
+        evaluation_position : numpy.ndarray
+            Target coordinates, shape ``(N, 3)``, in m.
+        density : float, default=1.0
+            Fluid density in kg/m³.
+        kinematic_viscosity : float or None, default=None
+            Molecular viscosity in m²/s. When omitted, the particle mean is
+            used, or ``1e-5`` for an empty cloud.
+        include_viscous, include_temporal, include_freestream, include_body : bool
+            Enable the corresponding pressure-gradient contributions.
+        particle_spacing : float or None, default=None
+            Difference spacing in m for Laplacian/temporal terms.
+        temporal_method : {"lagrangian", "eulerian"}, default="lagrangian"
+            Temporal derivative formulation. Eulerian mode requires
+            ``velocity_previous`` and ``time_step_size`` when temporal terms
+            are enabled.
+        velocity_previous : numpy.ndarray or None, default=None
+            Previous target velocity, shape ``(N, 3)``, in m/s.
+        time_step_size : float or None, default=None
+            Physical time increment in seconds for Eulerian differencing.
+        return_velocity : bool, default=False
+            Include target velocity alongside pressure components.
+
+        Returns
+        -------
+        dict or tuple[dict, numpy.ndarray]
+            Pressure-gradient component arrays and, when requested, velocity.
+
+        Raises
+        ------
+        ValueError
+            If the temporal method or its required inputs are inconsistent.
         """
         if kinematic_viscosity is None:
             kinematic_viscosity = (
@@ -1564,7 +1919,22 @@ class VPMSolver:
     def remove_particles(
         self, particle_indices: list[int] | None = None, remove_all: bool = False
     ) -> None:
-        """Remove selected particles and track removed vortex strength for diagnostics."""
+        """Remove selected particles and record removed-strength diagnostics.
+
+        Parameters
+        ----------
+        particle_indices : list[int] or None, default=None
+            Active zero-based indices to remove. ``None`` means no indexed
+            removal unless ``remove_all`` is true.
+        remove_all : bool, default=False
+            Remove the complete active cloud. The full-cloud branch takes
+            precedence when true.
+
+        Side Effects
+        ------------
+        Compacts device particle fields, updates stabilization lineage, and
+        stores removed count/circulation for diagnostics.
+        """
         if particle_indices is not None and len(particle_indices) > 0:
             # Reduce removed vortex strength on device.
             vortex_strength_removed, _ = self.particles.subset_moments(particle_indices)
@@ -1609,6 +1979,33 @@ class VPMSolver:
         ``(N, 3)``; ``core_radius`` and ``particle_volume`` have shape ``(N,)``.
         Molecular viscosity may be omitted when it is defined by the viscous
         configuration.
+
+        Parameters
+        ----------
+        position, velocity, vortex_strength : numpy.ndarray
+            Arrays with shape ``(N, 3)`` in m, m/s, and m³/s.
+        core_radius, particle_volume : numpy.ndarray
+            Arrays with shape ``(N,)`` in m and m³.
+        kinematic_viscosity : numpy.ndarray or None, default=None
+            Molecular viscosity with shape ``(N,)`` in m²/s. If omitted, a
+            configured scalar viscosity is broadcast to the batch.
+        eddy_viscosity : numpy.ndarray or None, default=None
+            Optional turbulent viscosity, shape ``(N,)``, in m²/s.
+        group_id, zone_id : numpy.ndarray or None, default=None
+            Optional integer labels, shape ``(N,)``.
+        velocity_gradient : numpy.ndarray or None, default=None
+            Optional Jacobian field, shape ``(N, 3, 3)``, in 1/s.
+
+        Raises
+        ------
+        ValueError
+            If viscosity is unavailable, arrays are inconsistent/non-finite,
+            or the fixed particle capacity is exceeded.
+
+        Side Effects
+        ------------
+        Appends and copies the batch into device fields, resets axisymmetric
+        orbit validation, and updates stabilization lineage/reference totals.
         """
         if kinematic_viscosity is None:
             kinematic_viscosity = getattr(self._viscous_config, "kinematic_viscosity", None)
@@ -1664,6 +2061,33 @@ class VPMSolver:
         the cloud in place without representing physical removal (for example
         filament refinement), so the removed-this-step diagnostic counters stay
         untouched.
+
+        Parameters
+        ----------
+        position, velocity, vortex_strength : numpy.ndarray
+            Replacement arrays with shape ``(N, 3)`` in m, m/s, and m³/s.
+        core_radius, particle_volume : numpy.ndarray
+            Replacement arrays with shape ``(N,)`` in m and m³.
+        kinematic_viscosity, eddy_viscosity : numpy.ndarray or None
+            Viscosity fields with shape ``(N,)`` in m²/s; molecular viscosity
+            may be broadcast from the configured scalar.
+        group_id, zone_id : numpy.ndarray or None
+            Integer labels with shape ``(N,)``.
+        velocity_gradient, strain_rate : numpy.ndarray or None
+            Optional tensor fields with shape ``(N, 3, 3)`` in 1/s.
+        report_removal : bool, default=True
+            Include the old cloud in removal diagnostics and stabilization
+            bookkeeping.
+
+        Raises
+        ------
+        ValueError
+            If fields are inconsistent/non-finite or exceed capacity.
+
+        Side Effects
+        ------------
+        Clears/repopulates active device fields, invalidates caches, resets
+        axisymmetric validation, and notifies stabilization of replacement.
         """
         if report_removal:
             vortex_strength_removed = (
@@ -1708,7 +2132,21 @@ class VPMSolver:
         mask: np.ndarray,
         vortex_strength_increment: np.ndarray,
     ) -> None:
-        """Apply an in-place vortex-strength delta to a masked particle subset."""
+        """Apply an in-place circulation delta to a masked particle subset.
+
+        Parameters
+        ----------
+        mask : numpy.ndarray
+            Boolean mask with shape ``(N,)`` for active particles.
+        vortex_strength_increment : numpy.ndarray
+            Additive circulation increments in m³/s, with shape ``(N, 3)`` or
+            the shape required by the selected subset.
+
+        Side Effects
+        ------------
+        Mutates device strengths and invalidates induction/source caches. It
+        does not advance time or recompute velocity automatically.
+        """
         self.particles.update_vortex_strength_masked(mask, vortex_strength_increment)
 
     def notify_external_particle_mutation(self) -> None:
@@ -1722,7 +2160,21 @@ class VPMSolver:
     def load_particle_field(
         self, particle_file_name: str, remove_current_particles: bool = False
     ) -> None:
-        """Load particle field from file."""
+        """Load a particle field through the configured solver I/O adapter.
+
+        Parameters
+        ----------
+        particle_file_name : str
+            Input path in a format supported by :class:`SolverIO`.
+        remove_current_particles : bool, default=False
+            Clear the current cloud before loading when true; otherwise follow
+            the file-loader append/replace policy.
+
+        Side Effects
+        ------------
+        Reads external data, mutates the active particle fields, and may reset
+        stabilization lineage according to the loader's contract.
+        """
         self.io.load_particle_field(particle_file_name, remove_current_particles)
 
     @staticmethod
@@ -1731,7 +2183,28 @@ class VPMSolver:
         prop_value,
         n_particles_total: int,
     ) -> np.ndarray:
-        "Validate one canonical particle-property array."
+        """Validate one canonical active-particle field before device upload.
+
+        Parameters
+        ----------
+        prop_name : str
+            Canonical field name, used to select the expected trailing shape.
+        prop_value : array-like
+            Candidate values. It is converted to a NumPy array when needed.
+        n_particles_total : int
+            Active count defining the leading dimension.
+
+        Returns
+        -------
+        numpy.ndarray
+            The validated array. It is not copied here; the device setter owns
+            the subsequent conversion/copy.
+
+        Raises
+        ------
+        ValueError
+            If shape is incompatible or any value is NaN/Inf.
+        """
         if not isinstance(prop_value, np.ndarray):
             prop_value = np.asarray(prop_value)
 
@@ -1763,7 +2236,26 @@ class VPMSolver:
         return prop_value
 
     def set_particles_properties(self, **properties: object) -> None:
-        "Update canonical particle fields after validating shape and finiteness."
+        """Update canonical particle fields after validating shape and finiteness.
+
+        Parameters
+        ----------
+        **properties : object
+            Named active fields such as ``position`` ``(N, 3)`` m,
+            ``vortex_strength`` ``(N, 3)`` m³/s, scalar fields ``(N,)``, or
+            tensors ``(N, 3, 3)`` in 1/s. Unknown names are rejected.
+
+        Raises
+        ------
+        ValueError
+            If no active particles exist, a property name is invalid, a shape
+            is wrong, or any value is non-finite.
+
+        Side Effects
+        ------------
+        Writes the validated fields in place, increments the source-state
+        revision once for the batch, and records an update event.
+        """
         if not properties:
             return
 
@@ -1819,8 +2311,9 @@ class VPMSolver:
         self._refresh_backup_particle_fields()
         _BackupIO.save(self, filename, append_step=False, verbose=False)
 
-    def _load_backup_from(self, filename: str) -> None:
+    def _load_backup_from(self, filename: str | Path) -> None:
         """Restore numerical state from a path owned by an internal coordinator."""
+        filename = str(filename)
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
         _BackupIO.load(self, path)
         self._sync_restart_state()
@@ -1829,24 +2322,38 @@ class VPMSolver:
         # the baseline rather than being compared to a discarded cloud.
         self._accepted_health_snapshot = None
 
-    def load_backup(self, filename: str) -> None:
-        """Restore one numerical backup into this configured solver."""
+    def load_backup(self, filename: str | Path) -> None:
+        """Restore one numerical backup into this configured solver.
+
+        Parameters
+        ----------
+        filename : str or Path
+            Backup stem or ``.h5`` path readable by the VPM backup format.
+
+        Side Effects
+        ------------
+        Replaces particle fields and accepted clock, resets health history, and
+        invalidates derived/cache state. The case configuration is unchanged.
+        """
         self._load_backup_from(filename)
 
     def save_backup(self) -> None:
-        """Write one canonical backup to the configured backup directory."""
+        """Write HDF5 state and its ParaView companions to the backup directory.
+
+        The accepted clock and derived velocity/vorticity fields are refreshed
+        before serialization. This mutates output files but does not advance
+        the solution.
+        """
         self._sync_restart_state()
         self._refresh_backup_particle_fields()
-        _BackupIO.save(
-            self,
-            str(self._backup_path / "vpm"),
-            verbose=True,
-        )
+        self.io.write_backup()
+        self._write_run_manifest("running" if self._run_started else "partial", None)
 
     def _write_backup(self) -> None:
         """Write the backup selected by the sole output-schedule owner."""
         self._refresh_backup_particle_fields()
         self.io.write_backup()
+        self._write_run_manifest("running" if self._run_started else "partial", None)
 
     def _refresh_backup_particle_fields(self) -> None:
         """Refresh derived fields before writing a numerical restart backup.
@@ -1877,7 +2384,19 @@ class VPMSolver:
         format: str = "vtp",
         compression: bool = True,
     ) -> None:
-        """Export solver state for visualization and post-processing."""
+        """Export particle/panel state for visualization or post-processing.
+
+        Parameters
+        ----------
+        filename : str or pathlib.Path
+            Destination path. The suffix and ``format`` determine the writer.
+        include_panels, include_particles : bool, default=True
+            Select boundary-element and particle records.
+        format : str, default="vtp"
+            Output format supported by :class:`SolverIO`.
+        compression : bool, default=True
+            Request writer compression where supported.
+        """
         self.io.export_state(
             filename,
             include_panels=include_panels,
@@ -1918,6 +2437,20 @@ class VPMSolver:
         holding its induced-velocity argument fixed. Objects exposing
         ``blend_into`` remain additive/blended and their gradient is treated as
         the gradient of the added contribution.
+
+        Parameters
+        ----------
+        fn : callable, object with ``blend_into``, or None
+            Stage callback. It receives ``(position, stage_time,
+            induced_velocity)`` and returns/writes shape ``(N, 3)`` in m/s.
+        gradient_fn : callable or None, default=None
+            Optional callback returning shape ``(N, 3, 3)`` with Jacobian units
+            1/s. If omitted, a centered probe of ``fn`` supplies the gradient.
+
+        Side Effects
+        ------------
+        Replaces the velocity contribution used by subsequent RK stages; it
+        does not immediately change the accepted particle field.
         """
         self.physics.velocity_override = fn
         self.physics.velocity_override_gradient = gradient_fn
@@ -1929,6 +2462,23 @@ class VPMSolver:
 
         Set ``invert_selection=True`` to keep particles inside the box and remove
         those outside it. Returns the number removed.
+
+        Parameters
+        ----------
+        bounds : sequence[float]
+            ``[xmin, xmax, ymin, ymax, zmin, zmax]`` in m.
+        invert_selection : bool, default=False
+            Remove outside rather than inside when true.
+
+        Returns
+        -------
+        int
+            Number of removed active particles.
+
+        Raises
+        ------
+        ValueError
+            If ``bounds`` does not contain six values.
         """
         if len(bounds) != 6:
             raise ValueError("bounds must be [xmin, xmax, ymin, ymax, zmin, zmax]")
@@ -1971,7 +2521,23 @@ class VPMSolver:
         return n_removed
 
     def remove_weak_particles(self, percent: float) -> int:
-        """Remove particles below a fraction of the global maximum strength."""
+        """Remove particles below a percentage of maximum strength.
+
+        Parameters
+        ----------
+        percent : float
+            Threshold in ``[0, 100]`` applied to particle-strength vector magnitude.
+
+        Returns
+        -------
+        int
+            Number of removed particles.
+
+        Raises
+        ------
+        ValueError
+            If ``percent`` is outside ``[0, 100]``.
+        """
         if percent < 0 or percent > 100:
             raise ValueError("Percent must be between 0 and 100")
 

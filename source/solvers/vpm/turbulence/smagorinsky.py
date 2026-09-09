@@ -17,6 +17,29 @@ class SmagorinskyModel:
         subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
     ) -> None:
+        """Configure and allocate the equilibrium Smagorinsky model.
+
+        Parameters
+        ----------
+        max_n_particles : int, default=MAX_N_PARTICLES
+            Fixed particle capacity for model work fields.
+        particle_kernel : str, default="GAUSSIAN"
+            Kernel label used by the surrounding VPM configuration. It is
+            normalized to uppercase for reporting.
+        smagorinsky_coefficient : float, default=SMAGORINSKY_CONSTANT
+            Dimensionless model coefficient ``C_s``.
+        subgrid_dissipation_coefficient : float, default=1.048
+            Dimensionless equilibrium dissipation coefficient used to derive
+            the subgrid kinetic-energy coefficient.
+        accumulator_dtype : Taichi primitive type, default=ti.f32
+            Scalar type for filter-width and strain-rate work fields.
+
+        Notes
+        -----
+        Construction allocates model-owned fields but does not read or mutate
+        a particle container. :meth:`compute` later writes eddy and effective
+        viscosity for the active particle prefix in m²/s.
+        """
         self.model_name = "SMAGORINSKY"
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.upper()

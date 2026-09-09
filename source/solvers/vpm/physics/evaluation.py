@@ -231,7 +231,7 @@ class ParticleFieldEvaluation:
                     - (2/9) C Σ σ_i² Γ_i
 
             The correction must remain inside the sum when core radii vary.
-            Replacing it by a mean core radius times ``Σalpha`` is only equivalent for
+            Replacing it by a mean core radius times ``ΣGamma`` is only equivalent for
             uniform cores and gives a false angular-impulse drift as soon as
             core spreading changes individual core_radius.
             """
@@ -259,11 +259,11 @@ class ParticleFieldEvaluation:
                 str_i = vortex_strength[i]
                 pos_i = position[i]
 
-                # Total strength magnitude: Σ|alpha| (sum of magnitudes, not |Σalpha|)
+                # Total strength magnitude: Σ|Gamma| (sum of magnitudes, not |ΣGamma|)
                 str_mag = str_i.norm()
                 ti.atomic_add(results[None].vortex_strength_magnitude_sum, str_mag)
 
-                # Total vortex-strength vector: Σalpha (atomic for thread safety)
+                # Total vortex-strength vector: ΣGamma (atomic for thread safety)
                 ti.atomic_add(results[None].vortex_strength_x, str_i[ti.static(0)])
                 ti.atomic_add(results[None].vortex_strength_y, str_i[ti.static(1)])
                 ti.atomic_add(results[None].vortex_strength_z, str_i[ti.static(2)])
@@ -940,28 +940,43 @@ class ParticleFieldEvaluation:
         return vortex_centroid
 
     def compute_flow_integrals(self, particles, time: float, record_history: bool = True):
-        """
-        Compute all flow integral quantities in a single efficient GPU kernel call.
+        """Evaluate global unbounded-domain diagnostics for one particle state.
 
-        This method computes and stores time history for energy dissipation rate calculation.
+        Parameters
+        ----------
+        particles : Particles
+            Active particle fields. Position is m, vector circulation ``Gamma``
+            is m³/s, core radius is m, and effective viscosity is m²/s.
+        time : float
+            Physical time of this accepted or explicitly requested state in s.
+        record_history : bool, default=True
+            Append the energy measurement to the short history used for the
+            finite-difference ``kinetic_energy_rate``. False leaves history
+            unchanged.
 
-        Args:
-            particles: Particles object containing position, vortex_strength, core_radius, kinematic_viscosity
-            time: Current simulation time [s]
-            record_history: Whether to append this sample to the kinetic-energy
-                history used for finite-difference dE/dt diagnostics.
+        Returns
+        -------
+        dict[str, object]
+            Detached scalar/vector diagnostics with these contracts:
 
-        Returns:
-            dict: Dictionary containing all flow integral quantities:
-                - 'total_kinetic_energy': Total kinetic energy [J]
-                - 'total_helicity': Total helicity [m³/s²]
-                - 'total_enstrophy': Total enstrophy [1/s²]
-                - 'viscous_kinetic_energy_rate': Viscous energy rate [J/s]
-                - 'kinetic_energy_rate': Signed kinetic-energy rate [J/s]
-                - 'vortex_strength_magnitude_sum': Sum of particle-strength norms [m³/s]
-                - 'net_vortex_strength': Net strength vector [1/s]
-                - 'linear_impulse': Linear impulse vector [m³/s]
-                - 'angular_impulse': Angular impulse vector [m⁴/s]
+            * ``total_kinetic_energy``: ``0.5 * integral(|u|²) dV`` in m⁵/s²
+              (energy per unit density);
+            * ``total_helicity``: ``integral(u · omega) dV`` in m⁴/s²;
+            * ``total_enstrophy``: ``integral(|omega|²) dV`` in m³/s² (the
+              VPM convention has no one-half factor);
+            * ``viscous_kinetic_energy_rate`` and ``kinetic_energy_rate`` in
+              m⁵/s³;
+            * ``vortex_strength_magnitude_sum`` and ``net_vortex_strength``
+              (shape ``(3,)``) in m³/s;
+            * ``linear_impulse`` (shape ``(3,)``) in m⁴/s;
+            * ``angular_impulse`` (shape ``(3,)``) in m⁵/s.
+
+        Notes
+        -----
+        Small clouds use direct unbounded pair integrals. Large Gaussian clouds
+        use the documented Fourier measurement path; its measurement tag is
+        included in the result. The method updates diagnostic work fields and,
+        when requested, energy history, but does not mutate particles.
         """
         N = len(particles)
         if N == 0:
@@ -1196,9 +1211,8 @@ class ParticleFieldEvaluation:
         required_shape = np.asarray(required.shape, dtype=np.int64)
         old_shape = np.asarray(old_grid.shape, dtype=np.int64)
         fits = bool(np.all(required_shape <= old_shape))
-        needs_growth = (not fits) or bool(
-            np.any(old_shape - required_shape < _FOURIER_GRID_MIN_SLACK)
-        )
+        growing_axes = old_shape - required_shape < _FOURIER_GRID_MIN_SLACK
+        needs_growth = bool(np.any(growing_axes))
 
         old_spectral = None
         if fits:
@@ -1222,9 +1236,16 @@ class ParticleFieldEvaluation:
             if not needs_growth:
                 return old_spectral, True, None
 
-        grown_shape = np.maximum(
-            required_shape + _FOURIER_GRID_EXTRA_CELLS,
-            np.ceil(old_shape * 1.25).astype(np.int64),
+        # A long wake normally grows along one axis. Expanding the other two
+        # axes on every such event makes diagnostic memory grow cubically even
+        # when their particle support has not changed.
+        grown_shape = np.where(
+            growing_axes,
+            np.maximum(
+                required_shape + _FOURIER_GRID_EXTRA_CELLS,
+                np.ceil(old_shape * 1.25).astype(np.int64),
+            ),
+            old_shape,
         )
         new_grid = self._fit_fourier_grid(
             position,

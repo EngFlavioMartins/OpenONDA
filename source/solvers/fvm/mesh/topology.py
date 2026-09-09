@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from numba import njit
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 
 def _readonly(values, dtype=None):

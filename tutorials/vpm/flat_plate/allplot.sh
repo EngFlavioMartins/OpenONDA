@@ -1,34 +1,9 @@
-#!/usr/bin/env bash
-# Make every flat-plate figure (polar, moving vs static, spanwise, Kelvin).
-#
-# Usage:
-#   ./allplot.sh        PNG figures (default)
-#   ./allplot.sh pdf    PDF figures
-set -euo pipefail
+#!/bin/bash -e
+cd -- "$(dirname -- "$0")"
 
-cd "$(dirname "$0")"
-
-format="${1:-png}"
-case "$format" in
-    png|pdf) ;;
-    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
-esac
-
-mkdir -p figures
-
-echo
-echo "===== FIGURES ($format) ====="
-echo
-
-plot() {
-    python "$@" --format "$format"
-}
-
-plot assets/plot_plate_polar.py
-plot assets/plot_plate_staticvsmoving.py
-plot assets/plot_plate_spanwise.py
-plot assets/plot_flat_plate_kelvin.py
-
-echo
-echo "===== DONE ====="
-echo "Figures saved to: figures/"
+python assets/plot_plate_polar.py --format "${1:-png}"
+python assets/plot_plate_staticvsmoving.py --format "${1:-png}"
+python assets/plot_plate_spanwise.py --format "${1:-png}"
+python assets/plot_flat_plate_kelvin.py --format "${1:-png}"
+python assets/plot_plate_velocity.py --format "${1:-png}"
+python assets/plot_plate_impulse.py --format "${1:-png}"

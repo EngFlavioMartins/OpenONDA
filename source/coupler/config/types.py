@@ -8,15 +8,94 @@ import numpy as np
 
 @dataclass(frozen=True)
 class CouplerSetup:
-    """Numerical choices owned by the coupling algorithm.
+    """Configure FVM--VPM exchange without duplicating solver-owned physics.
 
-    Fluid properties, time integration, mesh geometry, and wall definitions
-    are read from the native FVM and VPM solvers during initialization.
+    Users normally construct one instance after configuring the two native
+    solvers and pass it to :class:`~source.coupler.solver.FVMVPMCoupler`.
+    Fluid properties, mesh geometry, time-step sizes, particle spacing, and
+    wall definitions remain owned by the FVM/VPM cases and are cross-checked
+    during coupler initialization.
 
-    Parameters are grouped by the coupler subsystem that owns them: flow
-    state, VPM discretization, the overlap (FVM/VPM authority) zone, the
-    FVM -> VPM vorticity transfer, the VPM boundary-condition trace on the
-    FVM, the pressure reference, and run-level operational settings.
+    Parameters
+    ----------
+    freestream_velocity : list[float], default=[1.0, 0.0, 0.0]
+        Finite Cartesian background velocity ``[u, v, w]`` in m/s. The VPM
+        freestream must match this value.
+    transfer_method : {'buffered_m4_renewal', 'common_lattice', 'projected_renewal'}
+        Algorithm used to replace the FVM-authoritative portion of the VPM
+        particle cloud. ``common_lattice`` is the default general path;
+        ``buffered_m4_renewal`` currently requires VPM GBD diffusion.
+    transfer_region_bounds : tuple[float, float, float, float, float, float] or None
+        Cartesian ``(xmin, xmax, ymin, ymax, zmin, zmax)`` bounds in m. The
+        box must be contained by the FVM boundary; ``None`` uses that complete
+        box except where an explicit region is required by the selected path.
+    eta_blend_width : float, default=0.0
+        Width in m of the C1 FVM-authority ramp measured inward from the
+        transfer faces. Zero requests a sharp authority transition.
+    vpm_only_width : float, default=0.0
+        Inner face band in m retained entirely by the VPM. A positive value
+        requires ``0 < vpm_only_width < eta_blend_width``.
+    transfer_vorticity_cutoff : float, default=0.05
+        Soft-pruning threshold in 1/s. The stable-renewal path converts this
+        to a particle-strength threshold by multiplying by ``h**3``.
+    transfer_boundary_prune_multiplier : float, default=10.0
+        Dimensionless multiplier, at least one, applied to pruning near the
+        transfer boundary where FVM authority approaches zero.
+    transfer_amplification_cap : float, default=1.8
+        Dimensionless upper gain, at least one, for represented-state
+        corrections in stable renewal.
+    transfer_diagnostic_interval_steps : int, default=1
+        Positive number of accepted coupling steps between expensive transfer
+        diagnostics and their log records.
+    transfer_discretization_error_limit : float, default=0.08
+        Maximum accepted relative discretization/closure error in ``(0, 1]``.
+    renewal_vorticity_error_limit : float, default=5e-3
+        Positive relative tolerance for independent projected-vorticity
+        verification.
+    renewal_velocity_error_limit : float, default=1e-3
+        Positive relative tolerance for normal velocity at the ownership
+        boundary.
+    renewal_gaussian_tail_cutoff : float, default=1e-8
+        Relative Gaussian basis weight in ``(0, 1)`` below which sparse
+        projection entries are omitted.
+    renewal_solver_tolerance : float, default=1e-9
+        Positive relative LSMR tolerance for projected absolute strengths.
+    coupling_patch : str, default='numericalBoundary'
+        Name of the outer FVM boundary patch sampled from the VPM. Face
+        centres are in m and outward face normals follow FVM owner orientation.
+    boundary_condition_mode : {'dirichlet', 'characteristic', 'directional_outflow', 'pressure_gradient', 'vorticity_mixed'}
+        Boundary trace applied to ``coupling_patch`` during FVM subcycling.
+    fvm_consistency_width : float, default=0.0
+        Width in m of the optional resolved-scale consistency band between the
+        transfer region and outer FVM boundary. Zero disables it.
+    backup_interval_steps : int, default=1
+        Accepted coupling steps between atomic coupled backups. Zero disables
+        scheduled backups.
+
+    Raises
+    ------
+    TypeError
+        If NumPy cannot interpret the freestream or bounds as numeric values.
+    ValueError
+        If a vector, bound, choice, count, or tolerance violates the contracts
+        above. Containment in the FVM box is checked later by
+        :meth:`validate_transfer_region_box`.
+
+    Notes
+    -----
+    The dataclass is frozen, so policy cannot be reassigned after construction.
+    The caller-provided freestream list is validated but retained; do not mutate
+    that list after construction. Coupling transfers particle-strength vectors
+    ``Gamma = omega * V`` in m³/s, not pointwise vorticity in 1/s.
+
+    Examples
+    --------
+    >>> setup = CouplerSetup(
+    ...     freestream_velocity=[1.0, 0.0, 0.0],
+    ...     transfer_method="common_lattice",
+    ...     transfer_region_bounds=(-2.0, 4.0, -2.0, 2.0, -1.0, 1.0),
+    ...     coupling_patch="numericalBoundary",
+    ... )
     """
 
     # ---- FLOW STATE ----
@@ -173,13 +252,36 @@ class CouplerSetup:
 
     @property
     def freestream_velocity_vector(self) -> np.ndarray:
+        """Return a new ``float64`` Cartesian freestream vector in m/s.
+
+        The returned array has shape ``(3,)`` and never aliases the mutable
+        list supplied to the constructor.
+        """
         return np.asarray(self.freestream_velocity, dtype=np.float64)
 
     def validate_transfer_region_box(
         self,
         fvm_box: tuple[float, float, float, float, float, float] | np.ndarray,
     ) -> None:
-        """Require the vorticity-transfer region to lie inside the FVM domain."""
+        """Validate transfer and consistency regions against the FVM box.
+
+        Parameters
+        ----------
+        fvm_box : tuple[float, float, float, float, float, float] or ndarray
+            Outer FVM bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m.
+
+        Raises
+        ------
+        ValueError
+            If the configured transfer region extends outside ``fvm_box``, if
+            projected renewal has no explicit region, or if the consistency
+            band does not fit between every pair of corresponding faces.
+
+        Notes
+        -----
+        This method reads configuration only and does not build a lattice or
+        mutate either solver.
+        """
         outer = np.asarray(fvm_box, dtype=np.float64)
         if self.transfer_method == "projected_renewal" and self.transfer_region_bounds is None:
             raise ValueError(
@@ -203,8 +305,16 @@ class CouplerSetup:
                     "and the outer FVM boundary"
                 )
 
-    def to_dict(self) -> dict:
-        """Serialize coupling-owned settings for restart identity checks."""
+    def to_dict(self) -> dict[str, object]:
+        """Return coupling-owned settings for restart identity checks.
+
+        Returns
+        -------
+        dict[str, object]
+            New nested mapping under the ``"coupler"`` key. Bounds are
+            labelled by axis rather than stored positionally. No solver state,
+            particle arrays, or derived runtime values are included.
+        """
         transfer_region_bounds = None
         if self.transfer_region_bounds is not None:
             transfer_region_bounds = dict(

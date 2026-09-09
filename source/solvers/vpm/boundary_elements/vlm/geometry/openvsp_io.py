@@ -271,12 +271,32 @@ def load_openvsp_surface(
     config: OpenVSPImportConfig | None = None,
     save_json: str | Path | None = None,
 ) -> Aircraft:
-    """
-    Load an OpenVSP ``.vsp3`` file or DegenGeom ``.csv`` into an ``Aircraft``.
+    """Load an OpenVSP model or DegenGeom CSV into an :class:`Aircraft`.
 
     ``.csv`` files are parsed directly and do not require OpenVSP. ``.vsp3``
     files are first exported to DegenGeom CSV using the optional OpenVSP Python
     API.
+
+    Parameters
+    ----------
+    vsp_file_or_csv : str or pathlib.Path
+        Input ``.vsp3`` model or exported DegenGeom ``.csv`` file.
+    config : OpenVSPImportConfig, optional
+        Filtering, panelization, symmetry, and coordinate-transform options.
+    save_json : str or pathlib.Path, optional
+        If supplied, also write the imported aircraft to this JSON path.
+
+    Returns
+    -------
+    Aircraft
+        Imported aircraft with VLM wings and segments.
+
+    Raises
+    ------
+    ValueError
+        If the extension is not ``.vsp3`` or ``.csv``.
+    FileNotFoundError, ImportError, RuntimeError
+        If the input or optional OpenVSP export path cannot be processed.
     """
 
     cfg = config or OpenVSPImportConfig()

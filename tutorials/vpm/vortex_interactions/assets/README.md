@@ -14,11 +14,11 @@ A third maximum, clipped core or strong bridge terminates identity assignment;
 these are diagnostic cutoffs, not physical breakdown criteria. Plane-grid and
 output-cadence refinement remain required checks.
 
-`allrun.sh` invokes both automatically. For selected existing sampler outputs, run from the case directory containing `setup.py`:
+`allplot.sh` invokes both. For selected existing sampler outputs, run from the case directory containing `setup.py`:
 
 ```sh
-python -m openonda.tutorial_runner . assets.plot_core_sections --runs RUN_NAME
-python -m openonda.tutorial_runner . assets.assess_lbm_agreement RUN_NAME
+python assets/plot_core_sections.py --runs RUN_NAME
+python assets/assess_lbm_agreement.py RUN_NAME
 ```
 
 `plot_rings_*.py` read flow and ring sampler CSV files. Material-group radius

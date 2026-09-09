@@ -15,7 +15,8 @@ def azimuthal_circulation(position, vortex_strength, core_radius):
     """Signed integral of mean omega_theta over the entire meridional half-plane.
 
     Exact Gaussian integral, independent of material labels. The axis factor
-    accounts for cancellation across r=0; summing |alpha| cannot measure this.
+    accounts for cancellation across r=0; summing ``|Gamma|`` cannot measure
+    this.
     """
     p = np.asarray(position, dtype=float)
     a = np.asarray(vortex_strength, dtype=float)

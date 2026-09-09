@@ -117,23 +117,9 @@ if [[ -n "$REQUIRED_PYTHON" && "$ACTUAL_PYTHON" != "$REQUIRED_PYTHON" ]]; then
 fi
 echo "Using Python $ACTUAL_PYTHON from '$ENV_NAME'."
 
-if [[ $EDITABLE -eq 1 ]]; then
-    echo "Installing OpenONDA in editable mode with development tools..."
-    "$ENV_PYTHON" -m pip install -e "${REPO_ROOT}[dev]"
-else
-    echo "Installing OpenONDA as a fixed copy..."
-    "$ENV_PYTHON" -m pip install "$REPO_ROOT"
-fi
-
-echo "Verifying package resources, plotting, meshing, Taichi, and a native FVM step..."
-VERIFY_ARGS=()
-if [[ $EDITABLE -eq 0 ]]; then VERIFY_ARGS+=(--require-site-packages); fi
-(
-    cd "${TMPDIR:-/tmp}"
-    # bash 3.2 treats an empty array as unset under "set -u".
-    env -u PYTHONPATH "$ENV_PYTHON" -I -m openonda.verify_install ${VERIFY_ARGS[@]+"${VERIFY_ARGS[@]}"}
-)
-"$ENV_PYTHON" -m pip check
+INSTALL_ARGS=()
+if [[ $EDITABLE -eq 1 ]]; then INSTALL_ARGS+=(--dev); fi
+"$ENV_PYTHON" "$REPO_ROOT/install.py" ${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}
 
 echo
 echo "OpenONDA is ready in '$ENV_NAME'."

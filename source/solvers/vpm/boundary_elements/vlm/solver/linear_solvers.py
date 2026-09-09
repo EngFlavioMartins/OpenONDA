@@ -10,6 +10,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 from abc import ABC, abstractmethod
 from typing import Literal
+import warnings
 
 import numpy as np
 import scipy.linalg
@@ -96,12 +97,18 @@ class ScipySolver(VLMLinearSolver):
     - O(N³) direct solve can be expensive for large N
     """
 
+    def __init__(self):
+        self._matrix = None
+        self._factorization = None
+
     @property
     def name(self) -> str:
+        """Return the stable registry name ``"SCIPY"``."""
         return "SCIPY"
 
     @property
     def is_gpu(self) -> bool:
+        """Return ``False`` because the solve runs on the CPU."""
         return False
 
     def solve(
@@ -113,6 +120,38 @@ class ScipySolver(VLMLinearSolver):
         max_iterations: int = 1000,
         tolerance: float = EPSILON,
     ) -> int:
+        """Solve the active dense VLM system with SciPy on the CPU.
+
+        Parameters
+        ----------
+        aerodynamic_influence_coefficient : array-like or Taichi field, shape (N, N)
+            Dense influence matrix for the active panels.  Its entries map
+            panel circulation to collocation-point normal velocity.
+        right_hand_side : array-like or Taichi field, shape (N,)
+            Boundary-condition vector for the active panels.
+        circulation : ndarray or Taichi field, shape (capacity,)
+            Solution storage.  The active prefix ``[:N]`` is overwritten in
+            place; a Taichi field remains device-resident after the upload.
+        n_panels : int
+            Active system size ``N``; unused capacity is ignored.
+        max_iterations : int, default=1000
+            Accepted for interface compatibility and ignored by this direct
+            solver.
+        tolerance : float, default=EPSILON
+            Accepted for interface compatibility and ignored by SciPy's direct
+            factorization.
+
+        Returns
+        -------
+        int
+            ``0`` because no iterative steps are performed.
+
+        Raises
+        ------
+        scipy.linalg.LinAlgError
+            If the active influence matrix is singular or ill-conditioned
+            enough for the selected LAPACK solve to fail.
+        """
         # Determine numpy dtype from aerodynamic_influence_coefficient (Taichi field or numpy)
         dtype = NP_FLOAT
         if hasattr(aerodynamic_influence_coefficient, "dtype"):
@@ -142,7 +181,14 @@ class ScipySolver(VLMLinearSolver):
         # A singular aerodynamic_influence_coefficient is a physics error (degenerate geometry or zero-velocity
         # freestream): raise rather than silently regularize, which would produce
         # physically meaningless γ and could mask upstream bugs.
-        circulation_np = scipy.linalg.solve(AIC_np, rhs_np)
+        if self._matrix is None or not np.array_equal(AIC_np, self._matrix):
+            self._matrix = AIC_np.copy()
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", scipy.linalg.LinAlgWarning)
+                self._factorization = scipy.linalg.lu_factor(AIC_np)
+        circulation_np = scipy.linalg.lu_solve(self._factorization, rhs_np)
+        if not np.all(np.isfinite(circulation_np)):
+            raise np.linalg.LinAlgError("VLM circulation solve produced non-finite values")
 
         # Write back to Taichi field or numpy array
         if hasattr(circulation, "from_numpy"):
@@ -153,104 +199,6 @@ class ScipySolver(VLMLinearSolver):
             circulation[:n_panels] = circulation_np
 
         return 0  # Direct solver, no iterations
-
-
-# =========================================================
-# Taichi Conjugate Gradient Solver (GPU, Iterative)
-# =========================================================
-
-
-class TaichiCGSolver(VLMLinearSolver):
-    """
-    GPU-based Conjugate Gradient solver using Taichi.
-
-    Implements the classic CG algorithm entirely on GPU, avoiding ALL data transfers.
-    The aerodynamic_influence_coefficient matrix, RHS, and solution (circulation) are all Taichi fields that stay on device.
-
-    Features:
-    - No GPU→CPU→GPU data transfer overhead
-    - Highly parallel matrix-vector products
-    - Memory efficient (only stores vectors, not factorized matrix)
-    - Great for large systems (> 500 panels)
-    - **Batched iterations**: Only checks convergence every `batch_size` iterations
-
-    Cons:
-    - Iterative, may not converge for ill-conditioned systems
-    - Performance depends on number of iterations
-    - Only works for symmetric positive-definite matrices (use BiCGSTAB for VLM)
-
-    Algorithm:
-        CG solves A @ x = b for symmetric positive-definite A.
-        VLM aerodynamic_influence_coefficient matrices are NOT symmetric - use BiCGSTAB instead for VLM.
-    """
-
-    def __init__(self, max_n_panels: int = 10000, batch_size: int = 50):
-        """
-        Initialize CG solver with workspace allocation.
-
-        Args:
-            max_n_panels: Maximum number of panels (for workspace allocation)
-            batch_size: Number of iterations between convergence checks (default: 50)
-        """
-        self.max_n_panels = max_n_panels
-        self.batch_size = batch_size
-        self._workspace_initialized = False
-
-        # Workspace fields (allocated lazily)
-        self.r = None  # Residual
-        self.p = None  # Search direction
-        self.Ap = None  # A @ p
-        self.temp = None  # Temporary storage for A^T @ (A @ p)
-
-    def _ensure_workspace(self, dtype=TI_FLOAT):
-        """Lazily initialize workspace fields."""
-        if self._workspace_initialized:
-            # Check if existing workspace matches requested dtype
-            if self.r.dtype != dtype:
-                # Reallocate if dtype changed
-                self._workspace_initialized = False
-            else:
-                return
-
-        ti = _lazy_import_taichi()
-
-        self.r = ti.field(dtype=dtype, shape=(self.max_n_panels,))
-        self.p = ti.field(dtype=dtype, shape=(self.max_n_panels,))
-        self.Ap = ti.field(dtype=dtype, shape=(self.max_n_panels,))
-        self.temp = ti.field(dtype=dtype, shape=(self.max_n_panels,))
-
-        self._workspace_initialized = True
-
-    @property
-    def name(self) -> str:
-        return "CG_GPU"
-
-    @property
-    def is_gpu(self) -> bool:
-        return True
-
-    def solve(
-        self,
-        aerodynamic_influence_coefficient,
-        right_hand_side,
-        circulation,
-        n_panels: int,
-        max_iterations: int = 1000,
-        tolerance: float = EPSILON,
-    ) -> int:
-        """
-        Solve aerodynamic_influence_coefficient @ circulation = right_hand_side using batched Conjugate Gradient on GPU.
-
-        Uses batched iteration strategy: convergence is only checked every
-        `batch_size` iterations to reduce kernel launch overhead.
-
-        All operations are performed on GPU using Taichi kernels.
-        circulation is modified in-place.
-        """
-        raise RuntimeError(
-            "TaichiCGSolver is only valid for symmetric positive-definite matrices. "
-            "VLM aerodynamic_influence_coefficient matrices are non-symmetric — use TaichiBiCGSTABSolver instead."
-        )
 
 
 # =========================================================
@@ -269,8 +217,7 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
     - Works with non-symmetric VLM aerodynamic_influence_coefficient matrices
     - Optional Jacobi (diagonal) preconditioning for faster convergence
     - All operations on GPU (zero data transfer overhead)
-    - **Batched iterations**: Only checks convergence every `batch_size` iterations
-      to reduce kernel launch overhead and GPU-CPU synchronization
+    - Checks convergence during iteration and verifies the true final residual
 
     Algorithm (Right-Preconditioned BiCGSTAB):
         Solves A @ x = b by transforming to A @ M^-1 @ y = b, then x = M^-1 @ y.
@@ -287,21 +234,16 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
         Variant of Bi-CG for the Solution of Nonsymmetric Linear Systems"
     """
 
-    def __init__(
-        self, max_n_panels: int = 10000, use_preconditioner: bool = True, batch_size: int = 200
-    ):
+    def __init__(self, max_n_panels: int = 10000, use_preconditioner: bool = True):
         """
         Initialize BiCGSTAB solver with workspace allocation.
 
         Args:
             max_n_panels: Maximum number of panels (for workspace allocation)
             use_preconditioner: Enable Jacobi (diagonal) preconditioning
-            batch_size: Number of iterations between convergence checks (default: 50)
-                        Higher values reduce overhead but may overshoot convergence.
         """
         self.max_n_panels = max_n_panels
         self.use_preconditioner = use_preconditioner
-        self.batch_size = batch_size
         self._workspace_initialized = False
 
         # Workspace fields (allocated lazily)
@@ -341,10 +283,12 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
 
     @property
     def name(self) -> str:
+        """Return the stable registry name ``"BICGSTAB_GPU"``."""
         return "BICGSTAB_GPU"
 
     @property
     def is_gpu(self) -> bool:
+        """Return ``True`` because the linear algebra runs in Taichi."""
         return True
 
     def _matvec_p_to_v(self, aerodynamic_influence_coefficient, n: int) -> None:
@@ -377,50 +321,6 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
         else:
             _axpy(circulation, self.p, alpha, n)
 
-    def _solve_one_batch(
-        self,
-        aerodynamic_influence_coefficient,
-        circulation,
-        rho_iter: float,
-        alpha: float,
-        omega: float,
-        iterations: int,
-        batch_iters: int,
-        n: int,
-        dtype,
-    ) -> tuple[float, float, float, int, int | None]:
-        """
-        Run *batch_iters* BiCGSTAB iterations.
-
-        Returns ``(rho_iter, alpha, omega, iterations, early_ret)`` where
-        *early_ret* is the value to return on algorithm breakdown,
-        or ``None`` when the batch completed normally.
-        """
-        for _ in range(batch_iters):
-            self._matvec_p_to_v(aerodynamic_influence_coefficient, n)
-            r0v = _dot_product(self.r0, self.v, n, dtype=dtype)
-            if abs(r0v) < EPSILON:
-                return rho_iter, alpha, omega, iterations, iterations
-            alpha = rho_iter / r0v
-            _bicgstab_update_s(self.s, self.r, self.v, alpha, n)
-            self._matvec_s_to_t(aerodynamic_influence_coefficient, n)
-            ts = _dot_product(self.t, self.s, n, dtype=dtype)
-            tt = _dot_product(self.t, self.t, n, dtype=dtype)
-            if abs(tt) < EPSILON:
-                self._update_x_partial(circulation, alpha, n)
-                return rho_iter, alpha, omega, iterations, iterations
-            omega = ts / tt
-            self._update_x_full(circulation, alpha, omega, n)
-            _bicgstab_update_r(self.r, self.s, self.t, omega, n)
-            rho_next = _dot_product(self.r0, self.r, n, dtype=dtype)
-            if abs(rho_next) < EPSILON:
-                return rho_iter, alpha, omega, iterations, iterations
-            beta = (rho_next / rho_iter) * (alpha / omega) if abs(omega) > EPSILON else 0.0
-            _bicgstab_update_p(self.p, self.r, self.v, beta, omega, n)
-            rho_iter = rho_next
-            iterations += 1
-        return rho_iter, alpha, omega, iterations, None
-
     def solve(
         self,
         aerodynamic_influence_coefficient,
@@ -430,80 +330,66 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
         max_iterations: int = 1000,
         tolerance: float = EPSILON,
     ) -> int:
+        """Solve with right-preconditioned BiCGSTAB and verify the true residual.
+
+        ``tolerance`` is relative to the RHS norm. Breakdown, non-finite output,
+        and exhausted iterations cannot silently publish an unconverged lattice.
         """
-        Solve aerodynamic_influence_coefficient @ circulation = right_hand_side using batched BiCGSTAB on GPU.
-
-        Uses batched iteration strategy: convergence is only checked every
-        `batch_size` iterations to reduce kernel launch overhead.
-
-        All operations are performed on GPU using Taichi kernels.
-        circulation is modified in-place.
-        """
-        _lazy_import_taichi()
-
-        dtype = (
-            aerodynamic_influence_coefficient.dtype
-            if hasattr(aerodynamic_influence_coefficient, "dtype")
-            else TI_FLOAT
-        )
+        dtype = aerodynamic_influence_coefficient.dtype
         self._ensure_workspace(dtype=dtype)
         n = n_panels
-        tol_sq = tolerance * tolerance
-
         if self.use_preconditioner:
             _build_jacobi_precond(aerodynamic_influence_coefficient, self.M_inv, n)
-
         _bicgstab_init(circulation, right_hand_side, self.r, self.r0, self.p, n)
-        rho_iter = _dot_product(self.r0, self.r, n, dtype=dtype)
-        if abs(rho_iter) < EPSILON:
+        norm_sq = _dot_product(self.r, self.r, n, dtype=dtype)
+        if norm_sq == 0.0:
             return 0
-
+        target_sq = tolerance * tolerance * norm_sq
+        rho = norm_sq
         iterations = 0
-        alpha = 0.0
-        omega = 1.0
-        num_outer = (max_iterations + self.batch_size - 1) // self.batch_size
-
-        for _outer in range(num_outer):
-            batch_iters = min(self.batch_size, max_iterations - iterations)
-            rho_iter, alpha, omega, iterations, early_ret = self._solve_one_batch(
-                aerodynamic_influence_coefficient,
-                circulation,
-                rho_iter,
-                alpha,
-                omega,
-                iterations,
-                batch_iters,
-                n,
-                dtype,
-            )
-            if early_ret is not None:
-                return early_ret
-            r_norm_sq = _dot_product(self.r, self.r, n, dtype=dtype)
-            if r_norm_sq < tol_sq:
+        for iteration in range(max_iterations):
+            self._matvec_p_to_v(aerodynamic_influence_coefficient, n)
+            denominator = _dot_product(self.r0, self.v, n, dtype=dtype)
+            if denominator == 0.0 or not np.isfinite(denominator):
                 break
+            alpha = rho / denominator
+            _bicgstab_update_s(self.s, self.r, self.v, alpha, n)
+            if _dot_product(self.s, self.s, n, dtype=dtype) <= target_sq:
+                self._update_x_partial(circulation, alpha, n)
+                iterations = iteration + 1
+                break
+            self._matvec_s_to_t(aerodynamic_influence_coefficient, n)
+            tt = _dot_product(self.t, self.t, n, dtype=dtype)
+            if tt == 0.0 or not np.isfinite(tt):
+                break
+            omega = _dot_product(self.t, self.s, n, dtype=dtype) / tt
+            self._update_x_full(circulation, alpha, omega, n)
+            _bicgstab_update_r(self.r, self.s, self.t, omega, n)
+            iterations = iteration + 1
+            if _dot_product(self.r, self.r, n, dtype=dtype) <= target_sq:
+                break
+            rho_next = _dot_product(self.r0, self.r, n, dtype=dtype)
+            if rho_next == 0.0 or omega == 0.0 or not np.isfinite(rho_next):
+                break
+            beta = (rho_next / rho) * (alpha / omega)
+            _bicgstab_update_p(self.p, self.r, self.v, beta, omega, n)
+            rho = rho_next
 
+        matrix = aerodynamic_influence_coefficient.to_numpy()[:n, :n].astype(np.float64)
+        rhs = right_hand_side.to_numpy()[:n].astype(np.float64)
+        solution = circulation.to_numpy()[:n].astype(np.float64)
+        relative_residual = np.linalg.norm(matrix @ solution - rhs) / np.linalg.norm(rhs)
+        if not np.isfinite(relative_residual) or relative_residual > tolerance:
+            raise np.linalg.LinAlgError(
+                f"VLM BiCGSTAB did not converge after {iterations} iterations: "
+                f"relative residual={relative_residual:.3g}, tolerance={tolerance:.3g}"
+            )
         return iterations
 
 
 # =========================================================
-# Taichi Kernels for CG Solver
+# Shared iterative linear algebra kernels
 # =========================================================
-
-
-@ti.kernel
-def _cg_init_kernel(
-    x: ti.template(), b: ti.template(), r: ti.template(), p: ti.template(), n: ti.i32
-):
-    for i in range(n):
-        x[i] = 0.0
-        r[i] = b[i]
-        p[i] = b[i]
-
-
-def _cg_init(x, b, r, p, n: int):
-    """Initialize CG: x=0, r=b, p=b."""
-    _lazy_import_taichi()
-    _cg_init_kernel(x, b, r, p, n)
 
 
 @ti.kernel
@@ -526,6 +412,7 @@ def _matvec(A, x, y, n: int):
 
 # Persistent result field to avoid repeated allocation
 _dot_result = None
+_dot_runtime = None
 
 
 @ti.kernel
@@ -564,52 +451,17 @@ def _dot_product(a, b, n: int, dtype=TI_FLOAT) -> float:
 
     # GPU atomic path (kept for very large systems where PCIe transfer
     # would dominate)
-    global _dot_result
+    global _dot_result, _dot_runtime
     ti = _lazy_import_taichi()
 
-    if _dot_result is None or _dot_result.dtype != dtype:
+    runtime = ti.lang.impl.get_runtime().prog
+    if _dot_result is None or _dot_result.dtype != dtype or _dot_runtime is not runtime:
         _dot_result = ti.field(dtype=dtype, shape=())
+        _dot_runtime = runtime
 
     _dot_product_reset_kernel(_dot_result)
     _dot_product_kernel(a, b, n, _dot_result)
     return _dot_result[None]
-
-
-@ti.kernel
-def _cg_update_xr_kernel(
-    x: ti.template(),
-    r: ti.template(),
-    p: ti.template(),
-    Ap: ti.template(),
-    alpha: ti.template(),
-    n: ti.i32,
-):
-    for i in range(n):
-        x[i] += alpha * p[i]
-        r[i] -= alpha * Ap[i]
-
-
-def _cg_update_xr(x, r, p, Ap, alpha: float, n: int):
-    """Update x and r in CG: x += alpha*p, r -= alpha*Ap."""
-    _lazy_import_taichi()
-    _cg_update_xr_kernel(x, r, p, Ap, alpha, n)
-
-
-@ti.kernel
-def _cg_update_p_kernel(p: ti.template(), r: ti.template(), beta: ti.template(), n: ti.i32):
-    for i in range(n):
-        p[i] = r[i] + beta * p[i]
-
-
-def _cg_update_p(p, r, beta: float, n: int):
-    """Update p in CG: p = r + beta*p."""
-    _lazy_import_taichi()
-    _cg_update_p_kernel(p, r, beta, n)
-
-
-# =========================================================
-# Taichi Kernels for BiCGSTAB Solver
-# =========================================================
 
 
 @ti.kernel
@@ -639,23 +491,6 @@ def _apply_precond(x, y, M_inv, n: int):
     """Apply preconditioner: y = M^-1 @ x (element-wise for Jacobi)."""
     _lazy_import_taichi()
     _apply_precond_kernel(x, y, M_inv, n)
-
-
-@ti.kernel
-def _matvec_precond_kernel(
-    A: ti.template(), x: ti.template(), y: ti.template(), M_inv: ti.template(), n: ti.i32
-):
-    for i in range(n):
-        acc = 0.0
-        for j in range(n):
-            acc += A[i, j] * x[j]
-        y[i] = M_inv[i] * acc  # Apply preconditioner
-
-
-def _matvec_precond(A, x, y, M_inv, n: int):
-    """Compute y = M^-1 @ (A @ x) with Jacobi preconditioning."""
-    _lazy_import_taichi()
-    _matvec_precond_kernel(A, x, y, M_inv, n)
 
 
 @ti.kernel
@@ -764,38 +599,42 @@ def _bicgstab_update_p(p, r, v, beta: float, omega: float, n: int):
 
 _SOLVER_REGISTRY = {
     "SCIPY": ScipySolver,
-    "CG_GPU": TaichiCGSolver,
     "BICGSTAB_GPU": TaichiBiCGSTABSolver,
 }
 
 
 def get_linear_solver(
-    solver_type: Literal["SCIPY", "CG_GPU", "BICGSTAB_GPU"] = "SCIPY",
+    solver_type: Literal["SCIPY", "BICGSTAB_GPU"] = "SCIPY",
     max_n_panels: int = 10000,
     use_preconditioner: bool = True,
-    batch_size: int = 50,
 ) -> VLMLinearSolver:
-    """
-    Get a linear solver instance by type.
+    """Construct a VLM linear-solver strategy by registry name.
 
-    Args:
-        solver_type: Solver type ('SCIPY', 'CG_GPU', or 'BICGSTAB_GPU')
-        max_n_panels: Maximum number of panels (for workspace allocation)
-        use_preconditioner: Enable preconditioning for iterative solvers
-        batch_size: Number of iterations between convergence checks for GPU solvers
-                    (default: 50). Higher values reduce overhead but may overshoot.
+    Parameters
+    ----------
+    solver_type : {"SCIPY", "BICGSTAB_GPU"}, default="SCIPY"
+        Case-insensitive backend name.  SciPy is a CPU direct solve;
+        BiCGSTAB is the GPU backend for non-symmetric VLM matrices.
+    max_n_panels : int, default=10000
+        Workspace capacity for GPU backends.
+    use_preconditioner : bool, default=True
+        Enable Jacobi preconditioning for BiCGSTAB.
 
-    Returns:
-        VLMLinearSolver instance
+    Returns
+    -------
+    VLMLinearSolver
+        Newly constructed solver strategy.
 
-    Example:
-        >>> solver = get_linear_solver('BICGSTAB_GPU')
-        >>> solver.solve(aerodynamic_influence_coefficient, right_hand_side, circulation, n_panels)
+    Raises
+    ------
+    ValueError
+        If ``solver_type`` is not registered.
 
-    Recommended:
-        - SCIPY: Small systems (<500 panels), most robust, fastest for small N
-        - BICGSTAB_GPU: Large systems (>500 panels), non-symmetric VLM matrices
-        - CG_GPU: Only for symmetric positive-definite matrices (not VLM)
+    Examples
+    --------
+    >>> solver = get_linear_solver("SCIPY")
+    >>> solver.name
+    'SCIPY'
     """
     solver_type = solver_type.upper()
 
@@ -805,17 +644,11 @@ def get_linear_solver(
 
     solver_class = _SOLVER_REGISTRY[solver_type]
 
-    # GPU solvers need max_n_panels and batch_size for workspace
-    if solver_type == "CG_GPU":
-        return solver_class(max_n_panels=max_n_panels, batch_size=batch_size)
-    elif solver_type == "BICGSTAB_GPU":
-        return solver_class(
-            max_n_panels=max_n_panels, use_preconditioner=use_preconditioner, batch_size=batch_size
-        )
-    else:
-        return solver_class()
+    if solver_type == "BICGSTAB_GPU":
+        return solver_class(max_n_panels=max_n_panels, use_preconditioner=use_preconditioner)
+    return solver_class()
 
 
-def list_available_solvers() -> list:
-    """Return list of available solver types."""
+def list_available_solvers() -> list[str]:
+    """Return the registered VLM solver names in factory order."""
     return list(_SOLVER_REGISTRY.keys())

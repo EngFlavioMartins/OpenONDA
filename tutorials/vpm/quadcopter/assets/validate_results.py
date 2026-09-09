@@ -1,129 +1,166 @@
 #!/usr/bin/env python3
-"""Certification checks for the four-rotor climb tutorial."""
+"""Check native completion, rotor thrust/power, symmetry and periodic convergence."""
 
-from __future__ import annotations
+if not __package__:
+    from pathlib import Path
+    from openonda.tutorial_runner import case_package
 
-from pathlib import Path
+    __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
+
 import argparse
-import json
-
 import numpy as np
 import pandas as pd
+from scipy.integrate import trapezoid
+from ._quadcopter_plots import FIGURES_DIR, bem_reference, performance, rotor_inputs, wake_windows
 
 
-CASE_DIR = Path(__file__).resolve().parents[1]
-SAMPLES_DIR = CASE_DIR / "samples" / "quadcopter"
-FIGURES_DIR = CASE_DIR / "figures"
-N_STEPS = 288
-TIME_STEP_SIZE = np.deg2rad(7.5) / (200.0 * 2.0 * np.pi / 60.0)
-
-
-def _read_csv(path: Path, failures: list[str]) -> pd.DataFrame | None:
-    if not path.is_file():
-        failures.append(f"missing {path.name}")
-        return None
+def validate_wake(p, end):
+    """Require a complete final window and a stable induced velocity field."""
+    config = p.metadata["configuration"]
+    declared = {
+        sampler["file_name"]: sampler
+        for sampler in config["samplers"]["items"]
+        if sampler["type"] == "SurfaceSampler"
+    }
+    failures = []
     try:
-        data = pd.read_csv(path)
-    except (OSError, ValueError, pd.errors.ParserError) as error:
-        failures.append(f"unreadable {path.name}: {error}")
-        return None
-    numeric = data.select_dtypes(include=[np.number])
-    if data.empty or numeric.empty or not np.isfinite(numeric.to_numpy()).all():
-        failures.append(f"{path.name}: empty or non-finite numeric data")
-    return data
+        planes = wake_windows(p.samples_dir, p.period)
+    except (OSError, ValueError, KeyError) as error:
+        return [f"invalid native wake samples: {error}"]
+    if len(declared) != 2 or {plane["name"] for plane in planes} != set(declared):
+        failures.append("missing declared downstream velocity planes")
+    freestream = np.array(config["numerics"]["freestream_velocity"])
+    for plane in planes:
+        name, times = plane["name"], plane["times"]
+        if name not in declared:
+            continue
+        cadence = declared[name]["schedule"]["interval"] * config["numerics"]["time_step_size"]
+        tolerance = max(1e-10, cadence * 1e-6)
+        if (
+            len(times) < 4
+            or end - times[-1] > cadence + tolerance
+            or times[-1] > end + tolerance
+            or times[0] > end - 6 * p.period + cadence + tolerance
+            or np.any(np.diff(times) > cadence + tolerance)
+        ):
+            failures.append(f"{name}: incomplete final six-revolution velocity window")
+            continue
+        velocity = plane["velocity"]
+        early = velocity[times <= end - 3 * p.period].mean(axis=0)
+        late = velocity[times > end - 3 * p.period].mean(axis=0)
+        # Subtract the freestream so a large uniform inflow cannot hide wake drift.
+        scale = np.linalg.norm(velocity.mean(axis=0) - freestream)
+        if scale <= 1e-12:
+            failures.append(f"{name}: no resolved induced wake in the sampled field")
+            continue
+        drift = np.linalg.norm(late - early) / scale
+        print(f"{name}: induced-velocity field drift={drift:.2%}")
+        if not np.isfinite(drift) or drift > 0.03:
+            failures.append(f"{name}: induced-velocity field drift exceeds3%")
+    return failures
 
 
-def main() -> int:
+def validate_impulse(p, end, forces):
+    """Check the final window's native bound-plus-wake axial impulse against thrust."""
+    path = p.samples_dir / "flow_integrals.csv"
+    flow = pd.read_csv(path)
+    required = ["time", "coupled_linear_impulse_z"]
+    if any(name not in flow for name in required):
+        return ["native coupled-impulse samples are missing; momentum remains unqualified"]
+    start = end - 6 * p.period
+    times = flow.time.to_numpy()
+    if (
+        len(times) < 2
+        or not np.isfinite(flow[required]).all().all()
+        or np.any(np.diff(times) <= 0)
+        or times[0] > start + 1e-10
+        or times[-1] < end - 1e-10
+    ):
+        return ["incomplete or invalid final coupled-impulse history"]
+    total = forces.groupby("time", sort=True).thrust.sum()
+    if total.index.min() > start + 1e-10 or total.index.max() < end - 1e-10:
+        return ["incomplete force history for the impulse comparison"]
+    quadrature_times = np.r_[start, total.index[(total.index > start) & (total.index < end)], end]
+    blade_impulse = trapezoid(np.interp(quadrature_times, total.index, total), quadrature_times)
+    fluid_impulse = np.interp([start, end], times, flow.coupled_linear_impulse_z)
+    ratio = -p.density * np.diff(fluid_impulse)[0] / max(blade_impulse, 1e-12)
+    print(f"Bound-plus-wake impulse / integrated blade thrust: {ratio:.4f}")
+    if blade_impulse <= 0 or not np.isfinite(ratio) or abs(ratio - 1) > 0.10:
+        return [
+            "coupled impulse / thrust differs from unity by more than10%; inspect wake health and boundary losses"
+        ]
+    return []
+
+
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pre-plot", action="store_true")
     args = parser.parse_args()
-    failures: list[str] = []
-    manifest_path = SAMPLES_DIR / "run_manifest.json"
-    if not manifest_path.is_file():
-        failures.append("missing run_manifest.json")
-    else:
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
-            failures.append(f"unreadable run_manifest.json: {error}")
-        else:
-            if manifest.get("status") != "complete" or manifest.get("completed") is not True:
-                failures.append("run manifest does not certify a completed run")
-            if not np.isclose(float(manifest.get("final_time", np.nan)), N_STEPS * TIME_STEP_SIZE):
-                failures.append("run manifest final time is inconsistent with six revolutions")
-    integrals = _read_csv(SAMPLES_DIR / "flow_integrals.csv", failures)
-    if integrals is not None:
-        required = {"time", "step", "n_particles_total", "total_enstrophy"}
-        if not required.issubset(integrals.columns):
-            failures.append(
-                f"flow_integrals.csv: missing {sorted(required - set(integrals.columns))}"
-            )
-        else:
-            steps = integrals["step"].to_numpy(int)
-            times = integrals["time"].to_numpy(float)
-            if steps.size < 4 or steps[-1] != N_STEPS:
-                failures.append(
-                    f"flow-integral history ends at step {steps[-1] if steps.size else 'missing'}, expected {N_STEPS}"
-                )
-            if (
-                steps.size
-                and np.any(np.diff(steps) <= 0)
-                or times.size
-                and np.any(np.diff(times) <= 0.0)
-            ):
-                failures.append("flow-integral cadence is not strictly increasing")
-            particles = integrals["n_particles_total"].to_numpy(float)
-            enstrophy = integrals["total_enstrophy"].to_numpy(float)
-            if np.any(particles <= 0.0) or np.any(enstrophy < 0.0):
-                failures.append("particle count or enstrophy is nonphysical")
-            if particles.size > 1 and np.any(np.diff(particles) < -0.5 * particles[:-1]):
-                failures.append("particle population has an unexplained >50% one-sample loss")
-            tail = particles[max(0, int(0.7 * particles.size)) :]
-            if tail.size > 1:
-                drift = float(np.ptp(tail) / max(float(np.mean(tail)), 1.0e-12))
-                print(f"particle count tail relative range={drift:.3%}")
-
-    forces = _read_csv(SAMPLES_DIR / "vlm_forces.csv", failures)
-    if forces is not None:
-        required = {
-            "time",
-            "step",
-            "force_x",
-            "force_y",
-            "force_z",
-            "moment_x",
-            "moment_y",
-            "moment_z",
-        }
-        if not required.issubset(forces.columns):
-            failures.append(f"vlm_forces.csv: missing {sorted(required - set(forces.columns))}")
-        elif forces["step"].max() != N_STEPS:
-            failures.append("vlm force history does not reach the final step")
-
-    blade_files = sorted(SAMPLES_DIR.glob("vlm_spanwise_rotor_*_blade_*.csv"))
-    if len(blade_files) != 8:
-        failures.append(f"expected 8 per-blade loading files, found {len(blade_files)}")
-    for path in blade_files:
-        data = _read_csv(path, failures)
-        if data is not None and "section_force_z" not in data:
-            failures.append(f"{path.name}: missing section_force_z")
-
-    plane_files = list(SAMPLES_DIR.glob("sampled_zplane_*.vts"))
-    if not plane_files:
-        failures.append("missing sampled_zplane VTK output")
-
-    if not args.pre_plot:
-        for extension in ("png", "pdf"):
-            for name in ("quadcopter_particle_count", "quadcopter_vorticity_history"):
-                figure = FIGURES_DIR / f"{name}.{extension}"
-                if not figure.is_file() or figure.stat().st_size == 0:
-                    failures.append(f"missing or empty figure {figure.name}")
-
-    if failures:
-        print("\n".join(f"[FAIL] {failure}" for failure in failures))
+    p = rotor_inputs()
+    config, state = p.metadata["configuration"], p.metadata["state"]
+    steps = state["initial_step"] + config["run"]["steps"]
+    end = state["initial_time"] + config["run"]["steps"] * config["numerics"]["time_step_size"]
+    failures = []
+    if p.metadata["lifecycle"]["status"] != "completed" or state["step"] != steps:
+        print(
+            f"[FAIL] Run incomplete; last recorded step {state['step']}/{steps}; convergence is unqualified"
+        )
         return 1
-    print("[OK] quadcopter certification passed")
-    return 0
+    data = performance(p.samples_dir, p)
+    if data.rotor.nunique() != p.n_rotors:
+        failures.append("missing rotor force histories")
+    bem = bem_reference(p)
+    means = []
+    for rotor, rows in data.groupby("rotor"):
+        if (
+            rows.time.duplicated().any()
+            or not np.isfinite(rows.select_dtypes("number")).all().all()
+        ):
+            failures.append(f"{rotor}: duplicate or non-finite samples")
+        if rows.step.max() < steps - config["numerics"]["vlm"]["logging_interval_steps"]:
+            failures.append(f"{rotor}: incomplete force/power samples")
+        tail = rows[rows.time > end - 6 * p.period]
+        cadence = (
+            config["numerics"]["vlm"]["logging_interval_steps"]
+            * config["numerics"]["time_step_size"]
+        )
+        if len(tail) < 4 or tail.time.max() - tail.time.min() < 6 * p.period - 2 * cadence:
+            failures.append(f"{rotor}: fewer than six revolutions of final force samples")
+            continue
+        means.append(tail.thrust.mean())
+        for column, ref in (("thrust", bem.attrs["thrust"]), ("input_power", bem.attrs["power"])):
+            values = tail[column].to_numpy()
+            half = len(values) // 2
+            drift = abs(values[:half].mean() - values[half:].mean()) / max(
+                abs(values.mean()), 1e-12
+            )
+            difference = abs(values.mean() / ref - 1)
+            print(
+                f"{rotor} {column}: mean={values.mean():.6g}, BEM={ref:.6g}, difference={difference:.2%}, tail drift={drift:.2%}"
+            )
+            if values.mean() <= 0 or drift > 0.03 or difference > 0.20:
+                failures.append(
+                    f"{rotor} {column}: positive load, <=3% tail drift and <=20% isolated-BEM difference required"
+                )
+        ct, cp = tail.CT.mean(), tail.CP.mean()
+        advance = p.climb / (p.omega * p.radius)
+        ideal_cp = 0.5 * ct * (advance + np.sqrt(advance**2 + 2 * ct))
+        if cp < 0.98 * ideal_cp:
+            failures.append(f"{rotor}: power falls below the ideal axial-momentum requirement")
+    if means:
+        symmetry = np.ptp(means) / max(abs(np.mean(means)), 1e-12)
+        print(f"Rotor mean-thrust spread={symmetry:.2%}")
+        if symmetry > 0.01:
+            failures.append("rotor thrust symmetry differs by more than1%")
+    failures.extend(validate_wake(p, end))
+    failures.extend(validate_impulse(p, end, data))
+    if not args.pre_plot:
+        for name in ("quadcopter_performance", "quadcopter_wake", "quadcopter_vorticity_history"):
+            for extension in ("png", "pdf"):
+                if not (FIGURES_DIR / f"{name}.{extension}").is_file():
+                    failures.append(f"missing {name}.{extension}")
+    print("\n".join(f"[FAIL] {item}" for item in failures) or "[OK] Quadcopter checks passed")
+    return bool(failures)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,28 @@ import numpy as np
 
 @dataclass
 class FieldState:
-    """Cell velocity, kinematic pressure, and volumetric face flux."""
+    """Synchronized primary FVM fields for one mesh state.
+
+    Parameters
+    ----------
+    velocity : numpy.ndarray
+        Cell-centred velocity in m/s with shape
+        ``(n_cells_with_ghosts, 3)``. The first ``n_cells`` rows are fluid
+        cells; remaining rows are solver-owned boundary ghosts.
+    kinematic_pressure : numpy.ndarray
+        Pressure divided by constant density, in m²/s², with one value per
+        velocity row and shape ``(n_cells_with_ghosts,)``.
+    volumetric_face_flux : numpy.ndarray
+        Face flux ``phi = U_f · Sf`` in m³/s with shape ``(n_faces,)``. On an
+        interior face it is positive from the owner cell to the neighbour.
+
+    Notes
+    -----
+    Inputs are converted to contiguous ``float64`` arrays and validated for
+    finite values. Already-compatible inputs may share storage; callers that
+    require independent ownership should use :meth:`copy`. The solver may
+    update the published arrays in place when exposing a newly solved state.
+    """
 
     velocity: np.ndarray
     kinematic_pressure: np.ndarray
@@ -46,7 +67,14 @@ class FieldState:
             raise ValueError("field state must contain only finite values")
 
     def copy(self) -> FieldState:
-        """Return an independent field-state copy."""
+        """Return an independent deep copy of all three primary fields.
+
+        Returns
+        -------
+        FieldState
+            A new state whose arrays do not share writable storage with this
+            object. Units and shapes are unchanged.
+        """
         return FieldState(
             self.velocity.copy(),
             self.kinematic_pressure.copy(),

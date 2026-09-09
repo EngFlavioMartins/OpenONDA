@@ -1,6 +1,4 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash -e
 
-cd "$(dirname "$0")"
-
-rm -rf solution samples figures run_manifest.json
+cd -- "$(dirname -- "$0")"
+rm -rf solution samples figures study_results

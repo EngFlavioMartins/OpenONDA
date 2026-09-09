@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tutorials.vpm.vortex_interactions.study import build_experiment, parser
+from tutorials.vpm.vortex_interactions.assets.study import build_experiment, parser
 
 
 def test_initial_gaussian_tail_does_not_amplify_the_core_peak():

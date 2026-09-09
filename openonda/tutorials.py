@@ -50,7 +50,7 @@ TUTORIALS: Final[tuple[Tutorial, ...]] = (
     Tutorial("vpm/flat_plate", "Finite flat-plate VLM-VPM loading"),
     Tutorial("vpm/lamb_oseen_vortex", "Lamb-Oseen vortex diffusion and interaction"),
     Tutorial("vpm/quadcopter", "Four-rotor VLM-VPM flow"),
-    Tutorial("vpm/rotor_flow", "Single-rotor VLM-VPM flow"),
+    Tutorial("vpm/rotor_flow", "Wind-turbine rotor loading and wake"),
     Tutorial("vpm/vortex_interactions", "Vortex-ring interaction stabilization"),
     Tutorial("vpm/vortex_ring", "Viscous vortex-ring propagation"),
     Tutorial(
@@ -256,7 +256,6 @@ def execute_tutorial(name: str, workspace: Path, action: TutorialAction = "run")
         raise RuntimeError(f"Tutorial launcher is missing: {script}")
 
     environment = os.environ.copy()
-    environment["OPENONDA_PYTHON"] = sys.executable
     environment["MPLCONFIGDIR"] = str(workspace / ".matplotlib")
     environment.setdefault("XDG_CACHE_HOME", str(workspace / ".cache"))
     environment.setdefault(
@@ -268,7 +267,7 @@ def execute_tutorial(name: str, workspace: Path, action: TutorialAction = "run")
     executable_directory = str(Path(sys.executable).parent)
     environment["PATH"] = executable_directory + os.pathsep + environment.get("PATH", "")
     return subprocess.run(
-        ["bash", str(script)],
+        ["bash", "-e", str(script)],
         cwd=case_path,
         env=environment,
         check=False,

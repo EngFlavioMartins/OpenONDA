@@ -28,10 +28,26 @@ def stretched(
     ratio: float,
     h_max: float | None = None,
 ) -> np.ndarray:
-    """Node positions from ``start`` to ``end`` with sizes growing
-    geometrically from ``h0*ratio`` (capped at ``h_max``); the last sliver is
-    merged into the final cell.  ``end`` may be below ``start`` (leftward run).
-    Returns the nodes EXCLUDING ``start``, in the direction of travel."""
+    """Generate one monotone geometrically stretched node sequence.
+
+    Parameters
+    ----------
+    start, end : float
+        Coordinate interval endpoints in m. ``end < start`` reverses the
+        returned direction.
+    h0 : float
+        Initial cell-size scale in m before the first ratio multiplication.
+    ratio : float
+        Geometric growth factor.
+    h_max : float or None, default=None
+        Optional maximum cell size in m.
+
+    Returns
+    -------
+    numpy.ndarray
+        Interior/far-end node coordinates excluding ``start`` and including
+        ``end``, ordered in the direction of travel and in m.
+    """
     direction = 1.0 if end >= start else -1.0
     span = abs(end - start)
     sizes = []
@@ -82,13 +98,33 @@ def wall_refined_axis(
     h_far: float,
     ratio: float = 1.25,
 ) -> np.ndarray:
-    """1D node array on [lo, hi] with cells of size ~``h_wall`` adjacent to the
-    two body faces ``wall_lo``/``wall_hi`` (e.g. ±0.5), coarsening geometrically
-    to ``h_far`` toward ``lo``/``hi`` and through the carved body interior.
+    """Generate a 1-D grid refined about two wall breakpoints.
 
-    Breakpoints land EXACTLY on lo, wall_lo, wall_hi, hi so the cube carve and
-    the box faces sit on mesh planes.  Shared by the coupled box and the
-    reference core so their common region is identical cell-for-cell.
+    The node array on ``[lo, hi]`` has cells of size approximately
+    ``h_wall`` adjacent to the body faces ``wall_lo``/``wall_hi`` and coarsens
+    geometrically toward the outer ends and through the carved body interior.
+
+    Breakpoints land exactly on the supplied coordinates so a box carve and its
+    wall faces are mesh planes.
+
+    Parameters
+    ----------
+    lo, hi, wall_lo, wall_hi : float
+        Ordered coordinates in m.
+    h_wall, h_far : float
+        Near-wall and far-field target cell sizes in m.
+    ratio : float, default=1.25
+        Geometric growth factor.
+
+    Returns
+    -------
+    numpy.ndarray
+        Monotone node coordinates including both outer endpoints, in m.
+
+    Raises
+    ------
+    ValueError
+        If the construction creates a degenerate cell.
     """
     left = _grade_segment(lo, wall_lo, h_wall, h_far, ratio, wall="hi")
     # Body interior: grade OUTWARD from each wall to the body midpoint (two
@@ -161,6 +197,36 @@ def box_mesh_3d(
 
     ``separate_outer`` names outer faces kept out of the merge, each with its
     own patch. Merged families come first, so every patch stays contiguous.
+
+    Parameters
+    ----------
+    xs, ys, zs : numpy.ndarray
+        Strictly increasing coordinate nodes in m. Their Cartesian product
+        defines hexahedral cells.
+    hole_box : tuple[float, ...] or None, default=None
+        Optional ``(xmin, xmax, ymin, ymax, zmin, zmax)`` body bounds in m.
+        Cells inside are removed and exposed faces become a wall patch.
+    wall_patch_name : str, default="cube"
+        Name for the carved wall patch.
+    merge_outer_patch : str or None, default=None
+        Merge non-standalone outer faces into one patch with this name.
+    empty_spanwise : bool, default=False
+        Mark z-min/z-max as ``empty`` when they are not merged.
+    separate_outer : tuple[str, ...], default=()
+        Outer patch names excluded from a merged coupling patch.
+
+    Returns
+    -------
+    dict[str, object]
+        Native mesh mapping: vertex coordinates ``(n_points, 3)`` in m,
+        polygon faces, zero-based owner/neighbour arrays, contiguous boundary
+        ranges, and optional compact hexahedron cell vertices.
+
+    Raises
+    ------
+    ValueError
+        If nodes or hole bounds are invalid or requested patch names are not
+        outer faces.
     """
     xs = np.asarray(xs, dtype=np.float64)
     ys = np.asarray(ys, dtype=np.float64)
@@ -424,6 +490,31 @@ def coupling_box_mesh(
 
     A fully meshed reference must pass ``separate_outer=("outlet",)`` plus a
     :meth:`BoundaryConfig.outlet`, else its outlet is clamped to the freestream.
+
+    Parameters
+    ----------
+    fvm_box : tuple[float, ...]
+        ``(xmin, xmax, ymin, ymax, zmin, zmax)`` domain bounds in m.
+    spacing : float
+        Uniform spacing in m when explicit ``nodes`` are not supplied.
+    patch_name : str, default="numericalBoundary"
+        Name of the merged outer coupling patch.
+    hole_box, wall_patch_name, empty_spanwise, separate_outer : optional
+        Forwarded to :func:`box_mesh_3d`.
+    nodes : tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray] or None
+        Optional explicit per-axis nodes in m; endpoints must match
+        ``fvm_box``.
+
+    Returns
+    -------
+    dict[str, object]
+        Native face-based mesh dictionary.
+
+    Raises
+    ------
+    ValueError
+        If the box extent is not a positive integer number of uniform cells or
+        explicit nodes do not match the bounds.
     """
     x0, x1, y0, y1, z0, z1 = (float(v) for v in fvm_box)
     if nodes is not None:
@@ -464,6 +555,24 @@ def periodic_square_mesh(n: int, length: float = 2.0 * np.pi) -> dict:
     the two spanwise patches are marked ``empty``.  Keeping this generator in
     the installed FVM package lets tutorials and benchmarks run without adding
     the repository or its tutorial tree to :mod:`sys.path`.
+
+    Parameters
+    ----------
+    n : int
+        Number of cells along each in-plane axis; at least two.
+    length : float, default=2*pi
+        Periodic square side length in m.
+
+    Returns
+    -------
+    dict[str, object]
+        Native mesh with z-min/z-max marked ``empty`` and x/y patch names
+        prepared for cyclic pairing.
+
+    Raises
+    ------
+    ValueError
+        If ``n`` is less than two or ``length`` is non-positive.
     """
     if n < 2:
         raise ValueError("n must be at least 2")

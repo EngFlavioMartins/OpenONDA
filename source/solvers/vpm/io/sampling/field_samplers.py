@@ -138,27 +138,32 @@ def resolve_samples_dir(case_directory, sample_directory: str | None = None) -> 
 
 
 class SurfaceSampler:
-    """
-    Compute VPM-induced fields on a 2D planar grid.
+    """Sample a body-complete VPM field on a regular planar grid.
 
-    Creates a regular 2D grid of points on a plane and uses the solver's
-    compute_*_at() methods to evaluate induced velocity and vorticity.
+    The sampler creates a flattened ``(n_points, 3)`` point list on the plane
+    through ``point``. For a z-normal the two bounds axes are x/y; for a
+    y-normal they are x/z; for an x-normal they are y/z. ``sample`` returns
+    canonical scalar CSV columns, while ``save_vtp`` preserves the structured
+    grid topology in a VTS file.
 
-    Attributes:
-        point: A point on the plane (3D array).
-        normal: Unit normal vector to the plane (3D array).
-        bounds: Extent of the sampling grid.
-        spacing: Grid point spacing.
+    Attributes
+    ----------
+    point : numpy.ndarray
+        Plane origin/offset, shape ``(3,)``, in m.
+    normal : numpy.ndarray
+        Normalized plane normal, shape ``(3,)``, dimensionless.
+    bounds : numpy.ndarray
+        Two in-plane intervals ``(min1, max1, min2, max2)`` in m.
+    spacing : float
+        Uniform point spacing in m.
+    grid_points : numpy.ndarray
+        Flattened generated points, shape ``(n_points, 3)``, in m.
 
-    Example:
-        >>> sampler = SurfaceSampler(
-        ...     point=[0, 0, 0],
-        ...     normal=[0, 0, 1],  # z=0 plane
-        ...     bounds=[-5, 10, -3, 3],  # x: [-5, 10], y: [-3, 3]
-        ...     spacing=0.1
-        ... )
-        >>> data = sampler.sample(solver)
-        >>> print(f"Computed velocity at {len(data['x'])} grid points")
+    Examples
+    --------
+    >>> sampler = SurfaceSampler([0, 0, 0], [0, 0, 1], [-1, 1, -1, 1], 0.5)
+    >>> sampler.grid_points.shape
+    (25, 3)
     """
 
     def __init__(
@@ -170,24 +175,39 @@ class SurfaceSampler:
         file_name: str | None = None,
         include_derivatives: bool = True,
         schedule: OutputSchedule | None = None,
+        initial: bool | None = None,
     ):
-        """
-        Initialize the surface sampler.
+        """Create and validate a planar sampling grid.
 
-        Args:
-            point: A point on the plane [x, y, z].
-            normal: Normal vector to the plane [nx, ny, nz]. Will be normalized.
-                   Only axis-aligned normals are supported: [1,0,0], [0,1,0], [0,0,1].
-            bounds: Grid bounds [min1, max1, min2, max2] for the two in-plane axes.
-                   For normal=[0,0,1] (z-plane): bounds=[xmin, xmax, ymin, ymax]
-                   For normal=[0,1,0] (y-plane): bounds=[xmin, xmax, zmin, zmax]
-                   For normal=[1,0,0] (x-plane): bounds=[ymin, ymax, zmin, zmax]
-            spacing: Grid point spacing.
-            file_name: Optional base name for output files. If None, uses
-                      default naming based on sampler class name.
-            include_derivatives: Export velocity-gradient and strain-rate
-                      fields. Vorticity always comes from the velocity curl.
-            schedule: Optional independent step- or flow-time output cadence.
+        Parameters
+        ----------
+        point : array-like
+            Plane point, shape ``(3,)``, in m.
+        normal : array-like
+            Plane normal, shape ``(3,)``. It is normalized and must be
+            non-zero; the dominant coordinate selects the in-plane axes.
+        bounds : array-like
+            ``[min1, max1, min2, max2]`` in m, ordered along the two in-plane
+            axes.
+        spacing : float
+            Positive grid spacing in m. Endpoints are included when reached by
+            the spacing sequence.
+        file_name : str or None, default=None
+            Base output name. The output manager supplies a class-based name
+            when omitted.
+        include_derivatives : bool, default=True
+            Include gradient/strain columns and VTK arrays. Vorticity is always
+            reconstructed from the velocity curl.
+        schedule : OutputSchedule or None, default=None
+            Accepted-step/time schedule used by :class:`OutputManager`.
+        initial : bool or None, default=None
+            Include the initial state. ``None`` retains a subclass's policy.
+
+        Raises
+        ------
+        ValueError
+            If point/normal shapes, bounds length, normal magnitude, or
+            spacing are invalid.
         """
         self.point = np.asarray(point, dtype=np.float32)
         normal = np.asarray(normal, dtype=np.float32)
@@ -197,6 +217,8 @@ class SurfaceSampler:
         self.file_name = file_name
         self.include_derivatives = bool(include_derivatives)
         self.schedule = schedule
+        if initial is not None:
+            self.initial = initial
 
         # Body geometry cache for masking / wall projection
         self._body_mesh = None
@@ -367,19 +389,21 @@ class SurfaceSampler:
         velocity[global_index] = wall_velocity - normal_velocity * wall_normal
 
     def sample(self, solver: "VPMSolver") -> dict[str, np.ndarray]:
-        """
-        Compute induced fields at all grid points.
+        """Evaluate the solver field at every generated grid point.
 
-        Args:
-            solver: VPM Solver instance.
+        Parameters
+        ----------
+        solver : VPMSolver
+            Solver providing body-complete velocity and velocity-gradient
+            queries at the current accepted time.
 
-        Returns:
-            Dictionary with computed fields:
-                - 'position_x', 'position_y', 'position_z': Grid point coordinates
-                - 'velocity_x', 'velocity_y', 'velocity_z': Velocity components
-                - 'vorticity_x', 'vorticity_y', 'vorticity_z': Vorticity components
-                - 'strain_rate_xx' ... 'strain_rate_zz': Strain-rate components [1/s]
-                - 'velocity_gradient_xx' ... 'velocity_gradient_zz': Gradient components [1/s]
+        Returns
+        -------
+        dict[str, numpy.ndarray]
+            Equal-length flattened columns. Position columns are m, velocity
+            columns m/s, vorticity/gradient/strain columns 1/s. Derivative
+            columns are zero when ``include_derivatives`` is false or the cloud
+            is empty.
         """
         # Guard: if no particles exist, return zero fields (avoid SVD crash)
         n_particles_total = solver.particles.n_particles_total
@@ -476,16 +500,26 @@ class SurfaceSampler:
         filepath: str | Path,
         time: float | None = None,
     ) -> Path:
-        """
-        Compute and export field data to CSV file.
+        """Evaluate one snapshot and write canonical columns to CSV.
 
-        Args:
-            solver: VPM Solver instance.
-            filepath: Output file path.
-            time: Optional simulation time (for logging).
+        Parameters
+        ----------
+        solver : VPMSolver
+            Source solver at the state being sampled.
+        filepath : str or pathlib.Path
+            Destination CSV path; parent directories are created.
+        time : float or None, default=None
+            Optional physical time in seconds written as a comment line.
 
-        Returns:
-            Path to the created CSV file.
+        Returns
+        -------
+        pathlib.Path
+            Path of the created file.
+
+        Side Effects
+        ------------
+        Evaluates the field (including CPU transfers as required) and
+        overwrites the destination file.
         """
         data = self.sample(solver)
         filepath = Path(filepath)
@@ -526,16 +560,25 @@ class SurfaceSampler:
         Note: Despite the method name, this exports .vts format (StructuredGrid)
         which is more appropriate for planar grid data than .vtp (PolyData).
 
-        Args:
-            solver: VPM Solver instance.
-            filepath: Output file path (will use .vts extension).
-            time: Optional simulation time (for logging).
+        Parameters
+        ----------
+        solver : VPMSolver
+            Source solver at the state being sampled.
+        filepath : str or pathlib.Path
+            Destination path. The suffix is replaced with ``.vts``.
+        time : float or None, default=None
+            Accepted physical time in seconds; retained for protocol
+            compatibility and not embedded by this writer.
 
-        Returns:
-            Path to the created VTS file.
+        Returns
+        -------
+        pathlib.Path
+            Path of the created VTS file.
 
-        Raises:
-            ImportError: If pyvista is not installed.
+        Raises
+        ------
+        ImportError
+            If PyVista is not installed.
         """
         try:
             import pyvista as pv
@@ -627,25 +670,30 @@ class SurfaceSampler:
 
 
 class LineSampler:
-    """
-    Compute VPM-induced fields along a line segment.
+    """Sample a body-complete VPM field along a uniformly spaced line.
 
-    Creates regularly spaced points along a line segment and uses the solver's
-    compute_*_at() methods to evaluate induced velocity and vorticity.
+    The generated ``line_points`` array has shape ``(n_points, 3)`` and the
+    returned table includes a dimensionless ``line_parameter`` from 0 to 1.
+    Position, velocity, vorticity, gradient, and strain columns use the same
+    units and names as :class:`SurfaceSampler`; CSV output can therefore be
+    consumed by the same post-processing code.
 
-    Attributes:
-        start: Start point of the line segment (3D array).
-        end: End point of the line segment (3D array).
-        spacing: Distance between sample points along the line.
+    Attributes
+    ----------
+    start, end : numpy.ndarray
+        Endpoints, shape ``(3,)``, in m.
+    length : float
+        Segment length in m.
+    spacing : float
+        Requested point spacing in m.
+    line_points : numpy.ndarray
+        Generated points, shape ``(n_points, 3)``, in m.
 
-    Example:
-        >>> sampler = LineSampler(
-        ...     start=[-5, 0, 0],
-        ...     end=[10, 0, 0],
-        ...     spacing=0.1
-        ... )
-        >>> data = sampler.sample(solver)
-        >>> print(f"Computed velocity at {sampler.n_points} points along centreline")
+    Examples
+    --------
+    >>> sampler = LineSampler([-1, 0, 0], [1, 0, 0], 0.5)
+    >>> sampler.line_points.shape
+    (5, 3)
     """
 
     # The sampler executor owns the persistent, time-aware CSV representation.
@@ -661,17 +709,26 @@ class LineSampler:
         include_derivatives: bool = True,
         schedule: OutputSchedule | None = None,
     ):
-        """
-        Initialize the line sampler.
+        """Create and validate a line sampling grid.
 
-        Args:
-            start: Start point of line segment [x, y, z].
-            end: End point of line segment [x, y, z].
-            spacing: Distance between sample points along the line.
-            file_name: Optional base name for output CSV files. If None, uses
-                      default naming based on sampler class name.
-            include_derivatives: Persist strain-rate and velocity-gradient fields.
-            schedule: Optional independent step- or flow-time output cadence.
+        Parameters
+        ----------
+        start, end : array-like
+            Endpoints with shape ``(3,)`` in m.
+        spacing : float
+            Positive requested spacing in m. At least two points are generated,
+            including both endpoints.
+        file_name : str or None, default=None
+            Base output name used by :class:`OutputManager` when provided.
+        include_derivatives : bool, default=True
+            Persist velocity-gradient and strain-rate columns.
+        schedule : OutputSchedule or None, default=None
+            Accepted-step/time schedule used by framework dispatch.
+
+        Raises
+        ------
+        ValueError
+            If endpoints are not three-vectors or spacing is non-positive.
         """
         self.start = np.asarray(start, dtype=np.float32)
         self.end = np.asarray(end, dtype=np.float32)
@@ -727,6 +784,7 @@ class LineSampler:
         return paths
 
     def _ensure_body_geometry(self, solver) -> None:
+        """Load optional panel/STL geometry and cache its nearest-point data."""
         if self._body_loaded:
             return
         self._body_loaded = True
@@ -811,20 +869,19 @@ class LineSampler:
         velocity[global_index] = wall_velocity - normal_velocity * wall_normal
 
     def sample(self, solver: "VPMSolver") -> dict[str, np.ndarray]:
-        """
-        Compute induced fields at all line points.
+        """Evaluate the solver field at every generated line point.
 
-        Args:
-            solver: VPM Solver instance.
+        Parameters
+        ----------
+        solver : VPMSolver
+            Solver providing field queries at the current accepted state.
 
-        Returns:
-            Dictionary with computed fields:
-                - 'position_x', 'position_y', 'position_z': Line point coordinates
-                - 'line_parameter': Parametric coordinate along line [0, 1]
-                - 'velocity_x', 'velocity_y', 'velocity_z': Velocity components
-                - 'vorticity_x', 'vorticity_y', 'vorticity_z': Vorticity components
-                - 'strain_rate_xx' ... 'strain_rate_zz': Strain-rate components [1/s]
-                - 'velocity_gradient_xx' ... 'velocity_gradient_zz': Gradient components [1/s]
+        Returns
+        -------
+        dict[str, numpy.ndarray]
+            Equal-length flattened columns. Positions are m, velocity m/s,
+            vorticity/gradient/strain 1/s, and ``line_parameter`` is
+            dimensionless in ``[0, 1]``.
         """
         # Guard: if no particles exist, return zero fields (avoid SVD crash)
         n_particles_total = solver.particles.n_particles_total
@@ -920,16 +977,21 @@ class LineSampler:
         filepath: str | Path,
         time: float | None = None,
     ) -> Path:
-        """
-        Compute and export field data to CSV file.
+        """Evaluate one line snapshot and write canonical columns to CSV.
 
-        Args:
-            solver: VPM Solver instance.
-            filepath: Output file path.
-            time: Optional simulation time (for logging).
+        Parameters
+        ----------
+        solver : VPMSolver
+            Source solver at the state being sampled.
+        filepath : str or pathlib.Path
+            Destination CSV path; parent directories are created.
+        time : float or None, default=None
+            Optional accepted physical time in seconds written as a comment.
 
-        Returns:
-            Path to the created CSV file.
+        Returns
+        -------
+        pathlib.Path
+            Path of the created CSV file.
         """
         data = self.sample(solver)
         filepath = Path(filepath)

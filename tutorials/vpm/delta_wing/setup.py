@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Two delta wings crossing wakes (VLM--VPM, LES).
+"""Two delta wings crossing wakes (VLM--VPM).
 
 A leading wing and a following wing both heave and pitch through the flow,
 shedding vortex wakes that the trailing wing crosses. The sampled forces and
@@ -14,33 +14,27 @@ Usage:
 
 from __future__ import annotations
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[0]) + ""
-
-
 from pathlib import Path
 
 import numpy as np
 
-from .assets.generate_surface import create_delta_wing, save_surface
 import openonda.vpm as vpm
+from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers
 
+__package__ = case_package(Path(__file__).parent)
+from .assets.generate_surface import create_delta_wing, save_surface
 
-TUTORIAL_DIR = Path(__file__).resolve().parent
 CASE_NAME = "delta_wing"
 
 # Wing and flow
 FREESTREAM_VELOCITY = 5.0
-KINEMATIC_VISCOSITY = 1.0e-3
+KINEMATIC_VISCOSITY = 1.0e-3  # [m^2/s]
 ROOT_CHORD = 0.5
 TIP_CHORD = 0.1
 HALF_SPAN = 0.5
 ANGLE_OF_ATTACK = 15.0
-AIR_DENSITY = 1.225
+AIR_DENSITY = 1.225  # [kg/m^3]
 WING_SEPARATION = 5.0 * HALF_SPAN
 
 # Prescribed motion
@@ -50,16 +44,15 @@ PITCH_PIVOT = ROOT_CHORD / 3.0
 ANGULAR_FREQUENCY = 2.0 * np.pi * HEAVE_FREQUENCY
 
 # Resolution
-END_TIME = 8.8
-TIME_STEP_SIZE = 0.0025
+END_TIME = 10.0  # [s]
+TIME_STEP_SIZE = 0.0025  # [s]
 N_STEPS = round(END_TIME / TIME_STEP_SIZE)
-SAMPLE_INTERVAL_TIME = 0.08  # write a snapshot every this many seconds
-BACKUP_INTERVAL_TIME = 0.04  # 25 animation frames per heave cycle
+SAMPLE_INTERVAL_TIME = 0.04  # 25 field snapshots per heave cycle
+FORCE_INTERVAL_TIME = 0.01  # 100 force samples per heave cycle
+BACKUP_INTERVAL_TIME = 1.0  # one checkpoint per heave cycle
 
 
-def cadence_steps(period: float) -> int:
-    """Convert a physical output period to solver steps."""
-    return max(1, round(period / TIME_STEP_SIZE))
+TUTORIAL_DIR = Path(__file__).resolve().parent
 
 
 def heave_velocity(phase: float):
@@ -84,10 +77,8 @@ def pitch_velocity(phase: float):
 
 
 def run() -> None:
-    smagorinsky_coefficient = 0.0
-    n_steps = N_STEPS
-    sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
-    backup_steps = cadence_steps(BACKUP_INTERVAL_TIME)
+    sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
+    backup_steps = round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE)
     surface_file = TUTORIAL_DIR / "assets" / "delta_wing_surface.json"
     save_surface(
         create_delta_wing(
@@ -117,22 +108,23 @@ def run() -> None:
                 ),
                 translation=(x_position, 0.0, 0.0),
                 rotation_degrees=(0.0, 0.0, 180.0),
-                rotation_centre=(x_position + PITCH_PIVOT, 0.0, 0.0),
+                rotation_centre=(PITCH_PIVOT, 0.0, 0.0),
             )
             for name, x_position, phase in wings
         ),
         mesh=vpm.VLMMeshSetup.geometric(ratio=3.0, region="end"),
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
+        wake_core_overlap=2.5,
         sample_surface_forces=True,
-        logging_interval_steps=sample_steps,
+        logging_interval_steps=round(FORCE_INTERVAL_TIME / TIME_STEP_SIZE),
     )
 
     samplers = tuple(
         vpm.SurfaceSampler(
             point=[-distance * HALF_SPAN, 0.0, 0.0],
             normal=[1, 0, 0],
-            bounds=[-0.9, 0.9, -0.9, 0.2],
+            bounds=[-0.9, 0.9, -1.5, 0.9],  # include the descending far wake
             spacing=0.04,
             file_name=f"wake_{distance}span",
             include_derivatives=False,
@@ -141,12 +133,11 @@ def run() -> None:
         for distance in (1, 5, 10)
     )
     case = vpm.VPMCase(
+        name=CASE_NAME,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="VULKAN",
-            turbulence=vpm.TurbulenceConfig.les_smagorinsky(
-                smagorinsky_coefficient=smagorinsky_coefficient
-            ),
+            compute_device="CPU",
+            turbulence=vpm.TurbulenceConfig.dns(),
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
@@ -163,6 +154,7 @@ def run() -> None:
                     1.5,
                 ]
             ),
+            max_n_particles=250_000,
             write_precision="f32",
         ),
         backup=Backup(
@@ -173,24 +165,16 @@ def run() -> None:
         samplers=Samplers(
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),
+                vpm.VLMSampler(schedule=vpm.EverySteps(sample_steps)),
                 *samplers,
             ),
             directory=CASE_NAME,
         ),
-        run=vpm.RunPlan(steps=n_steps),
+        run=vpm.RunPlan(steps=N_STEPS),
         directory=TUTORIAL_DIR,
     )
     vpm.VPMSolver(case).run()
 
 
-def main() -> int:
-    print("\n===== SIMULATION =====")
-    print("---- Two heaving/pitching delta wings crossing wakes ----")
-    run()
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
-    return 0
-
-
 if __name__ == "__main__":
-    raise SystemExit(main())
+    run()

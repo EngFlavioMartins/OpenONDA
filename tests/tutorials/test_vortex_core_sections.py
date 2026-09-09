@@ -20,7 +20,7 @@ def test_plane_sampler_round_trip_preserves_curl_orientation_and_physical_time(t
         gradient[:, 1, 0] = 2 * points[:, 0]
         return velocity, gradient
 
-    sampler = setup.CoreSectionSampler(
+    sampler = vpm.SurfaceSampler(
         point=[0, 0, 0],
         normal=[0, 0, 1],
         bounds=[-1, 1, 0, 1],
@@ -28,6 +28,7 @@ def test_plane_sampler_round_trip_preserves_curl_orientation_and_physical_time(t
         file_name="core_section",
         include_derivatives=False,
         schedule=vpm.EveryTime(1.5),
+        initial=True,
     )
     solver = SimpleNamespace(
         case=SimpleNamespace(
@@ -41,17 +42,20 @@ def test_plane_sampler_round_trip_preserves_curl_orientation_and_physical_time(t
         particles=SimpleNamespace(n_particles_total=1),
         compute_velocity_and_gradient_at_points=evaluate,
     )
-    OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
+    manager = OutputManager(solver)
+    solver.step, solver.time = 0, 0.0
+    manager.dispatch(OutputEvent.INITIAL)
+    solver.step, solver.time = 200, 1.5
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
     records = discover(tmp_path / "samples", tmp_path / "absent")
-    assert len(records) == 1
-    assert records[0]["time"] == 1.5
-    x, r, omega = read_plane(records[0]["path"])
+    assert [record["time"] for record in records] == [0.0, 1.5]
+    x, r, omega = read_plane(records[-1]["path"])
     np.testing.assert_allclose(omega, np.broadcast_to(2 * x[:, None] / 100, (len(x), len(r))))
     assert np.min(omega) < 0 < np.max(omega)
 
 
 def test_setup_and_study_share_initial_periodic_and_final_plane_sampling(tmp_path):
-    from tutorials.vpm.vortex_interactions.study import build_experiment, parser
+    from tutorials.vpm.vortex_interactions.assets.study import build_experiment, parser
 
     cases = [setup.build_case("baseline"), build_experiment(parser().parse_args([]), tmp_path)]
     for case, interval in zip(cases, (1.5, 0.15), strict=True):
@@ -67,7 +71,7 @@ def test_setup_and_study_share_initial_periodic_and_final_plane_sampling(tmp_pat
 
 
 def test_study_uses_only_vpm_samplers_without_particle_archives(tmp_path):
-    from tutorials.vpm.vortex_interactions.study import build_experiment, parser
+    from tutorials.vpm.vortex_interactions.assets.study import build_experiment, parser
 
     case = build_experiment(parser().parse_args([]), tmp_path)
     assert all(

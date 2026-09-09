@@ -80,9 +80,37 @@ def _selection_indices(selection: object, count: int) -> NDArray[np.intp] | Bool
 class ParticleDistribution:
     """Immutable particle geometry and quadrature.
 
-    Positions have shape ``(N, 3)`` in length units; radii have shape ``(N,)``
-    in length units; volumes have shape ``(N,)`` in cubic length units.
-    ``spacing`` is the nominal transverse particle spacing and is positive.
+    This is the geometry-only product of a distribution builder and can be
+    reused by multiple analytical flow initializers. Constructor inputs are
+    copied into C-contiguous ``float64`` arrays and marked read-only.
+
+    Parameters
+    ----------
+    position : array-like, shape (N, 3)
+        Cartesian particle coordinates in m.
+    core_radius : array-like, shape (N,)
+        Positive regularization radii ``sigma`` in m.
+    particle_volume : array-like, shape (N,)
+        Positive quadrature volumes in m³.
+    spacing : float
+        Positive nominal particle spacing ``h`` in m.
+
+    Attributes
+    ----------
+    position : numpy.ndarray
+        Immutable ``(N, 3)`` coordinates in m.
+    core_radius : numpy.ndarray
+        Immutable ``(N,)`` regularization radii in m.
+    particle_volume : numpy.ndarray
+        Immutable ``(N,)`` quadrature weights in m³.
+    spacing : float
+        Nominal spacing ``h`` in m; :attr:`core_radius_ratio` is ``mean(sigma)/h``.
+
+    Raises
+    ------
+    ValueError
+        If shapes/counts disagree, any value is non-finite, radii/volumes are
+        non-positive, or spacing is non-positive.
     """
 
     position: FloatArray
@@ -115,7 +143,25 @@ class ParticleDistribution:
         return float(np.mean(self.core_radius) / self.spacing)
 
     def select(self, selection: object) -> ParticleDistribution:
-        """Return an immutable, validated subset of this distribution."""
+        """Return an immutable subset selected by mask or particle indices.
+
+        Parameters
+        ----------
+        selection : array-like, shape (K,) or (N,)
+            One-dimensional integral indices in ``[0, N)`` or a Boolean mask
+            of length ``N``.
+
+        Returns
+        -------
+        ParticleDistribution
+            Newly copied, read-only aligned geometry. Nominal spacing is
+            retained even when selection makes the cloud irregular.
+
+        Raises
+        ------
+        ValueError
+            If selection is not a correctly shaped mask or bounded index list.
+        """
         indices = _selection_indices(selection, len(self))
         return ParticleDistribution(
             position=self.position[indices],
@@ -132,6 +178,37 @@ class VortexParticleSet:
     Vector fields use shape ``(N, 3)``; scalar and ID fields use ``(N,)``.
     Arrays are copied and marked read-only, so a frozen container cannot be
     mutated through an input-array alias.
+
+    Parameters
+    ----------
+    position, velocity, vortex_strength : array-like, shape (N, 3)
+        Cartesian position in m, velocity in m/s, and circulation vector
+        ``Gamma=omega*particle_volume`` in m³/s.
+    core_radius, particle_volume, kinematic_viscosity : array-like, shape (N,)
+        Positive core radius in m, positive quadrature volume in m³, and
+        non-negative molecular viscosity in m²/s.
+    spacing : float
+        Positive nominal particle spacing ``h`` in m.
+    group_id, zone_id : array-like of int or None, shape (N,)
+        Optional labels copied to int32 without fractional truncation.
+
+    Attributes
+    ----------
+    position, velocity, vortex_strength : numpy.ndarray
+        ``(N, 3)`` fields in m, m/s, and m³/s. `vortex_strength` is the vector
+        circulation/strength ``Gamma = omega * particle_volume``.
+    core_radius, particle_volume, kinematic_viscosity : numpy.ndarray
+        ``(N,)`` fields in m, m³, and m²/s.
+    spacing : float
+        Nominal particle spacing in m.
+    group_id, zone_id : numpy.ndarray or None
+        Optional immutable int32 labels with shape ``(N,)``.
+
+    Raises
+    ------
+    ValueError
+        If fields are not finite/aligned, scalar constraints fail, or labels
+        are non-integral or outside the int32 range.
     """
 
     position: FloatArray
@@ -187,7 +264,12 @@ class VortexParticleSet:
         )
 
     def select(self, selection: object) -> VortexParticleSet:
-        """Return a subset while keeping all particle fields aligned."""
+        """Return a copied immutable subset with every particle field aligned.
+
+        ``selection`` is either a Boolean mask of shape ``(N,)`` or a
+        one-dimensional sequence of bounded integer indices. The returned
+        object retains nominal spacing and slices optional IDs consistently.
+        """
         indices = _selection_indices(selection, len(self))
         return VortexParticleSet(
             position=self.position[indices],
@@ -211,7 +293,25 @@ def attributed_particle_set(
     group_id: object | None = None,
     zone_id: object | None = None,
 ) -> VortexParticleSet:
-    """Combine immutable geometry with attributed flow fields."""
+    """Combine immutable geometry with velocity, strength, and viscosity fields.
+
+    Parameters
+    ----------
+    distribution : ParticleDistribution
+        Geometry/quadrature source. It is reused through read-only arrays.
+    velocity, vortex_strength : array-like
+        Finite fields of shape ``(N, 3)`` in m/s and m³/s.
+    kinematic_viscosity : float or array-like
+        Non-negative molecular viscosity in m²/s, either scalar or shape
+        ``(N,)``.
+    group_id, zone_id : array-like or None
+        Optional integral labels of shape ``(N,)``.
+
+    Returns
+    -------
+    VortexParticleSet
+        Validated, copied, read-only solver-ready fields.
+    """
     viscosity = np.asarray(kinematic_viscosity, dtype=np.float64)
     if viscosity.ndim == 0:
         viscosity = np.full(len(distribution), float(viscosity), dtype=np.float64)

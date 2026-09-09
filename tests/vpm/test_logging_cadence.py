@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from source.solvers.vpm.io.logging import Logging
@@ -62,3 +64,37 @@ def test_begin_step_does_not_claim_that_work_has_completed(capsys):
     assert capsys.readouterr().out == ""
     Logging.warning("failed before acceptance")
     assert "Warning     | step 7 | failed before acceptance" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "source, expected_label",
+    [
+        ("fourier_transition_viscous_rate", "viscous estimate="),
+        ("direct_transition_viscous_rate", "viscous estimate="),
+        ("free_space_fft_energy_backward_difference", "d(E/rho)/dt="),
+    ],
+)
+def test_energy_rate_label_distinguishes_transition_estimates(source, expected_label, capsys):
+    from source.solvers.vpm.core.solver import VPMSolver
+
+    solver = VPMSolver.__new__(VPMSolver)
+    solver._flow_integrals = {"kinetic_energy_rate_source": source}
+    system = SimpleNamespace(
+        step=16,
+        time=0.4,
+        particles=SimpleNamespace(n_particles_total=200),
+        total_kinetic_energy=0.8,
+        kinetic_energy_rate=-0.1,
+        viscous_kinetic_energy_rate=-0.1,
+        kinetic_energy_rate_source=solver.kinetic_energy_rate_source,
+        vortex_strength_magnitude_sum=1.0,
+        net_vortex_strength=[0.0, 0.0, 0.0],
+        total_linear_impulse=[0.0, 0.0, 1.0],
+        total_angular_impulse=[0.0, 0.0, 0.0],
+        total_enstrophy=10.0,
+        total_helicity=0.0,
+    )
+    Logging.flow_diagnostics(system)
+    energy_line = next(line for line in capsys.readouterr().out.splitlines() if "Energy" in line)
+    assert expected_label in energy_line
+    assert ("viscous estimate=" in energy_line) != ("d(E/rho)/dt=" in energy_line)

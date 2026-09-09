@@ -17,9 +17,33 @@ def _directory(value: str | Path, name: str) -> str:
 class Backup:
     """Numerical restart cadence and destinations owned by a VPM case.
 
+    Parameters
+    ----------
+    interval_steps : int, default=0
+        Non-negative accepted-step cadence; zero disables periodic backups.
+    directory : str, default='solution'
+        Numerical restart destination, resolved below the case directory when
+        relative.
+    log_directory : str, default='solution'
+        Runtime log destination with the same path-resolution rule.
+
     ``interval_steps=0`` disables periodic saves. ``directory`` and
     ``log_directory`` are relative to the case directory unless absolute.
     Backups keep compute precision and do not trigger samples.
+
+    Attributes
+    ----------
+    interval_steps : int
+        Positive accepted-step cadence; zero disables periodic backups.
+    directory : str
+        Numerical restart destination, historically ``"solution"`` by
+        default, resolved below the VPM case directory when relative.
+    log_directory : str
+        Runtime log destination, with the same path resolution rule.
+
+    Backup writes are framework-owned side effects. They are distinct from
+    scientific sampler output and are expected to be loaded into a newly
+    constructed solver.
     """
 
     interval_steps: int = 0
@@ -42,6 +66,15 @@ class Samplers:
     Missing scientific output is fatal. Individual sample implementations may
     elect to handle their own recoverable errors before returning from
     ``write``.
+
+    Parameters
+    ----------
+    samples : tuple[object, ...]
+        Objects implementing ``write(context)``, ``sample(solver)``,
+        ``save_csv(...)``, or ``save_vtp(...)``.
+    directory : str or None
+        Optional relative subdirectory below the mandatory case ``samples/``
+        root. Parent traversal and absolute paths are rejected.
     """
 
     samples: tuple[object, ...] = ()

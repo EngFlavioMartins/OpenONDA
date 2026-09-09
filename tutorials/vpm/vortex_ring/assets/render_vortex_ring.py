@@ -3,7 +3,8 @@
 All labels are overlaid later by LaTeX. Geometry arrives as VTK PolyData.
 """
 
-import sys, json
+import json
+import sys
 from pathlib import Path
 from paraview.simple import (
     CreateView,
@@ -17,7 +18,10 @@ from paraview.simple import (
 )
 
 out = Path(sys.argv[1])
-meta = json.loads((out / "scene.json").read_text())
+# Use exactly the same sampled colors as the LaTeX color bar, independent of
+# ParaView preset names. These values are transient rendering inputs.
+rgb_points = json.loads(sys.argv[2])
+schematic_only = "--schematic-only" in sys.argv[3:]
 view = CreateView("RenderView")
 view.ViewSize = [1500, 1250]
 view.UseColorPaletteForBackground = 0
@@ -51,7 +55,7 @@ def particles(name, colored):
     if colored:
         ColorBy(d, ("POINTS", "strength"))
         lut = GetColorTransferFunction("strength")
-        lut.RGBPoints = meta["rgb_points"]
+        lut.RGBPoints = rgb_points
         lut.ColorSpace = "RGB"
         lut.RescaleTransferFunction(0.04, 0.80)
         d.SetScalarBarVisibility(view, False)
@@ -62,7 +66,7 @@ def particles(name, colored):
     return g
 
 
-for i in [] if meta.get("schematic_only") else [0, 1]:
+for i in [] if schematic_only else [0, 1]:
     g = particles(f"particles_{i}.vtp", True)
     SaveScreenshot(str(out / f"particles_{i}.png"), view, ImageResolution=[2400, 2000])
     Hide(g, view)

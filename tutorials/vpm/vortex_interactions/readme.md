@@ -1,86 +1,111 @@
 # Vortex interactions
 
-The study aims to reproduce the LBM leapfrogging trajectory and its loss of
-coherent ring motion, then determine whether stabilization extends the
-physically credible VPM solution. **No viscous winner or stabilized LBM match
-has yet been established.**
-
-All current study cases use LES (Smagorinsky Cs=0.20), SSPRK3, transposed
-stretching, Re_Gamma=3000 and the same corrected Gaussian initial condition.
-The case selects the treecode backend with
-`vpm.TreecodeInduction(stretching_scheme="TRANSPOSED")`. The study's
-`--stretching direct|mixed|transposed` option changes only the formulation;
-qualification campaigns retain transposed stretching.
-
-The Fig. 5 LBM trajectory is unperturbed; an imposed disturbance belongs to a
-separate experiment. VPM uses unbounded induction whereas the LBM reference
-uses a periodic domain; that discrepancy remains part of the qualification.
-
-From this directory, with the OpenONDA environment active:
+Run the official GBD/Lagrange6 baseline first, then compare stretching
+viscosity, moment-preserving realignment and splitting:
 
 ```sh
-./allrun.sh                         # bounded LES baseline/stabilization study
-./allplot.sh                        # plots from recorded VPM sampler outputs
-./allrun.sh --campaign qualification  # optional broader viscous screen
+./allrun.sh
+./allplot.sh
 ```
 
-The default budget campaign uses GBD/Lagrange6 as a working candidate, h=.04,
-sigma=.04 and dt=.0075. It runs an unstabilized baseline and a weak
-moment-preserving realignment trial to t=6, each with a 50-minute runtime cap,
-then a half-timestep baseline check with a 30-minute cap. Including startup,
-terminal output and analysis, this is intended to fit within three hours.
-The cap is checked between accepted steps; an in-flight step and terminal
-output are allowed to finish. Budget-limited runs have status `wall_time_limit`
-and retain their terminal sampler output and native backup.
+Use the installed OpenONDA environment. All physical inputs are in
+`setup_les.py`; each launcher line is one ordinary Python command. To run
+just the baseline or the leading stabilized candidate:
 
-This is a bounded exploratory comparison, not a declaration of a viscous
-winner or full convergence. The separate qualification campaign compares CS,
-GBD/M4' and GBD/Lagrange6 at dt=.00375 and .001875 through t=.15, h=.03 and
-sigma=.04; it can take much longer and is no longer the default.
-Explicit `--campaign baseline|stabilized --viscous cs|gbd_m4|gbd_lagrange6`
-commands remain available for extended studies.
+```sh
+python setup_les.py --variant baseline
+python setup_les.py --variant stretching_viscosity
+```
 
-Run the selected baseline first and inspect its actual loss of accuracy or
-health stop. The stabilized campaign includes the identical baseline before
-candidate interventions. For CS these are splitting, remeshing and weak
-moment-preserving realignment with remeshing. For GBD these are splitting and
-weak moment-preserving realignment; GBD already regenerates its particles.
-These remain trials, not optimized or validated settings. A baseline is not
-required to blow up, and health limits must not be loosened to manufacture
-longer survival.
+The baseline is an unperturbed pair of Gaussian rings with Re_Gamma=3000,
+R0=1, a0=.1, separation=1, Smagorinsky Cs=.20, SSPRK3, transposed stretching,
+GBD/Lagrange6, h=sigma=.04 and dt=.0075. Only the stabilization changes
+between the four default cases. Stretching viscosity uses coefficient .5;
+realignment preserves moments with frequency .384684814725/s; splitting
+checks every five steps with twice the initial peak-strength threshold.
 
-## Automatic output
+Each case requests 1200 steps (t=9) with the same 150-minute native runtime
+cap. The four serial caps total ten hours, plus startup/final-output overhead.
+This is a bounded study; the requested horizon is not guaranteed within the
+cap. `allrun.sh` stops on an execution error; normal native health/budget
+stops retain their actual status. Do not run overlapping copies of the suite.
 
-The case configures the VPM `FlowIntegralsSampler`, `RingDiagnosticsSampler`
-and `SurfaceSampler`. The solver supplies its normal health, LES, conservation
-and stabilization-event diagnostics. No auxiliary particle snapshots,
-reconstruction or continuation scripts are needed.
+The time horizon includes margin for x/R0=7. From saved tracks through t=3.3,
+mean-speed extrapolation predicts both cores there near t=5.6. The slower
+core's recent t=2.4–3.3 speed predicts t=8.33 for baseline and t=8.69 for
+stretching viscosity. Hence t=9, rather than t=6. This is a rough extrapolation
+through changing leapfrog speeds, not a guarantee. The report explicitly
+records whether both tracked cores actually reached 7; a runtime cap can
+still prevent that, and must not be described as successful full coverage.
 
-Under `study_results/<tag>/samples/diagnostics/`:
+## Official solution and samples
 
-- `flow_integrals.csv`: conservation, resolution and stabilization diagnostics.
-- `ring_diagnostics.csv`: particle-group geometry and impulse proxies.
-- `core_section.pvd` and VTS files: velocity and curl-derived vorticity on
-  z=0, y>=0, initially, every .15 physical seconds and at termination, at .02
-  spacing. In this plane omega_theta equals omega_z.
+For each variant, the solver writes:
 
-Plots read these files directly. Field-core locations are maxima on the saved
-plane grid, not particle-label centroids or reconstructed azimuthal averages.
-The LBM comparison stops assigning core identities when two distinct maxima
-cannot be resolved. That diagnostic cutoff is not by itself proof of physical
-breakdown; check the fields, sampling resolution and VPM health diagnostics.
+- `solution/les_<variant>/vpm_metadata.json`: native configuration and state.
+- `solution/les_<variant>/vpm.log`: progress, health limits and failure details.
+- `solution/les_<variant>/vpm_*.h5` and XDMF: native numerical backups every
+  100 steps and at normal termination, including a native budget/health stop.
+- `samples/les_<variant>/flow_integrals.csv`: native energy, enstrophy,
+  impulse, LES, resolution and stabilization diagnostics every ten steps.
+- `samples/les_<variant>/ring_diagnostics.csv`: native particle-group proxies.
+- `samples/les_<variant>/core_section.pvd` and VTS: velocity and curl-derived
+  vorticity on z=0, y>=0, at .02 spacing, initially/every .15 s/at termination.
+- `samples/les_<variant>/cross_section.pvd` and VTS: the orthogonal y=0
+  plane, including both signs of z, at .04 spacing, initially/every .30 s/at
+  termination. Compare these planes for asymmetric deformation.
 
-`allrun.sh` automatically plots sampler fields and writes the LBM comparison
-under `figures/study/les/`. Short qualification runs do not cover the scoring
-interval and therefore report the trajectory score as unavailable. Each run
-records its exact configuration, source fingerprint, status and termination
-reason in `result.json`. Changed configurations archive previous results;
-`--resume` only reuses compatible completed runs.
+There are no tutorial-owned metadata writers or reconstructed diagnostic
+fields. Plotting reads native samples. A forced process kill can leave the
+latest metadata at its checkpoint state; it must not be relabeled completed.
+The older `study_results/` data remain historical evidence, not the official
+solution produced by this launcher. Existing seeded `solution/baseline` data
+are separate from the new `solution/les_baseline`.
 
-Figures use the repository thesis style. Historical seeded stabilization
-campaigns remain accessible via `--campaign strategies|screen|legacy`; they
-are not the unperturbed LBM qualification.
+## Decide which stabilization helps
 
-See [study status](../../../docs/reviews/2026-09-vpm-core-transport.md),
-[original stabilization audit](../../../docs/reviews/2026-09-vpm-stabilization.md)
-and [reference provenance](assets/references/README.md).
+Use both numerical survival and LBM agreement. A method is a clear winner
+only if it improves one without materially worsening the other; otherwise
+report the tradeoff or an inconclusive result.
+
+| Evidence | Figure/result | Decision |
+|---|---|---|
+| Native termination, last accepted time, health history | Report status table and `diagnostic_histories.png` | Identify numerical blow-up/health stop separately from completion, runtime cap or resource failure. A capped/completed run only gives a lower bound on survival. |
+| Sampled-core radius versus axial travel | `core_trajectories.png` and fixed-interval RMS scores | Compare both rings on x/R0=.55–1.5, .55–2.5, .55–3.5 and .55–5.5, .55–7, without fitting or extrapolation. Longer coverage is useful only while the trajectory remains credible. |
+| Core shape, vorticity peaks and bridge | Common-time core sections at t=1.5, 3.3, 4.5, 6, 7.5, 9, when saved | Detect excessive damping, deformation or loss of two resolved cores; inspect orthogonal VTS planes around any transition. |
+| Energy/enstrophy, divergence, misalignment, CFL and particle count | `diagnostic_histories.png` | Check whether apparent stability simply comes from excessive damping or loss of resolution. |
+| Native stabilization activity | Report JSON and flow CSV | Zero splitting events means splitting was not exercised; continuous stretching viscosity is identified by its coefficient rather than the discrete-event count. |
+
+`allplot.sh` writes the report, trajectory and diagnostic figures to
+`figures/les/`, and sampled core contours to `figures/core_sections/`.
+Scores unavailable because of early termination remain unavailable. Compare
+an apparent winner at the saved-time cadence and at every other output;
+a close ranking needs a sensitivity check before certification.
+
+The optional `python setup_les.py --variant halfdt` is a baseline time-step
+check with the same physical horizon. It is outside the default four-run
+budget; run it only if the final comparison needs it. Particle-resolution
+convergence is not established by this check.
+
+The existing Fig. 5 LBM data are an unperturbed kinematic reference and do
+not establish an instability-breakdown time. VPM induction is unbounded;
+the reference uses periodic boundaries. A meridional peak-tracking cutoff
+is not proof of three-dimensional breakdown. Claiming matched physical
+breakdown requires corresponding LBM field/time evidence; see
+[reference provenance](assets/references/README.md).
+
+## Prior result and other experiments
+
+The prior bounded study selected GBD over CS on early-trajectory agreement
+and cost; CS core spreading was confirmed active. Stretching viscosity .5
+reduced radius RMS from 5.715% to 5.116% of R0 on x/R0=.55–3.5. Realignment
+showed no resolved trajectory improvement and splitting did not activate.
+Those results motivate this official comparison, but do not certify late
+survival or breakdown physics.
+
+The six seeded cases remain in `setup.py`; their imposed disturbance is a
+separate physical experiment. Advanced controls remain in `assets/study.py`.
+`allclean.sh` deletes solution, samples, figures and historical study results;
+run and plot do not automatically clean existing data.
+
+See [study record](../../../docs/reviews/2026-09-vpm-core-transport.md).

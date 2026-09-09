@@ -10,17 +10,15 @@ The 600-dpi scene is embedded in a 125 x 85 mm PDF with vector labels.
 Viridis/plasma retain the original scientific-field color conventions.
 """
 
-from pathlib import Path
-import json
-import sys
 import argparse
+from math import erf, exp, pi, sqrt
+from pathlib import Path
 
 import h5py
-import numpy as np
-from scipy.spatial import cKDTree
-from numba import njit, prange
-from math import erf, exp, sqrt, pi
 import matplotlib
+import numpy as np
+from numba import njit, prange
+from scipy.spatial import cKDTree
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -29,9 +27,6 @@ from matplotlib.ticker import FormatStrFormatter
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 OUT = CASE_DIR / "figures"
-from .. import setup
-
-_initial_conditions = setup._initial_conditions
 
 if not __package__:
     from openonda.tutorial_runner import case_package
@@ -39,7 +34,10 @@ if not __package__:
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-from ..assets.postprocess import load_theme
+from .. import setup
+from ..assets.postprocess import _metadata, load_theme
+
+_initial_conditions = setup._initial_conditions
 
 load_theme()
 plt.rcParams.update({"axes.linewidth": 0.45, "pdf.compression": 9})
@@ -69,10 +67,7 @@ def sample_velocity(points, position, strength, sigma):
 
 
 def sample_vorticity(points, position, strength, sigma):
-    """Gaussian sum truncated only beyond five maximum particle radii.
-
-    The absolute omitted-tail bound is recorded in the output metadata.
-    """
+    """Gaussian sum truncated only beyond five maximum particle radii."""
     tree = cKDTree(position)
     radius = 5 * float(np.max(sigma))
     result = np.empty(len(points))
@@ -183,19 +178,23 @@ def main():
     parser.add_argument("--format", choices=("pdf", "png", "both"), default="pdf")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    run = json.loads((CASE_DIR / "samples/merging_gbd/run_metadata.json").read_text())
+    run = _metadata(CASE_DIR / "solution/merging_gbd/vpm_metadata.json")
+    if not run:
+        raise FileNotFoundError(CASE_DIR / "solution/merging_gbd/vpm_metadata.json")
+    if run.get("status") != "completed":
+        raise ValueError("The GBD run is not complete.")
     viscosity = float(run["kinematic_viscosity"])
     a0 = float(run["velocity_peak_radius"])
     circulation = abs(float(run["circulations"][0]))
-    sample_z = float(run["sample_plane_z"])
+    sample_z = 0.5 * float(run["column_half_length"])
     # Reconstruction must describe the saved run even if setup.py was edited later.
     expected = {
         "velocity_peak_radius": setup.CORE_RADIUS,
-        "gaussian_core_radius": setup.GAUSSIAN_CORE_RADIUS,
+        "core_radius": setup.GAUSSIAN_CORE_RADIUS,
         "particle_spacing": setup.SPACING,
         "particle_core_radius": setup.PARTICLE_RADIUS,
         "vortex_separation": setup.SEPARATION,
-        "column_length": setup.COLUMN_LENGTH,
+        "column_half_length": setup.COLUMN_LENGTH / 2.0,
         "circulations": setup.PHYSICS_CIRCULATIONS["merging"],
     }
     for key, value in expected.items():
@@ -207,7 +206,7 @@ def main():
     alpha0 = np.concatenate([p.vortex_strength for p in clouds])
     sigma0 = np.concatenate([p.core_radius for p in clouds])
     # Use the recorded final step, never a hard-coded backup filename.
-    path = CASE_DIR / "solution/merging_gbd" / f"vpm_{int(run['number_of_steps']):06d}.h5"
+    path = CASE_DIR / "solution/merging_gbd" / f"vpm_{int(run['completed_steps']):06d}.h5"
     if not path.is_file():
         raise FileNotFoundError(f"Final GBD particle backup required for sphere views: {path}")
     with h5py.File(path) as f:
@@ -226,7 +225,6 @@ def main():
     xx, yy = np.meshgrid(x, y)
     query = np.column_stack((xx.ravel(), yy.ravel(), np.full(xx.size, sample_z)))
     cases = []
-    tail_bounds = []
     cached = np.load(args.field_cache) if args.field_cache and args.field_cache.exists() else None
     cache_values = {"grid": x}
     for i, (pos, alpha, sigma, t) in enumerate(
@@ -247,11 +245,6 @@ def main():
         else:
             omega = sample_vorticity(pos, pos, alpha, sigma) / wc
             vel = sample_velocity(query, pos, alpha, sigma).reshape(len(y), len(x), 2)
-        tail_bounds.append(
-            float(
-                np.exp(-25) * np.sum(np.abs(alpha[:, 2])) / (np.pi**1.5 * np.min(sigma) ** 3) / wc
-            )
-        )
         cases.append((pos, alpha, omega, vel, t))
         for field, value in [
             ("position", pos),
@@ -292,7 +285,6 @@ def main():
     upper[1] = lower[1] + (height - 1) * (upper[0] - lower[0]) / (width - 1)
     axes_rectangle = [0.005, 0.045, 0.99, 0.95]
     view_limits = []
-    styles = []
     for (pos, alpha, omega, vel, t), name in zip(
         cases, ["mergingRenderT0.pdf", "mergingRenderFinal.pdf"]
     ):
@@ -387,54 +379,7 @@ def main():
             fig.savefig(output, dpi=600)
             print(output, flush=True)
         plt.close(fig)
-        styles.append(
-            {
-                "time": t,
-                "normalised_time": tau,
-                "vorticity_limits": [wmin, wmax],
-                "velocity_limits": [0, umax],
-                "sphere_radius_range": list(map(float, [radii.min(), radii.max()])),
-                "sphere_strength_reference": float(strength.max()),
-                "scene_pixels": [width, height],
-            }
-        )
     assert view_limits[0] == view_limits[1]
-    assert styles[0]["scene_pixels"] == styles[1]["scene_pixels"]
-    metadata = args.output_dir / "render-lamb-oseen-snapshots.json"
-    metadata.write_text(
-        json.dumps(
-            {
-                "source_backup": str(path),
-                "initial_particles": len(pos0),
-                "final_particles": len(pos1),
-                "final_time": time,
-                "sample_plane_z": sample_z,
-                "solution": "merging_gbd",
-                "velocity_scale": uc,
-                "vorticity_scale": wc,
-                "styles": styles,
-                "sphere_encoding": "Opaque shaded spheres with radius 0.035*(abs(strength)/frame_max_strength)^0.65. Glyph radius is not the Gaussian core radius.",
-                "renderer": "CPU analytic ray-sphere intersections, Phong shading and a depth buffer; streamlines are depth tested against spheres.",
-                "colour_clipping": "Particle upper limit min(95th percentile, 0.8*peak), lower limit 0.08*upper; values below lower are pale grey. Velocity upper limit 99th percentile. All limits are per frame and indicated by extended colour bars.",
-                "vorticity_definition": "Gaussian reconstruction at particle positions, truncated beyond five maximum radii",
-                "normalised_vorticity_absolute_tail_bounds": tail_bounds,
-                "velocity_definition": "direct 3-D Gaussian Biot-Savart sum on z=L/4",
-                "field_grid": [149, 149],
-                "view_limits": view_limits,
-                "framing": "Both states share the orthographic projection, field of view, raster dimensions and axes rectangle. Bounds enclose both particle clouds and the sampling plane. Colour limits and size normalisation are per frame.",
-                "camera": {
-                    "projection": "orthographic",
-                    "view_vector_unnormalised": [0.70, 0.61, -0.37],
-                    "in_plane_rotation_degrees": 25,
-                    "axes_rectangle": axes_rectangle,
-                    "pixels_per_length_unit": (width - 1) / (upper[0] - lower[0]),
-                },
-                "figure_size_mm": [125, 85],
-            },
-            indent=2,
-        )
-        + "\n"
-    )
 
 
 if __name__ == "__main__":

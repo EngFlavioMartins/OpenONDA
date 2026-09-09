@@ -16,9 +16,10 @@ from dataclasses import dataclass
 import logging
 import math
 
-from numba import njit
 import numpy as np
 import taichi as ti
+
+from source._numba import cacheable_njit as njit
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
 from ..events import NullPhysicsEventObserver
@@ -322,7 +323,7 @@ def _dvh_scatter_numba(
         width = widths[p]
 
         # Zero viscosity is the no-spread limit.  Avoid division by zero and
-        # preserve the particle circulation at its nearest active node.
+        # preserve the particle strength at its nearest active node.
         if not np.isfinite(width) or width <= 0.0:
             ii = int(np.rint((px - gmin[0]) / particle_spacing))
             jj = int(np.rint((py - gmin[1]) / particle_spacing))

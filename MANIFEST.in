@@ -2,6 +2,7 @@ include README.md
 include license
 include citation.cff
 include pyproject.toml
+include install.py
 recursive-include openonda *.py *.ttf py.typed
 recursive-include source *.py *.md *.json py.typed
 

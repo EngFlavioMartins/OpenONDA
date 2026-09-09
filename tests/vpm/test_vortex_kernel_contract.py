@@ -111,6 +111,26 @@ def test_pair_radius_kernel_preserves_the_conservative_two_particle_rate(name):
     np.testing.assert_allclose(target_rate + source_rate, 0.0, rtol=0.0, atol=2.0e-14)
 
 
+@pytest.mark.parametrize(
+    "name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
+)
+def test_kernel_gradient_has_its_finite_source_centre_limit(name):
+    kernel = make_vortex_kernel(name)
+    strength = np.array([0.2, 0.4, -0.1])
+    epsilon = 2.5e-5
+    offsets = epsilon * np.eye(3)
+    finite_difference = (
+        kernel.velocity_pair(offsets, strength, 0.2, 0.3)
+        - kernel.velocity_pair(-offsets, strength, 0.2, 0.3)
+    ).T / (2 * epsilon)
+    np.testing.assert_allclose(
+        kernel.gradient_pair(np.zeros(3), strength, 0.2, 0.3),
+        finite_difference,
+        rtol=1e-6,
+        atol=1e-10,
+    )
+
+
 def test_kernel_gradient_matches_a_finite_difference_of_pair_velocity():
     kernel = make_vortex_kernel("GAUSSIAN")
     displacement = np.array([0.7, -0.3, 0.2])

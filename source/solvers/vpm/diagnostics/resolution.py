@@ -20,14 +20,14 @@ Three quantities, all cheap and all with an unambiguous "good" direction:
 
 ``vorticity_divergence_error``
     ||div w|| / ||grad w||, the |w|-weighted mean over particles.  The exact
-    vorticity field is solenoidal; the discrete one, w_h = sum alpha_j zeta_s,
+    vorticity field is solenoidal; the discrete one, w_h = sum Gamma_j zeta_s,
     is not, and vortex stretching amplifies precisely its divergent part.  This
     is the standard signature of the classical 3-D vortex-method instability
     (Cottet & Koumoutsakos 2000, Sec. 5.3; Pedrizzetti 1992).
 
 ``vortex_strength_misalignment_degrees``
-    Angle between alpha_p and w(x_p). In the continuum they are parallel; the
-    DIRECT and TRANSPOSED stretching forms differ by exactly alpha x w, so this
+    Angle between Gamma_p and w(x_p). In the continuum they are parallel; the
+    DIRECT and TRANSPOSED stretching forms differ by exactly Gamma x w, so this
     angle simultaneously measures how far the particle field is from being a
     vorticity field and how much the choice of stretching form can matter.
 
@@ -63,9 +63,9 @@ def _vorticity_gradient_metrics(
 ) -> tuple[float, np.ndarray]:
     """|w|-weighted mean of |div w| / ||grad w||_F over particles.
 
-    For w_h(x) = sum_j alpha_j zeta(|x-x_j|/s_j)/s_j^3 with a Gaussian zeta,
+    For w_h(x) = sum_j Gamma_j zeta(|x-x_j|/s_j)/s_j^3 with a Gaussian zeta,
 
-        d(w_b)/d(x_a) = sum_j alpha_jb * (-2 (x-x_j)_a / s_j^2) * zeta_j / s_j^3
+        d(w_b)/d(x_a) = sum_j Gamma_jb * (-2 (x-x_j)_a / s_j^2) * zeta_j / s_j^3
 
     so the divergence is the trace and the Frobenius norm bounds it.  The ratio
     is scale-free: 0 for a perfectly solenoidal discrete field, O(1) once the

@@ -13,8 +13,13 @@ From a cloned checkout, optionally create a virtual environment first:
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install .
+python install.py
 ```
+
+`install.py` installs the package and dependencies into that Python environment,
+runs `pip check`, and verifies the installation from a temporary directory.
+It requires no per-case interpreter variables or import-path configuration.
+The equivalent package-only command is `python -m pip install .`.
 
 After installation, change to any writable directory and run:
 
@@ -25,19 +30,35 @@ python -m pip check
 openonda tutorial run fvm/taylor_green --workspace ./first-flow
 ```
 
-The verifier checks installed resources, a rendered figure, CPU Taichi
-initialization, Numba runtime compatibility and a real native FVM step. It creates temporary output and
+The verifier checks installed resources, a rendered figure, a refined Cartesian
+mesh using the compiled octree, CPU Taichi initialization, Numba runtime
+compatibility and a real native FVM step. It creates temporary output and
 returns a nonzero status on failure. `--require-site-packages` distinguishes a
 normal installation from an editable checkout; omit it for editable installs.
+
+The native Cartesian mesher automatically uses Numba for octree balancing.
+This acceleration is part of the normal package: it requires no meshing extra,
+external compiler, OpenFOAM/cfMesh installation, or repository-relative paths.
+Numba compiles for the local CPU on first use and caches the result for later
+processes, including runs launched from other working directories. The first
+run after installation or a kernel update includes compilation overhead;
+steady-state performance still depends on the CPU and mesh size.
+
+Numba uses a writable package cache or falls back to its per-user cache for
+read-only installations. Set `NUMBA_CACHE_DIR` to a writable persistent directory
+if a shared installation requires an explicit cache location. Machine-specific
+compiled cache files are not shipped in the wheel; each machine builds its own.
+See [Numba's cache documentation](https://numba.readthedocs.io/en/stable/developer/caching.html).
 
 ## Development installation
 
 ```bash
-python -m pip install -e ".[dev]"
+python install.py --dev
 ```
 
 Run tests from the checkout using `python -m pytest`. Installed imports still
 work from other directories; the editable installation tracks source changes.
+The equivalent package-only command is `python -m pip install -e ".[dev]"`.
 For only the test runner, use `.[test]`. See [the test guide](../tests/README.md).
 
 ## Optional Python dependencies
@@ -92,4 +113,7 @@ bash scripts/install/install_conda.sh
 Add `--dev` for an editable development installation or `--parallel` for the
 MPI/PETSc environment. The helper can install Miniforge if Conda is absent;
 use `--prompt` to confirm that download interactively. Pip is sufficient for
-the normal installation and does not require this helper.
+the normal installation and does not require this helper. The Conda helper
+uses the same `install.py` once the environment exists. Activate the environment
+once per terminal session, then run `python setup.py ...`, `python assets/name.py
+...`, or `./allrun.sh` in a tutorial. The shell launchers use the active `python`.

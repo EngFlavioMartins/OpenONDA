@@ -8,11 +8,11 @@ if not __package__:
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
 
-from pathlib import Path
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
+
+from openonda.plotting import latest_fvm_snapshot
 
 from ._common import (  # noqa: E402
     COLORS,
@@ -29,11 +29,10 @@ from ._common import (  # noqa: E402
 def main():
     args = build_arg_parser().parse_args()
 
-    vtu_files = sorted(Path(SOLUTION_DIR).glob("*.vtu"))
-    if not vtu_files:
-        print(f"  WARNING: no VTU files in {SOLUTION_DIR}")
+    final = latest_fvm_snapshot(SOLUTION_DIR)
+    if final is None:
+        print(f"  No field snapshots in {SOLUTION_DIR}")
         return
-    final = vtu_files[-1]
     print(f"  Reading: {final.name}")
     mesh = pv.read(str(final))
     cell_centre = mesh.cell_centers().points

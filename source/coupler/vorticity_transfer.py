@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 import logging
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from scipy.spatial import cKDTree  # type: ignore[missing-module-attribute]
@@ -39,6 +39,11 @@ from source.coupler.stable_renewal import (
     vortex_strength_from_velocity_trace,
 )
 from source.solvers.vpm.diagnostics.resolution import discretization_health
+
+if TYPE_CHECKING:
+    from source.coupler.solver import FVMVPMCoupler
+    from source.solvers.fvm import FVMSolver
+    from source.solvers.vpm import VPMSolver
 
 logger = logging.getLogger("coupler")
 
@@ -96,7 +101,117 @@ def required_renewal_buffer_length(
 
 @dataclass(frozen=True)
 class TransferResult:
-    """Particle and circulation budget for one absolute state replacement."""
+    """Immutable particle-strength budget for one state replacement.
+
+    The coupler records this object after replacing the FVM-authoritative
+    overlap. It separates pointwise representation quality from global
+    circulation and moment budgets so a completed transfer is auditable.
+
+    Attributes
+    ----------
+    n_particles_before, n_particles_after : int
+        Active VPM population immediately before and after replacement.
+    n_particles_retained, n_particles_removed : int
+        Old particles kept outside or removed inside the represented region.
+    n_particles_blended, n_particles_injected : int
+        Existing particles modified by a soft blend and new lattice/basis
+        particles appended to the active cloud.
+    injected_vortex_strength_l1, replaced_vortex_strength_l1 : float
+        Sums of particle-strength vector magnitudes in m³/s for injected and
+        replaced state.
+    injected_vortex_strength_net, replaced_vortex_strength_net,
+    state_change_vortex_strength_net : ndarray, shape (3,)
+        Net Cartesian particle-strength vectors in m³/s. The state-change
+        value is the after-minus-before budget.
+    eta_blending_enabled : bool
+        Whether a finite-width FVM-authority ramp was used.
+    transfer_method : str
+        Concrete renewal/projection method that produced the result.
+    mapped_target_nodes, excluded_solid_target_nodes,
+    excluded_solid_active_nodes : int
+        Lattice population and solid-exclusion counts.
+    excluded_solid_vortex_strength_net,
+    mapped_target_vortex_strength_net, fvm_donor_vortex_strength_net,
+    fvm_mapped_vortex_strength_net : ndarray, shape (3,)
+        Vector circulation budgets in m³/s at named transfer stages.
+    excluded_solid_vortex_strength_l1,
+    mapped_target_vortex_strength_l1, maximum_mapped_vortex_strength : float
+        Magnitude budgets or maximum node strength in m³/s.
+    excluded_solid_first_moment, mapped_first_moment,
+    fvm_donor_first_moment, fvm_mapped_first_moment : ndarray, shape (3, 3)
+        Componentwise first moments ``sum(x_j * Gamma_i)`` in m⁴/s. Rows
+        index coordinate and columns index circulation component.
+    blend_cross_divergence_l2_before, blend_cross_divergence_l2_after : float
+        L2 cross-divergence measure before and after lattice correction.
+    blend_cross_divergence_relative : float
+        Dimensionless corrected cross-divergence relative to field scale.
+    mapped_vorticity_divergence_error : float or None
+        Dimensionless Gaussian-representation divergence diagnostic.
+    mapped_vortex_strength_misalignment_degrees : float or None
+        Maximum mapped strength/vorticity misalignment in degrees.
+    mapped_mean_overlap_ratio : float or None
+        Mean dimensionless core-overlap resolution ratio.
+    projection_vorticity_relative_error,
+    projection_velocity_relative_error : float or None
+        Independent dimensionless projection verification errors.
+    projection_condition_number : float
+        Dimensionless estimate for the solved projection system.
+    selective_support_births : int
+        Additional particles introduced to resolve projection residuals.
+    renewal_guard_width : float
+        Physical guard/buffer width in m.
+    renewal_diffusion_substeps : int
+        Diffusion increments represented by the renewal event.
+    renewed_input_particles, renewed_output_particles,
+    preserved_outer_particles, coalesced_outer_particles,
+    pruned_lattice_nodes, population_pruned_particles : int
+        Population accounting for stable renewal and optional pruning.
+    pruned_vortex_strength_l1 : float
+        Total pruned circulation-vector magnitude in m³/s.
+    pruned_vortex_strength_fraction,
+    population_pruned_vortex_strength_fraction : float
+        Dimensionless fractions of represented strength pruned.
+    population_pruned_velocity_bound : float
+        Conservative induced-velocity error bound in m/s.
+    renewal_cfl : float
+        Dimensionless advective renewal Courant number.
+    renewal_raw_vortex_strength_error, renewal_conservation_error,
+    population_renewal_raw_vortex_strength_error,
+    population_renewal_conservation_error : float
+        Dimensionless circulation residuals before/after recovery.
+    renewal_applied_vortex_strength_correction,
+    population_renewal_applied_vortex_strength_correction : float
+        Applied net strength-correction magnitudes in m³/s.
+    renewal_vortex_strength_tolerance : float
+        Absolute circulation acceptance tolerance in m³/s.
+    renewal_raw_linear_impulse_error, renewal_linear_impulse_error,
+    population_renewal_raw_linear_impulse_error,
+    population_renewal_linear_impulse_error : float
+        Dimensionless linear-impulse residuals.
+    renewal_applied_linear_impulse_correction,
+    population_renewal_applied_linear_impulse_correction : float
+        Applied correction magnitudes in linear-impulse units m⁴/s.
+    renewal_linear_impulse_tolerance : float
+        Absolute linear-impulse tolerance in m⁴/s.
+    renewal_raw_angular_impulse_error, renewal_angular_impulse_error : float
+        Dimensionless angular-impulse residuals.
+    renewal_applied_angular_impulse_correction : float
+        Applied correction magnitude in angular-impulse units m⁵/s.
+    renewal_applied_particle_strength_fraction,
+    population_renewal_applied_particle_strength_fraction : float
+        Dimensionless relative size of corrections applied to particles.
+    representation_residual_before_prune,
+    representation_residual_after_prune : float or None
+        Dimensionless field-representation residuals around pruning.
+    maximum_transfer_amplification : float
+        Maximum dimensionless local strength amplification during transfer.
+
+    Notes
+    -----
+    Array-valued fields are diagnostics and should be treated as read-only by
+    consumers even though NumPy itself does not enforce immutability for arrays
+    nested in a frozen dataclass.
+    """
 
     n_particles_before: int
     n_particles_retained: int
@@ -199,6 +314,31 @@ def _validate_particle_sources(
     cell_volume: np.ndarray,
     vorticity: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Normalize and validate the FVM donor arrays used by a transfer.
+
+    Parameters
+    ----------
+    position : ndarray, shape (M, 3)
+        FVM cell centres in metres.
+    cell_volume : ndarray, shape (M,)
+        Positive donor-cell volumes in m³.
+    vorticity : ndarray, shape (M, 3)
+        Cell-centred vorticity in 1/s.
+
+    Returns
+    -------
+    tuple of ndarray
+        Float64 position, volume, and vorticity arrays with the same leading
+        length and contiguous-compatible reshape semantics.
+
+    Raises
+    ------
+    ValueError
+        If the three leading dimensions do not match.
+    RuntimeError
+        If any coordinate, volume, or vorticity value is non-finite, or if a
+        donor volume is not strictly positive.
+    """
     source_position = np.asarray(position, dtype=np.float64).reshape(-1, 3)
     volume = np.asarray(cell_volume, dtype=np.float64).reshape(-1)
     source_vorticity = np.asarray(vorticity, dtype=np.float64).reshape(-1, 3)
@@ -255,6 +395,21 @@ def _vortex_invariant_residual(
     target: VortexInvariants,
     actual: VortexInvariants,
 ) -> dict[str, float]:
+    """Return normed residuals for the three conserved vector budgets.
+
+    Parameters
+    ----------
+    target, actual : VortexInvariants
+        Desired and measured total particle-strength, linear-impulse, and
+        angular-impulse invariants.
+
+    Returns
+    -------
+    dict[str, float]
+        Euclidean residual norms keyed by ``total_vortex_strength`` (m³/s),
+        ``linear_impulse`` (m⁴/s), and ``angular_impulse`` (m⁵/s). No input is
+        mutated.
+    """
     return {
         "total_vortex_strength": float(
             np.linalg.norm(target.total_vortex_strength - actual.total_vortex_strength)
@@ -1240,6 +1395,21 @@ def replace_particles_from_lattice_blend(
 
 
 def _transfer_log_record(step: int, result: TransferResult) -> str:
+    """Format one auditable particle-strength transfer for the run log.
+
+    Parameters
+    ----------
+    step : int
+        Coupled accepted-step index associated with the transfer.
+    result : TransferResult
+        Immutable transfer accounting and error diagnostics.
+
+    Returns
+    -------
+    str
+        Multi-line human-readable report. Formatting has no effect on the
+        transferred state or on the stored diagnostic object.
+    """
     rows: list[log_style.Row] = [
         ("method", result.transfer_method),
         ("blend, eta", "on" if result.eta_blending_enabled else "off"),
@@ -1410,9 +1580,54 @@ def _transfer_log_record(step: int, result: TransferResult) -> str:
 
 
 class VorticityTransfer:
-    """Synchronize the inner VPM cloud with the absolute FVM vorticity state."""
+    """Synchronize the inner VPM cloud with absolute cell-centred FVM state.
 
-    def __init__(self, coupler):
+    This runtime component is constructed internally by
+    :class:`FVMVPMCoupler` after both solver discretizations are known. It
+    derives vorticity ``omega = curl(u)`` from the accepted FVM gradient,
+    represents ``Gamma = omega * V`` on the selected renewal lattice/basis,
+    and atomically replaces the FVM-authoritative portion of the particle
+    cloud while preserving the outer wake.
+
+    Parameters
+    ----------
+    coupler : FVMVPMCoupler
+        Initialized driver providing the transfer policy, FVM box, shared
+        viscosity in m²/s, VPM spacing/core ratio, and coupling time step in s.
+
+    Attributes
+    ----------
+    particle_spacing : float
+        VPM lattice spacing ``h`` in m.
+    core_radius_ratio : float
+        Dimensionless ``sigma/h`` ratio used for injected particles.
+    coupling_time_step : float
+        VPM macro-step represented by each transfer, in s.
+    step : int
+        Number of transfer calls attempted. Incremented at call entry.
+    last_interface_flow : dict[str, float]
+        Mean outward normal velocity by transfer face in m/s.
+    last_vortex_line_closure : dict[str, float]
+        Dimensionless normal-vorticity closure error by transfer face.
+
+    Raises
+    ------
+    RuntimeError
+        If the coupler has not resolved the FVM box, fluid properties, VPM
+        spacing/core ratio, or coupling time step.
+    ValueError
+        If buffered M4-prime renewal is selected without GBD diffusion.
+
+    Notes
+    -----
+    Users normally interact with this object through the driver. Call
+    :meth:`setup` once for an FVM mesh, then :meth:`transfer` only at accepted
+    synchronized coupling states. Transfer mutates VPM particles and caches;
+    setup itself only builds donor/lattice metadata.
+    """
+
+    def __init__(self, coupler: FVMVPMCoupler) -> None:
+        """Resolve transfer controls from an initialized coupling driver."""
         cfg = coupler.setup
         if coupler.kinematic_viscosity is None or coupler.fvm_box is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM state")
@@ -1490,6 +1705,22 @@ class VorticityTransfer:
         )
 
     def _points_in_solid(self, points, *, include_boundary: bool) -> np.ndarray:
+        """Classify transfer points against configured solid geometry.
+
+        Parameters
+        ----------
+        points : array_like, shape (K, 3)
+            Candidate particle or lattice-node coordinates in metres.
+        include_boundary : bool
+            Include points exactly on a body/box boundary when true; use a
+            strict interior test when false.
+
+        Returns
+        -------
+        ndarray, shape (K,), dtype=bool
+            ``True`` for points excluded from the fluid transfer region.
+            The input is converted to float64 but is not modified.
+        """
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         inside = np.zeros(len(query), dtype=bool)
         for body in self._solid_bodies:
@@ -1525,6 +1756,20 @@ class VorticityTransfer:
         return distance
 
     def _face_cell_index(self, bounds: np.ndarray) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """Index donor cells lying on each face of a transfer box.
+
+        Parameters
+        ----------
+        bounds : ndarray, shape (6,)
+            ``(xmin, xmax, ymin, ymax, zmin, zmax)`` bounds in metres.
+
+        Returns
+        -------
+        dict[str, tuple[ndarray, ndarray]]
+            Face-name to ``(cell_indices, outward_normal)`` mapping. Indices
+            refer to the FVM cell-centre array and normals are dimensionless.
+            Faces without donor cells are omitted.
+        """
         faces: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         if self._cell_centre is None:
             return faces
@@ -1551,9 +1796,24 @@ class VorticityTransfer:
         return faces
 
     def _build_face_cell_index(self) -> None:
+        """Refresh the cached transfer-box face-to-cell lookup."""
         self._face_cells = {} if self._box is None else self._face_cell_index(self._box)
 
     def check_interface_flow(self, velocity: np.ndarray) -> dict[str, float]:
+        """Return mean outward velocity on each indexed transfer-box face.
+
+        Parameters
+        ----------
+        velocity : ndarray, shape (n_cells, 3)
+            Accepted cell-centred Cartesian FVM velocity in m/s, ordered like
+            the cell centres supplied to :meth:`setup`.
+
+        Returns
+        -------
+        dict[str, float]
+            Mean ``u dot n`` in m/s keyed by ``xmin`` through ``zmax`` for
+            every face with donor cells.
+        """
         values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
         return {
             name: float(np.mean(values[index] @ normal))
@@ -1562,6 +1822,19 @@ class VorticityTransfer:
         }
 
     def check_vortex_line_closure(self, velocity_gradient: np.ndarray) -> dict[str, float]:
+        """Measure normal-vorticity leakage on each transfer-box face.
+
+        Parameters
+        ----------
+        velocity_gradient : ndarray, shape (n_cells, 3, 3)
+            Accepted FVM gradient in 1/s using ``G[i, j] = d(u_j)/d(x_i)``.
+
+        Returns
+        -------
+        dict[str, float]
+            Mean absolute ``omega dot n`` divided by the global mean vorticity
+            magnitude, keyed by face. Values are dimensionless.
+        """
         vorticity = self._vorticity_from_gradient(velocity_gradient)
         scale = float(np.linalg.norm(vorticity, axis=1).mean()) + np.finfo(float).tiny
         return {
@@ -1570,7 +1843,30 @@ class VorticityTransfer:
             if index.max(initial=-1) < len(vorticity)
         }
 
-    def setup(self, fvm) -> None:
+    def setup(self, fvm: FVMSolver) -> None:
+        """Build FVM donor indices, solid masks, and renewal lattices.
+
+        Parameters
+        ----------
+        fvm : FVMSolver
+            Initialized solver providing global cell-centre coordinates
+            ``(M, 3)`` in m, cell volumes ``(M,)`` in m³, boundary geometry,
+            and optional immersed-body geometry.
+
+        Raises
+        ------
+        RuntimeError
+            If cell-centre/volume counts disagree, values are non-finite, or a
+            required lattice/solid representation cannot be built.
+        ValueError
+            If transfer bounds or method-specific geometry is invalid.
+
+        Notes
+        -----
+        Partitioned FVM getters are collective. This method mutates only
+        transfer metadata and interpolation caches; it does not modify FVM
+        fields, VPM particles, or either accepted clock.
+        """
         self._box = np.asarray(
             self.config.transfer_region_bounds or self._fvm_box, dtype=np.float64
         )
@@ -1923,6 +2219,25 @@ class VorticityTransfer:
         vortex_strength: np.ndarray,
         core_radius: np.ndarray,
     ) -> np.ndarray:
+        """Evaluate sparse regularized particle vorticity for projection checks.
+
+        Parameters
+        ----------
+        evaluation_position : ndarray, shape (K, 3)
+            Collocation points in metres.
+        particle_position : ndarray, shape (N, 3)
+            Particle centres in metres.
+        vortex_strength : ndarray, shape (N, 3)
+            Particle-strength vectors ``Gamma`` in m³/s.
+        core_radius : ndarray, shape (N,)
+            Gaussian radii in metres.
+
+        Returns
+        -------
+        ndarray, shape (K, 3)
+            Reconstructed vorticity in 1/s using the configured Gaussian
+            tail cutoff. Inputs are read-only.
+        """
         return evaluate_sparse_gaussian_vorticity(
             evaluation_position,
             particle_position,
@@ -1938,6 +2253,21 @@ class VorticityTransfer:
         *,
         absolute_scale: float,
     ) -> float:
+        """Compute RMS residual normalized by field and absolute scales.
+
+        Parameters
+        ----------
+        actual, expected : ndarray
+            Same-shaped vector or scalar field samples.
+        absolute_scale : float
+            Physical magnitude floor used when ``expected`` is nearly zero.
+
+        Returns
+        -------
+        float
+            Dimensionless RMS error ``rms(actual - expected) /
+            max(rms(expected), absolute_scale, eps)``.
+        """
         residual_rms = float(np.sqrt(np.mean((actual - expected) ** 2)))
         expected_rms = float(np.sqrt(np.mean(expected**2)))
         return residual_rms / max(expected_rms, absolute_scale, np.finfo(float).tiny)
@@ -1954,6 +2284,14 @@ class VorticityTransfer:
         preserved_strength: np.ndarray,
         preserved_radius: np.ndarray,
     ) -> SparseRenewalProjectionResult:
+        """Fit renewable particle strengths after subtracting preserved flow.
+
+        The preserved outer particles are evaluated at the FVM collocation
+        points and subtracted from the target vorticity. A sparse Gaussian
+        least-squares solve then assigns strengths to the renewable basis;
+        all positions/radii are held fixed. No solver particle container is
+        mutated by this proposal stage.
+        """
         target = np.asarray(collocation_target, dtype=np.float64).reshape(-1, 3).copy()
         target -= self._sparse_particle_vorticity(
             collocation_position,
@@ -1985,6 +2323,13 @@ class VorticityTransfer:
         preserved_radius: np.ndarray,
         activity_floor: float,
     ) -> float:
+        """Measure held-out vorticity error for a projected renewal basis.
+
+        The solved renewable field and the preserved outer field are summed at
+        disjoint verification points and compared with the FVM target. The
+        returned value is dimensionless and is independent of the collocation
+        points used by the solve.
+        """
         actual = self._sparse_particle_vorticity(
             verification_position,
             solve_position,
@@ -2019,6 +2364,13 @@ class VorticityTransfer:
         activity_floor: float,
         capacity_remaining: int,
     ) -> np.ndarray:
+        """Select residual-driven lattice positions for optional new particles.
+
+        Active FVM cells are mapped to a seven-point lattice neighbourhood,
+        filtered by renewal bounds and solid geometry, and ranked by the
+        unresolved vorticity residual. The method returns candidate positions
+        only; insertion into VPM and capacity accounting occur in the caller.
+        """
         if (
             self._box is None
             or self._cell_centre is None
@@ -2103,6 +2455,25 @@ class VorticityTransfer:
         *,
         renewal_bounds: np.ndarray,
     ) -> float | None:
+        """Compare normal velocity on transfer-box faces after projection.
+
+        Parameters
+        ----------
+        vpm : VPMSolver-like object
+            Owner used to refresh optional boundary-element state and evaluate
+            velocity at the indexed FVM face cells.
+        fvm_velocity : ndarray, shape (M, 3)
+            Accepted FVM cell-centred velocity in m/s.
+        renewal_bounds : ndarray, shape (6,)
+            Projection-box bounds in metres.
+
+        Returns
+        -------
+        float or None
+            Dimensionless normal-velocity RMS error, or ``None`` if no box
+            face has donor cells. A callable boundary-element refresh may
+            update VPM-owned derived state; particle arrays are not changed.
+        """
         position_parts: list[np.ndarray] = []
         normal_parts: list[np.ndarray] = []
         target_parts: list[np.ndarray] = []
@@ -2203,6 +2574,36 @@ class VorticityTransfer:
         fvm_velocity: np.ndarray,
         fvm_vorticity: np.ndarray,
     ) -> TransferResult:
+        """Perform the projected-renewal transfer for VPM GBD diffusion.
+
+        The method fits a sparse Gaussian basis to the FVM vorticity, verifies
+        it on held-out points and at the transfer boundary, optionally adds
+        residual-support particles, then atomically replaces the renewable
+        VPM region while preserving the outer wake. The VPM particle state is
+        mutated only at the final replacement boundary; a failed acceptance
+        path restores the pre-transfer snapshot before re-raising.
+
+        Parameters
+        ----------
+        vpm : VPMSolver-like object
+            VPM owner with particle accessors, GBD diffusion, and atomic
+            ``replace_vortex_particles`` support.
+        fvm_velocity, fvm_vorticity : ndarray, shape (M, 3)
+            Accepted FVM donor velocity in m/s and vorticity in 1/s, ordered
+            like the initialized FVM cell centres.
+
+        Returns
+        -------
+        TransferResult
+            Population, particle-strength budgets, projection errors, and
+            renewal diagnostics for the accepted replacement.
+
+        Raises
+        ------
+        RuntimeError, ValueError
+            If GBD/geometry prerequisites, projection tolerances, capacity,
+            or atomic rollback requirements are not satisfied.
+        """
         if getattr(vpm, "viscous_scheme", None) != "GBD":
             raise RuntimeError("projected_renewal currently requires the GBD viscous scheme")
         if self._box is None or self._cell_centre is None or self._fvm_solid_mask is None:
@@ -2456,8 +2857,48 @@ class VorticityTransfer:
             maximum_closure_correction_fraction=self.discretization_error_limit,
         )
 
-    def transfer(self, vpm, velocity, velocity_gradient) -> TransferResult:
-        """Replace the inner particle state and preserve the outer particle cloud."""
+    def transfer(
+        self,
+        vpm: VPMSolver,
+        velocity: np.ndarray,
+        velocity_gradient: np.ndarray,
+    ) -> TransferResult:
+        """Replace inner particles from one accepted FVM donor state.
+
+        Parameters
+        ----------
+        vpm : VPMSolver
+            Active rank-zero particle solver. Its particle fields and source
+            caches are mutated atomically on success.
+        velocity : ndarray, shape (M, 3)
+            Accepted cell-centred FVM velocity in m/s, ordered like the donor
+            cells captured by :meth:`setup`.
+        velocity_gradient : ndarray, shape (M, 3, 3)
+            Accepted FVM gradient in 1/s with
+            ``G[i, j] = d(u_j)/d(x_i)``. Curl is converted to pointwise
+            vorticity and then integrated particle strength ``Gamma=omega*V``.
+
+        Returns
+        -------
+        TransferResult
+            Immutable population, circulation, moment, divergence, projection,
+            and pruning budget for the completed replacement.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`setup` has not run, an invariant/quality gate fails, or
+            the selected transfer cannot construct a valid replacement.
+        ValueError
+            If velocity or gradient donor counts disagree with the FVM cells.
+
+        Notes
+        -----
+        The method increments :attr:`step`, updates interface diagnostics, and
+        replaces the accepted VPM particle state. Transfer implementations
+        snapshot all mutable particle fields and restore them if a later
+        quality gate fails; no FVM arrays are modified.
+        """
         self.step += 1
         if self._box is None or self._cell_centre is None or self._cell_volume is None:
             raise RuntimeError("VorticityTransfer.setup() has not prepared the FVM donor cells")

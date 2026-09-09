@@ -155,10 +155,10 @@ positive rate is clipped, smoothed, or replaced by a prescribed negative rate.
 
 Raw, independently seeded member backups and flow integrals are retained as
 distinct flat cases `{physics}_rwm_<nnn>` under `solution/` and `samples/`.
-Ensemble means are written under `samples/{vortex,dipole,merging}_rwm/`,
-alongside:
+Each member's solver-owned configuration and seed are recorded beside its
+backup in `solution/<case>/vpm_metadata.json`. Ensemble means are written under
+`samples/{vortex,dipole,merging}_rwm/`, alongside:
 
-- `run_metadata.json`: seeds, estimator, confidence level, and definitions;
 - `rwm_convergence.csv`: time-resolved field uncertainty and projection QA;
 - `field_diagnostics.csv`: mean-flow features and jackknife intervals;
 - `flow_integrals.csv`: ensemble means and Student-t intervals;

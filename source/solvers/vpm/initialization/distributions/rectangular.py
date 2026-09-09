@@ -12,11 +12,31 @@ from ._common import Bounds3D, centred_coordinates, validate_bounds, validate_sp
 
 @dataclass(frozen=True, slots=True)
 class RectangularDistribution:
-    """Cartesian particle lattice within finite ``((min, max),) * 3`` bounds.
+    """Configure a Cartesian midpoint particle lattice in a finite box.
 
-    ``spacing`` is positive and in length units. ``core_radius_ratio`` is the
-    positive ``sigma / h`` ratio. The build result has nominal ``h³`` cell
-    volumes and immutable arrays.
+    Parameters
+    ----------
+    bounds : sequence of three (float, float) pairs
+        Increasing Cartesian ``((xmin, xmax), (ymin, ymax), (zmin, zmax))``
+        bounds in m. Particle locations are centred within nominal cells.
+    spacing : float
+        Positive nominal lattice spacing ``h`` in m.
+    core_radius_ratio : float
+        Positive dimensionless ratio ``sigma/h`` used for every particle core.
+
+    Notes
+    -----
+    This is an immutable construction object; :meth:`build` performs the
+    allocation. Returned quadrature volumes are ``h**3`` in m³ even when the
+    requested extents are not exact multiples of ``h``.
+
+    Examples
+    --------
+    >>> grid = RectangularDistribution(
+    ...     bounds=((-1.0, 1.0), (-1.0, 1.0), (-0.5, 0.5)),
+    ...     spacing=0.1,
+    ...     core_radius_ratio=2.5,
+    ... ).build()
     """
 
     bounds: Bounds3D
@@ -24,7 +44,20 @@ class RectangularDistribution:
     core_radius_ratio: float
 
     def build(self) -> ParticleDistribution:
-        """Build immutable lattice geometry and midpoint quadrature."""
+        """Build immutable lattice geometry and midpoint quadrature.
+
+        Returns
+        -------
+        ParticleDistribution
+            Geometry with positions ``(N, 3)`` in m, core radii ``(N,)`` in
+            m, and particle volumes ``(N,)`` equal to ``h**3`` in m³.
+
+        Raises
+        ------
+        ValueError
+            If spacing/core ratio is non-positive or bounds are non-finite or
+            non-increasing.
+        """
         spacing, ratio = validate_spacing(self.spacing, self.core_radius_ratio)
         limits = validate_bounds(self.bounds)
         coordinates = [centred_coordinates(*limits[axis], spacing) for axis in range(3)]
@@ -39,10 +72,28 @@ class RectangularDistribution:
 
 @dataclass(frozen=True, slots=True)
 class NoisyRectangularDistribution:
-    """Bounded jitter of a rectangular lattice with a reproducible random seed.
+    """Configure a reproducibly jittered Cartesian particle lattice.
 
-    ``noise_fraction`` lies in ``[0, 1]`` and controls jitter relative to one
-    nominal cell. Jitter is reflected at boundaries to avoid piled-up points.
+    Parameters
+    ----------
+    bounds : sequence of three (float, float) pairs
+        Increasing Cartesian domain bounds in m.
+    spacing : float
+        Positive nominal lattice spacing ``h`` in m.
+    core_radius_ratio : float
+        Positive dimensionless core ratio ``sigma/h``.
+    noise_fraction : float, default=0.3
+        Jitter amplitude relative to one nominal cell, in ``[0, 1]``. Each
+        coordinate receives a uniform displacement in
+        ``[-noise_fraction*h/2, noise_fraction*h/2]``.
+    seed : int or None, default=None
+        NumPy random seed. Use an integer for deterministic geometry.
+
+    Notes
+    -----
+    Jittered coordinates are reflected at the bounds rather than clipped,
+    avoiding artificial point piles at a face. Core radii and quadrature
+    volumes remain those of the unperturbed grid.
     """
 
     bounds: Bounds3D
@@ -52,7 +103,20 @@ class NoisyRectangularDistribution:
     seed: int | None = None
 
     def build(self) -> ParticleDistribution:
-        """Build bounded, reproducibly jittered immutable lattice geometry."""
+        """Build bounded, jittered geometry with nominal midpoint weights.
+
+        Returns
+        -------
+        ParticleDistribution
+            Immutable positions ``(N, 3)`` in m, core radii ``(N,)`` in m,
+            and volumes ``(N,)`` in m³.
+
+        Raises
+        ------
+        ValueError
+            If ``noise_fraction`` is outside ``[0, 1]`` or the base lattice
+            configuration is invalid.
+        """
         if not np.isfinite(self.noise_fraction) or not 0.0 <= self.noise_fraction <= 1.0:
             raise ValueError("noise_fraction must be finite and between zero and one")
         base = RectangularDistribution(

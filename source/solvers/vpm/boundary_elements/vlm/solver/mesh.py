@@ -82,7 +82,7 @@ def generate_vlm_mesh(
         aircraft: Aircraft geometry definition
         lattice: VLMLattice object to populate. Mesh arrays use its configured
             precision (``float32`` or ``float64``).
-        trailing_edge_infty: Distance for "infinity" trailing legs (chord lengths)
+        trailing_edge_infty: Initial trailing-leg length in geometry length units.
         spanwise_spacing: Panel distribution method ('uniform' or 'geometric')
         spanwise_spacing_ratio: Concentration ratio for geometric spacing
         spanwise_spacing_region: Refinement region ('start', 'end', 'both')
@@ -155,7 +155,6 @@ def generate_vlm_mesh(
                 neigh_np,
                 te_idx_np,
                 is_mirrored=False,
-                trailing_edge_infty=trailing_edge_infty,
             )
             segment_blocks.append(
                 {
@@ -193,7 +192,6 @@ def generate_vlm_mesh(
                     te_idx_np,
                     is_mirrored=True,
                     symmetry_plane=wing.symmetry,
-                    trailing_edge_infty=trailing_edge_infty,
                 )
                 segment_blocks.append(
                     {
@@ -209,6 +207,12 @@ def generate_vlm_mesh(
             global_span_idx += ns_segment
         wing_id += 1
 
+    vortex_np[:panel_idx, 0] = (
+        vortex_np[:panel_idx, 1] + trailing_edge_infty * trail_np[:panel_idx, 0]
+    )
+    vortex_np[:panel_idx, 3] = (
+        vortex_np[:panel_idx, 2] + trailing_edge_infty * trail_np[:panel_idx, 1]
+    )
     _stitch_symmetry_neighbors(aircraft, neigh_np)
     _stitch_segment_neighbors(segment_blocks, neigh_np)
 
@@ -322,7 +326,6 @@ def _generate_segment_to_numpy(
     te_idx,
     is_mirrored: bool = False,
     symmetry_plane: int = 0,
-    trailing_edge_infty: float = 10000.0,
 ) -> int:
     """
     Generate segment mesh data directly into numpy arrays.
@@ -389,304 +392,6 @@ def _compute_panel_corners(alpha, s_min, s_max, c_min, c_max):
     R = _bilinear_interp(alpha, s_max, c_max)
     S = _bilinear_interp(alpha, s_min, c_max)
     return P, Q, R, S
-
-
-def _compute_panel_geometry(P, Q, R, S, is_mirrored, symmetry_plane):
-    """Compute panel normal, area, and geometric properties."""
-    # Horseshoe geometry (bound at 25% chord, collocation_point at 75%)
-    V2 = 0.75 * P + 0.25 * S
-    V3 = 0.75 * Q + 0.25 * R
-    collocation_point = 0.125 * (P + Q) + 0.375 * (R + S)
-
-    # Panel normal
-    diag1 = R - P
-    diag2 = S - Q
-    normal = np.cross(diag2, diag1)
-    normal_mag = np.linalg.norm(normal)
-    normal = normal / normal_mag if normal_mag > 1e-10 else np.array([0.0, 0.0, 1.0])
-
-    # Panel area
-    area1 = 0.5 * np.linalg.norm(np.cross(Q - P, R - P))
-    area2 = 0.5 * np.linalg.norm(np.cross(R - P, S - P))
-    area = area1 + area2
-
-    return V2, V3, collocation_point, normal, area
-
-
-def _compute_trailing_geometry(V2, V3, trailing_edge_infty):
-    """Compute trailing edge vortex points."""
-    trail_dir = np.array([1.0, 0.0, 0.0])
-    V1 = V2 + trail_dir * trailing_edge_infty
-    V4 = V3 + trail_dir * trailing_edge_infty
-    bound_midpoint = 0.5 * (V2 + V3)
-    return V1, V2, V3, V4, bound_midpoint, trail_dir
-
-
-def _store_panel_data(
-    lattice,
-    panel_idx,
-    P,
-    Q,
-    R,
-    S,
-    V1,
-    V2,
-    V3,
-    V4,
-    collocation_point,
-    normal,
-    area,
-    bound_midpoint,
-    trail_dir,
-    wing_id,
-    segment_id,
-    is_mirrored,
-):
-    """Store all panel data into lattice arrays."""
-    # Corners
-    for k in range(3):
-        lattice.panel_corner_position[panel_idx, 0][k] = P[k]
-        lattice.panel_corner_position[panel_idx, 1][k] = Q[k]
-        lattice.panel_corner_position[panel_idx, 2][k] = R[k]
-        lattice.panel_corner_position[panel_idx, 3][k] = S[k]
-
-    # Vortex points
-    for k in range(3):
-        lattice.vortex_point_position[panel_idx, 0][k] = V1[k]
-        lattice.vortex_point_position[panel_idx, 1][k] = V2[k]
-        lattice.vortex_point_position[panel_idx, 2][k] = V3[k]
-        lattice.vortex_point_position[panel_idx, 3][k] = V4[k]
-
-    # Collocation, normal, area
-    for k in range(3):
-        lattice.collocation_point[panel_idx][k] = collocation_point[k]
-        lattice.normal[panel_idx][k] = normal[k]
-    lattice.area[panel_idx] = area
-
-    # Bound midpoint
-    for k in range(3):
-        lattice.bound_vortex_midpoint[panel_idx][k] = bound_midpoint[k]
-
-    # Trailing directions
-    for k in range(3):
-        lattice.trailing_direction[panel_idx, 0][k] = trail_dir[k]
-        lattice.trailing_direction[panel_idx, 1][k] = trail_dir[k]
-
-    # Bookkeeping
-    lattice.wing_id[panel_idx] = wing_id
-    lattice.segment_id[panel_idx] = segment_id
-    lattice.is_mirrored[panel_idx] = 1 if is_mirrored else 0
-
-
-def _generate_segment_mesh(
-    segment: WingSegment,
-    lattice,
-    start_panel_idx: int,
-    wing_id: int,
-    segment_id: int,
-    is_mirrored: bool = False,
-    symmetry_plane: int = 0,
-    trailing_edge_infty: float = 10000.0,
-    spanwise_spacing: str = "uniform",
-    spanwise_spacing_ratio: float = 1.0,
-    spanwise_spacing_region: str = "both",
-) -> int:
-    """
-    Generate panels for a single wing segment.
-
-    Args:
-        segment: Wing segment geometry
-        lattice: VLMLattice to populate
-        start_panel_idx: Starting panel index
-        wing_id: Wing identifier
-        segment_id: Segment identifier
-        is_mirrored: Whether to mirror the segment
-        symmetry_plane: Symmetry plane (1=XY, 2=XZ, 3=YZ)
-        trailing_edge_infty: Distance for trailing legs
-        spanwise_spacing: Panel distribution method ('uniform' or 'geometric')
-        spanwise_spacing_ratio: Concentration ratio for geometric spacing
-        spanwise_spacing_direction: Clustering direction ('+y', '-y', 'y')
-
-    Returns:
-        Next available panel index
-    """
-    nc = segment.n_chordwise_panels
-    ns = segment.n_spanwise_panels
-
-    # Get segment vertex_position
-    a = segment.vertex_position["a"]
-    b = segment.vertex_position["b"]
-    c = segment.vertex_position["c"]
-    d = segment.vertex_position["d"]
-
-    # Apply symmetry transformation if needed
-    if is_mirrored:
-        a, b, c, d = _mirror_vertices(a, b, c, d, symmetry_plane)
-
-    # Compute bilinear interpolation coefficients
-    alpha = _compute_bilinear_coefficients(a, b, c, d)
-
-    # Panel spacing
-    dc = 1.0 / nc  # Chordwise always uniform
-    s_edges = _compute_spanwise_edges(
-        ns, spanwise_spacing, spanwise_spacing_ratio, spanwise_spacing_region
-    )
-
-    panel_idx = start_panel_idx
-
-    # Generate panels
-    for j in range(ns):  # Spanwise
-        for i in range(nc):  # Chordwise
-            # Panel bounds in (s, c) space
-            s_min, s_max = s_edges[j], s_edges[j + 1]
-            c_min, c_max = i * dc, (i + 1) * dc
-
-            # Compute panel geometry
-            P, Q, R, S = _compute_panel_corners(alpha, s_min, s_max, c_min, c_max)
-            V2, V3, collocation_point, normal, area = _compute_panel_geometry(
-                P, Q, R, S, is_mirrored, symmetry_plane
-            )
-            V1, V2, V3, V4, bound_midpoint, trail_dir = _compute_trailing_geometry(
-                V2, V3, trailing_edge_infty
-            )
-
-            # Store in lattice
-            _store_panel_data(
-                lattice,
-                panel_idx,
-                P,
-                Q,
-                R,
-                S,
-                V1,
-                V2,
-                V3,
-                V4,
-                collocation_point,
-                normal,
-                area,
-                bound_midpoint,
-                trail_dir,
-                wing_id,
-                segment_id,
-                is_mirrored,
-            )
-
-            panel_idx += 1
-
-    return panel_idx
-
-
-def _generate_segment_mesh_with_edges(
-    segment: WingSegment,
-    lattice,
-    start_panel_idx: int,
-    wing_id: int,
-    segment_id: int,
-    s_edges: np.ndarray,
-    is_mirrored: bool = False,
-    symmetry_plane: int = 0,
-    trailing_edge_infty: float = 10000.0,
-) -> int:
-    """
-    Generate panels for a single wing segment using pre-computed spanwise edges.
-
-    This version takes explicit spanwise edge locations, enabling refinement
-    to be applied across multiple segments of a wing.
-
-    Args:
-        segment: Wing segment geometry
-        lattice: VLMLattice to populate
-        start_panel_idx: Starting panel index
-        wing_id: Wing identifier
-        segment_id: Segment identifier
-        s_edges: Pre-computed spanwise edge locations in [0, 1] range
-        is_mirrored: Whether to mirror the segment
-        symmetry_plane: Symmetry plane (1=XY, 2=XZ, 3=YZ)
-        trailing_edge_infty: Distance for trailing legs
-
-    Returns:
-        Next available panel index
-    """
-    nc = segment.n_chordwise_panels
-    ns = segment.n_spanwise_panels
-
-    # Get segment vertex_position
-    a = segment.vertex_position["a"]
-    b = segment.vertex_position["b"]
-    c = segment.vertex_position["c"]
-    d = segment.vertex_position["d"]
-
-    # Apply symmetry transformation if needed
-    if is_mirrored:
-        a, b, c, d = _mirror_vertices(a, b, c, d, symmetry_plane)
-
-    # Compute bilinear interpolation coefficients
-    alpha = _compute_bilinear_coefficients(a, b, c, d)
-
-    # Panel spacing
-    dc = 1.0 / nc
-    panel_idx = start_panel_idx
-
-    # Generate panels
-    for j in range(ns):
-        for i in range(nc):
-            # Panel bounds in (s, c) space
-            s_min, s_max = s_edges[j], s_edges[j + 1]
-            c_min, c_max = i * dc, (i + 1) * dc
-
-            # Compute panel panel_corner_position
-            P, Q, R, S = _compute_panel_corners(alpha, s_min, s_max, c_min, c_max)
-
-            # Collocation at 75% chord, center span
-            s_coll = 0.5 * (s_min + s_max)
-            c_coll = 0.5 * (c_min + c_max) + 0.25 * dc
-            collocation_point = _bilinear_interp(alpha, s_coll, c_coll)
-
-            # Normal and area
-            diag1, diag2 = R - P, Q - S
-            normal_raw = np.cross(diag1, diag2)
-            area = 0.5 * np.linalg.norm(normal_raw)
-            normal = normal_raw / (2 * area) if area > 1e-12 else np.array([0.0, 0.0, 1.0])
-
-            # Horseshoe vortex points at 25% chord
-            c_vort = 0.5 * (c_min + c_max) - 0.25 * dc
-            V1 = V2 = _bilinear_interp(alpha, s_min, c_vort)
-            V3 = V4 = _bilinear_interp(alpha, s_max, c_vort)
-
-            # Trailing direction
-            trail_dir = 0.5 * (R + S) - 0.5 * (P + Q)
-            trail_mag = np.linalg.norm(trail_dir)
-            trail_dir = trail_dir / trail_mag if trail_mag > 1e-12 else np.array([1.0, 0.0, 0.0])
-
-            # Bound midpoint
-            bound_midpoint = 0.5 * (V2 + V3)
-
-            # Store in lattice
-            _store_panel_data(
-                lattice,
-                panel_idx,
-                P,
-                Q,
-                R,
-                S,
-                V1,
-                V2,
-                V3,
-                V4,
-                collocation_point,
-                normal,
-                area,
-                bound_midpoint,
-                trail_dir,
-                wing_id,
-                segment_id,
-                is_mirrored,
-            )
-
-            panel_idx += 1
-
-    return panel_idx
 
 
 def _bilinear_interp(alpha: np.ndarray, s: float, c: float) -> np.ndarray:

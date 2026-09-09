@@ -12,7 +12,7 @@ from source.solvers.vpm.stabilization.filament_refinement import (
     particle_moments,
     split_stretched_filaments,
 )
-from source.solvers.vpm.stabilization.manager import StabilizationManager
+from source.solvers.vpm.stabilization.manager import StabilizationError, StabilizationManager
 from source.solvers.vpm.stabilization.regularization import _regularization_triggered
 
 
@@ -69,7 +69,9 @@ def test_pedrizzetti_relaxation_stops_at_end_step():
     manager.ctx = SimpleNamespace(
         state=state,
         flow_model="VISCOUS",
-        particles=object(),
+        particles=SimpleNamespace(
+            n_particles_total=1, vortex_strength_cpu=lambda **kwargs: np.ones((1, 3))
+        ),
     )
     manager.operators = SimpleNamespace(
         apply_pedrizzetti_relaxation=lambda *args, **kwargs: (
@@ -84,6 +86,48 @@ def test_pedrizzetti_relaxation_stops_at_end_step():
     manager.apply_relaxation()
 
     assert calls == [625]
+
+
+@pytest.mark.parametrize("preserve_moments", [False, True])
+def test_pedrizzetti_accepts_an_empty_wake_before_first_shedding(preserve_moments):
+    manager = object.__new__(StabilizationManager)
+    manager.config = StabilizationConfig.pedrizzetti_relaxation(preserve_moments=preserve_moments)
+    manager.ctx = SimpleNamespace(flow_model="LES", particles=SimpleNamespace(n_particles_total=0))
+    # There is no particle state to measure or mutate at this initial clock.
+    manager.apply_relaxation()
+
+
+@pytest.mark.parametrize("operator_failure", [False, True])
+def test_rejected_relaxation_restores_strength_and_does_not_record_acceptance(operator_failure):
+    original = np.array([[1.0, 2.0, 3.0]])
+    particles = SimpleNamespace(n_particles_total=1, strength=original.copy())
+    particles.vortex_strength_cpu = lambda **kwargs: particles.strength
+    particles.particle_volume_cpu = lambda **kwargs: np.ones(1)
+    manager = object.__new__(StabilizationManager)
+    manager.config = StabilizationConfig.pedrizzetti_relaxation()
+    manager.events = 7
+    manager.last_mechanism = "previous accepted event"
+    manager.ctx = SimpleNamespace(
+        flow_model="LES",
+        particles=particles,
+        state=SimpleNamespace(step=0),
+        mutations=SimpleNamespace(
+            set_properties=lambda **kw: setattr(particles, "strength", kw["vortex_strength"].copy())
+        ),
+    )
+
+    def modify(*args, **kwargs):
+        particles.strength *= 2
+        if operator_failure:
+            raise RuntimeError("interrupted operator")
+        return {"pedrizzetti_misalignment_deg": 0.0}
+
+    manager.operators = SimpleNamespace(apply_pedrizzetti_relaxation=modify)
+    with pytest.raises(RuntimeError if operator_failure else StabilizationError):
+        manager.apply_relaxation()
+    np.testing.assert_array_equal(particles.strength, original)
+    assert manager.events == 7
+    assert manager.last_mechanism == "previous accepted event"
 
 
 def test_pedrizzetti_moment_correction_restores_closed_field_invariants():

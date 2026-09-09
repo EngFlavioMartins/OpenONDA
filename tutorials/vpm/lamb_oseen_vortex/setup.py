@@ -3,27 +3,24 @@
 
 Examples (from this case directory)::
 
-    python -m openonda.tutorial_runner . setup vortex CS
-    python -m openonda.tutorial_runner . setup dipole DVH
-    python -m openonda.tutorial_runner . setup merging GBD
+    python setup.py vortex CS
+    python setup.py dipole DVH
+    python setup.py merging GBD
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import math
 from pathlib import Path
-import tempfile
 
 import numpy as np
 
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
-TUTORIAL_DIR = Path(__file__).resolve().parent
 
-# ---- Physics (Lamb--Oseen benchmark) ------------------------------------
+# Physics (Lamb--Oseen benchmark)
 CIRCULATION_REYNOLDS_NUMBER = 530.0  # Re_Γ = |Γ|/ν — sets the vortex Reynolds number
 BETA_RMAX = 1.12  # r(u_θ,max)/a — velocity-peak radius / Gaussian core radius
 CORE_RADIUS = 0.125  # a₀ — initial velocity-peak radius [m] (defines the analytic profile)
@@ -31,7 +28,7 @@ GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX  # Gaussian 1/e vorticity radius 
 SEPARATION = 1.0  # distance between the two vortex centres [m]
 COLUMN_LENGTH = 40.0 * CORE_RADIUS  # finite vortex column length along z [m]
 
-# ---- Numerical setup shared by every viscous scheme ----------------------
+# Numerical setup shared by every viscous scheme
 SPACING = 0.60 * CORE_RADIUS  # 2k--4k initial particles
 CORE_RADIUS_RATIO = 1.2  # DVH/GBD core radius ratio for regeneration
 PARTICLE_RADIUS = CORE_RADIUS_RATIO * SPACING  # vortex particle core radius (1.2× spacing)
@@ -47,10 +44,10 @@ MAX_PARTICLES = 400_000  # particle-container capacity (largest DVH/GBD populati
 VISCOUS_SCHEMES = ("CS", "DVH", "GBD")
 ALL_VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
 RWM_ENSEMBLE_SIZE = 10
-ENERGY_DIAGNOSTIC_VERSION = 2
 
 # Backend selection is independent of the stretching formulation.
 STRETCHING_SCHEME = "transposed"  # "direct", "mixed", or "transposed"
+
 COMPUTE_METHOD = {
     "CS": "DIRECT",
     "RWM": "DIRECT",
@@ -58,7 +55,7 @@ COMPUTE_METHOD = {
     "GBD": "TREECODE",
 }
 
-# ---- Physical case definitions -------------------------------------------
+# Physical case definitions
 PHYSICS_CIRCULATIONS = {
     "vortex": (+1.0,),
     "dipole": (+1.0, -1.0),
@@ -66,20 +63,20 @@ PHYSICS_CIRCULATIONS = {
 }
 
 
+TUTORIAL_DIR = Path(__file__).resolve().parent
+
+
 def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> vpm.ViscousConfig:
-    scheme = scheme.upper()
-    if scheme == "CS":
-        return vpm.ViscousConfig.cs(
+    return {
+        "CS": vpm.ViscousConfig.cs(
             kinematic_viscosity=kinematic_viscosity,
             particle_spacing=spacing,
-        )
-    if scheme == "RWM":
-        return vpm.ViscousConfig.rwm(
+        ),
+        "RWM": vpm.ViscousConfig.rwm(
             kinematic_viscosity=kinematic_viscosity,
             particle_spacing=spacing,
-        )
-    if scheme == "DVH":
-        return vpm.ViscousConfig.dvh(
+        ),
+        "DVH": vpm.ViscousConfig.dvh(
             particle_spacing=spacing,
             padding=5,
             kinematic_viscosity=kinematic_viscosity,
@@ -88,9 +85,8 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             threshold_mode="budget",
             max_nodes=MAX_PARTICLES,
             core_radius_ratio=CORE_RADIUS_RATIO,
-        )
-    if scheme == "GBD":
-        return vpm.ViscousConfig.gbd(
+        ),
+        "GBD": vpm.ViscousConfig.gbd(
             particle_spacing=spacing,
             padding=5,
             kinematic_viscosity=kinematic_viscosity,
@@ -98,8 +94,8 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             threshold_mode="budget",
             max_nodes=MAX_PARTICLES,
             core_radius_ratio=CORE_RADIUS_RATIO,
-        )
-    raise ValueError(f"Unknown viscous scheme {scheme!r}; expected one of {ALL_VISCOUS_SCHEMES}")
+        ),
+    }[scheme.upper()]
 
 
 def induction_config(scheme: str):
@@ -156,127 +152,6 @@ def _initial_conditions(physics: str, kinematic_viscosity: float):
     return conditions, circulations, y_positions, initial_half_width, column_half_length
 
 
-def write_run_metadata(
-    *,
-    physics: str,
-    scheme: str,
-    sample_directory: str,
-    circulations: tuple[float, ...],
-    kinematic_viscosity: float,
-    spacing: float,
-    particle_core_radius: float,
-    field_spacing: float,
-    n_steps: int,
-    random_seed: int,
-    initial_n_particles_total: int,
-    solver,
-) -> None:
-    """Write the information used by the plotting scripts."""
-    metadata = {
-        "schema_version": 2,
-        "status": "complete",
-        "completed": True,
-        "case": physics,
-        "scheme": scheme.lower(),
-        "circulations": [float(value) for value in circulations],
-        "kinematic_viscosity": float(kinematic_viscosity),
-        "circulation_reynolds_number": float(CIRCULATION_REYNOLDS_NUMBER),
-        "core_radius": float(GAUSSIAN_CORE_RADIUS),
-        "gaussian_core_radius": float(GAUSSIAN_CORE_RADIUS),
-        "velocity_peak_radius": float(CORE_RADIUS),
-        "velocity_peak_radius_factor": float(BETA_RMAX),
-        "vortex_separation": float(SEPARATION),
-        "vortex_column_length": float(COLUMN_LENGTH),
-        "column_length": float(COLUMN_LENGTH),
-        "column_half_length": float(COLUMN_LENGTH / 2.0),
-        "particle_spacing": float(spacing),
-        "particle_core_radius": float(particle_core_radius),
-        "field_spacing": float(field_spacing),
-        "sample_plane_fraction": 0.25,
-        "sample_plane_z": 0.25 * float(COLUMN_LENGTH),
-        "time_step_size": float(TIME_STEP_SIZE),
-        "total_time": float(TOTAL_TIME),
-        "end_time": float(TOTAL_TIME),
-        "number_of_steps": int(n_steps),
-        "integrator": solver.integrator_tableau.name,
-        "integrator_order": int(solver.integrator_tableau.order),
-        "integrator_stages": int(solver.integrator_tableau.stages),
-        "induction_backend": solver.induction.method,
-        "stretching_scheme": solver.induction.stretching_scheme,
-        "particle_kernel": "GAUSSIAN",
-        "diffusion_scheme": scheme,
-        "compute_backend": getattr(solver, "compute_device", "AUTO"),
-        "precision": "f32",
-        "write_precision": "f32",
-        "random_seed": int(random_seed),
-        "final_time": float(solver.time),
-        "initial_n_particles_total": int(initial_n_particles_total),
-        "final_n_particles_total": int(getattr(solver.particles, "n_particles_total", 0)),
-        "energy_diagnostic_version": ENERGY_DIAGNOSTIC_VERSION,
-    }
-    destination = TUTORIAL_DIR / "samples" / sample_directory / "run_metadata.json"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(destination)
-
-
-def completed_run_matches(physics: str, scheme: str, name: str, random_seed: int) -> bool:
-    """Reuse a complete compatible run, including its final particle backup."""
-    try:
-        folder = TUTORIAL_DIR / "samples" / name
-        metadata = json.loads((folder / "run_metadata.json").read_text())
-        steps = round(TOTAL_TIME / TIME_STEP_SIZE)
-        induction = induction_config(scheme)
-        expected = {
-            "status": "complete",
-            "completed": True,
-            "case": physics,
-            "scheme": scheme.lower(),
-            "random_seed": random_seed,
-            "particle_spacing": SPACING,
-            "particle_core_radius": PARTICLE_RADIUS,
-            "time_step_size": TIME_STEP_SIZE,
-            "number_of_steps": steps,
-            "induction_backend": induction.method,
-            "stretching_scheme": induction.stretching_scheme,
-            "integrator": "RK2",
-            "circulations": list(PHYSICS_CIRCULATIONS[physics]),
-            "kinematic_viscosity": abs(PHYSICS_CIRCULATIONS[physics][0])
-            / CIRCULATION_REYNOLDS_NUMBER,
-            "gaussian_core_radius": GAUSSIAN_CORE_RADIUS,
-            "column_length": COLUMN_LENGTH,
-            "field_spacing": FIELD_SPACING,
-        }
-        if any(metadata.get(key) != value for key, value in expected.items()):
-            return False
-        if not np.isclose(metadata.get("final_time", -1.0), TOTAL_TIME, rtol=0.0, atol=1e-8):
-            return False
-        if (
-            scheme in {"DVH", "GBD"}
-            and metadata.get("energy_diagnostic_version") != ENERGY_DIAGNOSTIC_VERSION
-        ):
-            return False
-        if scheme == "RWM":
-            interval = (
-                MERGING_SAMPLE_INTERVAL_STEPS
-                if physics == "merging"
-                else round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
-            )
-            if any(
-                not (TUTORIAL_DIR / "solution" / name / f"vpm_{step:06d}.h5").is_file()
-                for step in range(interval, steps, interval)
-            ):
-                return False
-        elif not (folder / f"{name}_zq.pvd").is_file():
-            return False
-        return (folder / "flow_integrals.csv").is_file() and (
-            TUTORIAL_DIR / "solution" / name / f"vpm_{steps:06d}.h5"
-        ).is_file()
-    except (OSError, ValueError, TypeError):
-        return False
-
-
 def run_case(
     physics: str,
     scheme: str,
@@ -286,38 +161,24 @@ def run_case(
     surfaces: bool = True,
     backup_steps: int | None = None,
     compute_device: str = "AUTO",
-    resume: bool = False,
 ) -> None:
     scheme = scheme.upper()
     case_name = name or f"{physics}_{scheme.lower()}"
-    if resume and completed_run_matches(physics, scheme, case_name, random_seed):
-        print(f"[resume] {case_name}: reusing completed run", flush=True)
-        return
-    previous = [TUTORIAL_DIR / kind / case_name for kind in ("samples", "solution")]
-    if any(path.exists() for path in previous):
-        archive_root = TUTORIAL_DIR / "solution" / ".previous_runs"
-        archive_root.mkdir(parents=True, exist_ok=True)
-        archive = Path(tempfile.mkdtemp(prefix=f"{case_name}-", dir=archive_root))
-        for path in previous:
-            if path.exists():
-                path.rename(archive / path.parent.name)
-        print(f"[resume] {case_name}: preserved previous outputs in {archive}", flush=True)
-    # ---- Derived physical quantities ----
+    # Derived physical quantities
     spacing = SPACING
-    particle_core_radius = PARTICLE_RADIUS
     field_spacing = FIELD_SPACING
     circulations = PHYSICS_CIRCULATIONS[physics]
     circulation = abs(circulations[0])
     kinematic_viscosity = circulation / CIRCULATION_REYNOLDS_NUMBER  # ν = |Γ|/Re_Γ
     viscous = viscous_config(scheme, kinematic_viscosity, spacing)
 
-    # ---- Time stepping ----
+    # Time stepping
     sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
     if backup_steps is None:
         backup_steps = round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE)
     field_interval_steps = MERGING_SAMPLE_INTERVAL_STEPS if physics == "merging" else sample_steps
 
-    # ---- Initial vortex geometry ----
+    # Initial vortex geometry
     (
         initial_conditions,
         circulations,
@@ -325,9 +186,7 @@ def run_case(
         initial_half_width,
         column_half_length,
     ) = _initial_conditions(physics, kinematic_viscosity)
-    initial_n_particles_total = sum(len(condition.build()) for condition in initial_conditions)
-
-    # ---- Domain sizing (must contain vortex at t=end_time) ----
+    # Domain sizing (must contain vortex at t=end_time)
     final_core_radius = BETA_RMAX * np.sqrt(
         GAUSSIAN_CORE_RADIUS**2 + 4.0 * kinematic_viscosity * TOTAL_TIME
     )
@@ -337,10 +196,6 @@ def run_case(
     lateral_half_width = (
         initial_half_width if physics == "vortex" else max(abs(y) for y in y_positions) + padding
     )
-    # The finite column diffuses axially as well as radially. Reserve the
-    # cumulative heat-kernel envelope over the full run, using the same 3.6
-    # support factor as DVH. Per-event grid padding is additional workspace;
-    # it must not be the only space available for physical diffusion.
     diffusion_padding = 3.6 * np.sqrt(4.0 * kinematic_viscosity * TOTAL_TIME)
     lateral_half_width = max(lateral_half_width, initial_half_width + diffusion_padding)
     field_padding = 0.0 if physics == "vortex" else 3.0 * final_core_radius
@@ -368,7 +223,7 @@ def run_case(
         -field_lateral_half_width,
         field_lateral_half_width,
     ]
-    # ---- Field samplers ---------------------------------------------------
+    # Field samplers
     sample_plane_fraction = 0.25  # sample at z = L/4
     integral_interval_steps = field_interval_steps
     if scheme == "DVH":
@@ -397,6 +252,7 @@ def run_case(
     n_steps = round(TOTAL_TIME / TIME_STEP_SIZE)
 
     case = vpm.VPMCase(
+        name=case_name,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             viscous=viscous,
@@ -424,35 +280,10 @@ def run_case(
     solver = vpm.VPMSolver(case)
     solver.run()
 
-    write_run_metadata(
-        physics=physics,
-        scheme=scheme,
-        sample_directory=sample_directory,
-        circulations=circulations,
-        kinematic_viscosity=kinematic_viscosity,
-        spacing=spacing,
-        particle_core_radius=particle_core_radius,
-        field_spacing=field_spacing,
-        n_steps=n_steps,
-        random_seed=random_seed,
-        initial_n_particles_total=initial_n_particles_total,
-        solver=solver,
-    )
 
-
-def parse_args() -> argparse.Namespace:
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case", choices=tuple(PHYSICS_CIRCULATIONS))
     parser.add_argument("viscous_scheme", choices=VISCOUS_SCHEMES)
-    parser.add_argument("--resume", action="store_true", help="reuse compatible completed outputs")
-    return parser.parse_args()
-
-
-def main() -> int:
-    args = parse_args()
-    run_case(args.case, args.viscous_scheme, resume=args.resume)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+    args = parser.parse_args()
+    run_case(args.case, args.viscous_scheme)

@@ -101,6 +101,21 @@ class WALE:
     """
 
     def __init__(self, mesh_data, geo_data, wale_coefficient=0.325):
+        """Bind a WALE model to one FVM mesh and geometry view.
+
+        Parameters
+        ----------
+        mesh_data, geo_data : dict
+            Native topology and geometric fields. Cell volumes are used to
+            derive filter widths; inputs are read but not modified.
+        wale_coefficient : float, default=0.325
+            Dimensionless WALE coefficient.
+
+        Raises
+        ------
+        ValueError
+            If the coefficient is non-finite or negative.
+        """
         if not np.isfinite(wale_coefficient) or wale_coefficient < 0.0:
             raise ValueError("WALE coefficient wale_coefficient must be finite and non-negative")
         self.wale_coefficient = wale_coefficient
@@ -164,6 +179,21 @@ class Sigma:
     """
 
     def __init__(self, mesh_data, geo_data, sigma_coefficient=1.35):
+        """Bind the Sigma SGS model to one FVM mesh and geometry view.
+
+        Parameters
+        ----------
+        mesh_data, geo_data : dict
+            Native topology and geometric fields used for gradients and
+            filter widths. Inputs are read but not modified.
+        sigma_coefficient : float, default=1.35
+            Dimensionless Sigma-model coefficient.
+
+        Raises
+        ------
+        ValueError
+            If the coefficient is non-finite or negative.
+        """
         if not np.isfinite(sigma_coefficient) or sigma_coefficient < 0.0:
             raise ValueError("sigma coefficient must be finite and non-negative")
         self.sigma_coefficient = sigma_coefficient

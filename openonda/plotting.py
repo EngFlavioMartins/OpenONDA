@@ -20,6 +20,60 @@ import numpy as np
 # ==================================================
 
 
+def read_vlm_surface(surface_record: dict, geometry_directory: str | Path) -> dict:
+    """Read the run's native geometry snapshot, including older saved cases.
+
+    Current VPM metadata embeds the geometry loaded by the solver, so plotting
+    remains valid after input files change or disappear. Older records retain
+    a filename; resolve those within the copied tutorial's geometry directory.
+    """
+    import json
+
+    if "geometry" in surface_record:
+        return surface_record["geometry"]
+    path = Path(geometry_directory) / Path(surface_record["surface"]).name
+    return json.loads(path.read_text())
+
+
+def latest_fvm_snapshot(solution_directory: str | Path) -> Path | None:
+    """Return the latest field snapshot in the solver's recorded time series.
+
+    Parameters
+    ----------
+    solution_directory : str or pathlib.Path
+        FVM output directory containing ``fvm_metadata.json`` and the case's
+        PVD index. Geometry-only ``mesh.vtu`` files are never selected.
+
+    Returns
+    -------
+    pathlib.Path or None
+        Snapshot with the greatest recorded physical time, or ``None`` when
+        the solver has not yet published a field time series.
+
+    Raises
+    ------
+    ValueError, KeyError
+        If a published metadata or time-series record is malformed.
+    """
+    import json
+
+    from defusedxml import ElementTree
+
+    directory = Path(solution_directory)
+    metadata_path = directory / "fvm_metadata.json"
+    if not metadata_path.is_file():
+        return None
+    metadata = json.loads(metadata_path.read_text())
+    series = directory / f"{metadata['case_name']}.pvd"
+    if not series.is_file():
+        return None
+    frames = ElementTree.parse(series).findall(".//DataSet")
+    if not frames:
+        return None
+    latest = max(frames, key=lambda frame: float(frame.attrib["timestep"]))
+    return directory / latest.attrib["file"]
+
+
 def theoretical_ring_trajectory(
     kinematic_viscosity: float,
     initial_core_radius: float,

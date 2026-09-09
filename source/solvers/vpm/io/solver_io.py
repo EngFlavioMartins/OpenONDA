@@ -29,45 +29,59 @@ class SolverIO:
     """
 
     def __init__(self, solver: "VPMSolver"):
-        """
-        Initialize IO manager.
+        """Create the I/O facade for one VPM solver.
 
-        Args:
-            solver: Parent solver instance
+        Parameters
+        ----------
+        solver : VPMSolver
+            Parent solver.  Its resolved backup path and accepted clock are
+            read dynamically; the solver object is retained by reference.
+
+        Notes
+        -----
+        Construction does not write files.  Backup, CSV, VTK, and XDMF output
+        occur only when their explicit methods or schedules are invoked.
         """
         self.solver = solver
 
         self.export_dir = self.solver._backup_path
 
-        self._vlm_pvd_entries = []  # Track VLM time-series entries
         self._xdmf_series_entries = []  # Track VPM particle time-series entries
 
     @property
     def vpm_prefix(self) -> str:
+        """Return the stable filename prefix for particle backups."""
         return "vpm"
 
     @property
     def vlm_prefix(self) -> str:
+        """Return the stable filename prefix for VLM outputs."""
         return "vlm"
 
     @property
     def step(self) -> int:
+        """Return the parent solver's accepted-step index."""
         return self.solver.step
 
     @property
     def time(self) -> float:
+        """Return the parent solver's accepted physical time in seconds."""
         return self.solver.time
 
     def write_backup(self, verbose: bool = True) -> None:
-        """Write numerical restart state selected by the output manager.
+        """Write restart state and a ParaView companion for the accepted surface.
 
-        Visualization, panel loads, and VLM result files are scientific output,
-        not restart state. They need explicitly configured samplers with their
-        own schedules rather than inheriting the backup cadence.
+        VLM surfaces share the sparse backup clock with VPM particles. Scientific
+        samplers still write independently to samples at their own cadence.
         """
         os.makedirs(self.export_dir, exist_ok=True)
         backup_path = os.path.join(self.export_dir, self.vpm_prefix)
         _BackupIO.save(self.solver, backup_path, verbose=verbose)
+        vlm = getattr(self.solver, "vlm_solver", None)
+        if vlm is not None:
+            from .vlm_backup import write_vlm_backup
+
+            write_vlm_backup(vlm, self.export_dir, step=self.step, time=self.time)
 
     def export_diagnostics_csv(self, diagnostics_history: dict, filename: str) -> None:
         """Export diagnostics history to CSV for offline analysis.
@@ -196,6 +210,20 @@ class SolverIO:
         }
         row.update(solver._discretization_health)
         row.update(solver.stabilization.diagnostics)
+        vlm = getattr(solver, "vlm_solver", None)
+        if vlm is not None:
+            bound_impulse = vlm.compute_bound_linear_impulse()
+            bound_strength = vlm.compute_total_bound_vortex_strength()
+            for index, axis in enumerate("xyz"):
+                # Like the established particle integrals, impulse is per density [m^4/s].
+                row[f"bound_linear_impulse_{axis}"] = float(bound_impulse[index])
+                row[f"coupled_linear_impulse_{axis}"] = float(
+                    linear_impulse[index] + bound_impulse[index]
+                )
+                row[f"bound_vortex_strength_{axis}"] = float(bound_strength[index])
+                row[f"coupled_vortex_strength_{axis}"] = float(
+                    net_vortex_strength[index] + bound_strength[index]
+                )
         health = getattr(solver, "_accepted_health_snapshot", None)
         if health is not None:
             row.update(
@@ -300,56 +328,6 @@ class SolverIO:
             df.to_csv(csv_path, index=False)
         else:
             df.to_csv(csv_path, mode="a", header=False, index=False)
-
-    def _export_vlm_results(self, time_val: float):
-        """Export VLM solver results (VTK + PVD collection).
-
-        VLM force CSV is written by solver.py's _export_vlm_forces_to_csv,
-        which uses the correct cached reference velocity.
-        """
-        vlm_solver = getattr(self.solver, "vlm_solver", None)
-        if vlm_solver is None or not getattr(vlm_solver, "_mesh_generated", False):
-            return
-
-        # Export VLM lattice visualization using consistent time
-        vlm_filename = f"{self.vlm_prefix}_{self.step:06d}"
-        vlm_base = f"{self.export_dir}/{vlm_filename}"
-        try:
-            vlm_solver.save_results(vlm_base, time=time_val)
-            # Track for PVD collection
-            self._vlm_pvd_entries.append((time_val, f"{vlm_filename}.vtp"))
-            # Write PVD collection file for ParaView time-series
-            self._write_surface_pvd_file(self.vlm_prefix)
-        except Exception as exc:
-            Logging.warning(
-                f"component=vlm_output format=vtk status=write_failed path={vlm_base!r} "
-                f"error={exc!r}"
-            )
-
-    def _write_surface_pvd_file(self, base_name: str):
-        """Write ParaView Data (PVD) collection file for surface (VLM) time-series."""
-        pvd_path = os.path.join(self.export_dir, f"{base_name}.pvd")
-
-        try:
-            with open(pvd_path, "w") as f:
-                f.write('<?xml version="1.0"?>\n')
-                f.write('<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n')
-                f.write("  <Collection>\n")
-
-                for time_value, filename in self._vlm_pvd_entries:
-                    f.write(f'    <DataSet timestep="{time_value:.6g}" file="{filename}"/>')
-
-                f.write("  </Collection>\n")
-                f.write("</VTKFile>\n")
-            Logging.info(
-                f"component=vlm_output format=pvd status=written path={pvd_path!r} "
-                f"time_levels={len(self._vlm_pvd_entries)}"
-            )
-        except Exception as exc:
-            Logging.warning(
-                f"component=vlm_output format=pvd status=write_failed path={pvd_path!r} "
-                f"error={exc!r}"
-            )
 
 
 __all__ = ["SolverIO"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bound/wake vortex-strength closure for the static 8-degree case (Kelvin's theorem).
+"""Integrated bound/wake vortex-strength closure for the static 8-degree case.
 
 Output: figures/flat_plate_kelvin.png
 """
@@ -23,14 +23,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ._plot_theme import CASE_DIR, SAMPLES_DIR, color, cm, save_fig, export_formats
+from ._plot_theme import CASE_DIR, color, cm, save_fig, export_formats
 
 
 CM = cm()
 
 
 def load_budget(samples_dir: Path, name: str):
-    csv = samples_dir / name / f"{name}.csv"
+    csv = samples_dir / name / "vlm_forces.csv"
     if not csv.exists():
         print(f"  [MISSING] {csv}")
         return None
@@ -44,13 +44,15 @@ def load_budget(samples_dir: Path, name: str):
     bound = df["bound_vortex_strength_y"].to_numpy(float)
     wake = df["wake_vortex_strength_y"].to_numpy(float)
     valid = np.isfinite(t) & np.isfinite(bound) & np.isfinite(wake)
-    return t[valid], bound[valid], wake[valid]
+    if not valid.all():
+        raise ValueError(f"Non-finite bound/wake strength data in {csv}")
+    return t, bound, wake
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Bound/wake vortex-strength closure.")
     ap.add_argument("--format", choices=export_formats(), default="png")
-    ap.add_argument("--dpi", type=int, default=300)
+    ap.add_argument("--dpi", type=int, default=400)
     args = ap.parse_args()
 
     name = "exp_static_aoa08"
@@ -66,7 +68,7 @@ def main() -> None:
     c_bound = color("vpm")
     c_wake = color("hybrid")
     residual = bound + wake
-    scale = max(float(np.max(np.abs(bound))), float(np.max(np.abs(wake))), 1e-15)
+    scale = max(float(np.max(np.abs(bound))), 1e-15)
     rel = 100.0 * residual / scale
     max_rel = float(np.max(np.abs(rel)))
 
@@ -86,17 +88,17 @@ def main() -> None:
     ax.legend(loc="lower right")
 
     axr.axhline(0.0, color=color("reference"), ls="--", lw=1.0)
-    axr.plot(t, rel / 1e-4, color=color("DarkText"), lw=1.2)
+    axr.plot(t, rel, color=color("DarkText"), lw=1.2)
     axr.set_xlabel("Time [s]")
-    axr.set_ylabel(r"$\mathrm{Residual}\ [10^{-4}\,\%]$")
+    axr.set_ylabel(r"Residual [\%]")
     axr.set_xlim(float(t.min()), float(t.max()))
     axr.text(
         0.02,
-        0.94,
-        rf"$\max|\Sigma\alpha_y|/\max|\alpha_y| = {max_rel:.1e}\,\%$",
+        0.06,
+        f"Maximum residual: {max_rel:.3g}\\%\n(scaled by peak bound strength)",
         transform=axr.transAxes,
         ha="left",
-        va="top",
+        va="bottom",
     )
 
     out_dir = CASE_DIR / "figures"

@@ -160,6 +160,18 @@ def _flag_candidate_self_intersections(
 
 
 def validate_finite(triangles: np.ndarray) -> None:
+    """Validate that all STL vertex coordinates are finite.
+
+    Parameters
+    ----------
+    triangles : ndarray, shape (n_triangles, 3, 3)
+        Triangle vertices in metres.  The final axis stores ``(x, y, z)``.
+
+    Raises
+    ------
+    StlAuditError
+        If any coordinate is NaN or infinite.
+    """
     _require(
         bool(np.all(np.isfinite(triangles))),
         "STL mesh contains non-finite (NaN/Inf) vertex coordinates",

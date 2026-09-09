@@ -59,7 +59,18 @@ def _point(value: Point, name: str) -> Point:
 
 @dataclass(frozen=True, slots=True)
 class BoxPatches:
-    """Names assigned to the six faces of an axis-aligned domain box."""
+    """Names assigned to the six faces of an axis-aligned domain box.
+
+    The attributes are ordered as ``xmin, xmax, ymin, ymax, zmin, zmax``.
+    Names are metadata used to create contiguous native boundary ranges; they
+    do not themselves select a velocity or pressure boundary condition.
+
+    Parameters
+    ----------
+    xmin, xmax, ymin, ymax, zmin, zmax : str
+        Non-empty, case-sensitive patch names for the corresponding outward
+        domain face. Names need not encode a boundary-condition type.
+    """
 
     xmin: str
     xmax: str
@@ -79,7 +90,19 @@ class BoxPatches:
 
 @dataclass(frozen=True, slots=True)
 class BoxDomain:
-    """Outer Cartesian domain and its configured boundary-patch names."""
+    """Finite Cartesian domain and its six outer patch names.
+
+    ``bounds`` is ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in metres. The
+    domain is immutable after validation; mesher stages use these bounds for
+    surface containment, outer-plane construction, and patch naming.
+
+    Parameters
+    ----------
+    bounds : tuple[float, float, float, float, float, float]
+        Strictly increasing bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m.
+    patches : BoxPatches
+        Names assigned to the six corresponding outward faces.
+    """
 
     bounds: Bounds
     patches: BoxPatches
@@ -92,7 +115,24 @@ class BoxDomain:
 
 @dataclass(frozen=True, slots=True)
 class STLSurface:
-    """A validated triangulated surface and the patch name it supplies."""
+    """Validated triangulated surface assigned to one mesh patch.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        STL path. It is expanded/resolved and loaded during construction.
+    patch : str
+        Boundary patch name supplied to the generated mesh.
+    allow_open : bool, default=False
+        Allow an open/non-watertight surface when the downstream workflow can
+        still classify it. Closed surfaces are required for solid carving.
+
+    Notes
+    -----
+    Triangle coordinates are retained as a validated immutable ``(n, 3, 3)``
+    array in metres. Construction performs file I/O and records a SHA-256
+    provenance hash; it raises before meshing if the surface is invalid.
+    """
 
     path: Path | str
     patch: str
@@ -136,7 +176,12 @@ class STLSurface:
 
 
 class Refinement(ABC):
-    """Base protocol for a physical size request."""
+    """Interface for a physical region that requests an upper cell size.
+
+    Implementations return a boolean mask for ``(n, 3)`` points and may expose
+    conservative bounds for octree intersection. Cell sizes use metres; a
+    composite field resolves overlapping requests by taking the smallest size.
+    """
 
     @abstractmethod
     def contains(self, points: np.ndarray) -> np.ndarray:
@@ -154,7 +199,18 @@ class Refinement(ABC):
 
 @dataclass(frozen=True, slots=True)
 class PatchRefinement:
-    """Request a cfMesh local surface size on one exact named patch."""
+    """Request a local surface cell size on one exact named patch.
+
+    ``cell_size`` is an upper target in metres. The patch must exist in the
+    domain/surface patch namespace before mesher execution.
+
+    Parameters
+    ----------
+    patch : str
+        Exact case-sensitive name of an outer or embedded-surface patch.
+    cell_size : float
+        Positive requested maximum edge length in m.
+    """
 
     patch: str
     cell_size: float
@@ -166,7 +222,20 @@ class PatchRefinement:
 
 @dataclass(frozen=True, slots=True)
 class BoxRefinement(Refinement):
-    """Request an upper cell size inside an axis-aligned box."""
+    """Request an upper cell size inside an axis-aligned box in metres.
+
+    ``bounds`` uses ``(xmin, xmax, ymin, ymax, zmin, zmax)`` and ``contains``
+    accepts points of shape ``(n, 3)``.
+
+    Parameters
+    ----------
+    name : str
+        Unique diagnostic name for this refinement request.
+    bounds : tuple[float, float, float, float, float, float]
+        Closed physical region in m.
+    cell_size : float
+        Positive requested maximum edge length in m.
+    """
 
     name: str
     bounds: Bounds
@@ -180,6 +249,18 @@ class BoxRefinement(Refinement):
         )
 
     def contains(self, points: np.ndarray) -> np.ndarray:
+        """Test Cartesian points against the closed refinement box.
+
+        Parameters
+        ----------
+        points : numpy.ndarray, shape (n, 3)
+            Cartesian coordinates in m.
+
+        Returns
+        -------
+        numpy.ndarray, shape (n,)
+            New boolean mask; boundary points are included.
+        """
         values = np.asarray(points, dtype=np.float64)
         lower = np.asarray(self.bounds[::2])
         upper = np.asarray(self.bounds[1::2])
@@ -188,7 +269,20 @@ class BoxRefinement(Refinement):
 
 @dataclass(frozen=True, slots=True)
 class SphereRefinement(Refinement):
-    """Request an upper cell size inside a radius around a centre."""
+    """Request an upper cell size inside a spherical region.
+
+    ``centre`` and ``radius`` are in metres. ``contains`` tests closed-sphere
+    membership for an ``(n, 3)`` point array.
+
+    Parameters
+    ----------
+    name : str
+        Unique diagnostic name.
+    centre : tuple[float, float, float]
+        Sphere centre in Cartesian metres.
+    radius, cell_size : float
+        Positive sphere radius and requested maximum cell size in m.
+    """
 
     name: str
     centre: Point
@@ -204,6 +298,7 @@ class SphereRefinement(Refinement):
         )
 
     def contains(self, points: np.ndarray) -> np.ndarray:
+        """Return a boolean closed-sphere membership mask for ``(n, 3)`` points in m."""
         values = np.asarray(points, dtype=np.float64)
         centre = np.asarray(self.centre, dtype=np.float64)
         return np.einsum("ij,ij->i", values - centre, values - centre) <= self.radius**2
@@ -231,7 +326,23 @@ class SphereRefinement(Refinement):
 
 @dataclass(frozen=True, slots=True)
 class ConeRefinement(Refinement):
-    """Request an upper cell size inside a finite axis-aligned cone volume."""
+    """Request an upper cell size inside a finite cone in metres.
+
+    The ``axis`` direction is normalized during construction; ``height`` and
+    ``radius`` define the finite axial/radial extent from ``centre``.
+
+    Parameters
+    ----------
+    name : str
+        Unique diagnostic name.
+    centre : tuple[float, float, float]
+        Base-disc centre in Cartesian metres.
+    axis : tuple[float, float, float]
+        Non-zero direction from the base towards the cone tip; normalized and
+        stored without units.
+    radius, height, cell_size : float
+        Positive base radius, axial height, and requested maximum size in m.
+    """
 
     name: str
     centre: Point
@@ -255,6 +366,7 @@ class ConeRefinement(Refinement):
         )
 
     def contains(self, points: np.ndarray) -> np.ndarray:
+        """Return closed finite-cone membership for Cartesian ``(n, 3)`` points in m."""
         values = np.asarray(points, dtype=np.float64)
         centre = np.asarray(self.centre, dtype=np.float64)
         axis = np.asarray(self.axis, dtype=np.float64)
@@ -279,7 +391,23 @@ class ConeRefinement(Refinement):
 
 @dataclass(frozen=True, slots=True)
 class LineRefinement(Refinement):
-    """Request an upper cell size in a radius around a line segment."""
+    """Request an upper cell size in a radius around a line segment.
+
+    ``start``/``end`` and the optional ``radius`` use metres. When no radius is
+    supplied, the implementation derives a conservative segment influence for
+    sizing; point queries still have shape ``(n, 3)``.
+
+    Parameters
+    ----------
+    name : str
+        Unique diagnostic name.
+    start, end : tuple[float, float, float]
+        Distinct segment endpoints in Cartesian metres.
+    cell_size : float
+        Positive requested maximum size in m.
+    radius : float or None, optional
+        Tube radius in m; ``None`` uses ``0.5 * cell_size``.
+    """
 
     name: str
     start: Point
@@ -302,6 +430,7 @@ class LineRefinement(Refinement):
             object.__setattr__(self, "radius", _finite_positive(self.radius, f"{self.name}.radius"))
 
     def contains(self, points: np.ndarray) -> np.ndarray:
+        """Return closed line-tube membership for Cartesian ``(n, 3)`` points in m."""
         values = np.asarray(points, dtype=np.float64)
         start = np.asarray(self.start, dtype=np.float64)
         delta = np.asarray(self.end, dtype=np.float64) - start
@@ -322,7 +451,18 @@ class LineRefinement(Refinement):
 
 @dataclass(frozen=True, slots=True)
 class FeatureRefinement:
-    """Requested sizing around surface features above an included angle."""
+    """Requested sizing around surface edges above an included angle.
+
+    ``angle`` is in degrees and ``cell_size`` is in metres. Only detected
+    surface features above the angle threshold receive the refinement.
+
+    Parameters
+    ----------
+    angle : float
+        Included-angle threshold strictly between 0 and 180 degrees.
+    cell_size : float
+        Positive requested maximum size near qualifying edges, in m.
+    """
 
     angle: float
     cell_size: float
@@ -337,7 +477,23 @@ class FeatureRefinement:
 
 @dataclass(frozen=True, slots=True)
 class BoundaryLayers:
-    """Wall-normal layer request for one or more configured patches."""
+    """Wall-normal layer request for one or more configured patches.
+
+    ``first_cell_height`` is in metres, ``growth_ratio`` is dimensionless, and
+    ``layers`` counts cells from the wall outward. :attr:`layer_heights` returns
+    the requested sequence without modifying mesh topology.
+
+    Parameters
+    ----------
+    patches : tuple[str, ...]
+        Unique embedded-surface patch names on which layers are requested.
+    layers : int
+        Positive number of wall-normal cells.
+    first_cell_height : float
+        Wall-adjacent cell height in m.
+    growth_ratio : float
+        Dimensionless outward height ratio, at least one.
+    """
 
     patches: tuple[str, ...]
     layers: int
@@ -369,7 +525,13 @@ class BoundaryLayers:
 
 
 class SizeField(ABC):
-    """General interface for evaluating requested physical cell sizes."""
+    """Interface for evaluating spatially varying upper cell sizes.
+
+    Mesher internals query implementations with Cartesian points of shape
+    ``(n, 3)`` in m and receive one positive requested size per point in m.
+    A size field describes intent only; dyadic octree realization may choose a
+    finer size.
+    """
 
     @abstractmethod
     def requested_size(self, points: np.ndarray) -> np.ndarray:
@@ -378,7 +540,21 @@ class SizeField(ABC):
 
 @dataclass(frozen=True, slots=True)
 class CompositeSizeField(SizeField):
-    """Combine background and refinement requests by taking the smallest size."""
+    """Combine background/refinement requests by taking the smallest size.
+
+    ``requested_size(points)`` accepts an ``(n, 3)`` array and returns an
+    ``(n,)`` metre-valued upper-size array. ``minimum_size`` is a safety floor,
+    so overlapping requests are resolved as ``max(minimum, min(requests))``.
+
+    Parameters
+    ----------
+    background_size : float
+        Positive default maximum size in m.
+    refinements : tuple[Refinement, ...], optional
+        Named spatial requests; names must be unique.
+    minimum_size : float or None, optional
+        Positive lower guard in m, no larger than ``background_size``.
+    """
 
     background_size: float
     refinements: tuple[Refinement, ...] = ()
@@ -399,6 +575,23 @@ class CompositeSizeField(SizeField):
             object.__setattr__(self, "minimum_size", minimum)
 
     def requested_size(self, points: np.ndarray) -> np.ndarray:
+        """Evaluate the finest applicable spatial size request.
+
+        Parameters
+        ----------
+        points : numpy.ndarray, shape (n, 3)
+            Cartesian coordinates in m.
+
+        Returns
+        -------
+        numpy.ndarray, shape (n,)
+            Newly allocated upper cell-size requests in m.
+
+        Raises
+        ------
+        ValueError
+            If ``points`` does not have shape ``(n, 3)``.
+        """
         values = np.asarray(points, dtype=np.float64)
         if values.ndim != 2 or values.shape[1] != 3:
             raise ValueError("points must have shape (n, 3)")

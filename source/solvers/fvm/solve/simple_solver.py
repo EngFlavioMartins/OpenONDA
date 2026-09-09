@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import Any, Literal, overload
 
-from numba import njit
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 from ..assemble import matrix_assembly, momentum
 from ..fields import diagnostics as field_diagnostics
@@ -949,13 +950,17 @@ def _pressure_interior_flux_vector(
 @overload
 def assemble_pressure_correction_equation_rhie_chow(
     *args: Any, return_workspace: Literal[False] = False, **kwargs: Any
-) -> tuple[Any, Any, np.ndarray]: ...
+) -> tuple[Any, Any, np.ndarray]:
+    """Typing overload for the default three-value return form."""
+    ...
 
 
 @overload
 def assemble_pressure_correction_equation_rhie_chow(
     *args: Any, return_workspace: Literal[True], **kwargs: Any
-) -> tuple[Any, Any, np.ndarray, PressureCorrectionWorkspace]: ...
+) -> tuple[Any, Any, np.ndarray, PressureCorrectionWorkspace]:
+    """Typing overload for the four-value workspace return form."""
+    ...
 
 
 def assemble_pressure_correction_equation_rhie_chow(
@@ -977,29 +982,71 @@ def assemble_pressure_correction_equation_rhie_chow(
     frozen_velocity_h_over_a=None,
     return_workspace=False,
 ):
-    """
-    Assemble pressure correction equation using Modified Rhie-Chow interpolation.
+    """Assemble the Rhie--Chow pressure-correction equation for one PIMPLE pass.
 
-    This implementation uses the "H-by-A" reconstruction method:
-    1. Reconstruct velocity without pressure gradient at cell centres (velocity_h_over_a).
-    2. Interpolate velocity_h_over_a to faces.
-    3. Add compact pressure gradient drive at faces.
+    The H-by-A form first reconstructs pressure-free cell velocity, interpolates
+    it to faces, and adds a compact pressure-gradient drive. The returned face
+    flux is therefore the corrected volumetric flux used by the continuity
+    equation, rather than a face velocity in m/s.
 
-    This is more robust against checkerboarding than the standard correction method.
+    Parameters
+    ----------
+    velocity_star : ndarray, shape (n_cells, 3)
+        Current relaxed predictor velocity in m/s, cell-centred.
+    momentum_diagonal : ndarray, shape (n_cells,)
+        Relaxed diagonal of the momentum equations in the solver's assembled
+        coefficient units. It must be positive wherever a cell is active.
+    kinematic_pressure : ndarray, shape (n_cells,)
+        Current cell-centred ``p/rho`` field in m²/s².
+    density : float
+        Positive reference density in kg/m³. It is validated for API
+        compatibility; the kinematic pressure equation itself is density-free.
+    mesh_data : Mapping[str, object]
+        Face-based topology with owner/neighbour indexing and boundary ranges.
+    geo_data : Mapping[str, object]
+        Cell/face geometry, including volumes, face centres, and oriented area
+        vectors in SI units.
+    boundaries : Sequence[BoundaryConfig]
+        Resolved FVM patch conditions used for boundary flux coefficients.
+    velocity_relaxation : float, default=1.0
+        Momentum relaxation factor used to recover the physical H-by-A drive.
+    pressure_constraint : str, default='reference'
+        Pressure null-space treatment, such as a reference cell or mean-zero
+        constraint.
+    matrix_workspace : MatrixAssemblyWorkspace or None, optional
+        Reusable CSR structure for the pressure matrix.
+    operator_backend : {'numpy', 'numba', 'taichi'}, default='numpy'
+        Backend used for vectorized coefficient assembly.
+    boundary_layout, ddt_flux_correction, correction_workspace : optional
+        Precomputed topology/time-integration data. ``None`` requests local
+        construction; supplied arrays must use the current mesh row order.
+    reuse_matrix : bool, default=False
+        Reuse coefficient storage when ``matrix_workspace`` permits it.
+    frozen_velocity_h_over_a : ndarray, shape (n_cells, 3) or None, optional
+        Previously assembled pressure-free velocity for a repeated corrector.
+    return_workspace : bool, default=False
+        If true, append the :class:`PressureCorrectionWorkspace` to the return
+        tuple for reuse by a subsequent corrector.
 
-    Args:
-        velocity_star: Predicted velocity field
-        momentum_diagonal: Momentum diagonal coefficients
-        kinematic_pressure: Current kinematic-pressure field ``kinematic_pressure/ρ`` [m²/s²].
-        density: Positive constant reference density [kg/m³]. It is validated
-            for API compatibility but cancels from this pressure equation.
-        mesh_data: Mesh connectivity
-        geo_data: Geometric data
-        boundaries: Boundary conditions
-        velocity_relaxation: Velocity under-relaxation factor
+    Returns
+    -------
+    tuple
+        ``(A_p, b_p, phi_star)`` or ``(A_p, b_p, phi_star, workspace)``.
+        ``A_p`` is the sparse pressure-correction matrix, ``b_p`` its RHS, and
+        ``phi_star`` has shape ``(n_faces,)`` in m³/s with positive owner-to-
+        neighbour orientation.
 
-    Returns:
-        tuple: (pressure_matrix, pressure_right_hand_side, f_vf) where f_vf is the Rhie-Chow corrected flux (volumetric_face_flux_star).
+    Raises
+    ------
+    ValueError
+        If density, relaxation, topology, boundary data, or array shapes
+        violate the pressure-assembly contract.
+
+    Notes
+    -----
+    This function assembles a candidate equation only; it does not solve the
+    matrix, mutate the accepted pressure field, or advance time. The caller
+    applies the pressure correction and commits it through the solver lifecycle.
     """
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]

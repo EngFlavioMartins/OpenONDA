@@ -147,7 +147,35 @@ def _plot(report: dict[str, Any], destination: Path) -> None:
 
 
 def analyse_grid_study(samples_root: str | Path, output_root: str | Path) -> dict[str, Any]:
-    """Analyse all registered runs and write numeric and graphical results."""
+    """Aggregate at least three registered FVM runs into a grid-convergence report.
+
+    Parameters
+    ----------
+    samples_root : str or pathlib.Path
+        Directory containing one case subdirectory per grid, each with
+        ``grid_run.json`` and ``forces_history.csv``.
+    output_root : str or pathlib.Path
+        Destination for ``grid_study.json``, ``grid_study.csv``,
+        ``grid_study.md``, and ``grid_study.png``. It is created if needed.
+
+    Returns
+    -------
+    dict[str, Any]
+        JSON-compatible report containing grid metadata, force statistics,
+        observed-order/GCI estimates, and common profile errors. Time is in
+        seconds; force coefficients and normalized errors are dimensionless.
+
+    Raises
+    ------
+    ValueError
+        If fewer than three runs exist or a required sample is malformed or
+        has too few rows in the common averaging window.
+
+    Notes
+    -----
+    Statistics use the second half of the shortest completed physical-time
+    interval. The three finest grids determine Richardson/GCI estimates.
+    """
     samples_root = Path(samples_root)
     metadata = [
         json.loads(path.read_text(encoding="utf-8"))
@@ -260,7 +288,30 @@ def update_grid_study(
     *,
     profiles: tuple[str, ...] = (),
 ) -> dict[str, Any] | None:
-    """Register a completed solver run and refresh its three-grid report."""
+    """Register one completed FVM run and refresh its grid study when possible.
+
+    Parameters
+    ----------
+    solver : FVMSolver
+        Completed solver. Pending asynchronous output is flushed and MPI-owned
+        cell counts are reduced before metadata is written.
+    cell_size : float
+        Representative grid spacing, normally nondimensionalized by the
+        reference body length (for example ``h/D``).
+    profiles : tuple[str, ...], optional
+        Line-sampler basenames to compare when present on every registered grid.
+
+    Returns
+    -------
+    dict[str, Any] or None
+        Refreshed report on the root rank once at least three runs exist;
+        otherwise ``None``. Non-root ranks also return ``None``.
+
+    Notes
+    -----
+    Writes ``grid_run.json`` below the solver's samples directory and performs
+    an MPI barrier before returning.
+    """
     solver.flush_output()
     if solver.parallel.is_partitioned:
         cell_count = int(solver.parallel.global_sum(int(solver.parallel.n_owned)))

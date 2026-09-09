@@ -12,6 +12,7 @@ from typing import Any, cast
 import numpy as np
 
 from ..geometry import compute_mesh_geometry
+from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
 from ..triangulated_surface import TriangulatedSurface
 from ..validation import (
@@ -412,12 +413,42 @@ def _cell_type_counts(mesh_data: dict[str, Any]) -> dict[str, int]:
 
 
 class CartesianMesher:
-    """Build an OpenONDA-native Cartesian mesh from declarative inputs.
+    """Build and validate an OpenONDA-native Cartesian mesh.
 
     The serial Cartesian core is assembled through typed surface, size-field,
     extraction, recovery, layer, and reporting stages. All accepted controls
     are geometry-independent; unsupported topology or invalid configuration
     raises a diagnostic error instead of being silently ignored.
+
+    Parameters
+    ----------
+    domain : BoxDomain
+        Axis-aligned outer domain in metres with six named outer patches.
+    surfaces : tuple[STLSurface, ...]
+        Validated surfaces to carve/fit as wall patches.
+    max_cell_size : float
+        Background upper cell size in metres.
+    boundary_cell_size : float or None
+        Upper size near surfaces; defaults to ``max_cell_size``.
+    min_cell_size : float or None
+        Optional lower safety floor for dyadic refinement in metres.
+    refinements : tuple[Refinement, ...]
+        Physical regions whose requested upper sizes are applied.
+    patch_refinements : tuple[PatchRefinement, ...]
+        Exact named-patch sizing requests in metres.
+    features : FeatureRefinement or None
+        Optional included-angle surface-feature sizing.
+    boundary_layers : tuple[BoundaryLayers, ...]
+        Optional wall-normal layer requests.
+    surface_may_cross_domain_boundary : bool, default=False
+        Permit a surface intersecting the outer domain; otherwise surfaces must
+        lie strictly inside it.
+
+    Notes
+    -----
+    Construction validates inputs but does not run native extraction. The first
+    :meth:`build` call performs the geometry/topology workflow and stores a
+    :class:`GenerationReport`. Repeated builds recompute the mesh.
     """
 
     def __init__(
@@ -434,6 +465,13 @@ class CartesianMesher:
         boundary_layers: tuple[BoundaryLayers, ...] = (),
         surface_may_cross_domain_boundary: bool = False,
     ) -> None:
+        """Validate and retain meshing intent without generating a mesh.
+
+        See the class-level ``Parameters`` section for units and accepted
+        object types. Surface files have already been read by ``STLSurface``;
+        extraction, recovery, optimization, and report creation occur only in
+        :meth:`build`.
+        """
         if not isinstance(domain, BoxDomain):
             raise TypeError("domain must be a BoxDomain instance")
         if not surfaces:
@@ -539,12 +577,25 @@ class CartesianMesher:
 
     @property
     def report(self) -> GenerationReport | None:
-        """Immutable generation report, available after a successful build."""
+        """Return the latest immutable generation report, or ``None`` before build."""
         return self._report
 
     def effective_cell_size(self, requested: float) -> float:
-        """Return the dyadic size selected for an explicit size request.
+        """Return the dyadic cell size realizable for a requested size.
 
+        Parameters
+        ----------
+        requested : float
+            Positive requested upper size in metres.
+
+        Returns
+        -------
+        float
+            A background size divided by a power of two, never coarser than the
+            request and never larger than the background size.
+
+        Notes
+        -----
         ``min_cell_size`` is an automatic curvature/proximity guard.  Explicit
         box, patch, and boundary requests retain their requested precedence;
         callers that need the automatic guard use the private helper below.
@@ -650,18 +701,26 @@ class CartesianMesher:
             )
         if any(not isinstance(item, BoxRefinement) for item in self.refinements):
             raise NotImplementedError("The cfMesh workflow supports only box volume refinements")
-        stage_mesh = build_cfmesh_template(
-            domain=self.domain.bounds,
-            surfaces=tuple(surface.surface_data for surface in self.surfaces),
-            max_cell_size=self.max_cell_size,
-            boundary_cell_size=self.boundary_cell_size,
-            min_cell_size=self.min_cell_size,
-            box_refinements=cast(tuple[BoxRefinement, ...], self.refinements),
-            patch_refinements=self.patch_refinements,
-            domain_patch_names=self.domain.patches.as_tuple(),
-            surface_patch_names=tuple(surface.patch for surface in self.surfaces),
-        )
-        topology_trace = _verify_cfmesh_surface_topology(stage_mesh)
+        with mesh_stage("template generation") as progress:
+            stage_mesh = build_cfmesh_template(
+                domain=self.domain.bounds,
+                surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                max_cell_size=self.max_cell_size,
+                boundary_cell_size=self.boundary_cell_size,
+                min_cell_size=self.min_cell_size,
+                box_refinements=cast(tuple[BoxRefinement, ...], self.refinements),
+                patch_refinements=self.patch_refinements,
+                domain_patch_names=self.domain.patches.as_tuple(),
+                surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+            )
+            progress.details(
+                cells=stage_mesh.get("n_cells"),
+                faces=stage_mesh.get("n_faces"),
+                points=stage_mesh.get("n_points"),
+            )
+        with mesh_stage("surface topology check") as progress:
+            topology_trace = _verify_cfmesh_surface_topology(stage_mesh)
+            progress.details(changes=topology_trace["changes"])
         stage_mesh["mesh_generation"]["surface_topology"] = topology_trace
         stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
         if stop_after == "surfaceTopology":
@@ -677,13 +736,14 @@ class CartesianMesher:
             edge_mapper = None
             surface_untangler = None
             stage_mesh["mesh_generation"]["surface_topology_changes"] = topology_trace["changes"]
-            project_cfmesh_template(
-                stage_mesh,
-                domain=self.domain.bounds,
-                domain_patch_names=self.domain.patches.as_tuple(),
-                surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                surface_patch_names=tuple(surface.patch for surface in self.surfaces),
-            )
+            with mesh_stage("surface projection"):
+                project_cfmesh_template(
+                    stage_mesh,
+                    domain=self.domain.bounds,
+                    domain_patch_names=self.domain.patches.as_tuple(),
+                    surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                    surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                )
             if stop_after in (
                 "patchAssignment",
                 "edgeExtraction",
@@ -691,53 +751,59 @@ class CartesianMesher:
                 "meshOptimisation",
                 "boundaryLayerRefinement",
             ):
-                assign_cfmesh_patches(
-                    stage_mesh,
-                    domain=self.domain.bounds,
-                    domain_patch_names=self.domain.patches.as_tuple(),
-                    surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                    surface_patch_names=tuple(surface.patch for surface in self.surfaces),
-                )
+                with mesh_stage("patch assignment"):
+                    assign_cfmesh_patches(
+                        stage_mesh,
+                        domain=self.domain.bounds,
+                        domain_patch_names=self.domain.patches.as_tuple(),
+                        surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                        surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                    )
             if stop_after in (
                 "edgeExtraction",
                 "boundaryLayerGeneration",
                 "meshOptimisation",
                 "boundaryLayerRefinement",
             ):
-                extract_cfmesh_edges(stage_mesh)
-                edge_mapper, surface_untangler = remap_cfmesh_patch_points(
-                    stage_mesh,
-                    domain=self.domain.bounds,
-                    domain_patch_names=self.domain.patches.as_tuple(),
-                    surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                    surface_patch_names=tuple(surface.patch for surface in self.surfaces),
-                )
-                optimise_cfmesh_surface(
-                    stage_mesh,
-                    # The native optimizer has one fixed parameter set.  Do
-                    # not silently skip its surface passes for large meshes;
-                    # performance work belongs inside the typed kernels.
-                    iterations=5,
-                    map_edge_points=edge_mapper,
-                    untangle_surface=surface_untangler,
-                )
+                with mesh_stage("edge extraction"):
+                    extract_cfmesh_edges(stage_mesh)
+                with mesh_stage("patch point remapping"):
+                    edge_mapper, surface_untangler = remap_cfmesh_patch_points(
+                        stage_mesh,
+                        domain=self.domain.bounds,
+                        domain_patch_names=self.domain.patches.as_tuple(),
+                        surfaces=tuple(surface.surface_data for surface in self.surfaces),
+                        surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                    )
+                with mesh_stage("surface optimisation"):
+                    optimise_cfmesh_surface(
+                        stage_mesh,
+                        # The native optimizer has one fixed parameter set.  Do
+                        # not silently skip its surface passes for large meshes;
+                        # performance work belongs inside the typed kernels.
+                        iterations=5,
+                        map_edge_points=edge_mapper,
+                        untangle_surface=surface_untangler,
+                    )
             if stop_after in (
                 "boundaryLayerGeneration",
                 "meshOptimisation",
                 "boundaryLayerRefinement",
             ):
-                add_cfmesh_wrapper_layer(stage_mesh)
+                with mesh_stage("wrapper layer generation"):
+                    add_cfmesh_wrapper_layer(stage_mesh)
             if stop_after in ("meshOptimisation", "boundaryLayerRefinement"):
                 assert edge_mapper is not None
                 assert surface_untangler is not None
-                optimise_cfmesh_mesh(
-                    stage_mesh,
-                    # Keep the native five-pass FV sequence at every size.
-                    iterations=5,
-                    surface_iterations=5,
-                    map_edge_points=edge_mapper,
-                    untangle_surface=surface_untangler,
-                )
+                with mesh_stage("mesh optimisation"):
+                    optimise_cfmesh_mesh(
+                        stage_mesh,
+                        # Keep the native five-pass FV sequence at every size.
+                        iterations=5,
+                        surface_iterations=5,
+                        map_edge_points=edge_mapper,
+                        untangle_surface=surface_untangler,
+                    )
             if stop_after == "boundaryLayerRefinement":
                 # The public default has no configurable boundaryLayers
                 # dictionary; retain an explicit diagnostic record instead of
@@ -1192,6 +1258,32 @@ class CartesianMesher:
     ) -> dict[str, Any]:
         """Build, validate, name, and return native face-based mesh data.
 
+        Parameters
+        ----------
+        stop_after : str or None
+            Optional native workflow stage at which to return intermediate
+            mesh data for diagnostics. The default runs through final wall
+            conformance and quality validation.
+        on_generated : callable or None
+            Callback receiving generated native mesh data before final
+            conformance. It is intended for diagnostics and should not mutate
+            the mesh in place.
+
+        Returns
+        -------
+        dict[str, object]
+            Native face-based mesh with vertices, faces, owner/neighbour
+            indices, boundary ranges, counts, and generation diagnostics.
+            Coordinates and lengths use metres.
+
+        Raises
+        ------
+        ValueError, RuntimeError, NotImplementedError
+            If extraction, topology, surface conformance, quality validation,
+            or a requested unsupported workflow fails.
+
+        Notes
+        -----
         ``on_generated`` receives the completed native workflow mesh before
         OpenONDA's stricter final wall-conformance transaction.  It is intended
         for durable diagnostics: a rejected projection must not make the
@@ -1210,8 +1302,16 @@ class CartesianMesher:
         mesh_data = self._run_cfmesh_workflow("meshOptimisation")
         if on_generated is not None:
             on_generated(mesh_data)
-        self._constrain_cfmesh_wall_points(mesh_data)
-        return self._finalize_cfmesh_mesh(mesh_data)
+        with mesh_stage("wall constraint"):
+            self._constrain_cfmesh_wall_points(mesh_data)
+        with mesh_stage("final mesh validation") as progress:
+            finalized = self._finalize_cfmesh_mesh(mesh_data)
+            progress.details(
+                cells=finalized.get("n_cells"),
+                faces=finalized.get("n_faces"),
+                points=finalized.get("n_points"),
+            )
+        return finalized
         layer_surfaces: list[LayerSurface] = []  # noqa: V201
         layer_specs: list[BoundaryLayers] = []
         authority = [surface.triangles for surface in self.surfaces]
@@ -1565,17 +1665,32 @@ class CartesianMesher:
         return mesh_data
 
     def __call__(self) -> dict[str, Any]:
-        """Make the mesher directly callable for solver factory integration."""
+        """Build the mesh using the default full workflow."""
         return self.build()
 
     def save_native_mesh(self, path: str | Path) -> Path:
-        """Build and save the lossless OpenONDA ``.npz`` mesh representation."""
+        """Build and save the lossless OpenONDA native ``.npz`` representation.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Destination file.
+
+        Returns
+        -------
+        pathlib.Path
+            Written destination.
+        """
         from ...io.mesh_storage import save_native_mesh
 
         return save_native_mesh(self.build(), path)
 
     def export_vtk(self, path: str | Path, fields: dict[str, np.ndarray] | None = None) -> Path:
-        """Build and write a ParaView-readable VTK unstructured-grid file."""
+        """Build and write a ParaView-readable VTK unstructured-grid file.
+
+        ``fields`` maps names to arrays aligned with the native cells. The
+        export is a derived interchange artifact, not the restart authority.
+        """
         from ...io.vtk_exporter import VTKExporter
 
         destination = Path(path)
@@ -1583,7 +1698,11 @@ class CartesianMesher:
         return destination
 
     def export_openfoam(self, directory: str | Path) -> Path:
-        """Build and export an ASCII OpenFOAM ``constant/polyMesh`` directory."""
+        """Build and export an ASCII OpenFOAM ``constant/polyMesh`` directory.
+
+        Owner/neighbour and patch ordering are preserved, but the export is a
+        derived interchange artifact; keep the native mesh for lossless reload.
+        """
         from ...io.openfoam_poly_mesh import write_poly_mesh
 
         return write_poly_mesh(self.build(), directory)

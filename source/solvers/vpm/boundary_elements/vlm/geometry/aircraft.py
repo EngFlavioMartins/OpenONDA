@@ -211,6 +211,11 @@ class Aircraft:
                 vol = seg.area
                 weighted_centre += vol * seg.centre
                 total_vol += vol
+                if wing.symmetry > 0:
+                    mirrored_centre = seg.centre.copy()
+                    mirrored_centre[{1: 2, 2: 1, 3: 0}[wing.symmetry]] *= -1.0
+                    weighted_centre += vol * mirrored_centre
+                    total_vol += vol
 
         geometry_centre = (
             weighted_centre / total_vol if total_vol > 1e-10 else np.array([0.0, 0.0, 0.0])

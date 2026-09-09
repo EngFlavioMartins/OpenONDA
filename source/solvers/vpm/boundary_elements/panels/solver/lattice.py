@@ -40,12 +40,66 @@ class PanelBody:
 
 @ti.data_oriented
 class PanelLattice:
-    """
-    GPU-resident data structure representing the 3D panel lattice.
-    Equivalent to VLMLattice but for arbitrary 3D triangular panel meshes.
+    """GPU-resident storage for arbitrary triangular panel bodies.
+
+    Parameters
+    ----------
+    max_n_panels : int, default=20000
+        Fixed capacity for panel geometry, solution fields, and the dense
+        influence matrix.  Only the prefix ``[:n_panels]`` is active.
+    float_dtype : {"f32", "f64"}, default="f32"
+        Precision used by Taichi fields and geometry/velocity kernels.
+
+    Attributes
+    ----------
+    vertex_position : taichi.Vector.field
+        Active triangle vertices, shape ``(max_n_panels, 3, 3)``; positions in
+        metres.  The last two vertices determine the outward normal through
+        ``cross(v1-v0, v2-v0)``.
+    panel_centre : taichi.Vector.field
+        Triangle centroids, shape ``(max_n_panels, 3)``; metres.
+    normal : taichi.Vector.field
+        Unit panel normals, shape ``(max_n_panels, 3)``; dimensionless.
+    area : taichi.field
+        Triangle areas, shape ``(max_n_panels,)``; m².
+    doublet_strength, source_strength : taichi.field
+        Panel potential/source unknowns.  Doublet strength has potential
+        units m²/s; source strength has velocity units m/s.
+    body_velocity, incident_velocity : taichi.Vector.field
+        Rigid-body and incident-fluid velocities at panel centres, shape
+        ``(max_n_panels, 3)``; m/s.  They are intentionally separate fields.
+    bodies : list[PanelBody]
+        Host-side metadata mapping body ids to contiguous panel ranges.
+
+    Notes
+    -----
+    The fields are fixed-capacity and are allocated immediately, so Taichi
+    must already be initialized.  ``n_panels`` is the authoritative active
+    count; unused capacity may contain stale data and must not be sampled.
     """
 
     def __init__(self, max_n_panels: int = 20000, float_dtype: str = "f32"):
+        """Allocate a panel lattice after Taichi has been initialized.
+
+        Parameters
+        ----------
+        max_n_panels : int, default=20000
+            Maximum number of triangular panels that may be uploaded.
+        float_dtype : {"f32", "f64"}, default="f32"
+            Storage and kernel precision.  ``"f64"`` requires a Taichi
+            backend with double-precision support.
+
+        Raises
+        ------
+        RuntimeError
+            If Taichi has not been initialized before construction.
+
+        Notes
+        -----
+        Allocation is eager and can be large because the influence matrix has
+        ``max_n_panels²`` entries.  Geometry is not uploaded until
+        :meth:`add_body` is called.
+        """
         # Guard: Taichi must already be initialised before creating fields,
         # otherwise ti.field() triggers an auto-init with wrong precision.
         if ti.lang.impl.get_runtime().prog is None:
@@ -129,6 +183,24 @@ class PanelLattice:
                 )
 
     def flip_normal(self, start_idx: int, count: int, reference_point: np.ndarray):
+        """Orient a contiguous panel range away from a reference point.
+
+        Parameters
+        ----------
+        start_idx : int
+            First panel index in the active lattice.
+        count : int
+            Number of panels to inspect.
+        reference_point : array_like, shape (3,)
+            Point used to determine orientation, in metres.  A panel is
+            flipped when its normal points toward this point.
+
+        Notes
+        -----
+        Flipping swaps the second and third triangle vertices as well as the
+        normal, preserving the panel area and reversing its orientation in
+        the geometry field.
+        """
         self._flip_normals_kernel(start_idx, count, ti.Vector(reference_point.tolist(), dt=ti.f64))
 
     def update_geometry(self, time: float = 0.0, start_idx: int = 0, count: int | None = None):
@@ -317,6 +389,42 @@ class PanelLattice:
         group_id: int = 0,
         reference_area: float | None = None,
     ) -> int:
+        """Append one body and its triangle vertices to the active lattice.
+
+        Parameters
+        ----------
+        uid : str
+            Unique host-side body identifier.
+        vertex_position : array_like, shape (N, 3, 3)
+            Triangle vertices in metres.  Vertex order defines the initial
+            normal orientation through the right-hand rule.
+        kinematics : PanelKinematics, optional
+            Pose model used by the panel solver.  ``None`` selects a static
+            body.
+        group_id : int, default=0
+            Integer grouping label copied to every uploaded panel.
+        reference_area : float, optional
+            Body reference area in m² for coefficient reporting.
+
+        Returns
+        -------
+        int
+            Number of panels appended.  Their contiguous range is recorded in
+            :attr:`bodies`.
+
+        Raises
+        ------
+        ValueError
+            If ``uid`` is already present.
+        RuntimeError
+            If the new body would exceed ``max_n_panels``.
+
+        Notes
+        -----
+        The input vertices are copied into ``local_vertex_position``.  The
+        active count is incremented only after the upload succeeds; geometry
+        and derived fields are generated later by the panel solver.
+        """
         from ..coupling.kinematics import BodyPose, StaticPanel
 
         if any(body.uid == uid for body in self.bodies):

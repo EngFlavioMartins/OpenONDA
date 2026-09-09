@@ -20,6 +20,7 @@ from typing import Any, cast
 
 import numpy as np
 
+from ..progress import mesh_stage
 from ..surface_classification import (
     SurfaceIndex,
     closest_point_on_triangles,
@@ -622,7 +623,9 @@ def build_cfmesh_template(
             return
         octree_leaves.append((x0, y0, z0, width, level, mesh_cell))
 
-    visit(0, 0, 0, lattice_width, 0)
+    with mesh_stage("octree seed refinement") as progress:
+        visit(0, 0, 0, lattice_width, 0)
+        progress.details(leaves=len(octree_leaves), maximum_level=max_level)
     if box_refinements or patch_refinements or needs_automatic:
 
         def classify(x: int, y: int, z: int, width: int, level: int):
@@ -641,7 +644,9 @@ def build_cfmesh_template(
                 kind = mesh_cell if in_domain and not in_object else other_cell
             return (x, y, z, width, level, kind)
 
-        octree_leaves = balance_leaves(octree_leaves, max_level, classify)
+        with mesh_stage("octree balancing") as progress:
+            octree_leaves = balance_leaves(octree_leaves, max_level, classify)
+            progress.details(leaves=len(octree_leaves))
         automatic_diagnostics: dict[str, list[int]] = {}
         if needs_automatic:
             groups: dict[str, list[np.ndarray]] = defaultdict(list)
@@ -658,38 +663,50 @@ def build_cfmesh_template(
                 {name: np.asarray(triangles) for name, triangles in groups.items()},
                 _cfmesh_nearest_points_on_triangles,
             )
-            octree_leaves, automatic_diagnostics = automatic_refinement(
+            with mesh_stage("automatic surface refinement") as progress:
+                octree_leaves, automatic_diagnostics = automatic_refinement(
+                    octree_leaves,
+                    automatic_surface,
+                    root_lower=root_lower,
+                    root_size=root_size,
+                    max_level=max_level,
+                    automatic_level=automatic_level,
+                    classify=classify,
+                )
+                progress.details(leaves=len(octree_leaves))
+        with mesh_stage("object refinement") as progress:
+            octree_leaves = refine_objects(
                 octree_leaves,
-                automatic_surface,
+                box_refinements,
                 root_lower=root_lower,
                 root_size=root_size,
+                max_cell_size=max_cell_size,
+                global_level=global_level,
                 max_level=max_level,
-                automatic_level=automatic_level,
                 classify=classify,
             )
-        octree_leaves = refine_objects(
-            octree_leaves,
-            box_refinements,
-            root_lower=root_lower,
-            root_size=root_size,
-            max_cell_size=max_cell_size,
-            global_level=global_level,
-            max_level=max_level,
-            classify=classify,
-        )
-        octree_leaves, near_data_refined = refine_near_data(octree_leaves, max_level, classify)
+            progress.details(leaves=len(octree_leaves))
+        with mesh_stage("near-surface refinement") as progress:
+            octree_leaves, near_data_refined = refine_near_data(octree_leaves, max_level, classify)
+            progress.details(leaves=len(octree_leaves), refined=near_data_refined)
         leaves = [record[:5] for record in octree_leaves if record[5] == mesh_cell]
         if not leaves:
             raise ValueError("cfMesh template classification removed every fluid leaf")
-        mesh_data = _extract_mesh(
-            root_bounds,
-            root_size,
-            np.ascontiguousarray(leaves, dtype=np.int32),
-            np.ascontiguousarray(octree_leaves, dtype=np.int32),
-            max_level,
-            global_level,
-            boundary_level,
-        )
+        with mesh_stage("template topology extraction") as progress:
+            mesh_data = _extract_mesh(
+                root_bounds,
+                root_size,
+                np.ascontiguousarray(leaves, dtype=np.int32),
+                np.ascontiguousarray(octree_leaves, dtype=np.int32),
+                max_level,
+                global_level,
+                boundary_level,
+            )
+            progress.details(
+                cells=mesh_data.get("n_cells"),
+                faces=mesh_data.get("n_faces"),
+                points=mesh_data.get("n_points"),
+            )
         mesh_data["_cfmesh_octree_leaves"] = np.ascontiguousarray(octree_leaves, dtype=np.int32)
         mesh_data["mesh_generation"]["near_data_coarse_leaves_refined"] = near_data_refined
         mesh_data["mesh_generation"]["automatic_refinement"] = automatic_diagnostics

@@ -15,11 +15,60 @@ _THRESHOLD_MODES = {
 
 @dataclass(frozen=True)
 class ViscousConfig:
-    """Configure molecular viscous diffusion in the VPM solver.
+    """Configure molecular viscous diffusion and particle regeneration.
 
-    Supported schemes are Core Spreading (``CS``), Random Walk (``RWM``),
-    Diffused Vortex Hydrodynamics (``DVH``), Grid-Based Diffusion (``GBD``),
-    and ``NONE``.
+    Parameters
+    ----------
+    scheme : {'CS', 'RWM', 'NONE', 'DVH', 'GBD'}, default='CS'
+        Core spreading, random walk, no diffusion, Diffused Vortex
+        Hydrodynamics, or Grid-Based Diffusion. Names are normalized uppercase.
+    core_radius_ratio : float, default=2.5
+        Positive dimensionless regenerated-particle ratio ``sigma/h``.
+    dvh_grid_spacing, gbd_grid_spacing : float or None
+        Positive regeneration-grid spacings ``h`` in m. Factory methods default
+        these to ``particle_spacing``.
+    dvh_domain_padding, gbd_domain_padding : float, default=3.0
+        Number of grid cells padded beyond the active particle bounds.
+    dvh_threshold, gbd_threshold : float, default=0.01
+        Node-pruning controls interpreted by the corresponding threshold mode.
+        ``budget`` is the allowed discarded L1 fraction, ``relative_max`` is a
+        fraction of peak node strength, and ``absolute`` is a threshold in m³/s.
+    dvh_threshold_mode, gbd_threshold_mode : {'budget', 'relative_max', 'absolute'}
+        Interpretation of the associated threshold.
+    gbd_max_nodes, dvh_max_nodes : int or None
+        Optional positive caps on regenerated active nodes, additionally
+        bounded by the solver particle capacity.
+    gbd_remeshing_kernel : {'M4_PRIME', 'LAGRANGE6'}, default='M4_PRIME'
+        Particle-to-grid scatter. The six-point Lagrange option is experimental,
+        non-positivity-preserving, and requires at least four padding cells.
+    dvh_support_radius_ratio : {3, 4, 5}, default=4
+        Compact DVH heat-kernel support radius divided by grid spacing.
+    kinematic_viscosity : float or None
+        Non-negative molecular viscosity ``nu`` in m²/s. A positive value is
+        required by active diffusion schemes.
+    particle_spacing : float or None
+        Positive representative particle spacing in m, used for accuracy and
+        regeneration defaults.
+
+    Raises
+    ------
+    ValueError
+        If a choice, physical scale, support, padding, or node cap is invalid.
+
+    Notes
+    -----
+    ``CS`` grows particle cores deterministically; ``RWM`` applies stochastic
+    Brownian displacement; ``DVH`` and ``GBD`` replace the accepted particle
+    cloud on a regular grid. RWM and DVH require spatially uniform effective
+    viscosity; use GBD for LES variable-viscosity diffusion. Configuration is
+    immutable and does not itself mutate particles.
+
+    Examples
+    --------
+    >>> viscous = ViscousConfig.gbd(
+    ...     particle_spacing=0.05, kinematic_viscosity=1e-5,
+    ...     threshold=1e-4, threshold_mode="budget",
+    ... )
     """
 
     scheme: Literal["CS", "RWM", "NONE", "DVH", "GBD"] = "CS"
@@ -107,7 +156,13 @@ class ViscousConfig:
             raise ValueError("dvh_max_nodes must be positive when set")
 
     def rwm_accuracy_time_step_size(self) -> float:
-        """Return the configured RWM accuracy bound ``h² / (4 kinematic_viscosity)`` [s]."""
+        """Return the RWM accuracy bound ``h²/(4*nu)`` in s.
+
+        Raises
+        ------
+        ValueError
+            If particle spacing is unset or viscosity is unset/non-positive.
+        """
         if self.particle_spacing is None:
             raise ValueError("particle_spacing must be set for the RWM accuracy check")
         if self.kinematic_viscosity is None or self.kinematic_viscosity <= 0.0:
@@ -115,7 +170,11 @@ class ViscousConfig:
         return self.particle_spacing**2 / (4.0 * self.kinematic_viscosity)
 
     def dvh_required_time_step_size(self) -> float:
-        """Return the DVH diffusion increment ``beta R_d² / (4 kinematic_viscosity)`` [s]."""
+        """Return required DVH increment ``beta*R_d²/(4*nu)`` in s.
+
+        ``R_d = dvh_support_radius_ratio * dvh_grid_spacing``. Raises
+        :class:`ValueError` when spacing or positive viscosity is unavailable.
+        """
         from .constants import _DVH_BETA
 
         if self.dvh_grid_spacing is None:
@@ -127,7 +186,11 @@ class ViscousConfig:
         return _DVH_BETA * support_radius * support_radius / (4.0 * self.kinematic_viscosity)
 
     def gbd_max_time_step_size(self) -> float:
-        """Return the explicit GBD stability bound ``h² / (6 kinematic_viscosity)`` [s]."""
+        """Return the explicit GBD stability bound ``h²/(6*nu)`` in s.
+
+        Raises :class:`ValueError` when GBD spacing or positive viscosity is
+        unavailable.
+        """
         if self.gbd_grid_spacing is None:
             raise ValueError("gbd_grid_spacing must be set to a positive value")
         if self.kinematic_viscosity is None or self.kinematic_viscosity <= 0.0:
@@ -140,7 +203,11 @@ class ViscousConfig:
         particle_spacing: float | None = None,
         core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
-        """Return Core-Spreading viscous configuration."""
+        """Configure deterministic Gaussian core spreading.
+
+        ``kinematic_viscosity`` is in m²/s, ``particle_spacing`` in m, and
+        ``core_radius_ratio`` is the dimensionless regenerated ``sigma/h``.
+        """
         return ViscousConfig(
             scheme="CS",
             kinematic_viscosity=kinematic_viscosity,
@@ -154,7 +221,12 @@ class ViscousConfig:
         particle_spacing: float | None = None,
         core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
-        """Return Random-Walk viscous configuration."""
+        """Configure stochastic random-walk molecular diffusion.
+
+        ``kinematic_viscosity`` is in m²/s, ``particle_spacing`` in m, and
+        ``core_radius_ratio`` is dimensionless. RWM is incompatible with LES
+        variable effective viscosity.
+        """
         return ViscousConfig(
             scheme="RWM",
             kinematic_viscosity=kinematic_viscosity,
@@ -167,7 +239,7 @@ class ViscousConfig:
         particle_spacing: float | None = None,
         core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
-        """Return configuration with molecular diffusion disabled."""
+        """Configure inviscid particle evolution without molecular diffusion."""
         return ViscousConfig(
             scheme="NONE",
             particle_spacing=particle_spacing,
@@ -185,7 +257,13 @@ class ViscousConfig:
         max_nodes: int | None = None,
         core_radius_ratio: float = 2.5,
     ) -> ViscousConfig:
-        """Return Diffused Vortex Hydrodynamics configuration."""
+        """Configure heat-kernel DVH regeneration.
+
+        ``particle_spacing`` sets both nominal particle and DVH grid spacing in
+        m; ``kinematic_viscosity`` is m²/s; ``padding`` and ``threshold`` follow
+        the constructor conventions. DVH may accumulate macro-steps until its
+        required diffusion interval is reached.
+        """
         return ViscousConfig(
             scheme="DVH",
             particle_spacing=particle_spacing,

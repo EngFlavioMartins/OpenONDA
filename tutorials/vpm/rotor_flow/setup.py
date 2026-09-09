@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Rotor in forward flight with a fully-coupled VLM--VPM wake (LES).
+"""Wind turbine with a coupled VLM--VPM wake (LES).
 
-A three-bladed rotor flies at a tip-speed ratio of 7.0. The wake is resolved
+A three-bladed turbine extracts energy at a tip-speed ratio of 7.0. The wake is resolved
 with vortex particles whose position and strength use common Runge--Kutta stages;
 the blade loading and the downstream wake planes are sampled for the
 ``allplot.sh`` figures.
@@ -15,13 +15,6 @@ Usage:
 
 from __future__ import annotations
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[0]) + ""
-
-
 from pathlib import Path
 
 import numpy as np
@@ -29,168 +22,46 @@ import numpy as np
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
 
-TUTORIAL_DIR = Path(__file__).resolve().parent
 CASE_NAME = "rotor"
 
-FREESTREAM_SPEED = 7.0
+FREESTREAM_SPEED = 7.0  # [m/s]
 TIP_SPEED_RATIO = 7.0
-ROTOR_RADIUS = 6.0
-HUB_RADIUS = 1.0
-KINEMATIC_VISCOSITY = 1.5e-5
-AIR_DENSITY = 1.225
+ROTOR_RADIUS = 6.0  # [m]
+HUB_RADIUS = 1.0  # [m]
+KINEMATIC_VISCOSITY = 1.5e-5  # [m^2/s]
+AIR_DENSITY = 1.225  # [kg/m^3]
 N_RADIAL_STATIONS = 23
-MAX_N_PARTICLES = 100_000
-ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS
+MAX_N_PARTICLES = 400_000
+ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS  # [rad/s]
 
-TIME_STEP_SIZE = 0.006
-END_TIME = 14.4
+TIME_STEP_SIZE = 0.006  # [s]
+END_TIME = 14.4  # [s]
 N_STEPS = round(END_TIME / TIME_STEP_SIZE)
-RELEASE_INTERVAL = TIME_STEP_SIZE
 DEFAULT_SMAGORINSKY_COEFFICIENT = 0.17
 RAMP_ROTATIONS = 1.0
-SAMPLE_INTERVAL_TIME = 0.12  # write a snapshot every this many seconds
-BACKUP_INTERVAL_TIME = 0.03  # about 26 animation frames per rotor revolution
-ROTATION_PERIOD = 2.0 * np.pi / ANGULAR_VELOCITY
+SAMPLE_INTERVAL_TIME = 0.06  # write a snapshot every this many seconds
+FORCE_INTERVAL_TIME = 0.012  # about 64 force samples per revolution
+ROTATION_PERIOD = 2.0 * np.pi / ANGULAR_VELOCITY  # [s]
+BACKUP_INTERVAL_TIME = ROTATION_PERIOD  # one checkpoint per revolution
 PLANE_SAMPLING_ROTATIONS = 6.0
-PLANE_SAMPLING_START_TIME = max(
-    0.0, N_STEPS * TIME_STEP_SIZE - PLANE_SAMPLING_ROTATIONS * ROTATION_PERIOD
-)
 
 
-def nominal_wake_spacing(time_step_size: float) -> float:
-    """Return the resolved wake length used by displacement subcycling.
-
-    A VLM step creates one streamwise row of particles.  The limiting nominal
-    spacing is therefore the smaller of the radial panel spacing and the
-    fully-spun-up tip travel per macro step.
-    """
-    radial_spacing = (ROTOR_RADIUS - HUB_RADIUS) / (N_RADIAL_STATIONS - 1)
-    tip_streamwise_spacing = ANGULAR_VELOCITY * ROTOR_RADIUS * time_step_size
-    return min(radial_spacing, tip_streamwise_spacing)
+TUTORIAL_DIR = Path(__file__).resolve().parent
 
 
 FIXED_WAKE_SPACING = (ROTOR_RADIUS - HUB_RADIUS) / (N_RADIAL_STATIONS - 1)
 
 
-def cadence_steps(period: float, time_step_size: float) -> int:
-    """Convert a physical output period to solver steps."""
-    return max(1, round(period / time_step_size))
-
-
-def build_case(
-    sample_interval_time: float,
-    backup_interval_time: float,
-    *,
-    vlm_setup: vpm.VLMSetup | None = None,
-    samplers: tuple[vpm.SurfaceSampler, ...] | list[vpm.SurfaceSampler] = (),
-    time_step_size: float = TIME_STEP_SIZE,
-    smagorinsky_coefficient: float = DEFAULT_SMAGORINSKY_COEFFICIENT,
-    steps: int = N_STEPS,
-    max_n_particles: int = MAX_N_PARTICLES,
-    induction: object | None = None,
-    directory: Path = TUTORIAL_DIR,
-    wake_spacing: float = FIXED_WAKE_SPACING,
-) -> vpm.VPMCase:
-    """Build the complete declarative rotor case."""
-    return vpm.VPMCase(
-        numerics=vpm.Numerics(
-            time_step_size=time_step_size,
-            compute_device="VULKAN",
-            integrator=vpm.SSPRK3(),
-            vlm=vlm_setup,
-            freestream_velocity=[FREESTREAM_SPEED, 0.0, 0.0],
-            turbulence=vpm.TurbulenceConfig.les_smagorinsky(
-                smagorinsky_coefficient=smagorinsky_coefficient
-            ),
-            stabilization=vpm.StabilizationConfig.bounded_domain(
-                bounds=[
-                    -2.0 * ROTOR_RADIUS,
-                    20.0 * ROTOR_RADIUS,
-                    -2.0 * ROTOR_RADIUS,
-                    2.0 * ROTOR_RADIUS,
-                    -2.0 * ROTOR_RADIUS,
-                    2.0 * ROTOR_RADIUS,
-                ]
-            ),
-            viscous=vpm.ViscousConfig.cs(
-                kinematic_viscosity=KINEMATIC_VISCOSITY,
-                particle_spacing=wake_spacing,
-            ),
-            induction=vpm.FMMInduction(stretching_scheme="transposed")
-            if induction is None
-            else induction,
-            particle_kernel="WINCKELMANS",
-            max_n_particles=max_n_particles,
-            write_precision="f32",
-        ),
-        backup=Backup(
-            interval_steps=cadence_steps(backup_interval_time, time_step_size),
-            directory="solution",
-            log_directory="solution",
-        ),
-        samplers=Samplers(
-            samples=(
-                vpm.FlowIntegralsSampler(
-                    schedule=vpm.EverySteps(cadence_steps(sample_interval_time, time_step_size))
-                ),
-                *samplers,
-            ),
-            directory=CASE_NAME,
-        ),
-        run=vpm.RunPlan(steps=steps),
-        directory=directory,
-    )
-
-
-def build_rotor_case(
-    *,
-    steps: int = N_STEPS,
-    max_n_particles: int = MAX_N_PARTICLES,
-    directory: Path = TUTORIAL_DIR,
-    induction: object | None = None,
-    time_step_size: float = TIME_STEP_SIZE,
-    wake_spacing: float = FIXED_WAKE_SPACING,
-) -> vpm.VPMCase:
-    """Build the maintained three-blade rotor case for a requested run length."""
-    from .assets.generate_openvsp_blade import RotorBladeDesign, generate_rotorflow_openvsp_blade
-
+def run() -> None:
     blade_file = TUTORIAL_DIR / "assets/blade.json"
-
-    blade_design = RotorBladeDesign(
-        rotor_radius=ROTOR_RADIUS,
-        hub_radius=HUB_RADIUS,
-        root_chord=0.6,
-        tip_chord=0.35,
-        freestream_speed=FREESTREAM_SPEED,
-        tip_speed_ratio=TIP_SPEED_RATIO,
-        design_axial_induction_factor=1.0 / 3.0,
-        design_angle_of_attack_degrees=5.0,
-        n_radial_stations=N_RADIAL_STATIONS,
-        n_chordwise_stations=7,
-    )
-
-    if Path(blade_file).exists():
-        print(f"Using cached VLM blade surface: {blade_file} (skipping OpenVSP regeneration)")
-    else:
-        generate_rotorflow_openvsp_blade(
-            output_dir=str(TUTORIAL_DIR / "assets/openvsp"),
-            json_path=str(blade_file),
-            design=blade_design,
-        )
 
     rotation_period = 2.0 * np.pi / ANGULAR_VELOCITY
     ramp_time = RAMP_ROTATIONS * rotation_period
 
-    def rotor_angular_velocity(t: float) -> np.ndarray:
-        if ramp_time > 0.0 and t < ramp_time:
-            factor = np.sin(0.5 * np.pi * max(t, 0.0) / ramp_time) ** 2
-        else:
-            factor = 1.0
-        return np.array([-ANGULAR_VELOCITY * factor, 0.0, 0.0])
-
-    rotation_kinematics = vpm.ManeuverVLM(
-        angular_velocity_function=rotor_angular_velocity,
-        rotation_centre=np.zeros(3),
+    rotation_kinematics = vpm.RotatingVLM(
+        angular_speed=-ANGULAR_VELOCITY,
+        axis=[1.0, 0.0, 0.0],
+        acceleration_time=ramp_time,
     )
 
     vlm_setup = vpm.VLMSetup(
@@ -206,15 +77,16 @@ def build_rotor_case(
         mesh=vpm.VLMMeshSetup.geometric(ratio=3.0),
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
+        wake_core_overlap=2.5,
         sample_surface_forces=True,
-        logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME, time_step_size),
+        logging_interval_steps=round(FORCE_INTERVAL_TIME / TIME_STEP_SIZE),
     )
 
     # Downstream planes at 1.5R, 3R, and 4.5R.
     off_wake = ROTOR_RADIUS * 1.2
     sample_spacing = ROTOR_RADIUS / 36
     plane_schedule = vpm.EverySteps(
-        cadence_steps(SAMPLE_INTERVAL_TIME, time_step_size),
+        round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE),
         start_time=max(0.0, END_TIME - PLANE_SAMPLING_ROTATIONS * ROTATION_PERIOD),
     )
     plane_samplers = [
@@ -230,31 +102,58 @@ def build_rotor_case(
         for x_loc in [1.5 * ROTOR_RADIUS, 3.0 * ROTOR_RADIUS, 4.5 * ROTOR_RADIUS]
     ]
 
-    case = build_case(
-        SAMPLE_INTERVAL_TIME,
-        BACKUP_INTERVAL_TIME,
-        vlm_setup=vlm_setup,
-        samplers=plane_samplers,
-        time_step_size=time_step_size,
-        smagorinsky_coefficient=DEFAULT_SMAGORINSKY_COEFFICIENT,
-        steps=steps,
-        max_n_particles=max_n_particles,
-        induction=induction,
-        directory=directory,
-        wake_spacing=wake_spacing,
+    sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
+    case = vpm.VPMCase(
+        name=CASE_NAME,
+        numerics=vpm.Numerics(
+            time_step_size=TIME_STEP_SIZE,
+            compute_device="AUTO",
+            integrator=vpm.SSPRK3(),
+            vlm=vlm_setup,
+            freestream_velocity=[FREESTREAM_SPEED, 0.0, 0.0],
+            turbulence=vpm.TurbulenceConfig.les_smagorinsky(
+                smagorinsky_coefficient=DEFAULT_SMAGORINSKY_COEFFICIENT
+            ),
+            stabilization=vpm.StabilizationConfig(
+                pedrizzetti_relaxation_factor=0.3,
+                remove_particles_by_bounds=[
+                    -2.0 * ROTOR_RADIUS,
+                    20.0 * ROTOR_RADIUS,
+                    -2.0 * ROTOR_RADIUS,
+                    2.0 * ROTOR_RADIUS,
+                    -2.0 * ROTOR_RADIUS,
+                    2.0 * ROTOR_RADIUS,
+                ],
+            ),
+            viscous=vpm.ViscousConfig.cs(
+                kinematic_viscosity=KINEMATIC_VISCOSITY,
+                particle_spacing=FIXED_WAKE_SPACING,
+            ),
+            induction=vpm.TreecodeInduction(
+                stretching_scheme="transposed", theta=0.3, multipole_order=3
+            ),
+            particle_kernel="GAUSSIAN",
+            max_n_particles=MAX_N_PARTICLES,
+            write_precision="f32",
+        ),
+        backup=Backup(
+            interval_steps=round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE),
+            directory="solution",
+            log_directory="solution",
+        ),
+        samplers=Samplers(
+            samples=(
+                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),
+                vpm.VLMSampler(schedule=vpm.EverySteps(sample_steps)),
+                *plane_samplers,
+            ),
+            directory=CASE_NAME,
+        ),
+        run=vpm.RunPlan(steps=N_STEPS),
+        directory=TUTORIAL_DIR,
     )
-    return case
-
-
-def main() -> int:
-    case = build_rotor_case()
-
-    print("\n===== SIMULATION =====")
     vpm.VPMSolver(case).run()
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
-    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    run()

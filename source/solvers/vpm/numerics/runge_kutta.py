@@ -1,6 +1,7 @@
 """One generic coupled explicit Runge--Kutta engine for VPM particles."""
 
-from typing import Any, Protocol
+from contextlib import nullcontext
+from typing import Protocol
 
 import taichi as ti
 
@@ -83,10 +84,29 @@ def _make_combine_kernel(scalar_dtype):
 
 
 class CoupledStageRHS(Protocol):
-    """Evaluate both rates for one supplied temporary stage state."""
+    """Protocol for the coupled VPM right-hand side.
+
+    Implementations read the temporary :class:`StageState` and write the
+    caller-owned velocity, strength-rate, and optional gradient fields in
+    :class:`StageRates`. They may evaluate induction, diffusion, turbulence,
+    forcing, and boundary effects, but must not accept or commit particle
+    state themselves.
+    """
 
     def evaluate(self, stage_state: StageState, stage_time: float, stage_rates: StageRates) -> None:
-        """Write velocity and vortex-strength rate into ``stage_rates``."""
+        """Write all requested rates for one physical stage.
+
+        Parameters
+        ----------
+        stage_state : StageState
+            Temporary particle source state; positions are in m, strengths in
+            m³/s, and core radii in m.
+        stage_time : float
+            Physical stage time in seconds.
+        stage_rates : StageRates
+            Caller-owned output fields for velocity (m/s), strength rate
+            (m³/s²), and optionally velocity gradient (1/s).
+        """
 
 
 @ti.data_oriented
@@ -105,6 +125,31 @@ class RungeKutta:
         max_n_particles: int,
         dtype=ti.f32,
     ) -> None:
+        """Allocate a reusable coupled explicit RK workspace.
+
+        Parameters
+        ----------
+        tableau : RKTableau or None, default=None
+            Explicit tableau. ``None`` selects :class:`SSPRK3`. At most four
+            stages are supported because the reusable device workspace stores
+            four rate fields.
+        max_n_particles : int
+            Fixed capacity of every stage field. It must be positive.
+        dtype : taichi.DataType, default=ti.f32
+            Floating precision for positions, strengths, rates, and gradients.
+
+        Notes
+        -----
+        Allocation creates temporary stage fields but does not copy or mutate
+        a particle container. The workspace is intended for one solver and is
+        not thread-safe.
+
+        Raises
+        ------
+        ValueError
+            If the capacity is non-positive or the tableau has more than four
+            stages.
+        """
         self.tableau = SSPRK3() if tableau is None else tableau
         self.max_n_particles = int(max_n_particles)
         if self.max_n_particles < 1:
@@ -139,106 +184,159 @@ class RungeKutta:
     def advance(
         self,
         *,
-        position: Any,
-        vortex_strength: Any,
-        core_radius: Any,
+        position: object,
+        vortex_strength: object,
+        core_radius: object,
         count: int,
         time: float,
         time_step_size: float,
         right_hand_side: CoupledStageRHS,
-        velocity_gradient_out: Any | None = None,
+        velocity_gradient_out: object | None = None,
     ) -> None:
-        """Advance one coupled particle state over ``time_step_size``."""
+        """Advance particle position and strength through one RK step.
+
+        Parameters
+        ----------
+        position : object
+            Persistent particle positions, logical shape ``(count, 3)``, in m.
+            Updated in place only after every stage succeeds.
+        vortex_strength : object
+            Persistent circulation vectors, shape ``(count, 3)``, in m³/s.
+            Updated in place with the same tableau.
+        core_radius : object
+            Source core radii, shape ``(count,)``, in m. This implementation
+            treats them as unchanged over the step and passes the same field to
+            each stage.
+        count : int
+            Active prefix length, no greater than ``max_n_particles``.
+        time : float
+            Accepted-state physical time in seconds.
+        time_step_size : float
+            Positive physical step in seconds. A zero step is a no-op.
+        right_hand_side : CoupledStageRHS
+            Callback evaluated once per tableau stage. It must fill the stage
+            velocity and strength-rate outputs and may use the optional
+            gradient field.
+        velocity_gradient_out : object or None, default=None
+            Optional persistent ``(count, 3, 3)`` gradient output in 1/s. When
+            supplied, each stage writes into this field and the final stage's
+            gradient remains after return.
+
+        Raises
+        ------
+        ValueError
+            If ``count`` exceeds capacity.
+        Exception
+            Exceptions from the right-hand side are propagated; in that case
+            the persistent state may contain partial writes only if the caller
+            supplied mutable fields that the RHS changed directly.
+
+        Notes
+        -----
+        Stage positions and strengths are temporary device fields. The
+        accepted ``position`` and ``vortex_strength`` fields are not modified
+        during stage construction; the final combination mutates them once.
+        The number of RHS calls equals ``tableau.stages``.
+        """
         count = int(count)
         if count < 0 or count > self.max_n_particles:
             raise ValueError(f"stage count {count} exceeds RK capacity {self.max_n_particles}")
         if count == 0 or time_step_size == 0.0:
             return
 
-        def padded(values: tuple[float, ...]) -> tuple[float, float, float, float]:
-            return tuple(values) + (0.0,) * (4 - len(values))
-
-        zero_field = self.stage_velocity[0]
-        for stage in range(self.tableau.stages):
-            coefficients = self.tableau.a[stage]
-            if stage == 0:
-                self._construct_stage_kernel(
-                    position,
-                    vortex_strength,
-                    self.stage_position,
-                    self.stage_vortex_strength,
-                    zero_field,
-                    zero_field,
-                    zero_field,
-                    zero_field,
-                    self.stage_strength_rate[0],
-                    self.stage_strength_rate[1],
-                    self.stage_strength_rate[2],
-                    self.stage_strength_rate[3],
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    count,
-                )
-            else:
-                self._construct_stage_kernel(
-                    position,
-                    vortex_strength,
-                    self.stage_position,
-                    self.stage_vortex_strength,
-                    self.stage_velocity[0],
-                    self.stage_velocity[1],
-                    self.stage_velocity[2],
-                    self.stage_velocity[3],
-                    self.stage_strength_rate[0],
-                    self.stage_strength_rate[1],
-                    self.stage_strength_rate[2],
-                    self.stage_strength_rate[3],
-                    float(time_step_size),
-                    *padded(coefficients),
-                    count,
-                )
-
-            stage_state = StageState(
-                position=self.stage_position,
-                vortex_strength=self.stage_vortex_strength,
-                core_radius=core_radius,
-                count=count,
-                time=float(time + self.tableau.c[stage] * time_step_size),
-            )
-            needs_gradient = velocity_gradient_out is not None or bool(
-                getattr(right_hand_side, "requires_velocity_gradient", False)
-            )
-            stage_gradient = (
-                velocity_gradient_out
-                if velocity_gradient_out is not None
-                else (self.stage_velocity_gradient if needs_gradient else None)
-            )
-            stage_rates = StageRates(
-                velocity=self.stage_velocity[stage],
-                vortex_strength_rate=self.stage_strength_rate[stage],
-                velocity_gradient=stage_gradient,
-            )
-            right_hand_side.evaluate(stage_state, stage_state.time, stage_rates)
-
-        coefficients = self.tableau.b
-        self._combine_kernel(
-            position,
-            vortex_strength,
-            self.stage_velocity[0],
-            self.stage_velocity[1],
-            self.stage_velocity[2],
-            self.stage_velocity[3],
-            self.stage_strength_rate[0],
-            self.stage_strength_rate[1],
-            self.stage_strength_rate[2],
-            self.stage_strength_rate[3],
-            float(time_step_size),
-            *padded(coefficients),
-            count,
+        step_context = getattr(right_hand_side, "integration_step", None)
+        context = (
+            step_context(self.tableau, time_step_size)
+            if step_context is not None
+            else nullcontext()
         )
+        with context:
+
+            def padded(values: tuple[float, ...]) -> tuple[float, float, float, float]:
+                """Pad tableau rows to the four-slot device-kernel ABI."""
+                return tuple(values) + (0.0,) * (4 - len(values))
+
+            zero_field = self.stage_velocity[0]
+            for stage in range(self.tableau.stages):
+                coefficients = self.tableau.a[stage]
+                if stage == 0:
+                    self._construct_stage_kernel(
+                        position,
+                        vortex_strength,
+                        self.stage_position,
+                        self.stage_vortex_strength,
+                        zero_field,
+                        zero_field,
+                        zero_field,
+                        zero_field,
+                        self.stage_strength_rate[0],
+                        self.stage_strength_rate[1],
+                        self.stage_strength_rate[2],
+                        self.stage_strength_rate[3],
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        count,
+                    )
+                else:
+                    self._construct_stage_kernel(
+                        position,
+                        vortex_strength,
+                        self.stage_position,
+                        self.stage_vortex_strength,
+                        self.stage_velocity[0],
+                        self.stage_velocity[1],
+                        self.stage_velocity[2],
+                        self.stage_velocity[3],
+                        self.stage_strength_rate[0],
+                        self.stage_strength_rate[1],
+                        self.stage_strength_rate[2],
+                        self.stage_strength_rate[3],
+                        float(time_step_size),
+                        *padded(coefficients),
+                        count,
+                    )
+
+                stage_state = StageState(
+                    position=self.stage_position,
+                    vortex_strength=self.stage_vortex_strength,
+                    core_radius=core_radius,
+                    count=count,
+                    time=float(time + self.tableau.c[stage] * time_step_size),
+                )
+                needs_gradient = velocity_gradient_out is not None or bool(
+                    getattr(right_hand_side, "requires_velocity_gradient", False)
+                )
+                stage_gradient = (
+                    velocity_gradient_out
+                    if velocity_gradient_out is not None
+                    else (self.stage_velocity_gradient if needs_gradient else None)
+                )
+                stage_rates = StageRates(
+                    velocity=self.stage_velocity[stage],
+                    vortex_strength_rate=self.stage_strength_rate[stage],
+                    velocity_gradient=stage_gradient,
+                )
+                right_hand_side.evaluate(stage_state, stage_state.time, stage_rates)
+
+            coefficients = self.tableau.b
+            self._combine_kernel(
+                position,
+                vortex_strength,
+                self.stage_velocity[0],
+                self.stage_velocity[1],
+                self.stage_velocity[2],
+                self.stage_velocity[3],
+                self.stage_strength_rate[0],
+                self.stage_strength_rate[1],
+                self.stage_strength_rate[2],
+                self.stage_strength_rate[3],
+                float(time_step_size),
+                *padded(coefficients),
+                count,
+            )
 
 
 __all__ = ["CoupledStageRHS", "RungeKutta"]

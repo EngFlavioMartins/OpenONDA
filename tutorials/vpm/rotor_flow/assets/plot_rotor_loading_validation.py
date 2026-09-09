@@ -1,223 +1,71 @@
 #!/usr/bin/env python3
-"""Spanwise loading validation — VLM bound circulation vs BEM prediction.
-
-Reads ``samples/rotor/vlm_spanwise_blade_0.csv`` produced by the
-loading-distribution sampler and compares the time-averaged bound circulation
-Γ(r/R) against the BEM prediction for the same Betz-optimal blade geometry
-(TSR = 7, three blades, Selig–Betz twist from hub to tip).
-
-A second panel shows the spanwise sectional lift coefficient lift_coefficient(r/R), which
-provides an independent check that the VLM is operating at the design angle of
-attack (~5° once the wake induction has fully developed).
-
-Saves: ``figures/rotor_loading_validation.png``
-"""
-
-from __future__ import annotations
+"""Time-averaged blade circulation and section lift against the recorded-geometry BEM reference."""
 
 if not __package__:
-    from pathlib import Path as _CasePath
+    from pathlib import Path
     from openonda.tutorial_runner import case_package
 
-    __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
+    __package__ = case_package(Path(__file__).resolve().parents[1]) + ".assets"
 
-
-from pathlib import Path
-
-import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
-from ._common import (
-    build_arg_parser,
-    build_rotor_style_map,
-    FIGURES_DIR,
-    load_theme,
-    SAMPLES_DIR,
-)
-
-# ==============================================================================
-# Data loader
-# ==============================================================================
+from ._common import build_arg_parser, load_theme, FIGURES_DIR, rotor_inputs, bem_reference
 
 
-def _read_vlm_spanwise(
-    samples_dir: Path,
-    surface: str,
-    tail_fraction: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
-    """Return radial loading quantities averaged over the tail of the run.
-
-    Reads the per-station CSV, filters to the last ``tail_fraction`` of the
-    simulation timeline, and averages ``circulation_magnitude`` and
-    ``section_lift_coefficient_from_circulation`` over that window per physical
-    span station. ``radial_position`` and ``local_chord`` are taken
-    from the first occurrence of each station (they are constant in time).
-    """
-    csv_path = samples_dir / f"vlm_spanwise_{surface}.csv"
-    if not csv_path.exists():
-        return None
-
-    df = pd.read_csv(csv_path)
-    if df.empty:
-        return None
-
-    t_max = float(df["time"].max())
-    t_cut = t_max * (1.0 - tail_fraction)
-    steady = df[df["time"] >= t_cut].copy()
-
-    gp = (
-        steady.groupby("station_id", sort=False)
+def main():
+    args = build_arg_parser(__doc__).parse_args()
+    inputs = rotor_inputs()
+    surface = inputs.metadata["configuration"]["numerics"]["vlm"]["surfaces"][0]["name"]
+    span = pd.read_csv(inputs.samples_dir / f"vlm_spanwise_{surface}.csv")
+    cutoff = span.time.max() - 6 * inputs.rotation_period
+    span = span[span.time >= cutoff]
+    start, end = span.time.agg(["min", "max"]) / inputs.rotation_period
+    chord = pd.read_csv(inputs.samples_dir / f"vlm_chordwise_{surface}.csv")
+    chord = chord[chord.time >= cutoff]
+    positions = chord.groupby(["step", "station_id"])[["bound_y", "bound_z"]].mean()
+    positions["radius"] = np.linalg.norm(positions, axis=1)
+    sampled = span.merge(positions[["radius"]], on=["step", "station_id"])
+    sampled = (
+        sampled.groupby("station_id")
         .agg(
-            radial_position=("span_coordinate_absolute", "first"),
+            radius=("radius", "mean"),
             circulation=("circulation_magnitude", "mean"),
-            chord=("local_chord", "first"),
-            section_lift_coefficient=(
-                "section_lift_coefficient_from_circulation",
-                "mean",
-            ),
+            cl=("section_lift_coefficient_from_circulation", "mean"),
         )
-        .sort_values("radial_position")
-        .reset_index(drop=True)
+        .sort_values("radius")
     )
-
-    return (
-        gp["radial_position"].to_numpy(),
-        gp["circulation"].to_numpy(),
-        gp["chord"].to_numpy(),
-        gp["section_lift_coefficient"].to_numpy(),
-        steady["time"].to_numpy(),
-    )
-
-
-# ==============================================================================
-# Plot
-# ==============================================================================
-
-
-def plot_loading_validation(args) -> int:
-    samples = SAMPLES_DIR
-    figs = FIGURES_DIR
-    fmt = getattr(args, "format", "png")
-    out = figs / f"rotor_loading_validation.{fmt}"
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    # -- BEM reference ---------------------------------------------------
-    from .rotor_theory import solve_blade_element_momentum
-    from .generate_openvsp_blade import RotorBladeDesign, design_schedule
-
-    design = RotorBladeDesign(n_radial_stations=23, n_chordwise_stations=7)
-    sched = design_schedule(design)
-    bem = solve_blade_element_momentum(
-        radial_position=sched["radial_position"],
-        chord=sched["chord"],
-        twist_angle_radians=np.radians(sched["twist_angle_degrees"]),
-        n_blades=3,
-        rotor_radius=design.rotor_radius,
-        freestream_speed=design.freestream_speed,
-        angular_velocity=design.angular_velocity,
-    )
-    bem_thrust_coefficient = bem.attrs["thrust_coefficient"]
-    bem_power_coefficient = bem.attrs["power_coefficient"]
-
-    # -- VLM time-averaged spanwise data ---------------------------------
-    result = _read_vlm_spanwise(
-        samples,
-        surface="blade_0",
-        tail_fraction=0.30,
-    )
-    if result is None:
-        print(
-            f"  [WARNING] vlm_spanwise_blade_0.csv not found in {samples} — run rotor_flow first."
+    bem = bem_reference()
+    colors, theme = load_theme()
+    fig, axes = plt.subplots(2, 1, figsize=theme.figure_size("stacked"), constrained_layout=True)
+    circulation_scale = inputs.freestream_speed * inputs.rotor_radius
+    for axis, actual, reference in [
+        (axes[0], sampled.circulation / circulation_scale, bem.circulation / circulation_scale),
+        (axes[1], sampled.cl, bem.lift_coefficient),
+    ]:
+        axis.plot(
+            sampled.radius / inputs.rotor_radius,
+            actual,
+            "o-",
+            ms=3,
+            color=colors["VPMpurple"],
+            label=f"Mean, rev {start:.1f}–{end:.1f}",
         )
-        return 0
-
-    r_vlm, circulation_vlm, chord_vlm, cl_vlm, _ = result
-
-    # Normalised circulation reference: Γ* = Γ / (U∞ R)
-    circulation_ref = design.freestream_speed * design.rotor_radius
-    circulation_vlm_norm = circulation_vlm / circulation_ref
-    bem_circulation_norm = bem["circulation"].to_numpy() / circulation_ref
-
-    colors, _ = load_theme()
-    styles = build_rotor_style_map(colors)
-    s_vpm = styles["vpm"]
-    s_bem = styles["bem"]
-    s_ref = styles["reference"]
-
-    fig, axes = plt.subplots(1, 2, figsize=(12.8 / 2.54, 7.4 / 2.54), sharex=True)
-    fig.subplots_adjust(wspace=0.27, left=0.12, right=0.96, top=0.87, bottom=0.27)
-
-    # -- circulation*(r/R) -----------------------------------------------------
-    ax = axes[0]
-    ax.axvspan(0, 0.17, color=colors["background_light"], linewidth=0)
-    vpm_kw = {
-        "color": s_vpm["color"],
-        "marker": s_vpm["marker"],
-        "markersize": s_vpm["markersize"],
-        "lw": s_vpm["linewidth"],
-        "label": s_vpm["label"],
-    }
-    bem_kw = {
-        "color": s_bem["color"],
-        "ls": s_bem["linestyle"],
-        "lw": s_bem["linewidth"],
-        "label": s_bem["label"],
-    }
-    ax.plot(r_vlm / design.rotor_radius, circulation_vlm_norm, **vpm_kw)
-    ax.plot(bem["normalized_radial_position"], bem_circulation_norm, **bem_kw)
-    ax.set_xlabel(r"$r/R$")
-    ax.set_ylabel(r"$\Gamma\,/\,(U_\infty R)$")
-    ax.set_title(r"Normalized bound circulation")
-    ax.set_xlim([0, 1])
-    circulation_top = (
-        max(float(np.nanmax(circulation_vlm_norm)), float(np.nanmax(bem_circulation_norm))) * 1.08
-    )
-    ax.set_ylim([0, circulation_top])
-
-    # -- lift_coefficient(r/R) ---------------------------------------------------------
-    ax2 = axes[1]
-    ax2.axvspan(0, 0.17, color=colors["background_light"], linewidth=0)
-    ax2.plot(r_vlm / design.rotor_radius, cl_vlm, **vpm_kw)
-    ax2.plot(bem["normalized_radial_position"], bem["lift_coefficient"], **bem_kw)
-    ax2.set_xlabel(r"$r/R$")
-    ax2.set_ylabel(r"$C_l$")
-    ax2.set_title(r"Sectional lift coefficient")
-    ax2.set_xlim([0, 1])
-    cl_top = max(float(np.nanmax(cl_vlm)), float(np.nanmax(bem["lift_coefficient"]))) * 1.08
-    ax2.set_ylim([0, cl_top])
-
-    handles, labels = ax.get_legend_handles_labels()
-    fig.legend(
-        handles,
-        labels,
-        loc="lower center",
-        ncol=2,
-        bbox_to_anchor=(0.5, 0.03),
-        columnspacing=1.1,
-        handlelength=2.2,
-    )
-
-    save_kw: dict = {"bbox_inches": "tight"}
-    if fmt == "png":
-        save_kw["dpi"] = args.dpi
-    plt.savefig(out, **save_kw)
-    plt.close(fig)
-    print(f"  Saved: {out}")
-    print(
-        f"  BEM thrust_coefficient={bem_thrust_coefficient:.4f}, power_coefficient={bem_power_coefficient:.4f} (Betz: thrust_coefficient={8 / 9:.4f}, power_coefficient={16 / 27:.4f})"
-    )
-    return 0
-
-
-def main() -> int:
-    return plot_loading_validation(
-        build_arg_parser("Spanwise loading validation: VLM vs BEM").parse_args()
+        axis.plot(
+            bem.normalized_radial_position, reference, "--", color=colors["reference"], label="BEM"
+        )
+        axis.set_xlabel(r"Radius, $r/R$")
+        axis.legend()
+    axes[0].set(ylabel=r"Circulation, $\Gamma/(U_\infty R)$", title="Blade circulation")
+    axes[1].set(ylabel=r"Section lift, $c_l$", title="Local aerodynamic loading")
+    theme.save_fig(
+        fig,
+        FIGURES_DIR / "rotor_loading_validation.png",
+        figure_format=args.format,
+        dpi=args.dpi,
+        bbox_inches=None,
     )
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

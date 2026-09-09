@@ -40,6 +40,7 @@ from ....config.constants import (
     GAUSSIAN_Q_SERIES_CROSSOVER,
     TREECODE_SUPPORTED_KERNELS,
 )
+from ....kernels.base import make_vortex_kernel
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 # Bound each traversal dispatch.  Large all-particle kernels can exceed the
@@ -88,6 +89,47 @@ class TaichiTreecode:
         traversal_block_dim: int = 128,
         device_sort_only: bool = False,
     ):
+        """Allocate an LBVH treecode workspace.
+
+        Parameters
+        ----------
+        max_n_particles : int, default=100000
+            Maximum source/target particle count represented by the fields.
+        max_nodes : int, default=200000
+            Node capacity; a binary tree for ``N`` sources needs approximately
+            ``2*N`` nodes.
+        theta : float, default=0.5
+            Barnes--Hut opening threshold.  Smaller values visit more nodes and
+            improve accuracy.
+        max_leaf_size : int, default=32
+            Maximum source count in a leaf before further subdivision.
+        kernel_type : str, default="WINCKELMANS"
+            Supported regularization kernel name.
+        multipole_order : {1, 2, 3}, default=1
+            Order of stored source moments.  Higher order costs memory and
+            arithmetic but can reduce far-field error.
+        sort_particle_targets : bool, default=False
+            Reorder target traversal through the Morton permutation to improve
+            locality; output arrays retain original particle order.
+        traversal_block_dim : int, default=128
+            Optional Taichi block size.  Zero leaves backend selection
+            automatic.
+        device_sort_only : bool, default=False
+            Require device sorting and surface sorting/backend failures rather
+            than using the deterministic host fallback.
+
+        Notes
+        -----
+        Fields are allocated eagerly on the active Taichi backend.  A call to
+        :meth:`build` uploads/refits source data and populates the hierarchy;
+        construction alone does not evaluate velocity.
+
+        Raises
+        ------
+        ValueError
+            If ``multipole_order`` is outside 1--3 or the traversal block size
+            is negative.
+        """
         self.max_n_particles = max_n_particles
         self.max_nodes = max_nodes
         self.theta = theta
@@ -211,6 +253,7 @@ class TaichiTreecode:
         self.target_velocity_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=max_n_particles)
         self.n_targets = ti.field(dtype=ti.i32, shape=())
         self.kernel_type_id = ti.field(dtype=ti.i32, shape=())
+        self.regularization_tail_cutoff = ti.field(dtype=ti.f32, shape=())
         self.multipole_order = ti.field(dtype=ti.i32, shape=())
         self.sort_particle_targets = ti.field(dtype=ti.i32, shape=())
 
@@ -277,6 +320,9 @@ class TaichiTreecode:
             )
         self.kernel_type = normalized
         self.kernel_type_id[None] = TREECODE_SUPPORTED_KERNELS.index(normalized)
+        self.regularization_tail_cutoff[None] = max(
+            make_vortex_kernel(normalized).dimensionless_tail_cutoffs(1e-7, 1e-7)
+        )
 
     def set_multipole_order(self, order: int) -> None:
         """Set the far-field expansion order.
@@ -1092,6 +1138,20 @@ class TaichiTreecode:
 
     @ti.func
     def q_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        """Evaluate the dimensionless regularized Biot--Savart factor.
+
+        Parameters
+        ----------
+        r_sigma : float
+            Distance divided by the core radius ``sigma``.
+
+        Returns
+        -------
+        float
+            The radial factor, including ``1/(4*pi)``, used with
+            ``-r x Gamma / r**3``.  It is dimensionless and approaches the
+            classical point-vortex factor away from the core.
+        """
         ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)
         result = ti.cast(0.0, ti.f32)
         if self.kernel_type_id[None] == 0:
@@ -1117,6 +1177,20 @@ class TaichiTreecode:
 
     @ti.func
     def zeta_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        """Evaluate the dimensionless vorticity-mollifier kernel ``zeta``.
+
+        Parameters
+        ----------
+        r_sigma : float
+            Distance divided by the core radius ``sigma``.
+
+        Returns
+        -------
+        float
+            Dimensionless ``zeta(r/sigma)``.  Callers divide by
+            ``sigma**3`` when converting it to a dimensional gradient
+            factor with units m⁻³.
+        """
         ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)
         result = ti.cast(0.0, ti.f32)
         if self.kernel_type_id[None] == 0:
@@ -1130,6 +1204,19 @@ class TaichiTreecode:
 
     @ti.func
     def zeta_prime_kernel(self, r_sigma: ti.f32) -> ti.f32:
+        """Evaluate ``d zeta / d(r/sigma)`` for the active kernel.
+
+        Parameters
+        ----------
+        r_sigma : float
+            Dimensionless radius ``r/sigma``.
+
+        Returns
+        -------
+        float
+            Dimensionless derivative with respect to ``r/sigma``.  It is
+            used by the quadrupole and velocity-gradient far-field terms.
+        """
         result = ti.cast(0.0, ti.f32)
         zeta_val = self.zeta_kernel(r_sigma)
         if self.kernel_type_id[None] == 0:
@@ -1158,6 +1245,19 @@ class TaichiTreecode:
 
     @ti.func
     def skew(self, v: ti.template()) -> ti.Matrix:
+        """Return the 3-by-3 cross-product matrix for a three-vector.
+
+        Parameters
+        ----------
+        v : vector(3)
+            Vector whose cross-product operator is required.
+
+        Returns
+        -------
+        matrix(3, 3)
+            Matrix ``K`` such that ``K @ w == v.cross(w)``.  The matrix has
+            the same implicit units as ``v``.
+        """
         return ti.Matrix([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
 
     @ti.func
@@ -1413,20 +1513,32 @@ class TaichiTreecode:
         return gradu
 
     @ti.func
-    def _node_core_is_homogeneous(self, node: ti.i32) -> ti.i32:
-        """Return whether one node radius is a safe source regularization."""
+    def _node_core_is_admissible(
+        self, node: ti.i32, distance: ti.f32, maximum_pair_radius: ti.f32
+    ) -> ti.i32:
+        """Accept common cores or a node wholly outside the regularization tail."""
         average = self.node_avg_radius[node]
         minimum = self.node_min_radius[node]
         maximum = self.node_max_radius[node]
         net_strength = self.node_net_vortex_strength[node]
-        # The far evaluator has one regularization radius and a monopole
-        # moment.  Descend whenever either assumption is not conservative:
-        # mixed-radius sources do not share the same operator, and a cancelled
-        # monopole cannot represent the nonzero near/far field of its sources.
+        # Mixed cores need direct evaluation nearby. Far enough away, every
+        # source's regularization differs from the singular kernel by less
+        # than f32 accuracy, regardless of the spread in core radii. Rejecting
+        # these distant nodes makes core-spreading wakes effectively quadratic.
         radius_scale = ti.max(average, 1e-12)
         radius_spread = maximum - minimum
         nearly_cancelled = net_strength.dot(net_strength) <= 1e-24
-        return 1 if radius_spread <= 1e-5 * radius_scale and not nearly_cancelled else 0
+        source_extent = (
+            self.node_half_size[node] + (self.node_com[node] - self.node_centre[node]).norm()
+        )
+        outside_tail = distance - source_extent > (
+            self.regularization_tail_cutoff[None] * maximum_pair_radius
+        )
+        return (
+            1
+            if ((radius_spread <= 1e-5 * radius_scale or outside_tail) and not nearly_cancelled)
+            else 0
+        )
 
     @ti.func
     def _target_leaf_gradient_sum(self, node: int, target_pos: ti.template()) -> ti.Matrix:
@@ -1509,7 +1621,10 @@ class TaichiTreecode:
             if (
                 r_mag > ti.max(1e-8, self.node_avg_radius[node])
                 and (node_size * node_size / r_sq) < theta_sq
-                and self._node_core_is_homogeneous(node) != 0
+                and self._node_core_is_admissible(
+                    node, r_mag, 0.5 * (target_rad + self.node_max_radius[node])
+                )
+                != 0
             ):
                 sigma = 0.5 * (target_rad + self.node_avg_radius[node])
                 vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
@@ -1540,7 +1655,10 @@ class TaichiTreecode:
             if (
                 r_mag > ti.max(1e-8, self.node_avg_radius[node])
                 and (node_size * node_size / r_sq) < theta_sq
-                and self._node_core_is_homogeneous(node) != 0
+                and self._node_core_is_admissible(
+                    node, r_mag, 0.5 * (target_rad + self.node_max_radius[node])
+                )
+                != 0
             ):
                 sigma = 0.5 * (target_rad + self.node_avg_radius[node])
                 gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
@@ -1570,7 +1688,7 @@ class TaichiTreecode:
             if (
                 r_mag > ti.max(1e-8, self.node_avg_radius[node])
                 and (node_size * node_size / r_sq) < theta_sq
-                and self._node_core_is_homogeneous(node) != 0
+                and self._node_core_is_admissible(node, r_mag, self.node_max_radius[node]) != 0
             ):
                 sigma = self.node_avg_radius[node]
                 vel += self._far_velocity_node(node, r_vec, r_mag, sigma)
@@ -1600,7 +1718,7 @@ class TaichiTreecode:
             if (
                 r_mag > ti.max(1e-8, self.node_avg_radius[node])
                 and (node_size * node_size / r_sq) < theta_sq
-                and self._node_core_is_homogeneous(node) != 0
+                and self._node_core_is_admissible(node, r_mag, self.node_max_radius[node]) != 0
             ):
                 sigma = self.node_avg_radius[node]
                 gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
@@ -1614,6 +1732,21 @@ class TaichiTreecode:
 
     @ti.kernel
     def compute_velocities_kernel(self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32):
+        """Evaluate particle velocities for one traversal batch in place.
+
+        Parameters
+        ----------
+        theta_sq : float
+            Square of the Barnes--Hut opening angle.
+        start_slot, count : int
+            Contiguous traversal slots to process.  When target sorting is
+            enabled, slots are mapped back to original particle indices.
+
+        Notes
+        -----
+        ``self.velocity`` is overwritten in m/s and includes the configured
+        freestream velocity.  The hierarchy and particle arrays are read only.
+        """
         n_nodes = self.n_nodes[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
@@ -1630,6 +1763,21 @@ class TaichiTreecode:
     def compute_velocity_gradients_kernel(
         self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32
     ):
+        """Evaluate particle velocity gradients and strain rates in place.
+
+        Parameters
+        ----------
+        theta_sq : float
+            Square of the Barnes--Hut opening angle.
+        start_slot, count : int
+            Traversal batch range, in sorted-slot space when sorting is active.
+
+        Notes
+        -----
+        ``self.velocity_gradient`` and ``self.strain_rate`` are overwritten
+        with arrays of shape ``(N, 3, 3)`` and units s⁻¹.  The strain is the
+        symmetric part ``0.5*(grad_u + grad_u.T)``.
+        """
         n_nodes = self.n_nodes[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
@@ -1689,7 +1837,10 @@ class TaichiTreecode:
                 if (
                     r_mag > ti.max(1e-8, self.node_avg_radius[node])
                     and (node_size * node_size / r_sq) < theta_sq
-                    and self._node_core_is_homogeneous(node) != 0
+                    and self._node_core_is_admissible(
+                        node, r_mag, 0.5 * (target_rad + self.node_max_radius[node])
+                    )
+                    != 0
                 ):
                     # Far field: one node, both fields share sigma / r_sigma / q.
                     sigma = 0.5 * (target_rad + self.node_avg_radius[node])
@@ -1744,13 +1895,35 @@ class TaichiTreecode:
         self.eval_time = time.perf_counter() - t_start
 
     def compute_velocities(self, freestream_velocity: np.ndarray | None = None) -> np.ndarray:
+        """Evaluate velocity at every active source particle and download it.
+
+        Parameters
+        ----------
+        freestream_velocity : ndarray, shape (3,), optional
+            Uniform background velocity in m/s.  Omit it for zero background.
+
+        Returns
+        -------
+        ndarray, shape (N, 3)
+            Induced plus optional freestream velocity in m/s.  The returned
+            array is a host copy; the same values remain in :attr:`velocity`.
+
+        Raises
+        ------
+        RuntimeError
+            If no hierarchy has been built for the current source fields.
+        """
         self.compute_velocities_gpu(freestream_velocity)
         N = self.n_particles_total[None]
         return self._download_vector_field(self.velocity, N)
 
     def compute_velocity_gradients_gpu(self) -> None:
-        """Run the velocity-gradient traversal on-device; results stay in
-        ``self.velocity_gradient`` / ``self.strain_rate`` (Taichi fields)."""
+        """Evaluate source-particle Jacobians on device.
+
+        Results remain in ``velocity_gradient`` and ``strain_rate`` Taichi
+        fields with shape ``(N, 3, 3)`` and units 1/s.  No host arrays are
+        returned or allocated for the result.
+        """
         t_start = time.perf_counter()
         N = int(self.n_particles_total[None])
         for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
@@ -1760,6 +1933,14 @@ class TaichiTreecode:
         self.grad_time = time.perf_counter() - t_start
 
     def compute_velocity_gradients(self) -> tuple:
+        """Evaluate and download source-particle Jacobian and strain fields.
+
+        Returns
+        -------
+        gradients, strains : tuple of ndarray
+            Arrays of shape ``(N, 3, 3)`` in 1/s, with Jacobian convention
+            ``J[i, j] = d u_i / d x_j`` and symmetric strain ``(J+J.T)/2``.
+        """
         self.compute_velocity_gradients_gpu()
         N = self.n_particles_total[None]
         grads = self._download_matrix_field(self.velocity_gradient, N)
@@ -1769,8 +1950,12 @@ class TaichiTreecode:
     def compute_velocity_and_gradient_gpu(
         self, freestream_velocity: np.ndarray | None = None
     ) -> None:
-        """Fused on-device evaluation of u, ∇u and S in a *single* tree traversal.
-        Results stay in ``self.velocity`` / ``self.velocity_gradient``"""
+        """Evaluate velocity, Jacobian, and strain in one device traversal.
+
+        Results remain in the Taichi fields ``velocity``,
+        ``velocity_gradient``, and ``strain_rate``.  ``freestream_velocity``
+        has shape ``(3,)`` and units m/s; gradients and strain have units 1/s.
+        """
         t_start = time.perf_counter()
         if freestream_velocity is not None:
             self.freestream_velocity[None] = ti.Vector(
@@ -1786,6 +1971,14 @@ class TaichiTreecode:
         self.eval_time = time.perf_counter() - t_start
 
     def compute_velocity_and_gradient(self, freestream_velocity: np.ndarray | None = None) -> tuple:
+        """Run the fused traversal and download velocity/Jacobian/strain.
+
+        Returns
+        -------
+        velocity, gradient, strain : tuple of ndarray
+            Shapes ``(N, 3)``, ``(N, 3, 3)``, and ``(N, 3, 3)`` with units m/s,
+            1/s, and 1/s respectively.
+        """
         self.compute_velocity_and_gradient_gpu(freestream_velocity)
         N = self.n_particles_total[None]
         return (
@@ -1803,6 +1996,21 @@ class TaichiTreecode:
         start_target: ti.i32,
         count: ti.i32,
     ):
+        """Evaluate velocity at an arbitrary target batch in place.
+
+        Parameters
+        ----------
+        theta_sq : float
+            Square of the Barnes--Hut opening angle.
+        start_target, count : int
+            Range of target rows in ``self.target_position`` to process.
+
+        Notes
+        -----
+        ``self.target_velocity`` is overwritten in m/s and includes
+        freestream velocity; target positions and the source hierarchy are
+        unchanged.
+        """
         n_nodes = self.n_nodes[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
@@ -1819,6 +2027,21 @@ class TaichiTreecode:
         start_target: ti.i32,
         count: ti.i32,
     ):
+        """Evaluate the velocity Jacobian at an arbitrary target batch.
+
+        Parameters
+        ----------
+        theta_sq : float
+            Square of the Barnes--Hut opening angle.
+        start_target, count : int
+            Range of target rows in ``self.target_position`` to process.
+
+        Notes
+        -----
+        ``self.target_velocity_gradient`` is overwritten with shape
+        ``(n_targets, 3, 3)`` and units s⁻¹.  No target velocity field is
+        produced by this kernel.
+        """
         n_nodes = self.n_nodes[None]
         if ti.static(self.traversal_block_dim > 0):
             ti.loop_config(block_dim=self.traversal_block_dim)
@@ -1858,7 +2081,7 @@ class TaichiTreecode:
                 if (
                     r_mag > ti.max(1e-8, self.node_avg_radius[node])
                     and (node_size * node_size / r_sq) < theta_sq
-                    and self._node_core_is_homogeneous(node) != 0
+                    and self._node_core_is_admissible(node, r_mag, self.node_max_radius[node]) != 0
                 ):
                     sigma = self.node_avg_radius[node]
                     velocity += self._far_velocity_node(node, r_vec, r_mag, sigma)
@@ -1874,6 +2097,25 @@ class TaichiTreecode:
     def compute_target_velocity(
         self, target_position: np.ndarray, freestream_velocity: np.ndarray | None = None
     ) -> np.ndarray:
+        """Evaluate velocity at arbitrary target points.
+
+        Parameters
+        ----------
+        target_position : ndarray, shape (M, 3)
+            Target coordinates in metres.
+        freestream_velocity : ndarray, shape (3,), optional
+            Uniform background velocity in m/s.
+
+        Returns
+        -------
+        ndarray, shape (M, 3)
+            Induced plus optional background velocity in m/s.
+
+        Raises
+        ------
+        ValueError
+            If ``M`` exceeds the allocated target capacity.
+        """
         M = len(target_position)
         if M == 0:
             return np.zeros((0, 3), dtype=np.float32)
@@ -1895,6 +2137,23 @@ class TaichiTreecode:
         return self._download_vector_field(self.target_velocity, M)
 
     def compute_target_velocity_gradient(self, target_position: np.ndarray) -> np.ndarray:
+        """Evaluate the source-induced Jacobian at arbitrary targets.
+
+        Parameters
+        ----------
+        target_position : ndarray, shape (M, 3)
+            Target coordinates in metres.
+
+        Returns
+        -------
+        ndarray, shape (M, 3, 3)
+            Jacobian ``J[i, j] = d u_i / d x_j`` in 1/s.
+
+        Raises
+        ------
+        ValueError
+            If ``M`` exceeds the allocated target capacity.
+        """
         M = len(target_position)
         if M == 0:
             return np.zeros((0, 3, 3), dtype=np.float32)
@@ -1942,6 +2201,7 @@ class TaichiTreecode:
     # INFO
 
     def info(self) -> str:
+        """Return a human-readable hierarchy and timing summary."""
         grad_info = f"\n  Grad time: {self.grad_time * 1000:.2f} ms" if self.grad_time > 0 else ""
         return (
             f"TaichiTreecode (GPU/LBVH):\n"

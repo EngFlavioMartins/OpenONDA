@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import math
 
-from numba import njit
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 
 @njit(cache=True)

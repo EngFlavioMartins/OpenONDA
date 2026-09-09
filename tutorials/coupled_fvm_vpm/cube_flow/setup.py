@@ -18,49 +18,11 @@ from pathlib import Path
 
 import numpy as np
 
+import openonda.coupler as coupling
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
-import openonda.coupler as coupling
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
-
-
-def resolve_case_timing(
-    fvm_time_step_size: float,
-    vpm_time_step_multiplier: int,
-    write_solution_backup: float,
-    sampling_period: float,
-) -> tuple[float, float, int, int, int, int]:
-    """Resolve compatible solver steps and exact integer output intervals."""
-    if (
-        fvm_time_step_size <= 0.0
-        or vpm_time_step_multiplier < 1
-        or int(vpm_time_step_multiplier) != vpm_time_step_multiplier
-    ):
-        raise ValueError("time-step size must be positive and VPM multiplier must be an integer")
-    if write_solution_backup <= 0.0 or sampling_period <= 0.0:
-        raise ValueError("backup and sampling periods must be positive")
-
-    vpm_steps_per_sample = max(
-        1, round(sampling_period / (vpm_time_step_multiplier * fvm_time_step_size))
-    )
-    vpm_time_step_size = sampling_period / vpm_steps_per_sample
-    fvm_time_step_size = vpm_time_step_size / vpm_time_step_multiplier
-    intervals = (
-        round(write_solution_backup / fvm_time_step_size),
-        round(write_solution_backup / vpm_time_step_size),
-        round(sampling_period / fvm_time_step_size),
-        round(sampling_period / vpm_time_step_size),
-    )
-    periods = (write_solution_backup, write_solution_backup, sampling_period, sampling_period)
-    steps = (fvm_time_step_size, vpm_time_step_size) * 2
-    if any(
-        not np.isclose(interval * step, period, rtol=0.0, atol=1.0e-12)
-        for interval, step, period in zip(intervals, steps, periods, strict=True)
-    ):
-        raise ValueError("backup and sampling periods must be mutually compatible")
-    return fvm_time_step_size, vpm_time_step_size, *intervals
-
 
 # Physical problem
 CUBE_SIDE = 1.0
@@ -104,6 +66,28 @@ END_TIME = 20.0
 SAMPLING_INTERVAL_TIME = 0.050
 WRITE_SOLUTION_BACKUP = 0.5
 VPM_TIME_STEP_MULTIPLIER = 5
+
+
+def resolve_case_timing(
+    fvm_time_step_size: float,
+    vpm_time_step_multiplier: int,
+    write_solution_backup: float,
+    sampling_period: float,
+) -> tuple[float, float, int, int, int, int]:
+    """Resolve compatible solver steps and exact integer output intervals."""
+
+    vpm_steps_per_sample = round(sampling_period / (vpm_time_step_multiplier * fvm_time_step_size))
+    vpm_time_step_size = sampling_period / vpm_steps_per_sample
+    fvm_time_step_size = vpm_time_step_size / vpm_time_step_multiplier
+    intervals = (
+        round(write_solution_backup / fvm_time_step_size),
+        round(write_solution_backup / vpm_time_step_size),
+        round(sampling_period / fvm_time_step_size),
+        round(sampling_period / vpm_time_step_size),
+    )
+    return fvm_time_step_size, vpm_time_step_size, *intervals
+
+
 (
     FVM_TIME_STEP_SIZE,
     VPM_TIME_STEP_SIZE,
@@ -155,7 +139,6 @@ FVM_MESH = msh.CartesianMesher(
     ),
 )
 
-# refinements=(msh.BoxRefinement(FVM_WAKE_BOX, SURFACE_CELL_SIZE * 2, "wakeBox"),),
 
 FVM_SAMPLING_SCHEDULE = fvm.RunSchedule(every_n_steps=FVM_SAMPLING_INTERVAL_STEPS)
 VPM_SAMPLING_SCHEDULE = vpm.EverySteps(VPM_SAMPLING_INTERVAL_STEPS)
@@ -275,40 +258,33 @@ COUPLER_SETUP = coupling.CouplerSetup(
 
 
 def make_vpm_viscous_config(scheme: str) -> vpm.ViscousConfig:
-    """Build any VPM diffusion scheme with the coupled spatial resolution."""
-    name = scheme.upper()
     common = {
         "particle_spacing": VPM_PARTICLE_SPACING,
         "core_radius_ratio": VPM_CORE_RADIUS_RATIO,
     }
-    if name == "CS":
-        return vpm.ViscousConfig.cs(
+    return {
+        "CS": vpm.ViscousConfig.cs(
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             **common,
-        )
-    if name == "RWM":
-        raise ValueError("RWM is not supported by the cube-flow LES configuration; use GBD instead")
-    if name == "DVH":
-        return vpm.ViscousConfig.dvh(
+        ),
+        "DVH": vpm.ViscousConfig.dvh(
             padding=5.0,
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             threshold_mode="absolute",
             threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
             max_nodes=PARTICLE_LIMIT,
             **common,
-        )
-    if name == "GBD":
-        return vpm.ViscousConfig.gbd(
+        ),
+        "GBD": vpm.ViscousConfig.gbd(
             padding=5.0,
             kinematic_viscosity=KINEMATIC_VISCOSITY,
             threshold_mode="absolute",
             threshold=GBD_VORTICITY_FLOOR * VPM_PARTICLE_SPACING**3,
             max_nodes=PARTICLE_LIMIT,
             **common,
-        )
-    if name == "NONE":
-        return vpm.ViscousConfig.inviscid(**common)
-    raise ValueError(f"Unsupported VPM viscous scheme {scheme!r}")
+        ),
+        "NONE": vpm.ViscousConfig.inviscid(**common),
+    }[scheme.upper()]
 
 
 VPM_SAMPLERS = (
@@ -355,6 +331,7 @@ VPM_PANEL_SOLVER = vpm.PanelSolver(
     coupling_scope="vpm_boundary_condition",
 )
 VPM_CASE = vpm.VPMCase(
+    name="coupled_replacement_flow",
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=list(FREESTREAM_VELOCITY),
@@ -368,7 +345,7 @@ VPM_CASE = vpm.VPMCase(
         stabilization=vpm.StabilizationConfig.bounded_domain(VPM_DOMAIN),
         particle_kernel="GAUSSIAN",
         precision="f32",
-        compute_device="VULKAN",
+        compute_device="CPU",  # FMM supports CPU on macOS; Vulkan is available on Linux.
         max_n_particles=PARTICLE_LIMIT,
         max_evaluation_points=PARTICLE_LIMIT,
         domain_bounds=list(VPM_DOMAIN),

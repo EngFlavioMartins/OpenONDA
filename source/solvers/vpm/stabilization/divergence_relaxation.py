@@ -43,6 +43,21 @@ class DivergenceRelaxationError(RuntimeError):
     """A divergence-relaxation proposal failed a declared physics gate."""
 
     def __init__(self, message: str, *, gate: str | None = None) -> None:
+        """Create a rejected divergence-relaxation proposal error.
+
+        Parameters
+        ----------
+        message : str
+            Human-readable explanation passed to :class:`RuntimeError`.
+        gate : str or None, optional
+            Stable name of the violated acceptance gate, such as
+            ``"heterogeneous core width"`` or ``"moment restoration"``.
+
+        Notes
+        -----
+        The exception reports why a proposal was rejected; it does not mutate
+        the particle-strength field or perform rollback itself.
+        """
         super().__init__(message)
         self.gate = gate
 
@@ -125,6 +140,44 @@ class GaussianParticleGridOperator:
         max_core_radius_spread: float = 0.25,
         max_grid_nodes: int = 8_000_000,
     ) -> None:
+        """Prepare a symmetric M4/Gaussian grid operator.
+
+        Parameters
+        ----------
+        position : ndarray, shape (N, 3)
+            Particle centres in metres. The values are copied into a float64
+            host representation used to determine the grid bounds.
+        core_radius : ndarray, shape (N,)
+            Positive particle core radii in metres.
+        vortex_strength_weight : ndarray, shape (N,)
+            Non-negative scalar weights used to choose the reconstruction
+            width; in the stabilization path these are typically
+            ``|Gamma|`` with units m³/s.
+        spacing : float
+            Uniform Cartesian grid spacing in metres.
+        support_radius_multiplier : float, default=4.0
+            Gaussian support radius divided by the reconstruction width;
+            values below three are rejected because they truncate the M4
+            stencil too aggressively.
+        max_core_radius_spread : float, default=0.25
+            Maximum allowed relative core-radius range, measured as
+            ``ptp(core_radius) / mean(core_radius)``.
+        max_grid_nodes : int, default=8_000_000
+            Hard upper bound on the allocated grid-node count.
+
+        Raises
+        ------
+        ValueError
+            If shapes, positivity, or support parameters are invalid.
+        DivergenceRelaxationError
+            If core-radius heterogeneity or the resulting grid exceeds a
+            declared acceptance limit.
+
+        Notes
+        -----
+        Construction computes grid geometry and allocates spectral work
+        arrays; it does not alter the supplied particle strengths.
+        """
         position = np.asarray(position, dtype=np.float64)
         core_radius = np.asarray(core_radius, dtype=np.float64)
         vortex_strength_weight = np.asarray(vortex_strength_weight, dtype=np.float64)

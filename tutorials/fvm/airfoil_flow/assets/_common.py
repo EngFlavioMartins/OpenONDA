@@ -1,6 +1,5 @@
 import argparse
 import csv
-import glob
 import os
 from pathlib import Path
 
@@ -80,10 +79,7 @@ def load_csv_columns(path):
     return {key: np.asarray(vals) for key, vals in data.items()}
 
 
-def latest_vtu(solution_dir):
-    """Path of the last-written .vtu snapshot, or None."""
-    files = sorted(glob.glob(os.path.join(solution_dir, "*.vtu")))
-    return files[-1] if files else None
+latest_vtu = THEME.latest_fvm_snapshot
 
 
 def save_fig(fig, name, figures_dir, dpi=None, figure_format="png"):

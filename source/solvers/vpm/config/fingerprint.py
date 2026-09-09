@@ -9,6 +9,7 @@ silently represented as such.
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
+import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -44,7 +45,10 @@ def _canonical_value(value: Any) -> Any:
     if isinstance(value, tuple | list):
         return [_canonical_value(item) for item in value]
     if isinstance(value, np.generic):
-        return value.item()
+        return _canonical_value(value.item())
+    if isinstance(value, float) and math.isinf(value):
+        # Infinite bounds are valid numerical controls, but not JSON numbers.
+        return "Infinity" if value > 0 else "-Infinity"
     return value
 
 
@@ -53,7 +57,8 @@ def numerical_configuration(setup: Numerics) -> dict[str, Any]:
 
     The mapping is internal restart evidence only. It intentionally
     excludes clocks, output plans, and live coupled objects; callers cannot use
-    it to recreate a solver configuration.
+    it to recreate a solver configuration. Infinite bounds are represented by
+    the JSON strings ``Infinity`` and ``-Infinity``.
     """
     return {
         "axisymmetric_no_swirl_axis": setup.axisymmetric_no_swirl_axis,

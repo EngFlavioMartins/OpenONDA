@@ -10,7 +10,89 @@ from .filament_refinement import FilamentRefinementConfig
 
 @dataclass(frozen=True)
 class StabilizationConfig:
-    """Optional VPM stabilization and particle-retention settings."""
+    """Configure accepted-step VPM correction, refinement, and retention policies.
+
+    Parameters
+    ----------
+    stretching_viscosity_coefficient : float, default=0
+        Non-negative dimensionless residual-viscosity coefficient.
+    stretching_viscosity_start_step : int, default=0
+        First accepted step on which residual viscosity may act.
+    stretching_viscosity_feedback_gain : float, default=0
+        Non-negative feedback gain driven by measured vorticity growth.
+    stretching_viscosity_feedback_interval_steps : int, default=5
+        Positive feedback-update cadence.
+    stretching_viscosity_feedback_growth_limit : float, default=0.25
+        Target fractional growth in ``(0, 1]``.
+    stretching_viscosity_max_coefficient : float or None, optional
+        Optional coefficient ceiling, no smaller than the initial coefficient.
+    pedrizzetti_relaxation_factor : float, default=0
+        Blend fraction in ``[0, 1]``; zero disables relaxation.
+    pedrizzetti_relaxation_interval_steps : int, default=1
+        Positive accepted-step cadence.
+    pedrizzetti_relaxation_start_step : int, default=0
+        First eligible accepted step.
+    pedrizzetti_relaxation_end_step : int or None, optional
+        Last eligible window boundary; it cannot precede the start step.
+    pedrizzetti_relaxation_preserve_vortex_strength : bool, default=True
+        Renormalize each relaxed particle to retain its strength magnitude.
+        This does not preserve the net vector strength of the particle field.
+    pedrizzetti_relaxation_preserve_moments : bool, default=False
+        Restore net vector strength and first moments when the correction is
+        well conditioned; this can change individual particle magnitudes.
+    filament_refinement : FilamentRefinementConfig
+        Conservative particle-splitting policy.
+    divergence_relaxation : DivergenceRelaxationConfig
+        Guarded divergence-projection policy.
+    remove_particles_by_bounds : tuple[float, ...] or None, optional
+        Cartesian keep-box ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m.
+    regularization_interval_steps, regularization_start_step : int
+        Non-negative cadence and first eligible step for conservative remeshing.
+    regularization_grid_spacing : float or None
+        Positive standard remeshing lattice spacing in m when enabled.
+    regularization_tail_budget : float, default=3e-3
+        Fractional circulation-magnitude budget in ``(0, 1)`` available to pruning.
+    regularization_solenoidal_remesh : bool, default=False
+        Project the remeshed lattice toward a divergence-free field.
+    regularization_max_particles, regularization_capacity_max_particles : int or None
+        Positive standard and capacity-triggered post-remesh population ceilings.
+    regularization_max_events : int or None
+        Optional positive lifetime cap on regularization events.
+    regularization_total_kinetic_energy_dissipation_limit,
+    regularization_total_enstrophy_dissipation_limit : float
+        Allowed fractional losses in ``(0, 1)`` for an accepted proposal.
+    regularization_divergence_trigger : float or None
+        Non-negative normalized divergence trigger.
+    regularization_misalignment_trigger : float or None
+        Trigger angle in degrees within ``[0, 180]``.
+    regularization_core_radius_trigger : float or None
+        Positive maximum-core trigger in m.
+    regularization_capacity_divergence_trigger : float or None
+        Optional non-negative divergence gate for capacity-triggered remeshing.
+    regularization_capacity_misalignment_trigger : float or None
+        Optional capacity-path angle gate in degrees.
+    regularization_capacity_energy_rate_trigger : float or None
+        Optional non-negative kinetic-energy rate gate.
+    regularization_capacity_fraction : float, default=1
+        Active/device-capacity fraction in ``(0, 1]`` that triggers the capacity path.
+    regularization_capacity_grid_spacing : float or None
+        Optional positive capacity-path lattice spacing in m.
+    regularization_core_radius, regularization_capacity_core_radius : float or None
+        Optional positive output core radii in m for standard/capacity remeshing.
+    regularization_projection_trigger : float, default=0.08
+        Non-negative normalized divergence at which projection is attempted.
+    regularization_projection_max_correction : float, default=0.20
+        Maximum relative projection correction, strictly between 0 and 1.
+    max_vortex_strength_error, max_vortex_strength_growth,
+    max_vorticity_growth : float
+        Non-negative conservation and relative-growth gates applied to proposals.
+
+    Notes
+    -----
+    All enabled operators run after a physical time step has been accepted.
+    They mutate particle fields transactionally: rejected proposals restore the
+    pre-event state and do not advance time.
+    """
 
     stretching_viscosity_coefficient: float = 0.0
     stretching_viscosity_start_step: int = 0
@@ -207,6 +289,7 @@ class StabilizationConfig:
 
     @property
     def pedrizzetti_relaxation_enabled(self) -> bool:
+        """Whether a non-zero Pedrizzetti strength-alignment blend is configured."""
         return self.pedrizzetti_relaxation_factor > 0.0
 
     @staticmethod

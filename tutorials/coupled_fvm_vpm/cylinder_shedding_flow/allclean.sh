@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
+#!/bin/bash -e
 
-cd "$(dirname "$0")"
+cd -- "$(dirname -- "$0")"
 rm -rf solution samples figures
 rm -f ./*.log

@@ -73,7 +73,13 @@ def _global_owned_view(context) -> tuple[np.ndarray, ...] | None:
 
 
 class _PointProbe(Sampler):
-    """Interpolates solver fields at a fixed cloud of probe points."""
+    """Interpolate cell-centred FVM fields at fixed probe points.
+
+    This shared implementation builds a cached cKDTree stencil. ``idw`` uses
+    positive inverse-distance weights; ``affine`` applies a locally linear
+    least-squares reconstruction with an IDW fallback for ill-conditioned
+    stencils.
+    """
 
     def __init__(
         self,
@@ -84,6 +90,23 @@ class _PointProbe(Sampler):
         file_name: str | None = None,
         schedule=None,
     ):
+        """Create a point-probe interpolation base.
+
+        Parameters
+        ----------
+        points : numpy.ndarray
+            Probe coordinates, shape ``(N, 3)``, in m.
+        k : int, default=5
+            Number of nearest cell centres used per probe.
+        inverse_distance_power : float, default=2.0
+            Positive IDW exponent.
+        reconstruction : {"idw", "affine"}, default="idw"
+            Interpolation model.
+        file_name : str or None, default=None
+            Output stem passed to :class:`Sampler`.
+        schedule : RunSchedule or None, default=None
+            Output cadence.
+        """
         super().__init__(file_name=file_name, schedule=schedule)
         self.points = np.asarray(points, dtype=float)
         self.k = int(k)
@@ -157,6 +180,7 @@ class _PointProbe(Sampler):
         return self._stencil
 
     def _interpolate(self, field, cell_centre) -> np.ndarray:
+        """Interpolate one scalar or vector field using the cached stencil."""
         indices, weights = self._interpolation_stencil(cell_centre)
         values = np.asarray(field)[indices]
         if np.asarray(field).ndim == 1:
@@ -168,6 +192,16 @@ class _PointProbe(Sampler):
 
         In a partitioned run this is collective (owned cells are gathered to
         root); non-root ranks return ``None``.
+
+        Parameters
+        ----------
+        context : SnapshotContext
+            Accepted solver snapshot and parallel context.
+
+        Returns
+        -------
+        dict[str, numpy.ndarray] or None
+            Canonical columns on root, or ``None`` on non-root MPI ranks.
         """
         basis = _global_owned_view(context)
         if basis is None:
@@ -216,18 +250,32 @@ class LineSampler(_PointProbe):
         file_name: str | None = None,
         schedule: RunSchedule | None = None,
     ) -> None:
-        """Initialize the line sampler.
+        """Create a uniformly spaced line probe.
 
-        Args:
-            start: Start point of the line, array-like of shape (3,).
-            end: End point of the line, array-like of shape (3,).
-            n_points: Number of uniformly spaced sample points.
-            spacing: Point spacing; alternative to ``n_points``.
-            k: Number of nearest neighbours used for interpolation.
-            inverse_distance_power: Exponent used for inverse-distance weighting.
-            reconstruction: ``"idw"`` or linear-exact ``"affine"``.
-            file_name: Base name for the output CSV.
-            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
+        Parameters
+        ----------
+        start, end : sequence[float] or numpy.ndarray
+            Endpoints, shape ``(3,)``, in m.
+        n_points : int or None, default=None
+            Number of points including both endpoints. Exactly one of
+            ``n_points`` and ``spacing`` must be supplied.
+        spacing : float or None, default=None
+            Approximate spacing in m, alternative to ``n_points``.
+        k : int, default=5
+            Number of nearest cell centres per point.
+        inverse_distance_power : float, default=2.0
+            IDW exponent.
+        reconstruction : {"idw", "affine"}, default="idw"
+            Interpolation model.
+        file_name : str or None, default=None
+            Output CSV stem.
+        schedule : RunSchedule or None, default=None
+            Accepted-step/time cadence.
+
+        Raises
+        ------
+        ValueError
+            If neither or both spacing controls are supplied.
         """
         if (n_points is None) == (spacing is None):
             raise ValueError("Provide exactly one of n_points or spacing")
@@ -250,6 +298,7 @@ class LineSampler(_PointProbe):
         self.n_points = n_points
 
     def config_dict(self) -> dict:
+        """Return JSON-safe constructor settings for persistence."""
         spec = super().config_dict()
         spec.update(
             {
@@ -268,7 +317,21 @@ class LineSampler(_PointProbe):
         context: FVMSolver,
         samples_dir: str,
     ) -> dict[str, np.ndarray] | None:
-        """Append the current step's samples to ``<samples_dir>/<name>.csv``."""
+        """Append this accepted state to ``<samples_dir>/<name>.csv``.
+
+        Parameters
+        ----------
+        context : FVMSolver
+            Solver/context at the accepted state.
+        samples_dir : str
+            Output directory owned by the solver.
+
+        Returns
+        -------
+        dict[str, numpy.ndarray] or None
+            Sample columns on the rank that owns output; ``None`` for a
+            non-root partition.
+        """
         data = self.sample(context)
         if data is None:
             return None
@@ -319,28 +382,38 @@ class SurfaceSampler(_PointProbe):
         body_bounds: Sequence[float] | np.ndarray | None = None,
         body_geometry: str = "box",
     ) -> None:
-        """Initialize the surface sampler.
+        """Create an axis-aligned planar FVM probe grid.
 
-        Args:
-            point: A point on the plane [x, y, z].
-            normal: Plane normal; only axis-aligned normals are supported.
-            bounds: Grid bounds [min1, max1, min2, max2] for the two in-plane
-                axes, ordered as for the VPM sampler (z-plane -> x,y;
-                y-plane -> x,z; x-plane -> y,z).
-            spacing: Grid point spacing.
-            k: Number of nearest neighbours used for interpolation.
-            inverse_distance_power: Exponent used for inverse-distance weighting.
-            reconstruction: ``"idw"`` or linear-exact ``"affine"``.
-            file_name: Base name for the output files.
-            schedule: Optional :class:`~source.solvers.fvm.config.RunSchedule`.
-            body_bounds: Optional axis-aligned solid bounds ``(xmin, xmax,
-                ymin, ymax, zmin, zmax)``.  Probe points geometrically inside
-                the body are masked in the output (``vtkValidPointMask`` zero,
-                NaN field values) so the slice never shows a flow field inside
-                the solid.
-            body_geometry: ``"box"`` masks the complete bounding box;
-                ``"cylinder_z"`` interprets equal x/y half-widths as a circular
-                cylinder radius and retains the supplied z bounds.
+        Parameters
+        ----------
+        point : sequence[float] or numpy.ndarray
+            Plane point, shape ``(3,)``, in m.
+        normal : sequence[float] or numpy.ndarray
+            Axis-aligned plane normal, shape ``(3,)``; it is normalized.
+        bounds : sequence[float] or numpy.ndarray
+            ``[min1, max1, min2, max2]`` in m along the two in-plane axes.
+        spacing : float
+            Positive grid spacing in m.
+        k : int, default=5
+            Number of nearest cell centres used per probe.
+        inverse_distance_power : float, default=2.0
+            IDW exponent.
+        reconstruction : {"idw", "affine"}, default="idw"
+            Interpolation model.
+        file_name : str or None, default=None
+            Output stem used for VTS/PVD files.
+        schedule : RunSchedule or None, default=None
+            Accepted-step/time cadence.
+        body_bounds : sequence[float] or None, default=None
+            Optional solid box bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)``
+            in m. Interior probe values are marked invalid in VTK output.
+        body_geometry : {"box", "cylinder_z"}, default="box"
+            Interpretation of ``body_bounds``.
+
+        Raises
+        ------
+        ValueError
+            If geometry, spacing, bounds, or body geometry is invalid.
         """
         point = np.asarray(point, dtype=float)
         normal = np.asarray(normal, dtype=float)
@@ -409,6 +482,7 @@ class SurfaceSampler(_PointProbe):
             self._inside_mask = None
 
     def config_dict(self) -> dict:
+        """Return JSON-safe constructor settings for persistence."""
         spec = super().config_dict()
         spec.update(
             {
@@ -432,7 +506,26 @@ class SurfaceSampler(_PointProbe):
         context: FVMSolver,
         filepath: str,
     ) -> dict[str, np.ndarray] | None:
-        """Write one structured-grid snapshot of the sampled plane."""
+        """Write one VTS structured-grid snapshot and return its sample data.
+
+        Parameters
+        ----------
+        context : FVMSolver
+            Solver at the accepted state being sampled.
+        filepath : str
+            Destination VTS path.
+
+        Returns
+        -------
+        dict[str, numpy.ndarray] or None
+            Flattened sampled columns, or ``None`` on a non-root partition.
+
+        Side Effects
+        ------------
+        Evaluates fields and writes a binary PyVista StructuredGrid. Optional
+        body masks set ``vtkValidPointMask=0`` and field values to NaN inside
+        the solid.
+        """
         import pyvista as pv
 
         data = self.sample(context)

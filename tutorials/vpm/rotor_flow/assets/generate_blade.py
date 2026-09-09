@@ -19,7 +19,7 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-import json
+from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import save_surface
 import numpy as np
 from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import Aircraft, Wing, WingSegment
 
@@ -193,43 +193,10 @@ def create_blade(
     aircraft.refs["span"] = rotor_radius - hub_radius
     aircraft.refs["chord"] = (root_chord + tip_chord) / 2
 
+    # Rotor moments are referenced to the shaft axis.
+    aircraft.refs["geometry_centre"] = np.zeros(3)
+    aircraft.refs["reference_point"] = np.zeros(3)
     return aircraft
-
-
-def save_surface(aircraft: Aircraft, filepath: str) -> str:
-    """
-    Save aircraft surface geometry to JSON file.
-    """
-    data = {"uid": aircraft.uid, "wings": []}
-
-    for wing in aircraft.wings.values():
-        wing_data = {"uid": wing.uid, "symmetry": wing.symmetry, "segments": []}
-
-        for segment in wing.segments.values():
-            seg_data = {
-                "uid": segment.uid,
-                "vertex_position": {k: v.tolist() for k, v in segment.vertex_position.items()},
-                "n_chordwise_panels": segment.n_chordwise_panels,
-                "n_spanwise_panels": segment.n_spanwise_panels,
-                "airfoils": segment.airfoils,
-            }
-            wing_data["segments"].append(seg_data)
-
-        data["wings"].append(wing_data)
-
-    refs = aircraft.refs
-    data["refs"] = {
-        "area": refs.get("area", 1.0),
-        "chord": refs.get("chord", 1.0),
-        "span": refs.get("span", 1.0),
-    }
-
-    output_path = filepath if filepath.endswith(".json") else f"{filepath}.json"
-    with open(output_path, "w") as f:
-        json.dump(data, f, indent=2)
-
-    print(f"Surface saved to: {output_path}")
-    return output_path
 
 
 if __name__ == "__main__":

@@ -27,10 +27,47 @@ from .filament_tail import filter_tail
 
 @dataclass(frozen=True, slots=True)
 class VortexFilament:
-    """Straight or sinusoidally displaced Gaussian filament.
+    """Configure a straight or sinusoidally displaced Gaussian filament.
 
-    ``circulation`` is nonzero; lengths are positive. Its initial particle
-    velocity is explicitly zero because induced velocity is solver-evaluated.
+    Parameters
+    ----------
+    vortex_core_radius : float
+        Positive physical Gaussian core radius in m, distinct from particle
+        regularization radii ``sigma``.
+    circulation : float
+        Non-zero signed filament circulation in m²/s.
+    kinematic_viscosity : float
+        Non-negative molecular viscosity in m²/s.
+    distribution : ParticleDistribution, distribution builder, or None
+        Geometry/quadrature used by :meth:`build`; ``None`` requires an
+        explicit build argument.
+    centre : sequence[float], shape (3,), default=(0, 0, 0)
+        Cartesian point on the undisturbed filament axis in m.
+    direction : sequence[float], shape (3,), default=(0, 0, 1)
+        Non-zero global filament direction, normalized internally.
+    disturbance : FilamentDisturbance or None, default=None
+        Optional sinusoidal transverse displacement and tangent correction.
+    core_compensation : ParticleCoreCompensation or None, default=None
+        Optional correction for particle-core regularization.
+    group_id : int or None, default=None
+        Optional uniform int32 particle-group label.
+    tail_minimum_relative_strength : float or None, default=None
+        If set, retain particles whose strength magnitude is at least this
+        fraction of the peak; valid range is ``[0, 1)``.
+    tail_circulation_per_length : float or None, default=None
+        Optional signed target circulation per represented length in m²/s.
+        Requires tail filtering and ``tail_represented_length``.
+    tail_represented_length : float or None, default=None
+        Positive axial length in m used to restore circulation after filtering.
+    tail_direction : sequence[float] or None, default=None
+        Direction used by tail circulation recovery; ``None`` uses
+        ``direction``.
+
+    Notes
+    -----
+    The Gaussian vorticity is integrated as particle-strength vectors
+    ``Gamma=omega*V`` in m³/s. Initial velocity is explicitly zero because the
+    solver owns induced-field evaluation.
     """
 
     vortex_core_radius: float
@@ -48,7 +85,26 @@ class VortexFilament:
     tail_direction: Sequence[float] | None = None
 
     def build(self, distribution: ParticleDistribution | None = None) -> VortexParticleSet:
-        """Attribute this filament to geometry and return immutable fields."""
+        """Attribute filament vorticity to immutable particle geometry.
+
+        Parameters
+        ----------
+        distribution : ParticleDistribution or None, default=None
+            Explicit geometry overriding the configured distribution.
+
+        Returns
+        -------
+        VortexParticleSet
+            Solver-ready immutable arrays with ``(N, 3)`` vectors and ``(N,)``
+            scalar fields in the units documented by :class:`VortexParticleSet`.
+
+        Raises
+        ------
+        ValueError
+            If geometry/parameters are invalid, numerical cores cannot
+            represent the physical core, or tail filtering/recovery is
+            inconsistent or removes every particle.
+        """
         geometry = resolve_distribution(distribution, self.distribution)
         centre, direction = vector3(self.centre, "centre"), unit_vector(self.direction, "direction")
         circulation, viscosity = (

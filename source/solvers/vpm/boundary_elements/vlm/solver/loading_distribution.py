@@ -45,8 +45,8 @@ class VLMLoadingDistribution:
     ) -> None:
         """Iterate surfaces flagged sample_surface_forces and export distributions.
 
-        Gated on vlm_solver.logging_interval_steps.  Wrapped in try/except so a
-        failure never aborts the simulation.
+        Gated on vlm_solver.logging_interval_steps. Output failures propagate so
+        a run cannot claim success while requested scientific samples are missing.
         """
         if vlm_solver is None or not hasattr(vlm_solver, "_surface_sampling"):
             return
@@ -62,23 +62,18 @@ class VLMLoadingDistribution:
         for surface_name, enabled in vlm_solver._surface_sampling.items():
             if not enabled:
                 continue
-            try:
-                distributions = VLMLoadingDistribution.extract_distributions(
-                    vlm_solver, surface_name, reference_velocity, density
-                )
-                VLMLoadingDistribution.export_distribution_csv(
-                    vlm_solver,
-                    surface_name,
-                    distributions,
-                    time,
-                    step,
-                    case_dir,
-                    sample_directory,
-                )
-            except Exception as exc:
-                print(
-                    f"(Warning) Failed to record loading distribution for '{surface_name}': {exc}"
-                )
+            distributions = VLMLoadingDistribution.extract_distributions(
+                vlm_solver, surface_name, reference_velocity, density
+            )
+            VLMLoadingDistribution.export_distribution_csv(
+                vlm_solver,
+                surface_name,
+                distributions,
+                time,
+                step,
+                case_dir,
+                sample_directory,
+            )
 
     # GRID INDEX
 
@@ -104,14 +99,14 @@ class VLMLoadingDistribution:
             if is_multi_surface:
                 match = uid.startswith(surface_name + "_")
             else:
-                match = vlm_solver.aircraft.uid == surface_name
+                match = surface_name in vlm_solver.surfaces
             if match and uid in wing_ranges:
                 selected_wings[uid] = wing
 
         surface_blocks: list[dict] = []
         global_segment_id = 0  # sequential segment ID across all wings of the aircraft
         for wing_uid, wing in vlm_solver.aircraft.wings.items():
-            for segment_uid, segment in wing.segments.items():
+            for local_segment_id, (segment_uid, segment) in enumerate(wing.segments.items()):
                 n_chordwise_panels = segment.n_chordwise_panels
                 n_spanwise_panels = segment.n_spanwise_panels
                 is_selected = wing_uid in selected_wings
@@ -141,7 +136,7 @@ class VLMLoadingDistribution:
                         )
 
                     # cross-check: segment IDs should match
-                    expected_segment_id = global_segment_id
+                    expected_segment_id = local_segment_id
                     observed = panel_segment_id[original_flat_indices]
                     if not np.all(observed == expected_segment_id):
                         warnings.warn(
@@ -187,6 +182,12 @@ class VLMLoadingDistribution:
 
         # ---- per-panel data (no recompute) ----
         panel_force = vlm_solver.lattice.get_forces()  # (N,3)
+        unsteady_force = vlm_solver.lattice.unsteady_panel_force.to_numpy()[
+            : vlm_solver.lattice.n_panels
+        ]
+        unsteady_cp = vlm_solver.lattice.unsteady_pressure_jump_coefficient.to_numpy()[
+            : vlm_solver.lattice.n_panels
+        ]
         circulation = vlm_solver.lattice.get_circulation()  # (N,)
         panel_corner_position = vlm_solver.lattice.panel_corner_position.to_numpy()[
             : vlm_solver.lattice.n_panels
@@ -197,7 +198,7 @@ class VLMLoadingDistribution:
         bound_vortex_velocity = vlm_solver.lattice.bound_vortex_velocity.to_numpy()[
             : vlm_solver.lattice.n_panels
         ]  # (N,3)
-        kinematic_velocity = vlm_solver.lattice.kinematic_velocity.to_numpy()[
+        kinematic_velocity = vlm_solver.lattice.bound_kinematic_velocity.to_numpy()[
             : vlm_solver.lattice.n_panels
         ]  # (N,3)
         vortex_point_position = vlm_solver.lattice.vortex_point_position.to_numpy()[
@@ -415,6 +416,7 @@ class VLMLoadingDistribution:
                         2.0 * station_circulation / pressure_coefficient_denominator,
                         0.0,
                     )
+                    pressure_jump_coefficient += unsteady_cp[station_panel_indices]
 
                     for i in range(n_chordwise_panels):
                         full_chord.append(
@@ -436,6 +438,21 @@ class VLMLoadingDistribution:
                                 "panel_force_x": float(station_panel_force[i, 0]),
                                 "panel_force_y": float(station_panel_force[i, 1]),
                                 "panel_force_z": float(station_panel_force[i, 2]),
+                                "unsteady_force_x": float(
+                                    unsteady_force[station_panel_indices[i], 0]
+                                ),
+                                "unsteady_force_y": float(
+                                    unsteady_force[station_panel_indices[i], 1]
+                                ),
+                                "unsteady_force_z": float(
+                                    unsteady_force[station_panel_indices[i], 2]
+                                ),
+                                "relative_velocity_x": float(station_relative_velocity[i, 0]),
+                                "relative_velocity_y": float(station_relative_velocity[i, 1]),
+                                "relative_velocity_z": float(station_relative_velocity[i, 2]),
+                                "bound_x": float(station_bound_vortex_midpoint[i, 0]),
+                                "bound_y": float(station_bound_vortex_midpoint[i, 1]),
+                                "bound_z": float(station_bound_vortex_midpoint[i, 2]),
                             }
                         )
 

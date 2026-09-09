@@ -12,11 +12,6 @@ import numpy as np
 import taichi as ti
 
 
-def _set_vtk_array_name(array, field_name: str) -> None:
-    """Assign a canonical physical-field name to a VTK array."""
-    array.SetName(field_name)
-
-
 @ti.data_oriented
 class VLMLattice:
     """
@@ -90,7 +85,7 @@ class VLMLattice:
         self.trailing_direction = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels, 2))
 
         # Solution: circulation strength Γ (N,) - matching VPM convention
-        # This is the PER-PANEL circulation (local vortex ring strength)
+        # This is the horseshoe increment, not the cumulative potential jump.
         self.circulation = ti.field(dtype=dtype, shape=(max_n_panels,))
 
         # Previous circulation strength Γ_old (N,) - for wake shedding (dcirculation/dt)
@@ -123,6 +118,9 @@ class VLMLattice:
 
         # Velocity at bound vortex midpoints (N x 3) - for correct K-J force
         self.bound_vortex_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
+        self.bound_external_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
+        self.bound_kinematic_velocity = ti.field(dtype=dtype, shape=(max_n_panels, 3))
+        self.reference_speed = 1.0
 
         # Kinematic velocity at collocation_point points (N x 3) - 2D scalar field for better stability
         self.kinematic_velocity = ti.field(dtype=dtype, shape=(max_n_panels, 3))
@@ -132,9 +130,17 @@ class VLMLattice:
 
         # Panel forces (N x 3)
         self.panel_force = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
+        self.unsteady_panel_force = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
+        self.unsteady_pressure_jump_coefficient = ti.field(dtype=dtype, shape=(max_n_panels,))
+        # Pressure moment about the bound midpoint; KJ acts at that midpoint.
+        self.panel_moment_correction = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
 
         # External velocity field at collocation_point points (N x 3) - matching VPM convention
         self.external_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
+        # Completed near-wake row: two material edge displacements and fluid
+        # velocities per TE panel, reused by assembly and particle shedding.
+        self.wake_offset = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels, 2))
+        self.trailing_edge_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels, 2))
 
         # Panel center position (N x 3) - for visualization/export
         self.panel_centre = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
@@ -199,7 +205,11 @@ class VLMLattice:
         self._max_wake_per_step = max_n_wake_particles_per_step
 
     def reset_wake_buffer(self):
-        """Reset wake particle buffer for new time step."""
+        """Discard wake particles accumulated for the current time step.
+
+        The preallocated wake arrays are retained; only the device counter is
+        set to zero.  Call this before a new shedding pass.
+        """
         self.n_wake_particles[None] = 0
 
     @ti.kernel
@@ -273,11 +283,16 @@ class VLMLattice:
             self.cumulative_circulation[i] = cumsum
 
     def get_wake_count(self) -> int:
-        """Get number of wake particles in current buffer."""
+        """Return the number of valid wake-buffer entries for this step."""
         return self.n_wake_particles[None]
 
     def reset(self):
-        """Reset lattice (clear all data)."""
+        """Clear active panel state and reset the active count to zero.
+
+        Geometry and solution fields across the fixed capacity are cleared or
+        reinitialized as appropriate.  Host-side panel metadata is retained;
+        callers that reuse the object must upload bodies again before solving.
+        """
         self.n_panels = 0
         self.circulation.fill(0.0)
         self.circulation_old.fill(0.0)
@@ -296,50 +311,56 @@ class VLMLattice:
         self.leading_edge_suction_parameter.fill(0.0)
 
     def get_collocation_points(self) -> np.ndarray:
-        """Get collocation_point points as numpy array."""
+        """Return active collocation points, shape ``(N, 3)`` in metres."""
         return self.collocation_point.to_numpy()[: self.n_panels]
 
     def get_circulation(self) -> np.ndarray:
-        """Get circulation distribution as numpy array."""
+        """Return active per-panel circulation, shape ``(N,)`` in m²/s."""
         return self.circulation.to_numpy()[: self.n_panels]
 
     def get_velocity(self) -> np.ndarray:
-        """Get velocity at collocation_point points as numpy array."""
+        """Return active collocation velocities, shape ``(N, 3)`` in m/s."""
         return self.velocity.to_numpy()[: self.n_panels]
 
     def get_bound_vortex_velocity(self) -> np.ndarray:
-        """Get velocity at bound vortex midpoints as numpy array."""
+        """Return active bound-leg velocities, shape ``(N, 3)`` in m/s."""
         return self.bound_vortex_velocity.to_numpy()[: self.n_panels]
 
     def get_kinematic_velocity(self) -> np.ndarray:
-        """Get kinematic velocity at collocation_point points as numpy array."""
+        """Return active prescribed panel velocities, shape ``(N, 3)`` in m/s."""
         return self.kinematic_velocity.to_numpy()[: self.n_panels]
 
     def get_panel_centre(self) -> np.ndarray:
-        """Get panel center position as numpy array."""
+        """Return active panel centroids, shape ``(N, 3)`` in metres."""
         return self.panel_centre.to_numpy()[: self.n_panels]
 
     def get_external_velocity(self) -> np.ndarray:
-        """Get external velocity at collocation_point points as numpy array."""
+        """Return active incident velocities, shape ``(N, 3)`` in m/s."""
         return self.external_velocity.to_numpy()[: self.n_panels]
 
     def get_pressure_coefficient(self) -> np.ndarray:
-        """Get pressure coefficient as numpy array."""
+        """Return active pressure coefficients, shape ``(N,)`` dimensionless."""
         return self.pressure_coefficient.to_numpy()[: self.n_panels]
 
     # --- NumPy-based geometry update (avoids Taichi field dimension bugs) -----
     def translate_panels(self, displacement: np.ndarray, start_idx: int = 0, end_idx: int = None):
-        """
-        Translate panel geometry by *displacement* using NumPy (CPU).
+        """Translate a contiguous panel range on the CPU.
 
-        This is a robust alternative to the Taichi kernel
-        ``update_geometry_translating_kernel`` that avoids field dimension
-        issues when VPM and VLM Taichi fields coexist.
+        Parameters
+        ----------
+        displacement : array_like, shape (3,)
+            Translation in metres.
+        start_idx : int, default=0
+            First panel index to update.
+        end_idx : int, optional
+            Exclusive final panel index; defaults to ``n_panels``.
 
-        Args:
-            displacement: Translation vector [dx, dy, dz]
-            start_idx: First panel index to update
-            end_idx: One-past-last panel index (default: n_panels)
+        Notes
+        -----
+        Vertex, vortex-point, collocation, and bound-midpoint positions are
+        mutated through NumPy field transfers.  Normals and panel centres are
+        not recomputed here; use :meth:`rotate_translate_panels` or a geometry
+        rebuild when those derived fields must change.
         """
         if end_idx is None:
             end_idx = self.n_panels
@@ -375,18 +396,28 @@ class VLMLattice:
         end_idx: int = None,
         update_normal: bool = True,
     ):
-        """
-        Rotate panels about *origin* then translate by *displacement* using NumPy.
+        """Rotate and translate a contiguous panel range on the CPU.
 
-        New position = rotation_matrix @ (old - origin) + origin + displacement
+        Parameters
+        ----------
+        rotation_matrix : array_like, shape (3, 3)
+            Rotation applied about ``origin``.
+        origin : array_like, shape (3,)
+            Rotation centre in metres.
+        displacement : array_like, shape (3,)
+            Translation applied after rotation, in metres.
+        start_idx : int, default=0
+            First panel index to update.
+        end_idx : int, optional
+            Exclusive final panel index; defaults to ``n_panels``.
+        update_normal : bool, default=True
+            Rotate stored unit normals with the geometry.
 
-        Args:
-            rotation_matrix: 3×3 rotation matrix
-            origin: Centre of rotation [3]
-            displacement: Translation after rotation [3]
-            start_idx: First panel index
-            end_idx: One-past-last panel index (default: n_panels)
-            update_normal: If True, rotate normal as well
+        Notes
+        -----
+        Positions are updated as ``R @ (x - origin) + origin + displacement``.
+        The operation mutates the selected Taichi fields and does not
+        recompute panel centres, areas, or connectivity.
         """
         if end_idx is None:
             end_idx = self.n_panels
@@ -422,20 +453,26 @@ class VLMLattice:
             self.normal.from_numpy(normal)
 
     def has_kinematic_velocity(self) -> bool:
-        """
-        Check if kinematic velocity has been set.
-
-        Returns True if any panel has non-zero kinematic velocity.
-        """
+        """Return whether any active panel has non-zero prescribed velocity."""
         if self.kinematic_velocity is None:
             return False
         kinematic_velocity = self.kinematic_velocity.to_numpy()[: self.n_panels]
         return np.any(np.abs(kinematic_velocity) > 1e-10)
 
     def set_kinematic_velocity(self, kinematic_velocity: np.ndarray):
-        """
-        Assign a pre-computed kinematic velocity field from a numpy array.
-        (Nx3)
+        """Upload prescribed panel velocities.
+
+        Parameters
+        ----------
+        kinematic_velocity : array_like, shape (N, 3) or (3,)
+            Velocity values in m/s.  A single 3-vector is broadcast to all
+            active panels; a longer array is truncated to active capacity and
+            a shorter array leaves the remaining values at zero.
+
+        Notes
+        -----
+        The full fixed-capacity Taichi field is rewritten.  The input is not
+        modified.
         """
         if kinematic_velocity is None:
             return
@@ -462,11 +499,19 @@ class VLMLattice:
         self.kinematic_velocity.from_numpy(full_kinematic_velocity)
 
     def set_external_velocity(self, external_velocity: np.ndarray):
-        """
-        Set external velocity at each panel.
+        """Upload the incident velocity at each active panel.
 
-        Args:
-            external_velocity: Velocity array (N x 3)
+        Parameters
+        ----------
+        external_velocity : array_like, shape (N, 3) or larger
+            Incident fluid velocity in m/s.  At least one row per active panel
+            is required; extra rows are ignored.
+
+        Raises
+        ------
+        ValueError
+            If fewer than ``n_panels`` rows or a non-three-component second
+            dimension is supplied.
         """
         if external_velocity.shape[0] < self.n_panels:
             raise ValueError(
@@ -488,11 +533,11 @@ class VLMLattice:
     # Removed duplicate get_pressure_coefficient method that used non-existent pressure-coefficient field
 
     def get_forces(self) -> np.ndarray:
-        """Get panel forces as numpy array."""
+        """Return active panel force vectors, shape ``(N, 3)`` in newtons."""
         return self.panel_force.to_numpy()[: self.n_panels]
 
     def get_aerodynamic_influence_coefficient_matrix(self) -> np.ndarray:
-        """Get aerodynamic_influence_coefficient matrix as numpy array."""
+        """Return the active dense influence matrix, shape ``(N, N)``."""
         n = self.n_panels
         return self.aerodynamic_influence_coefficient.to_numpy()[:n, :n]
 
@@ -528,169 +573,15 @@ class VLMLattice:
             self.panel_centre[i] = curr_pos * 0.25
 
     def save_vtk(self, filename: str, time: float = 0.0):
-        """
-        Save lattice to VTK file for visualization.
+        """Atomically write the accepted lattice and its properties as PolyData."""
+        from .vtk_export import CELL_FIELDS, write_lattice_vtk
 
-        Args:
-            filename: Output filename (without extension)
-            time: Physical simulation time stored in the output field.
-        """
-        # Ensure all Taichi operations are complete before reading fields
         ti.sync()
-
-        try:
-            from vtk import (
-                vtkCellArray,
-                vtkDoubleArray,
-                vtkPoints,
-                vtkPolyData,
-                vtkQuad,
-                vtkXMLPolyDataWriter,
-            )
-            from vtk.util import numpy_support
-        except ImportError:
-            print("Warning: VTK not available. Cannot save lattice.")
-            return
-
-        # Ensure derived fields are computed
-        self.compute_panel_centre()
-
-        points = vtkPoints()
-        cells = vtkCellArray()
-
-        # Add panel panel_corner_position
-        corners_np = self.panel_corner_position.to_numpy()[: self.n_panels]
-
-        for panel_idx in range(self.n_panels):
-            # Add 4 panel_corner_position
-            p_ids = []
-            for corner_idx in range(4):
-                pt = corners_np[panel_idx, corner_idx]
-                p_id = points.InsertNextPoint(pt[0], pt[1], pt[2])
-                p_ids.append(p_id)
-
-            # Create quad cell
-            quad = vtkQuad()
-            for i, p_id in enumerate(p_ids):
-                quad.GetPointIds().SetId(i, p_id)
-            cells.InsertNextCell(quad)
-
-        # Create polydata
-        polydata = vtkPolyData()
-        polydata.SetPoints(points)
-        polydata.SetPolys(cells)
-
-        # Add scalar fields
-        N = self.n_panels
-
-        # -- Geometry ---------------------------------------------------------
-
-        # Panel Areas
-        areas_np = self.area.to_numpy()[:N].reshape(-1, 1)
-        areas_vtk = numpy_support.numpy_to_vtk(areas_np.ravel())
-        _set_vtk_array_name(areas_vtk, "area")
-        polydata.GetCellData().AddArray(areas_vtk)
-
-        # Panel Normal Vectors (unit normal)
-        normals_np = self.normal.to_numpy()[:N]
-        normals_vtk = numpy_support.numpy_to_vtk(normals_np)
-        _set_vtk_array_name(normals_vtk, "normal")
-        normals_vtk.SetNumberOfComponents(3)
-        polydata.GetCellData().AddArray(normals_vtk)
-
-        # Panel centre (geometric average of the four corner positions).
-        pos_np = self.panel_centre.to_numpy()[:N]
-        pos_vtk = numpy_support.numpy_to_vtk(pos_np)
-        _set_vtk_array_name(pos_vtk, "panel_centre")
-        pos_vtk.SetNumberOfComponents(3)
-        polydata.GetCellData().AddArray(pos_vtk)
-
-        # Panel chord length Δc = |TE_mid − LE_mid|  (scalar, metres)
-        te_mid = 0.5 * (corners_np[:, 3] + corners_np[:, 2])  # (S + R) / 2
-        le_mid = 0.5 * (corners_np[:, 0] + corners_np[:, 1])  # (P + Q) / 2
-        panel_chord = np.linalg.norm(te_mid - le_mid, axis=1)
-        pc_vtk = numpy_support.numpy_to_vtk(panel_chord)
-        _set_vtk_array_name(pc_vtk, "panel_chord")
-        polydata.GetCellData().AddArray(pc_vtk)
-
-        # Bound-vortex leg l = V3 − V2 at 25% chord (root→tip vector)
-        vp_np = self.vortex_point_position.to_numpy()[:N]
-        bound_leg = vp_np[:, 2] - vp_np[:, 1]  # V3 − V2
-        bl_vtk = numpy_support.numpy_to_vtk(bound_leg)
-        _set_vtk_array_name(bl_vtk, "bound_vortex_leg")
-        bl_vtk.SetNumberOfComponents(3)
-        polydata.GetCellData().AddArray(bl_vtk)
-
-        # Trailing-edge / leading-edge flags (integer, 0 or 1)
-        is_te_np = self.is_trailing_edge.to_numpy()[:N].astype(np.int32)
-        is_te_vtk = numpy_support.numpy_to_vtk(is_te_np)
-        _set_vtk_array_name(is_te_vtk, "is_trailing_edge")
-        polydata.GetCellData().AddArray(is_te_vtk)
-
-        is_le_np = self.is_leading_edge.to_numpy()[:N].astype(np.int32)
-        is_le_vtk = numpy_support.numpy_to_vtk(is_le_np)
-        _set_vtk_array_name(is_le_vtk, "is_leading_edge")
-        polydata.GetCellData().AddArray(is_le_vtk)
-
-        # -- Circulation -------------------------------------------------------
-
-        # Per-panel (horseshoe) circulation Γ  — used directly in K-J
-        circulation_np = self.circulation.to_numpy()[:N]
-        circulation_vtk = numpy_support.numpy_to_vtk(circulation_np)
-        _set_vtk_array_name(circulation_vtk, "circulation")
-        polydata.GetCellData().AddArray(circulation_vtk)
-
-        # -- Velocity fields ---------------------------------------------------
-
-        # Velocity at bound-vortex midpoints including wake-induced downwash.
-        # This is the velocity used in the Kutta-Joukowski force kernel.
-        bv_np = self.bound_vortex_velocity.to_numpy()[:N]
-        bv_vtk = numpy_support.numpy_to_vtk(bv_np)
-        _set_vtk_array_name(bv_vtk, "bound_vortex_velocity")
-        bv_vtk.SetNumberOfComponents(3)
-        polydata.GetCellData().AddArray(bv_vtk)
-
-        # -- Pressure ----------------------------------------------------------
-
-        # pressure_jump_coefficient: pressure-jump coefficient across the panel surface.
-        #   ΔCp = 2Γ / (V∞ · Δc)
-        # where Δc is the panel chord length (TE_mid − LE_mid) and V∞ is the
-        # freestream speed taken from the magnitude of the kinematic velocity
-        # (body velocity = −V∞ for a translating wing).
-        # This IS the aerodynamically meaningful surface pressure coefficient
-        # and can be integrated directly:  f_i = q∞ · ΔCp_i · A_i · n̂_i
-        #
-        # NOTE: bound_vortex_velocity is the INDUCED-ONLY velocity (no freestream).  It
-        # must NOT be used to estimate V∞ — use kinematic_velocity instead.
-        kin_np = self.kinematic_velocity.to_numpy()[:N]
-        kin_mag = np.linalg.norm(kin_np, axis=1)
-        freestream_speed = (
-            float(np.median(kin_mag[kin_mag > 1e-8])) if kin_mag.max() > 1e-8 else 1.0
+        names = ("panel_corner_position", "vortex_point_position", *CELL_FIELDS)
+        fields = {name: getattr(self, name).to_numpy()[: self.n_panels] for name in names}
+        return write_lattice_vtk(
+            fields,
+            f"{filename}.vtp",
+            reference_speed=self.reference_speed,
+            time=time,
         )
-        denom = freestream_speed * panel_chord
-        delta_cp = np.where(denom > 1e-15, 2.0 * circulation_np / denom, 0.0)
-        dcp_vtk = numpy_support.numpy_to_vtk(delta_cp)
-        _set_vtk_array_name(dcp_vtk, "pressure_jump_coefficient")
-        polydata.GetCellData().AddArray(dcp_vtk)
-
-        # -- Per-panel forces (as computed by the solver) ----------------------
-
-        # Total panel force F = F_KJ + F_unsteady  (ground-truth for cross-check)
-        forces_np = self.panel_force.to_numpy()[:N]
-        forces_vtk = numpy_support.numpy_to_vtk(forces_np)
-        _set_vtk_array_name(forces_vtk, "panel_force")
-        forces_vtk.SetNumberOfComponents(3)
-        polydata.GetCellData().AddArray(forces_vtk)
-
-        # Add physical time for visualization synchronization.
-        time_array = vtkDoubleArray()
-        _set_vtk_array_name(time_array, "time")
-        time_array.SetNumberOfTuples(1)
-        time_array.SetValue(0, time)
-        polydata.GetFieldData().AddArray(time_array)
-
-        # Write to file
-        writer = vtkXMLPolyDataWriter()
-        writer.SetFileName(f"{filename}.vtp")
-        writer.SetInputData(polydata)
-        writer.Write()

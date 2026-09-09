@@ -285,7 +285,7 @@ def solve_equality_constrained_least_squares(
 
 
 class PanelLinearSolver(abc.ABC):
-    """Abstract base class for panel method linear solvers."""
+    """Abstract strategy for solving a panel influence system in place."""
 
     @abc.abstractmethod
     def solve(
@@ -295,6 +295,7 @@ class PanelLinearSolver(abc.ABC):
         x: ti.template(),
         n: int,
     ) -> bool:
+        """Solve the active ``n``-panel system and write ``x`` in place."""
         pass
 
 
@@ -302,6 +303,13 @@ class PanelScipySolver(PanelLinearSolver):
     """CPU-side solver using scipy for dense direct solve / least-squares."""
 
     def __init__(self, residual_tolerance: float = DEFAULT_PANEL_RESIDUAL_TOLERANCE) -> None:
+        """Create a CPU dense solver with a relative residual acceptance limit.
+
+        Parameters
+        ----------
+        residual_tolerance : float, default=1e-8
+            Maximum relative residual accepted by :meth:`solve`.
+        """
         self.residual_tolerance = residual_tolerance
         self.last_residual: float | None = None
         self.last_iterations: int | None = None
@@ -313,6 +321,26 @@ class PanelScipySolver(PanelLinearSolver):
         x: ti.template(),
         n: int,
     ) -> bool:
+        """Solve a dense panel system using SciPy and upload the solution.
+
+        Parameters
+        ----------
+        aerodynamic_influence_coefficient : Taichi field, shape (capacity, capacity)
+            Dense panel influence matrix; only ``[:n, :n]`` is read.
+        right_hand_side : Taichi field, shape (capacity,)
+            Active boundary-condition vector.
+        x : Taichi field, shape (capacity,)
+            Solution field overwritten in the active prefix.
+        n : int
+            Number of active panels.
+
+        Returns
+        -------
+        bool
+            Whether the recomputed relative residual is at most
+            :attr:`residual_tolerance`.  Singular direct solves use the
+            module's regularized/least-squares fallback.
+        """
         logger.debug(f"Solving {n}x{n} system on CPU using Scipy.")
         # GPU -> CPU
         A_np = aerodynamic_influence_coefficient.to_numpy()[:n, :n]
@@ -366,6 +394,22 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
         dtype: ti.template(),
         residual_tolerance: float = DEFAULT_PANEL_RESIDUAL_TOLERANCE,
     ):
+        """Allocate a device-resident panel BiCGSTAB workspace.
+
+        Parameters
+        ----------
+        max_n_panels : int
+            Fixed vector and constraint capacity.
+        dtype : taichi scalar type
+            Floating-point type for iterative fields.
+        residual_tolerance : float, default=1e-8
+            Relative residual threshold used by :meth:`solve`.
+
+        Raises
+        ------
+        RuntimeError
+            If Taichi has not been initialized.
+        """
         # Guard: Ensure Taichi is initialized
         if ti.lang.impl.get_runtime().prog is None:
             raise RuntimeError("PanelBiCGSTABSolver must be created after ti.init()")
@@ -387,6 +431,7 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
 
     @ti.kernel
     def dot_kernel(self, a: ti.template(), b: ti.template(), n: int) -> ti.f64:
+        """Return an f64 dot product of the first ``n`` entries."""
         # Reductions accumulate in f64 whatever the field dtype: a length-n
         # sum in f32 loses precision fast, and every BiCGSTAB scalar
         # (rho, alpha, omega) is derived from these dot products.
@@ -397,6 +442,7 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
 
     @ti.kernel
     def matmul_kernel(self, A: ti.template(), x: ti.template(), b: ti.template(), n: int):
+        """Write ``b[:n] = A[:n, :n] @ x[:n]`` on the device."""
         for i in range(n):
             acc = A[i, 0] * 0.0
             for j in range(n):
@@ -405,6 +451,7 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
 
     @ti.kernel
     def matmul_transpose_kernel(self, A: ti.template(), x: ti.template(), b: ti.template(), n: int):
+        """Write ``b[:n] = A[:n, :n].T @ x[:n]`` on the device."""
         for i in range(n):
             acc = A[0, i] * 0.0
             for j in range(n):
@@ -766,6 +813,30 @@ class PanelBiCGSTABSolver(PanelLinearSolver):
         tol: float = 1e-7,
         max_iter: int = 1000,
     ) -> bool:
+        """Solve the active panel system with device-resident BiCGSTAB.
+
+        Parameters
+        ----------
+        aerodynamic_influence_coefficient : Taichi field, shape (capacity, capacity)
+            Dense panel matrix.
+        right_hand_side : Taichi field, shape (capacity,)
+            Active boundary-condition vector.
+        x : Taichi field, shape (capacity,)
+            Solution storage overwritten in place.
+        n : int
+            Active panel count.
+        tol : float, default=1e-7
+            Iterative residual tolerance used for early convergence.
+        max_iter : int, default=1000
+            Maximum BiCGSTAB iterations.
+
+        Returns
+        -------
+        bool
+            True when the final independently recomputed relative residual is
+            within :attr:`residual_tolerance`; false on non-convergence or
+            numerical breakdown.  The final iterate remains in ``x``.
+        """
         logger.debug(f"Solving {n}x{n} system on GPU using BiCGSTAB.")
         if n == 0:
             self.last_residual = 0.0

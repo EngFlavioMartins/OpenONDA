@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from numba import njit
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 
 def m4_prime(distance: np.ndarray | float) -> np.ndarray:
@@ -76,7 +77,26 @@ def _scatter_complete_m4_prime(
 
 @dataclass(frozen=True)
 class LatticeTransfer:
-    """A complete regular target lattice and its integrated vortex strength."""
+    """Complete regular target lattice and its integrated vortex strength.
+
+    Attributes
+    ----------
+    position : ndarray, shape (N, 3)
+        Cartesian lattice-node coordinates in m, flattened with the ordering
+        described by ``shape``.
+    vortex_strength : ndarray, shape (N, 3)
+        Mapped circulation vectors ``Gamma`` in m³/s at target nodes.
+    origin : ndarray, shape (3,)
+        Cartesian coordinate of lattice index ``(0, 0, 0)`` in m.
+    shape : tuple[int, int, int]
+        Node counts along x, y, and z; their product equals ``N``.
+    spacing : float
+        Uniform lattice spacing ``h`` in m.
+    donor_position : ndarray, shape (M, 3)
+        Source coordinates in m.
+    donor_vortex_strength : ndarray, shape (M, 3)
+        Source circulation vectors in m³/s.
+    """
 
     position: np.ndarray
     vortex_strength: np.ndarray
@@ -88,28 +108,49 @@ class LatticeTransfer:
 
     @property
     def target_cell_volume(self) -> float:
+        """Return the cubic lattice quadrature volume ``h**3`` in m³."""
         return self.spacing**3
 
     @property
     def donor_gamma_net(self) -> np.ndarray:
+        """Return a new net donor circulation vector, shape ``(3,)`` in m³/s."""
         return self.donor_vortex_strength.sum(axis=0, dtype=np.float64)
 
     @property
     def target_gamma_net(self) -> np.ndarray:
+        """Return a new net mapped circulation vector, shape ``(3,)`` in m³/s."""
         return self.vortex_strength.sum(axis=0, dtype=np.float64)
 
     @property
     def donor_first_moment(self) -> np.ndarray:
+        """Return donor ``sum(x_j * Gamma_i)``, shape ``(3, 3)`` in m⁴/s."""
         return first_vorticity_moment(self.donor_position, self.donor_vortex_strength)
 
     @property
     def target_first_moment(self) -> np.ndarray:
+        """Return mapped ``sum(x_j * Gamma_i)``, shape ``(3, 3)`` in m⁴/s."""
         return first_vorticity_moment(self.position, self.vortex_strength)
 
 
 @dataclass(frozen=True)
 class RenewalLattice:
-    """Fixed lattice covering a renewable particle belt and complete M4' support."""
+    """Fixed lattice covering a renewal belt plus complete M4-prime support.
+
+    Attributes
+    ----------
+    position : ndarray, shape (N, 3)
+        Flattened node coordinates in m.
+    origin, lattice_anchor : ndarray, shape (3,)
+        Local lattice origin and global alignment anchor in m.
+    shape : tuple[int, int, int]
+        Node counts in Cartesian index order.
+    spacing : float
+        Uniform lattice spacing ``h`` in m.
+    lower_index : ndarray, shape (3,)
+        Integer global lattice index corresponding to ``origin``.
+    renewal_bounds : ndarray, shape (6,)
+        Physical belt bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m.
+    """
 
     position: np.ndarray
     origin: np.ndarray
@@ -124,10 +165,18 @@ class RenewalLattice:
 class LatticeStateBlend:
     """Absolute FVM/VPM state on one regular lattice.
 
-    ``vortex_strength`` has units m^3/s. ``vpm_source_mask`` identifies every
+    ``vortex_strength`` has units m³/s. ``vpm_source_mask`` identifies every
     VPM particle represented by the absolute lattice state, including regular
     nodes in its complete outer support guard. ``vpm_replace_mask`` is the
     narrower physical renewal-belt classification used by diagnostics.
+
+    All position arrays have shape ``(N, 3)`` in m; all strength arrays have
+    shape ``(N, 3)`` in m³/s; ``eta`` is a dimensionless shape-``(N,)`` FVM
+    authority weight. ``origin`` is shape ``(3,)`` in m, ``shape`` is the
+    Cartesian node count, and ``spacing`` is in m. Donor net strength is
+    shape ``(3,)`` in m³/s and its first moment is shape ``(3, 3)`` in m⁴/s.
+    Cross-divergence fields are L2/relative quality diagnostics. The object
+    owns diagnostic arrays but does not enforce their immutability.
     """
 
     position: np.ndarray
@@ -150,10 +199,12 @@ class LatticeStateBlend:
 
     @property
     def first_moment(self) -> np.ndarray:
+        """Return blended ``sum(x_j * Gamma_i)``, shape ``(3, 3)`` in m⁴/s."""
         return first_vorticity_moment(self.position, self.vortex_strength)
 
     @property
     def gamma_net(self) -> np.ndarray:
+        """Return a new net blended circulation vector, shape ``(3,)`` in m³/s."""
         return self.vortex_strength.sum(axis=0, dtype=np.float64)
 
 
@@ -162,7 +213,27 @@ def state_blend_weight(
     box: np.ndarray | list[float] | tuple[float, ...],
     blend_width: float,
 ) -> np.ndarray:
-    """Return the FVM state weight on or inside an ownership box.
+    """Return the FVM authority weight on or inside an ownership box.
+
+    Parameters
+    ----------
+    points : ndarray, shape (N, 3)
+        Cartesian evaluation positions in m.
+    box : array-like, shape (6,)
+        Increasing ``(xmin, xmax, ymin, ymax, zmin, zmax)`` bounds in m.
+    blend_width : float
+        Non-negative inward transition width in m. Zero gives a hard mask.
+
+    Returns
+    -------
+    ndarray, shape (N,)
+        Dimensionless weights in ``[0, 1]``; one denotes complete FVM
+        authority and zero complete VPM authority.
+
+    Raises
+    ------
+    ValueError
+        If bounds are non-finite/non-increasing or ``blend_width`` is negative.
 
     A positive width uses the tensor product of six one-dimensional cosine
     face windows. Unlike a ramp based on the minimum face distance, this is a

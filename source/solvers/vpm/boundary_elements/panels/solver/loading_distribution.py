@@ -34,6 +34,28 @@ class PanelLoadingDistribution:
         time: float,
         case_dir: str,
     ) -> None:
+        """Write one active per-panel loading CSV at the logging cadence.
+
+        Parameters
+        ----------
+        panel_solver : PanelSolver or None
+            Solver providing panel geometry and fields.
+        diagnostics_history : dict
+            Accepted diagnostics history; currently retained for API parity.
+        step : int
+            Completed-step index used in the filename.
+        time : float
+            Physical time in seconds.
+        case_dir : str or path-like
+            Case directory.  Output is written below ``samples/``.
+
+        Notes
+        -----
+        The method writes ``panel_distribution_stepXXXXXX.csv`` with positions
+        in m, normals dimensionless, area in m², doublet strength in m²/s,
+        pressure coefficient dimensionless, and force in N.  I/O failures are
+        converted to a warning so diagnostics cannot abort the numerical step.
+        """
         if panel_solver is None or panel_solver.lattice is None:
             return
         freq = max(1, int(getattr(panel_solver, "logging_interval_steps", 1)))

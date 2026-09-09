@@ -13,11 +13,34 @@ from ._shared import DistributionSource, InitialVelocity, resolve_distribution
 
 @dataclass(frozen=True, slots=True)
 class IsotropicTurbulence:
-    """Reproducible solenoidal periodic random velocity field.
+    """Configure a reproducible solenoidal periodic random velocity field.
 
-    ``box_size``, peak wave number and intensity are positive. ``seed`` fixes
-    the realization. ``ANALYTICAL`` means synthesized spectral velocity;
-    ``ZERO`` retains only the attributed vorticity.
+    Parameters
+    ----------
+    box_size : float
+        Positive periodic box length in m.
+    spectrum_peak_wave_number : float
+        Positive target spectral peak in 1/m.
+    turbulent_intensity : float
+        Positive RMS velocity magnitude in m/s used to normalize the sampled
+        realization.
+    kinematic_viscosity : float
+        Non-negative molecular viscosity in m²/s.
+    distribution : ParticleDistribution, distribution builder, or None
+        Particle geometry; ``None`` requires an explicit build argument.
+    number_of_modes : int, default=96
+        Positive number of random Fourier wave vectors. Cost is O(N * modes).
+    seed : int, default=42
+        NumPy seed fixing wave vectors, polarizations, and phases.
+    initial_velocity : InitialVelocity, default=InitialVelocity.ANALYTICAL
+        ``ANALYTICAL`` stores the synthesized velocity; ``ZERO`` keeps the
+        attributed vorticity but clears velocity for solver refresh.
+
+    Notes
+    -----
+    Each Fourier polarization is projected normal to its wave vector, so the
+    continuous synthesized field is divergence-free. This is a stochastic
+    initial condition, not a time-evolving turbulence model.
     """
 
     box_size: float
@@ -30,7 +53,25 @@ class IsotropicTurbulence:
     initial_velocity: InitialVelocity = InitialVelocity.ANALYTICAL
 
     def build(self, distribution: ParticleDistribution | None = None) -> VortexParticleSet:
-        """Build a deterministic divergence-free spectral realization."""
+        """Build a deterministic divergence-free spectral realization.
+
+        Parameters
+        ----------
+        distribution : ParticleDistribution or None, default=None
+            Explicit geometry overriding the configured distribution.
+
+        Returns
+        -------
+        VortexParticleSet
+            Immutable particle arrays; velocity is ``(N, 3)`` in m/s and
+            strength is ``omega*V`` with shape ``(N, 3)`` in m³/s.
+
+        Raises
+        ------
+        ValueError
+            If geometry/physical inputs are invalid, no spectral energy is
+            represented, or the initial-velocity mode is unsupported.
+        """
         geometry = resolve_distribution(distribution, self.distribution)
         box, peak, intensity = (
             float(self.box_size),

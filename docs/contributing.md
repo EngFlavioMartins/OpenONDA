@@ -34,9 +34,12 @@ Check an editable installation separately. No Python path setup is required.
 
 Tutorials consume the installed `openonda.fvm`, `openonda.vpm` and
 `openonda.coupler` interfaces. Input assets belong inside their case directory;
-shared plotting support is `openonda.plotting`. Use
-`python -m openonda.tutorial_runner CASE_DIRECTORY MODULE` for local modules
-with relative imports. Keep the same interpreter when launching subprocesses.
+shared plotting support is `openonda.plotting`. Tutorial commands must work as
+`python setup.py ...` and `python assets/name.py ...` after installation.
+Scripts with relative imports register their local package using
+`openonda.tutorial_runner.case_package` internally. Shell launchers use plain
+`python`; Python subprocesses use `sys.executable`. Keep environment setup in
+the installer and argument parsing in Python.
 
 Do not commit generated solutions, backups, caches or build products as source.
 Curated scientific reference data should include provenance and an explicit

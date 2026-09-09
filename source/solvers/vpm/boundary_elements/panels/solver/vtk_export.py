@@ -33,6 +33,42 @@ def panel_mesh_to_vtp(
     time: float,
     filepath: str | Path,
 ) -> str:
+    """Write triangular panel fields to an ASCII VTK PolyData file.
+
+    Parameters
+    ----------
+    vertex_position : ndarray, shape (N, 3, 3)
+        Triangle vertices in metres.
+    panel_centre : ndarray, shape (N, 3)
+        Panel centroids in metres.
+    normal : ndarray, shape (N, 3)
+        Unit panel normals.
+    doublet_strength : ndarray, shape (N,)
+        Panel doublet strengths in m²/s.
+    area : ndarray, shape (N,)
+        Panel areas in m².
+    pressure_coefficient : ndarray, shape (N,)
+        Dimensionless pressure coefficient.
+    panel_force : ndarray, shape (N, 3)
+        Panel forces in N.
+    group_id : ndarray, shape (N,)
+        Integer panel grouping labels.
+    time : float
+        Physical output time in seconds.
+    filepath : str or pathlib.Path
+        Destination path; parent directories are created and the provided
+        suffix is preserved.
+
+    Returns
+    -------
+    str
+        String form of the destination path.
+
+    Raises
+    ------
+    OSError
+        If the destination cannot be created or written.
+    """
     n = len(vertex_position)
     path = Path(filepath)
     path.parent.mkdir(parents=True, exist_ok=True)

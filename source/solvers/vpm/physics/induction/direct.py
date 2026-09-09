@@ -31,6 +31,28 @@ class DirectInduction:
     supports_target_fields = True
 
     def __init__(self, *, stretching_scheme: str = "TRANSPOSED") -> None:
+        """Create an unbound exact-induction backend.
+
+        Parameters
+        ----------
+        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+            Discrete formulation used for ``dGamma/dt``. ``DIRECT`` uses
+            the velocity-gradient contraction ``G @ Gamma``;
+            ``TRANSPOSED`` uses ``G.T @ Gamma``; and ``MIXED`` averages the
+            two. The option changes strength stretching only, not the induced
+            velocity.
+
+        Notes
+        -----
+        Construction allocates no device fields and is independent of a
+        particle container. Call :meth:`build` for a case-owned instance and
+        :meth:`bind` before evaluating stages or targets.
+
+        Raises
+        ------
+        ValueError
+            If ``stretching_scheme`` is unsupported.
+        """
         self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
         self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
         self.method = "DIRECT"
@@ -40,11 +62,45 @@ class DirectInduction:
         self._strain_rate = None
 
     def build(self) -> Self:
-        """Return a fresh unbound runtime evaluator for an immutable case."""
+        """Return a fresh unbound evaluator with the same formulation.
+
+        Returns
+        -------
+        DirectInduction
+            Independent backend instance. No physics workspace is bound until
+            :meth:`bind` is called.
+        """
         return type(self)(stretching_scheme=self.stretching_scheme)
 
     def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
-        """Bind this immutable construction object to one physics workspace."""
+        """Bind the evaluator to one :class:`PhysicsEngine` workspace.
+
+        Parameters
+        ----------
+        physics : PhysicsEngine
+            Runtime workspace owning the Taichi kernels and accumulator dtype.
+            Its ``max_n_particles`` determines the backend capacity.
+        kernel : RadialVortexKernel or None, default=None
+            Optional radial kernel. When omitted, the default Gaussian kernel
+            remains active. The kernel must be compatible with the workspace's
+            precision and device.
+
+        Returns
+        -------
+        DirectInduction
+            This bound evaluator, allowing fluent setup.
+
+        Raises
+        ------
+        ValueError
+            If the physics workspace has a non-positive particle capacity.
+
+        Notes
+        -----
+        Binding mutates this runtime object: it stores the physics reference,
+        selects direct velocity kernels, and allocates a per-particle strain
+        tensor used when gradients are requested.
+        """
         self.physics = physics
         physics.configure_velocity("DIRECT")
         if kernel is not None:
@@ -71,7 +127,45 @@ class DirectInduction:
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
-        """Evaluate one supplied stage without reading accepted particle state."""
+        """Evaluate velocity, stretching, and optional gradient for one stage.
+
+        Parameters
+        ----------
+        position : object
+            Stage source positions, logical shape ``(count, 3)``, in m.
+        vortex_strength : object
+            Stage particle-strength vectors ``Gamma = omega V``, shape ``(count, 3)``,
+            in m³/s.
+        core_radius : object
+            Stage core radii, shape ``(count,)``, in m.
+        count : int
+            Active prefix length. The direct walk costs O(count²).
+        velocity_out : object
+            Caller-owned output field, shape ``(count, 3)``, in m/s.
+        vortex_strength_rate_out : object
+            Caller-owned output field, shape ``(count, 3)``, in m³/s².
+        velocity_gradient_out : object or None, default=None
+            Optional caller-owned output tensor, shape ``(count, 3, 3)``, in
+            1/s. Supplying it triggers a second direct gradient pass.
+        strength_rate_enabled : bool, default=True
+            If false, the rate field is explicitly zeroed while velocity and a
+            requested gradient are still evaluated.
+        stage_time : float, default=0.0
+            Stage time in seconds. The direct kernel is autonomous; the value
+            is accepted for backend compatibility and is not otherwise used.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`bind` has not been called.
+        ValueError
+            If ``count`` is outside the bound capacity.
+
+        Notes
+        -----
+        Only the supplied output fields and the backend's temporary strain
+        workspace are mutated. The source stage fields are read-only here.
+        """
         del stage_time
         if self.physics is None:
             raise RuntimeError("DirectInduction must be bound to a PhysicsEngine before evaluation")
@@ -142,7 +236,32 @@ class DirectInduction:
         include_freestream: bool,
         background_velocity,
     ) -> None:
-        """Evaluate arbitrary targets through the direct backend contract."""
+        """Evaluate direct induction at arbitrary target points.
+
+        Parameters
+        ----------
+        target_position : object
+            Target coordinates, logical shape ``(target_count, 3)``, in m.
+        source_position, source_vortex_strength, source_core_radius : object
+            Source fields with shapes ``(source_count, 3)``, ``(source_count,
+            3)``, and ``(source_count,)`` in m, m³/s, and m.
+        target_velocity : object or None
+            Optional output field of shape ``(target_count, 3)`` in m/s.
+        target_velocity_gradient : object or None
+            Optional output field of shape ``(target_count, 3, 3)`` in 1/s.
+        target_count, source_count : int
+            Active target/source prefix lengths. Cost is O(target_count ×
+            source_count).
+        include_freestream : bool
+            Whether to add ``background_velocity`` to each velocity result.
+        background_velocity : object
+            Three-vector freestream in m/s.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`bind` has not been called.
+        """
         if self.physics is None:
             raise RuntimeError("DirectInduction must be bound before target evaluation")
         if target_velocity is not None:

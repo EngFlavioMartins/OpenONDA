@@ -557,6 +557,19 @@ class PVDManager:
     """
 
     def __init__(self, filename: str):
+        """Open or create a ParaView collection at ``filename``.
+
+        Parameters
+        ----------
+        filename : str
+            ``.pvd`` path. Existing entries are parsed and retained; malformed
+            or incomplete dataset rows are ignored by the tolerant parser.
+
+        Side Effects
+        ------------
+        Reads the existing collection during construction. File writes occur
+        only when :meth:`add_step` or :meth:`rewind` is called.
+        """
         self.filename = filename
         self.entries: list[tuple[float, str]] = []
         if os.path.exists(filename):

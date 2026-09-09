@@ -1,11 +1,13 @@
 # VPM stabilization audit and interaction experiments
 
-> **Current scope (8 September):** resume the LES + SSPRK3 + transposed-stretching
-> pathway: qualify viscosity, run the baseline, then test stabilization against
-> its observed failure. The no-LES/RK4 campaign was abandoned and its raw data
-> removed; it did not validate an LBM match. See the
-> [current study status](2026-09-vpm-core-transport.md). Results below are the
-> historical stabilization audit, not certification of the current target.
+> **Final bounded study (9 September):** select GBD/Lagrange6 + LES + SSPRK3
+> + transposed stretching. CS diffusion is active. Added stretching viscosity
+> (coefficient .5) reduced sampled-core radius RMS from 5.715% to 5.116% of R0
+> on x/R0=.55–3.5. Splitting did not activate; weak moment-preserving
+> realignment did not improve that trajectory. Agreement through LBM breakdown
+> remains unvalidated. See the [final study record](2026-09-vpm-core-transport.md)
+> for sampler evidence and interrupted-run limitations. Results below are the
+> historical audit; their metadata conventions and recommendations are superseded.
 
 
 **Superseded recommendation:** see [the core-transport investigation](2026-09-vpm-core-transport.md). The baseline below demonstrated runtime, not the requested LBM agreement. The default launcher now tests physics controls.
@@ -47,7 +49,7 @@ generator is `assets/compare_lbm_trajectory.py` in the tutorial.
 ### 1. Misalignment was measured against stale vorticity (fixed)
 
 `VPMSolver._update_discretization_health` used the particle `vorticity` array.
-It initially contains alpha/V and is subsequently refreshed when a backup is
+It initially contains Gamma/V and is subsequently refreshed when a backup is
 written. The accepted-step refresh updates velocity and its gradient, but not
 that array. Consequently the health check compared current strengths against
 old directions and depended on backup cadence. The original baseline stopped
@@ -60,7 +62,7 @@ Results made before this correction must not be used to rank stabilizers.
 
 ### 2. Realignment did not publish its device mutation (fixed)
 
-The Taichi operator changed alpha without incrementing the particle source
+The Taichi operator changed Gamma without incrementing the particle source
 revision. Host snapshots populated by the before-event measurement could then
 be reused for the after-event measurement, incorrectly reporting zero transfer.
 The operator now calls `touch_state()` after its kernel. A CPU Taichi regression
@@ -161,13 +163,13 @@ screening runs remain separately identified in their metadata.
 
 | Method | What the implementation actually does | Interpretation |
 |---|---|---|
-| Transposed stretching | J^T alpha, advanced with coupled position/strength SSPRK3 | Corresponds to the transposed form in Winckelmans & Leonard. Exact pair cancellation assumes matching pair kernels; unequal CS cores and tree approximation require measured conservation checks. |
+| Transposed stretching | J^T Gamma, advanced with coupled position/strength SSPRK3 | Corresponds to the transposed form in Winckelmans & Leonard. Exact pair cancellation assumes matching pair kernels; unequal CS cores and tree approximation require measured conservation checks. |
 | Smagorinsky | nu_t = (Cs Delta)^2 sqrt(2 S:S), Delta=V^(1/3) | Algebraically the equilibrium Smagorinsky model. Applying local nu_t through core growth is a VPM model adaptation, not the complete variable-coefficient vorticity SGS operator of Mansfield et al. Splitting halves V and reduces Delta, so it also changes modeled dissipation. |
-| Residual stretching viscosity | C V^(2/3) max(alpha.S.alpha/‖alpha‖^2,0) | Dimensionally consistent, positive added viscosity. A heuristic closure in this code; no original publication establishing this precise formula or C=0.5 was found. It must be labeled and measured as added dissipation. |
-| P-relaxation | alpha_new=(1-f dt)alpha + f dt ‖alpha‖ curl(u)/‖curl(u)‖ | The unnormalized blend matches Winckelmans (1995), equation 11, adapting Pedrizzetti's singular method to regularized blobs. |
-| Normalized realignment | Renormalizes the blend to the original ‖alpha‖ | An additional code adaptation; preserving each magnitude does not preserve total vector strength, impulse, energy or helicity. The original tutorial uses a large 0.3 blend every step. |
+| Residual stretching viscosity | C V^(2/3) max(Gamma.S.Gamma/‖Gamma‖^2,0) | Dimensionally consistent, positive added viscosity. A heuristic closure in this code; no original publication establishing this precise formula or C=0.5 was found. It must be labeled and measured as added dissipation. |
+| P-relaxation | Gamma_new=(1-f dt)Gamma + f dt ‖Gamma‖ curl(u)/‖curl(u)‖ | The unnormalized blend matches Winckelmans (1995), equation 11, adapting Pedrizzetti's singular method to regularized blobs. |
+| Normalized realignment | Renormalizes the blend to the original ‖Gamma‖ | An additional code adaptation; preserving each magnitude does not preserve total vector strength, impulse, energy or helicity. The original tutorial uses a large 0.3 blend every step. |
 | Moment-corrected P-relaxation | Applies a minimum-norm nine-moment correction after the blend | An explicit adaptation. It preserves global linear constraints; it is not an orthogonal Helmholtz projection or proof of local physical accuracy. |
-| Filament splitting | Two half-strength, half-volume children displaced along alpha, unchanged sigma | Conserves vector strength and linear/kernel-corrected angular impulse algebraically. It refines material-line sampling; it does not sharpen the smoothing kernel or restore transverse resolution. It is not Rossi-style core-size splitting. |
+| Filament splitting | Two half-strength, half-volume children displaced along Gamma, unchanged sigma | Conserves vector strength and linear/kernel-corrected angular impulse algebraically. It refines material-line sampling; it does not sharpen the smoothing kernel or restore transverse resolution. It is not Rossi-style core-size splitting. |
 | Constrained divergence relaxation | Regularized particle-mesh Helmholtz correction plus moment and quadratic constraints | Motivated by W-relaxation (equation 12), but its regularization, constraints, Fourier boundary treatment and acceptance gates are additional choices. It assumes nearly equal Gaussian widths and can reject a CS+LES cloud. |
 | Gaussian core remeshing | Rebuilds a lattice while retaining the old Gaussian width in the represented field | Consistent with the convolution identity and the remeshing/overlap rationale. The finite-bin implementation and conservation gates are adaptations, not a verbatim published algorithm. |
 
@@ -200,7 +202,7 @@ Primary references:
 4. Global impulse conservation is necessary evidence, not sufficient validation.
    The sampled angle and nearest-neighbor overlap are also incomplete measures:
    clustering can hide a hole in a different direction.
-5. The tutorial's `tube_circulation` is sum‖alpha‖/(2 pi R_rms), a geometric
+5. The tutorial's `tube_circulation` is sum‖Gamma‖/(2 pi R_rms), a geometric
    proxy valid for coherent rings. It is not a material circulation integral
    after folding, reconnection or breakdown. Remeshed group labels are not
    passive material tracers either.
@@ -398,7 +400,7 @@ Visual evidence:
 
 `solenoidal_remeshing` projects the redistributed Cartesian strength field with
 `P(k)=I-kk^T/|k|^2` before pruning. Gaussian convolution commutes with this
-projection, and `k cross P(k)alpha = k cross alpha`, so the complete-grid
+projection, and `k cross P(k)Gamma = k cross Gamma`, so the complete-grid
 velocity is retained while longitudinal vorticity is removed. We add padding
 before the projection, then apply the existing tail budget, moment correction,
 and common-grid energy/enstrophy acceptance checks. Padding, pruning and moment

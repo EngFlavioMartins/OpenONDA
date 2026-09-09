@@ -396,7 +396,12 @@ def test_device_fmm_meets_all_kernel_gates_with_near_pairs_and_far_clusters(kern
             strength[None, :, :],
             radius[:, None],
             radius[None, :],
-        ).sum(axis=1)
+        )
+        # Particle induction excludes each target's own blob; arbitrary
+        # field sampling retains its finite source-centre Jacobian instead.
+        diagonal = np.arange(count)
+        reference_gradient[diagonal, diagonal] = 0.0
+        reference_gradient = reference_gradient.sum(axis=1)
         reference_rate = np.einsum("nji,nj->ni", reference_gradient, strength)
         reference_rate_norm = np.linalg.norm(reference_rate, axis=1)
         denominator_floor = max(

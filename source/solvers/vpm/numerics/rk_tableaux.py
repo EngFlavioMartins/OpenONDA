@@ -7,7 +7,39 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class RKTableau:
-    """Validated explicit Runge--Kutta tableau."""
+    """Validated explicit Runge--Kutta Butcher tableau.
+
+    Parameters
+    ----------
+    name : str
+        Stable configuration/reporting name.
+    order : int
+        Formal temporal order of accuracy.
+    a : tuple[tuple[float, ...], ...]
+        Square lower-triangular stage coefficient matrix. ``a[i][j]`` weights
+        rate ``j`` when constructing stage ``i``.
+    b : tuple[float, ...]
+        Final-combination weights, one per stage.
+    c : tuple[float, ...]
+        Stage-time fractions; stage ``i`` is evaluated at ``t + c[i] * dt``.
+
+    Attributes
+    ----------
+    stages : int
+        Number of right-hand-side evaluations per accepted step.
+
+    Notes
+    -----
+    The VPM integrator applies the same tableau to particle position and
+    vortex strength. ``a`` must be explicit (zero diagonal and upper triangle)
+    and all three coefficient arrays must have the same non-zero length.
+
+    Raises
+    ------
+    ValueError
+        If dimensions are inconsistent, the tableau is not explicit, or
+        ``order`` is not positive.
+    """
 
     name: str
     order: int
@@ -34,9 +66,15 @@ class RKTableau:
 
 
 class RK2(RKTableau):
-    """Heun's explicit second-order method."""
+    """Heun's two-stage explicit second-order Runge--Kutta tableau.
+
+    Construct without arguments. The VPM integrator evaluates rates at
+    ``t`` and ``t + dt`` and combines them with equal weights. Position and
+    vector circulation are advanced together; construction has no side effects.
+    """
 
     def __init__(self) -> None:
+        """Create the immutable two-stage Heun tableau."""
         super().__init__(
             name="RK2",
             order=2,
@@ -47,9 +85,15 @@ class RK2(RKTableau):
 
 
 class SSPRK3(RKTableau):
-    """Three-stage strong-stability-preserving third-order method."""
+    """Three-stage, third-order strong-stability-preserving RK tableau.
+
+    Construct without arguments. Stage times are ``0``, ``dt``, and
+    ``0.5 * dt``; the final weights are ``(1/6, 1/6, 2/3)``. The tableau is
+    shared by VPM position and vector-circulation integration.
+    """
 
     def __init__(self) -> None:
+        """Create the immutable three-stage SSPRK3 tableau."""
         super().__init__(
             name="SSPRK3",
             order=3,
@@ -60,9 +104,15 @@ class SSPRK3(RKTableau):
 
 
 class RK4(RKTableau):
-    """Classical four-stage fourth-order method."""
+    """Classical four-stage, fourth-order explicit Runge--Kutta tableau.
+
+    Construct without arguments. It evaluates two midpoint stages and one
+    endpoint stage before the classical ``(1, 2, 2, 1) / 6`` combination.
+    Position and vector circulation use the same temporary stage state.
+    """
 
     def __init__(self) -> None:
+        """Create the immutable classical RK4 tableau."""
         super().__init__(
             name="RK4",
             order=4,

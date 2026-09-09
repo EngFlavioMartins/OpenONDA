@@ -37,6 +37,23 @@ class StabilizationOperators:
     """
 
     def __init__(self, compute_dtype, max_n_particles: int) -> None:
+        """Allocate per-particle Taichi storage for stabilization kernels.
+
+        Parameters
+        ----------
+        compute_dtype : Taichi primitive type
+            Accumulator type for viscosity and diagnostic reductions, normally
+            ``ti.f32`` or ``ti.f64`` to match the solver's compute precision.
+        max_n_particles : int
+            Fixed particle capacity. Allocation scales with this capacity and
+            is reused across stabilization phases.
+
+        Notes
+        -----
+        The object owns device fields but no particle data. Its kernels write
+        only the arrays explicitly passed by the caller; construction itself
+        does not modify a particle container.
+        """
         self.accumulator_dtype = compute_dtype
         self.stabilization_kinematic_viscosity = ti.field(
             dtype=compute_dtype, shape=(max_n_particles,)
@@ -190,7 +207,7 @@ class StabilizationOperators:
 
         The vorticity is taken as the curl of ``particles.velocity_gradient``,
         so this must be called while that gradient still describes the state
-        being relaxed. The blend points between ``alpha_p`` and ``omega(x_p)``;
+        being relaxed. The blend points between ``Gamma_p`` and ``omega(x_p)``;
         it is not a constant-fraction angular rotation. With
         ``preserve_vortex_strength_magnitude``, a nonzero blend is normalized
         back to the original magnitude. Exactly opposing vectors at factor

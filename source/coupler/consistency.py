@@ -67,7 +67,34 @@ def maximum_consistency_rate(
 
 
 class FVMConsistencyBand:
-    """Own the resolved VPM velocity target used by the FVM source term."""
+    """Own a resolved VPM velocity target used by an FVM consistency source.
+
+    The band is a cell-centred relaxation region between the outer FVM
+    boundary and the transfer region. It stores two accepted-time target
+    endpoints and writes their linear interpolation to the FVM before each
+    native substep. It does not advance the FVM or VPM clocks.
+
+    Parameters
+    ----------
+    setup : CouplerSetup
+        Coupling policy containing ``fvm_consistency_width`` and the
+        freestream velocity.
+    fvm_solver : FVMSolver-compatible object
+        Solver whose cell centres and cell-vector/scalar field setters are
+        used. The object is retained by reference and is mutated during
+        construction when the rate field is installed.
+    coupling_time_step_size : float
+        Coupling interval in seconds; caps the relaxation rate.
+    fvm_box : ndarray, shape (6,)
+        Outer bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in metres.
+
+    Attributes
+    ----------
+    cell_centres : ndarray, shape (M, 3)
+        FVM cell-centre coordinates in metres.
+    rate : ndarray, shape (M,)
+        Non-negative relaxation rate in 1/s; zero identifies inactive cells.
+    """
 
     def __init__(
         self,
@@ -77,6 +104,18 @@ class FVMConsistencyBand:
         coupling_time_step_size: float,
         fvm_box: np.ndarray,
     ) -> None:
+        """Build the band and install its relaxation-rate field.
+
+        The endpoint history is uninitialized after this call. A coupled
+        driver must call :meth:`update_target` before calling
+        :meth:`push_target` or advancing FVM substeps.
+
+        Raises
+        ------
+        ValueError
+            If the supplied width, bounds, time step, or freestream violates
+            the consistency-band contract.
+        """
         self.setup = setup
         self.fvm_solver = fvm_solver
         self.cell_centres = np.asarray(
@@ -107,10 +146,12 @@ class FVMConsistencyBand:
 
     @property
     def is_initialized(self) -> bool:
+        """Whether an accepted target endpoint has been stored."""
         return self._next is not None
 
     @property
     def active_cell_centres(self) -> np.ndarray:
+        """Return active-band cell centres as a new ``(K, 3)`` metre array."""
         return self.cell_centres[self._active]
 
     def update_target(self, active_velocity: np.ndarray | None) -> None:
@@ -158,6 +199,7 @@ class FVMConsistencyBand:
         self._push(self._previous + fraction * (self._next - self._previous))
 
     def _push(self, target: np.ndarray) -> None:
+        """Write one complete ``(M, 3)`` target velocity into FVM fields."""
         self.fvm_solver.set_cell_vector_field(
             TARGET_FIELD,
             np.ascontiguousarray(target[:, 0]),

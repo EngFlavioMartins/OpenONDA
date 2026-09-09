@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 from pathlib import Path
-import subprocess
 
 import numpy as np
 import pytest
@@ -102,161 +100,82 @@ def test_core_growth_remeshing_time_is_derived_from_core_spreading():
     assert elapsed == pytest.approx(expected)
 
 
-def test_shell_launchers_parse():
-    for script in ("allrun.sh", "allplot.sh", "allclean.sh"):
-        subprocess.run(["bash", "-n", str(CASE_DIR / script)], check=True)
+@pytest.mark.parametrize("variant", ["baseline", "stretching_viscosity", "p_moments", "splitting"])
+def test_official_les_cases_preserve_the_studied_physics_and_native_outputs(variant):
+    from types import SimpleNamespace
 
+    from openonda.tutorial_runner import load_case_module
+    from source.solvers.vpm.io.manifest import _case_configuration
 
-def test_allrun_launches_every_case_and_continues_after_one_failure(tmp_path):
-    setup = _load_setup()
-    log = tmp_path / "calls.txt"
-    python = tmp_path / "python"
-    python.write_text(
-        "#!/usr/bin/env bash\n"
-        'printf \'%s\\n\' "$*" >> "$VORTEX_INTERACTIONS_CALLS"\n'
-        "[[ \"$*\" == *' setup pedrizzetti '* ]] && exit 7\n"
-        "exit 0\n",
-        encoding="utf-8",
-    )
-    python.chmod(0o755)
-    environment = os.environ.copy()
-    environment["OPENONDA_PYTHON"] = str(python)
-    environment["VORTEX_INTERACTIONS_CALLS"] = str(log)
-
-    result = subprocess.run(
-        [str(CASE_DIR / "allrun.sh"), "--campaign", "legacy", "--steps", "1"],
-        cwd=CASE_DIR.parents[2],
-        env=environment,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0
-    calls = log.read_text(encoding="utf-8").splitlines()
-    launched = [line.split(" setup ", 1)[1].split()[0] for line in calls if " setup " in line]
-    assert launched == list(setup.CASES)
-    assert "Pedrizzetti relaxation | exit 7; continuing" in result.stderr
-
-
-def test_strategy_launcher_runs_matched_scenarios_and_retains_failed_comparisons(tmp_path):
-    import shlex
-
-    log = tmp_path / "calls.txt"
-    python = tmp_path / "python"
-    python.write_text(
-        "#!/usr/bin/env bash\n"
-        'printf \'%s\\n\' "$*" >> "$VORTEX_INTERACTIONS_CALLS"\n'
-        '[[ "$*" == *"--method splitting"* ]] && exit 7\nexit 0\n'
-    )
-    python.chmod(0o755)
-    environment = {
-        **os.environ,
-        "OPENONDA_PYTHON": str(python),
-        "VORTEX_INTERACTIONS_CALLS": str(log),
-    }
-    result = subprocess.run(
-        [str(CASE_DIR / "allrun.sh"), "--campaign", "strategies", "--quick"],
-        env=environment,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0
-    calls = [shlex.split(line) for line in log.read_text().splitlines()]
-    simulations = [line for line in calls if "--method" in line]
-    assert len(simulations) == 8
-    for scenario in ("leapfrog", "collision"):
-        matched = [line for line in simulations if line[line.index("--scenario") + 1] == scenario]
-        assert [line[line.index("--method") + 1] for line in matched] == [
-            "baseline",
-            "splitting",
-            "remeshing",
-            "p_remesh",
+    study = load_case_module(CASE_DIR, "assets.study")
+    setup = load_case_module(CASE_DIR, "setup_les")
+    args = study.parser().parse_args(
+        [
+            "--method",
+            variant,
+            "--steps",
+            "1200",
+            "--dt",
+            ".0075",
+            "--wall-minutes",
+            "150",
+            "--spacing",
+            ".04",
+            "--core-ratio",
+            "1",
+            "--amplitude",
+            "0",
+            "--smagorinsky",
+            ".20",
+            "--initial-tail",
+            ".0001",
+            "--tree-theta",
+            ".5",
+            "--tree-order",
+            "3",
+            "--capacity",
+            "1000000",
+            "--field-interval",
+            ".15",
+            "--frequency",
+            ".384684814725",
+            "--diffusion",
+            "GBD",
+            "--gbd-remeshing",
+            "LAGRANGE6",
+            "--diffusion-tail",
+            ".0001",
         ]
-        for line in matched:
-            assert line[line.index("--spacing") + 1] == ".04"
-            assert line[line.index("--support") + 1] == "disturbed"
-            assert line[line.index("--steps") + 1] == "400"
-    assert result.stderr.count("exit 7; continuing") == 2
-    assert "--runs" in calls[-1]
-
-
-def test_qualification_launcher_keeps_les_rk3_and_compares_equal_physical_times(tmp_path):
-    import shlex
-
-    log = tmp_path / "calls.txt"
-    python = tmp_path / "python"
-    python.write_text(
-        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$VORTEX_INTERACTIONS_CALLS"\n'
     )
-    python.chmod(0o755)
-    subprocess.run(
-        [str(CASE_DIR / "allrun.sh"), "--campaign", "qualification", "--no-plot"],
-        env={
-            **os.environ,
-            "OPENONDA_PYTHON": str(python),
-            "VORTEX_INTERACTIONS_CALLS": str(log),
-        },
-        check=True,
-        capture_output=True,
-    )
-    calls = [shlex.split(line) for line in log.read_text().splitlines()]
-    assert len(calls) == 6
-    for line in calls:
+    candidate = setup.build_case(variant)
+    reference = study.build_experiment(args, candidate.directory)
+    actual = _case_configuration(SimpleNamespace(case=candidate))
+    expected = _case_configuration(SimpleNamespace(case=reference))
+    assert actual["numerics"] == expected["numerics"]
+    assert actual["initial_conditions"] == expected["initial_conditions"]
+    assert candidate.name == f"les_{variant}"
+    assert candidate.directory == CASE_DIR
+    assert candidate.backup.directory == f"solution/les_{variant}"
+    assert candidate.backup.interval_steps == 100
+    assert candidate.run.final_backup
+    assert candidate.samplers.directory == f"les_{variant}"
+    assert candidate.run.steps == 1200
+    assert candidate.run.wall_time_limit_seconds == 9000
+    assert {sampler.file_name for sampler in candidate.samplers.samples} == {
+        "flow_integrals",
+        "ring_diagnostics",
+        "core_section",
+        "cross_section",
+    }
 
-        def value(flag, arguments=line):
-            return arguments[arguments.index(flag) + 1]
 
-        assert value("--integrator") == "SSPRK3"
-        assert value("--stretching") == "TRANSPOSED"
-        assert float(value("--dt")) * int(value("--steps")) == pytest.approx(0.15)
-        assert float(value("--spacing")) * float(value("--core-ratio")) == pytest.approx(0.04)
-        assert value("--amplitude") == "0"
-        assert float(value("--smagorinsky")) == 0.20
-        assert "--snapshot-interval" not in line
-        assert value("--capacity") == "1000000"
-    assert [line[line.index("--diffusion") + 1] for line in calls] == [
-        "CS",
-        "CS",
-        "GBD",
-        "GBD",
-        "GBD",
-        "GBD",
+def test_official_launcher_runs_baseline_before_stabilizers():
+    commands = [
+        line
+        for line in (CASE_DIR / "allrun.sh").read_text().splitlines()
+        if line.startswith("python ")
     ]
-    assert "LAGRANGE6" in calls[4]
-
-
-def test_default_budget_campaign_caps_runs_and_preserves_the_physical_comparison(tmp_path):
-    import shlex
-
-    log = tmp_path / "calls.txt"
-    python = tmp_path / "python"
-    python.write_text(
-        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$VORTEX_INTERACTIONS_CALLS"\n'
-    )
-    python.chmod(0o755)
-    subprocess.run(
-        [str(CASE_DIR / "allrun.sh"), "--no-plot"],
-        env={**os.environ, "OPENONDA_PYTHON": str(python), "VORTEX_INTERACTIONS_CALLS": str(log)},
-        check=True,
-        capture_output=True,
-    )
-    calls = [shlex.split(line) for line in log.read_text().splitlines()]
-    assert len(calls) == 3
-    assert [line[line.index("--method") + 1] for line in calls] == [
-        "baseline",
-        "p_moments",
-        "baseline",
+    assert commands == [
+        f"python setup_les.py --variant {variant}"
+        for variant in ("baseline", "stretching_viscosity", "p_moments", "splitting")
     ]
-    assert [line[line.index("--wall-minutes") + 1] for line in calls] == ["50", "50", "30"]
-    for line in calls:
-
-        def values(flag, arguments=line):
-            return arguments[arguments.index(flag) + 1]
-
-        assert values("--integrator") == "SSPRK3"
-        assert values("--stretching") == "TRANSPOSED"
-        assert values("--gbd-remeshing") == "LAGRANGE6"
-        assert float(values("--smagorinsky")) == 0.20
-        assert float(values("--dt")) * int(values("--steps")) == pytest.approx(6)
-        assert float(values("--spacing")) * float(values("--core-ratio")) == pytest.approx(0.04)

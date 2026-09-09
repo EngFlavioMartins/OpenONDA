@@ -67,7 +67,38 @@ def _strict_int(name: str, value: Any, *, minimum: int = 0) -> int:
 
 @dataclass
 class BoundaryConfig:
-    """Boundary-condition specification for one mesh patch."""
+    """Boundary-condition specification for one named FVM patch.
+
+    Attributes
+    ----------
+    name : str
+        Mesh patch name; it must match a contiguous boundary range.
+    velocity_type : str
+        Ghost reconstruction strategy, such as ``fixedValue``,
+        ``zeroGradient``, ``inletOutlet``, ``slip``, ``freestream``,
+        ``empty``, or ``cyclic``.
+    velocity_value : array-like
+        Uniform or per-face velocity in m/s, shape ``(3,)`` or
+        ``(n_faces, 3)``.
+    pressure_type : str
+        Strategy for kinematic pressure ``p/rho`` in m²/s².
+    kinematic_pressure_value : float
+        Fixed pressure value in m²/s² when selected by ``pressure_type``.
+    flux_type, flux_value : str, float
+        Face-flux strategy and value; ``flux_value`` is m³/s.
+    eddy_viscosity_type, eddy_viscosity_value : str, float
+        Turbulent-viscosity boundary strategy and value in m²/s.
+    neighbour_patch : str or None
+        Paired patch name for a cyclic boundary.
+    mesh_type : {'patch', 'wall', 'empty', 'cyclic'} or None
+        Topological/physical patch classification.
+
+    Notes
+    -----
+    Face-count-dependent checks occur after the mesh is loaded. The solver
+    reconstructs boundary ghosts and uses these choices in flux, gradient,
+    pressure, and turbulence assembly.
+    """
 
     name: str
     velocity_type: str = "fixedValue"
@@ -205,7 +236,23 @@ class BoundaryConfig:
 
 @dataclass
 class MeshQualityConfig:
-    """Mesh-quality limits applied during solver construction."""
+    """Optional hard mesh-quality limits checked during FVM construction.
+
+    ``None`` disables an individual gate. The limits are validation thresholds,
+    not mesh-generation targets; a passing mesh still requires a resolution and
+    convergence study.
+
+    Attributes
+    ----------
+    max_non_orthogonality_deg : float or None
+        Maximum face non-orthogonality in degrees.
+    max_skewness : float or None
+        Maximum dimensionless skewness measure.
+    max_aspect_ratio : float or None
+        Maximum dimensionless cell aspect ratio.
+    max_lsq_condition : float or None
+        Maximum least-squares gradient-stencil condition number.
+    """
 
     max_non_orthogonality_deg: float | None = None
     max_skewness: float | None = None
@@ -281,6 +328,18 @@ class TimeConfig:
     ``time_step_size`` is the initial step size.  Fixed stepping is used when
     ``adjustment`` is ``None``; pass :class:`MaximumCourantTimeStep` to make
     step selection a solver-owned maximum-Courant policy.
+
+    Attributes
+    ----------
+    time_step_size : float
+        Initial/fixed accepted-step duration in seconds.
+    start_time, end_time : float
+        Physical clock bounds in seconds; ``end_time`` must be greater.
+    output_schedule : RunSchedule
+        Cadence evaluated from accepted step/time state.
+    adjustment : MaximumCourantTimeStep or None
+        Optional CFL-based adaptive policy. The selected runtime step is
+        mutable solver state and is not written back to this object.
     """
 
     time_step_size: float = 0.01
@@ -311,7 +370,31 @@ class TimeConfig:
 
 @dataclass
 class DiscretizationConfig:
-    """Spatial and temporal discretisation settings."""
+    """Spatial reconstruction and temporal discretisation settings.
+
+    Parameters
+    ----------
+    convection_scheme : {'upwind', 'central', 'limitedLinear', 'LUST', 'linearUpwind', 'vanLeer', 'MUSCL', 'minmod', 'superbee'}
+        Cell-to-face reconstruction for convected fields. Upwind is first
+        order and bounded; higher-order/limited choices trade dissipation for
+        resolution and may require stricter mesh/time-step studies.
+    gradient_scheme : {'gauss', 'lsq'}, default='lsq'
+        Cell-centred gradient reconstruction. ``gauss`` applies the discrete
+        divergence theorem; ``lsq`` solves local neighbour differences.
+    time_scheme : {'euler_implicit', 'backward'}, default='euler_implicit'
+        Accepted-time derivative. ``backward`` is the BDF2 history formula
+        after two accepted levels are available and falls back during startup.
+
+    Raises
+    ------
+    ValueError
+        If a scheme name is unsupported.
+
+    Notes
+    -----
+    Names are normalized lowercase. These choices configure assembly only;
+    constructing the object does not evaluate an operator or mutate fields.
+    """
 
     convection_scheme: Literal[
         "upwind",
@@ -362,7 +445,53 @@ class DiscretizationConfig:
 
 @dataclass
 class LinearSolverConfig:
-    """Momentum and pressure linear-solver settings."""
+    """Momentum/pressure linear-algebra policy for one FVM case.
+
+    Parameters
+    ----------
+    linear_solver : {'bicgstab', 'gmres', 'cg', 'amg', 'spsolve'}
+        Default method. Momentum cannot use ``amg`` directly.
+    momentum_solver, pressure_solver : str or None
+        Equation-specific overrides; ``None`` inherits ``linear_solver``.
+    pressure_nullspace_method : {'auto', 'reference', 'petsc'}
+        Constant-pressure nullspace treatment for singular incompressible
+        systems. ``reference`` pins a datum; ``petsc`` attaches a nullspace.
+    linear_failure_action : {'raise', 'direct_fallback'}
+        Action when an iterative solve does not converge. The default
+        ``raise`` never silently replaces the configured numerical method.
+    reuse_ilu : bool
+        Reuse an ILU preconditioner while matrix-change gates permit it.
+    momentum_tolerance, pressure_tolerance : float
+        Positive absolute residual tolerances in assembled equation units.
+    momentum_relative_tolerance, pressure_relative_tolerance : float
+        Non-negative residual reductions relative to each solve's initial norm.
+    momentum_final_relative_tolerance, pressure_final_relative_tolerance : float or None
+        Optional relative tolerances for final correctors; ``None`` retains
+        the ordinary equation setting.
+    momentum_max_iterations, pressure_max_iterations : int
+        Positive iteration caps.
+    amg_tolerance, amg_max_iterations : float or int or None
+        Optional AMG-specific positive tolerance and iteration cap.
+    amg_reuse_tolerance : float
+        Positive dimensionless matrix-change tolerance for AMG reuse.
+    ilu_drop_tolerance, ilu_fill_factor : float
+        Positive SciPy ILU sparsification and fill controls.
+    ilu_reuse_tolerance : float or None
+        Optional non-negative dimensionless matrix-change gate for ILU reuse.
+
+    Momentum and pressure may select different methods; pressure also has an
+    explicit constant-nullspace policy. Absolute tolerances are in assembled
+    equation residual units and relative tolerances are normalized against the
+    initial residual. ``linear_failure_action='raise'`` is the safe default;
+    ``'direct_fallback'`` explicitly permits a fallback solve.
+
+    Raises
+    ------
+    TypeError
+        If Boolean/integer policy fields have invalid types.
+    ValueError
+        If a method is unsupported or a tolerance/count violates its range.
+    """
 
     linear_solver: Literal[
         "bicgstab",
@@ -505,7 +634,50 @@ class LinearSolverConfig:
 
 @dataclass
 class PimpleControl:
-    """PIMPLE, PISO, or SIMPLE pressure-velocity coupling controls."""
+    """Pressure--velocity controls for SIMPLE, PISO, or PIMPLE.
+
+    Parameters
+    ----------
+    algorithm : {'SIMPLE', 'PISO', 'PIMPLE'}, default='PIMPLE'
+        Pressure--velocity coupling algorithm, normalized uppercase.
+    n_correctors : int, default=2
+        Positive pressure-correction solves per outer pass.
+    n_outer_correctors : int, default=1
+        Positive nonlinear outer passes. PISO normally uses one.
+    n_orthogonal_correctors, n_nonorthogonal_correctors : int
+        Non-negative extra pressure passes for non-orthogonal correction. The
+        latter is a compatibility alias and both values must agree.
+    min_outer_correctors : int, default=1
+        Minimum passes before residual-based early termination.
+    outer_residual_tolerance : float or None
+        Optional positive maximum equation-residual gate for early exit.
+    outer_continuity_tolerance : float or None
+        Optional positive maximum cell-divergence gate in 1/s.
+    max_iterations, tolerance : int, float
+        Positive legacy SIMPLE iteration cap and convergence tolerance.
+    velocity_relaxation, pressure_relaxation : float
+        Under-relaxation factors in ``(0, 1]``.
+    ddt_corr : bool
+        Include transient flux correction in pressure coupling.
+    ibm_forcing_loops : int
+        Positive immersed-boundary forcing passes per corrector.
+    ibm_second_solve : bool
+        Re-solve momentum after IBM forcing when enabled.
+
+    ``n_correctors`` is the pressure-correction count per outer pass;
+    ``n_outer_correctors`` is the PIMPLE nonlinear-pass count;
+    ``n_orthogonal_correctors`` handles non-orthogonal pressure terms. Residual
+    and continuity limits govern early exit/acceptance, while relaxation factors
+    lie in ``(0, 1]``. IBM loop fields apply only when immersed forcing is active.
+
+    Raises
+    ------
+    TypeError
+        If integer/Boolean controls have invalid types.
+    ValueError
+        If counts, tolerances, relaxation factors, aliases, or algorithm are
+        inconsistent.
+    """
 
     algorithm: Literal["SIMPLE", "PIMPLE", "PISO"] = "PIMPLE"
     n_correctors: int = 2
@@ -591,7 +763,27 @@ class PimpleControl:
 
 @dataclass
 class TransportConfig:
-    """Fluid density and molecular kinematic viscosity."""
+    """Constant fluid properties used by the incompressible FVM equations.
+
+    Parameters
+    ----------
+    density : float, default=1.225
+        Positive constant density in kg/m³. It dimensionalizes kinematic
+        pressure and force output but cancels from velocity evolution.
+    kinematic_viscosity : float, default=1.5e-5
+        Positive molecular viscosity ``nu`` in m²/s.
+
+    ``density`` is kg/m³ and is used to dimensionalize pressure and forces;
+    ``kinematic_viscosity`` is molecular ``nu`` in m²/s. Density cancels from
+    the kinematic evolution.
+
+    Raises
+    ------
+    TypeError
+        If either value is not a real scalar.
+    ValueError
+        If either value is non-finite or non-positive.
+    """
 
     density: float = 1.225
     kinematic_viscosity: float = 1.5e-5
@@ -626,7 +818,32 @@ class TransportConfig:
 
 @dataclass
 class MeshMotionConfig:
-    """Rigid-body mesh motion or a static mesh."""
+    """Static or declarative rigid-motion mesh policy.
+
+    Parameters
+    ----------
+    method : {'static', 'rigidMotion'}, default='static'
+        Declarative mesh-motion mode.
+    velocity : list[float], shape (3,)
+        Cartesian translation velocity in m/s.
+    angular_speed : float, default=0.0
+        Non-negative rotation rate in rad/s.
+    axis : list[float], shape (3,)
+        Global rotation axis; it must be non-zero for rigid motion.
+    origin : list[float], shape (3,)
+        Rotation origin in m.
+
+    ``velocity`` is translational mesh velocity in m/s, ``angular_speed`` is
+    rad/s, ``axis`` is the rotation axis, and ``origin`` is in m. The current
+    solver rejects dynamic/ALE motion because conservative mesh-flux terms are
+    not implemented; retaining this object documents the legacy configuration
+    boundary and gives a precise failure instead of a silent approximation.
+
+    Raises
+    ------
+    ValueError
+        If method/vectors/rate are invalid.
+    """
 
     method: Literal["static", "rigidMotion"] = "static"
     velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
@@ -674,7 +891,38 @@ class MeshMotionConfig:
 
 @dataclass
 class TurbulenceConfig:
-    """LES/SGS model configuration with model-specific coefficients."""
+    """LES/subgrid model configuration and dimensionless coefficients.
+
+    Parameters
+    ----------
+    model : str, default='None'
+        ``none``/``dns`` disables an explicit closure; supported LES choices
+        are ILES, Smagorinsky, equilibrium Smagorinsky, WALE, sigma, and
+        dynamic Smagorinsky. Names are normalized lowercase.
+    smagorinsky_coefficient : float, default=0.17
+        Non-negative dimensionless ``C_s``.
+    subgrid_kinetic_energy_coefficient : float, default=0.094
+        Non-negative dimensionless ``C_k``.
+    subgrid_dissipation_coefficient : float, default=1.048
+        Positive dimensionless ``C_e``.
+    wale_coefficient : float, default=0.325
+        Positive dimensionless WALE coefficient.
+    sigma_coefficient : float, default=1.35
+        Positive dimensionless sigma-model coefficient.
+    dynamic : bool, default=False
+        Enable dynamic coefficient evaluation where supported.
+
+    ``model='none'``/``'dns'`` disables an explicit SGS contribution. Other
+    choices create an eddy-viscosity field in m²/s; the solver uses
+    ``nu_eff = nu + nu_t``. Coefficients are model parameters, not dimensional
+    viscosities. The convenience constructors make the intended model explicit.
+
+    Notes
+    -----
+    Active closures create cell-centred eddy viscosity ``nu_t`` in m²/s and
+    the momentum equation uses ``nu_eff = nu + nu_t``. Construction changes no
+    field state.
+    """
 
     model: str = "None"
     smagorinsky_coefficient: float = 0.17
@@ -787,7 +1035,32 @@ class TurbulenceConfig:
 
 @dataclass
 class ComputeConfig:
-    """Sparse assembly, linear algebra, parallelism, and output execution."""
+    """Execution choices for operators, linear algebra, MPI, and output.
+
+    Parameters
+    ----------
+    operator_backend : {'numpy', 'numba', 'taichi'}, default='numpy'
+        Implementation used for supported local discrete operators.
+    linear_backend : {'scipy', 'petsc'}, default='scipy'
+        Sparse linear-algebra runtime.
+    parallel_mode : {'serial', 'petsc_replicated', 'petsc_partitioned'}
+        Ownership model. Replicated mode stores a global mesh per rank;
+        partitioned mode stores owned plus halo cells.
+    output_mode : {'synchronous', 'threaded'}, default='synchronous'
+        Whether visualization writes complete inline or on a background thread.
+
+    ``operator_backend`` selects NumPy/Numba/Taichi kernels;
+    ``linear_backend`` selects SciPy or PETSc; ``parallel_mode`` selects serial,
+    replicated PETSc, or partitioned PETSc ownership; and ``output_mode`` selects
+    synchronous or threaded visualization. Serial mode requires SciPy, and
+    partitioned PETSc does not support threaded output.
+
+    Raises
+    ------
+    ValueError
+        If a choice is unsupported or backend/ownership/output combinations
+        are incompatible.
+    """
 
     operator_backend: Literal[
         "numpy",
@@ -850,7 +1123,43 @@ class ComputeConfig:
 
 @dataclass
 class OutputConfig:
-    """ParaView visualization-output policy."""
+    """Cell-centred appended-binary VTK visualization policy.
+
+    Parameters
+    ----------
+    format : {'vtk_xml'}, default='vtk_xml'
+        Visualization container; only VTK XML is supported.
+    data_location : {'cell'}, default='cell'
+        Authoritative field location. FVM solution values are cell-centred.
+    encoding : {'appended'}, default='appended'
+        VTK binary payload encoding.
+    compression : {'lz4', 'none', 'zlib'}, default='zlib'
+        Appended-data compression codec.
+    precision : {'f32', 'f64'}, default='f32'
+        Visualization write precision, independent of solver compute precision.
+    asynchronous : bool, default=True
+        Queue writes on a background worker. Failures then surface during
+        ``flush_output`` or solver finalization.
+    ghost_layers : {0, 1}, default=1
+        Number of boundary ghost layers included in parallel visualization.
+    point_interpolation : {'none', 'boundary_weighted'}, default='none'
+        Optional derived vertex view. It never changes authoritative cell data.
+
+    Visualization precision is independent of compute precision. The current
+    format/data-location/encoding are fixed to ``vtk_xml``/``cell``/``appended``;
+    ``compression`` controls payload compression, ``ghost_layers`` controls
+    boundary-ghost inclusion, and ``point_interpolation`` optionally creates a
+    point-view copy. When ``asynchronous`` is true, writer failures surface at
+    ``flush_output`` or finalization.
+
+    Raises
+    ------
+    TypeError
+        If Boolean/integer fields have invalid types.
+    ValueError
+        If an unsupported format, codec, precision, layer count, or
+        interpolation is requested.
+    """
 
     format: Literal["vtk_xml"] = "vtk_xml"
     data_location: Literal["cell"] = "cell"
@@ -893,7 +1202,33 @@ class OutputConfig:
 
 @dataclass
 class RunAcceptanceLimits:
-    """Warning and abort thresholds for structured step diagnostics."""
+    """Warning/abort thresholds for accepted FVM step diagnostics.
+
+    Parameters
+    ----------
+    sustained_steps : int, default=1
+        Positive number of consecutive accepted observations required before a
+        configured action is taken.
+    max_continuity_error_warning, max_continuity_error_abort : float or None
+        Positive cell-divergence thresholds in 1/s; ``None`` disables a level.
+    max_equation_residual_warning, max_equation_residual_abort : float or None
+        Positive maxima across normalized/assembled equation diagnostics.
+    max_courant_number_warning, max_courant_number_abort : float or None
+        Positive dimensionless Courant-number thresholds.
+    max_velocity_magnitude_warning, max_velocity_magnitude_abort : float or None
+        Positive cell-velocity magnitude thresholds in m/s.
+
+    Continuity thresholds are in 1/s and Courant thresholds are dimensionless;
+    equation residuals use their reported solver convention. A warning is recorded,
+    while an abort rejects the candidate according to the solver lifecycle.
+    ``sustained_steps`` controls the required consecutive observations.
+
+    Raises
+    ------
+    ValueError
+        If a threshold is non-positive/non-finite, a warning exceeds its abort
+        threshold, or ``sustained_steps`` is less than one.
+    """
 
     sustained_steps: int = 1
     max_continuity_error_warning: float | None = None
@@ -935,7 +1270,23 @@ class RunAcceptanceLimits:
 
 @dataclass
 class LoggingConfig:
-    """Console and log-file verbosity with step- or time-based reporting."""
+    """Console and log-file verbosity with accepted-state cadence.
+
+    Parameters
+    ----------
+    mode : {'simple', 'debug'}, default='simple'
+        Concise accepted-step records or expanded numerical diagnostics.
+    schedule : RunSchedule
+        Logging cadence evaluated only from accepted step/time state.
+    console : bool, default=True
+        Mirror records to the terminal.
+    filename : str, default='fvm.log'
+        Non-empty path resolved relative to the case output root.
+
+    ``mode`` selects concise or debug records, ``schedule`` is evaluated from
+    accepted step/time state, ``console`` controls terminal output, and
+    ``filename`` is resolved relative to the case output root.
+    """
 
     mode: Literal["simple", "debug"] = "simple"
     schedule: RunSchedule = field(default_factory=lambda: RunSchedule(every_n_steps=1))
@@ -957,9 +1308,22 @@ class LoggingConfig:
 class BackupConfig:
     """Automatic restart-backup policy.
 
+    Parameters
+    ----------
+    schedule : RunSchedule or None, default=None
+        Accepted-state checkpoint cadence; ``None`` disables periodic saves.
+    path : str, default='backup'
+        Non-empty destination, resolved beneath the solution directory when
+        relative.
+    write_at_end : bool, default=False
+        Write a terminal checkpoint when the end state was not scheduled.
+
     ``schedule=None`` disables periodic backups.  A relative ``path`` is
     resolved beneath the solver's solution directory.  ``write_at_end`` adds
     one final restart when the configured horizon is not itself scheduled.
+
+    Restart files retain solver precision and time-history fields; they are
+    distinct from visualization output and are written atomically.
     """
 
     schedule: RunSchedule | None = None
@@ -977,7 +1341,42 @@ class BackupConfig:
 
 @dataclass
 class FVMSetup:
-    """Top-level setup for an incompressible finite-volume simulation."""
+    """Legacy low-level setup consumed by FVM kernels and factories.
+
+    Parameters
+    ----------
+    case_name : str
+        Non-empty case identifier used by logs and solver metadata.
+    cores : int, default=1
+        Positive requested execution size.
+    mesh, execution, output, acceptance, logging, backup, time, schemes,
+    linear, pimple, transport, dynamic_mesh : corresponding configuration objects
+        Low-level policies consumed when the solver is materialized.
+    boundaries : list[BoundaryConfig]
+        Patch conditions keyed by unique mesh-patch name.
+    samplers : tuple
+        Objects implementing ``sample`` and carrying a :class:`RunSchedule`.
+    turbulence : TurbulenceConfig or None
+        Optional cell-centred eddy-viscosity closure.
+    initial_velocity : array-like, shape (3,) or (n_cells, 3), optional
+        Uniform or per-cell initial velocity in m/s. ``None`` leaves the
+        factory-specific default.
+    initial_kinematic_pressure : float or None, default=0.0
+        Uniform initial ``p/rho`` in m²/s².
+
+    Prefer :class:`source.solvers.fvm.config.case.FVMCase` for new standalone
+    applications. This mutable object remains the compatibility boundary for
+    tutorials, coupled drivers, and direct factory callers. Its fields group
+    mesh-quality, execution, output, acceptance/logging, backup/time,
+    discretization/linear/coupling, transport, boundaries, samplers, turbulence,
+    and initial-field settings. Initial velocity is m/s and initial kinematic
+    pressure is m²/s².
+
+    Notes
+    -----
+    This mutable compatibility object is referenced by legacy tutorial/coupler
+    paths. New standalone applications should prefer immutable :class:`FVMCase`.
+    """
 
     case_name: str
     cores: int = 1

@@ -77,35 +77,50 @@ def _coerce_int_id_array(arr, N: int) -> np.ndarray:
 
 @ti.data_oriented
 class Particles:
-    """
-    A class to manage and manipulate a collection of particles for vortex particle methods (VPM).
+    """Fixed-capacity device container for a VPM particle cloud.
 
-    The class uses Taichi fields for efficient GPU/CPU computation with all data kept on GPU by default.
-    CPU access methods are provided separately (e.g., position_cpu, velocity_cpu).
+    Parameters
+    ----------
+    max_n_particles : int, default=MAX_N_PARTICLES
+        Capacity allocated once in Taichi fields. Runtime append/removal can
+        change the active population but cannot resize the allocation.
+    float_dtype : {'f32', 'f64'}, default='f32'
+        Compute precision for floating particle fields.
 
-    Attributes:
-        position (ti.Vector.field): Taichi field of particle position, shape (N, 3).
-        velocity (ti.Vector.field): Taichi field of particle velocity, shape (N, 3).
-        vortex_strength (ti.Vector.field): Particle alpha = omega*V [m³/s], shape (N, 3).
-        core_radius (ti.field): Taichi field of particle core radius, shape (N,).
-        particle_volume (ti.field): Taichi field of particle volume, shape (N,).
-        kinematic_viscosity (ti.field): Taichi field of molecular kinematic viscosity, shape (N,).
-        eddy_viscosity (ti.field): Taichi field of turbulent kinematic viscosity, shape (N,).
-        effective_viscosity (ti.field): Taichi field of effective viscosity, shape (N,).
-        strain_rate (ti.Matrix.field): Taichi field of strain-rate tensors, shape (N, 3, 3).
-        vorticity (ti.Vector.field): Taichi field of particle vorticity, shape (N, 3).
-        zone_id (ti.field): Taichi field of zone IDs (spatial zones), shape (N,).
+    Attributes
+    ----------
+    position, velocity, vortex_strength, vorticity : ti.Vector.field
+        Active-prefix vector fields of shape ``(N, 3)`` in m, m/s, m³/s, and
+        1/s respectively.
+    core_radius, particle_volume : ti.field
+        Scalar fields of shape ``(N,)`` in m and m³.
+    kinematic_viscosity, eddy_viscosity, effective_viscosity : ti.field
+        Scalar viscosity fields of shape ``(N,)`` in m²/s.
+    velocity_gradient, strain_rate : ti.Matrix.field
+        Tensor fields of shape ``(N, 3, 3)`` in 1/s.
+    group_id, zone_id : ti.field
+        Int32 labels of shape ``(N,)``.
+    n_particles_total : int
+        Active particle count; all public CPU accessors return only the prefix
+        ``[0:n_particles_total)``.
+
+    Notes
+    -----
+    Device fields are mutable and are the numerical source of truth. Methods
+    ending in ``_cpu`` download/copy active data and may be cached until the
+    particle state revision changes. Mutations of position, vortex strength,
+    core radius, or population must invalidate source caches through
+    :meth:`touch_state`; the provided mutators do so automatically.
     """
 
     _COPY_CHUNK_SIZE = 65_536
 
     def __init__(self, max_n_particles=MAX_N_PARTICLES, float_dtype: str = "f32"):
-        """
-        Initialize the Particles class with Taichi fields.
+        """Allocate the fixed-capacity Taichi particle fields.
 
-        Args:
-            max_n_particles (int): Fixed particle capacity allocated at startup.
-            float_dtype (str): 'f32' (default) or 'f64' - precision for particle data
+        Construction allocates device memory and starts with zero active
+        particles. It does not insert an initial condition. A new solver must
+        be constructed when a larger capacity is required.
         """
         self._max_particles = max_n_particles
         self._capacity_warning_emitted = False
@@ -138,16 +153,16 @@ class Particles:
 
     @property
     def capacity(self) -> int:
-        """Allocated particle capacity, i.e. the real ceiling for regeneration."""
+        """Return allocated particle capacity, the hard insertion ceiling."""
         return int(self._max_particles)
 
     @property
     def state_revision(self) -> int:
-        """Version of the particle fields that define induced velocity."""
+        """Return the monotone source-state revision for cached induction data."""
         return self._state_revision
 
     def touch_state(self) -> None:
-        """Invalidate acceleration structures after a source-state mutation."""
+        """Invalidate cached CPU snapshots/acceleration structures after mutation."""
         self._state_revision += 1
         self._cache_step = -1
 
@@ -472,7 +487,7 @@ class Particles:
 
     @ti.kernel
     def _accumulate_subset_moments(self, indices: ti.types.ndarray(), n_idx: ti.i32):  # type: ignore
-        """Sum vortex strength Σalpha and impulse 0.5*Σ(r×alpha) for selected particles."""
+        """Sum ``Gamma`` and ``0.5*sum(r x Gamma)`` for selected particles."""
         self._subset_vortex_strength[None] = ti.Vector.zero(self._taichi_dtype, 3)
         self._subset_impulse[None] = ti.Vector.zero(self._taichi_dtype, 3)
         for m in range(n_idx):
@@ -483,17 +498,23 @@ class Particles:
             self._subset_impulse[None] += 0.5 * p.cross(c)
 
     def subset_moments(self, indices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Compute (Σalpha, 0.5*Σ r×alpha) for selected particles entirely on device.
+        """Reduce circulation and linear impulse for selected particles.
 
-        Only the index list is uploaded and two 3-vectors are downloaded, avoiding
-        a full download of every particle's position and vortex strength.
+        Parameters
+        ----------
+        indices : numpy.ndarray
+            Integer active-particle indices, shape ``(K,)``.
 
-        Args:
-            indices: Particle indices to reduce over [k].
+        Returns
+        -------
+        tuple[numpy.ndarray, numpy.ndarray]
+            ``(sum(Gamma), 0.5 * sum(position × Gamma))``; both arrays have
+            shape ``(3,)`` and units m³/s and m⁴/s respectively.
 
-        Returns:
-            (vortex_strength_sum, linear_impulse): two NumPy arrays of shape (3,).
+        Notes
+        -----
+        Only the index list is uploaded and the two reduced vectors are
+        downloaded. The complete particle cloud is not transferred to the CPU.
         """
         idx = np.ascontiguousarray(indices, dtype=np.int32)
         if idx.size == 0:
@@ -506,13 +527,13 @@ class Particles:
 
     @ti.kernel
     def _accumulate_prefix_vortex_strength(self, n: ti.i32):  # type: ignore
-        """Sum Σalpha over the first n live particles on the device."""
+        """Sum ``Gamma`` over the first ``n`` live particles on the device."""
         self._subset_vortex_strength[None] = ti.Vector.zero(self._taichi_dtype, 3)
         for i in range(n):
             self._subset_vortex_strength[None] += self.vortex_strength[i]
 
     def net_vortex_strength(self) -> np.ndarray:
-        """Sum Σalpha over all live particles, returning a shape-(3,) array."""
+        """Return the sum of active circulation vectors, shape ``(3,)`` in m³/s."""
         n = self.n_particles_total
         if n == 0:
             return np.zeros(3, dtype=self._np_float_dtype)
@@ -866,80 +887,93 @@ class Particles:
     # CPU access methods (return NumPy arrays) - now with caching
     @cached_particle_property
     def position_cpu(self):
-        """Get position as NumPy array (CPU copy) - cached per time step."""
+        """Return active positions as a CPU copy, shape ``(N, 3)`` in m.
+
+        The result contains only the active prefix. The cache is invalidated
+        by :meth:`touch_state`; pass ``use_cache=False`` when a fresh transfer
+        is required by the decorator-supported call path.
+        """
         return self._extract_vector(self.position, self.n_particles_total)
 
     @cached_particle_property
     def velocity_cpu(self):
-        """Get velocity as NumPy array (CPU copy) - cached per time step."""
+        """Return active velocities as a CPU copy, shape ``(N, 3)`` in m/s."""
         return self._extract_vector(self.velocity, self.n_particles_total)
 
     @cached_particle_property
     def vortex_strength_cpu(self):
-        """Get vortex_strength as NumPy array (CPU copy) - cached per time step."""
+        """Return active circulation vectors as a CPU copy, shape ``(N, 3)`` in m³/s."""
         return self._extract_vector(self.vortex_strength, self.n_particles_total)
 
     @cached_particle_property
     def core_radius_cpu(self):
-        """Get core_radius as NumPy array (CPU copy) - cached per time step."""
+        """Return active core radii as a CPU copy, shape ``(N,)`` in m."""
         return self._extract_scalar(self.core_radius, self.n_particles_total)
 
     @cached_particle_property
     def particle_volume_cpu(self):
-        """Get particle_volume as NumPy array (CPU copy) - cached per time step."""
+        """Return active quadrature volumes as a CPU copy, shape ``(N,)`` in m³."""
         return self._extract_scalar(self.particle_volume, self.n_particles_total)
 
     @cached_particle_property
     def kinematic_viscosity_cpu(self):
-        """Get kinematic_viscosity as NumPy array (CPU copy) - cached per time step."""
+        """Return molecular viscosity as a CPU copy, shape ``(N,)`` in m²/s."""
         return self._extract_scalar(self.kinematic_viscosity, self.n_particles_total)
 
     @cached_particle_property
     def eddy_viscosity_cpu(self):
-        """Get eddy viscosity as a cached NumPy CPU copy."""
+        """Return modeled turbulent viscosity as a CPU copy, shape ``(N,)`` in m²/s."""
         return self._extract_scalar(self.eddy_viscosity, self.n_particles_total)
 
     @cached_particle_property
     def effective_viscosity_cpu(self):
-        """Get effective kinematic_viscosity as NumPy array (CPU copy) - cached per time step."""
+        """Return molecular plus eddy viscosity as a CPU copy, shape ``(N,)`` in m²/s."""
         return self._extract_scalar(self.effective_viscosity, self.n_particles_total)
 
     @cached_particle_property
     def group_id_cpu(self):
-        """Get group IDs as NumPy array (CPU copy) - cached per time step."""
+        """Return int32 group labels as a CPU copy, shape ``(N,)``."""
         return self._extract_int(self.group_id, self.n_particles_total)
 
     @cached_particle_property
     def velocity_gradient_cpu(self):
-        """Get gradient of velocity field on CPU - cached per time step."""
+        """Return velocity Jacobians as a CPU copy, shape ``(N, 3, 3)`` in 1/s."""
         return self._extract_matrix(self.velocity_gradient, self.n_particles_total)
 
     @cached_particle_property
     def strain_rate_cpu(self):
-        """Get strain rate tensors as NumPy array (CPU copy) - cached per time step."""
+        """Return symmetric strain tensors as a CPU copy, shape ``(N, 3, 3)`` in 1/s."""
         return self._extract_matrix(self.strain_rate, self.n_particles_total)
 
     @cached_particle_property
     def vorticity_cpu(self):
-        """Get vorticity as NumPy array (CPU copy) - cached per time step."""
+        """Return vorticity vectors as a CPU copy, shape ``(N, 3)`` in 1/s."""
         return self._extract_vector(self.vorticity, self.n_particles_total)
 
     @cached_particle_property
     def zone_id_cpu(self):
-        """Get zone IDs as NumPy array (CPU copy) - cached per time step."""
+        """Return int32 zone labels as a CPU copy, shape ``(N,)``."""
         return self._extract_int(self.zone_id, self.n_particles_total)
 
     def velocity_background_cpu(self) -> np.ndarray:
-        """Get background velocity as NumPy array (3,)."""
+        """Return the uniform background velocity as a copy, shape ``(3,)`` in m/s."""
         v = self.velocity_background[None]
         return np.array([v[0], v[1], v[2]], dtype=np.float32)
 
     def set_freestream_velocity(self, velocity: np.ndarray) -> None:
-        """
-        Set the global background velocity for all particles.
+        """Set the global background velocity stored with the particle cloud.
 
-        Args:
-            velocity: 3D velocity vector [ux, uy, uz] in m/s
+        Parameters
+        ----------
+        velocity : numpy.ndarray
+            Three-vector ``(ux, uy, uz)`` in m/s. The value is copied into the
+            scalar Taichi background field and is added by configured target
+            or stage operators according to their ``include_freestream`` flag.
+
+        Raises
+        ------
+        ValueError
+            If the input cannot provide exactly three components.
         """
         self.velocity_background[None] = [
             float(velocity[0]),
@@ -948,6 +982,7 @@ class Particles:
         ]
 
     def __len__(self):
+        """Return the active particle count, excluding unused capacity slots."""
         return int(self.n_particles_total)
 
     def report_rows(self) -> list:
@@ -1015,7 +1050,19 @@ class Particles:
         )
 
     def __getitem__(self, index):
-        """Return particle data at index (CPU copy)."""
+        """Return one active particle record as independent CPU values.
+
+        Parameters
+        ----------
+        index : int or slice
+            Python index into the active prefix.
+
+        Returns
+        -------
+        dict[str, numpy.ndarray]
+            Position, velocity, circulation, geometry, viscosity, labels, and
+            diagnostic tensor values. Returned arrays are CPU copies.
+        """
         return {
             "position": self.position_cpu()[index],
             "velocity": self.velocity_cpu()[index],
@@ -1046,8 +1093,10 @@ class Particles:
         )
 
     def _log_particles_added(self, count: int) -> None:
-        """Report the population after particles were appended."""
-        self._log_population(("added", f"{int(count):,}"))
+        """Report initial population and capacity warnings; progress reports later growth."""
+        self._warn_near_capacity()
+        if self.n_particles_total == count:
+            self._log_population(("added", f"{int(count):,}"))
 
     def _log_particles_replaced(self, previous: int) -> None:
         """Report the population after the whole cloud was replaced."""
@@ -1066,7 +1115,30 @@ class Particles:
         zone_id: int = 0,
         velocity_gradient: np.ndarray = np.zeros((3, 3), dtype=np.float32),
         vorticity: np.ndarray = np.zeros(3),
-    ):
+    ) -> None:
+        """Append one particle and initialize all derived fields.
+
+        Parameters
+        ----------
+        position, velocity, vortex_strength : array-like
+            Three-vectors in m, m/s, and m³/s.
+        core_radius, particle_volume : float
+            Positive radius in m and quadrature volume in m³.
+        kinematic_viscosity, eddy_viscosity : float
+            Viscosities in m²/s; effective viscosity is their sum.
+        group_id, zone_id : int
+            Int32 labels used by diagnostics/coupling.
+        velocity_gradient : array-like
+            Optional ``(3, 3)`` Jacobian in 1/s.
+        vorticity : array-like
+            Optional ``(3,)`` diagnostic vorticity in 1/s.
+
+        Raises
+        ------
+        ValueError
+            If the capacity is full or data cannot be represented with the
+            required shapes/finite values.
+        """
         # Ensure we have space for one more particle
         self._grow_capacity(self.n_particles_total + 1)
 
@@ -1126,27 +1198,36 @@ class Particles:
         group_id: np.ndarray = None,
         zone_id: np.ndarray = None,
         velocity_gradient: np.ndarray = None,
-    ):
+    ) -> None:
         """
-        Initialize particle system from user-provided numpy arrays.
+        Append a validated batch of particles from NumPy-compatible arrays.
 
-        **Validates input for NaN/Inf values before adding particles.**
+        **All primary inputs are checked for finite values before insertion.**
 
-        Args:
-            position: Particle position [N, 3] in meters
-            velocity: Particle velocity [N, 3] in m/s
-            vortex_strength: Particle strength (α = ω·V) [N, 3] in m³/s
-            core_radius: Particle core radius [N] in meters
-            particle_volume: Particle volume [N] in m³
-            kinematic_viscosity: Molecular kinematic viscosity [N] in m²/s
-            eddy_viscosity: Turbulent viscosity [N] in m²/s (optional)
-            group_id: Particle group identifiers [N] (optional)
-            zone_id: Spatial zone identifiers [N] (optional)
-            velocity_gradient: Velocity gradient tensors [N, 3, 3] (optional)
+        Parameters
+        ----------
+        position, velocity, vortex_strength : numpy.ndarray
+            Fields with shape ``(N, 3)`` in m, m/s, and m³/s.
+        core_radius, particle_volume, kinematic_viscosity : numpy.ndarray
+            Fields with shape ``(N,)`` in m, m³, and m²/s.
+        eddy_viscosity : numpy.ndarray or None
+            Optional turbulent-viscosity field of shape ``(N,)`` in m²/s.
+        group_id, zone_id : numpy.ndarray or None
+            Optional int-like labels of shape ``(N,)``.
+        velocity_gradient : numpy.ndarray or None
+            Optional Jacobian field with shape ``(N, 3, 3)`` in 1/s.
 
-        Raises:
-            ValueError: If input contains NaN or Inf values
-            ValueError: If array shapes are inconsistent
+        Raises
+        ------
+        ValueError
+            If data are non-finite, shapes differ, or the fixed capacity would
+            be exceeded.
+
+        Notes
+        -----
+        The append mutates the active prefix, derives vorticity as
+        ``vortex_strength / particle_volume``, initializes missing diagnostic
+        tensors to zero, and increments the source-state revision.
         """
 
         # ---- INPUT VALIDATION: NaN/Inf CHECKS ----
@@ -1265,7 +1346,33 @@ class Particles:
         velocity_gradient: np.ndarray = None,
         strain_rate: np.ndarray = None,
     ) -> None:
-        """Replace the active particle cloud with NumPy arrays."""
+        """Replace the active particle cloud from validated NumPy arrays.
+
+        Parameters
+        ----------
+        position, velocity, vortex_strength : numpy.ndarray
+            Arrays with shape ``(N, 3)`` in m, m/s, and m³/s.
+        core_radius, particle_volume, kinematic_viscosity : numpy.ndarray
+            Arrays with shape ``(N,)`` in m, m³, and m²/s.
+        eddy_viscosity : numpy.ndarray or None, default=None
+            Optional turbulent viscosity, shape ``(N,)`` in m²/s; defaults to
+            zero.
+        group_id, zone_id : numpy.ndarray or None, default=None
+            Optional int32 labels, shape ``(N,)``; defaults to zero.
+        velocity_gradient, strain_rate : numpy.ndarray or None, default=None
+            Optional tensors with shape ``(N, 3, 3)`` in 1/s; defaults to zero.
+
+        Raises
+        ------
+        ValueError
+            If inputs are non-finite, shapes are inconsistent, or ``N`` exceeds
+            capacity.
+
+        Side Effects
+        ------------
+        Replaces every active device field, synchronizes the device count,
+        invalidates caches, and records the population replacement.
+        """
         previous = int(self.n_particles_total)
         _validate_finite_array(position, "position")
         _validate_finite_array(velocity, "velocity")
@@ -1369,18 +1476,31 @@ class Particles:
 
         This avoids CPU round-trips when shedding wake particles from the VLM solver.
 
-        Args:
-            count: Number of particles to copy from input fields
-            position: Source position field (Vector)
-            velocity: Source velocity field (Vector)
-            vortex_strength: Source vortex-strength field (Vector)
-            core_radius: Source core-radius field (Scalar)
-            particle_volume: Source particle-volume field (scalar)
-            group_id: Group ID to assign to new particles
-            kinematic_viscosity: Molecular kinematic viscosity to assign
+        Parameters
+        ----------
+        count : int
+            Number of source entries to append from the prefix of each field.
+        position, velocity, vortex_strength : ti.Vector.field
+            Source fields with logical shape ``(count, 3)`` in m, m/s, and
+            m³/s.
+        core_radius, particle_volume : ti.field
+            Source scalar fields with shape ``(count,)`` in m and m³.
+        group_id : int, default=0
+            Label assigned to every appended particle.
+        kinematic_viscosity : float, default=1.5e-5
+            Molecular viscosity assigned to every particle in m²/s.
 
-        Returns:
-            bool: True if successful, False if container is full
+        Returns
+        -------
+        bool
+            ``True`` when the append fits capacity; ``False`` when it would
+            overflow. A failed append does not mutate the container.
+
+        Notes
+        -----
+        The transfer stays on the Taichi device. Eddy viscosity, gradients,
+        strain, and zone IDs are initialized to zero; vorticity is initialized
+        to zero because the source contract does not provide a computed field.
         """
         start_idx = self.n_particles_total
 
@@ -1461,21 +1581,31 @@ class Particles:
         particle_volume,  # ti.field
         count: int,
         kinematic_viscosity: float,
-    ):
+    ) -> None:
         """
         Add particles directly from Taichi fields (GPU-to-GPU transfer).
 
         This method enables direct transfer from VLM wake buffers to VPM particles
         without numpy intermediates, providing significant performance improvement.
 
-        Args:
-            position: Taichi Vector.field (N x 3) source position
-            velocity: Taichi Vector.field (N x 3) source velocity
-            vortex_strength: Taichi Vector.field (N x 3) source vortex_strength
-            core_radius: Taichi field (N,) source core_radius
-            particle_volume: Taichi field (N,) containing source particle volume
-            count: Number of particles to transfer (must be <= source field size)
-            viscosity: Molecular viscosity to assign to all transferred particles
+        Parameters
+        ----------
+        position, velocity, vortex_strength : ti.Vector.field
+            Source fields with logical shape ``(count, 3)`` in m, m/s, and
+            m³/s.
+        core_radius, particle_volume : ti.field
+            Source fields with shape ``(count,)`` in m and m³.
+        count : int
+            Number of entries to append; it must fit both source fields and
+            this container's remaining capacity.
+        kinematic_viscosity : float
+            Molecular viscosity assigned to the batch in m²/s.
+
+        Side Effects
+        ------------
+        Performs a device-to-device copy, initializes derived fields, appends
+        the active count, and invalidates source caches. A zero count is a
+        no-op.
         """
         if count == 0:
             return
@@ -1593,11 +1723,26 @@ class Particles:
         particle_file_name: str,
         write_precision: str = DEFAULT_WRITE_PRECISION,
     ) -> None:
-        """Export the particle cloud to a VTP point cloud (field names match ``load_vortex_particles``).
+        """Export the particle cloud to a VTP point cloud.
 
         Point coordinates already carry the positions, and strain rate is the
         symmetric part of the velocity gradient, so neither is stored again;
         ParaView derives the magnitude of any vector on its own.
+
+        Parameters
+        ----------
+        particle_file_name : str
+            Destination VTP path. Parent-directory handling is delegated to
+            the VTK writer.
+        write_precision : str, default=DEFAULT_WRITE_PRECISION
+            Decimal precision used for serialized arrays; compute precision is
+            unchanged.
+
+        Side Effects
+        ------------
+        Downloads active fields to the CPU and writes a VTK PolyData file. It
+        does not mutate numerical fields. If PyVista is unavailable, the
+        export is skipped with a warning.
         """
         if not HAS_PYVISTA:
             Logging.warning(
@@ -1632,9 +1777,29 @@ class Particles:
             ("path", str(particle_file_name)),
         )
 
-    def load_vortex_particles(self, particle_file_name: str, remove_current_particles: bool = True):
-        """
-        Import particle data from a VTP file and repopulate the particle list.
+    def load_vortex_particles(
+        self, particle_file_name: str, remove_current_particles: bool = True
+    ) -> None:
+        """Import particle data from a VTP file.
+
+        Parameters
+        ----------
+        particle_file_name : str
+            Input VTP path containing the canonical particle arrays.
+        remove_current_particles : bool, default=True
+            Replace the active cloud when true; append loaded values otherwise.
+
+        Raises
+        ------
+        ImportError
+            If PyVista is unavailable.
+        KeyError
+            If a required point-data field is missing.
+
+        Side Effects
+        ------------
+        Reads the file, mutates the active device cloud, and records a load
+        event. The loaded arrays are converted to the container precision.
         """
         if not HAS_PYVISTA:
             raise ImportError("pyvista is required for VTP file operations")
@@ -1684,9 +1849,22 @@ class Particles:
     def _remove_weak_particles(self, percent: float = 0.0) -> np.ndarray:
         """Remove particles below a fraction of the global maximum strength.
 
-        Args:
-            percent: Percentage threshold relative to the cloud-wide maximum
-                vortex-strength magnitude, in the range 0-100.
+        Parameters
+        ----------
+        percent : float, default=0.0
+            Percentage threshold relative to the cloud-wide maximum
+            circulation magnitude, in the range 0--100.
+
+        Returns
+        -------
+        numpy.ndarray
+            Original active indices removed, shape ``(K,)``, dtype int64.
+
+        Notes
+        -----
+        This low-level helper keeps at least one particle when all entries
+        would otherwise be selected. The public solver wrapper handles
+        stabilization bookkeeping.
         """
         N = self.n_particles_total
 
@@ -1722,13 +1900,22 @@ class Particles:
     def update_vortex_strength_masked(
         self, mask: np.ndarray, vortex_strength_increment: np.ndarray
     ) -> None:
-        """Apply an in-place vortex strength delta to a masked subset of particles.
+        """Apply an in-place circulation delta to a masked subset.
 
         The operation is: Γ_i ← Γ_i + ΔΓ_i  for all i where mask[i] is True.
 
-        Args:
-            mask: Boolean array of shape (N,) selecting particles to update.
-            vortex_strength_increment: Array of shape (M, 3), where M = mask.sum().
+        Parameters
+        ----------
+        mask : numpy.ndarray
+            Boolean selection mask, shape ``(N,)``.
+        vortex_strength_increment : numpy.ndarray
+            Increments for selected entries, shape ``(M, 3)`` where
+            ``M = mask.sum()``, in m³/s.
+
+        Side Effects
+        ------------
+        Downloads/updates the active strength field, uploads it again, and
+        increments the source-state revision. Empty selections are no-ops.
         """
         N = self.n_particles_total
         if N == 0 or int(mask.sum()) == 0:
@@ -1738,7 +1925,21 @@ class Particles:
         self._copy_vectors_chunked(vortex_strength, self.vortex_strength, 0, N)
         self.touch_state()
 
-    def remove_vortex_particles(self, indices, remove_all: bool = False):
+    def remove_vortex_particles(self, indices, remove_all: bool = False) -> None:
+        """Remove indexed particles or clear the active cloud.
+
+        Parameters
+        ----------
+        indices : array-like or None
+            Active indices to remove when ``remove_all`` is false.
+        remove_all : bool, default=False
+            Set the active count to zero when true.
+
+        Side Effects
+        ------------
+        Compacts/repopulates every particle field, updates the active count,
+        and increments the source-state revision. Unused capacity is retained.
+        """
         if remove_all:
             self.n_particles_total = 0
         else:
@@ -1772,10 +1973,29 @@ class Particles:
                 self._populate_from_numpy(**filtered_data)
         self.touch_state()
 
-    def set_field(self, field_name: str, values: np.ndarray):
-        """
-        Set a specific field (e.g., 'kinematic_viscosity', 'core_radius', 'vortex_strength', etc.) with new values.
-        Handles scalar, vector, matrix, and int fields.
+    def set_field(self, field_name: str, values: np.ndarray) -> None:
+        """Replace one active particle field after shape validation.
+
+        Parameters
+        ----------
+        field_name : str
+            Canonical field name such as ``position``, ``vortex_strength``,
+            ``core_radius``, or ``velocity_gradient``.
+        values : numpy.ndarray
+            Values with leading dimension ``N`` and trailing shape ``()``,
+            ``(3,)``, or ``(3, 3)`` according to the field. Units follow the
+            corresponding container attribute.
+
+        Raises
+        ------
+        ValueError
+            If the field is unknown, the active count does not match, the
+            trailing shape is invalid, or values are non-finite.
+
+        Side Effects
+        ------------
+        Uploads the field in place. Position, strength, and core-radius writes
+        invalidate source caches; diagnostic-only writes do not.
         """
         if not hasattr(self, field_name):
             raise ValueError(f"Field '{field_name}' does not exist in Particles class.")
@@ -1817,6 +2037,41 @@ class Particles:
         if field_name in {"position", "vortex_strength", "core_radius"}:
             self.touch_state()
 
+    @ti.kernel
+    def _copy_particles_grouped_kernel(
+        self,
+        dest_offset: ti.i32,
+        src_count: ti.i32,
+        src_pos: ti.template(),
+        src_vel: ti.template(),
+        src_str: ti.template(),
+        src_rad: ti.template(),
+        src_vol: ti.template(),
+        src_gid: ti.template(),
+        p_viscosity: ti.f32,
+    ):
+        for i in range(src_count):
+            dest_idx = dest_offset + i
+            self.position[dest_idx] = src_pos[i]
+            self.velocity[dest_idx] = src_vel[i]
+            self.vortex_strength[dest_idx] = src_str[i]
+            self.core_radius[dest_idx] = src_rad[i]
+            self.particle_volume[dest_idx] = src_vol[i]
+            self.group_id[dest_idx] = src_gid[i]
+            self.kinematic_viscosity[dest_idx] = p_viscosity
+            self.eddy_viscosity[dest_idx] = 0.0
+            self.effective_viscosity[dest_idx] = p_viscosity
+
+            vol = src_vol[i]
+            if vol > 1e-15:
+                self.vorticity[dest_idx] = src_str[i] / vol
+            else:
+                self.vorticity[dest_idx] = ti.Vector([0.0, 0.0, 0.0])
+
+            self.zone_id[dest_idx] = 0
+            self.velocity_gradient[dest_idx].fill(0.0)
+            self.strain_rate[dest_idx].fill(0.0)
+
     def add_vortex_particles_from_fields_grouped(
         self,
         count: int,
@@ -1830,6 +2085,24 @@ class Particles:
     ) -> bool:
         """
         Add particles directly from Taichi fields with per-particle group IDs.
+
+        Parameters
+        ----------
+        count : int
+            Number of source entries to append.
+        position, velocity, vortex_strength : ti.Vector.field
+            Source vectors with shape ``(count, 3)`` in m, m/s, and m³/s.
+        core_radius, particle_volume : ti.field
+            Source scalars with shape ``(count,)`` in m and m³.
+        group_id : ti.field
+            Per-particle int32 labels with shape ``(count,)``.
+        kinematic_viscosity : float, default=1.5e-5
+            Molecular viscosity assigned to the batch in m²/s.
+
+        Returns
+        -------
+        bool
+            ``True`` when appended; ``False`` when capacity would overflow.
         """
         start_idx = self.n_particles_total
 
@@ -1837,42 +2110,7 @@ class Particles:
         if start_idx + count > self._max_particles:
             return False
 
-        # Kernel to copy data
-        @ti.kernel
-        def copy_particles_grouped_kernel(
-            dest_offset: ti.i32,
-            src_count: ti.i32,
-            src_pos: ti.template(),
-            src_vel: ti.template(),
-            src_str: ti.template(),
-            src_rad: ti.template(),
-            src_vol: ti.template(),
-            src_gid: ti.template(),
-            p_viscosity: ti.f32,
-        ):
-            for i in range(src_count):
-                dest_idx = dest_offset + i
-                self.position[dest_idx] = src_pos[i]
-                self.velocity[dest_idx] = src_vel[i]
-                self.vortex_strength[dest_idx] = src_str[i]
-                self.core_radius[dest_idx] = src_rad[i]
-                self.particle_volume[dest_idx] = src_vol[i]
-                self.group_id[dest_idx] = src_gid[i]
-                self.kinematic_viscosity[dest_idx] = p_viscosity
-                self.eddy_viscosity[dest_idx] = 0.0
-                self.effective_viscosity[dest_idx] = p_viscosity
-
-                vol = src_vol[i]
-                if vol > 1e-15:
-                    self.vorticity[dest_idx] = src_str[i] / vol
-                else:
-                    self.vorticity[dest_idx] = ti.Vector([0.0, 0.0, 0.0])
-
-                self.zone_id[dest_idx] = 0
-                self.velocity_gradient[dest_idx].fill(0.0)
-                self.strain_rate[dest_idx].fill(0.0)
-
-        copy_particles_grouped_kernel(
+        self._copy_particles_grouped_kernel(
             start_idx,
             count,
             position,

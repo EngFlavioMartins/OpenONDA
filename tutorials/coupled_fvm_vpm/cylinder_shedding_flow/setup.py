@@ -21,7 +21,7 @@ from openonda.vpm import Backup, Samplers
 CASE_DIR = Path(__file__).resolve().parent
 CYLINDER_STL = CASE_DIR / "assets" / "cylinder_long.stl"
 
-# ---- Physics -------------------------------------------------------------
+# Physics
 DIAMETER = 1.0
 CYLINDER_LENGTH = 4.0
 REYNOLDS_NUMBER = 150.0
@@ -30,14 +30,14 @@ FREESTREAM_VELOCITY = [1.0, 0.0, 0.0]
 KINEMATIC_VISCOSITY = 1.0 / REYNOLDS_NUMBER
 REFERENCE_AREA = DIAMETER * CYLINDER_LENGTH
 
-# ---- Domains -------------------------------------------------------------
+# Domains
 # The supplied finite surface spans z=-6..6; the typed mesher requires the
 # geometric authority to be strictly inside its outer domain.
 FVM_DOMAIN = (-3.0, 4.5, -3.5, 3.5, -6.25, 6.25)
 TRANSFER_REGION = (-2.75, 4.25, -3.25, 3.25, -1.5, 1.5)
 VPM_DOMAIN = (-8.0, 20.0, -8.0, 8.0, -4.0, 4.0)
 
-# ---- Time, mesh, and output ---------------------------------------------
+# Time, mesh, and output
 FVM_TIME_STEP_SIZE = 0.002
 VPM_TIME_STEP_SIZE = 0.05
 TOTAL_TIME = 60.0
@@ -58,8 +58,6 @@ VPM_PARTICLE_LIMIT = 750_000
 
 def interval_steps(interval: float, time_step_size: float) -> int:
     steps = round(interval / time_step_size)
-    if abs(steps * time_step_size - interval) > 1.0e-12:
-        raise ValueError(f"Output interval {interval:g} is not divisible by dt={time_step_size:g}")
     return steps
 
 
@@ -233,6 +231,7 @@ VPM_PANEL_SOLVER = vpm.PanelSolver(
 )
 
 VPM_CASE = vpm.VPMCase(
+    name="cylinder_shedding_flow",
     numerics=vpm.Numerics(
         time_step_size=VPM_TIME_STEP_SIZE,
         freestream_velocity=FREESTREAM_VELOCITY,

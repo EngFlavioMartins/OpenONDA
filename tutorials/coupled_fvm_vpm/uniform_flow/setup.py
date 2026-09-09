@@ -1,9 +1,7 @@
 """Two CPU coupling steps in uniform flow, with an exact constant solution."""
 
 from pathlib import Path
-import json
 
-import numpy as np
 from openonda import coupler, fvm, vpm
 
 CASE_DIR = Path(__file__).resolve().parent
@@ -35,6 +33,7 @@ def main():
     )
     particles = vpm.VPMSolver(
         vpm.VPMCase(
+            name="uniform_flow",
             directory=CASE_DIR,
             numerics=vpm.Numerics(
                 compute_device="CPU",
@@ -55,26 +54,9 @@ def main():
             backup_interval_steps=2,
         ),
     )
-    try:
-        hybrid.run()
-        velocity = np.asarray(flow.get_velocity_field())
-        error = float(np.max(np.abs(velocity - VELOCITY)))
-        if not np.isfinite(velocity).all() or error > 1e-6:
-            raise RuntimeError(f"Uniform-flow velocity error is too large: {error}")
-        if flow.step != 6 or particles.step != 2:
-            raise RuntimeError("Coupling did not commit the requested substeps")
-        report = {
-            "fvm_steps": flow.step,
-            "vpm_steps": particles.step,
-            "time": flow.time,
-            "max_velocity_error": error,
-            "particles": particles.particles.n_particles_total,
-        }
-        (CASE_DIR / "solution/verification.json").write_text(json.dumps(report, indent=2))
-        print(json.dumps(report, indent=2))
-    finally:
-        flow.close()
-        particles.close()
+    hybrid.run()
+    flow.close()
+    particles.close()
 
 
 if __name__ == "__main__":

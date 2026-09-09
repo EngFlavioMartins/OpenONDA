@@ -1,11 +1,19 @@
 """Central stage right-hand side for coupled VPM evolution."""
 
+from contextlib import ExitStack, contextmanager
 from typing import Protocol
 
 import numpy as np
 import taichi as ti
 
-from .induction.base import InductionMethod, StageRates, StageState
+from .induction.base import (
+    _STRETCHING_MODES,
+    InductionMethod,
+    StageRates,
+    StageState,
+    normalize_stretching_scheme,
+)
+from .induction.stretching import stretching_rate
 
 
 class ExternalStageContribution(Protocol):
@@ -41,6 +49,28 @@ class CallableStageContribution:
     def __init__(
         self, evaluate, *, include_external_stretching: bool = False, physics=None
     ) -> None:
+        """Create a host-callback stage provider.
+
+        Parameters
+        ----------
+        evaluate : callable
+            Callback with signature ``(stage_time, position,
+            vortex_strength, velocity_out, strength_rate_out, gradient_out)``.
+            The position and strength arrays have shape ``(N, 3)`` with m and
+            m³/s units; outputs are writable arrays with m/s, m³/s², and 1/s
+            units respectively.
+        include_external_stretching : bool, default=False
+            If true, add ``gradient.T @ vortex_strength`` to the returned
+            strength rate.
+        physics : PhysicsEngine, optional
+            Workspace used to transfer Taichi stage fields to and from NumPy.
+
+        Notes
+        -----
+        The callback is invoked once per RK stage and must fill or increment
+        the output arrays.  Its result is accumulated into the supplied
+        :class:`StageRates`; the accepted particle state is never exposed.
+        """
         self.evaluate = evaluate
         self.include_external_stretching = bool(include_external_stretching)
         self.physics = physics
@@ -48,6 +78,12 @@ class CallableStageContribution:
     def add_stage_rates(
         self, stage_state: StageState, stage_time: float, stage_rates: StageRates
     ) -> None:
+        """Evaluate the callback and accumulate its stage contributions.
+
+        ``stage_state`` is temporary RK data.  ``stage_rates`` is mutated in
+        place, while callback input/output scratch arrays are newly allocated
+        for the active particle count.
+        """
         count = int(stage_state.count)
         position = _stage_array(stage_state.position, count, self.physics)
         vortex_strength = _stage_array(stage_state.vortex_strength, count, self.physics)
@@ -74,28 +110,95 @@ class CallableStageContribution:
             _accumulate_stage_array(stage_rates.velocity_gradient, gradient, count, self.physics)
 
 
+@ti.kernel
+def _accumulate_vlm_stretching(
+    gradient: ti.template(),
+    strength: ti.template(),
+    rate: ti.template(),
+    total_gradient: ti.template(),
+    count: ti.i32,
+    mode: ti.i32,
+    has_gradient: ti.template(),
+):
+    for i in range(count):
+        jacobian = gradient[i]
+        rate[i] += stretching_rate(jacobian, strength[i], mode)
+        if ti.static(has_gradient):
+            total_gradient[i] += jacobian
+
+
 class VLMStageContribution:
     """Add the latest solved VLM bound-vortex field at RK stage positions.
 
-    VLM circulation and geometry are solved once by the accepted-step coupling
-    phase. The particle target positions are still the exact temporary RK
-    positions, so the external velocity is stage-state consistent while the
-    boundary solve itself remains an explicitly lagged accepted-step field.
-    VLM does not provide an external strength rate through this provider.
+    VLM circulation is solved once by the accepted-step coupling phase.
+    Prescribed geometry is predicted at each RK stage time. Particle targets
+    are the exact temporary RK positions, so external velocity is consistent
+    with the stage state while the
+    circulation remains an explicitly lagged accepted-step field.
+    Its gradient contributes to particle stretching using the selected scheme.
     """
 
     def __init__(self, vlm_solver, physics=None) -> None:
+        """Create a stage provider backed by a solved VLM object.
+
+        Parameters
+        ----------
+        vlm_solver : VLM-like
+            Object exposing ``add_stage_velocity`` and optionally
+            ``add_stage_velocity_and_gradient``.  It must evaluate at the
+            temporary stage positions supplied later.
+        physics : PhysicsEngine, optional
+            Workspace used to allocate and download the temporary velocity
+            gradient.  Supplying it enables external stretching from the VLM
+            gradient when the solver provides that method.
+        """
         self.vlm_solver = vlm_solver
         self.physics = physics
         self._gradient = None
+        self._native_rates = physics is not None and hasattr(vlm_solver, "add_stage_rates")
+        self._stage_weights = None
         if physics is not None:
-            self._gradient = ti.Matrix.field(
-                3, 3, dtype=physics.accumulator_dtype, shape=(physics.max_n_particles,)
-            )
+            self._stretching_mode = _STRETCHING_MODES[
+                normalize_stretching_scheme(physics.induction.stretching_scheme)
+            ]
+            if not self._native_rates:
+                self._gradient = ti.Matrix.field(
+                    3, 3, dtype=physics.accumulator_dtype, shape=(physics.max_n_particles,)
+                )
+
+    @contextmanager
+    def integration_step(self, tableau, time_step_size, strength_enabled):
+        """Retain only accepted RK contributions, excluding diagnostic probes."""
+        if not self._native_rates:
+            yield
+            return
+        scale = time_step_size if strength_enabled else 0.0
+        self._stage_weights = iter(scale * weight for weight in tableau.b)
+        try:
+            with self.vlm_solver.particle_transport_step():
+                yield
+        finally:
+            self._stage_weights = None
 
     def add_stage_rates(
         self, stage_state: StageState, stage_time: float, stage_rates: StageRates
     ) -> None:
+        """Add VLM-induced velocity and, when available, stretching rates.
+
+        The VLM solution is held fixed during the RK step, but targets are the
+        current temporary stage positions.  ``stage_rates.velocity`` and the
+        optional gradient/rate fields are mutated in place.
+        """
+        if self._native_rates:
+            weight = next(self._stage_weights) if self._stage_weights is not None else 0.0
+            self.vlm_solver.add_stage_rates(
+                stage_state,
+                stage_time,
+                stage_rates,
+                self._stretching_mode,
+                weight if stage_rates.strength_rate_enabled else 0.0,
+            )
+            return
         if self._gradient is None or not hasattr(
             self.vlm_solver, "add_stage_velocity_and_gradient"
         ):
@@ -112,20 +215,17 @@ class VLMStageContribution:
             self._gradient,
             stage_state.count,
             stage_time,
+            target_core_radius=stage_state.core_radius,
         )
-        gradient = self.physics._download_matrix_field(self._gradient, stage_state.count)
-        strength = _stage_array(stage_state.vortex_strength, stage_state.count, self.physics)
-        rate = np.einsum("nji,nj->ni", gradient, strength)
-        _accumulate_stage_array(
-            stage_rates.vortex_strength_rate, rate, stage_state.count, self.physics
+        _accumulate_vlm_stretching(
+            self._gradient,
+            stage_state.vortex_strength,
+            stage_rates.vortex_strength_rate,
+            stage_rates.velocity_gradient,
+            stage_state.count,
+            self._stretching_mode,
+            stage_rates.velocity_gradient is not None,
         )
-        if stage_rates.velocity_gradient is not None:
-            _accumulate_stage_array(
-                stage_rates.velocity_gradient,
-                gradient,
-                stage_state.count,
-                self.physics,
-            )
 
 
 class StageRHS:
@@ -145,9 +245,35 @@ class StageRHS:
         *,
         strength_enabled: bool = True,
     ) -> None:
+        """Create a central RHS evaluator for one RK stage.
+
+        Parameters
+        ----------
+        induction : InductionMethod
+            Self-induced velocity, velocity-gradient, and vortex-strength-rate
+            provider.
+        providers : tuple of ExternalStageContribution, default=()
+            Additional stage-consistent providers, evaluated in order after
+            self induction.  Their rates are accumulated into the same output
+            fields.
+        strength_enabled : bool, default=True
+            Global switch for vortex-strength evolution.  False zeros the
+            strength-rate output after all providers run, while velocity and
+            diagnostic gradients remain evaluated.
+        """
         self.induction = induction
         self.providers = tuple(providers)
         self.strength_enabled = bool(strength_enabled)
+
+    @contextmanager
+    def integration_step(self, tableau, time_step_size):
+        """Commit provider exchange ledgers with the common particle RK step."""
+        with ExitStack() as stack:
+            for provider in self.providers:
+                context = getattr(provider, "integration_step", None)
+                if context is not None:
+                    stack.enter_context(context(tableau, time_step_size, self.strength_enabled))
+            yield
 
     @property
     def requires_velocity_gradient(self) -> bool:
@@ -173,7 +299,25 @@ class StageRHS:
         return False
 
     def evaluate(self, stage_state: StageState, stage_time: float, stage_rates: StageRates) -> None:
-        """Evaluate self-induced and external rates for one common stage state."""
+        """Evaluate and accumulate all rates for one common RK stage.
+
+        Parameters
+        ----------
+        stage_state : StageState
+            Temporary stage positions, strengths, core radii, active count,
+            and stage time.  No accepted particle field is consulted.
+        stage_time : float
+            Physical stage time in seconds.
+        stage_rates : StageRates
+            Writable output fields.  Velocity is m/s, velocity gradient is
+            1/s, and vortex-strength rate is m³/s².
+
+        Notes
+        -----
+        The output fields are mutated in place.  Providers see the same stage
+        state and are evaluated sequentially; disabling strength evolution
+        zeros the final rate after all provider callbacks complete.
+        """
         self.induction.evaluate_stage(
             position=stage_state.position,
             vortex_strength=stage_state.vortex_strength,
@@ -283,6 +427,25 @@ class ParticleExternalStageContribution:
     """
 
     def __init__(self, particles, physics, source_owner=None) -> None:
+        """Create a provider for particle background/body/source fields.
+
+        Parameters
+        ----------
+        particles : Particles
+            Particle container supplying the uniform background velocity.
+        physics : PhysicsEngine
+            Device workspace used for source kernels, stage transfers, and
+            optional body callbacks.
+        source_owner : object, optional
+            Object exposing source arrays and ``n_sources`` for surface-source
+            or blockage contributions.
+
+        Notes
+        -----
+        The provider retains references but does not copy the particle or
+        physics workspaces.  It allocates one reusable ``(max_n_particles, 3,
+        3)`` gradient field on the Taichi device.
+        """
         self.particles = particles
         self.physics = physics
         self.source_owner = source_owner
@@ -298,6 +461,13 @@ class ParticleExternalStageContribution:
     def add_stage_rates(
         self, stage_state: StageState, stage_time: float, stage_rates: StageRates
     ) -> None:
+        """Add background, source, body, and override rates for a stage.
+
+        Callbacks are evaluated at temporary stage positions.  Velocity,
+        velocity-gradient, and vortex-strength-rate outputs are mutated in
+        place; body gradients use the convention ``J[i, j] = d u_i / d x_j``
+        and stretching is ``J.T @ Gamma``.
+        """
         count = stage_state.count
         if count == 0:
             return
@@ -504,6 +674,22 @@ class AxisymmetricNoSwirlStageProjection:
     """Project stage velocity and strength rates onto the declared symmetry."""
 
     def __init__(self, physics, orbit_id, axis: int) -> None:
+        """Create a projection provider for one Cartesian symmetry axis.
+
+        Parameters
+        ----------
+        physics : PhysicsEngine
+            Workspace providing ``average_axisymmetric_no_swirl_rhs``.
+        orbit_id : object
+            Identifier of the axisymmetric orbit/particle group to average.
+        axis : {0, 1, 2}
+            Cartesian axis about which the no-swirl projection is defined.
+
+        Raises
+        ------
+        ValueError
+            If ``axis`` is not 0, 1, or 2.
+        """
         if axis not in (0, 1, 2):
             raise ValueError("axis must be 0, 1, or 2")
         self.physics = physics
@@ -513,6 +699,7 @@ class AxisymmetricNoSwirlStageProjection:
     def add_stage_rates(
         self, stage_state: StageState, stage_time: float, stage_rates: StageRates
     ) -> None:
+        """Project stage velocity and strength-rate fields in place."""
         del stage_time
         self.physics.average_axisymmetric_no_swirl_rhs(
             stage_state.position,

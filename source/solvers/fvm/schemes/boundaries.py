@@ -77,14 +77,53 @@ class BoundaryRegistry:
     """
 
     def __init__(self) -> None:
+        """Create an empty boundary-operator registry.
+
+        The registry is a host-side mapping from boundary name to supported
+        field/operator strategies. It allocates no mesh or solver state; use
+        :meth:`register` to add unique entries.
+        """
         self._entries: dict[str, BoundaryOperator] = {}
 
     def register(self, entry: BoundaryOperator) -> None:
+        """Register one unique field/operator boundary capability.
+
+        Parameters
+        ----------
+        entry : BoundaryOperator
+            Immutable record naming supported fields, operations, and strategy.
+
+        Raises
+        ------
+        ValueError
+            If ``entry.name`` is already registered.
+        """
         if entry.name in self._entries:
             raise ValueError(f"Boundary operator {entry.name!r} is already registered")
         self._entries[entry.name] = entry
 
     def require(self, name: str, field: str, operator: str) -> BoundaryOperator:
+        """Resolve a boundary capability or raise a descriptive error.
+
+        Parameters
+        ----------
+        name : str
+            OpenFOAM-style boundary name, such as ``"fixedValue"``.
+        field : str
+            Field family requesting the operation, such as ``"velocity"``.
+        operator : str
+            Discrete operation, such as ``"gradient"`` or ``"flux"``.
+
+        Returns
+        -------
+        BoundaryOperator
+            Registered immutable capability record.
+
+        Raises
+        ------
+        ValueError
+            If the name/field/operator combination is unsupported.
+        """
         entry = self._entries.get(name)
         if entry is None or field not in entry.fields or operator not in entry.operators:
             supported = sorted(
@@ -99,6 +138,7 @@ class BoundaryRegistry:
         return entry
 
     def names_for(self, field: str) -> set[str]:
+        """Return a new set of boundary names supporting ``field``."""
         return {name for name, entry in self._entries.items() if field in entry.fields}
 
     def strategy(self, name: str, field: str, operator: str) -> BoundaryStrategy:

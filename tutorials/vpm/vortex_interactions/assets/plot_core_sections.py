@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-import json
 from pathlib import Path
 
 import defusedxml.ElementTree as ET
@@ -20,16 +19,15 @@ from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
 import pyvista as pv
 
-from .. import setup
-
 if not __package__:
     from openonda.tutorial_runner import case_package
     from pathlib import Path as _CasePath
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-from ..study import STUDY_DIR
-from .ring_metrics import _theme
+from .. import setup
+from .study import STUDY_DIR
+from .ring_metrics import _theme, load_metadata, load_study_metadata, metadata_settings
 
 
 def read_plane(path):
@@ -63,21 +61,20 @@ def discover(samples_dir, study_dir, runs=None):
         name = folder.name
         if runs and name not in runs:
             continue
-        metadata = folder / "result.json"
-        signature = (
-            json.loads(metadata.read_text()).get("signature", {}) if metadata.exists() else {}
-        )
-        scenario = signature.get("scenario", "leapfrog")
+        metadata = load_study_metadata(folder) if is_study else load_metadata(name)
+        settings = metadata_settings(metadata) if metadata else {}
+        scenario = settings.get("scenario", "leapfrog")
         label = setup.CASE_LABELS.get(name, name.replace("_", " "))
-        if signature:
-            scheme = signature.get("diffusion", "CS")
+        if settings:
+            scheme = settings.get("diffusion", "CS")
             if scheme == "GBD":
-                scheme += "/" + signature.get("gbd_remeshing", "M4_PRIME").replace(
+                scheme += "/" + settings.get("gbd_remeshing", "M4_PRIME").replace(
                     "M4_PRIME", "M4'"
                 ).replace("LAGRANGE6", "Lagrange-6")
             label = (
-                f"{scheme}, {signature.get('integrator', 'SSPRK3')}\n"
-                rf"$h/R_0={signature['spacing']:g}$, $\Delta t={signature['dt']:g}$"
+                f"{settings.get('method', 'baseline').replace('p_moments', 'weak realignment').replace('_', ' ').capitalize()}\n"
+                f"{scheme}, {settings.get('integrator', 'SSPRK3')}\n"
+                rf"$h/R_0={settings['spacing']:g}$, $\Delta t={settings['dt']:g}$"
             )
         for entry in ET.parse(index).findall(".//DataSet"):
             records.append(
@@ -165,7 +162,6 @@ def render(records, output, formats=("pdf", "png")):
             for fmt in formats:
                 fig.savefig(output / f"{stem}.{fmt}", dpi=theme.DEFAULT_DPI, bbox_inches=None)
             plt.close(fig)
-            (output / f"{stem}.json").write_text(json.dumps(page, default=str, indent=2) + "\n")
             print(f"Saved {output / stem}", flush=True)
     if not records:
         print("No core_section.pvd samples found; new runs record these through setup.py.")

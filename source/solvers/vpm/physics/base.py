@@ -1276,7 +1276,7 @@ class PhysicsBase:
         source_position : ndarray (N, 3)
             Positions of source particles.
         source_vortex_strength : ndarray (N, 3)
-            Vortex strength (vortex strength α) of source particles.
+            Vortex-strength vectors ``Gamma`` of source particles.
         source_core_radius : ndarray (N,)
             Core core_radius of source particles.
         target_position : ndarray (M, 3)

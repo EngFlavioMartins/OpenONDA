@@ -14,8 +14,10 @@ import pytest
 from source.solvers.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
+    FVMCase,
     FVMSetup,
     FVMSolver,
+    InitialFields,
     LinearSolverConfig,
     LineSampler,
     PimpleControl,
@@ -94,19 +96,31 @@ def test_restart_restores_backward_time_history(tmp_path):
     assert resumed.step == reference.step
 
 
-def test_run_manifest_serializes_sampler_configuration(tmp_path):
+def test_solver_metadata_serializes_sampler_configuration(tmp_path):
     setup = _setup()
     setup.samplers = (
         LineSampler(start=[0, 0, 0], end=[1, 0, 0], n_points=3, file_name="centreline"),
     )
     with contextlib.redirect_stdout(io.StringIO()):
         solver = FVMSolver(setup, str(tmp_path), mesh_data=structured_box(2, 2, 2))
-    destination = tmp_path / "run_manifest.json"
+    default_metadata = tmp_path / "solution" / "fvm_metadata.json"
+    assert default_metadata.is_file()
+    assert json.loads(default_metadata.read_text(encoding="utf-8"))["lifecycle"] == {
+        "status": "created"
+    }
+
+    destination = tmp_path / "metadata.json"
     solver.write_run_manifest(destination)
     solver.close()
 
     payload = json.loads(destination.read_text(encoding="utf-8"))
-    assert payload["active_components"]["immersed_boundary"] is False
+    assert payload["schema_version"] == 1
+    assert payload["solver"] == "FVM"
+    assert payload["case_name"] == "restart_test"
+    assert payload.get("lifecycle", {}) == {}
+    assert "reason" not in payload
+    assert "failure" not in payload
+    assert "error" not in payload
     sampler = payload["configuration"]["samplers"][0]
     assert sampler["type"] == "LineSampler"
     assert sampler["file_name"] == "centreline"
@@ -137,7 +151,7 @@ def test_solver_owns_named_solution_and_sample_directories(tmp_path):
     assert Path(solver.solution_dir) == solution
     assert Path(solver.samples_dir) == samples
     assert (solution / "fvm.log").is_file()
-    assert (solution / "run_manifest.json").is_file()
+    assert (solution / "fvm_metadata.json").is_file()
     assert (samples / "centreline.csv").is_file()
 
 
@@ -196,16 +210,21 @@ def test_solver_factory_builds_mesher_objects_and_persists_the_result(tmp_path):
     assert (solution / "mesh.vtu").is_file()
 
 
-def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_path):
+def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_path, monkeypatch):
+    from source.solvers.fvm.io import logging as fvm_logging
+
     solution = tmp_path / "solution" / "startup"
     samples = tmp_path / "samples" / "startup"
     observed = {}
+    console = io.StringIO()
+    monkeypatch.setattr(fvm_logging, "_CONSOLE_STDOUT", console)
 
     class Mesher:
         def build(self):
             observed["solution_exists"] = solution.is_dir()
             observed["samples_exists"] = samples.is_dir()
             observed["log"] = (solution / "fvm.log").read_text(encoding="utf-8")
+            observed["mesher_log"] = (solution / "mesher.log").read_text(encoding="utf-8")
             return structured_box(2, 2, 2)
 
     with contextlib.redirect_stdout(io.StringIO()):
@@ -222,6 +241,68 @@ def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_p
     assert observed["samples_exists"]
     assert "FVM STARTUP" in observed["log"]
     assert "materializing mesh" in observed["log"]
+    assert str(solution / "mesher.log") in observed["log"]
+    assert str(solution / "mesher.log") in console.getvalue()
+    assert "START    meshing session" in observed["mesher_log"]
+    assert "START    mesh materialization" in observed["mesher_log"]
+    completed_log = (solution / "mesher.log").read_text(encoding="utf-8")
+    assert "DONE     mesh materialization" in completed_log
+    assert "DONE     mesh backup export" in completed_log
+    assert "COMPLETE meshing session" in completed_log
+
+
+def test_solver_factory_uses_default_solution_directory_for_mesher_log(tmp_path):
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = create_fvm_solver(
+            _setup(),
+            case_dir=tmp_path,
+            mesh=lambda: structured_box(2, 2, 2),
+        )
+    solver.close()
+
+    log_path = tmp_path / "solution" / "mesher.log"
+    assert log_path.is_file()
+    assert str(log_path) in (tmp_path / "solution" / "fvm.log").read_text(encoding="utf-8")
+
+
+def test_solver_factory_records_mesher_failure_in_solution_log(tmp_path):
+    solution = tmp_path / "custom-output"
+
+    def fail_mesh():
+        raise RuntimeError("deliberate mesher failure")
+
+    with pytest.raises(RuntimeError, match="deliberate mesher failure"):
+        create_fvm_solver(
+            _setup(),
+            case_dir=tmp_path,
+            solution_dir=solution,
+            mesh=fail_mesh,
+        )
+
+    mesher_log = (solution / "mesher.log").read_text(encoding="utf-8")
+    assert "FAILED   mesh materialization" in mesher_log
+    assert "FAILED   meshing session" in mesher_log
+    assert "error_type=RuntimeError" in mesher_log
+    assert "error=deliberate mesher failure" in mesher_log
+
+
+def test_public_fvm_case_uses_same_default_solution_mesher_log(tmp_path):
+    case = FVMCase(
+        name="public-mesher-log",
+        mesh=lambda: structured_box(2, 2, 2),
+        directory=tmp_path,
+        boundaries=tuple(_setup().boundaries),
+        initial_conditions=InitialFields(velocity=(0.2, 0.0, 0.0)),
+    )
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver = FVMSolver(case)
+    solver.close()
+
+    assert Path(solver.solution_dir) == tmp_path / "solution"
+    mesher_log = (tmp_path / "solution" / "mesher.log").read_text(encoding="utf-8")
+    assert "DONE     mesh materialization" in mesher_log
+    assert "COMPLETE meshing session" in mesher_log
 
 
 @pytest.mark.parametrize("source_kind", ["dictionary", "file"])

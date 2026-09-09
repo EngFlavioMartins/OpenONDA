@@ -1,32 +1,4 @@
-#!/usr/bin/env bash
-# Make every step-profile figure (profiles, reattachment comparison).
-#
-# Usage:
-#   ./allplot.sh        PNG figures (default)
-#   ./allplot.sh pdf    PDF figures
-set -euo pipefail
+#!/bin/bash -e
 
-cd "$(dirname "$0")"
-
-format="${1:-png}"
-case "$format" in
-    png|pdf) ;;
-    *) echo "Usage: $0 [png|pdf]" >&2; exit 2 ;;
-esac
-
-mkdir -p figures
-
-echo
-echo "===== FIGURES ($format) ====="
-echo
-
-plot() {
-    python "$@" --format "$format"
-}
-
-plot assets/plot_profile.py
-plot assets/plot_comparison.py
-
-echo
-echo "===== DONE ====="
-echo "Figures saved to: figures/"
+python assets/plot_profile.py --format "${1:-png}"
+python assets/plot_comparison.py --format "${1:-png}"

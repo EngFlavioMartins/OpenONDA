@@ -9,6 +9,8 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 
 import numba
@@ -75,6 +77,38 @@ def _verify_taichi() -> tuple[str, str]:
             return version_text, architecture
     finally:
         ti.reset()
+
+
+def _verify_cartesian_mesher() -> dict[str, str | int]:
+    """Exercise the installed, compiled octree using packaged STL geometry."""
+    from source.solvers.fvm.mesh.cartesian.cfmesh_octree import _balance_selection_kernel
+
+    surface = msh.STLSurface(
+        Path(resources.files("tutorials"))
+        / "coupled_fvm_vpm/cylinder_shedding_flow/reference_flow/assets/cylinder_long.stl",
+        patch="body",
+    )
+    mesh = msh.CartesianMesher(
+        domain=msh.BoxDomain(
+            bounds=(-2.0, 2.0, -2.0, 2.0, -1.0, 1.0),
+            patches=msh.BoxPatches("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
+        ),
+        surfaces=(surface,),
+        max_cell_size=0.5,
+        patch_refinements=(msh.PatchRefinement("body", 0.125),),
+        surface_may_cross_domain_boundary=True,
+    ).build(stop_after="templateGeneration")
+    if not getattr(_balance_selection_kernel, "nopython_signatures", ()):
+        raise RuntimeError(
+            "Cartesian octree acceleration is inactive; check that NUMBA_DISABLE_JIT is unset"
+        )
+    if mesh["n_cells"] <= 0 or not np.all(np.isfinite(mesh["vertex_position"])):
+        raise RuntimeError("Cartesian mesher installation smoke produced an invalid template")
+    return {
+        "balancing_backend": "numba",
+        "n_cells": int(mesh["n_cells"]),
+        "n_faces": int(mesh["n_faces"]),
+    }
 
 
 def _verify_native_fvm() -> dict[str, float | int]:
@@ -205,7 +239,75 @@ def _verify_distribution_resources() -> dict[str, object]:
     }
 
 
+def _verify_direct_tutorial_scripts() -> int:
+    """Exercise normal Python file commands in copied cases outside the checkout."""
+    scripts = {
+        "vpm/lamb_oseen_vortex": (
+            "setup.py",
+            "assets/rwm_ensemble.py",
+            "assets/postprocess.py",
+            "assets/plot_merging_snapshots.py",
+        ),
+        "vpm/vortex_ring": ("setup.py", "assets/postprocess.py"),
+        "vpm/vortex_interactions": ("setup.py", "setup_les.py", "assets/study.py"),
+        "coupled_fvm_vpm/cube_flow": ("assets/check_run.py",),
+    }
+    checked = 0
+    with tempfile.TemporaryDirectory(prefix="openonda-direct-scripts-") as directory:
+        workspace = Path(directory) / "case with spaces"
+        environment = os.environ.copy()
+        environment.pop("PYTHONPATH", None)
+        environment["MPLCONFIGDIR"] = str(Path(directory) / "matplotlib")
+        for tutorial, filenames in scripts.items():
+            case = materialize_tutorial(tutorial, workspace)
+            for filename in filenames:
+                result = subprocess.run(
+                    [sys.executable, "-I", str(case / filename), "--help"],
+                    cwd=directory,
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                )
+                if result.returncode or "usage:" not in result.stdout:
+                    raise RuntimeError(
+                        f"Direct tutorial command failed: {tutorial}/{filename} --help\n"
+                        f"{result.stdout}\n{result.stderr}"
+                    )
+                checked += 1
+    return checked
+
+
 def main() -> int:
+    """Run the command-line installation verification suite.
+
+    The check validates that the imported package, distribution resources, direct
+    tutorial entry points, Cartesian meshing, Taichi runtime, and native FVM
+    extension are usable from an installed environment.  It deliberately removes
+    ``PYTHONPATH`` while exercising tutorial scripts so a source checkout cannot
+    mask packaging errors.
+
+    Returns
+    -------
+    int
+        Process exit status.  ``0`` is returned after every requested check
+        succeeds; failed checks raise their underlying exception before this
+        function returns.
+
+    Raises
+    ------
+    RuntimeError
+        If a package, tutorial, meshing, runtime, or native-extension check fails.
+    ImportError
+        If an optional dependency required by a requested check is unavailable.
+
+    Notes
+    -----
+    The ``--require-site-packages`` option rejects editable/source-checkout
+    imports.  The ``--with-meshing`` option additionally initializes Gmsh and
+    checks a one-unit cube.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--require-site-packages",
@@ -223,6 +325,8 @@ def main() -> int:
         "openonda_version": openonda.__version__,
         "package_path": str(_verify_package_location(args.require_site_packages)),
         "distribution": _verify_distribution_resources(),
+        "direct_tutorial_scripts": _verify_direct_tutorial_scripts(),
+        "cartesian_mesher": _verify_cartesian_mesher(),
     }
     if args.with_meshing:
         report["gmsh_version"] = _verify_gmsh()

@@ -48,11 +48,36 @@ class RingDiagnosticsSampler:
         *,
         schedule: OutputSchedule | None = None,
         file_name: str = "ring_diagnostics",
+        initial: bool | None = None,
     ) -> None:
+        """Configure grouped vortex-ring diagnostics output.
+
+        Parameters
+        ----------
+        schedule : OutputSchedule or None, optional
+            Optional time/step schedule. ``None`` leaves scheduling to the
+            caller while :meth:`write` still enforces monotonic output.
+        file_name : str, default="ring_diagnostics"
+            Stem of the CSV file written below the active output directory;
+            ``.csv`` is appended by :meth:`write`.
+        initial : bool or None, default=None
+            Include the initial state. ``None`` retains a subclass's policy.
+
+        Raises
+        ------
+        ValueError
+            If ``file_name`` is empty.
+
+        Notes
+        -----
+        The constructor creates no files and does not retain particle arrays.
+        """
         if not file_name:
             raise ValueError("RingDiagnosticsSampler file_name must not be empty")
         self.schedule = schedule
         self.file_name = file_name
+        if initial is not None:
+            self.initial = initial
 
     def save_csv(
         self,

@@ -3,8 +3,8 @@
 
 Four two-bladed rotors counter-rotate on a small quadcopter frame. The vehicle
 climbs at constant speed while the rotors shed their wakes into the flow. The
-particle count and the integrated vorticity history are sampled for the
-diagnostic figures made by ``allplot.sh``.
+native blade forces, shaft power and downstream velocity are sampled for
+the figures made by ``allplot.sh``.
 
 The induction backend and stretching formulation are independent. Set
 `stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
@@ -15,50 +15,43 @@ Usage:
 
 from __future__ import annotations
 
-if not __package__:
-    from pathlib import Path as _CasePath
-    from openonda.tutorial_runner import case_package
-
-    __package__ = case_package(_CasePath(__file__).resolve().parents[0]) + ""
-
-
 from pathlib import Path
 
 import numpy as np
 
-from .assets.generate_blade import create_rotor_blade, save_blade
 import openonda.vpm as vpm
+from openonda.tutorial_runner import case_package
 from openonda.vpm import Backup, Samplers
 
-TUTORIAL_DIR = Path(__file__).resolve().parent
+__package__ = case_package(Path(__file__).parent)
+from .assets.generate_blade import create_rotor_blade, save_blade
+
 CASE_NAME = "quadcopter"
 
-# ---- Rotor and flow ------------------------------------------------------
-ROTATIONS_PER_MINUTE = 200.0
-ANGULAR_VELOCITY = ROTATIONS_PER_MINUTE * 2.0 * np.pi / 60.0
+# Rotor and flow
+ROTATIONS_PER_MINUTE = 4000.0
+ANGULAR_VELOCITY = ROTATIONS_PER_MINUTE * 2.0 * np.pi / 60.0  # [rad/s]
 TIP_RADIUS = 0.15
-HUB_RADIUS = 0.03
-AIR_DENSITY = 1.225
-KINEMATIC_VISCOSITY = 1.5e-5
+HUB_RADIUS = 0.03  # [m]
+AIR_DENSITY = 1.225  # [kg/m^3]
+KINEMATIC_VISCOSITY = 1.5e-5  # [m^2/s]
 NUMBER_OF_BLADES = 2
 CLIMB_SPEED = 0.8
 ARM_LENGTH = 0.16
 
-# ---- Time resolution ------------------------------------------------------
-DEGREES_PER_STEP = 7.5
-TIME_STEP_SIZE = np.deg2rad(DEGREES_PER_STEP) / ANGULAR_VELOCITY
+# Time resolution
+DEGREES_PER_STEP = 3.75
+TIME_STEP_SIZE = np.deg2rad(DEGREES_PER_STEP) / ANGULAR_VELOCITY  # [s]
 STEPS_PER_REVOLUTION = round(360.0 / DEGREES_PER_STEP)
-NUMBER_OF_REVOLUTIONS = 6
+NUMBER_OF_REVOLUTIONS = 24
 N_STEPS = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION
-SAMPLE_INTERVAL_TIME = 0.0375  # write a snapshot every this many seconds
-BACKUP_INTERVAL_TIME = 0.0125  # 24 animation frames per rotor revolution
+SAMPLE_INTERVAL_TIME = 12 * TIME_STEP_SIZE  # eight field snapshots per revolution
+BACKUP_INTERVAL_TIME = 2 * STEPS_PER_REVOLUTION * TIME_STEP_SIZE  # every two revolutions
 
 WAKE_PLANES = (("sampled_zplane", -0.35), ("sampled_zplane_deep", -0.70))
 
 
-def cadence_steps(period: float) -> int:
-    """Convert a physical output period to solver steps."""
-    return max(1, round(period / TIME_STEP_SIZE))
+TUTORIAL_DIR = Path(__file__).resolve().parent
 
 
 def run() -> None:
@@ -111,35 +104,40 @@ def run() -> None:
         density=AIR_DENSITY,
         sigma_factor=2.5,
         sample_surface_forces=True,
-        logging_interval_steps=cadence_steps(SAMPLE_INTERVAL_TIME),
+        logging_interval_steps=2,  # 48 force samples per revolution
     )
 
-    sample_steps = cadence_steps(SAMPLE_INTERVAL_TIME)
+    sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
     case = vpm.VPMCase(
+        name=CASE_NAME,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="VULKAN",
+            compute_device="AUTO",
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            induction=vpm.FMMInduction(stretching_scheme="transposed"),
-            turbulence=vpm.TurbulenceConfig.dns(),
+            induction=vpm.TreecodeInduction(
+                stretching_scheme="transposed", theta=0.3, multipole_order=3
+            ),
+            turbulence=vpm.TurbulenceConfig.les_smagorinsky(smagorinsky_coefficient=0.17),
             particle_kernel="WINCKELMANS",
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],
             stabilization=vpm.StabilizationConfig(
                 remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0]
             ),
+            max_n_particles=500_000,
             write_precision="f32",
         ),
         backup=Backup(
-            interval_steps=cadence_steps(BACKUP_INTERVAL_TIME),
+            interval_steps=round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE),
             directory="solution",
             log_directory="solution",
         ),
         samplers=Samplers(
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),
+                vpm.VLMSampler(schedule=vpm.EverySteps(sample_steps)),
                 *(
                     vpm.SurfaceSampler(
                         point=[0.0, 0.0, height],
@@ -161,14 +159,5 @@ def run() -> None:
     vpm.VPMSolver(case).run()
 
 
-def main() -> int:
-    print("\n===== SIMULATION =====")
-    print("---- Quadcopter climb: 4 rotors, 2 blades each, 6 revolutions ----")
-    run()
-    print("\n===== DONE =====")
-    print("Simulation completed successfully. Run ./allplot.sh to make the figures.")
-    return 0
-
-
 if __name__ == "__main__":
-    raise SystemExit(main())
+    run()

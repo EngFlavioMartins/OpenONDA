@@ -57,7 +57,6 @@ def _theme():
 VARIANT_STYLE = _theme().VORTEX_RING_VARIANT_STYLE
 VARIANT_LABEL = _theme().VORTEX_RING_VARIANT_LABEL
 CURRENT_VARIANTS = ("dns_direct", "dns_transposed", "dns_mixed", "les_transposed")
-OLDER_VARIANTS = ("dns_treecode", "les_treecode")
 EXPECTED_STRETCHING_SCHEME = {
     "dns_direct": "DIRECT",
     "dns_transposed": "TRANSPOSED",
@@ -66,70 +65,57 @@ EXPECTED_STRETCHING_SCHEME = {
 }
 
 
+def metadata_path(variant: str, samples_dir: Path = SAMPLES_DIR) -> Path:
+    """Return the solver-owned metadata path corresponding to a sample root."""
+    solution_dir = SOLUTION_DIR if samples_dir == SAMPLES_DIR else samples_dir.parent / "solution"
+    return solution_dir / variant / "vpm_metadata.json"
+
+
+def load_metadata(variant: str, samples_dir: Path = SAMPLES_DIR) -> dict:
+    """Load one universal VPM metadata record from its backup directory."""
+    try:
+        payload = json.loads(metadata_path(variant, samples_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _stretching_scheme(metadata: dict) -> str | None:
+    numerics = metadata.get("configuration", {}).get("numerics", {})
+    induction = numerics.get("induction", {})
+    value = induction.get("stretching_scheme")
+    return None if value is None else str(value).upper()
+
+
 def plot_variants(samples_dir: Path = SAMPLES_DIR) -> tuple[str, ...]:
-    """Return available results, including older two-case data when useful."""
-    current = set()
-    for variant in CURRENT_VARIANTS:
-        try:
-            metadata = json.loads(
-                (samples_dir / variant / "run_metadata.json").read_text(encoding="utf-8")
-            )
-        except (OSError, ValueError):
-            continue
-        if (
-            metadata.get("schema_version") in {3, 4}
-            and metadata.get("variant") == variant
-            and metadata.get("stretching_scheme") == EXPECTED_STRETCHING_SCHEME[variant]
-        ):
-            current.add(variant)
-
-    older = set()
-    for variant in OLDER_VARIANTS:
-        try:
-            metadata = json.loads(
-                (samples_dir / variant / "run_metadata.json").read_text(encoding="utf-8")
-            )
-        except (OSError, ValueError):
-            continue
-        if metadata.get("schema_version") == 2 and metadata.get("variant") == variant:
-            older.add(variant)
-
+    """Return current cases backed by compatible solver-owned metadata."""
     selected = []
-    substitutes = {
-        "dns_transposed": "dns_treecode",
-        "les_transposed": "les_treecode",
-    }
     for variant in CURRENT_VARIANTS:
-        if variant in current:
+        metadata = load_metadata(variant, samples_dir)
+        if (
+            metadata.get("schema_version") == 1
+            and metadata.get("solver") == "VPM"
+            and metadata.get("case_name") == variant
+            and _stretching_scheme(metadata) == EXPECTED_STRETCHING_SCHEME[variant]
+        ):
             selected.append(variant)
-        elif substitutes.get(variant) in older:
-            selected.append(substitutes[variant])
     return tuple(selected)
 
 
 def load_stability_results(samples_dir: Path = SAMPLES_DIR) -> tuple[dict, ...]:
     """Return finished or currently observed times for the four cases."""
     results = []
-    finished_statuses = {
-        "horizon_reached",
-        "instability_detected",
-        # Read older local outputs while a new campaign replaces them.
-        "complete",
-        "resolution_lost",
-    }
+    finished_statuses = {"completed", "resolution_lost", "wall_time_limit", "failed"}
     for variant in plot_variants(samples_dir):
         variant_dir = samples_dir / variant
-        try:
-            metadata = json.loads((variant_dir / "run_metadata.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            metadata = {}
-        status = str(metadata.get("status", "running"))
+        metadata = load_metadata(variant, samples_dir)
+        status = str(metadata.get("lifecycle", {}).get("status", "created"))
         observed_step = None
         observed_time = None
         if status in finished_statuses:
             try:
-                observed_step = int(metadata["completed_steps"])
-                observed_time = float(metadata["final_time"])
+                observed_step = int(metadata["state"]["step"])
+                observed_time = float(metadata["state"]["time"])
             except (KeyError, TypeError, ValueError):
                 continue
         else:

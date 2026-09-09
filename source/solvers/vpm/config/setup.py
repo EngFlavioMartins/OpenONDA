@@ -7,7 +7,32 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PanelBodySetup:
-    """Declarative setup for one closed STL body in the panel solver."""
+    """Declare one closed body for the source/doublet panel solver.
+
+    Parameters
+    ----------
+    stl : str
+        Path to a closed triangulated surface; read when the solver is built.
+    uid : str
+        Non-empty stable body identifier used in output and restart metadata.
+    group_id : int, default=0
+        Non-negative label assigned to body-related particles/diagnostics.
+    kinematics : object or None, optional
+        Panel-motion object; ``None`` selects static geometry.
+    translation : tuple[float, float, float] or None, optional
+        Initial Cartesian displacement in m.
+    rotation_degrees : tuple[float, float, float] or None, optional
+        Initial x/y/z rotations in degrees.
+    rotation_centre : tuple[float, float, float] or None, optional
+        Rotation pivot in Cartesian metres.
+    reference_area : float or None, optional
+        Positive force-coefficient reference area in m².
+
+    Notes
+    -----
+    Construction validates metadata only; STL I/O and panel allocation occur
+    when the owning :class:`VPMSolver` creates its panel solver.
+    """
 
     stl: str
     uid: str

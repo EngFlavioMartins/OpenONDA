@@ -13,7 +13,6 @@ from pathlib import Path
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
-
 CASE_DIR = Path(__file__).resolve().parent
 OBJECT_STL = CASE_DIR / "assets" / "object.stl"
 
@@ -70,22 +69,17 @@ def create_fvm_setup() -> fvm.FVMSetup:
             fvm.BoundaryConfig.wall("body"),
         ],
         initial_velocity=[1.0, 0.0, 0.0],
-        initial_kinematic_pressure=0.0,
     )
 
 
 def main() -> None:
     mesher = create_mesher()
-    mesh = mesher.build()
-    print(f"Built {mesh['n_cells']} cells and {mesh['n_faces']} faces")
-    print(f"Effective sizes: {[size.as_dict() for size in mesher.report.sizes]}")
     solver = fvm.create_fvm_solver(
         create_fvm_setup(),
         case_dir=CASE_DIR,
         mesh=mesher,
     )
     solver.run()
-    print("Completed the twenty-step Cartesian-mesher tutorial run")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash -e
 
-cd "$(dirname "$0")"
 python setup.py

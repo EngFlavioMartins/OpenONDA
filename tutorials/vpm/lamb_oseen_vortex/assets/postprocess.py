@@ -31,7 +31,6 @@ from scipy import ndimage
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 import h5py
 from scipy import signal, stats
@@ -62,10 +61,7 @@ ENERGY_CASES = (
     ("merging", "Co-rotating merger", 2),
 )
 
-# Legacy-input fallbacks used only when a result folder lacks run_metadata.json.
-# They are NOT a second source of truth: the authoritative values are read from
-# samples/<case>/run_metadata.json, with setup.py as the physical definition.
-# These fallbacks match the maintained setup exactly.
+# Analytic-reference defaults used when no solver output is available.
 BETA_RMAX = 1.12
 REFERENCE_CIRCULATION = 1.0
 REYNOLDS_NUMBER = 530.0
@@ -123,23 +119,108 @@ def unwrap_pair_orientation(angle_radians: np.ndarray) -> np.ndarray:
 
 
 # =============================================================
-# Run-metadata / sampled-field readers
+# Solver metadata / sampled-field readers
 # =============================================================
 
 
-def read_run_metadata(samples_dir: Path, prefix: str = "vortex") -> dict:
-    """Load the physical constants stored with the sampled results.
+def _flatten_solver_metadata(metadata: dict) -> dict:
+    """Expose the generic VPM record through this postprocessor's basic fields."""
+    configuration = metadata.get("configuration", {})
+    numerics = configuration.get("numerics", {})
+    state = metadata.get("state", {})
+    conditions = configuration.get("initial_conditions", [])
+    first = conditions[0] if conditions else {}
+    distribution = first.get("distribution", {})
+    bounds = distribution.get("bounds", ())
+    centres = [condition.get("centre", (0.0, 0.0, 0.0)) for condition in conditions]
+    circulations = [condition.get("circulation") for condition in conditions]
+    circulations = [value for value in circulations if value is not None]
+    spacing = distribution.get("spacing")
+    core_ratio = distribution.get("core_radius_ratio")
+    gaussian_core = first.get("vortex_core_radius")
+    viscosity = first.get("kinematic_viscosity")
+    step_size = numerics.get("time_step_size")
+    requested_steps = configuration.get("run", {}).get("steps")
+    status = metadata.get("lifecycle", {}).get("status", "created")
+    separation = SEPARATION
+    if len(centres) > 1:
+        separation = float(np.linalg.norm(np.asarray(centres[0]) - np.asarray(centres[1])))
+    column_half_length = COLUMN_LENGTH / 2.0
+    if len(bounds) == 3 and len(bounds[2]) == 2:
+        column_half_length = 0.5 * (float(bounds[2][1]) - float(bounds[2][0]))
+    return {
+        "status": status,
+        "completed": status == "completed",
+        "case_name": metadata.get("case_name"),
+        "time_step_size": step_size,
+        "number_of_steps": requested_steps,
+        "end_time": (
+            float(step_size) * int(requested_steps)
+            if step_size is not None and requested_steps is not None
+            else None
+        ),
+        "completed_steps": state.get("step"),
+        "final_time": state.get("time"),
+        "integrator": numerics.get("integrator", {}).get("name"),
+        "induction_backend": numerics.get("induction", {}).get("method"),
+        "stretching_scheme": numerics.get("induction", {}).get("stretching_scheme"),
+        "turbulence_model": numerics.get("turbulence", {}).get("model"),
+        "viscous_scheme": numerics.get("viscous", {}).get("scheme"),
+        "particle_kernel": numerics.get("particle_kernel"),
+        "precision": numerics.get("precision"),
+        "write_precision": numerics.get("write_precision"),
+        "compute_device": numerics.get("compute_device"),
+        "random_seed": numerics.get("random_seed"),
+        "particle_spacing": spacing,
+        "particle_core_radius": (
+            float(spacing) * float(core_ratio)
+            if spacing is not None and core_ratio is not None
+            else None
+        ),
+        "core_radius": gaussian_core,
+        "velocity_peak_radius": (
+            BETA_RMAX * float(gaussian_core) if gaussian_core is not None else None
+        ),
+        "kinematic_viscosity": viscosity,
+        "column_half_length": column_half_length,
+        "circulations": circulations,
+        "vortex_separation": separation,
+        "initial_n_particles_total": state.get("initial_n_particles_total"),
+        "final_n_particles_total": state.get("n_particles_total"),
+    }
 
-    Plotting must not depend on a dense particle backup: those files are sparse
-    restart backups, while ``samples/<case>/run_metadata.json`` is written
-    alongside the data used by each figure.
-    """
-    for scheme in SCHEMES:
-        path = samples_dir / f"{prefix}_{scheme}" / "run_metadata.json"
+
+def _metadata(path: Path) -> dict:
+    """Load solver-owned VPM metadata for a sample or solution directory."""
+    requested = Path(path)
+    if requested.name == "vpm_metadata.json":
+        candidates = [requested]
+    else:
+        case_name = requested.name
+        solution_root = requested.parent.parent / "solution"
+        candidates = [solution_root / case_name / "vpm_metadata.json"]
+        if case_name.endswith("_rwm"):
+            candidates.extend(sorted(solution_root.glob(f"{case_name}_*/vpm_metadata.json")))
+    for candidate in candidates:
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        if isinstance(payload, dict) and payload.get("solver") == "VPM":
+            return _flatten_solver_metadata(payload)
+    return {}
+
+
+def read_solver_metadata(samples_dir: Path, prefix: str = "vortex") -> dict:
+    """Load basic physical controls from solver-owned VPM metadata.
+
+    Plotting does not depend on a dense particle backup. Metadata lives beside
+    those backups in ``solution/<case>/vpm_metadata.json``.
+    """
+    for scheme in SCHEMES:
+        metadata = _metadata(samples_dir / f"{prefix}_{scheme}")
+        if metadata:
+            return metadata
     return {}
 
 
@@ -153,11 +234,11 @@ def resolve_runtime_physics(
 ) -> dict[str, float]:
     """Return the physical constants for the analytic reference.
 
-    ``kinematic_viscosity`` and the core radius come from ``samples/<case>/run_metadata.json``.
+    Viscosity and core radius come from ``solution/<case>/vpm_metadata.json``.
     If a run has no metadata, the tutorial constants provide the reference.
     The analytic reference is never inferred from the schemes' own output.
     """
-    metadata = read_run_metadata(samples_dir, prefix)
+    metadata = read_solver_metadata(samples_dir, prefix)
     configured_core = float(metadata.get("core_radius", a0_over_b0 * b0))
     ac0 = configured_core
     velocity_peak_radius0 = float(metadata.get("velocity_peak_radius", BETA_RMAX * configured_core))
@@ -772,20 +853,12 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
         # uncertainty.  Re-extracting these rows here would silently discard
         # the intervals immediately before plotting.
         if scheme == "rwm":
-            metadata_path = samples_dir / case_name / "run_metadata.json"
             diagnostics_path = samples_dir / case_name / "field_diagnostics.csv"
             try:
-                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                 columns = set(pd.read_csv(diagnostics_path, nrows=0).columns)
             except (OSError, ValueError, pd.errors.ParserError):
-                metadata = {}
                 columns = set()
-            if (
-                str(metadata.get("statistical_estimator", "")).startswith(
-                    "fixed_time_seed_ensemble_mean"
-                )
-                and "mean_core_radius_standard_error" in columns
-            ):
+            if "mean_core_radius_standard_error" in columns:
                 print(f"  [field] {case_name}: preserving ensemble/jackknife diagnostics")
                 continue
         timeline = pvd_time_map(samples_dir, physics, scheme)
@@ -1517,12 +1590,11 @@ def discover_members(
             continue
         index = int(match.group(1))
         member_samples = Path(samples_root) / solution_dir.name
-        metadata_path = member_samples / "run_metadata.json"
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as error:
-            raise ValueError(f"unreadable RWM member metadata {metadata_path}: {error}") from error
-        if metadata.get("status") != "complete" or metadata.get("completed") is not True:
+        metadata_path = solution_dir / "vpm_metadata.json"
+        metadata = _metadata(metadata_path)
+        if not metadata:
+            raise ValueError(f"unreadable RWM member metadata {metadata_path}")
+        if metadata.get("status") != "completed":
             raise ValueError(f"RWM member {case_name}/{solution_dir.name} is not complete")
         backups = _backup_map(solution_dir)
         if not backups:
@@ -2014,52 +2086,13 @@ def aggregate_case(
     pd.DataFrame(convergence_records).to_csv(output_dir / "rwm_convergence.csv", index=False)
     _aggregate_flow_integrals(members, output_dir / "flow_integrals.csv", multiplier)
 
-    metadata = dict(metadata0)
-    metadata.pop("ensemble_member", None)
-    metadata.pop("random_seed", None)
-    metadata.update(
-        {
-            "status": "complete",
-            "completed": True,
-            "case": physics,
-            "scheme": "rwm",
-            "statistical_estimator": "fixed_time_seed_ensemble_mean_of_column_projected_fields",
-            "raw_output_estimator": "particle_backups_for_column_projection",
-            "ensemble_size": n_members,
-            "ensemble_member_indices": [member.index for member in members],
-            "random_seeds": [member.seed for member in members],
-            "confidence_level": CONFIDENCE_LEVEL,
-            "confidence_multiplier": multiplier,
-            "column_projection": (
-                "omega_bar_z(x,y)=L^-1 integral omega_z(x,y,z) dz, reconstructed from "
-                "Gaussian particle backups; velocity from free-space 2-D Biot-Savart"
-            ),
-            "feature_definitions": {
-                "vortex_centre": "centre_of_connected_area_inside_80_percent_peak_vorticity_contour",
-                "vortex_separation": (
-                    "distance_between_vorticity_centres_before_peak_coalescence; zero thereafter"
-                ),
-                "orientation": (
-                    "undirected_axis_joining_centres before merger; vorticity-quadrupole "
-                    "major axis of merged ellipse after merger"
-                ),
-                "core_radius": (
-                    "radius_of_maximum_outward_semicircle_mean_azimuthal_velocity_before_merger; "
-                    "full_circle_mean_after_merger"
-                ),
-                "pair_resolution": "peak_to_saddle_contrast_exceeds_95_percent_ensemble_uncertainty",
-            },
-            "uncertainty": (
-                "pointwise Student-t intervals across independent seeds; delete-one-member "
-                "jackknife intervals for nonlinear extracted features"
-            ),
-            "minimum_absolute_circulation_capture_fraction": minimum_capture,
-        }
-    )
-    (output_dir / "run_metadata.json").write_text(
-        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-    )
-    return metadata
+    return {
+        "case": physics,
+        "ensemble_size": n_members,
+        "random_seeds": [member.seed for member in members],
+        "confidence_level": CONFIDENCE_LEVEL,
+        "minimum_absolute_circulation_capture_fraction": minimum_capture,
+    }
 
 
 def aggregate_rwm_ensemble(
@@ -2067,7 +2100,7 @@ def aggregate_rwm_ensemble(
     samples_root: Path,
     expected_members: int | dict[str, int] | None = None,
 ) -> dict[str, dict]:
-    """Aggregate all three benchmark physics cases and return their metadata."""
+    """Aggregate all three benchmark physics cases and return concise summaries."""
     return {
         physics: aggregate_case(
             solution_root,
@@ -2130,7 +2163,7 @@ def merging_normalization_audit(
     run_report = {}
     for scheme in schemes:
         folder = Path(samples_dir) / f"merging_{scheme}"
-        metadata = _metadata(folder / "run_metadata.json")
+        metadata = _metadata(folder)
         if not metadata:
             failures.append(f"merging_{scheme}: missing metadata for normalization audit")
             continue
@@ -2622,16 +2655,11 @@ def validate(
         for scheme in schemes:
             name = f"{physics_id}_{scheme}"
             folder = SAMPLES_DIR / name
-            metadata_path = folder / "run_metadata.json"
-            if not metadata_path.is_file():
-                failures.append(f"{name}: missing run_metadata.json")
+            metadata = _metadata(folder)
+            if not metadata:
+                failures.append(f"{name}: missing solver-owned VPM metadata")
                 continue
-            try:
-                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as error:
-                failures.append(f"{name}: unreadable metadata ({error})")
-                continue
-            if metadata.get("status") != "complete" or metadata.get("completed") is not True:
+            if metadata.get("status") != "completed":
                 failures.append(f"{name}: metadata is not complete")
             expected_backend = COMPUTE_METHOD[scheme.upper()]
             if metadata.get("induction_backend") != expected_backend:
@@ -2731,18 +2759,15 @@ def validate(
                     failures.append(f"{name}: extracted core radius is boundary limited")
 
             if scheme == "rwm":
-                ensemble_size = int(metadata.get("ensemble_size", 0))
-                seeds = metadata.get("random_seeds", [])
-                if (
-                    ensemble_size < MINIMUM_ENSEMBLE_SIZE
-                    or len(seeds) != ensemble_size
-                    or len(set(seeds)) != ensemble_size
-                ):
-                    failures.append(f"{name}: invalid or non-independent RWM ensemble metadata")
-                if metadata.get("statistical_estimator") != (
-                    "fixed_time_seed_ensemble_mean_of_column_projected_fields"
-                ):
-                    failures.append(f"{name}: missing column-projected ensemble estimator")
+                member_metadata = [
+                    _metadata(path)
+                    for path in sorted(SOLUTION_DIR.glob(f"{name}_*/vpm_metadata.json"))
+                ]
+                member_metadata = [item for item in member_metadata if item]
+                ensemble_size = len(member_metadata)
+                seeds = [item.get("random_seed") for item in member_metadata]
+                if ensemble_size < MINIMUM_ENSEMBLE_SIZE or len(set(seeds)) != ensemble_size:
+                    failures.append(f"{name}: fewer than four independent solver seeds")
                 convergence = _read_csv(folder / "rwm_convergence.csv", failures)
                 if convergence is not None:
                     for column in (
@@ -2846,162 +2871,6 @@ def validate(
 
 
 # =============================================================
-# Manifest generation
-# =============================================================
-
-
-def _metadata(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def _last_time(path: Path, column: str) -> tuple[int, float | None]:
-    try:
-        frame = pd.read_csv(path, on_bad_lines="skip")
-        values = pd.to_numeric(frame[column], errors="coerce").dropna()
-    except (OSError, ValueError, KeyError, pd.errors.ParserError):
-        return 0, None
-    return len(frame), (float(values.max()) if not values.empty else None)
-
-
-def _observed_time_step(path: Path) -> float | None:
-    try:
-        frame = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["time", "step"])
-    except (OSError, ValueError, KeyError, pd.errors.ParserError):
-        return None
-    delta_time = np.diff(frame["time"].to_numpy(float))
-    delta_step = np.diff(frame["step"].to_numpy(float))
-    valid = (delta_time > 0.0) & (delta_step > 0.0)
-    return float(np.median(delta_time[valid] / delta_step[valid])) if valid.any() else None
-
-
-def _quality_warnings(
-    scheme: str,
-    metadata: dict,
-    max_particles: float | None,
-    observed_time_step: float | None,
-) -> list[str]:
-    warnings = []
-    if scheme == "rwm" and metadata:
-        if int(metadata.get("ensemble_size", 0)) < 8:
-            warnings.append("RWM ensemble has fewer than eight independent members.")
-    cap = MAX_PARTICLES if scheme in ("dvh", "gbd") else None
-    if cap and max_particles is not None and max_particles >= float(cap):
-        warnings.append(
-            f"{scheme.upper()} reached its particle-count guard; inspect late-time sensitivity."
-        )
-    requested_end = float(metadata.get("end_time", np.nan))
-    final_time = float(metadata.get("final_time", np.nan))
-    tolerance = observed_time_step if observed_time_step is not None else EXPECTED_DT
-    if (
-        np.isfinite(requested_end)
-        and np.isfinite(final_time)
-        and final_time > requested_end + tolerance
-    ):
-        warnings.append(
-            "Archival run exceeds the requested end time; all comparisons are truncated "
-            "to the declared common physical-time window."
-        )
-    return warnings
-
-
-def build_manifest(samples_dir: Path, figures_dir: Path) -> dict:
-    runs = {}
-    for case_id in CASES:
-        for scheme in SCHEMES:
-            name = f"{case_id}_{scheme}"
-            folder = samples_dir / name
-            metadata = _metadata(folder / "run_metadata.json")
-            field_rows, field_time = _last_time(folder / "field_diagnostics.csv", "time")
-            integral_rows, integral_time = _last_time(folder / "flow_integrals.csv", "time")
-            _, max_particles = _last_time(folder / "flow_integrals.csv", "n_particles_total")
-            observed_time_step = _observed_time_step(folder / "field_diagnostics.csv")
-            has_samples = field_rows > 0 or integral_rows > 0 or any(folder.glob("*_zq_*.vts"))
-            complete = metadata.get("completed") is True or metadata.get("status") == "complete"
-            if complete:
-                status = "complete"
-            elif metadata or has_samples:
-                status = str(metadata.get("status", "partial"))
-            else:
-                status = "missing"
-            runs[name] = {
-                "status": status,
-                "complete": complete,
-                "field_rows": field_rows,
-                "last_field_time": field_time,
-                "integral_rows": integral_rows,
-                "last_integral_time": integral_time,
-                "requested_end_time": metadata.get("end_time"),
-                "final_time": metadata.get("final_time"),
-                "core_radius_definition": (
-                    "radius_of_maximum_outward_semicircle_mean_azimuthal_velocity"
-                ),
-                "vortex_centre_definition": (
-                    "centre_of_connected_area_inside_80_percent_peak_vorticity_contour"
-                ),
-                "sample_plane_z": 0.25 * COLUMN_LENGTH,
-                "particle_spacing_ratio": SPACING / CORE_RADIUS,
-                "field_spacing_ratio": FIELD_SPACING / CORE_RADIUS,
-                "max_n_particles_sampled": max_particles,
-                "requested_time_step_size": TIME_STEP_SIZE,
-                "metadata_time_step_size": metadata.get("time_step_size"),
-                "observed_time_step_size": observed_time_step,
-                "integrator": metadata.get("integrator"),
-                "induction_backend": metadata.get("induction_backend"),
-                "stretching_scheme": metadata.get("stretching_scheme"),
-                "particle_kernel": metadata.get("particle_kernel"),
-                "precision": metadata.get("precision"),
-                "max_particles_capacity": MAX_PARTICLES,
-                "initial_n_particles_total": metadata.get("initial_n_particles_total"),
-                "ensemble_size": metadata.get("ensemble_size"),
-                "compute_device": metadata.get("compute_device"),
-                "circulation_normalization": "per_vortex_after_strength_cutoff",
-                "quality_warnings": _quality_warnings(
-                    scheme, metadata, max_particles, observed_time_step
-                ),
-            }
-    normalization, normalization_failures = merging_normalization_audit(samples_dir, SCHEMES)
-    single_vortex = single_vortex_error_audit(samples_dir, SCHEMES)
-    dipole = dipole_error_audit(samples_dir, SCHEMES)
-    energy = energy_balance_audit(samples_dir, SCHEMES)
-    timing = runtime_audit(SOLUTION_DIR)
-    return {
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "plotting_notes": (
-            "Figures plot every available sample. Kinetic energy and dE/dt remain finite "
-            "through direct/Fourier switches and Fourier-grid growth; each transition "
-            "records its rate source in flow_integrals.csv."
-        ),
-        "runs": runs,
-        "normalization_audit": normalization,
-        "normalization_failures": normalization_failures,
-        "single_vortex_error_audit": single_vortex,
-        "dipole_error_audit": dipole,
-        "energy_rate_audit": energy,
-        "runtime_audit": timing,
-        "figures": sorted(
-            path.name for path in figures_dir.iterdir() if path.suffix.lower() in {".png", ".pdf"}
-        ),
-    }
-
-
-def write_manifest() -> int:
-    manifest = build_manifest(SAMPLES_DIR, FIGURES_DIR)
-    output = FIGURES_DIR / "postprocessing_manifest.json"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    temporary.replace(output)
-    counts = {}
-    for run in manifest["runs"].values():
-        counts[run["status"]] = counts.get(run["status"], 0) + 1
-    print(f"  [status] {counts}; wrote {output}")
-    return 0
-
-
-# =============================================================
 # CLI
 # =============================================================
 
@@ -3027,7 +2896,6 @@ def main() -> int:
         default=None,
         help="check one completed physical comparison before continuing",
     )
-    parser.add_argument("--manifest", action="store_true", help="write JSON status manifest")
     parser.add_argument(
         "--aggregate-rwm",
         action="store_true",
@@ -3086,8 +2954,6 @@ def main() -> int:
             case_expected if case_expected is not None else args.expected_rwm_members,
         )
         return 0
-    if args.manifest:
-        return write_manifest()
     cases = (args.validate_case,) if args.validate_case is not None else CASES
     return validate(
         pre_plot=args.pre_plot,

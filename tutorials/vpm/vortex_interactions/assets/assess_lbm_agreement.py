@@ -23,16 +23,15 @@ from scipy.optimize import linear_sum_assignment
 from scipy.ndimage import maximum_filter
 from scipy.interpolate import RegularGridInterpolator
 
-from .. import setup
-
 if not __package__:
     from openonda.tutorial_runner import case_package
     from pathlib import Path as _CasePath
 
     __package__ = case_package(_CasePath(__file__).resolve().parents[1]) + ".assets"
 
-from ..study import STUDY_DIR
-from .ring_metrics import _theme
+from .. import setup
+from .study import STUDY_DIR
+from .ring_metrics import _theme, load_metadata, load_study_metadata, metadata_settings
 from .plot_core_sections import discover, read_plane
 
 
@@ -101,6 +100,12 @@ def sampler_history(run):
     return pd.DataFrame(rows), sources
 
 
+def sample_directory(run):
+    """Resolve official tutorial output first, then retained research output."""
+    official = setup.TUTORIAL_DIR / "samples" / run
+    return official if official.is_dir() else STUDY_DIR / run / "samples/diagnostics"
+
+
 def coherent_tracks(peaks, bridge_limit=0.5):
     """Conservatively terminate identities when two distinct cores are lost.
 
@@ -162,23 +167,17 @@ def temporal_field_comparisons(reports):
     """Compare identical sampled points at equal times for paired dt runs."""
     groups = {}
     for report in reports:
-        signature = {
-            k: v
-            for k, v in report["signature"].items()
-            if k not in ("dt", "steps", "tag", "wall_minutes", "timing")
-        }
-        groups.setdefault(json.dumps(signature, sort_keys=True), []).append(report)
+        configuration = {k: v for k, v in report["settings"].items() if k != "dt"}
+        groups.setdefault(json.dumps(configuration, sort_keys=True), []).append(report)
     comparisons = []
     for group in groups.values():
-        ordered = sorted(group, key=lambda r: r["signature"]["dt"], reverse=True)
+        ordered = sorted(group, key=lambda r: r["settings"]["dt"], reverse=True)
         for coarse, fine in zip(ordered, ordered[1:]):
             cfields = {round(f["time"], 10): f for f in coarse["sampler_fields"]}
             ffields = {round(f["time"], 10): f for f in fine["sampler_fields"]}
             for time in sorted(cfields.keys() & ffields.keys()):
                 grids = [
-                    pv.read(
-                        STUDY_DIR / report["run"] / "samples/diagnostics" / fields[time]["file"]
-                    )
+                    pv.read(sample_directory(report["run"]) / fields[time]["file"])
                     for report, fields in ((coarse, cfields), (fine, ffields))
                 ]
                 if not np.array_equal(grids[0].points, grids[1].points):
@@ -197,9 +196,9 @@ def temporal_field_comparisons(reports):
     return comparisons
 
 
-def reported_self_diagnostics(folder):
+def reported_self_diagnostics(run):
     """Summarize the solver's recorded diagnostics without reevaluating fields."""
-    path = folder / "samples/diagnostics/flow_integrals.csv"
+    path = sample_directory(run) / "flow_integrals.csv"
     flow = pd.read_csv(path)
     columns = (
         "n_particles_total",
@@ -210,9 +209,10 @@ def reported_self_diagnostics(folder):
         "max_effective_viscosity",
         "n_stabilization_events",
         "n_regularization_events",
+        "stretching_viscosity_feedback_coefficient",
     )
     return dict(
-        file=str(path.relative_to(folder)),
+        file=str(path),
         sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
         final_sample_time=float(flow.time.iloc[-1]),
         final={key: float(flow[key].iloc[-1]) for key in columns},
@@ -223,6 +223,36 @@ def reported_self_diagnostics(folder):
     )
 
 
+def plot_diagnostics(reports, output):
+    """Plot saved native histories; do not reconstruct solver diagnostics."""
+    theme = _theme()
+    fig, axes = plt.subplots(3, 2, figsize=(10, 11), sharex=True)
+    quantities = (
+        ("total_kinetic_energy", "Energy / initial", True),
+        ("total_enstrophy", "Enstrophy / initial", True),
+        ("vorticity_divergence_error", "Relative divergence", False),
+        ("vortex_strength_misalignment_degrees", "Misalignment [degrees]", False),
+        ("lagrangian_cfl", "Lagrangian CFL", False),
+        ("n_particles_total", "Particle count", False),
+    )
+    for report in reports:
+        flow = pd.read_csv(sample_directory(report["run"]) / "flow_integrals.csv")
+        label = (
+            report["settings"]["method"].replace("p_moments", "weak realignment").replace("_", " ")
+        )
+        for ax, (column, title, normalize) in zip(axes.flat, quantities, strict=True):
+            values = flow[column] / flow[column].iloc[0] if normalize else flow[column]
+            ax.plot(flow.time, values, label=label)
+            ax.set_ylabel(title)
+            ax.grid(alpha=0.15)
+    for ax in axes[-1]:
+        ax.set_xlabel("Physical time [s]")
+    axes[0, 0].legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(output / "diagnostic_histories.png", dpi=theme.DEFAULT_DPI)
+    plt.close(fig)
+
+
 def write_report(report, output):
     """Write a readable result from the same sampler-derived score record."""
     lines = [
@@ -231,8 +261,8 @@ def write_report(report, output):
         "These results use the VPM sampler outputs and recorded run statuses. "
         "They do not establish spatial convergence or matched periodic boundaries.",
         "",
-        "| Run | Status | Last field time | Wall minutes | Pair tracked until |",
-        "|---|---|---:|---:|---:|",
+        "| Run | Status | Last scalar time | Last field time | Wall minutes | Pair tracked until |",
+        "|---|---|---:|---:|---:|---:|",
     ]
     for result in report["runs"]:
         wall_minutes = (
@@ -242,21 +272,21 @@ def write_report(report, output):
         )
         last_field_time = result["sampler_fields"][-1]["time"]
         lines.append(
-            f"| {result['run']} | {result['status']} | {last_field_time:.4g} | "
+            f"| {result['run']} | {result['status']} | "
+            f"{result['self_diagnostics']['final_sample_time']:.4g} | {last_field_time:.4g} | "
             f"{wall_minutes} | {result['coherent_pair_end_time']:.4g} |"
         )
-    fingerprints = {r["signature"].get("source_sha256") for r in report["runs"]}
-    if len(fingerprints) > 1:
-        lines += [
-            "",
-            "**Source fingerprints differ between runs. These results are descriptive; "
-            "a controlled attribution to stabilization or timestep is not certified.**",
-        ]
     lines += [
         "",
         "Pair tracking means two separated maxima on the recorded meridional "
         "plane. Its termination is a diagnostic cutoff, not proof of physical breakdown. "
-        "A wall_time_limit status is a computational budget stop.",
+        "A wall_time_limit status is a computational budget stop. "
+        "A created status means the native metadata has not been finalized; "
+        "it does not establish completion or explain termination. Saved sampler "
+        "times remain usable independently of that lifecycle status. "
+        "Completed and budget-limited runs provide lower bounds on numerical survival. "
+        "A failed status needs its native vpm.log to distinguish numerical failure "
+        "from output/resource failure; neither is automatically physical breakdown.",
         "",
         "## LBM radius discrepancies",
         "",
@@ -278,7 +308,13 @@ def write_report(report, output):
         lines += [
             "",
             f"**{result['run']}**: {result['identity_termination']}. "
-            f"Run termination: {result['termination_reason'] or result['status']}.",
+            f"Solver status: {result['status']}.",
+            "Tracked axial coverage: "
+            + ", ".join(
+                f"core {ring}: x/R0={position:.3f}"
+                for ring, position in result.get("tracked_x_extent_by_ring", {}).items()
+            )
+            + f". Both cores reached 7: {result.get('both_cores_reached_x7', 'not assessed')}.",
             "",
         ]
     lines += [
@@ -301,7 +337,7 @@ def write_report(report, output):
         lines += ["", "No comparable noninitial sampler times are available."]
     lines += [
         "",
-        "The accompanying lbm_agreement.json records configurations, field hashes, "
+        "The accompanying lbm_agreement.json records solver settings, field hashes, "
         "health diagnostics, cadence sensitivity and the reference hash. Longer survival "
         "alone is not evidence of better physics.",
         "",
@@ -330,8 +366,11 @@ def main():
     )
     for ax, run in zip(axes.flat, args.runs, strict=True):
         folder = STUDY_DIR / run
-        metadata = json.loads((folder / "result.json").read_text())
-        if metadata["signature"]["scenario"] != "leapfrog":
+        metadata = load_metadata(run) or load_study_metadata(folder)
+        if not metadata:
+            raise FileNotFoundError(folder / "solution/vpm_metadata.json")
+        settings = metadata_settings(metadata)
+        if settings["scenario"] != "leapfrog":
             raise ValueError("The LBM reference is for leapfrogging only")
         peaks, sources = sampler_history(run)
         peak_path = args.output / f"{run}_peaks.csv"
@@ -345,7 +384,13 @@ def main():
             peaks[peaks.step.isin(coarse_steps)], args.bridge_limit
         )
         scores = []
-        for interval in args.interval or [[0.55, 1.5], [0.55, 2.5], [0.55, 3.5], [0.55, 5.5]]:
+        for interval in args.interval or [
+            [0.55, 1.5],
+            [0.55, 2.5],
+            [0.55, 3.5],
+            [0.55, 5.5],
+            [0.55, 7.0],
+        ]:
             try:
                 score = radius_score(tracks, reference, *interval)
             except ValueError as exc:
@@ -360,20 +405,23 @@ def main():
         reports.append(
             dict(
                 run=run,
-                status=metadata["status"],
-                completed_steps=metadata.get("completed_steps"),
-                final_time=metadata.get("final_time", float(peaks.time.max())),
-                wall_seconds=metadata.get("wall_seconds", float("nan")),
-                termination_reason=metadata.get("termination_reason"),
-                signature=metadata["signature"],
+                status=metadata.get("lifecycle", {}).get("status", "unknown"),
+                completed_steps=metadata.get("state", {}).get("step"),
+                final_time=metadata.get("state", {}).get("time", float(peaks.time.max())),
+                wall_seconds=float("nan"),
+                settings=settings,
                 coherent_pair_end_time=float(tracks.time.max()),
+                tracked_x_extent_by_ring={
+                    str(ring): float(group.x.max()) for ring, group in tracks.groupby("ring")
+                },
+                both_cores_reached_x7=bool((tracks.groupby("ring").x.max() >= 7.0).all()),
                 identity_termination=reason,
                 coarser_snapshot_identity_termination=coarse_reason,
                 bridge_limit=args.bridge_limit,
                 scores=scores,
                 peaks_sha256=hashlib.sha256(peak_path.read_bytes()).hexdigest(),
                 sampler_fields=sources,
-                self_diagnostics=reported_self_diagnostics(folder),
+                self_diagnostics=reported_self_diagnostics(run),
                 core_definition="positive curl(u)_z maxima on the z=0, y>=0 SurfaceSampler plane",
                 spatial_uncertainty="grid-resolved peak coordinates; repeat with finer sampler spacing",
             )
@@ -390,7 +438,7 @@ def main():
                 label=f"LBM core {ring}",
             )
             ax.plot(track.x, track.radius, ".--", color=color, lw=1, ms=4, label=f"VPM core {ring}")
-        sig = metadata["signature"]
+        sig = settings
         scheme = sig.get("diffusion", "CS")
         if scheme == "GBD":
             scheme += "/" + sig.get("gbd_remeshing", "M4_PRIME").replace("M4_PRIME", "M4'")
@@ -430,6 +478,7 @@ def main():
     )
     (args.output / "lbm_agreement.json").write_text(json.dumps(report, indent=2) + "\n")
     write_report(report, args.output)
+    plot_diagnostics(reports, args.output)
     print(json.dumps([{k: r[k] for k in ("run", "status", "scores")} for r in reports], indent=2))
 
 

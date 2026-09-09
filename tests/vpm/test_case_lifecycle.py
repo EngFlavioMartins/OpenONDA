@@ -92,6 +92,7 @@ def test_run_owns_the_complete_event_lifecycle() -> None:
 
     assert events == [
         "build",
+        ("running", None),
         "diagnostics",
         OutputEvent.INITIAL,
         "advance",
@@ -147,6 +148,7 @@ def test_run_plan_can_persist_and_return_from_a_resolution_limit(capsys) -> None
     assert solver.step == 2
     assert events == [
         "build",
+        ("running", None),
         "diagnostics",
         ("dispatch", OutputEvent.INITIAL),
         "advance",
@@ -273,8 +275,8 @@ def test_wall_time_stop_persists_accepted_state_without_reporting_physics_failur
     import source.solvers.vpm.core.solver as solver_module
 
     events = []
-    clock = iter((0.0, 0.0, 2.0))
-    monkeypatch.setattr(solver_module, "perf_counter", lambda: next(clock))
+    clock = [0.0]
+    monkeypatch.setattr(solver_module, "perf_counter", lambda: clock[0])
 
     class Manager:
         def dispatch(self, event):
@@ -299,6 +301,7 @@ def test_wall_time_stop_persists_accepted_state_without_reporting_physics_failur
     def advance():
         solver.step += 1
         solver.time += 0.1
+        clock[0] += 2.0
 
     solver.advance = advance
     solver.save_backup = lambda: events.append("backup")
@@ -309,9 +312,55 @@ def test_wall_time_stop_persists_accepted_state_without_reporting_physics_failur
     assert solver.run_status == "wall_time_limit"
     assert solver.run_failure is None
     assert events == [
+        ("running", None),
         OutputEvent.INITIAL,
         "terminal_samples",
         "backup",
         ("wall_time_limit", None),
         "close",
     ]
+
+
+def test_run_elapsed_time_includes_output_and_backups(monkeypatch, capsys):
+    import source.solvers.vpm.core.solver as solver_module
+
+    clock = [100.0]
+    monkeypatch.setattr(solver_module, "perf_counter", lambda: clock[0])
+
+    class Manager:
+        def dispatch(self, event):
+            clock[0] += 5.0 if event == OutputEvent.ACCEPTED_STEP else 3.0
+
+    solver = object.__new__(VPMSolver)
+    solver.case = vpm.VPMCase(
+        numerics=vpm.Numerics(),
+        run=vpm.RunPlan(steps=2, initial_samples=False),
+    )
+    solver.output_manager = Manager()
+    solver._run_started = False
+    solver.restart_state = vpm.RestartState()
+    solver.time, solver.step, solver.wall_time = 0.0, 0, 0.0
+    solver._build_initial_conditions = lambda: None
+    solver._refresh_diagnostics_for_output = lambda: None
+
+    def advance():
+        solver.step += 1
+        solver.time += 0.1
+        solver.wall_time += 2.0
+        clock[0] += 2.0
+        solver.output_manager.dispatch(OutputEvent.ACCEPTED_STEP)
+
+    def backup():
+        clock[0] += 11.0
+
+    solver.advance = advance
+    solver.save_backup = backup
+    solver._write_run_manifest = lambda status, failure: None
+    solver.close = lambda: None
+    assert solver.elapsed_wall_time == 0.0
+    solver.run()
+    assert solver.wall_time == 4.0
+    assert solver.elapsed_wall_time == 28.0
+    assert "elapsed=00:00:28.0" in capsys.readouterr().out
+    clock[0] += 100.0
+    assert solver.elapsed_wall_time == 28.0

@@ -9,9 +9,31 @@ import numpy as np
 
 @dataclass(frozen=True, slots=True)
 class WidnallDisturbance:
-    """Single-mode or broadband displacement of a vortex-ring centreline.
+    """Configure a single-mode or broadband vortex-ring centreline disturbance.
 
-    ``amplitude`` is nondimensional and relative to the unperturbed ring radius.
+    Parameters
+    ----------
+    amplitude : float
+        Non-negative dimensionless displacement relative to the unperturbed
+        ring radius.
+    mode : int or None, default=None
+        Positive azimuthal Fourier mode for a single sinusoid. ``None`` builds
+        an equal-weight random-phase spectrum over modes 1 through
+        ``number_of_modes``.
+    phase : float, default=0.0
+        Finite single-mode phase in radians; ignored for broadband mode.
+    number_of_modes : int, default=24
+        Positive broadband mode count; ignored when ``mode`` is set.
+    seed : int, default=42
+        NumPy seed for deterministic broadband phases.
+    direction : {'radial', 'axial'}, default='radial'
+        Direction in the local ring frame in which displacement is applied.
+
+    Notes
+    -----
+    This object defines geometry only. :class:`ToroidalDistribution` and
+    :class:`VortexRing` use the same waveform so particle geometry and
+    attributed tangent/vorticity remain consistent.
     """
 
     amplitude: float
@@ -37,7 +59,12 @@ class WidnallDisturbance:
     def single_mode(
         cls, *, amplitude: float, mode: int, phase: float = 0.0, direction: str = "radial"
     ) -> WidnallDisturbance:
-        """Create one sinusoidal azimuthal ring mode."""
+        """Create one sinusoidal azimuthal ring mode.
+
+        ``amplitude`` is dimensionless, ``mode`` is a positive integer,
+        ``phase`` is in radians, and ``direction`` is ``'radial'`` or
+        ``'axial'``.
+        """
         return cls(amplitude=amplitude, mode=mode, phase=phase, direction=direction)
 
     @classmethod
@@ -49,13 +76,31 @@ class WidnallDisturbance:
         seed: int = 42,
         direction: str = "radial",
     ) -> WidnallDisturbance:
-        """Create a reproducible equal-weight broadband disturbance."""
+        """Create a reproducible random-phase equal-weight mode spectrum.
+
+        ``amplitude`` is the dimensionless RMS-scale displacement relative to
+        ring radius; ``number_of_modes`` is positive and ``seed`` fixes phases.
+        """
         return cls(
             amplitude=amplitude, number_of_modes=number_of_modes, seed=seed, direction=direction
         )
 
     def centreline(self, azimuth: np.ndarray, ring_radius: float) -> tuple[np.ndarray, np.ndarray]:
-        """Return disturbed radius and derivative with respect to azimuth."""
+        """Return radial centreline position and azimuthal derivative.
+
+        Parameters
+        ----------
+        azimuth : ndarray, shape (N,)
+            Angular coordinates in radians.
+        ring_radius : float
+            Positive unperturbed centreline radius in m.
+
+        Returns
+        -------
+        radius, derivative : tuple[ndarray, ndarray]
+            Arrays of shape ``(N,)`` in m. The derivative is with respect to
+            dimensionless azimuth, so it also has units m.
+        """
         if self.direction == "axial":
             return np.full_like(azimuth, ring_radius, dtype=float), np.zeros_like(
                 azimuth, dtype=float
@@ -66,7 +111,11 @@ class WidnallDisturbance:
     def axial_centreline(
         self, azimuth: np.ndarray, ring_radius: float
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Return axial displacement and its azimuthal derivative."""
+        """Return axial centreline displacement and azimuthal derivative.
+
+        Both returned arrays have the shape of ``azimuth`` and units m;
+        radial disturbances return zeros.
+        """
         if self.direction == "radial":
             return np.zeros_like(azimuth, dtype=float), np.zeros_like(azimuth, dtype=float)
         return self.displacement(azimuth, ring_radius)
@@ -74,7 +123,21 @@ class WidnallDisturbance:
     def displacement(
         self, azimuth: np.ndarray, ring_radius: float
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Displacement waveform in the selected direction and its derivative."""
+        """Evaluate the configured displacement waveform.
+
+        Parameters
+        ----------
+        azimuth : ndarray, shape (N,)
+            Angular coordinates in radians.
+        ring_radius : float
+            Reference radius in m that dimensionalizes ``amplitude``.
+
+        Returns
+        -------
+        displacement, derivative : tuple[ndarray, ndarray]
+            Displacement and derivative with respect to azimuth, both shape
+            ``(N,)`` in m.
+        """
         if self.mode is not None:
             argument = self.mode * azimuth + self.phase
             radius = ring_radius * self.amplitude * np.sin(argument)
@@ -98,7 +161,20 @@ class WidnallDisturbance:
 
 @dataclass(frozen=True, slots=True)
 class FilamentDisturbance:
-    """Sinusoidal transverse displacement of a straight vortex filament."""
+    """Configure sinusoidal transverse displacement of a vortex filament.
+
+    Parameters
+    ----------
+    amplitude : float
+        Non-negative transverse displacement amplitude in m.
+    wavelength : float
+        Positive axial wavelength in m.
+    phase : float, default=0.0
+        Finite phase offset in radians.
+    polarization_angle : float, default=0.0
+        Finite angle in radians selecting the displacement direction in the
+        plane normal to the filament.
+    """
 
     amplitude: float
     wavelength: float

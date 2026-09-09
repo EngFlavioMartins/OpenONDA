@@ -334,6 +334,8 @@ class Logging:
         step = int(getattr(system, "step", 0))
         flow_time = float(getattr(system, "time", 0.0))
         count = int(system.particles.n_particles_total)
+        rate_source = getattr(system, "kinetic_energy_rate_source", "unknown")
+        rate_label = "viscous estimate" if rate_source.endswith("viscous_rate") else "d(E/rho)/dt"
         lines = [
             Logging._status_line(
                 "Diagnostics",
@@ -341,14 +343,14 @@ class Logging:
                 flow_time,
                 total_steps=getattr(system, "_run_final_step", None),
                 n_particles=count,
-                wall_time=getattr(system, "wall_time", None),
+                wall_time=getattr(system, "elapsed_wall_time", getattr(system, "wall_time", None)),
             ),
             f"  {'Energy':<{Logging._detail_name_width}} | "
-            f"E={quantity(system.total_kinetic_energy)} J   "
-            f"dE/dt={quantity(system.kinetic_energy_rate)} J/s   "
-            f"viscous={quantity(system.viscous_kinetic_energy_rate)} J/s",
+            f"E/rho={quantity(system.total_kinetic_energy)} m^5/s^2   "
+            f"{rate_label}={quantity(system.kinetic_energy_rate)} m^5/s^3   "
+            f"viscous={quantity(system.viscous_kinetic_energy_rate)} m^5/s^3",
             f"  {'Strength':<{Logging._detail_name_width}} | "
-            f"sum|alpha|={quantity(system.vortex_strength_magnitude_sum)}   "
+            f"sum|Gamma|={quantity(system.vortex_strength_magnitude_sum)}   "
             f"net={vector(system.net_vortex_strength)} m^3/s",
             f"  {'Impulse':<{Logging._detail_name_width}} | "
             f"linear ={vector(system.total_linear_impulse)} m^4/s",
@@ -356,7 +358,7 @@ class Logging:
             f"angular={vector(system.total_angular_impulse)} m^5/s",
             f"  {'Field norms':<{Logging._detail_name_width}} | "
             f"enstrophy={quantity(system.total_enstrophy)} m^3/s^2   "
-            f"helicity={quantity(system.total_helicity)} m^2/s^2",
+            f"helicity={quantity(system.total_helicity)} m^4/s^2",
         ]
         centroid = getattr(system, "vortex_centroid", None)
         if centroid is not None:
@@ -370,8 +372,9 @@ class Logging:
         Logging.message("\n".join(lines), flush=True)
         # Scheduled diagnostics are themselves a heartbeat. No extra progress
         # line is needed immediately afterward, including in fast simulations.
-        if hasattr(system, "wall_time"):
-            Logging._last_progress_wall = float(system.wall_time)
+        wall_time = getattr(system, "elapsed_wall_time", getattr(system, "wall_time", None))
+        if wall_time is not None:
+            Logging._last_progress_wall = float(wall_time)
         if getattr(system, "vlm_solver", None) is not None:
             Logging.vlm_forces(system)
 
@@ -422,7 +425,7 @@ class Logging:
                 system.time,
                 total_steps=getattr(system, "_run_final_step", None),
                 n_particles=getattr(particles, "n_particles_total", None),
-                wall_time=getattr(system, "wall_time", 0.0),
+                wall_time=getattr(system, "elapsed_wall_time", getattr(system, "wall_time", 0.0)),
             ),
             flush=True,
         )
@@ -793,7 +796,7 @@ class Logging:
                 ("state:", ""),
                 ("  current step", f"{system.step:,}"),
                 ("  simulation time", f"{system.time:.2e}", "s"),
-                ("  wall time", f"{system.wall_time:.2e}", "s"),
+                ("  evolution wall time", f"{system.wall_time:.2e}", "s"),
                 ("  vortex strength", f"{system.vortex_strength_magnitude_sum:.2e}", "m^3/s"),
                 ("output:", ""),
                 ("  backup interval", f"{system.case.backup.interval_steps:,}", "steps"),
@@ -850,10 +853,14 @@ class Logging:
                 return
 
             forces = vlm._last_forces
+            force_components = ", ".join(f"{forces[f'force_{axis}']:.4e}" for axis in "xyz")
             Logging.section(
                 "VORTEX-LATTICE LOADS",
+                ("Force (x, y, z)", force_components, "N"),
                 ("Lift coefficient", f"{forces['lift_coefficient']:.3e}"),
                 ("Drag coefficient", f"{forces['drag_coefficient']:.3e}"),
+                ("Coefficient reference pressure", f"{forces['dynamic_pressure']:.4e}", "Pa"),
+                ("Coefficient reference area", f"{forces['reference_area']:.4e}", "m^2"),
                 ("Active particles", f"{system.particles.n_particles_total:,}"),
                 flush=True,
             )

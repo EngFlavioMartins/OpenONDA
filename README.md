@@ -19,13 +19,26 @@ Python **3.11**. A virtual environment is recommended.
 ```bash
 git clone https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
-python -m pip install .
+python install.py
 ```
 
 The installed package works from any directory:
 
 ```python
 from openonda import fvm, vpm, coupler
+```
+
+The installer installs dependencies into the Python environment you are using
+and verifies the result outside the checkout. Use `python install.py --dev`
+to work on the source without reinstalling after edits. Ordinary
+`python -m pip install .` is also supported.
+
+Run a case directly with normal Python arguments:
+
+```bash
+cd tutorials/vpm/lamb_oseen_vortex
+python setup.py vortex CS
+python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge
 ```
 
 See [installation details](docs/installation.md) for environment setup,
@@ -41,8 +54,8 @@ openonda tutorial run fvm/taylor_green --workspace ./first-flow
 
 This creates an editable example, runs the FVM solver, compares its decay with
 the analytical solution, and saves a plot. Find the case under
-`first-flow/tutorials/fvm/taylor_green/`, with results in `solution/` and `figures/`.
-No external CFD solver is needed.
+`first-flow/tutorials/fvm/taylor_green/`, with results in its case-defined
+`solution/` and `figures/` directories. No external CFD solver is needed.
 
 ## Tutorials
 
@@ -58,10 +71,14 @@ See the [tutorial guide](docs/tutorials.md) for running and editing local cases.
 
 ## Documentation
 
-- [FVM solver](source/solvers/fvm/README.md)
+- [FVM solver guide](docs/fvm.md)
+- [VPM solver guide](docs/vpm.md)
+- [FVM--VPM coupling guide](docs/coupling.md)
+- [FVM package/API notes](source/solvers/fvm/README.md)
 - [VPM numerical references](source/solvers/vpm/REFERENCES.md)
 - [Tutorials and hybrid examples](docs/tutorials.md)
 - [Installation and optional tools](docs/installation.md)
+- [Documentation audit and terminology](docs/documentation_audit.md)
 - Command-line help: `openonda --help` and `openonda api fvm.FVMCase`
 
 ## Development and contributing

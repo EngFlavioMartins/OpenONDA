@@ -13,9 +13,29 @@ from ._shared import DistributionSource, InitialVelocity, resolve_distribution
 
 @dataclass(frozen=True, slots=True)
 class TaylorGreenVortex:
-    """Periodic Taylor--Green velocity and vorticity field.
+    """Configure a periodic three-dimensional Taylor--Green initial field.
 
-    ``box_size`` is positive.  ``ANALYTICAL`` supplies the divergence-free
+    Parameters
+    ----------
+    box_size : float
+        Positive periodic wavelength/box length in m. The wave number is
+        ``2*pi/box_size``.
+    kinematic_viscosity : float
+        Non-negative molecular viscosity in m²/s assigned to particles.
+    distribution : ParticleDistribution, distribution builder, or None
+        Periodic particle geometry. ``None`` requires an explicit distribution
+        in :meth:`build`.
+    time : float, default=0.0
+        Requested physical initialization time in s. Only zero is valid for
+        analytical velocity because the nonlinear 3-D solution is not a
+        single exponentially decaying mode.
+    initial_velocity : InitialVelocity, default=InitialVelocity.ANALYTICAL
+        ``ANALYTICAL`` stores the exact time-zero velocity and vorticity;
+        ``ZERO`` stores zero velocity/vorticity for an external provider.
+
+    Notes
+    -----
+    ``ANALYTICAL`` supplies the divergence-free
     three-dimensional initial field at ``time=0``.  The nonlinear 3-D
     Taylor--Green problem has no scalar exponential-in-time exact solution;
     positive-time analytical initialization is therefore rejected instead of
@@ -30,7 +50,25 @@ class TaylorGreenVortex:
     initial_velocity: InitialVelocity = InitialVelocity.ANALYTICAL
 
     def build(self, distribution: ParticleDistribution | None = None) -> VortexParticleSet:
-        """Attribute exact Taylor--Green fields to immutable geometry."""
+        """Attribute Taylor--Green fields to immutable particle geometry.
+
+        Parameters
+        ----------
+        distribution : ParticleDistribution or None, default=None
+            Explicit geometry overriding the configured distribution.
+
+        Returns
+        -------
+        VortexParticleSet
+            Positions/velocities/strengths with shapes ``(N, 3)`` in m, m/s,
+            and m³/s plus aligned scalar particle fields.
+
+        Raises
+        ------
+        ValueError
+            If physical parameters/geometry are invalid, a positive-time
+            analytical field is requested, or the velocity mode is unsupported.
+        """
         geometry = resolve_distribution(distribution, self.distribution)
         box_size, viscosity, time = (
             float(self.box_size),

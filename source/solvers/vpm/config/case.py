@@ -42,6 +42,36 @@ class Numerics:
     positive.  ``precision`` selects the particle compute dtype (``"f32"`` or
     ``"f64"``).  ``integrator`` advances position and vortex strength together,
     while ``induction`` supplies the stage-rate evaluator.
+
+    Attributes
+    ----------
+    time_step_size : float
+        Accepted VPM macro-step in seconds.
+    integrator : RKTableau
+        Explicit tableau shared by position and vortex-strength updates.
+    induction : InductionMethod
+        Backend/formulation construction object, cloned/bound for runtime use.
+    axisymmetric_no_swirl_axis : {'x', 'y', 'z'} or None
+        Optional rotational orbit projection axis.
+    viscous, turbulence, stabilization : object
+        Diffusion, LES, and accepted-step stabilization policies.
+    vlm : VLMSetup or None
+        Optional attached vortex-lattice configuration.
+    particle_kernel : str
+        Radial regularization kernel name.
+    max_n_particles, max_evaluation_points : int
+        Fixed particle capacity and target-query capacity.
+    compute_device, precision, write_precision : str
+        Device and compute/write precision policies.
+    random_seed : int
+        Deterministic seed for stochastic diffusion/initializers.
+    diagnostics, health_limits : object
+        Diagnostic and accepted-state validation policies.
+    freestream_velocity : tuple[float, float, float]
+        Uniform background velocity in m/s.
+    bodies, domain_bounds : tuple, tuple or None
+        Optional body and diffusion-domain configuration. Bounds use
+        ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in metres.
     """
 
     time_step_size: float = DEFAULT_TIME_STEP
@@ -190,6 +220,18 @@ class RunPlan:
     ``"RAISE"`` preserves the exception behavior, while ``"STOP"`` writes
     terminal samples and a restart before returning with status
     ``"resolution_lost"``.
+
+    Attributes
+    ----------
+    steps : int
+        Number of accepted VPM steps; required and non-negative.
+    initial_samples, final_backup : bool
+        Framework lifecycle switches for initial scientific output and the
+        terminal numerical backup.
+    health_limit_action : {'RAISE', 'STOP'}
+        Policy when an accepted-state health limit is crossed.
+    wall_time_limit_seconds : float or None
+        Optional positive runtime budget checked between accepted steps.
     """
 
     steps: int
@@ -233,6 +275,9 @@ class RestartState:
     ``time`` is finite physical time in seconds and ``step`` is a non-negative
     accepted-step counter.  The runtime restores this object from numerical
     backup data; users construct it only for advanced interactive runs.
+
+    The object is mutable because the live solver updates it after every
+    accepted step; it is not part of immutable case identity.
     """
 
     time: float = 0.0
@@ -264,7 +309,29 @@ class VPMCase:
     percentage of the assembled cloud's maximum vortex-strength magnitude.
     ``directory`` is the case root (default current directory) below which
     framework-owned artifacts are written. Invalid nested plans or an empty
-    directory raise :class:`TypeError` or :class:`ValueError`.
+    directory raise :class:`TypeError` or :class:`ValueError`. ``name`` is an
+    optional stable case identifier recorded in solver-owned metadata;
+    it does not affect the equations or output paths.
+
+    Attributes
+    ----------
+    numerics : Numerics
+        Required immutable physical/numerical controls.
+    initial_conditions : tuple[InitialCondition, ...]
+        Declarative builders evaluated once at run/first-advance time.
+    backup, samplers : Backup, Samplers
+        Restart/log policy and scientific output policy.
+    run : RunPlan
+        Finite accepted-step lifecycle.
+    initial_weak_particle_percent : float
+        Optional 0--100 percentage threshold for initial strength pruning.
+    directory : str or pathlib.Path
+        Case root for framework-owned artifacts.
+    name : str or None
+        Optional non-empty case identifier stored in ``vpm_metadata.json``.
+
+    Construction performs no Taichi allocation or particle insertion; those are
+    solver-owned side effects.
     """
 
     numerics: Numerics
@@ -274,6 +341,7 @@ class VPMCase:
     run: RunPlan = field(default_factory=lambda: RunPlan(steps=0))
     initial_weak_particle_percent: float = 0.0
     directory: str | Path = "."
+    name: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.numerics, Numerics):
@@ -295,3 +363,7 @@ class VPMCase:
         if not str(directory).strip():
             raise ValueError("VPMCase.directory must be a non-empty path")
         object.__setattr__(self, "directory", directory)
+        if self.name is not None:
+            if not isinstance(self.name, str) or not self.name.strip():
+                raise ValueError("VPMCase.name must be None or a non-empty string")
+            object.__setattr__(self, "name", self.name.strip())

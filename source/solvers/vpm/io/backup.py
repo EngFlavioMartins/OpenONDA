@@ -130,16 +130,44 @@ def _canonical_configuration(configuration: dict[str, Any]) -> str:
     return json.dumps(configuration, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
+def _capacity_sensitive_adaptation(configuration: dict[str, Any]) -> bool:
+    """Unknown or adaptive allocation policies require an exact capacity."""
+    stabilization = configuration.get("stabilization")
+    if not isinstance(stabilization, dict):
+        return True
+    refinement = stabilization.get("filament_refinement")
+    if not isinstance(refinement, dict):
+        return True
+    return bool(
+        stabilization.get("regularization_interval_steps") or refinement.get("interval_steps")
+    )
+
+
 def _configuration_mismatches(
     expected: Any,
     found: Any,
     path: str = "",
 ) -> list[str]:
-    """Return exact dotted configuration paths that differ."""
+    """Return incompatible paths, allowing more storage for a fixed algorithm."""
     if isinstance(expected, dict) and isinstance(found, dict):
         paths: list[str] = []
         for key in sorted(set(expected) | set(found)):
             child_path = f"{path}.{key}" if path else key
+            if child_path == "max_n_particles":
+                old_capacity, new_capacity = found.get(key), expected.get(key)
+                if (
+                    type(old_capacity) is int
+                    and type(new_capacity) is int
+                    and new_capacity > old_capacity
+                    and not any(
+                        _capacity_sensitive_adaptation(configuration)
+                        for configuration in (expected, found)
+                    )
+                ):
+                    # These disabled operators cannot change behavior when
+                    # extra particle storage becomes available. The saved
+                    # checksum and every physical setting are still checked.
+                    continue
             if (
                 child_path == "stabilization.regularization_solenoidal_remesh"
                 and key not in found
@@ -178,6 +206,16 @@ class _BackupIO:
             expected_float_dtype=_restart_dtype(solver),
             expected_configuration=_numerical_configuration(solver),
         )
+
+        vlm = getattr(solver, "vlm_solver", None)
+        with h5py.File(path, "r") as file:
+            state = file["solver"].get("vlm")
+            if vlm is not None:
+                from ..boundary_elements.vlm.solver.restart import validate_vlm_restart
+
+                validate_vlm_restart(vlm, state)
+            elif state is not None:
+                raise ValueError("VLM backup requires a configured VLM solver")
 
         stabilization = _stabilization(solver)
         reference_vortex_strength = getattr(
@@ -374,6 +412,12 @@ class _BackupIO:
                     "divergence_relaxation_reference_moments",
                     data=reference_array,
                 )
+
+            vlm = getattr(solver, "vlm_solver", None)
+            if vlm is not None:
+                from ..boundary_elements.vlm.solver.restart import write_vlm_restart
+
+                write_vlm_restart(vlm, solver_group.create_group("vlm"))
 
             particles_group = file.create_group("particles")
             n_particles_total = int(solver.particles.n_particles_total)
@@ -694,6 +738,12 @@ class _BackupIO:
                 if stabilization is not None:
                     stabilization.reference_moments = tuple(row.copy() for row in reference_array)
 
+            vlm = getattr(solver, "vlm_solver", None)
+            if vlm is not None:
+                from ..boundary_elements.vlm.solver.restart import restore_vlm_restart
+
+                restore_vlm_restart(vlm, solver_group["vlm"])
+
             n_particles_total = _read_particle_count(solver_group)
             if n_particles_total == 0:
                 return
@@ -834,7 +884,7 @@ class _BackupIO:
                         - set(_STABILIZATION_DIAGNOSTIC_NAMES)
                     )
                     invalid(f"unknown solver attributes: {', '.join(unknown)}")
-                if set(solver_group.keys()) - {"divergence_relaxation_reference_moments"}:
+                if set(solver_group.keys()) - {"divergence_relaxation_reference_moments", "vlm"}:
                     invalid("contains unknown solver datasets")
                 format_version = _attribute_text(
                     solver_group.attrs.get("backup_format_version", "")

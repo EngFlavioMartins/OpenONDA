@@ -65,8 +65,15 @@ def test_cube_flow_viscous_config_factory_builds_each_supported_scheme(scheme):
 def test_cube_flow_viscous_config_factory_rejects_rwm_for_les():
     setup = _load_setup(CASE_DIR / "setup.py", "cube_flow_viscous_rwm_rejected")
 
-    with pytest.raises(ValueError, match="RWM.*cube-flow LES.*GBD"):
-        setup.make_vpm_viscous_config("RWM")
+    # The reusable Numerics constructor owns this physical compatibility rule.
+    with pytest.raises(ValueError, match="RWM.*GBD.*LES"):
+        replace(
+            setup.VPM_CASE.numerics,
+            viscous=setup.vpm.ViscousConfig.rwm(
+                kinematic_viscosity=setup.KINEMATIC_VISCOSITY,
+                particle_spacing=setup.VPM_PARTICLE_SPACING,
+            ),
+        )
 
 
 def test_cube_flow_viscous_config_factory_rejects_dvh_for_les():

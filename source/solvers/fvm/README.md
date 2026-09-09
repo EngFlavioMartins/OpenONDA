@@ -7,6 +7,11 @@ performance support is evidence-gated; see `capabilities.json` and
 for the executable contract gate and the qualifications that still require
 measured reports.
 
+For the complete reader-facing contract, including units, indexing, equations,
+lifecycle, sampling, output, and parallel ownership, see the
+[`FVM solver guide`](../../../docs/fvm.md). This file remains the package-level
+API note and capability status.
+
 The solver stores kinematic pressure ``p/ρ`` in m²/s² and volumetric face
 flux ``U·Sf`` in m³/s. Constant density therefore cancels from the flow
 evolution; it is applied when reporting dimensional pressure and viscous forces.
@@ -68,7 +73,7 @@ with fvm.FVMSolver(case) as solver:
 The canonical construction path is `FVMCase` followed by `FVMSolver(case)`;
 the older `FVMSetup`/`create_fvm_solver` path remains available for existing
 coupled/tutorial callers while migration is completed. `FVMCase` resolves its
-default artifacts under `solutions/` and `samples/` relative to the case root.
+default artifacts under `solution/` and `samples/` relative to the case root.
 Initial velocity and pressure values are supplied through `InitialFields`.
 `TimeConfig` and `MaximumCourantTimeStep` are immutable construction objects.
 The latter uses OpenFOAM-style damped growth (at most 20% per accepted step),
@@ -141,7 +146,7 @@ rectilinear and adaptive Cartesian meshers exposed through
 installed Gmsh API and accepts only first-order 3D tetrahedra (type 4),
 hexahedra (5), prisms (6), and pyramids (7). Other dimensions and higher-order
 cells fail before geometry assembly. Import provenance records the exact
-contract and runtime/API version in run manifests.
+contract and runtime/API version in solver-owned `fvm_metadata.json`.
 
 The maintained test command and evidence policy are listed in
 `docs/validation/fvm_qualification.md`; the machine-readable support contract

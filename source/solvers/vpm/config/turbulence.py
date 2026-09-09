@@ -11,11 +11,35 @@ from . import constants as constants_module
 
 @dataclass(frozen=True)
 class TurbulenceConfig:
-    """Configure the VPM turbulence model.
+    """Configure the VPM turbulence/LES closure.
 
-    ``DNS`` applies no sub-grid closure. ``LES_SMAGORINSKY`` uses the current
-    equilibrium Smagorinsky closure. ``INVISCID`` disables viscous and SGS
-    turbulence modelling at the turbulence-model level.
+    Parameters
+    ----------
+    model : {'DNS', 'LES_SMAGORINSKY', 'INVISCID'}, default='DNS'
+        ``DNS`` applies no subgrid closure, ``LES_SMAGORINSKY`` computes an
+        equilibrium eddy viscosity, and ``INVISCID`` disables viscous/SGS
+        modeling at this layer. Names are normalized uppercase.
+    smagorinsky_coefficient : float, default=0.2
+        Non-negative dimensionless ``C_s`` in the filter-width eddy-viscosity
+        model.
+    subgrid_dissipation_coefficient : float, default=1.048
+        Positive dimensionless equilibrium dissipation coefficient ``C_e``.
+
+    Attributes
+    ----------
+    flow_model : {'DNS', 'LES', 'INVISCID'}
+        Derived solver category, excluded from the constructor.
+
+    Raises
+    ------
+    ValueError
+        If ``model`` is unsupported or a coefficient violates its range.
+
+    Notes
+    -----
+    LES updates per-particle eddy viscosity from the accepted strain-rate
+    field; it does not directly modify circulation. Viscous configuration must
+    select a diffusion path that supports variable effective viscosity (GBD).
     """
 
     model: Literal["DNS", "LES_SMAGORINSKY", "INVISCID"] = "DNS"
@@ -55,7 +79,7 @@ class TurbulenceConfig:
 
     @property
     def subgrid_kinetic_energy_coefficient(self) -> float:
-        """Equivalent equilibrium SGS kinetic-energy coefficient ``C_k``."""
+        """Return dimensionless ``C_k=(C_s²*sqrt(C_e))**(2/3)``."""
         return (self.smagorinsky_coefficient**2 * self.subgrid_dissipation_coefficient**0.5) ** (
             2.0 / 3.0
         )

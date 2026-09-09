@@ -1,64 +1,16 @@
-#!/usr/bin/env bash
-# Run the Lamb--Oseen vortex, dipole, and merging-vortex comparisons.
-set -euo pipefail
+#!/bin/bash -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "${SCRIPT_DIR}"
-PYTHON_BIN="${OPENONDA_PYTHON:-python}"
+python setup.py vortex CS
+python assets/rwm_ensemble.py vortex --number-of-realizations 10 --converge
+python setup.py vortex DVH
+python setup.py vortex GBD
 
-CACHE_PARENT="${TI_OFFLINE_CACHE_FILE_PATH:-${XDG_CACHE_HOME:-${SCRIPT_DIR}/.cache}/taichi}"
-mkdir -p "${CACHE_PARENT}"
-RUN_CACHE_DIR="$(mktemp -d "${CACHE_PARENT%/}/lamb-oseen.XXXXXX")"
-export TI_OFFLINE_CACHE_FILE_PATH="${RUN_CACHE_DIR}"
-CURRENT_PHASE="setup"
-finish() {
-    local status=$?
-    if (( status != 0 )); then
-        printf '\n[campaign] FAILED | %s | exit %s\n' "${CURRENT_PHASE}" "${status}" >&2
-    fi
-    rm -rf -- "${RUN_CACHE_DIR}"
-    trap - EXIT
-    exit "${status}"
-}
-trap finish EXIT
+python setup.py dipole CS
+python assets/rwm_ensemble.py dipole --number-of-realizations 10 --converge
+python setup.py dipole DVH
+python setup.py dipole GBD
 
-run_phase() {
-    CURRENT_PHASE="$1"
-    shift
-    local started=${SECONDS}
-    printf '\n[campaign] START | %s\n' "${CURRENT_PHASE}"
-    "$@"
-    printf '[campaign] DONE  | %s | %ss\n' "${CURRENT_PHASE}" "$((SECONDS - started))"
-}
-
-printf '[campaign] Lamb–Oseen | vortex → dipole → merging | 4 methods per case\n'
-case "${1:---resume}" in
-    --clean) run_phase "Clean previous outputs" "${SCRIPT_DIR}/allclean.sh" ;;
-    --resume) ;;
-    *) printf 'Usage: %s [--resume|--clean]\n' "$0" >&2; exit 2 ;;
-esac
-
-run_physics_case() {
-    local physics="$1"
-    run_phase "${physics} / CS" "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" setup "${physics}" CS --resume
-
-    run_phase "${physics} / RWM / converge ensemble" \
-        "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.rwm_ensemble "${physics}" \
-        --number-of-realizations 10 --converge --resume
-
-    run_phase "${physics} / DVH" "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" setup "${physics}" DVH --resume
-
-    run_phase "${physics} / GBD" "${PYTHON_BIN}" -u -m openonda.tutorial_runner "${SCRIPT_DIR}" setup "${physics}" GBD --resume
-
-    run_phase "${physics} / extract diagnostics" "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess \
-        --extract-fields --case "${physics}"
-    run_phase "${physics} / validate" "${PYTHON_BIN}" -m openonda.tutorial_runner "${SCRIPT_DIR}" assets.postprocess \
-        --pre-plot --validate-case "${physics}"
-}
-
-run_physics_case vortex
-run_physics_case dipole
-run_physics_case merging
-
-run_phase "Figures and final validation" "${SCRIPT_DIR}/allplot.sh"
-printf '\n[campaign] COMPLETED | all cases and final validation passed\n'
+python setup.py merging CS
+python assets/rwm_ensemble.py merging --number-of-realizations 10 --converge
+python setup.py merging DVH
+python setup.py merging GBD

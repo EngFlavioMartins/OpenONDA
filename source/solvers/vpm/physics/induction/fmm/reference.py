@@ -52,6 +52,40 @@ class HostFMMReference:
         leaf_capacity: int = 8,
         stretching_scheme: str = "TRANSPOSED",
     ) -> None:
+        """Configure the inspectable host reference FMM.
+
+        Parameters
+        ----------
+        physics : object or None, optional
+            VPM physics context to bind immediately. ``None`` creates an
+            unbound evaluator that can be attached later with :meth:`bind`.
+        tolerance : float, default=1e-4
+            Dimensionless admissibility/expansion tolerance in ``(0, 1)``.
+            Smaller values retain more exact interactions and cost more.
+        kernel : RadialVortexKernel or None, optional
+            Regularized vortex kernel. ``None`` selects the Gaussian kernel.
+        max_n_particles : int or None, optional
+            Capacity used for reusable host buffers. ``None`` starts at one
+            and adopts the bound physics capacity when available.
+        leaf_capacity : int, default=8
+            Maximum source count in an FMM leaf before subdivision.
+        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+            Contraction used for the returned strength rate when gradients are
+            requested. Velocity and gradient evaluation are otherwise the
+            same; see :func:`normalize_stretching_scheme`.
+
+        Raises
+        ------
+        ValueError
+            If ``tolerance`` is outside ``(0, 1)`` or ``leaf_capacity`` is
+            less than one.
+
+        Notes
+        -----
+        This reference stores the active stage prefix on the host and may
+        allocate/rebuild its tree as the particle count changes. It does not
+        mutate the caller's stage arrays during construction.
+        """
         if not 0.0 < float(tolerance) < 1.0:
             raise ValueError("FMM tolerance must lie in (0, 1)")
         if int(leaf_capacity) < 1:

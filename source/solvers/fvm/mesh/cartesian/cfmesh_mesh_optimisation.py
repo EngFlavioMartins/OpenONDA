@@ -7,9 +7,11 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from numba import njit, prange
+from numba import prange
 from numba.extending import register_jitable
 import numpy as np
+
+from source._numba import cacheable_njit as njit
 
 from .cfmesh_surface_optimisation import (
     _mag_squared,

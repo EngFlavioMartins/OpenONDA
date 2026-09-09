@@ -7,28 +7,23 @@ merger.
 
 ## Run the complete comparison
 
-From any directory, with the OpenONDA environment active:
+From this case directory, with the installed OpenONDA environment active:
 
 ```bash
-/path/to/tutorials/vpm/lamb_oseen_vortex/allrun.sh
+./allrun.sh
+./allplot.sh
 ```
 
-`allrun.sh` resumes compatible completed runs, runs missing or outdated cases,
-and creates the PNG and PDF figures. Outputs replaced by a rerun are preserved
-under `solution/.previous_runs/`. Use `allrun.sh --clean` to remove previous
-outputs and start from scratch. Validation still stops on unsuitable results.
+`allrun.sh` lists the simulations only. Use `python setup.py vortex CS` to run
+one physical/method variant. `./allclean.sh` explicitly removes generated
+outputs before a fresh comparison when desired.
 
 RWM starts with ten independent seeds and adds batches until the maximum
-velocity and vorticity relative standard errors are both at most 7.5%. It
-reuses completed members when resumed and stops with an actionable error at
-80 seeds if the precision target is still unmet.
+velocity and vorticity relative standard errors are both at most 7.5%, up to
+80 seeds. The ensemble's statistical stopping rule is part of the experiment.
+Validation is separate: run `python assets/postprocess.py` after plotting.
 
-To rebuild the figures from completed samples:
-
-```bash
-/path/to/tutorials/vpm/lamb_oseen_vortex/allplot.sh
-```
-
+`allplot.sh` extracts the required fields and produces PNG and PDF figures.
 This also creates `mergingRenderT0` and `mergingRenderFinal` in PDF and PNG
 formats from the initial conditions and the final GBD particle backup in
 `solution/merging_gbd/`. Keep that backup and its sample metadata when
@@ -55,8 +50,8 @@ and `openonda tutorial clean`.
 In `setup.py`, `COMPUTE_METHOD` selects the backend separately from
 `STRETCHING_SCHEME`, which accepts `"direct"`, `"mixed"`, or `"transposed"`.
 The factory calls, for example, `vpm.TreecodeInduction(stretching_scheme="transposed")`.
-Changing either choice invalidates reuse of completed results; both choices
-are recorded separately in the run metadata.
+Both choices are recorded by the solver in `solution/<case>/vpm_metadata.json`.
+Clean the previous outputs before comparing newly edited configurations.
 
 FMM remains available in OpenONDA, but is not used for this cross-platform
 benchmark because it is unavailable on Metal and its surface evaluation is
@@ -69,7 +64,7 @@ FFT convolution with the unbounded Gaussian Green tensor, including the
 far-field energy of an open vortex column. Energy is not taken from a
 periodic inverse Laplacian. DVH energy samples span at least one complete
 heat-transfer interval (36 steps for vortex/dipole, 30 for merging); surface
-fields retain their original cadence. The final check rejects missing or
+fields retain their original cadence. The explicit postprocessor check rejects missing or
 non-finite energy histories, incomplete RWM ensembles, failed GBD moment
 closure, incomplete physical-time coverage, or missing figures.
 

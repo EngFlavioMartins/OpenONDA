@@ -1,6 +1,5 @@
 import argparse
 import csv
-import glob
 import os
 from pathlib import Path
 
@@ -75,10 +74,7 @@ def load_forces_csv(solution_dir):
     return data
 
 
-def latest_vtu(solution_dir):
-    """Path of the last-written .vtu snapshot, or None."""
-    files = sorted(glob.glob(os.path.join(solution_dir, "*.vtu")))
-    return files[-1] if files else None
+latest_vtu = THEME.latest_fvm_snapshot
 
 
 def strouhal_from_lift(t, cl):

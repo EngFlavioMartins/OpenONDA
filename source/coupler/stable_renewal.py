@@ -15,9 +15,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from numba import njit
 import numpy as np
 from scipy.ndimage import gaussian_filter
+
+from source._numba import cacheable_njit as njit
 
 ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
@@ -273,6 +274,14 @@ class StableRenewalLattice:
 
     @property
     def particle_volume(self) -> float:
+        """Return the fixed cubic volume represented by one lattice particle.
+
+        Returns
+        -------
+        float
+            ``particle_spacing**3`` in m³.  The lattice is uniform, so this
+            value applies to every active renewal particle.
+        """
         return self.particle_spacing**3
 
 
@@ -602,6 +611,7 @@ class StableRenewalResult:
 
     @property
     def particle_count(self) -> int:
+        """Return the number of active particles represented by this result."""
         return len(self.position)
 
 

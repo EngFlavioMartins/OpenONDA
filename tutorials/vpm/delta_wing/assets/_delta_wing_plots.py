@@ -1,143 +1,175 @@
-#!/usr/bin/env python3
-"""Diagnostics for the two-wing wake-crossing Delta Wing tutorial.
+"""Delta-wing figures from native force, motion and velocity samples."""
 
-Figures
--------
-1. delta_wing_forces.png   — 2 panels: (top) lift on the front vs rear wing over
-   time; (bottom) the two wings' plunge (z) trajectories, showing the rear wing
-   crossing up/down through the front wing's wake.
-2. delta_wing_circulation_history.png — total |Γ| carried by the VPM wake.
-
-(The old particle-count figure was removed: particle count is governed by the
-shedding cadence + wake-bounding adaptation and carries no physical insight.)
-"""
-
-from __future__ import annotations
-
-import json
 from pathlib import Path
+import json
 
+from defusedxml import ElementTree
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pyvista as pv
+from scipy.signal import find_peaks
+
+from openonda import plotting as _theme
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = CASE_DIR / "samples" / "delta_wing"
 FIGURES_DIR = CASE_DIR / "figures"
+_COLORS = _theme.COLORS
 
 
-def _load_theme() -> tuple[dict[str, str], object | None]:
-    from openonda import plotting as theme
-
-    theme.set_style()
-    return dict(theme.COLORS), theme
+def force_history(samples_dir=SAMPLES_DIR):
+    return pd.read_csv(samples_dir / "vlm_surface_forces.csv")
 
 
-_COLORS, _theme = _load_theme()
+def motion_period(data):
+    """Measure the prescribed period from the solver's sampled heave velocity."""
+    front = data[data.surface == "front_wing"].sort_values("time")
+    peaks, _ = find_peaks(front.translation_velocity_z)
+    if len(peaks) < 2:
+        raise ValueError("At least two sampled heave-velocity peaks are needed to measure a period")
+    return float(np.median(np.diff(front.time.to_numpy()[peaks])))
 
 
-# ----------------------------------------------------------------------------
-# Figure 1: per-wing forces + plunge trajectories
-# ----------------------------------------------------------------------------
-def _wing_lift_history(samples_dir: Path, surface: str):
-    """(time, lift) for one wing from its spanwise loading CSV."""
-    csv = samples_dir / f"vlm_spanwise_{surface}.csv"
-    if not csv.exists():
-        return np.array([]), np.array([])
-    df = pd.read_csv(csv)
-    if "surface" in df.columns:
-        df = df[df["surface"] == surface]
-    required_columns = {"section_force_z", "step", "time"}
-    if not required_columns.issubset(df.columns):
-        return np.array([]), np.array([])
-    rows = []
-    for step, g in df.groupby("step"):
-        t = float(g["time"].iloc[0])
-        val = float(g["section_force_z"].sum())
-        rows.append((t, val))
-    rows.sort()
-    a = np.asarray(rows)
-    return (a[:, 0], a[:, 1]) if a.size else (np.array([]), np.array([]))
+def last_cycles(data, period, count=3):
+    """Yield complete cycles; a sample exactly on the endpoint belongs to the prior cycle."""
+    times = np.sort(data.time.unique())
+    cadence = np.median(np.diff(times))
+    first = max(0, int(np.ceil((times[0] - cadence - 1e-9) / period)))
+    last = int(np.floor((data.time.max() + 1e-9) / period))
+    for cycle in range(max(first, last - count), last):
+        rows = data[
+            (data.time > cycle * period + 1e-9) & (data.time <= (cycle + 1) * period + 1e-9)
+        ]
+        yield cycle, (rows.time.to_numpy() - cycle * period) / period, rows
 
 
-def plot_forces(samples_dir: Path, figures_dir: Path, figure_format: str = "png") -> None:
-    meta_path = samples_dir / "motion_params.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-
-    fig, (ax_f, ax_z) = plt.subplots(2, 1, figsize=_theme.figure_size("stacked"), sharex=True)
-
-    # Top: per-wing lift
-    plotted = False
-    c_front = _COLORS["TUDcyan"]
-    c_rear = _COLORS["AccentRed"]
-    for surf, color, lbl in [
-        ("front_wing", c_front, "Front wing"),
-        ("rear_wing", c_rear, "Rear wing"),
-    ]:
-        t, lift = _wing_lift_history(samples_dir, surf)
-        if t.size:
-            ax_f.plot(t, lift, "-", color=color, lw=1.3, label=lbl)
-            plotted = True
-    ax_f.axhline(0, color=_COLORS["reference"], lw=0.5, alpha=0.5)
-    ax_f.set_ylabel("Lift [N]")
-    ax_f.set_title("Forces on front vs rear delta wing")
-    if plotted:
-        ax_f.legend()
-
-    # Bottom: plunge trajectories z(t) = A(1 - cos(ωt + φ))
-    if meta:
-        heave_amplitude = meta["heave_amplitude"]
-        angular_frequency = meta["angular_frequency"]
-        time_step_size = meta["time_step_size"]
-        n_steps = meta["n_steps"]
-        time = np.arange(n_steps) * time_step_size
-        for surface_name, color, label in [
-            ("front_wing", c_front, "Front wing"),
-            ("rear_wing", c_rear, "Rear wing"),
-        ]:
-            phase = meta.get("wings", {}).get(surface_name, 0.0)
-            vertical_position = heave_amplitude * (1.0 - np.cos(angular_frequency * time + phase))
-            ax_z.plot(
-                time,
-                vertical_position,
-                "-",
-                color=color,
-                lw=1.3,
-                label=f"{label} $z(t)$",
-            )
-        ax_z.legend()
-    ax_z.set_xlabel("Time [s]")
-    ax_z.set_ylabel("Plunge position $z$ [m]")
-    out = figures_dir / "delta_wing_forces.png"
-    figures_dir.mkdir(parents=True, exist_ok=True)
-    _theme.save_fig(fig, out, figure_format=figure_format)
-
-
-# ----------------------------------------------------------------------------
-# Figure 2: total wake circulation history
-# ----------------------------------------------------------------------------
-def plot_circulation(
-    samples_dir: Path,
-    figures_dir: Path,
-    figure_format: str = "png",
-) -> None:
-    csv = samples_dir / "flow_integrals.csv"
-    if not csv.exists():
-        print("  [WARNING] no sampled circulation history.")
-        return
-    data = pd.read_csv(csv)
-    fig, ax = plt.subplots(figsize=_theme.figure_size("single"))
-    ax.plot(
-        data["time"],
-        data["vortex_strength_magnitude_sum"],
-        "-o",
-        color=_COLORS["VPMpurple"],
-        ms=3,
-        lw=1.2,
+def plot_forces(samples_dir, figures_dir, figure_format="png"):
+    _theme.set_thesis_style()
+    data = force_history(samples_dir)
+    period = motion_period(data)
+    fig, rows = plt.subplots(
+        4, 1, figsize=(12.5 * _theme.CM, 22 * _theme.CM), constrained_layout=True
     )
-    ax.set_xlabel("Time [s]")
-    ax.set_ylabel(r"$\sum |\Gamma|$ [m$^2$/s]")
-    ax.set_title("Delta wing: wake vortex-strength magnitude history")
-    out = figures_dir / "delta_wing_circulation_history.png"
-    figures_dir.mkdir(parents=True, exist_ok=True)
-    _theme.save_fig(fig, out, figure_format=figure_format)
+    axes = rows.reshape(2, 2)
+    for surface, color, label in (
+        ("front_wing", _COLORS["TUDcyan"], "Front"),
+        ("rear_wing", _COLORS["VPMpurple"], "Rear"),
+    ):
+        rows = data[data.surface == surface]
+        axes[0, 0].plot(rows.time, rows.force_z, color=color, label=label)
+        axes[1, 0].plot(rows.time, rows.centroid_z, color=color)
+        for i, (cycle, phase, tail) in enumerate(last_cycles(rows, period)):
+            axes[0, 1].plot(
+                phase,
+                tail.force_z,
+                color=color,
+                ls=(":", "--", "-")[i],
+                label=f"{label}, cycle {cycle + 1}",
+            )
+        axes[1, 1].plot(rows.time, -rows.power, color=color)
+    axes[0, 0].set(xlabel="Time [s]", ylabel="Vertical force [N]")
+    axes[1, 0].set(xlabel="Time [s]", ylabel="Sampled centroid z [m]")
+    cycle_count = min(3, int(np.floor((data.time.max() + 1e-9) / period)))
+    axes[0, 1].set(
+        xlabel="Cycle phase",
+        ylabel="Vertical force [N]",
+        title=f"Complete cycles shown: {cycle_count}",
+    )
+    axes[1, 1].set(xlabel="Time [s]", ylabel="Motion input power [W]")
+    axes[0, 0].legend()
+    axes[0, 1].legend(ncol=2)
+    for ax in axes.flat:
+        ax.axhline(0, color="0.6", lw=0.4)
+    _theme.save_fig(
+        fig, figures_dir / "delta_wing_forces.png", figure_format=figure_format, bbox_inches=None
+    )
+
+
+def plot_circulation(samples_dir, figures_dir, figure_format="png"):
+    _theme.set_thesis_style()
+    data = pd.read_csv(samples_dir / "flow_integrals.csv")
+    fig, ax = plt.subplots(figsize=_theme.figure_size("single_tall"), constrained_layout=True)
+    ax.plot(data.time, data.vortex_strength_magnitude_sum, color=_COLORS["VPMpurple"])
+    ax.set(
+        xlabel="Time [s]",
+        ylabel=r"$\sum_p |\boldsymbol{\alpha}_p|$ [m$^3$/s]",
+        title="Wake vector-strength magnitude (not conserved)",
+    )
+    _theme.save_fig(
+        fig,
+        figures_dir / "delta_wing_circulation_history.png",
+        figure_format=figure_format,
+        bbox_inches=None,
+    )
+
+
+def plot_wake(samples_dir, figures_dir, figure_format="png"):
+    _theme.set_thesis_style()
+    metadata = json.loads((CASE_DIR / "solution/vpm_metadata.json").read_text())
+    velocity = np.asarray(metadata["configuration"]["numerics"]["freestream_velocity"])
+    speed = np.linalg.norm(velocity)
+    direction = velocity / speed
+    period = motion_period(force_history(samples_dir))
+    planes = sorted(samples_dir.glob("wake_*span.pvd"))
+    fig, axes = plt.subplots(
+        len(planes),
+        2,
+        figsize=(12.5 * _theme.CM, 18 * _theme.CM),
+        constrained_layout=True,
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
+    axes = axes.T
+    records = []
+    collections = [ElementTree.parse(pvd).findall(".//DataSet") for pvd in planes]
+    end = min(max(float(frame.attrib["timestep"]) for frame in frames) for frames in collections)
+    starts = []
+    for pvd, frames in zip(planes, collections, strict=True):
+        selected = [
+            frame for frame in frames if end - period < float(frame.attrib["timestep"]) <= end
+        ]
+        starts.append(float(selected[0].attrib["timestep"]))
+        grids = [pv.read(pvd.parent / frame.attrib["file"]) for frame in selected]
+        mean = np.mean([np.asarray(grid["velocity"]) / speed for grid in grids], axis=0)
+        records.append((grids[-1].points, mean))
+    records.sort(key=lambda row: row[0][0] @ direction)
+    axial = [mean @ direction for _, mean in records]
+    vertical = [mean[:, 2] for _, mean in records]
+    vertical_limit = max(np.max(np.abs(values)) for values in vertical)
+    for row, values, limits, cmap, label in (
+        (
+            0,
+            axial,
+            (min(v.min() for v in axial), max(v.max() for v in axial)),
+            "viridis",
+            r"Mean $u_{\parallel}/U_\infty$",
+        ),
+        (1, vertical, (-vertical_limit, vertical_limit), "RdBu_r", r"Mean $u_z/U_\infty$"),
+    ):
+        for column, ((points, _), field) in enumerate(zip(records, values, strict=True)):
+            artist = axes[row, column].tricontourf(
+                points[:, 1],
+                points[:, 2],
+                field,
+                levels=np.linspace(*limits, 25),
+                cmap=cmap,
+            )
+            axes[row, column].set_aspect("equal")
+        fig.colorbar(
+            artist,
+            ax=axes[row],
+            label=label,
+            format="%.2f",
+            ticks=np.linspace(*limits, 5),
+        )
+    for column, (points, _) in enumerate(records):
+        axes[0, column].set_title(f"x = {points[0, 0]:g} m")
+        axes[0, column].set_ylabel("z [m]")
+    for ax in axes[:, -1]:
+        ax.set_xlabel("y [m]")
+    fig.suptitle(f"Mean wake velocity\nt = {max(starts):.2f}–{end:.2f} s")
+    _theme.save_fig(
+        fig, figures_dir / "delta_wing_wake.png", figure_format=figure_format, bbox_inches=None
+    )

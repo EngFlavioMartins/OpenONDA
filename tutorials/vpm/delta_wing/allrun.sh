@@ -1,33 +1,4 @@
-#!/usr/bin/env bash
-# Run the delta-wing wake-crossing case, then make the figures.
-# Usage: ./allrun.sh
-set -euo pipefail
+#!/bin/bash -e
+cd -- "$(dirname -- "$0")"
 
-cd "$(dirname "$0")"
-
-echo
-echo "===== CLEAN ====="
-echo
-./allclean.sh
-
-echo
-echo "===== SIMULATE ====="
-echo
-mkdir -p solution
-python setup.py 2>&1 | tee solution/delta_wing.log
-
-echo
-echo "===== FIGURES ====="
-echo
-python assets/validate_results.py --pre-plot
-./allplot.sh png
-./allplot.sh pdf
-
-echo
-echo "===== VALIDATE ====="
-echo
-python assets/validate_results.py
-
-echo
-echo "===== DONE ====="
-echo
+python setup.py

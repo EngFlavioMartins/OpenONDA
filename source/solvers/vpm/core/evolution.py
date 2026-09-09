@@ -40,6 +40,21 @@ class EvolutionStepper:
     """
 
     def __init__(self, solver: VPMSolver) -> None:
+        """Attach a step orchestrator to its owning solver.
+
+        Parameters
+        ----------
+        solver : VPMSolver
+            Solver whose particle container, physics evaluator, clock, and
+            optional coupling/stabilization subsystems are driven. The
+            stepper stores a back-reference; it does not copy solver state.
+
+        Notes
+        -----
+        The owning solver remains responsible for accepted-step mutation,
+        backups, diagnostics, and rollback. Construct this class through
+        ``VPMSolver`` rather than instantiating it as an independent solver.
+        """
         self.solver = solver
         self._staged_step: int | None = None
         self._staged_time: float | None = None
@@ -48,116 +63,153 @@ class EvolutionStepper:
     # second, forwarding view of VPMSolver's entire mutable surface.
     @property
     def step(self):
+        """Return the accepted or currently staged integer step index."""
         return self.solver.step if self._staged_step is None else self._staged_step
 
     @property
     def time(self):
+        """Return the accepted or currently staged physical time in seconds."""
         return self.solver.time if self._staged_time is None else self._staged_time
 
     @property
     def particles(self):
+        """Return the solver-owned mutable particle container."""
         return self.solver.particles
 
     @property
     def physics(self):
+        """Return the solver-owned VPM physics workspace."""
         return self.solver.physics
 
     @property
     def setup(self):
+        """Return the immutable VPM setup/configuration object."""
         return self.solver.setup
 
     @property
     def profiler(self):
+        """Return the step profiler used by the owning solver."""
         return self.solver.profiler
 
     @property
     def stabilization(self):
+        """Return the stabilization manager for scheduled step phases."""
         return self.solver.stabilization
 
     @property
     def coupling(self):
+        """Return the optional boundary/coupling manager."""
         return self.solver.coupling
 
     @property
     def vlm_solver(self):
+        """Return the optional VLM solver, or ``None`` when disabled."""
         return self.solver.vlm_solver
 
     @property
     def panel_solver(self):
+        """Return the optional panel solver, or ``None`` when disabled."""
         return self.solver.panel_solver
 
     @property
     def time_step_size(self):
+        """Return the active physical step size in seconds."""
         return self.solver.time_step_size
 
     @property
     def np_dtype(self):
+        """Return the NumPy dtype corresponding to solver precision."""
         return self.solver.np_dtype
 
     @property
     def flow_model(self):
+        """Return the configured flow model, such as ``POTENTIAL`` or ``LES``."""
         return self.solver.flow_model
 
     @property
     def n_sources(self):
+        """Return the active source count used by induction queries."""
         return self.solver.n_sources
 
     @property
     def stabilization_config(self):
+        """Return immutable stabilization controls."""
         return self.solver.stabilization_config
 
     @property
     def viscous_scheme(self):
+        """Return the active diffusion scheme name."""
         return self.solver.viscous_scheme
 
     @property
     def _viscous_config(self):
+        """Return the internal diffusion configuration used by split updates."""
         return self.solver._viscous_config
 
     @property
     def _n_steps_per_dvh_diffusion(self):
+        """Return accepted steps between DVH regenerations."""
         return self.solver._n_steps_per_dvh_diffusion
 
     @property
     def turbulence_model(self):
+        """Return the active LES model, or ``None`` for non-LES flow."""
         return self.solver.turbulence_model
 
     @property
     def particle_position(self):
+        """Return the device position field with logical shape ``(N, 3)`` in m."""
         return self.solver.particle_position
 
     @property
     def particle_velocity_gradient(self):
+        """Return the particle velocity Jacobian field with shape ``(N, 3, 3)`` in 1/s."""
         return self.solver.particle_velocity_gradient
 
     @property
     def particle_group_id(self):
+        """Return integer particle group labels with logical shape ``(N,)``."""
         return self.solver.particle_group_id
 
     @property
     def particle_zone_id(self):
+        """Return integer spatial-zone labels with logical shape ``(N,)``."""
         return self.solver.particle_zone_id
 
     @property
     def source_position(self):
+        """Return the current induction source positions in m."""
         return self.solver.source_position
 
     @property
     def source_strength(self):
+        """Return the current source circulation vectors in m³/s."""
         return self.solver.source_strength
 
     @property
     def source_core_radius(self):
+        """Return the current source core radii in m."""
         return self.solver.source_core_radius
 
     @property
     def axisymmetric_axis(self):
+        """Return the axisymmetric coordinate index, or ``-1`` if disabled."""
         return self.solver.axisymmetric_axis
 
     def replace_vortex_particles(self, **properties):
+        """Replace the active particle set through the owning solver.
+
+        Parameters
+        ----------
+        **properties : array-like
+            Particle fields accepted by :meth:`VPMSolver.replace_vortex_particles`.
+            Positions are in m, velocity in m/s, strengths in m³/s, radii in m,
+            and volumes in m³.
+        """
         return self.solver.replace_vortex_particles(**properties)
 
     def update_particle_vortex_strength(self, *args, **kwargs):
+        """Forward an in-place vortex-strength update to the owning solver."""
         return self.solver.update_particle_vortex_strength(*args, **kwargs)
 
     def advance(self, *, defer_output: bool = False) -> None:
@@ -192,10 +244,6 @@ class EvolutionStepper:
         self._debug_validate_particle_geometry("step entry")
 
         with self.profiler.step():
-            if self.vlm_solver is not None:
-                with self.profiler.section("VLM coupling"):
-                    self.coupling.advance_vlm(self.time_step_size)
-
             if self.panel_solver is not None:
                 with self.profiler.section("Panel coupling"):
                     self.coupling.advance_panel()
@@ -234,12 +282,17 @@ class EvolutionStepper:
             if self.flow_model != "POTENTIAL":
                 self.stabilization.run_phase("post_evolution", profiler=self.profiler)
 
-            if self.vlm_solver is not None:
-                with self.profiler.section("VLM diagnostics"):
-                    self.solver._record_vlm_diagnostics()
-
             self.stabilization.run_phase("post_step", profiler=self.profiler)
             self._debug_validate_particle_geometry("particle retention")
+
+            if self.vlm_solver is not None:
+                # Transport the existing wake with the previous bound solution,
+                # then solve at the new body/wake clock and insert the completed
+                # near-wake row. Newborn elements must not receive a second full
+                # step of advection or stretching during their birth interval.
+                self.particles.touch_state()
+                with self.profiler.section("VLM coupling"):
+                    self.coupling.advance_vlm(self.time_step_size)
 
         # The evolution kernels mutate particle source fields directly on the
         # device.  Publish one new source revision after the complete physical
@@ -252,7 +305,7 @@ class EvolutionStepper:
         Logging.time_step(
             self.solver.step,
             self.solver.time,
-            self.solver.wall_time,
+            self.solver.elapsed_wall_time,
             total_steps=getattr(self.solver, "_run_final_step", None),
             n_particles=self.particles.n_particles_total,
         )

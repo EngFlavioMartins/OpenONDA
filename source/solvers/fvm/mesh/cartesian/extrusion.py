@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..geometry import compute_mesh_geometry
+from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
 from ..validation import (
     validate_cell_area_closure,
@@ -15,7 +16,7 @@ from ..validation import (
     validate_topology,
     validate_wall_vertex_conformance,
 )
-from .config import BoxDomain
+from .config import BoundaryLayers, BoxDomain
 from .mesher import CartesianMesher
 
 
@@ -176,38 +177,93 @@ def extrude_mesh_section(mesh, *, coordinate, levels, domain, surfaces=()):
 
 @dataclass
 class ExtrudedCartesianMesher:
-    """Build a span-invariant mesh from a cfMesh workflow section."""
+    """Build a conforming quasi-2D mesh from a Cartesian volume-mesh section.
+
+    Parameters
+    ----------
+    source : CartesianMesher
+        Configured three-dimensional source workflow. ``build`` runs it through
+        ``meshOptimisation`` and takes a z-normal planar section.
+    domain : BoxDomain
+        Output domain. Its z bounds must equal the first and last ``levels``;
+        x/y bounds and patch names classify the section perimeter.
+    levels : tuple[float, ...]
+        Strictly increasing z coordinates in m. Consecutive values define the
+        extrusion layers and need not be uniformly spaced.
+
+    Notes
+    -----
+    Construction stores references only. :meth:`build` performs source mesh
+    generation, sectioning, extrusion, validation, and optional callback
+    invocation; it returns newly allocated native mesh data.
+    """
 
     source: CartesianMesher
     domain: BoxDomain
     levels: tuple[float, ...]
 
     @property
-    def max_cell_size(self):
+    def max_cell_size(self) -> float:
+        """Background maximum cell size inherited from ``source``, in m."""
         return self.source.max_cell_size
 
     @property
-    def boundary_layers(self):
+    def boundary_layers(self) -> tuple[BoundaryLayers, ...]:
+        """Wall-normal layer requests inherited from the source mesher."""
         return self.source.boundary_layers
 
-    def effective_cell_size(self, requested):
+    def effective_cell_size(self, requested: float) -> float:
+        """Return the source octree's realizable dyadic size for a request in m."""
         return self.source.effective_cell_size(requested)
 
-    def build(self, *, on_generated=None):
+    def build(self, *, on_generated=None) -> dict[str, object]:
+        """Generate, section, extrude, validate, and return a native FVM mesh.
+
+        Parameters
+        ----------
+        on_generated : callable or None, optional
+            Callback invoked once with the completed mutable mesh mapping. The
+            callback may inspect or persist it; its return value is ignored.
+
+        Returns
+        -------
+        dict[str, object]
+            Native mesh connectivity and provenance. Vertex coordinates have
+            shape ``(n_vertices, 3)`` in m; owner/neighbour indices use the
+            standard owner-to-neighbour face orientation.
+
+        Raises
+        ------
+        ValueError
+            If section selection, extrusion levels, resolved sizes, topology,
+            geometry, or wall conformance is invalid.
+
+        Notes
+        -----
+        This method performs the expensive source build and invokes
+        ``on_generated`` after validation. It does not create solver fields.
+        """
         # Select the planar interior before the unrelated end-rim correction.
-        raw = self.source.build(stop_after="meshOptimisation")
+        with mesh_stage("source mesh generation"):
+            raw = self.source.build(stop_after="meshOptimisation")
         dx = min(item.cell_size for item in self.source.patch_refinements)
         # Stay inside a finest-size slab, clear of its central wrapper
         # transition. Near a transition, a planar cut can graze a sliver
         # even though the original three-dimensional cell is well shaped.
         coordinate = 0.75 * dx
-        result = extrude_mesh_section(
-            raw,
-            coordinate=coordinate,
-            levels=self.levels,
-            domain=self.domain,
-            surfaces=self.source.surfaces,
-        )
+        with mesh_stage("section extrusion") as progress:
+            result = extrude_mesh_section(
+                raw,
+                coordinate=coordinate,
+                levels=self.levels,
+                domain=self.domain,
+                surfaces=self.source.surfaces,
+            )
+            progress.details(
+                cells=result.get("n_cells"),
+                faces=result.get("n_faces"),
+                points=result.get("n_points"),
+            )
         generation = result["mesh_generation"]
         native = raw["mesh_generation"]
         root_size = native["root_box"][1] - native["root_box"][0]

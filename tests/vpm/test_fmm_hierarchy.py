@@ -195,7 +195,10 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
     ).sum(axis=1)
     expected_gradient = kernel.gradient_pair(
         displacement, strength[None, :, :], radius[:, None], radius[None, :]
-    ).sum(axis=1)
+    )
+    diagonal = np.arange(count)
+    expected_gradient[diagonal, diagonal] = 0.0
+    expected_gradient = expected_gradient.sum(axis=1)
     operator = {
         "DIRECT": expected_gradient,
         "TRANSPOSED": expected_gradient.swapaxes(1, 2),

@@ -77,6 +77,7 @@ class RegularizationOutcome:
 
     @property
     def detail(self) -> str:
+        """Return a compact human-readable summary of the accepted event."""
         return (
             f"dE/E={self.total_kinetic_energy_change_relative:.2e}, dZ/Z={self.total_enstrophy_change_relative:.2e}"
             + (", solenoidal projection" if self.projected else "")

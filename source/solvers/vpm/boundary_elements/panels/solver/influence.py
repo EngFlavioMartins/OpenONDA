@@ -24,6 +24,27 @@ def build_source_aerodynamic_influence_coefficient_matrix(
     aerodynamic_influence_coefficient: ti.template(),
     n: int,
 ):
+    """Assemble the source-panel normal-velocity influence matrix.
+
+    Parameters
+    ----------
+    vertex_position : Taichi field, shape (capacity, 3, 3)
+        Triangle vertices in metres.
+    panel_centre : Taichi field, shape (capacity, 3)
+        Collocation points in metres.
+    normal : Taichi field, shape (capacity, 3)
+        Unit outward panel normals.
+    aerodynamic_influence_coefficient : Taichi field, shape (capacity, capacity)
+        Dense output matrix, overwritten in the active ``n`` square.
+    n : int
+        Active panel count.
+
+    Notes
+    -----
+    Entry ``A[i, j]`` is the normal velocity at collocation panel ``i`` due
+    to unit source strength on panel ``j``.  The matrix is dimensionless under
+    the source-strength convention used by the panel solver.
+    """
     for i, j in ti.ndrange(n, n):
         if i == j:
             # Seed the literal with a lattice scalar so f64 panel fields are
