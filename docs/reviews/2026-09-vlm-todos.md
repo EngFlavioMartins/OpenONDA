@@ -16,6 +16,28 @@ Do not count preceding tree cases as current direct-reference results. That camp
 `flat-v20-sweep-status.json` and `/tmp/openonda-vlm-v20-flat-sweep.log`.
 No delta, turbine or quad run may resume yet.
 
+## Surface backup repair — 9 September
+
+- [x] Native scheduled, manual and final backups now include accepted VLM surface
+  PolyData and `solution/<case>/vlm.pvd`, on the VPM backup clock. No tutorial
+  configuration was added. Scientific samples keep their independent cadence.
+- [x] Shared live/saved-state exporter; exact geometry, circulation, velocity and
+  load fields, physical timestamps, selectable coloring, compressed atomic files.
+- [x] Backfilled 252 surfaces in 53 actual tutorial time series, including all 19
+  completed canonical flat datasets at the snapshot and retained historical
+  checkpoints. Delta/rotor saved partial states were also converted; they remain
+  unqualified. No quad checkpoints exist. Verified 576 existing numerical,
+  metadata and CSV files unchanged. Details: `2026-09-vlm-surface-backups.md`.
+- [x] Export/sampler tests and actual coupled restart regression passed; see the
+  surface-backup report for counts, overlap and evidence.
+- [ ] As the frozen v20 sweep completes more cases, backfill their missing surface
+  companions. Native API: `source.solvers.vpm.io.vlm_backup.export_vlm_backup`;
+  public command: `python -m openonda.vlm_backups path/to/solution`. External
+  verification driver: `/tmp/openonda-backfill-vlm-surfaces.py`. Do not restart or
+  mutate the active simulation to introduce this output-only fix.
+- [ ] Include this output repair in final normal installation and commit. The
+  current running v20 install deliberately remains immutable.
+
 ## Pending thesis handoff — explicitly authorized 9 September
 
 - [ ] After the complete sequential VLM qualification and final commit, send one

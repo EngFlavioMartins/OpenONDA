@@ -145,6 +145,17 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
         original.advance(defer_output=True)
         original.advance(defer_output=True)
         original.save_backup()
+        import pyvista as pv
+
+        surface = pv.read(tmp_path / "first/solution/vlm_000002.vtp")
+        lattice = original.vlm_solver.lattice
+        np.testing.assert_array_equal(
+            surface.points,
+            lattice.panel_corner_position.to_numpy()[:12].reshape(-1, 3),
+        )
+        for field in ("circulation", "panel_force", "unsteady_panel_force", "wing_id"):
+            np.testing.assert_array_equal(surface[field], getattr(lattice, field).to_numpy()[:12])
+        assert pv.get_reader(tmp_path / "first/solution/vlm.pvd").time_values == [original.time]
         saved_forces = original.vlm_solver.compute_forces(1.3)
         checkpoint = tmp_path / "first/solution/vpm_000002.h5"
         original.advance(defer_output=True)
