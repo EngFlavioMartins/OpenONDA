@@ -13,6 +13,9 @@ CELL_FIELDS = (
     "normal",
     "is_trailing_edge",
     "is_leading_edge",
+    "wing_id",
+    "segment_id",
+    "is_mirrored",
     "circulation",
     "cumulative_circulation",
     "bound_vortex_velocity",
@@ -73,14 +76,13 @@ def write_lattice_vtk(fields, filename, *, reference_speed, time):
     )
     add(cell_data, "panel_chord", chord)
     if "area" not in fields:
-        # Two physical triangles; no undeformed-mesh reconstruction is needed.
-        area = 0.5 * (
-            np.linalg.norm(
-                np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]), axis=1
-            )
-            + np.linalg.norm(
-                np.cross(corners[:, 2] - corners[:, 0], corners[:, 3] - corners[:, 0]), axis=1
-            )
+        # Same diagonal-cross-product definition used by the native mesh.
+        area = 0.5 * np.linalg.norm(
+            np.cross(
+                corners[:, 2] - corners[:, 0],
+                corners[:, 1] - corners[:, 3],
+            ),
+            axis=1,
         )
         add(cell_data, "area", area)
     if "vortex_point_position" in fields:
