@@ -24,7 +24,14 @@ from ..config import VLMSetup, VLMSurfaceSetup
 from ..coupling.kinematics import RotatingVLM, StaticVLM
 from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
-from ..kernels.collision import detect_surface_collisions_kernel
+from ..kernels.collision import (
+    SURFACE_COLLISION_EVENT_CORE_OVERLAP,
+    SURFACE_COLLISION_EVENT_INTERSECTION,
+    SURFACE_COLLISION_EVENT_NONE,
+    SURFACE_COLLISION_EVENT_SIDE_BYPASS,
+    detect_surface_collision_events_kernel,
+    detect_surface_collisions_kernel,
+)
 from .influence import (
     accumulate_bound_transport,
     add_induced_velocity_and_gradient_at_targets,
@@ -50,6 +57,18 @@ from .mesh import (
 from .unsteady import add_unsteady_pressure_loads
 
 EPSILON = VLM_SMALL_VELOCITY
+
+_SURFACE_EVENT_NAMES = {
+    SURFACE_COLLISION_EVENT_NONE: "none",
+    SURFACE_COLLISION_EVENT_INTERSECTION: "intersection",
+    SURFACE_COLLISION_EVENT_SIDE_BYPASS: "side_bypass",
+    SURFACE_COLLISION_EVENT_CORE_OVERLAP: "core_overlap",
+}
+
+
+def _surface_event_name(event: int) -> str:
+    """Return a stable lowercase name for a surface-collision event code."""
+    return _SURFACE_EVENT_NAMES.get(event, "unknown")
 
 
 class VLMSolver:
@@ -1596,6 +1615,441 @@ class VLMSolver:
 
         return net_vortex_strength
 
+    def _last_reference_velocity_norm(self) -> float:
+        """Return a documented nonzero reference speed for residual normalisation."""
+        reference_velocity = getattr(self, "_last_reference_velocity", None)
+        if reference_velocity is not None:
+            speed = float(np.linalg.norm(reference_velocity))
+            if speed > 1.0e-10:
+                return speed
+        freestream_velocity = getattr(self, "freestream_velocity", np.zeros(3))
+        speed = float(np.linalg.norm(freestream_velocity))
+        if speed > 1.0e-10:
+            return speed
+        kinematic_velocity = self.lattice.get_kinematic_velocity()
+        speed = (
+            float(np.max(np.linalg.norm(kinematic_velocity, axis=1)))
+            if kinematic_velocity.shape[0]
+            else 0.0
+        )
+        return speed if speed > 1.0e-10 else 1.0
+
+    # ------------------------------------------------------------------
+    # Surface-probe boundary leakage diagnostics (PR-1 observer)
+    # ------------------------------------------------------------------
+
+    def compute_surface_leakage(self, particles, physics):
+        """Observer-only boundary leakage at denser-than-solve surface probes.
+
+        Computes ``r_k = (u_total - u_surface).n_k`` at on-surface and
+        ±δ offset probes, then reports ``R1``, ``Rinf`` with edge/tip
+        and interior decomposition per surface.  No solver state is mutated.
+
+        Parameters
+        ----------
+        particles : Particles container
+            Current VPM particles (for particle-induced velocity).
+        physics : Induction provider
+            Must implement ``compute_target_velocity`` (freestream included).
+
+        Returns
+        -------
+        dict with keys:
+            ``reference_speed``   : documented normalisation U_ref [m/s]
+            ``R1``               : area-weighted mean |r|/U_ref (all probes)
+            ``Rinf``             : max|r|/U_ref (all probes)
+            ``edge_R1``          : R1 restricted to edge/tip probes
+            ``edge_Rinf``        : Rinf restricted to edge/tip probes
+            ``interior_R1``      : R1 restricted to interior probes
+            ``interior_Rinf``    : Rinf restricted to interior probes
+            ``per_surface``      : {name: {R1, Rinf, n_probes}}
+            ``panel_area``       : (n_panels,) panel areas [m^2]
+            ``edge_mask``        : (n_panels,) bool — True for edge/tip panels
+            ``n_probes``         : total number of probes
+            ``r_k``              : (n_probes,) signed normal residuals r_k [m/s]
+            ``probe_position``   : (n_probes, 3) probe positions [m]
+            ``probe_panel``      : (n_probes,) originating panel index
+            ``probe_type``       : (n_probes,) int: 0=on-surface, 1=above, -1=below
+        """
+        if not self._solved or self.lattice is None:
+            return {
+                "R1": 0.0,
+                "Rinf": 0.0,
+                "n_probes": 0,
+                "reference_speed": 0.0,
+                "panel_area": np.array([]),
+                "edge_mask": np.array([], dtype=bool),
+            }
+
+        lattice = self.lattice
+        n_panels = lattice.n_panels
+        circulation = lattice.circulation.to_numpy()[:n_panels].astype(np.float64)
+        cp = lattice.collocation_point.to_numpy()[:n_panels].astype(np.float64)
+        normal = lattice.normal.to_numpy()[:n_panels].astype(np.float64)
+        corners = lattice.panel_corner_position.to_numpy()[:n_panels].astype(np.float64)
+        te_idx = lattice.trailing_edge_index.to_numpy()[:n_panels].astype(np.int32)
+        vortex_pts = lattice.vortex_point_position.to_numpy()[:n_panels].astype(np.float64)
+
+        # ---- reference speed --------------------------------------------------
+        freestream_velocity = getattr(self, "freestream_velocity", np.zeros(3))
+        freestream_speed = float(np.linalg.norm(freestream_velocity))
+        kinematic_velocity = lattice.get_kinematic_velocity().astype(np.float64)
+        kinematic_speed = (
+            float(np.max(np.linalg.norm(kinematic_velocity, axis=1))) if n_panels else 0.0
+        )
+        U_ref = max(freestream_speed, kinematic_speed, 1.0)
+
+        # ---- panel areas and edge-band classification -------------------------
+        cross1 = corners[:, 2] - corners[:, 0]
+        cross2 = corners[:, 3] - corners[:, 1]
+        panel_area = 0.5 * np.linalg.norm(np.cross(cross1, cross2), axis=1)
+
+        if n_panels > 0:
+            neighbour = lattice.neighbor_indices.to_numpy()[:n_panels]
+            edge_mask = np.any(neighbour < 0, axis=1)
+        else:
+            edge_mask = np.array([], dtype=bool)
+
+        # ---- probe positions (3 per panel: on-surface, +δ, -δ) ---------------
+        δ_fraction = 0.25  # offset as fraction of panel chord
+        chord = np.linalg.norm(corners[:, 2, :2] - corners[:, 0, :2], axis=1)  # approx
+        chord = np.maximum(chord, 1.0e-12)
+        δ = δ_fraction * chord  # (n_panels,)
+
+        n_probes = 3 * n_panels
+        probe_positions = np.zeros((n_probes, 3), dtype=np.float64)
+        probe_panel = np.zeros(n_probes, dtype=np.int32)
+        probe_type = np.zeros(n_probes, dtype=np.int32)
+
+        for i in range(n_panels):
+            k = 3 * i
+            probe_positions[k] = cp[i]
+            probe_positions[k + 1] = cp[i] + δ[i] * normal[i]
+            probe_positions[k + 2] = cp[i] - δ[i] * normal[i]
+            probe_panel[k : k + 3] = i
+            probe_type[k : k + 3] = [0, 1, -1]
+
+        # ---- surface velocity at probes (rigid-body motion) -------------------
+        wing_ranges = self._build_wing_panel_ranges()
+        time = getattr(self, "_current_time", 0.0)
+        v_surface_probe = np.zeros((n_probes, 3), dtype=np.float64)
+        for name, (_aircraft_obj, kinematics) in self.surfaces.items():
+            if isinstance(kinematics, StaticVLM) or kinematics is None:
+                continue
+            pr = self._find_surface_panel_range(name, wing_ranges, n_panels)
+            if pr is None:
+                continue
+            start, end = pr
+            ang_vel = np.asarray(kinematics.get_angular_velocity(time), dtype=np.float64)
+            for i in range(start, end):
+                k = 3 * i
+                v_base = kinematic_velocity[i]  # already V_trans + ω×(cp[i]−centre)
+                for dk, sign in enumerate([0.0, 1.0, -1.0]):
+                    offset_vec = sign * δ[i] * normal[i]
+                    # rigid body: V(x+δn) = V_trans + ω×(cp+δn−centre) = v_base + ω×(δn)
+                    v_surface_probe[k + dk] = v_base + np.cross(ang_vel, offset_vec)
+
+        # ---- particle-induced velocity at probes (includes freestream) ---------
+        particle_vel = physics.compute_target_velocity(
+            particles, probe_positions, include_freestream=True
+        )
+        if particle_vel is None:
+            particle_vel = np.zeros_like(probe_positions)
+
+        # ---- bound-induced velocity at probes (Rosenhead, point-probe) --------
+        probe_field = ti.Vector.field(3, dtype=ti.f64, shape=max(n_probes, 1))
+        bound_vel_field = ti.Vector.field(3, dtype=ti.f64, shape=max(n_probes, 1))
+        bound_vel_field.fill(0.0)
+        probe_field.from_numpy(probe_positions.astype(np.float64))
+
+        coupled_i32 = 1 if self._coupled_mode else 0
+        add_induced_velocity_at_targets(
+            probe_field,
+            bound_vel_field,
+            vortex_pts,
+            corners,
+            te_idx,
+            circulation,
+            n_probes,
+            n_panels,
+            coupled_i32,
+        )
+        bound_vel = bound_vel_field.to_numpy()[:n_probes].astype(np.float64)
+
+        # ---- total and residual -----------------------------------------------
+        u_total = particle_vel + bound_vel
+        r_k = np.sum((u_total - v_surface_probe) * normal[probe_panel], axis=1)
+
+        # ---- metrics ----------------------------------------------------------
+        w = panel_area[probe_panel] / 3.0  # equal weight to the 3 probes of each panel
+        w_sum = w.sum()
+        R1 = float(np.sum(w * np.abs(r_k)) / (U_ref * w_sum)) if w_sum > 0.0 else 0.0
+        Rinf = float(np.max(np.abs(r_k)) / U_ref) if n_probes else 0.0
+
+        edge_probe = edge_mask[probe_panel]
+        interior_probe = ~edge_probe
+
+        def _r1_rinf(mask):
+            wsub = w[mask]
+            wsub_sum = wsub.sum()
+            rsub = np.abs(r_k[mask])
+            r1 = (
+                float(np.sum(wsub * rsub) / (U_ref * wsub_sum))
+                if wsub_sum > 0.0 and mask.any()
+                else 0.0
+            )
+            rin = float(np.max(rsub) / U_ref) if mask.any() else 0.0
+            return r1, rin
+
+        edge_R1, edge_Rinf = _r1_rinf(edge_probe)
+        interior_R1, interior_Rinf = _r1_rinf(interior_probe)
+
+        # Per-surface breakdown
+        per_surface = {}
+        for name in self.surfaces:
+            pr = self._find_surface_panel_range(name, wing_ranges, n_panels)
+            if pr is None:
+                continue
+            start, end = pr
+            s_mask = (probe_panel >= start) & (probe_panel < end)
+            if not s_mask.any():
+                per_surface[name] = {"R1": 0.0, "Rinf": 0.0, "n_probes": 0}
+                continue
+            s1, sinf = _r1_rinf(s_mask)
+            per_surface[name] = {
+                "R1": s1,
+                "Rinf": sinf,
+                "n_probes": int(s_mask.sum()),
+            }
+
+        return {
+            "reference_speed": U_ref,
+            "R1": R1,
+            "Rinf": Rinf,
+            "edge_R1": edge_R1,
+            "edge_Rinf": edge_Rinf,
+            "interior_R1": interior_R1,
+            "interior_Rinf": interior_Rinf,
+            "per_surface": per_surface,
+            "panel_area": panel_area,
+            "edge_mask": edge_mask,
+            "n_probes": n_probes,
+            "r_k": r_k,
+            "probe_position": probe_positions,
+            "probe_panel": probe_panel,
+            "probe_type": probe_type,
+        }
+
+    def _snapshot_pre_transport_positions(self, particles) -> None:
+        """Record particle positions at the start of the accepted interval.
+
+        The snapshot is host-side and observer-only; it does not touch any
+        device field or accepted history.  It defines the temporal segment
+        ``[pre_transport, post_transport]`` over which finite-surface events
+        are swept.
+        """
+        self._pre_transport_position = particles.position_cpu(use_cache=False).copy()
+        self._pre_transport_strength = particles.vortex_strength_cpu(use_cache=False).copy()
+        self._pre_transport_count = int(particles.n_particles_total)
+
+    def observe_surface_interaction(self, particles) -> dict:
+        """Sweep accepted-interval particle segments for finite-surface events.
+
+        Pure observer: never mutates particles, circulation, histories,
+        exchange ledgers or the accepted clock.  Returns a normalized record
+        dict (all Python/NumPy values) suitable for CSV/VTK export and
+        warning reporting.
+
+        Returned keys::
+            time, step, n_particles, n_events, events (list of dicts),
+            reference_speed
+        """
+        start_pos = getattr(self, "_pre_transport_position", None)
+        if start_pos is None or start_pos.shape[0] == 0:
+            return {"n_particles": 0, "n_events": 0, "events": []}
+
+        n_particles = int(particles.n_particles_total)
+        if n_particles == 0:
+            self._pre_transport_position = None
+            return {"n_particles": 0, "n_events": 0, "events": []}
+
+        lattice = self.lattice
+        n_panels = lattice.n_panels
+        if n_panels == 0:
+            self._pre_transport_position = None
+            return {"n_particles": 0, "n_events": 0, "events": []}
+
+        group_ids = particles.group_id_cpu(use_cache=False).astype(np.int32)[:n_particles]
+        pre_strength = getattr(self, "_pre_transport_strength", None)
+        if pre_strength is not None and pre_strength.shape[0] >= n_particles:
+            pre_gamma = np.linalg.norm(pre_strength[:n_particles], axis=1)
+        else:
+            pre_gamma = np.zeros(n_particles)
+
+        end_pos = particles.position_cpu(use_cache=False).astype(np.float64)
+        start_field = ti.Vector.field(3, dtype=ti.f64, shape=n_particles)
+        end_field = ti.Vector.field(3, dtype=ti.f64, shape=n_particles)
+        radius_field = ti.field(dtype=ti.f64, shape=n_particles)
+        event_field = ti.field(dtype=ti.i32, shape=n_particles)
+        panel_field = ti.field(dtype=ti.i32, shape=n_particles)
+
+        start_field.from_numpy(np.ascontiguousarray(start_pos[:n_particles], dtype=np.float64))
+        end_field.from_numpy(np.ascontiguousarray(end_pos, dtype=np.float64))
+        radii = particles.core_radius_cpu(use_cache=False).astype(np.float64)[:n_particles]
+        radius_field.from_numpy(np.ascontiguousarray(radii, dtype=np.float64))
+
+        corner_np = lattice.panel_corner_position.to_numpy()[:n_panels].astype(np.float64)
+        normal_np = lattice.normal.to_numpy()[:n_panels].astype(np.float64)
+        corner_field = ti.Vector.field(3, dtype=ti.f64, shape=(n_panels, 4))
+        normal_field = ti.Vector.field(3, dtype=ti.f64, shape=n_panels)
+        corner_field.from_numpy(np.ascontiguousarray(corner_np, dtype=np.float64))
+        normal_field.from_numpy(np.ascontiguousarray(normal_np, dtype=np.float64))
+
+        mean_chord = np.linalg.norm(corner_np[:, 2, :2] - corner_np[:, 0, :2], axis=1)
+        mean_chord = float(mean_chord.mean()) if n_panels else 1.0
+        tolerance = 0.01 * mean_chord
+        core_overlap_scale = 1.0
+
+        event_field.fill(0)
+        panel_field.fill(-1)
+        detect_surface_collision_events_kernel(
+            start_field,
+            end_field,
+            radius_field,
+            event_field,
+            panel_field,
+            corner_field,
+            normal_field,
+            n_particles,
+            n_panels,
+            tolerance,
+            core_overlap_scale,
+        )
+        ti.sync()
+
+        events_np = event_field.to_numpy()[:n_particles]
+        panels_np = panel_field.to_numpy()[:n_particles]
+        event_records = []
+        for i in range(n_particles):
+            ev = int(events_np[i])
+            if ev == SURFACE_COLLISION_EVENT_NONE:
+                continue
+            event_records.append(
+                {
+                    "particle": i,
+                    "event": ev,
+                    "event_name": _surface_event_name(ev),
+                    "panel": int(panels_np[i]),
+                    "group_id": int(group_ids[i]),
+                    "strength_magnitude": float(pre_gamma[i]),
+                    "start_position": start_pos[i].tolist(),
+                    "end_position": end_pos[i].tolist(),
+                    "core_radius": float(radii[i]),
+                }
+            )
+
+        self._last_surface_events = event_records
+        self._pre_transport_position = None
+        result = {
+            "n_particles": n_particles,
+            "n_events": len(event_records),
+            "events": event_records,
+            "tolerance": tolerance,
+            "core_overlap_scale": core_overlap_scale,
+            "reference_speed": self._last_reference_velocity_norm(),
+        }
+        return result
+
+    def write_surface_event_outputs(
+        self,
+        records: dict,
+        step: int,
+        time: float,
+        case_dir: str,
+        sample_directory: str | None = None,
+    ) -> None:
+        """Append ``vlm_surface_events.csv`` and write a VTK cloud of events."""
+        import pandas as pd
+
+        from ....io.sampling import resolve_samples_dir
+
+        events = records.get("events", [])
+        samples_dir = resolve_samples_dir(case_dir, sample_directory)
+        samples_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = samples_dir / "vlm_surface_events.csv"
+
+        if events:
+            rows = [
+                {
+                    "time": time,
+                    "step": step,
+                    "particle": ev["particle"],
+                    "event_type": ev["event"],
+                    "event_name": ev["event_name"],
+                    "panel": ev["panel"],
+                    "start_x": ev["start_position"][0],
+                    "start_y": ev["start_position"][1],
+                    "start_z": ev["start_position"][2],
+                    "end_x": ev["end_position"][0],
+                    "end_y": ev["end_position"][1],
+                    "end_z": ev["end_position"][2],
+                    "core_radius": ev["core_radius"],
+                }
+                for ev in events
+            ]
+            df = pd.DataFrame(rows)
+            if not csv_path.exists():
+                df.to_csv(csv_path, index=False)
+            else:
+                df.to_csv(csv_path, mode="a", header=False, index=False)
+
+            import pyvista as pv
+
+            points = np.array([ev["end_position"] for ev in events], dtype=np.float64)
+            cloud = pv.PolyData(points)
+            cloud["event_type"] = np.array([ev["event"] for ev in events], dtype=np.int32)
+            cloud["event_name"] = np.array([ev["event_name"] for ev in events])
+            cloud["panel"] = np.array([ev["panel"] for ev in events], dtype=np.int32)
+            cloud["core_radius [m]"] = np.array([ev["core_radius"] for ev in events])
+            cloud.save(str(samples_dir / "vlm_surface_events.vtp"))
+        else:
+            df = pd.DataFrame(
+                columns=[
+                    "time",
+                    "step",
+                    "particle",
+                    "event_type",
+                    "event_name",
+                    "panel",
+                    "start_x",
+                    "start_y",
+                    "start_z",
+                    "end_x",
+                    "end_y",
+                    "end_z",
+                    "core_radius",
+                ]
+            )
+            if not csv_path.exists():
+                df.to_csv(csv_path, index=False)
+
+    def _resolve_surface_warning(self, records: dict, step: int) -> str | None:
+        """Return a health warning string for unresolved penetration, else None."""
+        events = records.get("events", [])
+        intersections = [ev for ev in events if ev["event"] == SURFACE_COLLISION_EVENT_INTERSECTION]
+        overlap = [ev for ev in events if ev["event"] == SURFACE_COLLISION_EVENT_CORE_OVERLAP]
+        n_bypass = sum(1 for ev in events if ev["event"] == SURFACE_COLLISION_EVENT_SIDE_BYPASS)
+        if not intersections and not overlap:
+            return None
+        parts = [f"step={step}"]
+        if intersections:
+            parts.append(f"intersections={len(intersections)}")
+        if overlap:
+            parts.append(f"core_overlaps={len(overlap)}")
+        if n_bypass:
+            parts.append(f"side_bypasses={n_bypass}")
+        return "component=vlm_surface_interaction status=unresolved_penetration " + " ".join(parts)
+
     def compute_bound_linear_impulse(self) -> np.ndarray:
         """Integrate half of ``x cross omega`` over the finite bound field [m⁴/s].
 
@@ -2287,6 +2741,7 @@ class VLMSolver:
         time_step_size: float,
         step: int,
         time: float | None = None,
+        release_wake: bool = True,
     ) -> dict[str, np.ndarray] | None:
         """Complete the VLM solve and wake row at the newly accepted particle clock.
 
@@ -2335,15 +2790,18 @@ class VLMSolver:
         self.solve(external_velocity=None, time_step_size=time_step_size, coupled=True)
 
         # --------------------------------------------------------------
-        # 5. Shed the TE near-wake row from the clean post-solve cumulative Γ.
+        # 5. Optionally shed the TE near-wake row from the clean post-solve
+        # cumulative Γ.
         # --------------------------------------------------------------
-        self.lattice.reset_wake_buffer()
-        result = self._compute_wake_particles(reset_buffer=False)
+        result = None
+        if release_wake:
+            self.lattice.reset_wake_buffer()
+            result = self._compute_wake_particles(reset_buffer=False)
 
         # --------------------------------------------------------------
         # 6. Transfer the completed row to the free VPM wake.
         # --------------------------------------------------------------
-        if result and result.get("_gpu_transfer_ready"):
+        if release_wake and result and result.get("_gpu_transfer_ready"):
             n_particles_shed = self.lattice.n_wake_particles[None]
             if n_particles_shed > 0:
                 added = particles.add_vortex_particles_from_fields_grouped(
@@ -2387,26 +2845,5 @@ class VLMSolver:
             bound_external_velocity=bound_external_velocity,
         )
         self._last_forces = self.compute_forces(self.density, self._last_reference_velocity)
-
-        # --------------------------------------------------------------
-        # 8. Absorb particles that collide with lifting surfaces
-        # --------------------------------------------------------------
-        # tolerance = perpendicular distance from the panel plane [m].
-        # For zero-thickness lifting surfaces (flat plates, thin airfoils),
-        # absorption must be disabled (tolerance=0).  The collision kernel
-        # checks `dist_perp < tolerance`, so tolerance=0 means no particle
-        # can ever satisfy the condition.
-        #
-        # Background: VLM panels are infinitely thin.  Any positive tolerance
-        # will erroneously remove wake particles that simply pass close to
-        # the plate, since they can be arbitrarily close to the zero-thickness
-        # plane.  With tolerance=0.03, ~32 particles were intermittently
-        # removed at specific convective times (τ≈1 and τ≈5), creating
-        # step-discontinuities in particle count and noisy load histories.
-        #
-        # For thick bodies (3D geometry with enclosed particle_volume), set
-        # _absorb_tolerance to a positive value (e.g. core_radius).
-        absorb_tol = getattr(self, "_absorb_tolerance", 0.0)
-        self.absorb_particles(particles, tolerance=absorb_tol)
 
         return None

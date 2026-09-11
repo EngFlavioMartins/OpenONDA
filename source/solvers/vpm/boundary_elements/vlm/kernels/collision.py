@@ -9,54 +9,173 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import taichi as ti
 
+SURFACE_COLLISION_EVENT_NONE = 0
+SURFACE_COLLISION_EVENT_INTERSECTION = 1
+SURFACE_COLLISION_EVENT_SIDE_BYPASS = 2
+SURFACE_COLLISION_EVENT_CORE_OVERLAP = 3
+
+
+@ti.func
+def _safe_normalized_normal(normal: ti.math.vec3) -> ti.math.vec3:
+    """Return a normalized surface normal, handling degenerate zero normals."""
+    normal_mag = normal.norm()
+    result = ti.Vector([0.0, 0.0, 0.0])
+    if normal_mag > 0.0:
+        result = normal / normal_mag
+    return result
+
+
+@ti.func
+def _is_point_in_triangle(
+    point: ti.math.vec3,
+    a: ti.math.vec3,
+    b: ti.math.vec3,
+    c: ti.math.vec3,
+    normal_unit: ti.math.vec3,
+) -> bool:
+    """Return true if point is inside triangle ABC (including edges)."""
+    tol = 1.0e-14
+    ab = b - a
+    bc = c - b
+    ca = a - c
+
+    ap = point - a
+    bp = point - b
+    cp = point - c
+
+    c1 = ab.cross(ap).dot(normal_unit)
+    c2 = bc.cross(bp).dot(normal_unit)
+    c3 = ca.cross(cp).dot(normal_unit)
+
+    all_nonneg = c1 >= -tol and c2 >= -tol and c3 >= -tol
+    all_nonpos = c1 <= tol and c2 <= tol and c3 <= tol
+    return all_nonneg or all_nonpos
+
 
 @ti.func
 def is_point_in_quad(
-    p: ti.types.vector(3, ti.f32),
-    a: ti.types.vector(3, ti.f32),
-    b: ti.types.vector(3, ti.f32),
-    c: ti.types.vector(3, ti.f32),
-    d: ti.types.vector(3, ti.f32),
-    normal: ti.types.vector(3, ti.f32),
+    p: ti.math.vec3,
+    a: ti.math.vec3,
+    b: ti.math.vec3,
+    c: ti.math.vec3,
+    d: ti.math.vec3,
+    normal: ti.math.vec3,
 ) -> bool:
+    """Check whether point ``p`` lies in finite quad ABCD.
+
+    The quad may be oriented with either normal winding; triangulate once and
+    accept both diagonals if one triangle is degenerate.
     """
-    Check if point p (projected onto plane) is inside quad ABCD.
+    normal_unit = _safe_normalized_normal(normal)
+    inside = False
+    if normal_unit.norm() > 0.0:
+        # Primary split on diagonal AC
+        if _is_point_in_triangle(p, a, b, c, normal_unit) or _is_point_in_triangle(
+            p, a, c, d, normal_unit
+        ):
+            inside = True
+        else:
+            # Degenerate AC diagonal or explicit fallback for warped quads
+            abcd = (b - a).cross(c - a).norm()
+            if abcd <= 0.0 and (
+                _is_point_in_triangle(p, a, b, d, normal_unit)
+                or _is_point_in_triangle(p, b, c, d, normal_unit)
+            ):
+                inside = True
+    return inside
 
-    Uses the cross product method: if p is inside the quad, all edge-to-point
-    cross products should align with the normal (same sign).
 
-    Args:
-        p: Point to test
-        a, b, c, d: Quad vertices in order (CCW or CW)
-        normal: Quad normal vector (unit)
+@ti.kernel
+def detect_surface_collision_events_kernel(
+    particle_start_position: ti.template(),
+    particle_end_position: ti.template(),
+    particle_core_radius: ti.template(),
+    particle_event: ti.template(),
+    particle_panel: ti.template(),
+    panel_corners: ti.template(),
+    panel_normals: ti.template(),
+    n_particles_total: int,
+    n_panels: int,
+    tolerance: float,
+    core_overlap_scale: float,
+):
+    """Classify finite-surface trajectory events without mutating particles.
 
-    Returns:
-        True if point is inside quad
+    event codes:
+        0 = no event
+        1 = full-panel intersection / interior endpoint
+        2 = signed-side bypass around a finite edge
+        3 = core-overlap outside finite polygon (closest approach)
     """
-    # Edge vectors
-    ab = b - a
-    bc = c - b
-    cd = d - c
-    da = a - d
+    for i in range(n_particles_total):
+        particle_event[i] = SURFACE_COLLISION_EVENT_NONE
+        particle_panel[i] = -1
 
-    # Vectors to point
-    ap = p - a
-    bp = p - b
-    cp = p - c
-    dp = p - d
+        start = particle_start_position[i]
+        end = particle_end_position[i]
+        radius = particle_core_radius[i]
+        delta = end - start
 
-    # Cross products dotted with normal (to check "sidedness")
-    # An interior point gives same-sign results for every edge.  The sign
-    # itself depends on the panel winding relative to the stored normal, so
-    # accept either consistent orientation instead of assuming CCW.
-    c1 = ab.cross(ap).dot(normal)
-    c2 = bc.cross(bp).dot(normal)
-    c3 = cd.cross(cp).dot(normal)
-    c4 = da.cross(dp).dot(normal)
+        for j in range(n_panels):
+            if particle_event[i] != SURFACE_COLLISION_EVENT_NONE:
+                break
 
-    all_nonneg = c1 >= 0.0 and c2 >= 0.0 and c3 >= 0.0 and c4 >= 0.0
-    all_nonpos = c1 <= 0.0 and c2 <= 0.0 and c3 <= 0.0 and c4 <= 0.0
-    return all_nonneg or all_nonpos
+            a = panel_corners[j, 0]
+            b = panel_corners[j, 1]
+            c = panel_corners[j, 2]
+            d = panel_corners[j, 3]
+            unit_normal = _safe_normalized_normal(panel_normals[j])
+            if unit_normal.norm() == 0.0:
+                continue
+
+            signed_start = (start - a).dot(unit_normal)
+            signed_end = (end - a).dot(unit_normal)
+            abs_start = ti.abs(signed_start)
+            abs_end = ti.abs(signed_end)
+
+            if abs_start <= tolerance and is_point_in_quad(
+                start - signed_start * unit_normal, a, b, c, d, unit_normal
+            ):
+                particle_event[i] = SURFACE_COLLISION_EVENT_INTERSECTION
+                particle_panel[i] = j
+                break
+
+            if abs_end <= tolerance and is_point_in_quad(
+                end - signed_end * unit_normal, a, b, c, d, unit_normal
+            ):
+                particle_event[i] = SURFACE_COLLISION_EVENT_INTERSECTION
+                particle_panel[i] = j
+                break
+
+            # Signed crossing of the panel plane with finite-quad check.
+            if signed_start * signed_end < 0.0:
+                t = signed_start / (signed_start - signed_end)
+                if 0.0 <= t <= 1.0:
+                    intersection = start + t * delta
+                    if is_point_in_quad(intersection, a, b, c, d, unit_normal):
+                        particle_event[i] = SURFACE_COLLISION_EVENT_INTERSECTION
+                        particle_panel[i] = j
+                        break
+                    particle_event[i] = SURFACE_COLLISION_EVENT_SIDE_BYPASS
+                    particle_panel[i] = j
+
+            # Core overlap: minimum normal distance is small while the closest
+            # projected position remains outside the finite panel.
+            denom = signed_end - signed_start
+            t_clamp = 0.0
+            if ti.abs(denom) > 0.0:
+                t_clamp = -signed_start / denom
+                t_clamp = ti.max(0.0, ti.min(1.0, t_clamp))
+            closest = start + t_clamp * delta
+            closest_signed_distance = (start - a).dot(unit_normal) + t_clamp * denom
+            closest_projection = closest - closest_signed_distance * unit_normal
+            if (
+                particle_event[i] == SURFACE_COLLISION_EVENT_NONE
+                and not is_point_in_quad(closest_projection, a, b, c, d, unit_normal)
+                and ti.abs(closest_signed_distance) <= tolerance + core_overlap_scale * radius
+            ):
+                particle_event[i] = SURFACE_COLLISION_EVENT_CORE_OVERLAP
+                particle_panel[i] = j
 
 
 @ti.kernel
@@ -95,15 +214,19 @@ def detect_surface_collisions_kernel(
                 # Use first corner 'A' as reference point on plane
                 a = panel_corners[j, 0]
                 n = panel_normals[j]
+                n_unit = _safe_normalized_normal(n)
+                if n_unit.norm() == 0.0:
+                    continue
 
                 vec = pos - a
-                dist_perp = ti.abs(vec.dot(n))
+                dist_signed = vec.dot(n_unit)
+                dist_perp = ti.abs(dist_signed)
 
                 # Check 1: Is particle within 'thickness' of the plate?
                 if dist_perp < tolerance:
                     # 2. Boundary Check (Point in Quad)
                     # Project point onto plane to handle slight offsets
-                    pos_proj = pos - dist_perp * n
+                    pos_proj = pos - dist_signed * n_unit
 
                     b = panel_corners[j, 1]
                     c = panel_corners[j, 2]

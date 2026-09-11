@@ -20,6 +20,11 @@ from .biot_savart import (
     vortex_ring_velocity,
 )
 from .collision import (
+    SURFACE_COLLISION_EVENT_CORE_OVERLAP,
+    SURFACE_COLLISION_EVENT_INTERSECTION,
+    SURFACE_COLLISION_EVENT_NONE,
+    SURFACE_COLLISION_EVENT_SIDE_BYPASS,
+    detect_surface_collision_events_kernel,
     detect_surface_collisions_kernel,
     is_point_in_quad,
 )
@@ -30,6 +35,11 @@ __all__ = [
     "horseshoe_velocity",
     "horseshoe_semi_infinite_velocity",
     "vortex_ring_velocity",
+    "SURFACE_COLLISION_EVENT_NONE",
+    "SURFACE_COLLISION_EVENT_INTERSECTION",
+    "SURFACE_COLLISION_EVENT_SIDE_BYPASS",
+    "SURFACE_COLLISION_EVENT_CORE_OVERLAP",
+    "detect_surface_collision_events_kernel",
     "detect_surface_collisions_kernel",
     "is_point_in_quad",
 ]

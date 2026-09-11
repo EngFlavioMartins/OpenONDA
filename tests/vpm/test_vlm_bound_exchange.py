@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from _flat_plate_geometry import create_flat_plate
 import numpy as np
 import pytest
 import taichi as ti
@@ -12,7 +13,6 @@ from source.solvers.vpm.numerics.rk_tableaux import RK2, RK4, SSPRK3
 from source.solvers.vpm.numerics.runge_kutta import RungeKutta
 from source.solvers.vpm.physics.induction.base import StageRates, StageState
 from source.solvers.vpm.physics.stage_rhs import StageRHS, VLMStageContribution
-from tutorials.vpm.flat_plate.assets.generate_surface import create_flat_plate
 
 
 @pytest.fixture(scope="module", autouse=True)

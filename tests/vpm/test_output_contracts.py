@@ -519,9 +519,8 @@ def test_step_schedule_obeys_cadence_and_both_offsets():
 
 
 def test_native_integrals_sample_both_bound_and_wake_moments(tmp_path):
+    from _flat_plate_geometry import create_flat_plate
     import pandas as pd
-
-    from tutorials.vpm.flat_plate.assets.generate_surface import create_flat_plate
 
     geometry = create_flat_plate(
         chord=1.0,

@@ -238,3 +238,134 @@ class VLMDiagnostics:
             df.to_csv(csv_path, index=False)
         else:
             df.to_csv(csv_path, mode="a", header=False, index=False)
+
+    # ------------------------------------------------------------------
+    # Surface-probe boundary leakage diagnostics
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def record_vlm_leakage_diagnostics(
+        vlm_solver,
+        particles,
+        physics,
+        diagnostics_history: dict,
+        step: int,
+        time: float,
+        case_dir: str,
+        sample_directory: str | None = None,
+    ) -> None:
+        """Compute and record surface-probe boundary leakage (PR-1).
+
+        Calls ``vlm_solver.compute_surface_leakage`` (observer-only, no
+        solver mutation), appends scalar histories, writes
+        ``vlm_leakage.csv`` and a VTK ``vlm_surface_leakage.vtp`` of
+        probe residuals.
+
+        Parameters
+        ----------
+        vlm_solver : VLMSolver
+            Solved VLMSolver instance.
+        particles : Particles
+            Current VPM particle container.
+        physics : Induction provider
+            Must implement ``compute_target_velocity``.
+        diagnostics_history : dict
+            Solver's ``_diagnostics_history`` (mutated in-place).
+        step, time : int, float
+            Current step and simulation time.
+        case_dir : str
+            Root output directory.
+        sample_directory : str or None
+            Override for the samples subdirectory.
+        """
+        if vlm_solver is None or not hasattr(vlm_solver, "_last_forces"):
+            return
+
+        try:
+            result = vlm_solver.compute_surface_leakage(particles, physics)
+        except Exception:
+            return  # observation must never break a run
+
+        if result.get("n_probes", 0) == 0:
+            return
+
+        # Append scalar history
+        for key, hist_key in [
+            ("R1", "vlm_leakage_R1"),
+            ("Rinf", "vlm_leakage_Rinf"),
+            ("edge_R1", "vlm_leakage_R1_edge"),
+            ("interior_R1", "vlm_leakage_R1_interior"),
+            ("reference_speed", "vlm_leakage_reference_speed"),
+        ]:
+            diagnostics_history[hist_key].append(result[key])
+
+        VLMDiagnostics._export_leakage_csv(result, step, time, case_dir, sample_directory)
+        VLMDiagnostics._export_leakage_vtk(result, case_dir, sample_directory)
+
+    @staticmethod
+    def _export_leakage_csv(
+        result: dict,
+        step: int,
+        time: float,
+        case_dir: str,
+        sample_directory: str | None = None,
+    ) -> None:
+        """Append one row to ``vlm_leakage.csv``."""
+        import pandas as pd
+
+        samples_dir = resolve_samples_dir(case_dir, sample_directory)
+        samples_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = samples_dir / "vlm_leakage.csv"
+
+        row = {
+            "time": time,
+            "step": step,
+            "reference_speed": result["reference_speed"],
+            "R1": result["R1"],
+            "Rinf": result["Rinf"],
+            "edge_R1": result["edge_R1"],
+            "edge_Rinf": result["edge_Rinf"],
+            "interior_R1": result["interior_R1"],
+            "interior_Rinf": result["interior_Rinf"],
+            "n_probes": result["n_probes"],
+            "n_panels": len(result["panel_area"]),
+            "n_edge_panels": int(result["edge_mask"].sum()),
+        }
+        for sname, svals in result.get("per_surface", {}).items():
+            safe = sname.replace(" ", "_")
+            row[f"{safe}_R1"] = svals.get("R1", 0.0)
+            row[f"{safe}_Rinf"] = svals.get("Rinf", 0.0)
+            row[f"{safe}_n_probes"] = svals.get("n_probes", 0)
+
+        df = pd.DataFrame([row])
+        if not csv_path.exists():
+            df.to_csv(csv_path, index=False)
+        else:
+            df.to_csv(csv_path, mode="a", header=False, index=False)
+
+    @staticmethod
+    def _export_leakage_vtk(
+        result: dict,
+        case_dir: str,
+        sample_directory: str | None = None,
+    ) -> None:
+        """Write ``vlm_surface_leakage.vtp`` with probe residuals."""
+        import pyvista as pv
+
+        samples_dir = resolve_samples_dir(case_dir, sample_directory)
+        samples_dir.mkdir(parents=True, exist_ok=True)
+        vtp_path = samples_dir / "vlm_surface_leakage.vtp"
+
+        n = result["n_probes"]
+        if n == 0:
+            return
+
+        points = result["probe_position"].astype(np.float64)
+        cloud = pv.PolyData(points)
+
+        cloud["r_k [m/s]"] = result["r_k"].astype(np.float64)
+        cloud["probe_type"] = result["probe_type"].astype(np.int32)
+        cloud["panel_index"] = result["probe_panel"].astype(np.int32)
+        cloud["is_edge_panel"] = result["edge_mask"][result["probe_panel"]].astype(np.int8)
+
+        cloud.save(str(vtp_path))

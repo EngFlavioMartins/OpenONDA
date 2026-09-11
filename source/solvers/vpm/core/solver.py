@@ -535,6 +535,11 @@ class VPMSolver:
             "vlm_wake_vortex_strength_y": [],
             "vlm_max_leading_edge_suction_parameter": [],
             "vlm_n_particles_total": [],
+            "vlm_leakage_R1": [],
+            "vlm_leakage_Rinf": [],
+            "vlm_leakage_R1_edge": [],
+            "vlm_leakage_R1_interior": [],
+            "vlm_leakage_reference_speed": [],
         }
         stabilization_state = StabilizationStepState(
             step=self.step,
@@ -1241,6 +1246,16 @@ class VPMSolver:
             self.vlm_solver,
             self.particles,
             self.particle_vortex_strength,
+            self._diagnostics_history,
+            self.step,
+            self.time,
+            self.case_dir,
+            sample_directory,
+        )
+        VLMDiagnostics.record_vlm_leakage_diagnostics(
+            self.vlm_solver,
+            self.particles,
+            self.physics,
             self._diagnostics_history,
             self.step,
             self.time,

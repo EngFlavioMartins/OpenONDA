@@ -3,13 +3,13 @@
 from dataclasses import replace
 import shutil
 
+from _flat_plate_geometry import create_flat_plate
 import h5py
 import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
 import openonda.vpm as vpm
-from tutorials.vpm.flat_plate.assets.generate_surface import create_flat_plate
 
 
 def _moving_coupled_case(directory):

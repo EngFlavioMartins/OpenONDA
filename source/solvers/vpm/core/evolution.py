@@ -274,10 +274,24 @@ class EvolutionStepper:
             # The inviscid particle state always advances through one coupled
             # position/strength RK call.  Diffusion remains a split operator.
             with self.profiler.section("Coupled particle evolution"):
+                if self.vlm_solver is not None:
+                    # Observer-only: record the accepted segment's start so the
+                    # surface-interaction sweep below has a well-defined
+                    # [pre_transport, post_transport] pair on the device.
+                    self.vlm_solver._snapshot_pre_transport_positions(self.particles)
                 self._apply_coupled_update(
                     self.time_step_size,
                 )
             self._debug_validate_particle_geometry("coupled evolution")
+
+            # Observe the accepted transport segment for finite-surface
+            # interactions.  Purely diagnostic: never mutates particle state,
+            # and runs *before* post-step regeneration changes population
+            # identity, so swept segments are attributable to the
+            # freshly-advected population.
+            if self.vlm_solver is not None:
+                with self.profiler.section("VLM surface interaction observation"):
+                    self._observe_vlm_surface_interaction()
 
             if self.flow_model != "POTENTIAL":
                 self.stabilization.run_phase("post_evolution", profiler=self.profiler)
@@ -500,6 +514,33 @@ class EvolutionStepper:
 
         if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
             self._apply_viscous_diffusion(time_step_size)
+
+    def _observe_vlm_surface_interaction(self) -> None:
+        """Sweep the accepted transport segment for finite-surface events.
+
+        Observer-only: no particle, surface, ledger, history or clock
+        mutation.  Reported step/time use the staged (post-transport) clock,
+        consistent with the post-segment positions the sweep consumed.
+        """
+        vlm_solver = self.vlm_solver
+        if vlm_solver is None:
+            return
+        records = vlm_solver.observe_surface_interaction(self.particles)
+        vlm_solver.write_surface_event_outputs(
+            records,
+            step=self._staged_step,
+            time=self._staged_time,
+            case_dir=self.solver.case_dir,
+        )
+        warning = vlm_solver._resolve_surface_warning(records, self._staged_step)
+        if warning:
+            log_method = getattr(vlm_solver, "_unresolved_penetration_policy", "warn")
+            if log_method == "strict":
+                from ..config.health import HealthError
+
+                raise HealthError(warning)
+            message = f"WARNING: {warning}" if log_method == "warn" else f"INFO: {warning}"
+            Logging.warning(message)
 
     def _apply_core_spreading_diffusion(self, time_step_size: float) -> None:
         """Advance the split Gaussian core-spreading operator."""

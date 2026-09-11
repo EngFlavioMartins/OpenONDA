@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from _flat_plate_geometry import create_flat_plate
 import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
@@ -14,7 +15,6 @@ from source.solvers.vpm.boundary_elements.vlm.solver.loading_distribution import
 )
 from source.solvers.vpm.boundary_elements.vlm.solver.unsteady import add_unsteady_pressure_loads
 from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
-from tutorials.vpm.flat_plate.assets.generate_surface import create_flat_plate
 
 
 @pytest.fixture(autouse=True)

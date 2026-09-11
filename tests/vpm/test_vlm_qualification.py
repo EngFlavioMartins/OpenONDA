@@ -2,6 +2,11 @@
 
 from types import SimpleNamespace
 
+from _flat_plate_geometry import (
+    create_flat_plate,
+    lifting_line_circulation,
+    lifting_line_polar,
+)
 import numpy as np
 import pytest
 import pyvista as pv
@@ -31,11 +36,6 @@ from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from source.solvers.vpm.config.artifacts import Backup, Samplers
 from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
 from source.solvers.vpm.io.sampling import EverySteps, VLMSampler
-from tutorials.vpm.flat_plate.assets.generate_surface import create_flat_plate
-from tutorials.vpm.flat_plate.assets.theoretical_model import (
-    lifting_line_circulation,
-    lifting_line_polar,
-)
 
 
 @pytest.fixture(scope="module", autouse=True)
