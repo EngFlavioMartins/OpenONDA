@@ -393,7 +393,6 @@ class HostFMMReference:
                 self.tree.vortex_strength[particle_indices],
                 self.tree.core_radius[target_indices],
                 self.tree.core_radius[particle_indices],
-                exclude_self=source_index == target_index,
             )
             near_velocity += source_velocity
             near_gradient += source_gradient

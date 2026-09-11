@@ -23,7 +23,7 @@ def _schedule_identity(schedule: object | None) -> dict[str, Any] | None:
     result: dict[str, Any] = {
         "type": type(schedule).__name__,
     }
-    for name in ("interval", "initial", "is_final_only", "at_end"):
+    for name in ("interval", "first_step", "start_time", "initial", "is_final_only", "at_end"):
         if hasattr(schedule, name):
             value = getattr(schedule, name)
             if isinstance(value, np.generic):
@@ -134,6 +134,23 @@ def _case_configuration(solver: Any) -> dict[str, Any]:
     vlm = getattr(solver, "vlm_solver", None)
     if vlm is not None:
         from ..boundary_elements.vlm.geometry.surface_io import surface_to_dict
+        from ..boundary_elements.vlm.solver.restart import (
+            restart_identity,
+            restart_physics_identity,
+        )
+
+        # Persist both identities so a future owner-clock migration can prove
+        # that a legacy mismatch was limited to output controls.  The full
+        # identity remains strict for exact continuation; the physics identity
+        # is the auditable invariant across output-schema changes.
+        numerics["vlm"]["restart_identity"] = getattr(
+            vlm, "_restart_identity", restart_identity(vlm)
+        )
+        numerics["vlm"]["physics_identity"] = getattr(
+            vlm,
+            "_restart_physics_identity",
+            restart_physics_identity(vlm),
+        )
 
         for record, (geometry, _) in zip(
             numerics["vlm"]["surfaces"], vlm.surfaces.values(), strict=True
@@ -149,6 +166,10 @@ def _case_configuration(solver: Any) -> dict[str, Any]:
             "final_backup": bool(run.final_backup),
             "health_limit_action": str(run.health_limit_action),
             "wall_time_limit_seconds": run.wall_time_limit_seconds,
+            "resource_limits": _manifest_value(run.resource_limits)
+            if run.resource_limits is not None
+            else None,
+            "runtime_compute_device": run.runtime_compute_device,
         },
         "backup": {
             "interval_steps": int(backup.interval_steps),
@@ -214,6 +235,22 @@ def build_manifest(solver: Any, *, status: str | None = None) -> dict[str, Any]:
     }
     if status is not None:
         manifest["lifecycle"] = {"status": str(status)}
+    restart_provenance = getattr(solver, "_restart_provenance", None)
+    identity_migration = getattr(solver, "_vlm_identity_migration", None)
+    if restart_provenance is not None or identity_migration is not None:
+        manifest["restart"] = {}
+        if restart_provenance is not None:
+            manifest["restart"].update(_manifest_value(restart_provenance))
+        if identity_migration is not None:
+            manifest["restart"]["vlm_identity_migration"] = _manifest_value(identity_migration)
+    runtime_override = getattr(solver, "_runtime_compute_device_override", None)
+    if runtime_override is not None:
+        manifest["runtime"] = {
+            "configured_compute_device": solver.setup.compute_device,
+            "requested_compute_device": runtime_override,
+            "effective_compute_device": getattr(solver, "_backend_name", solver.compute_device),
+            "numerical_identity_unchanged": True,
+        }
     return manifest
 
 

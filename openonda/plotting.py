@@ -3,13 +3,17 @@
 # =================================================
 # Standard library imports
 # =================================================
+from collections.abc import Iterable
 from pathlib import Path
 import shutil
+
+from matplotlib.axes import Axes
 
 # =================================================
 # Third-party library imports
 # =================================================
 import matplotlib.pyplot as plt
+from matplotlib.text import Text
 import numpy as np
 
 # =================================================
@@ -137,11 +141,13 @@ def theoretical_ring_trajectory(
 # All tutorial plot presentation lives here: palette, font sizes, figure sizes,
 # markers, line widths, reference styles, and export defaults.
 CM = 1 / 2.54
-FONT_SIZE_PT = 10
+THESIS_FONT_SIZE_PT = 10.95  # \normalsize in the thesis's 11pt class
+FONT_SIZE_PT = THESIS_FONT_SIZE_PT
 DEFAULT_DPI = 400
 EXPORT_FORMATS = ("png", "pdf")
 MAX_FIGURE_WIDTH_CM = 12.5
 WIDE_FIGURE_WIDTH_CM = 12.5
+MIN_TEXT_CANVAS_PADDING_PT = 5.0
 FONT_PATH = Path(__file__).parent / "_resources" / "DejaVuSerif.ttf"
 
 FIGURE_SIZES_CM = {
@@ -370,6 +376,98 @@ def figure_size(name: str = "single") -> tuple[float, float]:
     return width_cm * CM, height_cm * CM
 
 
+def centered_subplots_adjust(fig, *, outer: float, **kwargs) -> None:
+    """Apply manual spacing with equal left and right plotting-area margins."""
+    if not 0.0 < outer < 0.5:
+        raise ValueError("outer must lie between 0 and 0.5")
+    with plt.rc_context({"figure.constrained_layout.use": False, "figure.autolayout": False}):
+        fig.set_layout_engine(None)
+    fig.subplots_adjust(left=outer, right=1.0 - outer, **kwargs)
+
+
+def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
+    """Validate the fixed-size, centred, single-font thesis plot contract."""
+    axes = (axes,) if isinstance(axes, Axes) else tuple(axes)
+    if not axes:
+        raise ValueError("at least one plotting axis is required")
+
+    width_cm = fig.get_figwidth() / CM
+    # GUI backends quantise the initial canvas to whole pixels and can turn a
+    # requested 12.5 cm width into 12.4968 cm.  Snap near-limit figures back
+    # to the exact physical width without asking the GUI manager to resize.
+    if abs(width_cm - MAX_FIGURE_WIDTH_CM) < 0.01:
+        fig.set_size_inches(
+            MAX_FIGURE_WIDTH_CM * CM,
+            fig.get_figheight(),
+            forward=False,
+        )
+        width_cm = fig.get_figwidth() / CM
+    if width_cm > MAX_FIGURE_WIDTH_CM + 1e-3:
+        raise RuntimeError(
+            f"figure width is {width_cm:.3f} cm; limit is {MAX_FIGURE_WIDTH_CM:g} cm"
+        )
+    left = min(axis.get_position().x0 for axis in axes)
+    right = 1.0 - max(axis.get_position().x1 for axis in axes)
+    if abs(left - right) > 1e-6:
+        raise RuntimeError(
+            f"plotting area is not centred: left margin={left:.6f}, right margin={right:.6f}"
+        )
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    canvas = fig.bbox
+    minimum_padding = MIN_TEXT_CANVAS_PADDING_PT * fig.dpi / 72.0
+    in_range_tick_label: dict[Text, bool] = {}
+    for axis in fig.axes:
+        for axis_object, limits in ((axis.xaxis, axis.get_xlim()), (axis.yaxis, axis.get_ylim())):
+            lower, upper = sorted(limits)
+            tolerance = 1e-10 * max(1.0, abs(lower), abs(upper))
+            for tick in (*axis_object.get_major_ticks(), *axis_object.get_minor_ticks()):
+                in_range = lower - tolerance <= tick.get_loc() <= upper + tolerance
+                in_range_tick_label[tick.label1] = in_range
+                in_range_tick_label[tick.label2] = in_range
+    painted_text: list[tuple[Text, object]] = []
+    for item in fig.findobj(match=Text):
+        if not item.get_visible() or not item.get_text().strip():
+            continue
+        if item in in_range_tick_label and not in_range_tick_label[item]:
+            continue
+        if abs(float(item.get_fontsize()) - THESIS_FONT_SIZE_PT) > 1e-6:
+            raise RuntimeError(
+                f"text {item.get_text()!r} uses {item.get_fontsize():g} pt; "
+                f"expected {THESIS_FONT_SIZE_PT:g} pt"
+            )
+        bounds = item.get_window_extent(renderer=renderer)
+        if (
+            bounds.x1 <= canvas.x0
+            or bounds.y1 <= canvas.y0
+            or bounds.x0 >= canvas.x1
+            or bounds.y0 >= canvas.y1
+        ):
+            # Matplotlib creates tick-label artists just outside fixed data
+            # limits; they are not painted and therefore cannot be clipped.
+            continue
+        clearances = (
+            bounds.x0 - canvas.x0,
+            canvas.x1 - bounds.x1,
+            bounds.y0 - canvas.y0,
+            canvas.y1 - bounds.y1,
+        )
+        if min(clearances) < minimum_padding:
+            raise RuntimeError(
+                f"text {item.get_text()!r} has only "
+                f"{min(clearances) * 72.0 / fig.dpi:.2f} pt clearance from the "
+                f"fixed figure canvas; expected at least {MIN_TEXT_CANVAS_PADDING_PT:g} pt"
+            )
+        for previous, previous_bounds in painted_text:
+            overlap = bounds.intersection(bounds, previous_bounds)
+            if overlap is not None and overlap.width > 1.0 and overlap.height > 1.0:
+                raise RuntimeError(
+                    f"text overlap between {previous.get_text()!r} and {item.get_text()!r}"
+                )
+        painted_text.append((item, bounds))
+
+
 def case_style(name: str) -> dict:
     """Return the shared style for a vortex-interaction case name."""
     _, _, variant = name.partition("_")
@@ -420,7 +518,9 @@ def set_style(*, use_tex: bool = False):
         "axes.labelsize": FONT_SIZE_PT,
         "axes.titlesize": FONT_SIZE_PT,
         "figure.titlesize": FONT_SIZE_PT,
+        "figure.labelsize": FONT_SIZE_PT,
         "legend.fontsize": FONT_SIZE_PT,
+        "legend.title_fontsize": FONT_SIZE_PT,
         "xtick.labelsize": FONT_SIZE_PT,
         "ytick.labelsize": FONT_SIZE_PT,
         "figure.dpi": DEFAULT_DPI,
@@ -449,6 +549,8 @@ def set_style(*, use_tex: bool = False):
         "lines.markersize": MARKER_SIZE,
         "xtick.direction": "in",
         "ytick.direction": "in",
+        "savefig.bbox": "standard",
+        "savefig.pad_inches": 0.0,
     }
 
     plt.rcParams.update(tex_fonts)
@@ -460,7 +562,7 @@ def save_fig(
     figure_format: str | None = None,
     dpi: int | None = None,
     tight_rect: tuple[float, float, float, float] | None = None,
-    bbox_inches: str | None = "tight",
+    bbox_inches: str | None = None,
 ) -> None:
     """Save a Matplotlib figure with the shared export defaults."""
     out = Path(path)
@@ -476,9 +578,6 @@ def save_fig(
     fig.savefig(out, dpi=DEFAULT_DPI if dpi is None else dpi, bbox_inches=bbox_inches)
     plt.close(fig)
     print(f"  Saved: {out}")
-
-
-THESIS_FONT_SIZE_PT = 10.95  # \normalsize in the thesis's 11pt class
 
 
 def set_thesis_style():
@@ -498,6 +597,7 @@ def set_thesis_style():
                     "axes.labelsize",
                     "axes.titlesize",
                     "figure.titlesize",
+                    "figure.labelsize",
                     "legend.fontsize",
                     "legend.title_fontsize",
                     "xtick.labelsize",

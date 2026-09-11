@@ -78,6 +78,10 @@ def test_pedrizzetti_relaxation_stops_at_end_step():
             calls.append(state.step) or {"pedrizzetti_misalignment_deg": 10.0}
         )
     )
+    manager.ctx.particles.position_cpu = lambda **kw: np.zeros((1, 3))
+    manager.ctx.particles.core_radius_cpu = lambda **kw: np.ones(1)
+    manager.ctx.physics = SimpleNamespace(_angular_core_coefficient=1.0 / 3.0)
+    manager.pedrizzetti_moment_transfer = np.zeros((3, 3))
     manager.measure = lambda: object()
     manager.accept = lambda *args, **kwargs: None
 
@@ -103,14 +107,18 @@ def test_rejected_relaxation_restores_strength_and_does_not_record_acceptance(op
     particles = SimpleNamespace(n_particles_total=1, strength=original.copy())
     particles.vortex_strength_cpu = lambda **kwargs: particles.strength
     particles.particle_volume_cpu = lambda **kwargs: np.ones(1)
+    particles.position_cpu = lambda **kwargs: np.zeros((1, 3))
+    particles.core_radius_cpu = lambda **kwargs: np.ones(1)
     manager = object.__new__(StabilizationManager)
     manager.config = StabilizationConfig.pedrizzetti_relaxation()
     manager.events = 7
     manager.last_mechanism = "previous accepted event"
+    manager.pedrizzetti_moment_transfer = np.ones((3, 3))
     manager.ctx = SimpleNamespace(
         flow_model="LES",
         particles=particles,
         state=SimpleNamespace(step=0),
+        physics=SimpleNamespace(_angular_core_coefficient=1.0 / 3.0),
         mutations=SimpleNamespace(
             set_properties=lambda **kw: setattr(particles, "strength", kw["vortex_strength"].copy())
         ),
@@ -128,6 +136,7 @@ def test_rejected_relaxation_restores_strength_and_does_not_record_acceptance(op
     np.testing.assert_array_equal(particles.strength, original)
     assert manager.events == 7
     assert manager.last_mechanism == "previous accepted event"
+    np.testing.assert_array_equal(manager.pedrizzetti_moment_transfer, np.ones((3, 3)))
 
 
 def test_pedrizzetti_moment_correction_restores_closed_field_invariants():
@@ -353,3 +362,51 @@ def test_stabilization_schedule_rejects_invalid_limits(keyword, value):
         arguments["stretching_viscosity_coefficient"] = 1.0
     with pytest.raises(ValueError):
         StabilizationConfig(**arguments)
+
+
+def test_accepted_relaxation_records_exact_momentum_transfers():
+    position = np.array([[1.0, 2.0, 3.0], [-2.0, 1.0, 4.0]])
+    initial = np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
+    radius = np.array([0.2, 0.3])
+    particles = SimpleNamespace(n_particles_total=2, strength=initial.copy())
+    particles.vortex_strength_cpu = lambda **kw: particles.strength
+    particles.position_cpu = lambda **kw: position
+    particles.core_radius_cpu = lambda **kw: radius
+    particles.particle_volume_cpu = lambda **kw: np.ones(2)
+    manager = object.__new__(StabilizationManager)
+    manager.config = StabilizationConfig.pedrizzetti_relaxation()
+    manager.events = 0
+    manager.max_vorticity_growth = 0
+    manager.pedrizzetti_moment_transfer = np.zeros((3, 3))
+    manager.ctx = SimpleNamespace(
+        particles=particles,
+        flow_model="LES",
+        state=SimpleNamespace(step=0),
+        physics=SimpleNamespace(_angular_core_coefficient=1 / 3),
+        mutations=SimpleNamespace(
+            set_properties=lambda **kw: setattr(particles, "strength", kw["vortex_strength"])
+        ),
+    )
+
+    def rotate(*args, **kw):
+        particles.strength = np.column_stack(
+            (-particles.strength[:, 1], particles.strength[:, 0], particles.strength[:, 2])
+        )
+        return {"pedrizzetti_misalignment_deg": 90.0}
+
+    manager.operators = SimpleNamespace(apply_pedrizzetti_relaxation=rotate)
+    for _ in range(2):
+        manager.apply_relaxation()
+    change = particles.strength - initial
+    expected = np.array(
+        [
+            change.sum(axis=0),
+            0.5 * np.cross(position, change).sum(axis=0),
+            (np.cross(position, np.cross(position, change)) - radius[:, None] ** 2 * change).sum(
+                axis=0
+            )
+            / 3,
+        ]
+    )
+    np.testing.assert_allclose(manager.pedrizzetti_moment_transfer, expected, atol=1e-14)
+    assert manager.events == 2

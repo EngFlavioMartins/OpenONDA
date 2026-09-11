@@ -18,6 +18,7 @@ from numpy.typing import ArrayLike
 import taichi as ti
 
 from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
+from ....io.manifest import _manifest_value
 from ....kernels import make_vortex_kernel
 from ..config import VLMSetup, VLMSurfaceSetup
 from ..coupling.kinematics import RotatingVLM, StaticVLM
@@ -223,7 +224,11 @@ class VLMSolver:
 
         from .restart import restart_identity
 
+        self._restart_geometry_references = _manifest_value(self.aircraft.refs)
         self._restart_identity = restart_identity(self)
+        from .restart import restart_physics_identity
+
+        self._restart_physics_identity = restart_physics_identity(self)
         self._mesh_generated = True
         self._aerodynamic_influence_coefficient_computed = False
         self._solved = False
@@ -1170,6 +1175,7 @@ class VLMSolver:
         ):
             raise ValueError("Unsteady VLM pressure requires a finite positive time_step_size")
         self._force_density = density
+        self.lattice.force_density = float(density)
         self.lattice.set_external_velocity(external_velocity)
 
         reference_velocity_magnitude = np.linalg.norm(reference_velocity)
@@ -1191,6 +1197,11 @@ class VLMSolver:
             self.lattice.external_velocity,
             int(coupled),
         )
+        velocity = self.lattice.velocity.to_numpy()[: self.lattice.n_panels]
+        kinematic_velocity = self.lattice.get_kinematic_velocity()
+        relative_velocity = np.zeros((self.max_n_panels, 3), dtype=self.lattice.np_dtype)
+        relative_velocity[: self.lattice.n_panels] = velocity - kinematic_velocity
+        self.lattice.relative_velocity.from_numpy(relative_velocity)
 
         # 2. Compute pressure coefficients (using collocation_point velocity)
         compute_pressure_coefficients(
@@ -1254,6 +1265,12 @@ class VLMSolver:
             self.lattice.bound_external_velocity,
             1 if coupled else 0,
         )
+        bound_velocity = self.lattice.bound_vortex_velocity.to_numpy()[: self.lattice.n_panels]
+        bound_relative_velocity = np.zeros((self.max_n_panels, 3), dtype=self.lattice.np_dtype)
+        bound_relative_velocity[: self.lattice.n_panels] = (
+            bound_velocity - bound_kinematics[: self.lattice.n_panels]
+        )
+        self.lattice.bound_relative_velocity.from_numpy(bound_relative_velocity)
 
         compute_panel_force_coupled(
             self.lattice.bound_vortex_velocity,

@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 import openonda.vpm as vpm
+from source.solvers.vpm.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 from source.solvers.vpm.config.artifacts import Backup, Samplers
 from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
 from source.solvers.vpm.io.sampling import EverySteps, EveryTime, FinalOnly
@@ -64,6 +65,92 @@ def test_public_case_owns_backup_and_sampler_construction_objects():
     assert case.backup.interval_steps == 10
     assert len(case.samplers.samples) == 1
     assert {"backup", "samplers"} <= set(inspect.signature(vpm.VPMCase).parameters)
+
+
+def _coupled_vlm(**kwargs):
+    return vpm.VLMSetup(
+        surfaces=(vpm.VLMSurfaceSetup(object()),),
+        **kwargs,
+    )
+
+
+def test_coupled_vlm_rejects_an_independent_output_cadence():
+    with pytest.raises(ValueError, match="cannot configure logging_interval_steps"):
+        vpm.VPMCase(
+            numerics=vpm.Numerics(
+                vlm=_coupled_vlm(logging_interval_steps=2),
+            )
+        )
+
+
+def test_coupled_vlm_rejects_scientific_output_opt_out():
+    with pytest.raises(ValueError, match="sample_surface_forces=True"):
+        vpm.VPMCase(
+            numerics=vpm.Numerics(
+                vlm=_coupled_vlm(sample_surface_forces=False),
+            )
+        )
+
+
+def test_coupled_vlm_rejects_surface_level_output_opt_out():
+    vlm = vpm.VLMSetup(
+        surfaces=(vpm.VLMSurfaceSetup(object(), sample_forces=False),),
+    )
+    with pytest.raises(ValueError, match="cannot opt out"):
+        vpm.VPMCase(numerics=vpm.Numerics(vlm=vlm))
+
+
+def test_coupled_vlm_rejects_vlm_geometry_sampler():
+    with pytest.raises(ValueError, match="VLMSampler is standalone-only"):
+        vpm.VPMCase(
+            numerics=vpm.Numerics(vlm=_coupled_vlm()),
+            samplers=Samplers(samples=(vpm.VLMSampler(schedule=EverySteps(1)),)),
+        )
+
+
+def test_coupled_vlm_diagnostics_are_owner_clocked_even_if_standalone_frequency_differs(
+    tmp_path, monkeypatch
+):
+    class _Field:
+        def to_numpy(self):
+            return np.empty(0)
+
+    calls = []
+    monkeypatch.setattr(
+        VLMDiagnostics,
+        "export_forces_csv",
+        staticmethod(lambda *args: calls.append(args)),
+    )
+    vlm = SimpleNamespace(
+        _last_forces={"lift_coefficient": 0.0, "drag_coefficient": 0.0},
+        logging_interval_steps=99,
+        lattice=SimpleNamespace(n_panels=0, leading_edge_suction_parameter=_Field()),
+        compute_total_bound_vortex_strength=lambda: np.zeros(3),
+    )
+    history = {
+        name: []
+        for name in (
+            "vlm_lift_coefficient",
+            "vlm_drag_coefficient",
+            "vlm_bound_vortex_strength_y",
+            "vlm_wake_vortex_strength_y",
+            "vlm_max_leading_edge_suction_parameter",
+            "vlm_n_particles_total",
+        )
+    }
+
+    VLMDiagnostics.record_vlm_diagnostics(
+        vlm,
+        SimpleNamespace(n_particles_total=0),
+        np.empty((0, 3)),
+        history,
+        step=1,
+        time=0.1,
+        case_dir=str(tmp_path),
+    )
+
+    assert len(calls) == 1
+    assert calls[0][7] == 1
 
 
 @pytest.mark.parametrize("strength_factor", [2.0, float("inf"), np.float32("inf")])
@@ -487,3 +574,30 @@ def test_native_integrals_sample_both_bound_and_wake_moments(tmp_path):
         assert not list((tmp_path / "solution").glob("*.h5"))
     finally:
         solver.close()
+
+
+@pytest.mark.parametrize(
+    "schedule", [EverySteps(3, first_step=8, start_time=1.1), EveryTime(0.4, start_time=0.7)]
+)
+def test_native_metadata_retains_the_complete_sample_schedule(schedule):
+    from dataclasses import fields
+
+    from source.solvers.vpm.io.manifest import _sampler_identity
+
+    record = json.loads(
+        json.dumps(_sampler_identity(SimpleNamespace(schedule=schedule)), allow_nan=False)
+    )["schedule"]
+    rebuilt = type(schedule)(**{field.name: record[field.name] for field in fields(schedule)})
+    expected = [step for step in range(1, 41) if schedule.is_due(step, step * 0.1, 0.1)]
+    restored = [step for step in range(1, 41) if rebuilt.is_due(step, step * 0.1, 0.1)]
+    assert expected and restored == expected
+
+
+@pytest.mark.parametrize(
+    "schedule", [EverySteps(1, start_time=3 * 0.1), EveryTime(0.1, start_time=3 * 0.1)]
+)
+def test_sampling_start_matches_the_accepted_clock_with_roundoff(schedule):
+    # The solver rounds accepted clocks; authored arithmetic can differ by one ULP.
+    assert schedule.is_due(3, 0.3, 0.1)
+    assert not schedule.is_due(2, 0.2, 0.1)
+    assert not schedule.is_due(3, 0.3 - 1e-8, 0.1)

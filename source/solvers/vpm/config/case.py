@@ -23,7 +23,7 @@ from ..physics.induction.direct import DirectInduction
 from .artifacts import Backup, Samplers
 from .constants import DEFAULT_CUTOFF_RADIUS_FACTOR, DEFAULT_TIME_STEP, MAX_N_PARTICLES
 from .diagnostics import DiagnosticsConfig
-from .health import HealthLimits
+from .health import HealthLimits, ResourceLimits
 from .setup import PanelBodySetup
 from .stabilization import StabilizationConfig
 from .turbulence import TurbulenceConfig
@@ -232,6 +232,13 @@ class RunPlan:
         Policy when an accepted-state health limit is crossed.
     wall_time_limit_seconds : float or None
         Optional positive runtime budget checked between accepted steps.
+    resource_limits : ResourceLimits or None
+        Optional accepted-step process-resource bounds. A stopped bound uses
+        the distinct ``resource_limit`` lifecycle status.
+    runtime_compute_device : {'AUTO', 'CPU', 'VULKAN', 'CUDA', 'METAL'} or None
+        Optional explicit backend selection for this process invocation. This
+        runtime-only override is excluded from ``Numerics`` restart identity;
+        the manifest records it so diagnostic/pilot runs remain auditable.
     """
 
     steps: int
@@ -239,6 +246,8 @@ class RunPlan:
     final_backup: bool = True
     health_limit_action: Literal["RAISE", "STOP"] = "RAISE"
     wall_time_limit_seconds: float | None = None
+    resource_limits: ResourceLimits | None = None
+    runtime_compute_device: Literal["AUTO", "CPU", "VULKAN", "CUDA", "METAL"] | None = None
     """Optional runtime budget, checked between accepted steps.
 
     Budget stops save terminal samplers and the configured final backup. They
@@ -262,6 +271,18 @@ class RunPlan:
                 raise TypeError("RunPlan.wall_time_limit_seconds must be a positive number")
             if not math.isfinite(limit) or limit <= 0:
                 raise ValueError("RunPlan.wall_time_limit_seconds must be finite and positive")
+        if self.resource_limits is not None and not isinstance(
+            self.resource_limits, ResourceLimits
+        ):
+            raise TypeError("RunPlan.resource_limits must be ResourceLimits or None")
+        if self.runtime_compute_device is not None:
+            device = str(self.runtime_compute_device).upper()
+            valid_devices = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
+            if device not in valid_devices:
+                raise ValueError(
+                    f"RunPlan.runtime_compute_device must be one of {sorted(valid_devices)} or None"
+                )
+            object.__setattr__(self, "runtime_compute_device", device)
 
 
 @dataclass(slots=True)
@@ -352,6 +373,8 @@ class VPMCase:
             raise TypeError("VPMCase.backup must be a Backup instance")
         if not isinstance(self.samplers, Samplers):
             raise TypeError("VPMCase.samplers must be a Samplers instance")
+        if self.numerics.vlm is not None:
+            self._validate_coupled_vlm_output_contract()
         percent = self.initial_weak_particle_percent
         if isinstance(percent, bool) or not isinstance(percent, Real):
             raise TypeError("initial_weak_particle_percent must be a real number")
@@ -367,3 +390,34 @@ class VPMCase:
             if not isinstance(self.name, str) or not self.name.strip():
                 raise ValueError("VPMCase.name must be None or a non-empty string")
             object.__setattr__(self, "name", self.name.strip())
+
+    def _validate_coupled_vlm_output_contract(self) -> None:
+        """Keep attached VLM output under the owning VPM lifecycle.
+
+        Standalone ``VLMSolver`` callers retain their own legacy force-table
+        logging and ``VLMSampler`` API. Once VLM is attached to a VPM case,
+        accepted-step force/loading records are mandatory in the VPM-owned
+        sample directory, while surface backup companions are emitted only by
+        the VPM backup events.
+        """
+        vlm = self.numerics.vlm
+        if vlm.logging_interval_steps != 1:
+            raise ValueError(
+                "attached VLM cannot configure logging_interval_steps; "
+                "the VPM owner emits mandatory accepted-step samples"
+            )
+        if not vlm.sample_surface_forces:
+            raise ValueError(
+                "attached VLM requires sample_surface_forces=True; "
+                "VLM scientific output is mandatory in the VPM sample path"
+            )
+        if any(surface.sample_forces is False for surface in vlm.surfaces):
+            raise ValueError("attached VLM surfaces cannot opt out of mandatory scientific output")
+        from ..io.sampling.vlm import VLMSampler
+
+        if any(isinstance(sample, VLMSampler) for sample in self.samplers.samples):
+            raise ValueError(
+                "VLMSampler is standalone-only for coupled VPM cases; "
+                "surface companions use the VPM backup lifecycle and VLM tables "
+                "use the owner sample path"
+            )

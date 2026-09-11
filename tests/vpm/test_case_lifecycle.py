@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from openonda import vpm
+from source.solvers.vpm.config.fingerprint import numerical_configuration
 from source.solvers.vpm.config.health import HealthError
 from source.solvers.vpm.core.solver import VPMSolver
+from source.solvers.vpm.io.manifest import build_manifest
 from source.solvers.vpm.io.sampler import OutputEvent
 
 
@@ -34,6 +37,96 @@ def test_fmm_advertises_only_qualified_device_backends() -> None:
                 compute_device=device,
                 verbose=False,
             )
+
+
+def test_runtime_compute_device_override_preserves_restart_identity(tmp_path) -> None:
+    """A diagnostic backend override must not rewrite numerical configuration."""
+    case = vpm.VPMCase(
+        directory=tmp_path,
+        numerics=vpm.Numerics(compute_device="AUTO", max_n_particles=8, verbose=False),
+        run=vpm.RunPlan(
+            steps=0,
+            initial_samples=False,
+            final_backup=False,
+            runtime_compute_device="CPU",
+        ),
+    )
+    solver = vpm.VPMSolver(case)
+    try:
+        assert solver.compute_device == "CPU"
+        assert solver.setup.compute_device == "AUTO"
+        assert numerical_configuration(solver.setup)["compute_device"] == "AUTO"
+        solver.advance(defer_output=True)
+        solver.save_backup()
+        checkpoint = tmp_path / "solution" / "vpm_000001.h5"
+        assert checkpoint.exists()
+        manifest = build_manifest(solver)
+        assert manifest["configuration"]["run"]["runtime_compute_device"] == "CPU"
+        assert manifest["runtime"] == {
+            "configured_compute_device": "AUTO",
+            "requested_compute_device": "CPU",
+            "effective_compute_device": "CPU",
+            "numerical_identity_unchanged": True,
+        }
+    finally:
+        solver.close()
+    resumed = vpm.VPMSolver(replace(case, directory=tmp_path / "resumed"))
+    try:
+        resumed.load_backup(checkpoint)
+        assert (resumed.step, resumed.time) == (1, pytest.approx(case.numerics.time_step_size))
+        assert resumed.compute_device == "CPU"
+        assert resumed.setup.compute_device == "AUTO"
+    finally:
+        resumed.close()
+
+
+def test_runtime_manifest_distinguishes_auto_request_from_resolved_backend(tmp_path) -> None:
+    """AUTO is a request; provenance must report the initialized backend separately."""
+    case = vpm.VPMCase(
+        directory=tmp_path,
+        numerics=vpm.Numerics(compute_device="AUTO", max_n_particles=8, verbose=False),
+        run=vpm.RunPlan(steps=0, runtime_compute_device="AUTO"),
+    )
+    solver = SimpleNamespace(
+        case=case,
+        setup=case.numerics,
+        compute_device="CPU",
+        _backend_name="CPU",
+        _runtime_compute_device_override="AUTO",
+        step=0,
+        time=0.0,
+        _run_initial_step=0,
+        _run_initial_time=0.0,
+        _initial_n_particles_total=0,
+    )
+    manifest = build_manifest(solver)
+    assert manifest["runtime"] == {
+        "configured_compute_device": "AUTO",
+        "requested_compute_device": "AUTO",
+        "effective_compute_device": "CPU",
+        "numerical_identity_unchanged": True,
+    }
+
+
+def test_default_runtime_path_has_no_backend_override_provenance(tmp_path) -> None:
+    case = vpm.VPMCase(
+        directory=tmp_path,
+        numerics=vpm.Numerics(compute_device="CPU", max_n_particles=8, verbose=False),
+        run=vpm.RunPlan(steps=0),
+    )
+    solver = SimpleNamespace(
+        case=case,
+        setup=case.numerics,
+        compute_device="CPU",
+        _backend_name="CPU",
+        _runtime_compute_device_override=None,
+        step=0,
+        time=0.0,
+        _run_initial_step=0,
+        _run_initial_time=0.0,
+        _initial_n_particles_total=0,
+    )
+    assert "runtime" not in build_manifest(solver)
 
 
 def test_numerics_rejects_treecode_double_precision_before_solver_allocation() -> None:
@@ -81,6 +174,7 @@ def test_run_owns_the_complete_event_lifecycle() -> None:
     solver.restart_state = vpm.RestartState()
     solver.time = 0.0
     solver.step = 0
+    solver.particles = SimpleNamespace(n_particles_total=0)
     solver._build_initial_conditions = lambda: events.append("build")
     solver._refresh_diagnostics_for_output = lambda: events.append("diagnostics")
     solver.advance = lambda: events.append("advance")
@@ -126,6 +220,7 @@ def test_run_plan_can_persist_and_return_from_a_resolution_limit(capsys) -> None
     solver.restart_state = vpm.RestartState()
     solver.time = 0.0
     solver.step = 0
+    solver.particles = SimpleNamespace(n_particles_total=0)
     solver._build_initial_conditions = lambda: events.append("build")
     solver._refresh_diagnostics_for_output = lambda: events.append("diagnostics")
 
@@ -162,6 +257,59 @@ def test_run_plan_can_persist_and_return_from_a_resolution_limit(capsys) -> None
     terminal_output = capsys.readouterr().out
     assert "Stopped" in terminal_output
     assert "declared resolution limit" not in terminal_output
+
+
+def test_run_plan_can_persist_and_return_from_a_resource_limit() -> None:
+    events: list[object] = []
+
+    class Manager:
+        def dispatch(self, event: OutputEvent) -> None:
+            events.append(("dispatch", event))
+
+        def write_all(self, event: OutputEvent) -> None:
+            events.append(("write_all", event))
+
+    solver = object.__new__(VPMSolver)
+    solver.case = vpm.VPMCase(
+        numerics=vpm.Numerics(),
+        run=vpm.RunPlan(
+            steps=4,
+            health_limit_action="stop",
+            resource_limits=vpm.ResourceLimits(max_particles=10),
+        ),
+    )
+    solver.output_manager = Manager()
+    solver._run_started = False
+    solver._run_finished = False
+    solver.restart_state = vpm.RestartState()
+    solver.time = 0.0
+    solver.step = 0
+    solver.particles = SimpleNamespace(n_particles_total=0)
+    solver._build_initial_conditions = lambda: events.append("build")
+    solver._refresh_diagnostics_for_output = lambda: events.append("diagnostics")
+
+    def advance() -> None:
+        events.append("advance")
+        solver.step += 1
+        solver.time += 0.1
+        if solver.step == 2:
+            raise vpm.ResourceLimitError("resource limit: test boundary")
+
+    solver.advance = advance
+    solver.save_backup = lambda: events.append("backup")
+    solver._write_run_manifest = lambda status, failure: events.append((status, failure))
+    solver.close = lambda: events.append("close")
+
+    VPMSolver.run(solver)
+
+    assert solver.run_status == "resource_limit"
+    assert isinstance(solver.run_failure, vpm.ResourceLimitError)
+    assert events[-4:] == [
+        ("write_all", OutputEvent.FINAL),
+        "backup",
+        ("resource_limit", solver.run_failure),
+        "close",
+    ]
 
 
 def test_run_plan_does_not_persist_an_invalid_state_as_a_resolution_limit() -> None:

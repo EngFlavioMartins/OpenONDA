@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "case_root": "..",
+  "purpose": "Canonical clean Delta-wing source lineage for plotting and native animation inputs.",
+  "default_statuses": ["accepted"],
+  "animation_source": {
+    "status": "active",
+    "segment_ids": ["clean_dense_run"],
+    "selection": "single_dense_run",
+    "note": "Finalize from the completed canonical native output; no endpoint is claimed while the run is active."
+  },
+  "segments": [
+    {
+      "id": "clean_dense_run",
+      "status": "active",
+      "origin": "fresh_initial_value",
+      "solution": "solution",
+      "samples": "samples/delta_wing",
+      "accepted_interval": {
+        "first_step": 0,
+        "last_step": null,
+        "first_time": 0.0,
+        "last_time": null
+      },
+      "boundary_checkpoints": []
+    }
+  ],
+  "overlap_policy": "No cross-segment merges; the canonical fresh run has one owner clock.",
+  "native_wake_policy": "Use only coupled owner-clocked wake frames."
+}

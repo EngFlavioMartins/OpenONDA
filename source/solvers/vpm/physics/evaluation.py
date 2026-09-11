@@ -1016,6 +1016,7 @@ class ParticleFieldEvaluation:
 
         return {
             "total_kinetic_energy": total_kinetic_energy,
+            "energy_measurement": "unbounded_energy",
             "total_helicity": float(r.total_helicity),
             "total_enstrophy": float(r.total_enstrophy),
             "test_filtered_enstrophy": float(r.test_filtered_enstrophy),
@@ -1484,6 +1485,7 @@ class ParticleFieldEvaluation:
         """Return dictionary of zero values for empty particle system."""
         return {
             "total_kinetic_energy": 0.0,
+            "energy_measurement": "empty_particle_field",
             "total_helicity": 0.0,
             "total_enstrophy": 0.0,
             "test_filtered_enstrophy": 0.0,

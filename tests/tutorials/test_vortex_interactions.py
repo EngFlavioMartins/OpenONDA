@@ -118,9 +118,9 @@ def test_official_les_cases_preserve_the_studied_physics_and_native_outputs(vari
             "--dt",
             ".0075",
             "--wall-minutes",
-            "150",
+            "24",
             "--spacing",
-            ".04",
+            ".06",
             "--core-ratio",
             "1",
             "--amplitude",
@@ -140,27 +140,27 @@ def test_official_les_cases_preserve_the_studied_physics_and_native_outputs(vari
             "--frequency",
             ".384684814725",
             "--diffusion",
-            "GBD",
-            "--gbd-remeshing",
-            "LAGRANGE6",
-            "--diffusion-tail",
-            ".0001",
+            "CS",
         ]
     )
     candidate = setup.build_case(variant)
     reference = study.build_experiment(args, candidate.directory)
     actual = _case_configuration(SimpleNamespace(case=candidate))
     expected = _case_configuration(SimpleNamespace(case=reference))
-    assert actual["numerics"] == expected["numerics"]
+    actual_numerics = dict(actual["numerics"])
+    expected_numerics = dict(expected["numerics"])
+    assert actual_numerics.pop("domain_bounds") == [-2.0, 12.0, -3.0, 3.0, -3.0, 3.0]
+    assert expected_numerics.pop("domain_bounds") is None
+    assert actual_numerics == expected_numerics
     assert actual["initial_conditions"] == expected["initial_conditions"]
-    assert candidate.name == f"les_{variant}"
+    assert candidate.name == f"cs_{variant}"
     assert candidate.directory == CASE_DIR
-    assert candidate.backup.directory == f"solution/les_{variant}"
+    assert candidate.backup.directory == f"solution/cs_{variant}"
     assert candidate.backup.interval_steps == 100
     assert candidate.run.final_backup
-    assert candidate.samplers.directory == f"les_{variant}"
+    assert candidate.samplers.directory == f"cs_{variant}"
     assert candidate.run.steps == 1200
-    assert candidate.run.wall_time_limit_seconds == 9000
+    assert candidate.run.wall_time_limit_seconds == 1440
     assert {sampler.file_name for sampler in candidate.samplers.samples} == {
         "flow_integrals",
         "ring_diagnostics",

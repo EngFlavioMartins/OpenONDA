@@ -9,6 +9,12 @@ Output CSVs:
   <case_dir>/samples/vlm_spanwise_<surface>.csv   — one row per spanwise station
   <case_dir>/samples/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
 
+The exported section/panel force components are dimensional newtons and each
+row records ``force_density``. ``pressure_jump_coefficient`` is retained as a
+compatibility column for the circulation-based lifting-surface proxy and is
+labeled accordingly; new consumers should use the explicit proxy field name
+where available.
+
 Call pattern (mirrors VLMDiagnostics):
   VLMLoadingDistribution.record_loading_distributions(
       vlm_solver, diagnostics_history, time_step_size, time, case_dir)
@@ -43,19 +49,16 @@ class VLMLoadingDistribution:
         case_dir: str,
         sample_directory: str | None = None,
     ) -> None:
-        """Iterate surfaces flagged sample_surface_forces and export distributions.
+        """Export mandatory owner-clock loading distributions for each surface.
 
-        Gated on vlm_solver.logging_interval_steps. Output failures propagate so
-        a run cannot claim success while requested scientific samples are missing.
+        Coupled VLM output is dispatched by the owning VPM accepted-step
+        lifecycle. Output failures propagate so a run cannot claim success
+        while required scientific samples are missing.
         """
         if vlm_solver is None or not hasattr(vlm_solver, "_surface_sampling"):
             return
         if not vlm_solver._surface_sampling:
             return
-        logging_interval_steps = max(1, int(getattr(vlm_solver, "logging_interval_steps", 1)))
-        if step % logging_interval_steps != 0:
-            return
-
         reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
         density = getattr(vlm_solver, "density", 1.0)
 
@@ -385,6 +388,8 @@ class VLMLoadingDistribution:
                             "section_force_x": float(section_force[0]),
                             "section_force_y": float(section_force[1]),
                             "section_force_z": float(section_force[2]),
+                            "section_force_units": "N",
+                            "force_density": float(density),
                         }
                     )
 
@@ -435,9 +440,12 @@ class VLMLoadingDistribution:
                                 "panel_chord": float(station_panel_chord[i]),
                                 "panel_circulation": float(station_circulation[i]),
                                 "pressure_jump_coefficient": float(pressure_jump_coefficient[i]),
+                                "pressure_jump_coefficient_type": "circulation_proxy",
                                 "panel_force_x": float(station_panel_force[i, 0]),
                                 "panel_force_y": float(station_panel_force[i, 1]),
                                 "panel_force_z": float(station_panel_force[i, 2]),
+                                "panel_force_units": "N",
+                                "force_density": float(density),
                                 "unsteady_force_x": float(
                                     unsteady_force[station_panel_indices[i], 0]
                                 ),
@@ -450,6 +458,7 @@ class VLMLoadingDistribution:
                                 "relative_velocity_x": float(station_relative_velocity[i, 0]),
                                 "relative_velocity_y": float(station_relative_velocity[i, 1]),
                                 "relative_velocity_z": float(station_relative_velocity[i, 2]),
+                                "relative_velocity_units": "m/s",
                                 "bound_x": float(station_bound_vortex_midpoint[i, 0]),
                                 "bound_y": float(station_bound_vortex_midpoint[i, 1]),
                                 "bound_z": float(station_bound_vortex_midpoint[i, 2]),

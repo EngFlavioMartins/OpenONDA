@@ -71,8 +71,9 @@ class SolverIO:
     def write_backup(self, verbose: bool = True) -> None:
         """Write restart state and a ParaView companion for the accepted surface.
 
-        VLM surfaces share the sparse backup clock with VPM particles. Scientific
-        samplers still write independently to samples at their own cadence.
+        VLM surface companions share the sparse backup clock with VPM particles.
+        Accepted-step VLM force/loading tables are emitted through the owner's
+        sample path; no VLM-specific backup cadence or output root is created.
         """
         os.makedirs(self.export_dir, exist_ok=True)
         backup_path = os.path.join(self.export_dir, self.vpm_prefix)
@@ -169,6 +170,7 @@ class SolverIO:
             "time": solver.time,
             "step": solver.step,
             "total_kinetic_energy": solver.total_kinetic_energy,
+            "energy_measurement": solver._flow_integrals.get("energy_measurement", "unknown"),
             "total_enstrophy": solver.total_enstrophy,
             "test_filtered_enstrophy": solver._flow_integrals.get("test_filtered_enstrophy", 0.0),
             "kinetic_energy_rate": solver.kinetic_energy_rate,
@@ -242,6 +244,10 @@ class SolverIO:
                 raise ValueError(
                     "flow-integrals CSV event is duplicate or nonmonotonic during resume"
                 )
+            if "energy_measurement" not in previous:
+                # Older samples did not persist the energy definition. Do not
+                # infer it from today's estimator or a derivative-source label.
+                previous["energy_measurement"] = "unknown"
             df = pd.concat((previous, df), ignore_index=True)
         temporary = csv_path.with_name(f".{csv_path.name}.tmp")
         df.to_csv(temporary, index=False)

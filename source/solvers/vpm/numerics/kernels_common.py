@@ -444,6 +444,18 @@ def _stretching_contribution(
     return dstr
 
 
+@ti.func
+def _origin_stretching_contribution(target_strength, source_strength, sigma, zeta_origin, mode):
+    """Contract the finite skew Jacobian of a coincident regularized source."""
+    rate = target_strength * 0.0
+    scale = zeta_origin / (3.0 * sigma**3)
+    if mode == 0:
+        rate = scale * source_strength.cross(target_strength)
+    elif mode == 1:
+        rate = scale * target_strength.cross(source_strength)
+    return rate
+
+
 def _make_stretching_rate_kernel(q_, zeta_):
     """Mini-factory: creates compute_stretching_rate_kernel capturing q_ and zeta_."""
 
@@ -478,6 +490,11 @@ def _make_stretching_rate_kernel(q_, zeta_):
                     zeta_val = zeta_(r_sigma)
                     dstr_dt += _stretching_contribution(
                         str_i, str_j, r_ij, q_val, zeta_val, sigma, r_sigma, mode
+                    )
+                else:
+                    sigma = 0.5 * (radii_i + core_radius[j])
+                    dstr_dt += _origin_stretching_contribution(
+                        str_i, str_j, sigma, zeta_(0.0), mode
                     )
 
             dstr_dt_out[i] = dstr_dt
@@ -522,6 +539,11 @@ def _make_stretching_rate_batch_kernel(q_, zeta_):
                     zeta_val = zeta_(r_sigma)
                     dstr_dt += _stretching_contribution(
                         str_i, str_j, r_ij, q_val, zeta_val, sigma, r_sigma, mode
+                    )
+                else:
+                    sigma = 0.5 * (radii_i + core_radius[j])
+                    dstr_dt += _origin_stretching_contribution(
+                        str_i, str_j, sigma, zeta_(0.0), mode
                     )
 
             dstr_dt_out[i] = dstr_dt
@@ -570,6 +592,11 @@ def _make_velocity_and_stretching_rate_kernel(q_, zeta_):
                         sigma,
                         normalized_radius,
                         stretching_mode,
+                    )
+                else:
+                    sigma = 0.5 * (radius_i + core_radius[j])
+                    strength_rate += _origin_stretching_contribution(
+                        strength_i, vortex_strength[j], sigma, zeta_(0.0), stretching_mode
                     )
             velocity[i] = -induced_velocity + freestream_velocity[None]
             vortex_strength_rate[i] = strength_rate
@@ -646,6 +673,10 @@ def _create_gradient_kernels(kernel_functions):
                     term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
 
                     gradu += term1 * skew(str_j) + term2 * ((r_ij.cross(str_j)).outer_product(r_ij))
+                else:
+                    # A blob has zero centre velocity, not zero velocity gradient.
+                    sigma = 0.5 * (radii_i + core_radius[j])
+                    gradu += zeta_(0.0) / (3.0 * sigma**3) * skew(str_j)
 
             velocity_gradient[i] = gradu
 
@@ -667,9 +698,8 @@ def _create_gradient_kernels(kernel_functions):
 
         The solver needs both u (advection) and ∇u (stretching) each RK stage;
         sharing the one j-loop reuses r_ij / r_mag / sigma / q per pair instead of
-        recomputing them in a second O(N²) sweep.  Velocity and near-core
-        gradient evaluation both use the regularized kernel directly, while
-        the far gradient cutoff matches the separate gradient kernel."""
+        recomputing them in a second O(N²) sweep. Both paths include the finite
+        source-centre Jacobian and the algebraic far field."""
         N = n_particles_total
         freestream_vec = freestream_velocity[None]
         for i in range(N):
@@ -692,6 +722,10 @@ def _create_gradient_kernels(kernel_functions):
                     term1 = q_val / r_cb
                     term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
                     gradu += term1 * skew(str_j) + term2 * ((r_ij.cross(str_j)).outer_product(r_ij))
+                else:
+                    # A blob has zero centre velocity, not zero velocity gradient.
+                    sigma = 0.5 * (radii_i + core_radius[j])
+                    gradu += zeta_(0.0) / (3.0 * sigma**3) * skew(str_j)
             velocity[i] = -vel + freestream_vec
             velocity_gradient[i] = gradu
             strain_rate[i] = 0.5 * (gradu + gradu.transpose())
@@ -876,6 +910,10 @@ def _create_target_eval_kernels(kernel_functions):
                     term2 = 3.0 * q_val / (r_cb * r_sq) - zeta_val / r_sq
 
                     gradu += term1 * skew(str_j) + term2 * ((r_ij.cross(str_j)).outer_product(r_ij))
+                else:
+                    # A blob has zero centre velocity, not zero velocity gradient.
+                    sigma = core_radius[j]
+                    gradu += zeta_(0.0) / (3.0 * sigma**3) * skew(str_j)
 
             target_velocity_gradient[i] = gradu
 

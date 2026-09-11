@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import pyvista as pv
 import taichi as ti
 
 from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
@@ -20,6 +21,11 @@ from source.solvers.vpm.boundary_elements.vlm.solver.linear_solvers import (
 )
 from source.solvers.vpm.boundary_elements.vlm.solver.loading_distribution import (
     VLMLoadingDistribution,
+)
+from source.solvers.vpm.boundary_elements.vlm.solver.restart import (
+    restore_vlm_restart,
+    validate_vlm_restart,
+    write_vlm_restart,
 )
 from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from source.solvers.vpm.config.artifacts import Backup, Samplers
@@ -178,7 +184,7 @@ def test_bound_impulse_matches_filament_quadrature_and_translation(coupled):
         vertices = [vortex[index, 1], vortex[index, 2]]
         if coupled:
             vertices = [corners[trailing[index], 3], *vertices, corners[trailing[index], 2]]
-        for start, end in zip(vertices, vertices[1:], strict=True):
+        for start, end in zip(vertices[:-1], vertices[1:], strict=True):
             points = start + 0.5 * (nodes[:, None] + 1) * (end - start)
             expected += (
                 0.25
@@ -478,12 +484,13 @@ def test_bicgstab_checks_relative_residual_even_for_small_rhs(scale):
         solver.solve(matrix, rhs, x, 3, max_iterations=0, tolerance=1e-10)
 
 
-def test_vlm_sampler_uses_samples_and_resumable_polydata_index(tmp_path):
+def test_vlm_sampler_uses_owner_samples_path_and_resumable_polydata_index(tmp_path):
     solver = _plate(nc=2, ns=3)
     _solve_steady(solver, [10.0, 0.0, 0.0])
     samples = Samplers((VLMSampler(schedule=EverySteps(1)),), "case_a")
     runtime = SimpleNamespace(
         case_dir=tmp_path,
+        _backup_path=tmp_path / "solution",
         step=1,
         time=0.1,
         time_step_size=0.1,
@@ -494,7 +501,7 @@ def test_vlm_sampler_uses_samples_and_resumable_polydata_index(tmp_path):
     manager.dispatch(OutputEvent.ACCEPTED_STEP)
     folder = tmp_path / "samples/case_a"
     assert (folder / "vlm_000001.vtp").is_file()
-    assert not (tmp_path / "solution").exists()
+    assert not (tmp_path / "solution/vlm_000001.vtp").exists()
     runtime.step = 2
     runtime.time = 0.2
     OutputManager(runtime).dispatch(OutputEvent.ACCEPTED_STEP)
@@ -507,14 +514,85 @@ def test_vlm_sampler_uses_samples_and_resumable_polydata_index(tmp_path):
     assert vtk.field_data["time"][0] == 0.2
 
 
+def test_vlm_sampler_and_backup_use_distinct_owner_series(tmp_path, monkeypatch):
+    solver = _plate(nc=2, ns=3)
+    _solve_steady(solver, [10.0, 0.0, 0.0])
+
+    class FieldSnapshot:
+        file_name = "wake"
+        schedule = EverySteps(1)
+        vtk_extension = ".vts"
+
+        def save_vtp(self, _solver, filepath, time=None):
+            filepath.write_text(f"time={time}", encoding="utf-8")
+
+    samples = Samplers((VLMSampler(schedule=EverySteps(2)), FieldSnapshot()), "case_a")
+    runtime = SimpleNamespace(
+        case_dir=tmp_path,
+        _backup_path=tmp_path / "native_solution",
+        step=2,
+        time=0.2,
+        time_step_size=0.1,
+        case=SimpleNamespace(
+            samplers=samples,
+            backup=Backup(interval_steps=3),
+        ),
+        vlm_solver=solver,
+    )
+    calls = []
+    original_save_results = solver.save_results
+
+    def counted_save_results(*args, **kwargs):
+        calls.append((runtime.step, runtime.time))
+        return original_save_results(*args, **kwargs)
+
+    monkeypatch.setattr(solver, "save_results", counted_save_results)
+
+    def write_backup():
+        from source.solvers.vpm.io.vlm_backup import write_vlm_backup
+
+        write_vlm_backup(
+            runtime.vlm_solver,
+            runtime._backup_path,
+            step=runtime.step,
+            time=runtime.time,
+        )
+
+    runtime._write_backup = write_backup
+    manager = OutputManager(runtime)
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+    runtime.step = 3
+    runtime.time = 0.3
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+    runtime.step = 4
+    runtime.time = 0.4
+    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+
+    folder = tmp_path / "native_solution"
+    sample_folder = tmp_path / "samples/case_a"
+    assert calls == [(2, 0.2), (3, 0.3), (4, 0.4)]
+    assert sorted(path.name for path in folder.glob("vlm_*.vtp")) == ["vlm_000003.vtp"]
+    assert (folder / "vlm.pvd").read_text().count("<DataSet") == 1
+    assert pv.get_reader(folder / "vlm.pvd").time_values == [0.3]
+    assert sorted(path.name for path in sample_folder.glob("vlm_*.vtp")) == [
+        "vlm_000002.vtp",
+        "vlm_000004.vtp",
+    ]
+    assert pv.get_reader(sample_folder / "vlm.pvd").time_values == [0.2, 0.4]
+    from source.solvers.vpm.io.vlm_backup import write_vlm_backup
+
+    write_vlm_backup(runtime.vlm_solver, folder, step=4, time=0.4)
+    assert pv.get_reader(folder / "vlm.pvd").time_values == [0.3, 0.4]
+    with pytest.raises(ValueError, match="filename/time conflicts"):
+        write_vlm_backup(runtime.vlm_solver, folder, step=5, time=0.4)
+    assert list((tmp_path / "samples").rglob("vlm_*.vtp"))
+    assert list((tmp_path / "samples").rglob("vlm.pvd"))
+    assert all((tmp_path / f"samples/case_a/wake_{step:06d}.vts").is_file() for step in (2, 3, 4))
+    assert (tmp_path / "samples/case_a/wake.pvd").read_text().count("<DataSet") == 3
+
+
 def test_vlm_restart_restores_motion_circulation_and_next_solve(tmp_path):
     import h5py
-
-    from source.solvers.vpm.boundary_elements.vlm.solver.restart import (
-        restore_vlm_restart,
-        validate_vlm_restart,
-        write_vlm_restart,
-    )
 
     def make():
         return _plate(motion=TranslatingVLM(velocity=np.array([-10.0, 0.0, 0.0])), nc=2, ns=3)
@@ -548,6 +626,81 @@ def test_vlm_restart_restores_motion_circulation_and_next_solve(tmp_path):
         file["vlm/circulation"][0] = np.nan
         with pytest.raises(ValueError, match="circulation"):
             validate_vlm_restart(restored, file["vlm"])
+
+
+def test_v6_restart_output_migration_requires_matching_persisted_controls(tmp_path):
+    """Legacy logging changes may migrate only after the full old digest matches."""
+    import h5py
+
+    plate = create_flat_plate(
+        chord=1.0,
+        span=4.0,
+        angle_of_attack_degrees=5.0,
+        n_chordwise_panels=2,
+        n_spanwise_panels=3,
+    )
+
+    def make(*, logging_interval_steps=1, density=1.0):
+        solver = VLMSolver(
+            VLMSetup(
+                surfaces=(VLMSurfaceSetup(plate),),
+                dtype="f64",
+                freestream_velocity=(10.0, 0.0, 0.0),
+                density=density,
+                logging_interval_steps=logging_interval_steps,
+                sample_surface_forces=True,
+            )
+        )
+        solver.generate_mesh()
+        _solve_steady(solver, [10.0, 0.0, 0.0])
+        return solver
+
+    legacy = make(logging_interval_steps=4)
+    current = make(logging_interval_steps=1)
+    changed_physics = make(logging_interval_steps=1, density=1.2)
+    path = tmp_path / "legacy_vlm.h5"
+    with h5py.File(path, "w") as file:
+        write_vlm_restart(legacy, file.create_group("vlm"))
+    (tmp_path / "vpm_metadata.json").write_text(
+        '{"configuration": {"numerics": {"vlm": {'
+        '"logging_interval_steps": 4, "sample_surface_forces": true, '
+        '"surfaces": [{"sample_forces": null}]}}}}',
+        encoding="utf-8",
+    )
+    from source.solvers.vpm.io.backup import _legacy_vlm_output_controls
+
+    persisted_controls, evidence_path = _legacy_vlm_output_controls(path)
+    assert persisted_controls == {
+        "logging_interval_steps": 4,
+        "sample_surface_forces": True,
+        "surface_sample_forces": [None],
+    }
+    assert evidence_path == tmp_path / "vpm_metadata.json"
+    with h5py.File(path, "a") as file:
+        group = file["vlm"]
+        group.attrs["version"] = 6
+        del group.attrs["physics_identity"]
+        del group.attrs["force_density"]
+        for name in ("area", "relative_velocity", "bound_relative_velocity"):
+            del group[name]
+        controls = persisted_controls
+        migration = validate_vlm_restart(
+            current,
+            group,
+            legacy_output_controls=controls,
+        )
+        assert migration["kind"] == "output_only"
+        with pytest.raises(ValueError, match="configuration"):
+            validate_vlm_restart(
+                changed_physics,
+                group,
+                legacy_output_controls=controls,
+            )
+        current._force_density = 99.0
+        current.lattice.force_density = 99.0
+        restore_vlm_restart(current, group)
+        assert not hasattr(current, "_force_density")
+        assert current.lattice.force_density is None
 
 
 def test_multisurface_loading_uses_wing_local_segment_ids_and_reports_output_failures(

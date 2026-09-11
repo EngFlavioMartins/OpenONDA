@@ -7,9 +7,45 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
+import math
+
 import taichi as ti
 
-from ..config.constants import FOUR_OVER_THREE_SQRT_PI, GAUSSIAN_Q_SERIES_CROSSOVER
+from ..config.constants import GAUSSIAN_Q_SERIES_CROSSOVER
+
+# Integrating q'(rho) = rho**2 exp(-rho**2) / pi**1.5 gives these
+# coefficients. See DLMF 7.6.1, https://dlmf.nist.gov/7.6.E1.
+GAUSSIAN_Q_SERIES_COEFFICIENTS = tuple(
+    (-1.0) ** n / (math.factorial(n) * (2 * n + 3)) for n in range(18)
+)
+_ERF_SERIES_COEFFICIENTS = tuple((-1.0) ** n / (math.factorial(n) * (2 * n + 1)) for n in range(18))
+
+# Cephes erfc rational approximation, used only for 1 <= rho < 6.
+# Coefficients from SciPy 1.14.1 special/cephes/ndtr.h (P and Q).
+# Copyright 1984, 1987, 1988, 1992 Stephen L. Moshier; SciPy developers.
+# Attribution and redistribution terms: THIRD_PARTY_NOTICES.md.
+_ERFC_NUMERATOR = (
+    2.46196981473530512524e-10,
+    5.64189564831068821977e-1,
+    7.46321056442269912687,
+    4.86371970985681366614e1,
+    1.96520832956077098242e2,
+    5.26445194995477358631e2,
+    9.34528527171957607540e2,
+    1.02755188689515710272e3,
+    5.57535335369399327526e2,
+)
+_ERFC_DENOMINATOR = (
+    1.0,
+    1.32281951154744992508e1,
+    8.67072140885989742329e1,
+    3.54937778887819891062e2,
+    9.75708501743205489753e2,
+    1.82390916687909736289e3,
+    2.24633760818710981792e3,
+    1.65666309194161350182e3,
+    5.57535340817727675546e2,
+)
 
 
 def create_gaussian_kernels(dtype=ti.f32):
@@ -25,27 +61,33 @@ def create_gaussian_kernels(dtype=ti.f32):
         Dictionary with keys: 'q_', 'zeta_', 'g_', 'diffusivity_constant_'
     """
 
-    ONE_OVER_PI_15 = 0.179587122125
-    TWO_OVER_SQRT_PI = 1.1283791671
-    ONE_OVER_FOUR_PI = 0.0795774715
+    ONE_OVER_PI_15 = math.pi**-1.5
+    TWO_OVER_SQRT_PI = 2.0 / math.sqrt(math.pi)
+    ONE_OVER_FOUR_PI = 1.0 / (4.0 * math.pi)
+    # At rho <= 1 the first omitted terms are below the selected precision:
+    # q: < 1.8e-10 (f32), < 7.3e-19 (f64), before rounding.
+    series_terms = 11 if dtype == ti.f32 else 18
 
     @ti.func
     def err_func(x):
-        # Abramowitz & Stegun constants for erf(x)
-        a1 = 0.254829592
-        a2 = -0.284496736
-        a3 = 1.421413741
-        a4 = -1.453152027
-        a5 = 1.061405429
-        p = 0.327591100
-
-        sign = 1.0
+        radius = ti.abs(x)
+        result = ti.cast(1.0, dtype)
+        if radius < 1.0:
+            polynomial = ti.cast(_ERF_SERIES_COEFFICIENTS[series_terms - 1], dtype)
+            for n in ti.static(range(series_terms - 2, -1, -1)):
+                polynomial = polynomial * radius * radius + _ERF_SERIES_COEFFICIENTS[n]
+            result = TWO_OVER_SQRT_PI * radius * polynomial
+        elif radius < 6.0:
+            numerator = ti.cast(_ERFC_NUMERATOR[0], dtype)
+            denominator = ti.cast(_ERFC_DENOMINATOR[0], dtype)
+            for n in ti.static(range(1, len(_ERFC_NUMERATOR))):
+                numerator = numerator * radius + _ERFC_NUMERATOR[n]
+                denominator = denominator * radius + _ERFC_DENOMINATOR[n]
+            result = 1.0 - ti.exp(-radius * radius) * numerator / denominator
+        # erfc(6) < 2.2e-17: erf rounds to one in both supported precisions.
         if x < 0:
-            sign = -1.0
-            x = -x
-        t = 1.0 / (1.0 + p * x)
-        y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * ti.exp(-x * x))
-        return sign * y
+            result = -result
+        return result
 
     @ti.func
     def zeta_(density: ti.template()) -> ti.template():  # type: ignore
@@ -58,27 +100,16 @@ def create_gaussian_kernels(dtype=ti.f32):
         # the Biot-Savart law folded in:
         #     q(r) = [erf(r) - (2/sqrt(pi)) r exp(-r^2)] / (4 pi)
         #
-        # The bracket subtracts two quantities that both tend to (2/sqrt(pi)) r
-        # while their difference is only O(r^3), so the closed form loses all
-        # significance for small r (f32 relative error ~1.5 eps / r^2: 5.6e-2 at
-        # r = 1e-2, 7e+4 at r = 1e-4, where it even changes sign).  Below the
-        # crossover use the series
-        #     q(r) = C r^3 [1 - (3/5) r^2 + (3/14) r^4] / (4 pi) + O(r^9),
-        # with C = 4/(3 sqrt(pi)), from
-        #     erf(r) - (2/sqrt(pi)) r exp(-r^2)
-        #         = (2/sqrt(pi)) [ (2/3) r^3 - (2/5) r^5 + (1/7) r^7 - ... ].
-        # Coefficient and crossover are shared with the treecode's copy of this
-        # kernel through config.constants so the two cannot drift apart.
+        # Avoid the cancellation of two O(r) terms to obtain an O(r^3)
+        # difference. The integrated Gaussian series and accurate erf agree
+        # to the selected precision at the crossover. LBVH uses this factory.
         res = ti.cast(0.0, dtype)
         if density < GAUSSIAN_Q_SERIES_CROSSOVER:
             d2 = density * density
-            res = (
-                FOUR_OVER_THREE_SQRT_PI
-                * density
-                * d2
-                * (1.0 - 0.6 * d2 + (3.0 / 14.0) * d2 * d2)
-                * ONE_OVER_FOUR_PI
-            )
+            polynomial = ti.cast(GAUSSIAN_Q_SERIES_COEFFICIENTS[series_terms - 1], dtype)
+            for n in ti.static(range(series_terms - 2, -1, -1)):
+                polynomial = polynomial * d2 + GAUSSIAN_Q_SERIES_COEFFICIENTS[n]
+            res = ONE_OVER_PI_15 * density * d2 * polynomial
         else:
             erf_term = err_func(density)
             exp_term = TWO_OVER_SQRT_PI * density * ti.exp(-density * density)

@@ -250,6 +250,74 @@ class HealthError(RuntimeError):
         self.restartable = bool(restartable)
 
 
+@dataclass(frozen=True, slots=True)
+class ResourceLimits:
+    """Optional accepted-step process-resource bounds for a finite run.
+
+    These are lifecycle limits, not physical health criteria.  A triggered
+    limit receives the distinct ``resource_limit`` run status and retains a
+    valid restart backup when the run plan uses
+    ``health_limit_action="STOP"``. Accepted-step resource stops also write
+    terminal samples; a pre-start headroom stop deliberately avoids expensive
+    diagnostics before saving the already accepted state.
+    """
+
+    max_particles: int | None = None
+    max_rss_bytes: int | None = None
+    min_available_memory_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("max_particles", "max_rss_bytes"):
+            value = getattr(self, name)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value <= 0
+            ):
+                raise TypeError(f"ResourceLimits.{name} must be a positive integer or None")
+        value = self.min_available_memory_bytes
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
+            raise TypeError(
+                "ResourceLimits.min_available_memory_bytes must be a non-negative integer or None"
+            )
+
+
+class ResourceLimitError(HealthError):
+    """A restartable accepted state crossed a declared process bound."""
+
+
+def enforce_resource_limits(
+    limits: ResourceLimits | None,
+    *,
+    particle_count: int,
+) -> None:
+    """Raise a distinct lifecycle error when an accepted resource bound fires."""
+    if limits is None:
+        return
+    if limits.max_particles is not None and particle_count >= limits.max_particles:
+        raise ResourceLimitError(
+            f"resource limit: particles {particle_count:,} >= {limits.max_particles:,}"
+        )
+    if limits.max_rss_bytes is not None:
+        import psutil
+
+        rss = int(psutil.Process().memory_info().rss)
+        if rss >= limits.max_rss_bytes:
+            raise ResourceLimitError(
+                f"resource limit: RSS {rss / 2**30:.2f} GiB >= "
+                f"{limits.max_rss_bytes / 2**30:.2f} GiB"
+            )
+    if limits.min_available_memory_bytes is not None:
+        import psutil
+
+        available = int(psutil.virtual_memory().available)
+        if available <= limits.min_available_memory_bytes:
+            raise ResourceLimitError(
+                f"resource limit: available memory {available / 2**30:.2f} GiB <= "
+                f"{limits.min_available_memory_bytes / 2**30:.2f} GiB"
+            )
+
+
 def accepted_step_health(
     *,
     limits: HealthLimits,

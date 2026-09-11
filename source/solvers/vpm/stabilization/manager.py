@@ -161,6 +161,9 @@ class StabilizationManager:
         )
         self.events = 0
         self.regularization_events = 0
+        # Accepted Pedrizzetti transfers: vector strength, linear and angular
+        # impulse, all per density. These are numerical sources, not blade loads.
+        self.pedrizzetti_moment_transfer = np.zeros((3, 3), dtype=np.float64)
         self.regularization_energy_transfer = 0.0
         self.regularization_enstrophy_transfer = 0.0
         # A readable placeholder rather than "": the record goes to CSV, and an
@@ -258,6 +261,15 @@ class StabilizationManager:
     def diagnostics(self) -> dict[str, float | int | str]:
         """The compact per-step record exported with the flow integrals."""
         return {
+            **{
+                f"pedrizzetti_cumulative_{quantity}_transfer_{axis}": float(
+                    self.pedrizzetti_moment_transfer[row, column]
+                )
+                for row, quantity in enumerate(
+                    ("vortex_strength", "linear_impulse", "angular_impulse")
+                )
+                for column, axis in enumerate("xyz")
+            },
             "n_stabilization_events": self.events,
             "n_regularization_events": self.regularization_events,
             "regularization_cumulative_total_kinetic_energy_transfer": self.regularization_energy_transfer,
@@ -274,6 +286,15 @@ class StabilizationManager:
     def restore_diagnostics(self, values: dict) -> None:
         """Reload the master's record from a backup."""
         self.events = int(values.get("n_stabilization_events", self.events))
+        for row, quantity in enumerate(("vortex_strength", "linear_impulse", "angular_impulse")):
+            for column, axis in enumerate("xyz"):
+                key = f"pedrizzetti_cumulative_{quantity}_transfer_{axis}"
+                # A legacy run with enabled relaxation and accepted events has
+                # unknown prior transfer. Never present that missing history as zero.
+                missing = (
+                    np.nan if self.events and self.config.pedrizzetti_relaxation_enabled else 0.0
+                )
+                self.pedrizzetti_moment_transfer[row, column] = float(values.get(key, missing))
         self.regularization_events = int(
             values.get("n_regularization_events", self.regularization_events)
         )
@@ -480,12 +501,12 @@ class StabilizationManager:
 
         before = self.measure()
         original_strength = self.ctx.particles.vortex_strength_cpu(use_cache=False).copy()
+        position = self.ctx.particles.position_cpu(use_cache=False).astype(np.float64)
+        core_radius = self.ctx.particles.core_radius_cpu(use_cache=False).astype(np.float64)
         reference_vortex_strength = None
         if cfg.pedrizzetti_relaxation_preserve_moments:
             particles = self.ctx.particles
-            position = particles.position_cpu(use_cache=False).astype(np.float64)
             reference_vortex_strength = original_strength.astype(np.float64)
-            core_radius = particles.core_radius_cpu(use_cache=False).astype(np.float64)
             particle_volume = particles.particle_volume_cpu(use_cache=False).astype(np.float64)
         try:
             statistics = self.operators.apply_pedrizzetti_relaxation(
@@ -511,6 +532,19 @@ class StabilizationManager:
                 self.ctx.mutations.set_properties(
                     vortex_strength=corrected.astype(self.ctx.np_dtype)
                 )
+            from .filament_refinement import particle_moments
+
+            # The operator holds positions/cores fixed, so moments of delta-Gamma
+            # are the exact transfers and avoid subtracting large impulse totals.
+            delta_strength = self.ctx.particles.vortex_strength_cpu(use_cache=False).astype(
+                np.float64
+            ) - original_strength.astype(np.float64)
+            transfer = particle_moments(
+                position,
+                delta_strength,
+                core_radius,
+                angular_core_coefficient=self.ctx.physics._angular_core_coefficient,
+            )
             self.accept(
                 "Pedrizzetti relaxation",
                 before,
@@ -521,6 +555,7 @@ class StabilizationManager:
                     f"moment correction={correction_relative:.2e}"
                 ),
             )
+            self.pedrizzetti_moment_transfer += np.stack((transfer[0], transfer[2], transfer[3]))
         except Exception:
             self.ctx.mutations.set_properties(vortex_strength=original_strength)
             raise

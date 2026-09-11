@@ -33,6 +33,11 @@ _COMPRESSION = {
     "shuffle": True,
 }
 _STABILIZATION_DIAGNOSTIC_NAMES = (
+    *(
+        f"pedrizzetti_cumulative_{quantity}_transfer_{axis}"
+        for quantity in ("vortex_strength", "linear_impulse", "angular_impulse")
+        for axis in "xyz"
+    ),
     "n_stabilization_events",
     "n_regularization_events",
     "regularization_cumulative_total_kinetic_energy_transfer",
@@ -45,6 +50,57 @@ _STABILIZATION_DIAGNOSTIC_NAMES = (
     "lagrangian_cfl",
     "stretching_viscosity_feedback_coefficient",
 )
+
+
+def _legacy_vlm_output_controls(checkpoint: str | Path) -> tuple[dict[str, Any], Path] | None:
+    """Read explicit output controls from the checkpoint's persisted manifest.
+
+    VLM version-6 groups predate the physics-only identity and do not contain
+    enough information to guess whether a mismatching identity is merely the
+    old standalone logging cadence.  A sibling run manifest is accepted as
+    evidence only when it records the complete VLM output controls; the
+    restart validator still recomputes the full legacy digest, including
+    geometry, callbacks, and every physics control, before allowing migration.
+    """
+    metadata_path = Path(checkpoint).parent / "vpm_metadata.json"
+    if not metadata_path.is_file():
+        return None
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        vlm = metadata["configuration"]["numerics"]["vlm"]
+        logging_interval_steps = vlm["logging_interval_steps"]
+        sample_surface_forces = vlm["sample_surface_forces"]
+        surfaces = vlm["surfaces"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return None
+    if (
+        isinstance(logging_interval_steps, bool)
+        or not isinstance(logging_interval_steps, int)
+        or logging_interval_steps < 1
+        or not isinstance(sample_surface_forces, bool)
+        or not isinstance(surfaces, list)
+    ):
+        return None
+    surface_sample_forces = []
+    for surface in surfaces:
+        if not isinstance(surface, dict):
+            return None
+        # ``None`` is a meaningful persisted dataclass default.  Missing
+        # values are not evidence because older manifests were incomplete.
+        if "sample_forces" not in surface:
+            return None
+        value = surface["sample_forces"]
+        if value is not None and not isinstance(value, bool):
+            return None
+        surface_sample_forces.append(value)
+    return (
+        {
+            "logging_interval_steps": logging_interval_steps,
+            "sample_surface_forces": sample_surface_forces,
+            "surface_sample_forces": surface_sample_forces,
+        },
+        metadata_path,
+    )
 
 
 def _atomic_write_text(path: str | Path, text: str) -> None:
@@ -198,22 +254,56 @@ class _BackupIO:
     def load(
         solver,
         hdf5_file: str | Path,
+        *,
+        time_step_size: float | None = None,
     ) -> None:
-        """Replace ``solver`` state from an HDF5 backup."""
+        """Replace ``solver`` state from an HDF5 backup.
+
+        ``time_step_size`` is an explicit continuation override.  It permits
+        only the numerical-configuration ``time_step_size`` field to differ;
+        every other restart identity remains strict.  The complete checkpoint
+        is restored first, including the accepted clock and optional VLM
+        state, and the override is applied only after that restore succeeds.
+        """
         path = str(hdf5_file)
         _BackupIO._validate_hdf5_structure(
             path,
             expected_float_dtype=_restart_dtype(solver),
             expected_configuration=_numerical_configuration(solver),
+            allow_time_step_size_mismatch=time_step_size is not None,
         )
 
         vlm = getattr(solver, "vlm_solver", None)
+        identity_migration = None
         with h5py.File(path, "r") as file:
+            solver_group = file["solver"]
+            source_step = int(_read_attribute(solver_group, "step"))
+            source_time = float(_read_attribute(solver_group, "time"))
+            source_time_step_size = float(_read_attribute(solver_group, "time_step_size"))
             state = file["solver"].get("vlm")
             if vlm is not None:
                 from ..boundary_elements.vlm.solver.restart import validate_vlm_restart
 
-                validate_vlm_restart(vlm, state)
+                legacy_evidence = None
+                if state is not None and int(state.attrs.get("version", -1)) == 6:
+                    legacy_evidence = _legacy_vlm_output_controls(path)
+                legacy_controls = legacy_evidence[0] if legacy_evidence is not None else None
+                identity_migration = validate_vlm_restart(
+                    vlm,
+                    state,
+                    legacy_output_controls=legacy_controls,
+                )
+                vlm_time = float(state.attrs["time"])
+                clock_tolerance = max(1.0e-10, abs(source_time) * 1.0e-12)
+                if not np.isfinite(source_time) or not np.isfinite(vlm_time):
+                    raise ValueError("VLM and solver restart clocks must be finite")
+                if not np.isclose(vlm_time, source_time, rtol=0.0, atol=clock_tolerance):
+                    raise ValueError(
+                        "VLM restart time does not match solver accepted time: "
+                        f"{vlm_time:.17g} != {source_time:.17g}"
+                    )
+                if identity_migration is not None:
+                    identity_migration["evidence_path"] = str(legacy_evidence[1])
             elif state is not None:
                 raise ValueError("VLM backup requires a configured VLM solver")
 
@@ -241,6 +331,25 @@ class _BackupIO:
             stabilization.reference_lengths = reference_lengths
 
         _BackupIO._load_numerical_data(solver, path)
+        solver._vlm_identity_migration = identity_migration
+        if time_step_size is not None:
+            solver.time_step_size = float(time_step_size)
+            solver._restart_provenance = {
+                "kind": "explicit_changed_time_step_continuation",
+                "source_checkpoint": str(Path(path).resolve()),
+                "source": {
+                    "accepted_step": source_step,
+                    "accepted_time": source_time,
+                    "time_step_size": source_time_step_size,
+                },
+                "continuation": {
+                    "requested_time_step_size": float(time_step_size),
+                    "accepted_step": int(solver.step),
+                    "accepted_time": float(solver.time),
+                },
+            }
+        else:
+            solver._restart_provenance = None
 
     @staticmethod
     def save(
@@ -840,6 +949,7 @@ class _BackupIO:
         *,
         expected_float_dtype: np.dtype | None = None,
         expected_configuration: dict[str, Any] | None = None,
+        allow_time_step_size_mismatch: bool = False,
     ) -> None:
         """Validate a restart file before it is allowed to mutate a solver.
 
@@ -927,6 +1037,10 @@ class _BackupIO:
                         expected_configuration,
                         stored_configuration,
                     )
+                    if allow_time_step_size_mismatch:
+                        mismatches = [
+                            mismatch for mismatch in mismatches if mismatch != "time_step_size"
+                        ]
                     if mismatches:
                         invalid("numerical configuration mismatch at " + ", ".join(mismatches))
 

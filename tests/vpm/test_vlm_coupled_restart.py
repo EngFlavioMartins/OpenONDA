@@ -1,13 +1,52 @@
 """VLM/VPM continuation and complete velocity sampling on real coupled states."""
 
 from dataclasses import replace
+import shutil
 
+import h5py
 import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
 import openonda.vpm as vpm
 from tutorials.vpm.flat_plate.assets.generate_surface import create_flat_plate
+
+
+def _moving_coupled_case(directory):
+    """Build a small translating coupled case for public restart-path tests."""
+    plate = create_flat_plate(
+        chord=1,
+        span=4,
+        angle_of_attack_degrees=5,
+        n_chordwise_panels=2,
+        n_spanwise_panels=3,
+    )
+    vlm = vpm.VLMSetup(
+        surfaces=(
+            vpm.VLMSurfaceSetup(
+                plate,
+                kinematics=vpm.TranslatingVLM(velocity=np.array([-10.0, 0.0, 0.0])),
+            ),
+        ),
+        freestream_velocity=(10.0, 0.0, 0.0),
+        dtype="f64",
+        kinematic_viscosity=0.01,
+        wake_core_overlap=2.5,
+        force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
+    )
+    return vpm.VPMCase(
+        directory=directory,
+        numerics=vpm.Numerics(
+            vlm=vlm,
+            time_step_size=0.01,
+            compute_device="CPU",
+            precision="f64",
+            max_n_particles=256,
+            induction=vpm.DirectInduction(),
+            viscous=vpm.ViscousConfig.cs(kinematic_viscosity=0.01),
+            stabilization=vpm.StabilizationConfig.disabled(),
+        ),
+    )
 
 
 def test_native_metadata_preserves_loaded_geometry_when_the_input_file_is_removed(tmp_path):
@@ -48,6 +87,78 @@ def test_native_metadata_preserves_loaded_geometry_when_the_input_file_is_remove
         assert read_vlm_surface(record, tmp_path) == surface_to_dict(plate)
     finally:
         solver.close()
+
+
+def test_public_load_backup_v6_migration_requires_manifest_evidence_before_mutation(tmp_path):
+    """The public coupled loader rejects absent/wrong v6 evidence transactionally."""
+    from source.solvers.vpm.boundary_elements.vlm.solver.restart import restart_identity
+
+    source = vpm.VPMSolver(_moving_coupled_case(tmp_path / "source"))
+    target = vpm.VPMSolver(_moving_coupled_case(tmp_path / "target"))
+    try:
+        # Capture the legacy output-only identity before the moving surface advances.
+        legacy_controls = {
+            "logging_interval_steps": 4,
+            "sample_surface_forces": True,
+            "surface_sample_forces": [None],
+        }
+        legacy_identity = restart_identity(source.vlm_solver, output_controls=legacy_controls)
+        source.advance(defer_output=True)
+        source.save_backup()
+        checkpoint = tmp_path / "source" / "solution" / "vpm_000001.h5"
+
+        with h5py.File(checkpoint, "a") as archive:
+            group = archive["solver/vlm"]
+            group.attrs["version"] = 6
+            group.attrs["identity"] = legacy_identity
+            del group.attrs["physics_identity"]
+            if "force_density" in group.attrs:
+                del group.attrs["force_density"]
+            for name in ("area", "relative_velocity", "bound_relative_velocity"):
+                del group[name]
+
+        target_step = target.step
+        target_time = target.time
+        target_geometry = target.vlm_solver.lattice.panel_corner_position.to_numpy().copy()
+
+        # No sibling manifest means the output-only identity cannot be interpreted.
+        (tmp_path / "source" / "solution" / "vpm_metadata.json").unlink()
+        with pytest.raises(ValueError, match="geometry or configuration"):
+            target.load_backup(checkpoint)
+        assert (target.step, target.time) == (target_step, target_time)
+        np.testing.assert_array_equal(
+            target.vlm_solver.lattice.panel_corner_position.to_numpy(), target_geometry
+        )
+
+        # Wrong persisted controls also reject before particles or VLM state mutate.
+        (tmp_path / "source" / "solution" / "vpm_metadata.json").write_text(
+            '{"configuration": {"numerics": {"vlm": {'
+            '"logging_interval_steps": 3, "sample_surface_forces": true, '
+            '"surfaces": [{"sample_forces": null}]}}}}',
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="geometry or configuration"):
+            target.load_backup(checkpoint)
+        assert (target.step, target.time) == (target_step, target_time)
+        np.testing.assert_array_equal(
+            target.vlm_solver.lattice.panel_corner_position.to_numpy(), target_geometry
+        )
+
+        # The complete legacy evidence accepts the migration through VPMSolver.load_backup.
+        (tmp_path / "source" / "solution" / "vpm_metadata.json").write_text(
+            '{"configuration": {"numerics": {"vlm": {'
+            '"logging_interval_steps": 4, "sample_surface_forces": true, '
+            '"surfaces": [{"sample_forces": null}]}}}}',
+            encoding="utf-8",
+        )
+        target.load_backup(checkpoint)
+        assert target.step == 1
+        assert target.time == pytest.approx(0.01)
+        assert target._vlm_identity_migration["kind"] == "output_only"
+        assert target.vlm_solver.kinematics.current_position[0] == pytest.approx(-0.1)
+    finally:
+        source.close()
+        target.close()
 
 
 @pytest.mark.parametrize("kernel", ["GAUSSIAN", "WINCKELMANS"])
@@ -158,6 +269,25 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
         assert pv.get_reader(tmp_path / "first/solution/vlm.pvd").time_values == [original.time]
         saved_forces = original.vlm_solver.compute_forces(1.3)
         checkpoint = tmp_path / "first/solution/vpm_000002.h5"
+        # The solver-free export must reproduce the live companion, including
+        # area-dependent normal loading, from the persisted VLM state alone.
+        from source.solvers.vpm.io.vlm_backup import export_vlm_backup
+
+        export_directory = tmp_path / "solver_free_export"
+        export_directory.mkdir()
+        export_checkpoint = export_directory / checkpoint.name
+        shutil.copy2(checkpoint, export_checkpoint)
+        regenerated = pv.read(export_vlm_backup(export_checkpoint))
+        live = pv.read(tmp_path / "first/solution/vlm_000002.vtp")
+        for field in (
+            "area",
+            "relative_velocity",
+            "bound_relative_velocity",
+            "panel_force",
+            "panel_normal_load_coefficient",
+        ):
+            np.testing.assert_array_equal(regenerated[field], live[field])
+        assert regenerated.field_data["force_density"][0] == pytest.approx(1.0)
         original.advance(defer_output=True)
         position = original.particle_position.copy()
         strength = original.particle_vortex_strength.copy()
@@ -177,6 +307,15 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
     try:
         resumed.load_backup(checkpoint)
         restored_forces = resumed.vlm_solver.compute_forces(1.3)
+        # A manual backup immediately after restore must retain the derived
+        # frame fields and dimensional-force provenance, before another solve.
+        resumed.save_backup()
+        immediate = pv.read(tmp_path / "resumed/solution/vlm_000002.vtp")
+        np.testing.assert_array_equal(
+            immediate["relative_velocity"],
+            resumed.vlm_solver.lattice.relative_velocity.to_numpy()[:12],
+        )
+        assert immediate.field_data["force_density"][0] == pytest.approx(1.0)
         for key in ("force_z", "moment_y", "unsteady_force_z"):
             assert restored_forces[key] == pytest.approx(saved_forces[key], rel=1e-12, abs=1e-12)
         resumed.advance(defer_output=True)
@@ -210,6 +349,99 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
         forces = resumed.compute_forces()
         assert forces["dynamic_pressure"] == 50.0
         assert forces["lift_coefficient"] > 0.0
+    finally:
+        resumed.close()
+
+
+def test_changed_time_step_continuation_preserves_vlm_state_and_advances_coupled_loads(tmp_path):
+    """An explicit smaller-step restart keeps the accepted VLM state coherent."""
+    plate = create_flat_plate(
+        chord=1, span=4, angle_of_attack_degrees=5, n_chordwise_panels=2, n_spanwise_panels=3
+    )
+
+    def make_case(directory, time_step_size):
+        vlm = vpm.VLMSetup(
+            surfaces=(
+                vpm.VLMSurfaceSetup(
+                    plate,
+                    kinematics=vpm.TranslatingVLM(velocity=np.array([-10.0, 0.0, 0.0])),
+                ),
+            ),
+            freestream_velocity=(10.0, 0.0, 0.0),
+            dtype="f64",
+            kinematic_viscosity=0.01,
+            wake_core_overlap=2.5,
+            force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
+        )
+        return vpm.VPMCase(
+            directory=directory,
+            numerics=vpm.Numerics(
+                vlm=vlm,
+                freestream_velocity=[10.0, 0.0, 0.0],
+                time_step_size=time_step_size,
+                compute_device="CPU",
+                precision="f64",
+                max_n_particles=256,
+                induction=vpm.DirectInduction(),
+                viscous=vpm.ViscousConfig.cs(kinematic_viscosity=0.01),
+                stabilization=vpm.StabilizationConfig.disabled(),
+            ),
+            samplers=vpm.Samplers(
+                directory="changed",
+            ),
+        )
+
+    original = vpm.VPMSolver(make_case(tmp_path / "original", 0.01))
+    try:
+        original.advance(defer_output=True)
+        original.advance(defer_output=True)
+        original.save_backup()
+        checkpoint = tmp_path / "original/solution/vpm_000002.h5"
+        expected_circulation = original.vlm_solver.lattice.get_circulation().copy()
+        surface_name = next(iter(original.vlm_solver.surfaces))
+        expected_position = original.vlm_solver.surfaces[surface_name][1].current_position.copy()
+        assert (original.step, original.time) == (2, pytest.approx(0.02))
+    finally:
+        original.close()
+
+    inconsistent_checkpoint = tmp_path / "original/solution/inconsistent.h5"
+    shutil.copy2(checkpoint, inconsistent_checkpoint)
+    with h5py.File(inconsistent_checkpoint, "r+") as file:
+        file["solver/vlm"].attrs["time"] = 0.0205
+    clock_reader = vpm.VPMSolver(make_case(tmp_path / "clock-reader", 0.005))
+    try:
+        with pytest.raises(ValueError, match="VLM restart time does not match"):
+            clock_reader.load_backup(inconsistent_checkpoint, time_step_size=0.005)
+        # Clock validation is part of the pre-mutation restart validation.
+        assert clock_reader.step == 0
+        assert clock_reader.time == pytest.approx(0.0)
+        assert clock_reader.particles.n_particles_total == 0
+    finally:
+        clock_reader.close()
+
+    resumed = vpm.VPMSolver(make_case(tmp_path / "resumed", 0.005))
+    try:
+        resumed.load_backup(checkpoint, time_step_size=0.005)
+        assert resumed.time_step_size == pytest.approx(0.005)
+        assert (resumed.step, resumed.time) == (2, pytest.approx(0.02))
+        assert resumed.vlm_solver._current_time == pytest.approx(0.02)
+        np.testing.assert_array_equal(
+            resumed.vlm_solver.lattice.get_circulation(), expected_circulation
+        )
+        np.testing.assert_array_equal(
+            resumed.vlm_solver.surfaces[surface_name][1].current_position,
+            expected_position,
+        )
+
+        resumed.advance()
+        resumed.save_backup()
+        assert (resumed.step, resumed.time) == (3, pytest.approx(0.025))
+        assert resumed.vlm_solver._current_time == pytest.approx(0.025)
+        pvd = (tmp_path / "resumed/solution/vlm.pvd").read_text(encoding="utf-8")
+        assert 'timestep="0.025" file="vlm_000003.vtp"' in pvd
+        forces = resumed.vlm_solver.compute_forces(1.3)
+        assert all(np.isfinite(value).all() for value in forces.values())
+        assert resumed.particles.n_particles_total > 0
     finally:
         resumed.close()
 

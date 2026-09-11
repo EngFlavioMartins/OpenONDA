@@ -92,19 +92,10 @@ DEFAULT_CORE_RADIUS = 0.05
 # Default particle volume [m³]
 DEFAULT_PARTICLE_VOLUME = 1e-3
 
-# -- Gaussian q-kernel small-argument series --------------------------------
-# q(r) = [erf(r) - (2/sqrt(pi)) r exp(-r^2)] / (4 pi) is a difference of two
-# quantities that both tend to (2/sqrt(pi)) r while their difference is O(r^3),
-# so the closed form loses all significance for small r (relative error
-# ~1.5 eps / r^2 in f32: 5.6e-2 at r = 1e-2, 7e+4 at r = 1e-4, sign flips).
-# Below GAUSSIAN_Q_SERIES_CROSSOVER both the direct kernel
-# (kernels/gaussian.py) and the treecode's LBVH copy (physics/induction/treecode/lbvh.py)
-# must use the series
-#     q(r) = C r^3 [1 - (3/5) r^2 + (3/14) r^4] / (4 pi) + O(r^9),  C = 4/(3 sqrt(pi)).
-# Measured f32 accuracy: series <= 4e-6 for r <= 0.2; closed form ~2e-5 at
-# r = 0.2 and improving, so 0.2 sits at/below the crossover.
-FOUR_OVER_THREE_SQRT_PI = 0.7522527780636751
-GAUSSIAN_Q_SERIES_CROSSOVER = 0.2
+# Gaussian q uses its integrated series below this radius to avoid
+# small-radius cancellation. Host, direct/FMM and LBVH share the coefficients
+# in kernels/gaussian.py; the number of terms depends on precision.
+GAUSSIAN_Q_SERIES_CROSSOVER = 1.0
 
 # Regularization kernels the LBVH treecode can evaluate.  The treecode carries
 # its own Taichi implementation of q/zeta (see physics/induction/treecode/lbvh.py), so

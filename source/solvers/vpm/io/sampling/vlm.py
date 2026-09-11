@@ -10,9 +10,9 @@ from .schedule import OutputSchedule
 class VLMSampler:
     """Write solved lattice geometry, circulation, velocity and loads to samples.
 
-    The regular output manager owns the sample cadence, atomic writes and PVD
-    index. ``Backup`` independently writes sparse surface companions beside
-    numerical restart files, even when no ``VLMSampler`` is configured.
+    This is a standalone scientific sampler. In a coupled :class:`VPMCase`,
+    surface companions are owned by the VPM backup event and this sampler is
+    rejected so it cannot introduce an independent VLM geometry cadence.
     """
 
     schedule: OutputSchedule | None = None

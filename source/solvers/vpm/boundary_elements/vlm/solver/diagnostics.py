@@ -59,7 +59,7 @@ class VLMDiagnostics:
         case_dir: str,
         sample_directory: str | None = None,
     ) -> None:
-        """Record VLM force and vector-strength scalars and, when due, flush to CSV.
+        """Record VLM force and vector-strength scalars and flush one owner sample.
 
         Parameters
         ----------
@@ -103,20 +103,21 @@ class VLMDiagnostics:
         )
         diagnostics_history["vlm_n_particles_total"].append(float(n_p))
 
-        freq = max(1, int(getattr(vlm_solver, "logging_interval_steps", 1)))
-        if step % freq == 0:
-            VLMDiagnostics.export_forces_csv(
-                vlm_solver,
-                forces,
-                bound_vortex_strength_y,
-                wake_vortex_strength_y,
-                max_leading_edge_suction_parameter,
-                n_p,
-                time,
-                step,
-                case_dir,
-                sample_directory,
-            )
+        # Coupled VLM is an owned VPM component.  The caller reaches this
+        # method only after an accepted VPM step, so every row belongs to the
+        # owner's accepted clock; no VLM-specific cadence may skip it.
+        VLMDiagnostics.export_forces_csv(
+            vlm_solver,
+            forces,
+            bound_vortex_strength_y,
+            wake_vortex_strength_y,
+            max_leading_edge_suction_parameter,
+            n_p,
+            time,
+            step,
+            case_dir,
+            sample_directory,
+        )
 
     # CSV export
 
@@ -160,6 +161,14 @@ class VLMDiagnostics:
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 
+        force_density = float(getattr(vlm_solver, "_force_density", vlm_solver.density))
+        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
+        if reference_velocity is None:
+            reference_velocity = getattr(vlm_solver, "freestream_velocity", None)
+        reference_speed = (
+            float(np.linalg.norm(reference_velocity)) if reference_velocity is not None else 0.0
+        )
+
         row = {
             "time": time,
             "step": step,
@@ -195,16 +204,32 @@ class VLMDiagnostics:
             "wake_vortex_strength_y": wake_vortex_strength,
             "max_leading_edge_suction_parameter": max_leading_edge_suction_parameter,
             "n_particles_total": n_p,
+            "force_density": force_density,
+            "force_units": "N",
+            "moment_units": "N*m",
+            "reference_speed": reference_speed,
+            "reference_speed_units": "m/s",
         }
+        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
+        if reference_velocity is None:
+            reference_velocity = getattr(vlm_solver, "freestream_velocity", None)
         surface_forces = vlm_solver.compute_per_surface_forces(
-            vlm_solver.density, vlm_solver._last_reference_velocity
+            vlm_solver.density, reference_velocity
         )
         for key in ("power", "rotational_power", "translational_power"):
             row[key] = sum(surface[key] for surface in surface_forces.values())
         surfaces_path = csv_path.with_name("vlm_surface_forces.csv")
         pd.DataFrame(
             [
-                {"time": time, "step": step, "surface": name, **values}
+                {
+                    "time": time,
+                    "step": step,
+                    "surface": name,
+                    "force_density": force_density,
+                    "force_units": "N",
+                    "moment_units": "N*m",
+                    **values,
+                }
                 for name, values in surface_forces.items()
             ]
         ).to_csv(surfaces_path, mode="a", header=not surfaces_path.exists(), index=False)

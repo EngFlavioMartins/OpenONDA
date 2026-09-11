@@ -132,6 +132,7 @@ include-package-data = false
 [tool.setuptools.exclude-package-data]
 "*" = [
     "**/solution/*", "**/solutions/*", "**/samples/*", "**/figures/*",
+    "**/solution_*/*", "**/solutions_*/*",
     "**/study_results/*", "**/animation/*", "**/__pycache__/*",
     "**/run_manifest.json", "**/paraview_state.py", "**/paraview_tracer.py",
 ]
@@ -140,6 +141,9 @@ include-package-data = false
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Explicit first-party roots so ruff's import sorting agrees across the pinned
+# pre-commit ruff (v0.9.10) and newer local ruff builds.
+src = ["."]
 exclude = [
     ".git",
     "__pycache__",
@@ -147,6 +151,9 @@ exclude = [
     "build/",
     "dist/",
     ".eggs/",
+    # Byte-identical provenance artifacts; their sha256 contract in the
+    # study manifest forbids any reformatting by ruff.
+    "**/provenance/frozen_scripts/",
 ]
 
 [tool.ruff.lint]

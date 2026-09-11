@@ -9,6 +9,9 @@ import math
 
 import numpy as np
 
+from ..config.constants import GAUSSIAN_Q_SERIES_CROSSOVER
+from .gaussian import GAUSSIAN_Q_SERIES_COEFFICIENTS
+
 ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
 
@@ -387,14 +390,13 @@ def _erf(values: np.ndarray) -> np.ndarray:
 def _gaussian_q(rho):
     rho = np.asarray(rho, dtype=np.float64)
     result = (_erf(rho) - 2.0 / math.sqrt(math.pi) * rho * np.exp(-rho * rho)) / (4.0 * math.pi)
-    small = rho < 0.2
+    small = rho < GAUSSIAN_Q_SERIES_CROSSOVER
     d2 = rho * rho
     series = (
-        (4.0 / (3.0 * math.sqrt(math.pi)))
+        math.pi**-1.5
         * rho
         * d2
-        * (1.0 - 0.6 * d2 + 3.0 / 14.0 * d2 * d2)
-        / (4.0 * math.pi)
+        * np.polynomial.polynomial.polyval(d2, GAUSSIAN_Q_SERIES_COEFFICIENTS)
     )
     return np.where(small, series, result)
 

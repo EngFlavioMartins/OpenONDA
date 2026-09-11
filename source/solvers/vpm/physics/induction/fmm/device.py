@@ -472,8 +472,8 @@ class FMMDeviceWorkspace:
         if self._well_separated(target, source) == 1:
             self._append_m2l_pair(target, source)
         elif target_is_leaf == 1 and source_is_leaf == 1:
-            if target != source or self.tree.node_particle_count[target] > 1:
-                self._append_near_pair(target, source)
+            # Singleton self pairs still contribute a finite velocity Jacobian.
+            self._append_near_pair(target, source)
         else:
             split_target = source_is_leaf == 1
             if target_is_leaf == 0 and source_is_leaf == 0:
@@ -705,49 +705,45 @@ class FMMDeviceWorkspace:
                 target = self.tree.sorted_indices[target_slot]
                 for source_slot in range(source_start, source_start + source_count):
                     source = self.tree.sorted_indices[source_slot]
-                    if target != source:
-                        displacement = self.tree.position[target] - self.tree.position[source]
-                        radius_sq = displacement.dot(displacement)
-                        if radius_sq > ti.cast(_EPSILON_SQUARED, ti.f32):
-                            radius = ti.sqrt(radius_sq)
-                            sigma = 0.5 * (
-                                self.tree.core_radius[target] + self.tree.core_radius[source]
+                    displacement = self.tree.position[target] - self.tree.position[source]
+                    radius_sq = displacement.dot(displacement)
+                    sigma = 0.5 * (self.tree.core_radius[target] + self.tree.core_radius[source])
+                    source_strength = self.tree.vortex_strength[source]
+                    term1 = self.zeta_kernel(0.0) / (3.0 * sigma**3)
+                    term2 = 0.0
+                    if radius_sq > ti.cast(_EPSILON_SQUARED, ti.f32):
+                        radius = ti.sqrt(radius_sq)
+                        rho = radius / sigma
+                        q_value = self.q_kernel(rho)
+                        zeta_value = self.zeta_kernel(rho)
+                        inv_r2 = 1.0 / radius_sq
+                        inv_r3 = inv_r2 / radius
+                        velocity = source_strength.cross(displacement) * q_value * inv_r3
+                        for component in ti.static(range(3)):
+                            ti.atomic_add(self.velocity[target][component], velocity[component])
+                        term1 = q_value * inv_r3
+                        term2 = 3.0 * q_value * inv_r3 * inv_r2 - zeta_value / sigma**3 * inv_r2
+                    cross_value = displacement.cross(source_strength)
+                    for row in ti.static(range(3)):
+                        for column in ti.static(range(3)):
+                            skew_value = 0.0
+                            if row == 0 and column == 1:
+                                skew_value = -source_strength[2]
+                            elif row == 0 and column == 2:
+                                skew_value = source_strength[1]
+                            elif row == 1 and column == 0:
+                                skew_value = source_strength[2]
+                            elif row == 1 and column == 2:
+                                skew_value = -source_strength[0]
+                            elif row == 2 and column == 0:
+                                skew_value = -source_strength[1]
+                            elif row == 2 and column == 1:
+                                skew_value = source_strength[0]
+                            ti.atomic_add(
+                                self.gradient[target][row, column],
+                                term1 * skew_value
+                                + term2 * cross_value[row] * displacement[column],
                             )
-                            rho = radius / sigma
-                            q_value = self.q_kernel(rho)
-                            zeta_value = self.zeta_kernel(rho)
-                            inv_r2 = 1.0 / radius_sq
-                            inv_r3 = inv_r2 / radius
-                            source_strength = self.tree.vortex_strength[source]
-                            velocity = source_strength.cross(displacement) * q_value * inv_r3
-                            for component in ti.static(range(3)):
-                                ti.atomic_add(self.velocity[target][component], velocity[component])
-                            term1 = q_value * inv_r3
-                            term2 = (
-                                3.0 * q_value * inv_r3 * inv_r2
-                                - zeta_value / (sigma * sigma * sigma) * inv_r2
-                            )
-                            cross_value = displacement.cross(source_strength)
-                            for row in ti.static(range(3)):
-                                for column in ti.static(range(3)):
-                                    skew_value = 0.0
-                                    if row == 0 and column == 1:
-                                        skew_value = -source_strength[2]
-                                    elif row == 0 and column == 2:
-                                        skew_value = source_strength[1]
-                                    elif row == 1 and column == 0:
-                                        skew_value = source_strength[2]
-                                    elif row == 1 and column == 2:
-                                        skew_value = -source_strength[0]
-                                    elif row == 2 and column == 0:
-                                        skew_value = -source_strength[1]
-                                    elif row == 2 and column == 1:
-                                        skew_value = source_strength[0]
-                                    ti.atomic_add(
-                                        self.gradient[target][row, column],
-                                        term1 * skew_value
-                                        + term2 * cross_value[row] * displacement[column],
-                                    )
 
     @ti.kernel
     def _reset_rate_diagnostics(self):

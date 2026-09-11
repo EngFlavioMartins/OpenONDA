@@ -8,6 +8,7 @@ from scipy.spatial.transform import Rotation
 import taichi as ti
 
 import openonda.vpm as vpm
+from source.solvers.vpm.boundary_elements.vlm.solver.influence import compute_panel_force_coupled
 from source.solvers.vpm.boundary_elements.vlm.solver.loading_distribution import (
     VLMLoadingDistribution,
 )
@@ -35,6 +36,25 @@ def plate():
     solver = VLMSolver(
         vpm.VLMSetup(
             surfaces=(vpm.VLMSurfaceSetup(geometry, name="plate"),),
+            dtype="f64",
+            force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
+        )
+    )
+    solver.generate_mesh()
+    return solver
+
+
+def single_panel_plate():
+    geometry = create_flat_plate(
+        chord=1,
+        span=1,
+        angle_of_attack_degrees=0,
+        n_chordwise_panels=1,
+        n_spanwise_panels=1,
+    )
+    solver = VLMSolver(
+        vpm.VLMSetup(
+            surfaces=(vpm.VLMSurfaceSetup(geometry, name="single_panel"),),
             dtype="f64",
             force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
         )
@@ -75,6 +95,47 @@ def pressure_load(solver, density, dt):
     )
     solver._force_density = density
     solver._solved = True
+
+
+def _triangle_area(a, b, c):
+    """Return an oriented triangle area vector independently of Taichi."""
+    return 0.5 * np.cross(b - a, c - a)
+
+
+def _pressure_area_vectors(corners, vortex):
+    """Return the fore/aft physical-panel area vectors for one horseshoe."""
+    a, b = vortex[1], vortex[2]
+    p, q, r, s = corners
+    fore = _triangle_area(p, a, b) + _triangle_area(p, b, q)
+    aft = _triangle_area(a, s, r) + _triangle_area(a, r, b)
+    return fore, aft
+
+
+def _set_bound_velocity_fields(solver, fluid, kinematic):
+    lattice = solver.lattice
+    velocity = np.zeros((lattice.max_n_panels, 3), dtype=lattice.np_dtype)
+    motion = np.zeros_like(velocity)
+    velocity[: lattice.n_panels] = fluid
+    motion[: lattice.n_panels] = kinematic
+    lattice.bound_vortex_velocity.from_numpy(velocity)
+    lattice.bound_kinematic_velocity.from_numpy(motion)
+
+
+def _kutta_joukowski_load(solver, density):
+    lattice = solver.lattice
+    lattice.panel_force.fill(0.0)
+    compute_panel_force_coupled(
+        lattice.bound_vortex_velocity,
+        lattice.vortex_point_position,
+        lattice.circulation,
+        lattice.circulation_old,
+        lattice.bound_kinematic_velocity,
+        lattice.panel_force,
+        lattice.n_panels,
+        density,
+        0,
+    )
+    return lattice.get_forces().copy()
 
 
 @pytest.mark.parametrize("sign", [-1, 1])
@@ -127,6 +188,90 @@ def test_patch_partition_matches_whole_downstream_areas_and_centroid_moments(sig
         np.testing.assert_allclose(
             [total[f"unsteady_force_{a}"] for a in "xyz"], multiplier * expected_force, atol=1e-12
         )
+
+
+def test_manufactured_panel_separates_pressure_ramp_from_rigid_motion():
+    """Check signed pressure construction and keep rigid-motion KJ separate.
+
+    The pressure fixture is a fixed-geometry circulation ramp on the active
+    half-panel.  The second half-panel is zeroed so the independent area
+    integration is a one-panel calculation.  The same panel is then rotated
+    with constant circulation: the unsteady circulation-rate term must be a
+    no-op, while the independently prescribed relative velocity still enters
+    Kutta--Joukowski with one density factor.
+    """
+    solver = single_panel_plate()
+    lattice = solver.lattice
+    n = lattice.n_panels
+    gamma = np.zeros(n)
+    gamma[0] = 1.0
+    set_circulation(solver, gamma, old_fraction=0.4)
+    density, dt = 1.3, 0.2
+    pressure_load(solver, density, dt)
+
+    corners = lattice.panel_corner_position.to_numpy()[:n]
+    vortex = lattice.vortex_point_position.to_numpy()[:n]
+    fore, aft = _pressure_area_vectors(corners[0], vortex[0])
+    current_gamma = lattice.circulation.to_numpy()[:n]
+    old_gamma = lattice.circulation_old.to_numpy()[:n]
+    current_cumulative = lattice.cumulative_circulation.to_numpy()[:n]
+    old_cumulative = lattice.cumulative_circulation_old.to_numpy()[:n]
+    expected_pressure = np.zeros(3)
+    for i in range(n):
+        delta_cumulative = current_cumulative[i] - old_cumulative[i]
+        delta_gamma = current_gamma[i] - old_gamma[i]
+        panel_fore, panel_aft = _pressure_area_vectors(corners[i], vortex[i])
+        expected_pressure += (
+            density
+            / dt
+            * ((delta_cumulative - delta_gamma) * panel_fore + delta_cumulative * panel_aft)
+        )
+    np.testing.assert_allclose(
+        lattice.unsteady_panel_force.to_numpy()[:n].sum(axis=0), expected_pressure, atol=1e-12
+    )
+    # The active one-panel geometry has b=0.5, c=1, so the aft area is 3/8 m².
+    np.testing.assert_allclose(fore, [0.0, 0.0, 0.125], atol=1e-12)
+    np.testing.assert_allclose(aft, [0.0, 0.0, 0.375], atol=1e-12)
+    np.testing.assert_allclose(expected_pressure, [0.0, 0.0, 1.4625], atol=1e-12)
+
+    # Rigidly rotate the same panel with constant circulation.  The pressure
+    # term is a circulation-rate derivative and must remain zero; the relative
+    # velocity force is checked independently under the same frame rotation.
+    set_circulation(solver, gamma, old_fraction=1.0)
+    rotation = Rotation.from_rotvec([0.23, -0.31, 0.17]).as_matrix()
+    fluid = np.array([0.4, -0.2, 0.7])
+    kinematic = np.array([-0.3, 0.6, 0.1])
+    _set_bound_velocity_fields(
+        solver,
+        np.tile(fluid, (n, 1)),
+        np.tile(kinematic, (n, 1)),
+    )
+    baseline_force = _kutta_joukowski_load(solver, density)[0]
+    lattice.rotate_translate_panels(
+        rotation,
+        origin=np.array([0.1, -0.2, 0.3]),
+        displacement=np.array([0.7, -0.4, 0.2]),
+        start_idx=0,
+        end_idx=1,
+    )
+    _set_bound_velocity_fields(
+        solver,
+        np.tile(rotation @ fluid, (n, 1)),
+        np.tile(rotation @ kinematic, (n, 1)),
+    )
+    rotated_force = _kutta_joukowski_load(solver, density)[0]
+    np.testing.assert_allclose(rotated_force, rotation @ baseline_force, atol=1e-12)
+    pressure_load(solver, density, dt)
+    np.testing.assert_allclose(lattice.unsteady_panel_force.to_numpy()[:n], 0.0, atol=1e-12)
+    # Re-add the separately constructed KJ force and verify the public total
+    # force path reports that same vector without a hidden density multiplier.
+    rotated_force = _kutta_joukowski_load(solver, density)
+    solver._force_density = density
+    solver._solved = True
+    total = solver.compute_forces(density, np.array([1.0, 0.0, 0.0]))
+    np.testing.assert_allclose(
+        [total[f"force_{axis}"] for axis in "xyz"], rotated_force.sum(axis=0), atol=1e-12
+    )
 
 
 def test_upstream_jump_loads_downstream_panels_and_power_at_pressure_centres():

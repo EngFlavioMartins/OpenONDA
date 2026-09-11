@@ -147,6 +147,10 @@ class InductionMethod(Protocol):
     ) -> None:
         """Evaluate particle velocity and stretching rates for one stage.
 
+        The Jacobian includes the finite skew contribution at every regularized
+        source centre, including self. Self velocity and self stretching vanish;
+        the curl used by vorticity diagnostics and relaxation does not.
+
         Parameters
         ----------
         position, vortex_strength, core_radius : object

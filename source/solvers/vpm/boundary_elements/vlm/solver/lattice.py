@@ -119,11 +119,14 @@ class VLMLattice:
         # Velocity at bound vortex midpoints (N x 3) - for correct K-J force
         self.bound_vortex_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
         self.bound_external_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
+        self.bound_relative_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
         self.bound_kinematic_velocity = ti.field(dtype=dtype, shape=(max_n_panels, 3))
         self.reference_speed = 1.0
+        self.force_density = None
 
         # Kinematic velocity at collocation_point points (N x 3) - 2D scalar field for better stability
         self.kinematic_velocity = ti.field(dtype=dtype, shape=(max_n_panels, 3))
+        self.relative_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
 
         # Pressure coefficient (N,) - matching VPM convention
         self.pressure_coefficient = ti.field(dtype=dtype, shape=(max_n_panels,))
@@ -294,6 +297,7 @@ class VLMLattice:
         callers that reuse the object must upload bodies again before solving.
         """
         self.n_panels = 0
+        self.force_density = None
         self.circulation.fill(0.0)
         self.circulation_old.fill(0.0)
         self.smoothed_circulation.fill(0.0)
@@ -303,6 +307,8 @@ class VLMLattice:
         self.right_hand_side.fill(0.0)
         self.right_hand_side.fill(0.0)
         self.kinematic_velocity.fill(0.0)
+        self.relative_velocity.fill(0.0)
+        self.bound_relative_velocity.fill(0.0)
         self.external_velocity.fill(0.0)
         self.neighbor_indices.fill(-1)
         self.trailing_edge_index.fill(-1)
@@ -577,11 +583,17 @@ class VLMLattice:
         from .vtk_export import CELL_FIELDS, write_lattice_vtk
 
         ti.sync()
-        names = ("panel_corner_position", "vortex_point_position", *CELL_FIELDS)
+        names = (
+            "panel_corner_position",
+            "vortex_point_position",
+            *CELL_FIELDS,
+            "pressure_coefficient",
+        )
         fields = {name: getattr(self, name).to_numpy()[: self.n_panels] for name in names}
         return write_lattice_vtk(
             fields,
             f"{filename}.vtp",
             reference_speed=self.reference_speed,
             time=time,
+            force_density=self.force_density,
         )

@@ -196,8 +196,6 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
     expected_gradient = kernel.gradient_pair(
         displacement, strength[None, :, :], radius[:, None], radius[None, :]
     )
-    diagonal = np.arange(count)
-    expected_gradient[diagonal, diagonal] = 0.0
     expected_gradient = expected_gradient.sum(axis=1)
     operator = {
         "DIRECT": expected_gradient,
@@ -290,7 +288,6 @@ def test_private_host_fmm_reference_qualifies_all_radial_kernels(scheme):
         )
         diagonal = np.arange(count)
         expected_velocity[diagonal, diagonal] = 0.0
-        expected_gradient[diagonal, diagonal] = 0.0
         expected_velocity = expected_velocity.sum(axis=1)
         expected_gradient = expected_gradient.sum(axis=1)
         operator = {

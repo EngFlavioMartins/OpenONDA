@@ -9,6 +9,7 @@ License: GPL-3.0-or-later
 
 from collections.abc import Callable, Iterator
 from contextlib import suppress
+from numbers import Real
 from pathlib import Path
 from time import perf_counter
 from typing import Protocol, TypeAlias
@@ -26,7 +27,13 @@ from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
 from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
 from ..config.case import Numerics, RestartState, VPMCase
 from ..config.constants import MAX_N_PARTICLES, MAX_SOURCES
-from ..config.health import HealthError, HealthSnapshot, accepted_step_health
+from ..config.health import (
+    HealthError,
+    HealthSnapshot,
+    ResourceLimitError,
+    accepted_step_health,
+    enforce_resource_limits,
+)
 from ..config.stabilization import StabilizationConfig
 from ..config.state import set_flow_model
 from ..coupling import CouplingStepper
@@ -168,13 +175,16 @@ class VPMSolver:
         self.case = case
         self.case_dir = Path(case.directory).resolve()
         self._backend_claimed = False
+        self._runtime_compute_device_override = case.run.runtime_compute_device
+        preferred_backend = self._runtime_compute_device_override or case.numerics.compute_device
         acquire_taichi_backend(
             self,
-            preferred_backend=case.numerics.compute_device,
+            preferred_backend=preferred_backend,
             precision=case.numerics.precision,
         )
         self._backend_claimed = True
         self.restart_state = RestartState()
+        self._restart_provenance: dict | None = None
         self._initial_conditions_built = False
         self._initial_n_particles_total = 0
         self._run_initial_step = 0
@@ -326,7 +336,9 @@ class VPMSolver:
         self.integrator_tableau = final_setup.integrator
         configured_induction = final_setup.induction
         self.induction = configured_induction.build()
-        self.compute_device = final_setup.compute_device.upper()
+        self.compute_device = (
+            self._runtime_compute_device_override or final_setup.compute_device
+        ).upper()
         self.flow_model = final_setup.turbulence.flow_model.upper()
         self.viscous_scheme = final_setup.viscous.scheme
         self._viscous_config = final_setup.viscous
@@ -788,8 +800,10 @@ class VPMSolver:
             raise
         self._sync_restart_state()
         if defer_output:
+            self._enforce_run_resource_limits()
             return
         self._refresh_accepted_step_health()
+        self._enforce_run_resource_limits()
         if self.vlm_solver is not None:
             self._record_vlm_diagnostics()
         if self.output_manager.flow_integrals_due(self.step, self.time):
@@ -843,40 +857,62 @@ class VPMSolver:
             self.run_status = "running"
             self._write_run_manifest(self.run_status, None)
             self._log_configuration_once()
-            if self.case.run.initial_samples:
-                self._refresh_diagnostics_for_output()
-                self.output_manager.dispatch(OutputEvent.INITIAL)
             health_limit_failure = None
-            for _ in range(self.case.run.steps):
-                if deadline is not None and perf_counter() >= deadline:
-                    budget_exhausted = True
-                    break
-                try:
-                    self.advance()
-                except HealthError as exc:
-                    if self.case.run.health_limit_action == "RAISE" or not exc.restartable:
-                        raise
-                    health_limit_failure = exc
-                    break
-            self._refresh_diagnostics_for_output()
-            if budget_exhausted:
-                self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
-            elif health_limit_failure is None:
-                self.output_manager.dispatch(OutputEvent.FINAL)
+            resource_limit_failure = None
+            try:
+                self._enforce_run_resource_limits()
+            except ResourceLimitError as exc:
+                if self.case.run.health_limit_action == "RAISE" or not exc.restartable:
+                    raise
+                resource_limit_failure = exc
+            if resource_limit_failure is not None:
+                # The accepted state already exists (including a loaded
+                # checkpoint), so stop before expensive initial diagnostics or
+                # another physical step and retain a valid terminal backup.
+                if self.case.run.final_backup:
+                    self.save_backup()
+                status = "resource_limit"
+                failure = resource_limit_failure
             else:
-                # A health limit describes the last usable accepted state. It
-                # is part of the scientific result, so persist every sampler
-                # once even when its regular cadence is not due at this step.
-                self.output_manager.write_all(OutputEvent.FINAL)
-            if self.case.run.final_backup:
-                self.save_backup()
-            if budget_exhausted:
-                status = "wall_time_limit"
-            elif health_limit_failure is None:
-                status = "completed"
-            else:
-                status = "resolution_lost"
-                failure = health_limit_failure
+                if self.case.run.initial_samples:
+                    self._refresh_diagnostics_for_output()
+                    self.output_manager.dispatch(OutputEvent.INITIAL)
+                for _ in range(self.case.run.steps):
+                    if deadline is not None and perf_counter() >= deadline:
+                        budget_exhausted = True
+                        break
+                    try:
+                        self.advance()
+                    except HealthError as exc:
+                        if self.case.run.health_limit_action == "RAISE" or not exc.restartable:
+                            raise
+                        if isinstance(exc, ResourceLimitError):
+                            resource_limit_failure = exc
+                        else:
+                            health_limit_failure = exc
+                        break
+                self._refresh_diagnostics_for_output()
+                if budget_exhausted:
+                    self.output_manager.write_all(OutputEvent.FINAL, skip_current=True)
+                elif health_limit_failure is None and resource_limit_failure is None:
+                    self.output_manager.dispatch(OutputEvent.FINAL)
+                else:
+                    # A health limit describes the last usable accepted state.
+                    # Persist every sampler once even when its regular cadence
+                    # is not due at this step.
+                    self.output_manager.write_all(OutputEvent.FINAL)
+                if self.case.run.final_backup:
+                    self.save_backup()
+                if budget_exhausted:
+                    status = "wall_time_limit"
+                elif health_limit_failure is None and resource_limit_failure is None:
+                    status = "completed"
+                elif resource_limit_failure is not None:
+                    status = "resource_limit"
+                    failure = resource_limit_failure
+                else:
+                    status = "resolution_lost"
+                    failure = health_limit_failure
         except BaseException as exc:
             failure = exc
             primary_failure = exc
@@ -997,6 +1033,15 @@ class VPMSolver:
             self.stepper._update_velocity_and_gradients()
             self.stepper._update_les_state()
 
+    def _enforce_run_resource_limits(self) -> None:
+        """Check declared process bounds without touching particle state when disabled."""
+        limits = self.case.run.resource_limits
+        if limits is not None:
+            enforce_resource_limits(
+                limits,
+                particle_count=int(self.particles.n_particles_total),
+            )
+
     def _refresh_accepted_step_health(self) -> None:
         """Refresh and validate diagnostics for one accepted physical state."""
         self._refresh_particle_diagnostic_fields()
@@ -1040,6 +1085,7 @@ class VPMSolver:
         # the particle cloud, so the accepted health state must be measured
         # here rather than before that synchronization.
         self._refresh_accepted_step_health()
+        self._enforce_run_resource_limits()
         if self.vlm_solver is not None:
             self._record_vlm_diagnostics()
         if self.output_manager.flow_integrals_due(self.step, self.time):
@@ -2311,31 +2357,68 @@ class VPMSolver:
         self._refresh_backup_particle_fields()
         _BackupIO.save(self, filename, append_step=False, verbose=False)
 
-    def _load_backup_from(self, filename: str | Path) -> None:
-        """Restore numerical state from a path owned by an internal coordinator."""
+    def _load_backup_from(
+        self,
+        filename: str | Path,
+        *,
+        time_step_size: float | None = None,
+    ) -> None:
+        """Restore numerical state from a path owned by an internal coordinator.
+
+        The changed-step path is deliberately narrow: it is available only
+        for an explicit positive ``time_step_size`` and is not supported for
+        DVH, whose checkpoint stores an accepted-step counter but not enough
+        physical-time history to remap that counter safely.
+        """
+        if time_step_size is not None:
+            if isinstance(time_step_size, bool) or not isinstance(time_step_size, Real):
+                raise TypeError("time_step_size override must be a real number")
+            time_step_size = float(time_step_size)
+            if not np.isfinite(time_step_size) or time_step_size <= 0.0:
+                raise ValueError("time_step_size override must be finite and positive")
+            if self.viscous_scheme == "DVH":
+                raise ValueError(
+                    "changed time_step_size continuation is not supported for DVH: "
+                    "the checkpoint does not retain enough physical-time diffusion history"
+                )
         filename = str(filename)
         path = filename if filename.endswith(".h5") else f"{filename}.h5"
-        _BackupIO.load(self, path)
+        _BackupIO.load(self, path, time_step_size=time_step_size)
+        # A numerical restart replaces the complete particle state. Declarative
+        # initial conditions must never be rebuilt by the next advance/run.
+        self._initial_conditions_built = True
         self._sync_restart_state()
         # A growth limit compares adjacent accepted states.  A loaded restart
         # begins a new in-memory history, so its first accepted state becomes
         # the baseline rather than being compared to a discarded cloud.
         self._accepted_health_snapshot = None
 
-    def load_backup(self, filename: str | Path) -> None:
+    def load_backup(
+        self,
+        filename: str | Path,
+        *,
+        time_step_size: float | None = None,
+    ) -> None:
         """Restore one numerical backup into this configured solver.
 
         Parameters
         ----------
         filename : str or Path
             Backup stem or ``.h5`` path readable by the VPM backup format.
+        time_step_size : float or None, keyword-only
+            Explicit changed-step continuation override. ``None`` retains
+            strict restart identity, including the configured time step.
+            When supplied, only ``time_step_size`` may differ from the
+            checkpoint; all other numerical settings remain strict. The
+            accepted checkpoint clock and coupled VLM state are restored
+            before the new runtime step is applied.
 
         Side Effects
         ------------
         Replaces particle fields and accepted clock, resets health history, and
         invalidates derived/cache state. The case configuration is unchanged.
         """
-        self._load_backup_from(filename)
+        self._load_backup_from(filename, time_step_size=time_step_size)
 
     def save_backup(self) -> None:
         """Write HDF5 state and its ParaView companions to the backup directory.

@@ -115,6 +115,7 @@ def _write_rwm_process_result(case_directory: str, output_file: str) -> None:
 def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
     solver = _solver(tmp_path / "writer")
     solver.stabilization.regularization_events = 1
+    solver.stabilization.pedrizzetti_moment_transfer[:] = np.arange(9).reshape(3, 3) * 0.0123
     solver.stabilization.regularization_energy_transfer = -0.12
     solver.stabilization.regularization_enstrophy_transfer = -0.34
     solver.add_vortex_particles(
@@ -160,6 +161,10 @@ def test_vpm_backup_has_one_fixed_restart_schema(tmp_path):
     )
     assert np.isfinite(restored.particles.velocity_gradient_cpu()).all()
     assert restored.stabilization.regularization_energy_transfer == pytest.approx(-0.12)
+    np.testing.assert_array_equal(
+        restored.stabilization.pedrizzetti_moment_transfer,
+        solver.stabilization.pedrizzetti_moment_transfer,
+    )
     assert restored.stabilization.regularization_enstrophy_transfer == pytest.approx(-0.34)
 
     ring_data = _load_ring_metrics().load_ring_data([f"{backup}.h5"])
@@ -264,6 +269,114 @@ def test_vpm_restart_reports_the_incompatible_configuration_path(tmp_path):
 
     with pytest.raises(ValueError, match=r"numerical configuration mismatch at time_step_size"):
         reader.load_backup(str(backup))
+
+
+def test_explicit_changed_time_step_restart_preserves_clock_and_checkpoint_state(tmp_path):
+    writer = _solver(tmp_path / "writer", time_step_size=0.01)
+    try:
+        _add_counter_rotating_pair(writer)
+        _advance(writer, 2)
+        expected_position = writer.particle_position.copy()
+        expected_strength = writer.particle_vortex_strength.copy()
+        writer.save_backup()
+    finally:
+        writer.close()
+
+    backup = tmp_path / "writer/solution/vpm_000002.h5"
+    reader = _solver(tmp_path / "reader", time_step_size=0.005)
+    try:
+        reader.load_backup(backup, time_step_size=0.005)
+        assert reader.time_step_size == pytest.approx(0.005)
+        assert (reader.step, reader.time) == (2, pytest.approx(0.02))
+        np.testing.assert_array_equal(reader.particle_position, expected_position)
+        np.testing.assert_array_equal(reader.particle_vortex_strength, expected_strength)
+
+        _advance(reader, 1)
+        assert (reader.step, reader.time) == (3, pytest.approx(0.025))
+        reader.save_backup()
+    finally:
+        reader.close()
+
+    with h5py.File(tmp_path / "reader/solution/vpm_000003.h5", "r") as archive:
+        assert archive["solver"].attrs["step"] == 3
+        assert archive["solver"].attrs["time"] == pytest.approx(0.025)
+        assert archive["solver"].attrs["time_step_size"] == pytest.approx(0.005)
+    writer_metadata = json.loads(
+        (tmp_path / "writer/solution/vpm_metadata.json").read_text(encoding="utf-8")
+    )
+    assert "restart" not in writer_metadata
+    reader_metadata = json.loads(
+        (tmp_path / "reader/solution/vpm_metadata.json").read_text(encoding="utf-8")
+    )
+    restart = reader_metadata["restart"]
+    assert restart["source"]["accepted_step"] == 2
+    assert restart["source"]["accepted_time"] == pytest.approx(0.02)
+    assert restart["source"]["time_step_size"] == pytest.approx(0.01)
+    assert restart["continuation"]["requested_time_step_size"] == pytest.approx(0.005)
+    assert restart["continuation"]["accepted_time"] == pytest.approx(0.02)
+
+
+def test_changed_time_step_restart_does_not_relax_other_configuration_checks(tmp_path):
+    writer = _solver(tmp_path / "writer", time_step_size=0.01)
+    try:
+        writer.save_backup()
+    finally:
+        writer.close()
+    backup = tmp_path / "writer/solution/vpm_000000.h5"
+    reader = _solver(tmp_path / "reader", time_step_size=0.005, random_seed=43)
+    try:
+        _add_counter_rotating_pair(reader)
+        before_position = reader.particle_position.copy()
+        with pytest.raises(ValueError, match=r"numerical configuration mismatch at random_seed"):
+            reader.load_backup(backup, time_step_size=0.005)
+        assert reader.step == 0
+        assert reader.time == 0.0
+        np.testing.assert_array_equal(reader.particle_position, before_position)
+    finally:
+        reader.close()
+
+
+@pytest.mark.parametrize(
+    ("override", "error"),
+    [
+        (0.0, ValueError),
+        (-0.001, ValueError),
+        (float("nan"), ValueError),
+        (float("inf"), ValueError),
+        (True, TypeError),
+        ("0.001", TypeError),
+    ],
+)
+def test_invalid_changed_time_step_override_fails_before_live_state_mutation(
+    tmp_path, override, error
+):
+    reader = _solver(tmp_path / "reader", time_step_size=0.005)
+    try:
+        _add_counter_rotating_pair(reader)
+        before_position = reader.particle_position.copy()
+        before_strength = reader.particle_vortex_strength.copy()
+        with pytest.raises(error):
+            reader.load_backup(tmp_path / "missing.h5", time_step_size=override)
+        assert reader.step == 0
+        assert reader.time == 0.0
+        assert reader.time_step_size == pytest.approx(0.005)
+        np.testing.assert_array_equal(reader.particle_position, before_position)
+        np.testing.assert_array_equal(reader.particle_vortex_strength, before_strength)
+    finally:
+        reader.close()
+
+
+def test_changed_time_step_restart_rejects_dvh_history_remapping(tmp_path):
+    reader = _solver(
+        tmp_path / "reader",
+        time_step_size=0.005,
+        viscous=ViscousConfig.dvh(particle_spacing=0.1, kinematic_viscosity=0.01),
+    )
+    try:
+        with pytest.raises(ValueError, match=r"not supported for DVH"):
+            reader.load_backup(tmp_path / "missing.h5", time_step_size=0.001)
+    finally:
+        reader.close()
 
 
 @pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
@@ -654,3 +767,81 @@ def test_restart_matches_stretching_and_recovers_only_known_implicit_defaults(
                         reader.load_backup(str(backup))
             finally:
                 reader.close()
+
+
+def test_flow_integral_csv_preserves_energy_definitions_and_unknown_legacy_rows(tmp_path):
+    import pandas as pd
+
+    solver = _solver(tmp_path / "energy_measurement")
+    csv = tmp_path / "flow_integrals.csv"
+    try:
+        solver._update_all_flow_integrals()
+        assert solver._flow_integrals["energy_measurement"] == "empty_particle_field"
+        _add_counter_rotating_pair(solver)
+        solver._update_all_flow_integrals()
+        assert solver._flow_integrals["energy_measurement"] == "unbounded_energy"
+        solver.io.export_flow_integrals_csv(solver, csv)
+        original = pd.read_csv(csv)
+        assert original.loc[0, "energy_measurement"] == "unbounded_energy"
+
+        # An older CSV has real numeric values but no saved energy definition.
+        original.drop(columns="energy_measurement").to_csv(csv, index=False)
+        solver.step = 1
+        solver.time = 0.01
+        solver._flow_integrals["energy_measurement"] = "periodic_fourier_energy"
+        solver._flow_integrals["kinetic_energy_rate_source"] = "fourier_transition_viscous_rate"
+        solver.io.export_flow_integrals_csv(solver, csv)
+        result = pd.read_csv(csv)
+        assert result.energy_measurement.tolist() == ["unknown", "periodic_fourier_energy"]
+        pd.testing.assert_series_equal(
+            result.total_kinetic_energy.iloc[:1], original.total_kinetic_energy
+        )
+        assert result.loc[1, "kinetic_energy_rate_source"] == "fourier_transition_viscous_rate"
+    finally:
+        solver.close()
+
+
+def test_relaxation_transfer_is_native_sampled_and_restartable(tmp_path):
+    import pandas as pd
+
+    config = StabilizationConfig.pedrizzetti_relaxation(factor=0.3)
+    solver = _solver(tmp_path / "relaxation_writer", stabilization=config)
+    _add_counter_rotating_pair(solver)
+    position = solver.particles.position_cpu().astype(float)
+    original = solver.particles.vortex_strength_cpu().astype(float)
+    gradient = np.zeros((64, 3, 3), dtype=np.float32)
+    gradient[:2, 2, 1] = 1.0
+    gradient[:2, 0, 2] = 0.5
+    solver.particles.velocity_gradient.from_numpy(gradient)
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver.stabilization.apply_relaxation()
+    change = solver.particles.vortex_strength_cpu(use_cache=False).astype(float) - original
+    transfer = solver.stabilization.pedrizzetti_moment_transfer
+    np.testing.assert_allclose(transfer[0], change.sum(axis=0), atol=1e-14)
+    np.testing.assert_allclose(
+        transfer[1], 0.5 * np.cross(position, change).sum(axis=0), atol=1e-14
+    )
+    assert np.linalg.norm(transfer) > 0
+    csv = tmp_path / "flow_integrals.csv"
+    solver.io.export_flow_integrals_csv(solver, csv)
+    row = pd.read_csv(csv).iloc[0]
+    for index, axis in enumerate("xyz"):
+        assert row[f"pedrizzetti_cumulative_linear_impulse_transfer_{axis}"] == pytest.approx(
+            transfer[1, index]
+        )
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver.save_backup()
+    backup = tmp_path / "relaxation_writer/solution/vpm_000000.h5"
+    restored = _solver(tmp_path / "relaxation_reader", stabilization=config)
+    with contextlib.redirect_stdout(io.StringIO()):
+        restored.load_backup(backup)
+    np.testing.assert_array_equal(restored.stabilization.pedrizzetti_moment_transfer, transfer)
+    # Missing historical transfer is unknown, even when reusing a solver that
+    # previously loaded a modern checkpoint. No zero or stale total is allowed.
+    with h5py.File(backup, "r+") as archive:
+        for key in list(archive["solver"].attrs):
+            if key.startswith("pedrizzetti_cumulative_"):
+                del archive["solver"].attrs[key]
+    with contextlib.redirect_stdout(io.StringIO()):
+        restored.load_backup(backup)
+    assert np.isnan(restored.stabilization.pedrizzetti_moment_transfer).all()

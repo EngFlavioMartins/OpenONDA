@@ -74,12 +74,12 @@ class EverySteps:
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
         """Return true when ``step`` reaches this schedule's cadence."""
-        del time_step_size
+        epsilon = max(abs(self.interval * time_step_size) * 1.0e-12, abs(time) * 1.0e-14)
         return (
             step > 0
             and step % self.interval == 0
             and (self.first_step is None or step >= self.first_step)
-            and (self.start_time is None or time >= self.start_time)
+            and (self.start_time is None or time + epsilon >= self.start_time)
         )
 
 
@@ -120,10 +120,10 @@ class EveryTime:
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
         """Return true when the accepted step crosses a time boundary."""
-        if step <= 0 or time < self.start_time:
+        epsilon = max(abs(self.interval) * 1.0e-12, abs(time) * 1.0e-14)
+        if step <= 0 or time + epsilon < self.start_time:
             return False
         previous_time = time - time_step_size
-        epsilon = max(abs(self.interval) * 1.0e-12, abs(time) * 1.0e-14)
         current_bucket = int((time - self.start_time + epsilon) // self.interval)
         previous_bucket = int((previous_time - self.start_time + epsilon) // self.interval)
         return current_bucket >= 0 and current_bucket > previous_bucket

@@ -60,7 +60,7 @@ class SamplingContext:
     solver : SamplerRuntimeSolver
         Solver whose state is being written.
     output_directory : pathlib.Path
-        Resolved samples directory for this case.
+        Framework-owned destination for this sampler and case.
     step : int
         Accepted-step index associated with the event.
     time : float
@@ -124,8 +124,9 @@ class OutputManager:
 
     The manager separates immutable sampler configuration from mutable PVD/CSV
     runtime state. It dispatches only after accepted lifecycle events, creates
-    the case samples directory, writes VTK/CSV files atomically where supported,
-    and raises a sampler-specific `RuntimeError` on failed scientific output.
+        the owner-controlled sample destination, writes VTK/CSV files atomically
+        where supported, and raises a sampler-specific `RuntimeError` on failed
+        scientific output.
     """
 
     def __init__(self, solver: SamplerRuntimeSolver, samplers: Samplers | None = None) -> None:
@@ -274,12 +275,12 @@ class OutputManager:
             extension = getattr(sampler, "vtk_extension", ".vts")
             filename = f"{prefix}_{context.step:06d}{extension}"
             final_path = context.output_directory / filename
-            temp_path = context.output_directory / f".{filename}.tmp{extension}"
-            sampler.save_vtp(context.solver, temp_path, time=context.time)
-            os.replace(temp_path, final_path)
             entries = self._runtime.pvd_entries.setdefault(
                 prefix, self._read_pvd(context.output_directory, prefix)
             )
+            temp_path = context.output_directory / f".{filename}.tmp{extension}"
+            sampler.save_vtp(context.solver, temp_path, time=context.time)
+            os.replace(temp_path, final_path)
             self._append_pvd(entries, context.time, filename)
             self._write_pvd(context.output_directory, prefix, entries)
             return

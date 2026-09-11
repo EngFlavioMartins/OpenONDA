@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "study_date": "2026-09-10",
+  "scope": "fixed-N, fixed-positive-core, direct-summation inviscid particle ODE",
+  "state": "Y=(X,Gamma); velocity and gradient are recomputed from the full stage state",
+  "pair_core": "sigma_ij=(sigma_i+sigma_j)/2",
+  "zeta": "pi^(-3/2) exp(-rho^2)",
+  "q_mathematical": "[erf(rho)-(2/sqrt(pi))*rho*exp(-rho^2)]/(4*pi)",
+  "q_evaluator_in_frozen_probe": "then-production Abramowitz-Stegun erf approximation with rho<0.2 truncated series",
+  "origin_treatment": "analytic small-rho limit",
+  "stretching": "(grad u)^T Gamma",
+  "precision": "NumPy float64",
+  "execution_boundary": "production-convention standalone NumPy probe; no production-solver import or backend execution",
+  "authoritative_frozen_script": "frozen_scripts/fixed_core_probe.py",
+  "authoritative_result": "../data/fixed_core/results.json",
+  "frozen_script_sha256": "8dbf445a2d41c7801be6b041550e3721fe177576cf50fe6c672d3dc53f898e6b",
+  "result_sha256": "5afc9ac3b06a83e50b70b7a461198cb875fa462c970333fe4a30d04dc8dc88a2",
+  "post_study_note": "Repository Gaussian-kernel source files were corrected after this accepted study. Those later files and their defect/patch diagnostics are not study inputs and are not copied into this package.",
+  "historical_review": "reviews/fixed_core_review.md"
+}

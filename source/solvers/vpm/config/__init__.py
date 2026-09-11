@@ -18,6 +18,8 @@ from .health import (
     LagrangianCFLLimit,
     MisalignmentLimit,
     ParticleStrengthLimit,
+    ResourceLimitError,
+    ResourceLimits,
 )
 from .setup import PanelBodySetup
 from .stabilization import StabilizationConfig
@@ -39,6 +41,8 @@ __all__ = [
     "LagrangianCFLLimit",
     "ParticleStrengthLimit",
     "MisalignmentLimit",
+    "ResourceLimitError",
+    "ResourceLimits",
     "RestartState",
     "RunPlan",
     "Samplers",

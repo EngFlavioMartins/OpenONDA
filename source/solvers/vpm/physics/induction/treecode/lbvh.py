@@ -35,12 +35,9 @@ import numpy as np
 import taichi as ti
 import taichi.algorithms  # noqa: F401  (ti.algorithms.parallel_sort)
 
-from ....config.constants import (
-    FOUR_OVER_THREE_SQRT_PI,
-    GAUSSIAN_Q_SERIES_CROSSOVER,
-    TREECODE_SUPPORTED_KERNELS,
-)
+from ....config.constants import TREECODE_SUPPORTED_KERNELS
 from ....kernels.base import make_vortex_kernel
+from ....kernels.gaussian import create_gaussian_kernels
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 # Bound each traversal dispatch.  Large all-particle kernels can exceed the
@@ -136,6 +133,9 @@ class TaichiTreecode:
         self.max_leaf_size = max_leaf_size
         self.theta_sq = theta * theta
         self.kernel_type = kernel_type.upper()
+        gaussian = create_gaussian_kernels(ti.f32)
+        self._gaussian_q = gaussian["q_"]
+        self._gaussian_zeta = gaussian["zeta_"]
         if multipole_order not in (1, 2, 3):
             raise ValueError(f"Unsupported treecode multipole_order: {multipole_order}")
         if traversal_block_dim < 0:
@@ -1120,23 +1120,6 @@ class TaichiTreecode:
     # KERNEL FUNCTIONS (qf, zeta, erf, skew)
 
     @ti.func
-    def _erf_approx(self, x: ti.f32) -> ti.f32:
-        a1 = 0.254829592
-        a2 = -0.284496736
-        a3 = 1.421413741
-        a4 = -1.453152027
-        a5 = 1.061405429
-        p = 0.327591100
-        sign = ti.cast(1.0, ti.f32)
-        x_abs = x
-        if x < 0.0:
-            sign = -1.0
-            x_abs = -x
-        t = 1.0 / (1.0 + p * x_abs)
-        y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * ti.exp(-x_abs * x_abs))
-        return sign * y
-
-    @ti.func
     def q_kernel(self, r_sigma: ti.f32) -> ti.f32:
         """Evaluate the dimensionless regularized Biot--Savart factor.
 
@@ -1155,20 +1138,7 @@ class TaichiTreecode:
         ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)
         result = ti.cast(0.0, ti.f32)
         if self.kernel_type_id[None] == 0:
-            two_over_sqrt_pi = ti.cast(1.1283791671, ti.f32)
-            if r_sigma < GAUSSIAN_Q_SERIES_CROSSOVER:
-                d2 = r_sigma * r_sigma
-                result = (
-                    FOUR_OVER_THREE_SQRT_PI
-                    * r_sigma
-                    * d2
-                    * (1.0 - 0.6 * d2 + (3.0 / 14.0) * d2 * d2)
-                    * ONE_OVER_FOUR_PI
-                )
-            else:
-                erf_term = self._erf_approx(r_sigma)
-                exp_term = two_over_sqrt_pi * r_sigma * ti.exp(-r_sigma * r_sigma)
-                result = (erf_term - exp_term) * ONE_OVER_FOUR_PI
+            result = self._gaussian_q(r_sigma)
         else:
             r2 = r_sigma * r_sigma
             base = r2 + 1.0  # > 0: x**2.5 = x²·√x (no transcendental pow)
@@ -1194,8 +1164,7 @@ class TaichiTreecode:
         ONE_OVER_FOUR_PI = ti.cast(0.07957747154594767, ti.f32)
         result = ti.cast(0.0, ti.f32)
         if self.kernel_type_id[None] == 0:
-            one_over_pi_15 = ti.cast(0.179587122125, ti.f32)
-            result = one_over_pi_15 * ti.exp(-r_sigma * r_sigma)
+            result = self._gaussian_zeta(r_sigma)
         else:
             r2 = r_sigma * r_sigma
             base = r2 + 1.0  # > 0: x**3.5 = x³·√x (no transcendental pow)
@@ -1489,27 +1458,31 @@ class TaichiTreecode:
         node: int,
         target_pos: ti.template(),
         target_rad: ti.f32,
-        self_idx: int,
     ) -> ti.Matrix:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         start = self.node_particle_start[node]
         count = self.node_particle_count[node]
         for k in range(count):
             j = self.leaf_particles[start + k]
-            if j != self_idx:
-                r_vec_j = target_pos - self.position[j]
-                r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
-                if r_mag_j > 1e-10:
-                    sigma = 0.5 * (target_rad + self.core_radius[j])
-                    r_sigma = r_mag_j / sigma
-                    q_val = self.q_kernel(r_sigma)
-                    zeta_val = self.zeta_kernel(r_sigma) / sigma**3
-                    term1 = q_val / r_mag_j**3
-                    term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
-                    cross_j = r_vec_j.cross(self.vortex_strength[j])
-                    gradu += term1 * self.skew(
-                        self.vortex_strength[j]
-                    ) + term2 * cross_j.outer_product(r_vec_j)
+            r_vec_j = target_pos - self.position[j]
+            r_mag_j = ti.sqrt(r_vec_j.dot(r_vec_j))
+            if r_mag_j > 1e-10:
+                sigma = 0.5 * (target_rad + self.core_radius[j])
+                r_sigma = r_mag_j / sigma
+                q_val = self.q_kernel(r_sigma)
+                zeta_val = self.zeta_kernel(r_sigma) / sigma**3
+                term1 = q_val / r_mag_j**3
+                term2 = 3.0 * q_val / r_mag_j**5 - zeta_val / r_mag_j**2
+                cross_j = r_vec_j.cross(self.vortex_strength[j])
+                gradu += term1 * self.skew(self.vortex_strength[j]) + term2 * cross_j.outer_product(
+                    r_vec_j
+                )
+            else:
+                # Retain the finite skew derivative at self and coincident sources.
+                sigma = 0.5 * (target_rad + self.core_radius[j])
+                gradu += (
+                    self.zeta_kernel(0.0) / (3.0 * sigma**3) * self.skew(self.vortex_strength[j])
+                )
         return gradu
 
     @ti.func
@@ -1663,7 +1636,7 @@ class TaichiTreecode:
                 sigma = 0.5 * (target_rad + self.node_avg_radius[node])
                 gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
             elif self.node_is_leaf[node] == 1:
-                gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i)
+                gradu += self._leaf_gradient_sum(node, target_pos, target_rad)
             else:
                 stack_ptr = self._push_children_particle(i, node, stack_ptr)
         return gradu
@@ -1848,7 +1821,7 @@ class TaichiTreecode:
                     gradu += self._far_gradient_node(node, r_vec, r_mag, sigma)
                 elif self.node_is_leaf[node] == 1:
                     vel += self._leaf_velocity_sum(node, target_pos, target_rad, i)
-                    gradu += self._leaf_gradient_sum(node, target_pos, target_rad, i)
+                    gradu += self._leaf_gradient_sum(node, target_pos, target_rad)
                 else:
                     stack_ptr = self._push_children_particle(i, node, stack_ptr)
             self.velocity[i] = vel + freestream_velocity

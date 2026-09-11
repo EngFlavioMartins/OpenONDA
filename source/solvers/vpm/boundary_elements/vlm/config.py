@@ -150,11 +150,14 @@ class VLMSetup:
     freestream_velocity : tuple[float, float, float] or None, optional
         Uniform background velocity in m/s; ``None`` inherits the VPM value.
     logging_interval_steps : int, default=1
-        Positive accepted-step logging cadence.
+        Positive accepted-step force-table cadence for standalone VLM use.
+        Coupled VPM cases own scientific output cadence and require this to
+        remain at its owner-step value of one.
     force : ForceConfig
         Aerodynamic-force model.
-    sample_surface_forces : bool, default=False
-        Write per-surface as well as aggregate force histories.
+    sample_surface_forces : bool, default=True
+        Write per-surface as well as aggregate force histories. Coupled VPM
+        cases require this owner-sample output and reject an explicit opt-out.
     """
 
     surfaces: tuple[VLMSurfaceSetup, ...]
@@ -169,7 +172,7 @@ class VLMSetup:
     freestream_velocity: tuple[float, float, float] | None = None
     logging_interval_steps: int = 1
     force: ForceConfig = field(default_factory=ForceConfig.kutta_joukowski)
-    sample_surface_forces: bool = False
+    sample_surface_forces: bool = True
     wake_core_overlap: float | None = None
 
     def __post_init__(self) -> None:
@@ -190,8 +193,12 @@ class VLMSetup:
             not math.isfinite(self.wake_core_overlap) or self.wake_core_overlap <= 0
         ):
             raise ValueError("VLM wake_core_overlap must be finite and positive")
-        if self.logging_interval_steps < 1:
-            raise ValueError("VLM logging_interval_steps must be positive")
+        if (
+            isinstance(self.logging_interval_steps, bool)
+            or not isinstance(self.logging_interval_steps, int)
+            or self.logging_interval_steps < 1
+        ):
+            raise ValueError("VLM logging_interval_steps must be a positive integer")
         if self.freestream_velocity is not None:
             if len(self.freestream_velocity) != 3:
                 raise ValueError("freestream_velocity must contain three coordinates")
