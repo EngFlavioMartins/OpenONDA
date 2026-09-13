@@ -17,7 +17,7 @@ import openonda.fvm.mesher as msh
 
 def create_solver(directory_name: str, dx: float):
     case_dir = Path(__file__).resolve().parent
-    domain = (-5.0, 10.0, -5.0, 5.0, -5.0, 5.0)
+    domain = (-7.5, 15.0, -7.5, 7.5, -7.5, 7.5)
     velocity = [1.0, 0.0, 0.0]
     patches = msh.BoxPatches(
         xmin="inlet",
@@ -30,7 +30,7 @@ def create_solver(directory_name: str, dx: float):
     mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(bounds=domain, patches=patches),
         surfaces=(msh.STLSurface(case_dir / "assets/cube.stl", patch="cube"),),
-        max_cell_size=0.5,
+        max_cell_size=12 * dx,
         refinements=(
             # cfMesh treats box cell sizes as strict upper bounds.
             msh.BoxRefinement(
